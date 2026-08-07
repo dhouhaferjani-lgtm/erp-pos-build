@@ -29,7 +29,13 @@ use App\Shared\Contracts\Partner\PartnerReferenceSource;
  * prose: they are `EXCLUDED_PARTNER_COLUMNS` below, and
  * `PartnerReferenceSchemaSweepTest` walks the live schema and fails on any
  * partner-shaped column that is neither declared by a source nor listed
- * there. A new FK-less money column cannot ship unnoticed.
+ * there. A new FK-less PARTNER-SHAPED money column cannot ship unnoticed.
+ * Two shapes escape BOTH nets (round-2 gate m-1): a partner reference that is
+ * FK-less AND non-conventionally named (`supplier_id`, `client_id`,
+ * `vendor_id`, ...), and a polymorphic anchor (`*_id` + `*_type`
+ * discriminator, no FK — `loyalty_members.loyaltyable_id` is exactly this
+ * shape and was covered by hand, not caught by the ratchet). Reviewers of new
+ * migrations must check those two shapes manually.
  *
  * CONNECTION TIMING — do not "simplify" this away. Sources must resolve
  * their connection at QUERY time, never at construction time: Laravel

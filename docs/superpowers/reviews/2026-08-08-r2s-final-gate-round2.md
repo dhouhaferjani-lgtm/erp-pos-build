@@ -1,0 +1,21 @@
+# GATE RECORD — R2-S ROUND 2 (COMBINED axes: authz + treasury), final re-gate
+
+**Verdict: CLEAR TO MERGE.** Read-only pass over the 7 remediation commits `bdfd71eb7..084ec44ee`; no mutation/checkout/revert-probe; tree clean before and after.
+
+## Closures — all seven Importants from both gates closed with code, not prose
+1. **Authz I-1 CLOSED:** eager-materialisation at `PartnerReferenceCounterConnectionTimingTest.php:234-238` — byte-for-byte the reviewer's round-1-verified variant (mutation half UNVERIFIED-BY-ME this round, read-only; implementer evidence quoted: 3/3 RED under the implanted capture). **Second vacuity real and fixed:** the never-leaks test previously planted its decoy under a FOREIGN partner id (capture still returned [] → vacuous pass); now planted under the id under test — hence 3 red, not 2. The three overstated docblocks now state the rule is "a REQUIREMENT on implementations, not a property the current wiring grants for free" — the true state of affairs.
+2. **Treasury I-1 CLOSED, caveat ACCURATE:** three tables counted on `['customer_id']` (`PosPartnerReferenceSource.php:60-62`); fixtures carry the real column sets (checked against the create migrations); caveat verified against `TreasuryAccountChargeBridge.php:104-140` — pending_create resolves through counted `pos_customer_aliases`, "neither alone is sufficient" holds; no pre-alias window (no server partner exists to delete). VARCHAR compare safe on PG (no uuid-500 shape).
+3. **I-2×2 CLOSED with stated residual:** `PartnerReferenceSchemaSweepTest` (4 tests) — union net (name-shaped :192-198 + FK-to-partners), `EXCLUDED_PARTNER_COLUMNS` (8, reasoned), staleness + no-contradiction checks, ≥-count self-guard. FK-catch of `party_contacts.party_id` verified structurally (SQLite grammar/processor emit the exact keys consumed). **Treasury m-1 landed:** `SOFT_DELETE_AWARE_TABLES` allowlist + non-empty reason + staleness check — adding `deleted_at` to `payments` now reddens two tests until someone writes down why.
+4. **Authz I-3 CLOSED:** fiscal_events rationale rewritten (names the refutation; identifies the now-counted projections as what makes it safe; better reason retained — unactionable append-only key). No false claim remains on the axis.
+5. **Authz I-4 CLOSED, WHERE cannot over-match:** `PartnerReferenceColumn(column, where[])`; closure-nested alternatives produce real parentheses (`(col1 = ? AND type = ?) OR (col2 = ?)`, deleted_at AND'ed outer) — no precedence leak; row qualifying via several columns still counts once. Three tests incl. the 'contact'-anchor NEGATIVE (discriminator earns its keep); discriminator columns pinned in the schema contract.
+6. **Authz I-5 CLOSED:** en/fr/ar table-agnostic (all three read); same key, no FE contract change; negative toast assertion would fail against old copy.
+7. **T11–T16 landed;** T11's six index rows verified line-by-line correct — but the enumeration is itself an undercount (m-2 below).
+
+## Independent verification
+Lane tests by path: **OK 69/614** (guard + contract + sweep + timing). Deptrac re-measured on head: 102, category table byte-identical to base — zero new edges from all 10 commits. arLocale reds REPRODUCED and shown to name three namespaces (`ar/common`, `ar/workshop-technicians`, `ar/vehicles`) this lane never touched; `ar/sales.json` not even checked by that test.
+
+## Residuals (documentation-level; none blocking — applied by the orchestrator at merge)
+- **m-1** sweep escape shapes undocumented: FK-less + non-conventionally-named (`supplier_id`/`client_id`), and polymorphic anchors (loyalty's own shape — fixed by hand, not caught). Counter's "cannot ship unnoticed" needs "partner-shaped". **APPLIED at merge** (counter docblock).
+- **m-2** T11 index enumeration short by ~8 further columns (documents/vehicles/aliases non-leading; vouchers.issued_to/wo-lines/buyer+seller/platform/expense-recurrence unindexed; vouchers unindexable as a whole via the OR's second arm). **APPLIED at merge** (ticket correction).
+- **m-3** allowlist message advises "leave the flag false" which the retained biconditional forbids. **APPLIED at merge** (message reconciled).
+Trivia: docblock cites `MemberResolver::resolve()`; method is `resolveByContactOrPartner()`.

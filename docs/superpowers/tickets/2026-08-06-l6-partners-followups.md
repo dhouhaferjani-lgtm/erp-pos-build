@@ -362,3 +362,17 @@ Related, still open from the original lane: `Fiscal/.../OutboxIngestor.php:644` 
 constructor-injects `ConnectionInterface` (the BUG-007 defect class), and the deptrac ratchet already
 fails on `dev` (98 baseline / 102 actual, `SharedContracts on ModuleDomain` +4) independently of this
 work.
+
+#### T11 index correction (round-2 gate m-2, 2026-08-08 — the "6 tables" count is itself an undercount)
+
+Verified against migrations: EIGHT further counted columns lack a usable leading index —
+`documents.partner_id` and `vehicles.partner_id` (only `(tenant_id, partner_id)` /
+`(company_id, partner_id)` composites), `pos_customer_aliases.server_partner_id` (only
+`(tenant_id, company_id, server_partner_id)`), and FIVE with no index at all:
+`vouchers.issued_to_partner_id`, `workshop_work_order_lines.core_deposit_partner_id`,
+`buyer_seller_mappings.buyer_partner_id`, `buyer_seller_mappings.seller_partner_id`,
+`platform_supplier_mappings.partner_id`, `expense_recurrence_templates.partner_id`.
+Note `vouchers` becomes unindexable AS A WHOLE because the OR's second arm
+(`issued_to_partner_id`) is unindexed. The remediation already proposed above
+(single-column indexes, or scope the counts by tenant/company) covers all of them —
+only the count was wrong (2 → 6 → ~14 columns).

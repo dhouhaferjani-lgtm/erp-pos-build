@@ -122,8 +122,11 @@ class PartnerReferenceSchemaContractTest extends TestCase
                     .'soft-deleted rows there no longer block a partner delete. That is a '
                     .'deliberate weakening of the guard and must be recorded in '
                     .'PartnerReferenceCounter::SOFT_DELETE_AWARE_TABLES with the reason it is '
-                    .'safe. If this table carries money or a fiscal record, the answer is '
-                    .'probably to leave the flag false and keep counting.',
+                    .'safe. NOTE: the schema-match test in this file forces the flag to track '
+                    .'the deleted_at column, so "leave the flag false" is not available once '
+                    .'the column exists — for a money/fiscal table the right move is usually '
+                    .'to QUESTION adding soft deletes to it at all; if it must soft-delete, '
+                    .'flip the flag AND justify here why archived rows may stop blocking.',
                 );
 
                 $this->assertNotSame(
