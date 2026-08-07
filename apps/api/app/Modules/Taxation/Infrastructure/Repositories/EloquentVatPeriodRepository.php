@@ -15,12 +15,18 @@ class EloquentVatPeriodRepository implements VatPeriodRepositoryInterface
 {
     public function findLockedPeriodCoveringDate(string $companyId, CarbonInterface $date): ?VatPeriod
     {
-        $day = $date->toDateString();
-
         return VatPeriod::query()
             ->where('company_id', $companyId)
-            ->where('period_start', '<=', $day)
-            ->where('period_end', '>=', $day)
+            // Bind the Carbon INSTANCE, never `->toDateString()`. Passing a
+            // 'Y-m-d' string made SQLite compare TEXT lexicographically against
+            // its own 'Y-m-d H:i:s' storage, so `'2026-09-01 00:00:00' <=
+            // '2026-09-01'` was FALSE and a document dated on `period_start`
+            // escaped the lock (PostgreSQL, comparing real dates, was correct).
+            // Binding the instance lets each driver's date grammar decide —
+            // the same form `FiscalPeriodResolverService::isDateInClosedPeriod()`
+            // has always used.
+            ->where('period_start', '<=', $date)
+            ->where('period_end', '>=', $date)
             ->whereIn('status', [VatPeriodStatus::Filed, VatPeriodStatus::Closed])
             // FILED first: it is the stricter refusal (a filed declaration cannot
             // be reopened at all), so an overlap resolves to the stronger reason.
