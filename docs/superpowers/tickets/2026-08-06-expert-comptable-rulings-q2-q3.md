@@ -30,6 +30,21 @@ CN total; `allocateToInvoice`'s ex-stamp clamp is the correct behaviour. Require
    as the other campaign artifacts). New postings only.
 This closes N1 and unblocks credit-note GL certification (project_accounting_gl_roadmap A1).
 
+**SHIPPED 2026-08-07** (lane `fix/cn-stamp-gl-alignment`, gate REJECT→CLEAR; migration
+`2026_08_07_100000_backfill_purchase_stamp_duty_account` rides the deploy). Deploy notes:
+- **N-1 (accountant-disposition + deploy-window item):** a CN sitting in `Confirmed` (not yet
+  Posted) at deploy time is short-circuited by the confirm idempotency early-return and never
+  recomputes `stamp_duty_amount` → it posts the LEGACY stamp-inclusive shape. Bounded to the
+  deploy window; per tenant, either recompute the column on Confirmed-not-Posted CNs or list
+  them for the accountant.
+- Already-POSTED CNs keep the legacy shape by design (no data rewrite) — accountant list.
+- N-2 (pre-existing, stays open on the N1 line): when the allocation clamp genuinely bites,
+  GL 411 moves the full ex-stamp amount while the allocation floors at balance — the residual
+  clamp divergence is structurally unchanged by this lane.
+- 🎫 accountant confirmation owed: TN/FR 6354 ("Droits d'enregistrement et de timbre") reused
+  as the avoir's charge-fiscale debit account (purpose enum named PurchaseStampDuty; Generic
+  chart label cosmetic-only, branch unreachable there).
+
 RELATED (separate feature line, owner 2026-08-06): whether a CN/return note carries a stamp
 AT ALL should become configurable/optional — see the note at the bottom of this file.
 
