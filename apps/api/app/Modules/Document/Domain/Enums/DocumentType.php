@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Enums;
 
+use App\Modules\Document\Domain\DTOs\CorrectingEntryPayload;
+
 enum DocumentType: string
 {
     case Quote = 'quote';
@@ -18,6 +20,32 @@ enum DocumentType: string
     case SupplierCreditNote = 'supplier_credit_note';
     case Income = 'income';
     case PurchaseQuoteRequest = 'purchase_rfq';
+
+    /**
+     * R2-F4 — a correcting accounting entry, expressed as a DOCUMENT.
+     *
+     * Owner ruling c4 (branch (a), strengthened) in
+     * `docs/superpowers/tickets/2026-08-07-round2-rulings-record.md`:
+     * "corrections are DOCUMENTS, always. A correction requires creating a
+     * correcting document LINKED to the original document it refers to
+     * (`source_document_id`). No free-floating manual JEs as the correction
+     * mechanism."
+     *
+     * It carries no product lines and no partner balance — its content is a set
+     * of GL legs held in `documents.payload`
+     * ({@see CorrectingEntryPayload}) — and its
+     * mandatory `source_document_id` names the document whose sealed journal
+     * entry it repairs.
+     *
+     * DELIBERATELY NOT a fiscal (hash-chained) document type: it never reaches a
+     * customer, has no fiscal number sequence obligation, and its integrity is
+     * carried by the JOURNAL-entry hash chain (which its GL posting joins like
+     * every other entry), not by the document chain. It therefore stays
+     * `FiscalCategory::NonFiscal` — which is also what keeps this lane
+     * zero-schema, since `chk_fiscal_category_enum` would otherwise need
+     * widening.
+     */
+    case CorrectingEntry = 'correcting_entry';
 
     /**
      * Get the prefix for document numbering
@@ -37,6 +65,7 @@ enum DocumentType: string
             self::SupplierCreditNote => 'SCN',
             self::Income => 'INC',
             self::PurchaseQuoteRequest => 'DP',
+            self::CorrectingEntry => 'CE',
         };
     }
 
@@ -58,6 +87,7 @@ enum DocumentType: string
             self::SupplierCreditNote => 'Supplier Credit Note',
             self::Income => 'Income',
             self::PurchaseQuoteRequest => 'Purchase Quote Request',
+            self::CorrectingEntry => 'Correcting Entry',
         };
     }
 
