@@ -10,8 +10,8 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Spatie\Permission\Models\Permission;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -62,7 +62,10 @@ final class ReportLocationScopeAuthorizationTest extends TestCase
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
-        Permission::findOrCreate('reports.operational', 'sanctum');
+        // Merge-gate 2026-08-07 F-5: seed the real permission catalog rather
+        // than fabricating the permission ad hoc — proves it's actually in
+        // RolesAndPermissionsSeeder, not just accepted because it exists.
+        $this->seed(RolesAndPermissionsSeeder::class);
         $this->user->givePermissionTo('reports.operational');
 
         app(CompanyContext::class)->setCompanyId($this->company->id);
@@ -87,6 +90,33 @@ final class ReportLocationScopeAuthorizationTest extends TestCase
         $this->assertCleanForbidden(
             "/api/v1/reports/upcoming-payments?location_ids[]={$this->locationB->id}"
         );
+    }
+
+    /**
+     * Merge-gate 2026-08-07 F-5: the suite above only ever asserted the DENY
+     * path — a regression that turned all three endpoints into a blanket 403
+     * would have passed it green. Pin the ALLOW path too: an in-scope request
+     * (the principal's own granted location) still returns 200.
+     */
+    public function test_aged_receivables_allows_an_in_scope_location_request(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/aged-receivables?location_ids[]={$this->locationA->id}")
+            ->assertOk();
+    }
+
+    public function test_aged_payables_allows_an_in_scope_location_request(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/aged-payables?location_ids[]={$this->locationA->id}")
+            ->assertOk();
+    }
+
+    public function test_upcoming_payments_allows_an_in_scope_location_request(): void
+    {
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/upcoming-payments?location_ids[]={$this->locationA->id}")
+            ->assertOk();
     }
 
     private function assertCleanForbidden(string $url): void
