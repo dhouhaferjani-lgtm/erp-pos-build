@@ -63,6 +63,8 @@ public function index(Request $request): JsonResponse
 }
 ```
 
+**Report-endpoint 403 contract (ticket 2026-08-06-l3-cash-scope-residuals.md (b)):** `cashMovements`, `agedReceivables`, `agedPayables` and `upcomingPayments` on `ReportsController` don't build this envelope by hand — they let `LocationScopeResolver::resolve()`'s `AuthorizationException` bubble unhandled (deliberately kept OUTSIDE any surrounding `try`/`catch`) to the global `AccessDeniedHttpException` render handler in `bootstrap/app.php`, which emits the exact same `{"error":{"code":"FORBIDDEN","message":<i18n auth.permission_denied_generic>,"ability":null}}` shape. Any new report/location-scoped endpoint should do the same rather than catching and re-wrapping the exception.
+
 ## Common Permissions
 
 ```
