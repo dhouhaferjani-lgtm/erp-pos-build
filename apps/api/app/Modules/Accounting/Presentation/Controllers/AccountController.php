@@ -31,7 +31,9 @@ class AccountController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        $query = Account::forTenant($tenantId);
+        // W-8 F-1: tenant-only scoping exposed every sibling company's chart of
+        // accounts on GET /accounts in a multi-company tenant.
+        $query = Account::forTenant($tenantId)->forCompany($companyId);
 
         // Filter by type
         $type = $request->query('type');
@@ -76,7 +78,7 @@ class AccountController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        $account = Account::forTenant($tenantId)->find($id);
+        $account = Account::forTenant($tenantId)->forCompany($companyId)->find($id);
 
         if ($account === null) {
             return response()->json([
@@ -148,7 +150,7 @@ class AccountController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
-        $account = Account::forTenant($tenantId)->find($id);
+        $account = Account::forTenant($tenantId)->forCompany($companyId)->find($id);
 
         if ($account === null) {
             return response()->json([

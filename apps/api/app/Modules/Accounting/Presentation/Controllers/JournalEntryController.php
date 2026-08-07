@@ -35,8 +35,12 @@ class JournalEntryController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // W-8 F-1: tenant_id ALONE let company A list company B's journal
+        // entries inside the same tenant. company_id is the authorization axis
+        // here, not a filter.
         $entries = JournalEntry::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with('lines.account')
             ->orderByDesc('entry_date')
             ->orderByDesc('created_at')
@@ -128,8 +132,11 @@ class JournalEntryController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // W-8 F-1: company_id pins the authorization axis; a sibling-company
+        // entry id now 404s exactly as a cross-tenant one already did.
         $entry = JournalEntry::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with('lines.account')
             ->findOrFail($id);
 
@@ -146,8 +153,11 @@ class JournalEntryController extends Controller
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
 
+        // W-8 F-1: company_id pins the authorization axis; a sibling-company
+        // entry id now 404s exactly as a cross-tenant one already did.
         $entry = JournalEntry::query()
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->with('lines.account')
             ->findOrFail($id);
 
@@ -160,7 +170,11 @@ class JournalEntryController extends Controller
             ], 422);
         }
 
-        $this->generalLedgerService->postEntry($entry, $user, $company->currency);
+        // W-8 F-1 (settlement currency): never settle with the CALLER's currency.
+        // GeneralLedgerService derives the currency from $entry->company_id when
+        // none is supplied, so the entry is always sealed in its OWN company's
+        // currency even if a future caller-scope regression slips through.
+        $this->generalLedgerService->postEntry($entry, $user);
 
         /** @var JournalEntry $freshEntry */
         $freshEntry = $entry->fresh(['lines.account']);
