@@ -60,10 +60,11 @@ data-readiness sweep.
    `'selling_price'` on `Product`; the model has `sale_price` and no
    `selling_price` fillable, so the value is silently dropped by mass assignment.
    Latent fixture bug.
-4. **deptrac +2 violations** (102 → 104 measured against `dev`), both from
-   `App\Shared\Contracts\Taxation\DocumentPeriodLockInterface` depending on
-   `Modules\Document\Domain\Document` and
-   `Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException` —
+4. **deptrac: +2 distinct violations, +3 raw occurrences** (`dev` 102 → branch
+   105 by occurrence count; 67 → 69 by distinct file+message). Both new ones sit
+   in `App\Shared\Contracts\Taxation\DocumentPeriodLockInterface`, depending on
+   `Modules\Document\Domain\Document` (counted twice — once per method signature)
+   and on `Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException` —
    structurally identical to the pre-existing, gate-approved violations from
    `DocumentGlPreflightInterface`, `DocumentGlReversalInterface` and
    `TreasuryMovementServiceInterface`. Consistency with the house contract pattern
