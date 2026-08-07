@@ -9,6 +9,7 @@ use App\Modules\Taxation\Application\Services\SalesWithholdingTrackingService;
 use App\Modules\Taxation\Application\Services\TaxConfigurationLookupService;
 use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Application\Services\VatExportService;
+use App\Modules\Taxation\Application\Services\VatPeriodCancellationGuard;
 use App\Modules\Taxation\Application\Services\VatPeriodManagementService;
 use App\Modules\Taxation\Application\Services\VatReportGenerationService;
 use App\Modules\Taxation\Application\Services\WithholdingCertificateService;
@@ -32,6 +33,7 @@ use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatDataRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentVatPeriodRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingCertificateRepository;
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingTaxRuleRepository;
+use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
 use App\Shared\Contracts\TaxConfigurationLookupInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\ServiceProvider;
@@ -80,6 +82,10 @@ class TaxationServiceProvider extends ServiceProvider
         $this->app->singleton(SalesWithholdingTrackingService::class);
         $this->app->singleton(TEJExportService::class);
         $this->app->singleton(CertificatePDFService::class);
+
+        // R2-F1 — Document asks Taxation whether a cancellation's period is still
+        // OPEN through this Shared contract, never through the VatPeriod entity.
+        $this->app->bind(DocumentPeriodLockInterface::class, VatPeriodCancellationGuard::class);
 
         // Register VAT reporting services as singletons
         $this->app->singleton(VatCreditService::class);

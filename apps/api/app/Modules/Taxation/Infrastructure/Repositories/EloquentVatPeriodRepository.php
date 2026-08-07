@@ -8,10 +8,26 @@ use App\Modules\Taxation\Domain\Entities\VatPeriod;
 use App\Modules\Taxation\Domain\Entities\VatPeriodBreakdown;
 use App\Modules\Taxation\Domain\Enums\VatPeriodStatus;
 use App\Modules\Taxation\Domain\Repositories\VatPeriodRepositoryInterface;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
 
 class EloquentVatPeriodRepository implements VatPeriodRepositoryInterface
 {
+    public function findLockedPeriodCoveringDate(string $companyId, CarbonInterface $date): ?VatPeriod
+    {
+        $day = $date->toDateString();
+
+        return VatPeriod::query()
+            ->where('company_id', $companyId)
+            ->where('period_start', '<=', $day)
+            ->where('period_end', '>=', $day)
+            ->whereIn('status', [VatPeriodStatus::Filed, VatPeriodStatus::Closed])
+            // FILED first: it is the stricter refusal (a filed declaration cannot
+            // be reopened at all), so an overlap resolves to the stronger reason.
+            ->orderByRaw('CASE status WHEN ? THEN 0 ELSE 1 END', [VatPeriodStatus::Filed->value])
+            ->first();
+    }
+
     public function findById(string $id): ?VatPeriod
     {
         return VatPeriod::find($id);
