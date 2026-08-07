@@ -37,6 +37,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -342,11 +343,21 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
     // ----------------------------------------- purchase / supplier (AP) ---
 
     /**
-     * R-c c2 DEFAULT: the refusal applies to purchase documents too. A supplier
-     * invoice's deductible input VAT sits in the same filed declaration as the
-     * output VAT, so withdrawing it after filing has the identical retroactive
-     * problem. REVERSIBLE by the c2 seam — see
-     * `VatPeriodCancellationGuard::refusalAppliesTo()`.
+     * R-c c2 DEFAULT: the refusal applies to purchase documents too.
+     *
+     * The justification is AP / trial-balance integrity, NOT output-VAT symmetry:
+     * a supplier invoice's input VAT is not in the declaration at all today
+     * (`EloquentVatDataRepository:42` reads invoice/credit_note/expense only —
+     * `supplier_invoice` appears nowhere in Taxation). What it DOES carry is a GL
+     * entry dated `document_date`
+     * (`GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry():1996`), so
+     * withdrawing it inside a period whose books are closed is a ledger-integrity
+     * problem regardless of VAT. Refusing is also forward-compatible if F2/F3
+     * later bring supplier invoices into the declaration.
+     *
+     * REVERSIBLE by the c2 seam — see
+     * `VatPeriodCancellationGuard::refusalAppliesTo()`, including its warning not
+     * to flip before F2's AP mirror exists.
      */
     public function test_cancelling_a_supplier_invoice_in_a_closed_period_is_refused(): void
     {
@@ -365,13 +376,17 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
         $supplierInvoice->refresh();
         self::assertSame(DocumentStatus::Posted, $supplierInvoice->status);
         self::assertNull($supplierInvoice->cancelled_at);
-        self::assertSame(
-            0,
-            JournalEntry::query()
-                ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
-                ->where('source_id', $supplierInvoice->id)
-                ->count(),
-        );
+        self::assertNull($supplierInvoice->cancellation_reason);
+
+        // NOTE (taxation gate m-3): a "zero REVCAN entries" assertion would be
+        // VACUOUS here. `AccountingService::reverseDocumentGl()` returns null for
+        // any type other than Invoice/CreditNote (`:833`) and SupplierInvoice
+        // takes cancel()'s non-fiscal branch, so no reversal is written on the
+        // SUCCESS path either — the count is zero whatever the guard does. The
+        // load-bearing assertions on this branch are the refusal itself and the
+        // untouched document state above. The reversal-suppression claim is
+        // proven on the sales-invoice cases, where a reversal genuinely would be
+        // written.
     }
 
     public function test_cancelling_a_supplier_invoice_in_a_filed_period_is_refused(): void
@@ -389,6 +404,98 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
         }
 
         self::assertSame(DocumentStatus::Posted, $this->freshStatus($supplierInvoice));
+    }
+
+    // ------------------------------------------------- overlap ordering ---
+
+    /**
+     * Taxation gate m-3 / GL gate m-3 — pins the FILED-first ordering.
+     *
+     * `vat_periods` is unique per `(company_id, period_start, period_end)` but NOT
+     * per `country_code`, so two country-scoped period sets can cover the same
+     * day with different statuses. The lookup's `orderByRaw` CASE resolves such an
+     * overlap to the STRICTER reason, because the two codes carry different
+     * remedies: CLOSED can be reopened, FILED never can. Without this test a
+     * refactor to a plain `orderBy('status')` would silently downgrade FILED to
+     * CLOSED ('CLOSED' sorts before 'FILED') and the UI would offer a reopen that
+     * cannot happen.
+     */
+    public function test_an_overlapping_closed_and_filed_period_refuses_with_the_filed_code(): void
+    {
+        $documentDate = Carbon::parse('2026-10-14');
+
+        // Two periods covering the same day, deliberately different spans so the
+        // (company, start, end) unique key permits both. The CLOSED one is
+        // inserted FIRST so natural row order would surface it.
+        $this->vatPeriod(
+            Carbon::parse('2026-10-01'),
+            Carbon::parse('2026-10-31'),
+            VatPeriodStatus::Closed,
+        );
+        $this->vatPeriod(
+            Carbon::parse('2026-10-12'),
+            Carbon::parse('2026-10-18'),
+            VatPeriodStatus::Filed,
+        );
+
+        $invoice = $this->postedInvoiceWithGl($documentDate);
+
+        try {
+            $this->postingService->cancel($invoice, 'overlapping periods', $this->user->id);
+            self::fail('An overlapping locked period must still refuse');
+        } catch (DocumentPeriodLockedException $exception) {
+            self::assertSame(
+                PeriodLockRefusalCode::PeriodFiled,
+                $exception->refusalCode,
+                'FILED is the stricter reason and must win an overlap',
+            );
+            self::assertSame(VatPeriodStatus::Filed, $exception->periodStatus);
+        }
+
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
+    }
+
+    // ------------------------------- types deliberately OUTSIDE the lock ---
+
+    /**
+     * Taxation gate I-4 (ruling adopted) — the lock covers DECLARATION- and
+     * LEDGER-bearing types only, not literally every document type.
+     *
+     * These types post no journal entry and write no `document_tax_details` row,
+     * so locking them would protect nothing while making them permanently
+     * uncancellable the moment a lane routes their cancellation through
+     * `DocumentPostingService::cancel()`. One case per excluded type so a future
+     * widening of `refusalAppliesTo()` cannot pass silently.
+     */
+    #[DataProvider('provideTypesOutsideTheLock')]
+    public function test_a_non_declaration_bearing_type_is_cancellable_in_a_filed_period(
+        DocumentType $type,
+    ): void {
+        $documentDate = Carbon::parse('2026-11-12');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $document = $this->postedDocumentOfType($type, $documentDate);
+
+        $this->postingService->cancel($document, 'not declaration-bearing', $this->user->id);
+
+        self::assertSame(
+            DocumentStatus::Cancelled,
+            $this->freshStatus($document),
+            $type->value.' posts no GL and no tax detail — the VAT period must not lock it',
+        );
+    }
+
+    /**
+     * @return iterable<string, array{DocumentType}>
+     */
+    public static function provideTypesOutsideTheLock(): iterable
+    {
+        yield 'quote' => [DocumentType::Quote];
+        yield 'delivery note' => [DocumentType::DeliveryNote];
+        yield 'return note' => [DocumentType::ReturnNote];
+        yield 'purchase order' => [DocumentType::PurchaseOrder];
+        yield 'purchase quote request' => [DocumentType::PurchaseQuoteRequest];
+        yield 'income' => [DocumentType::Income];
     }
 
     // ------------------------------------------------------ happy paths ---
@@ -491,7 +598,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
     public function test_the_cancel_endpoint_returns_a_coded_422(): void
     {
         $documentDate = Carbon::parse('2026-01-18');
-        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+        $period = $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
 
         $invoice = $this->postedInvoiceWithGl($documentDate);
 
@@ -499,9 +606,27 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
             ->postJson("/api/v1/invoices/{$invoice->id}/cancel", ['reason' => 'filed period']);
 
         $response->assertStatus(422);
+
+        // The WHOLE envelope, not just the code — the FE renders the period label
+        // in "ask your accountant to reopen <period>" and branches on the status.
         $response->assertJsonPath('error.code', PeriodLockRefusalCode::PeriodFiled->value);
-        self::assertIsString($response->json('error.message'));
-        self::assertNotSame('', $response->json('error.message'));
+        $response->assertJsonPath('error.document_number', $invoice->document_number);
+        $response->assertJsonPath('error.period_label', $period->label);
+        $response->assertJsonPath('error.period_status', VatPeriodStatus::Filed->value);
+
+        $message = $response->json('error.message');
+        self::assertIsString($message);
+        self::assertNotSame('', $message);
+        self::assertStringContainsString(
+            $invoice->document_number,
+            $message,
+            'The message must name the document it refused',
+        );
+        self::assertStringContainsString(
+            $period->label,
+            $message,
+            'The message must name the period that blocked it',
+        );
 
         self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
     }
@@ -519,8 +644,24 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
         return Document::query()->with('lines')->findOrFail($document->id);
     }
 
+    /** The whole calendar month containing $date. */
     private function vatPeriodFor(Carbon $date, VatPeriodStatus $status, ?string $companyId = null): VatPeriod
     {
+        return $this->vatPeriod(
+            $date->copy()->startOfMonth(),
+            $date->copy()->endOfMonth(),
+            $status,
+            $companyId,
+        );
+    }
+
+    /** An explicit span — used by the overlap case, which needs two of them. */
+    private function vatPeriod(
+        Carbon $start,
+        Carbon $end,
+        VatPeriodStatus $status,
+        ?string $companyId = null,
+    ): VatPeriod {
         DB::table('countries')->insertOrIgnore([
             'code' => 'TN',
             'name' => 'Tunisia',
@@ -528,15 +669,13 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
             'is_active' => true,
         ]);
 
-        $start = $date->copy()->startOfMonth();
-
         return VatPeriod::create([
             'company_id' => $companyId ?? $this->company->id,
             'country_code' => 'TN',
             'period_type' => VatPeriodType::Monthly,
-            'label' => $start->format('F Y'),
+            'label' => $start->format('F Y').' ('.$start->format('d').'-'.$end->format('d').')',
             'period_start' => $start->toDateString(),
-            'period_end' => $date->copy()->endOfMonth()->toDateString(),
+            'period_end' => $end->toDateString(),
             'status' => $status,
         ]);
     }
@@ -577,6 +716,31 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 
         /** @var Document */
         return $fresh->fresh(['lines']);
+    }
+
+    /**
+     * A minimal POSTED document of an arbitrary type, for the exclusion cases.
+     * These types post no GL, so no accounting fixture is needed.
+     */
+    private function postedDocumentOfType(DocumentType $type, Carbon $documentDate): Document
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => $type,
+            'document_number' => $type->getPrefix().'-PERIOD-'.uniqid(),
+            'document_date' => $documentDate,
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '50.000',
+            'tax_amount' => '9.500',
+            'total' => '59.500',
+            'balance_due' => '59.500',
+            'currency' => 'TND',
+        ]);
+
+        /** @var Document */
+        return $document->fresh(['lines']);
     }
 
     private function postedSupplierInvoice(Carbon $documentDate): Document
