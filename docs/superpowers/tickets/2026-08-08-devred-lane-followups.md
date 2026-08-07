@@ -1,0 +1,7 @@
+# Dev-red fixture lane — low-priority follow-ups (gate-recorded, 2026-08-08)
+
+Source: treasury gate on `fix/expense-vat-fixture-reds` (CLEAR TO MERGE; these are the non-blocking minors).
+
+1. **Extract `fundRepository()` to a shared trait** (`Tests\Concerns\FundsTreasuryRepositories`): the helper is now copy-pasted verbatim in FIVE test files (ExpenseVatPostingTest:547, PaymentOriginWriterInventoryTest:265, PaymentGlPostingTest:362, VendorPrepaymentRefundTest:~130, + seeder shape `PaymentRepositorySeeder::recordOpeningBalance`). A future `MovementIntent` signature change needs 5 synchronised edits; one will be missed. Also unifies the cosmetic `app(...)` vs `$this->app->make(...)` split.
+2. **Dead `balance` keys in `PaymentRepository::create()` fixtures**: `PaymentIdempotencyTest.php:409` (`makeLedgeredRepository(string $openingBalance = '0.000')` — param dead, all 5 callers use default) and `PaymentTest.php:714` (`'balance' => '1000.00'` silently dropped; survives only because BankAccount is guard-exempt). The next author who passes a non-zero balance gets an unfunded till and an inexplicable `InsufficientRepositoryBalanceException` — exactly the confusion class that produced the 10 reds. Delete the dead param/key or route through `fundRepository()`.
+3. **`PaymentRepositoryFactory` scaffolded non-zero balances lay down no backing movement** — drift under `treasury:reconcile` check 1. Note for the proposed model-level guard (repobal followups §4): the guard must not fire for factories, or factories must go through the port.
