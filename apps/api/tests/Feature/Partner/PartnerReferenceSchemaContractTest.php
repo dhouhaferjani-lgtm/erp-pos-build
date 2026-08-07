@@ -135,6 +135,63 @@ class PartnerReferenceSchemaContractTest extends TestCase
         }
     }
 
+    public function test_each_source_declares_exactly_the_tables_its_module_owns(): void
+    {
+        // Owning-side pin (R2-S authz m-1). The covered-list test in
+        // DeletePartnerReferenceGuardTest catches a table entering or leaving
+        // the guard, but it reports it as one anonymous set difference — and
+        // the tempting "fix" is to edit the list. This names the SOURCE, so a
+        // module quietly dropping one of its own tables fails as that
+        // module's regression rather than as a bookkeeping mismatch.
+        $expected = [
+            'DocumentPartnerReferenceSource' => ['documents'],
+            'TreasuryPartnerReferenceSource' => ['payments', 'payment_instruments'],
+            'PosPartnerReferenceSource' => [
+                'pos_receipts',
+                'pos_orders',
+                'pos_customer_aliases',
+                'pos_deposit_receipts',
+                'pos_account_charge_receipts',
+                'pos_account_payment_receipts',
+            ],
+            'AccountingPartnerReferenceSource' => ['journal_lines'],
+            'VoucherPartnerReferenceSource' => ['vouchers'],
+            'WorkshopPartnerReferenceSource' => ['workshop_work_orders', 'workshop_work_order_lines'],
+            'SchedulingPartnerReferenceSource' => ['scheduling_appointments'],
+            'TaxationPartnerReferenceSource' => ['withholding_certificates', 'sales_withholding_tracking'],
+            'PromotionPartnerReferenceSource' => ['promotion_usages'],
+            'CouponPartnerReferenceSource' => ['coupon_usages'],
+            'VehiclePartnerReferenceSource' => ['vehicles', 'vehicle_ownership_history'],
+            'LoyaltyPartnerReferenceSource' => ['loyalty_members'],
+            'ExpensePartnerReferenceSource' => ['expense_recurrence_templates'],
+            'MarketplacePartnerReferenceSource' => ['buyer_seller_mappings'],
+            'PlatformIntegrationPartnerReferenceSource' => ['platform_supplier_mappings'],
+        ];
+
+        $actual = [];
+
+        foreach ($this->taggedSources() as $source) {
+            $shortName = class_basename($source);
+
+            $actual[$shortName] = array_map(
+                static fn ($table): string => $table->table,
+                $source->tables(),
+            );
+
+            sort($actual[$shortName]);
+        }
+
+        foreach ($expected as $shortName => $tables) {
+            sort($tables);
+            $expected[$shortName] = $tables;
+        }
+
+        ksort($expected);
+        ksort($actual);
+
+        $this->assertSame($expected, $actual);
+    }
+
     public function test_the_partners_table_itself_is_never_declared_as_a_reference(): void
     {
         // A source declaring `partners` would make every partner block its

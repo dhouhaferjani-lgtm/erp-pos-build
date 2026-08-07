@@ -281,3 +281,84 @@ failing assertion is on a bank dropdown the toggle does not touch.
 **Fix:** give the bank-option lookup an explicit `findByRole` / longer `waitFor` timeout, or seed the
 banks query rather than waiting on the network mock. Until then it will keep costing reviewers a
 re-derivation.
+
+---
+
+## R2-S residuals — partner reference-guard extension (2026-08-08)
+
+T1 above is **CLOSED** by lane `fix/r2s-partner-refguard`: 15 module-owned `PartnerReferenceSource`
+implementations covering 24 tables / 27 columns, plus a live-schema sweep that fails on any
+partner-shaped or partner-FK column with no recorded decision. What follows is what the two merge
+gates raised and this lane deliberately did NOT do.
+
+### T11 — non-leading indexes on 6 counted tables (treasury m-2, verified & widened)
+
+The delete guard now issues **24 count queries** per `DELETE /api/v1/partners/{id}`. Six of the
+counted columns are indexed only as a NON-LEADING member of a composite, so a bare
+`WHERE <col> = ?` cannot seek on them and Postgres will generally sequential-scan:
+
+| Table | Existing index | Counted column |
+|---|---|---|
+| `payments` | `(tenant_id, partner_id)` | `partner_id` |
+| `payment_instruments` | `(tenant_id, partner_id)` | `partner_id` |
+| `pos_deposit_receipts` | `(tenant_id, company_id, customer_id)` | `customer_id` |
+| `pos_account_charge_receipts` | `(tenant_id, company_id, customer_id)` | `customer_id` |
+| `pos_account_payment_receipts` | `(tenant_id, company_id, customer_id)` | `customer_id` |
+| `loyalty_members` | `(tenant_id, customer_id)` | `customer_id` |
+
+(The gate named 2 tables; the schema says 6. `vouchers.partner_id`, `journal_lines.partner_id` and
+`loyalty_members (loyaltyable_type, loyaltyable_id)` are already leading-column indexed and are fine.)
+
+Not a launch blocker — this is one admin-initiated request, not a hot path, and every one of these
+tables is tenant-scoped so the scans are small on a single tenant's DB. **Fix:** either add
+single-column indexes on the six, or scope the counts by `tenant_id`/`company_id` so the existing
+composites are usable. Decide before a tenant with a large `payments` table lands; capture as a
+deploy note either way.
+
+### T12 — `payments` is counted status-blind (treasury m-3)
+
+`TreasuryPartnerReferenceSource` counts every `payments` row for the partner regardless of status —
+a cancelled/voided payment blocks the delete exactly as a settled one does. That is **defensible and
+intentional** (the row still points at the partner; `payments` has no soft delete, so there is no
+"already invisible" state to exclude), but it is an asymmetry worth stating: `documents` DOES exclude
+soft-deleted rows, so two money tables behave differently under the same guard. Document it, or give
+`payments` a status exclusion — do not leave it undecided.
+
+### T13 — first-class partner archive / deactivation is the better end state (treasury recommendation)
+
+The guard's honest outcome is that a partner with any trading history can never be deleted, only
+blocked — and the 409 tells the operator to "deactivate it instead", which is already the real
+answer. The strategic fix is a first-class archive/deactivate flow (hide from pickers, keep history
+addressable) rather than continuing to widen a delete guard nobody can satisfy. **Do not widen the
+guard further** as a substitute for this.
+
+### T14 — `partner_price_lists` deviates from this ticket's line 21 (gate m-5)
+
+Line 21 lists `partner_price_lists` among the uncovered tables. R2-S deliberately does NOT count it,
+together with `partner_bank_accounts` and `party_contacts`: all three are `cascadeOnDelete`, i.e. the
+schema declares them owned BY the partner, and they describe it rather than record anything it took
+part in. Counting them would make any fully-configured partner permanently undeletable while
+protecting nothing. Recorded in code as `PartnerReferenceCounter::EXCLUDED_PARTNER_COLUMNS`. Flagged
+here because it is a conscious deviation from this ticket's own list, not an oversight.
+
+### T15 — Workshop submodules are invisible to deptrac (gate m-6)
+
+`deptrac.yaml`'s layer collectors are `app/Modules/[^/]+/(Domain|Application|Infrastructure|Presentation)/.*`.
+The Workshop module nests one level deeper (`app/Modules/Workshop/WorkOrder/Application/...`,
+`Workshop/Bundle/...`, `Workshop/Technician/...`), so **no Workshop file is in any layer** and none of
+its hexagonal boundaries are enforced. Found while placing `WorkshopPartnerReferenceSource`. Fix the
+glob (or add explicit Workshop layers) — expect it to surface pre-existing violations, so it needs a
+baseline bump, which is why it is not folded into this lane.
+
+### T16 — the guard's fixture matrix is SQLite-only by construction (gate m-4)
+
+`DeletePartnerReferenceGuardTest` inserts minimal referencing rows with foreign keys DEFERRED
+(`PRAGMA defer_foreign_keys`, since SQLite ignores `PRAGMA foreign_keys` inside `RefreshDatabase`'s
+transaction). Those fixtures would be **rejected outright by Postgres**, whose FKs are checked at
+statement time — so this test class cannot be part of any future PG-backed test lane without
+building real parent graphs for all 24 tables. Note it before anyone tries to flip the suite to PG.
+
+Related, still open from the original lane: `Fiscal/.../OutboxIngestor.php:644` still
+constructor-injects `ConnectionInterface` (the BUG-007 defect class), and the deptrac ratchet already
+fails on `dev` (98 baseline / 102 actual, `SharedContracts on ModuleDomain` +4) independently of this
+work.
