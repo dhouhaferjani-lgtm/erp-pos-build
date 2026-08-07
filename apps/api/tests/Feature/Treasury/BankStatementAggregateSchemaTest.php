@@ -678,14 +678,49 @@ final class BankStatementAggregateSchemaTest extends TestCase
         );
 
         // The direct up()/down() calls above never touch the `migrations`
-        // bookkeeping table (still recording these as applied from the
-        // suite's initial `RefreshDatabase` migrate) — prove a real
-        // `artisan migrate` afterwards stays a clean no-op rather than
-        // trying to re-run them against tables that already exist.
+        // bookkeeping table, and they leave the schema in the APPLIED
+        // state — so a bare `artisan migrate` here would see zero pending
+        // migrations AND find every table/column already present. Either
+        // gap alone makes the check vacuous (exit 0 no matter what). Tear
+        // the schema back down AND delete the bookkeeping rows first, so
+        // the migrator has real, verifiable work to do: this proves the
+        // one thing the old `--step 6` rollback/reapply proved that the
+        // harness's direct up()/down() calls above don't — that the REAL
+        // migrator (the `tenants:migrate` deploy path) can rebuild this
+        // aggregate from a genuinely torn-down state.
+        $migrations = $this->requireTenantMigrations(self::AGGREGATE_MIGRATIONS);
+        foreach (array_reverse($migrations) as $migration) {
+            $migration->down();
+        }
+
+        DB::table('migrations')->whereIn('migration', array_map(
+            static fn (string $filename): string => pathinfo($filename, PATHINFO_FILENAME),
+            self::AGGREGATE_MIGRATIONS,
+        ))->delete();
+
         $this->assertSame(0, Artisan::call('migrate', [
             '--force' => true,
             '--path' => 'database/migrations/tenant',
         ]), Artisan::output());
+
+        foreach (self::AGGREGATE_TABLES as $table) {
+            $this->assertTrue(
+                Schema::hasTable($table),
+                "{$table} should exist after the real migrator re-applies the aggregate migrations.",
+            );
+        }
+        $this->assertTrue(
+            Schema::hasColumn('statement_import_profiles', 'matching_window_days'),
+            'statement_import_profiles.matching_window_days should exist after the real migrator re-applies the aggregate migrations.',
+        );
+
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            $this->assertSame(
+                1,
+                DB::table('pg_proc')->where('proname', 'reject_bank_statement_match_execution_mutation')->count(),
+                'the immutable-provenance trigger function should exist after the real migrator re-applies the aggregate migrations.',
+            );
+        }
     }
 
     /**

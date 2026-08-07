@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Traits;
 
 use Closure;
+use Illuminate\Database\Migrations\Migration;
+use Throwable;
 
 /**
  * Reusable forward/rollback proof harness for tenant migrations.
@@ -23,11 +25,12 @@ use Closure;
  *
  * Requires the consuming test to already have a fully migrated tenant
  * schema (`RefreshDatabase`, or an equivalent baseline) before calling
- * either entry point below, and none of the target migration(s) may declare
+ * either entry point below. None of the target migration(s) may declare
  * `public $withinTransaction = false;` / run `CREATE INDEX CONCURRENTLY`
  * under `RefreshDatabase` (Postgres refuses CONCURRENTLY inside a
  * transaction) — such migrations need the non-transactional setup
- * `T2MigrationRollbackTest` uses instead.
+ * `T2MigrationRollbackTest` uses instead. {@see requireTenantMigrations()}
+ * enforces this at runtime and fails fast with that pointer.
  *
  * Two entry points, chosen by what the migration's own `down()` promises:
  *
@@ -49,7 +52,7 @@ trait ProvesTenantMigrationRoundTrip
      *                                          under `database/migrations/
      *                                          tenant/`), in forward
      *                                          dependency order.
-     * @return list<ReversibleTenantMigration>
+     * @return list<Migration&ReversibleTenantMigration>
      */
     protected function requireTenantMigrations(string|array $filenames): array
     {
@@ -60,8 +63,25 @@ trait ProvesTenantMigrationRoundTrip
             $path = $dir.'/'.$filename;
             $this->assertFileExists($path, "Tenant migration file missing: {$filename}");
 
-            /** @var ReversibleTenantMigration $migration */
+            /** @var Migration&ReversibleTenantMigration $migration */
             $migration = require $path;
+
+            // A `CREATE INDEX CONCURRENTLY` migration declares this false
+            // because PostgreSQL refuses CONCURRENTLY inside a transaction —
+            // exactly the transaction RefreshDatabase wraps every test in.
+            // Fail fast with the documented alternative instead of letting
+            // the caller hit an opaque "cannot run inside a transaction
+            // block" error deep inside up()/down().
+            if ($migration->withinTransaction === false) {
+                $this->fail(
+                    "Tenant migration '{$filename}' declares \$withinTransaction = false ".
+                    '(a CREATE INDEX CONCURRENTLY migration, most likely) — this harness runs '.
+                    "up()/down() directly under RefreshDatabase's transaction, which PostgreSQL ".
+                    'refuses for CONCURRENTLY statements. Use the non-transactional require-and-'.
+                    'call pattern from T2MigrationRollbackTest instead.',
+                );
+            }
+
             $migrations[] = $migration;
         }
 
@@ -138,6 +158,14 @@ trait ProvesTenantMigrationRoundTrip
      * `down()` that turns destructive fails this the same way a genuine
      * regression would.
      *
+     * PRECONDITION: `up()` must be idempotent — this entry point calls it a
+     * second time on an already-applied migration, which must not throw.
+     * True by design for a compliant data backfill (self-guarding: "already
+     * mapped, skip"). NOT true for ordinary schema DDL (`CREATE TABLE`,
+     * `ADD COLUMN`, …) — those belong in {@see assertTenantMigrationRoundTrips()}
+     * instead, whose idempotency proof is the round trip repeating, not a
+     * raw double `up()`.
+     *
      * @param  Closure(string): void  $assertApplied
      */
     protected function assertTenantMigrationIsIrreversibleNoOp(
@@ -149,7 +177,17 @@ trait ProvesTenantMigrationRoundTrip
         $migration->up();
         $assertApplied('after the initial forward apply');
 
-        $migration->up();
+        try {
+            $migration->up();
+        } catch (Throwable $e) {
+            $this->fail(
+                'assertTenantMigrationIsIrreversibleNoOp() requires an idempotent up() — '.
+                "calling up() a second time on '{$filename}' threw ".$e::class.': '.$e->getMessage().
+                '. This entry point is for data backfills whose up() self-guards against being '.
+                're-run; ordinary schema DDL (CREATE TABLE / ADD COLUMN, …) belongs in '.
+                'assertTenantMigrationRoundTrips() instead.',
+            );
+        }
         $assertApplied('after an idempotent re-apply');
 
         $migration->down();
