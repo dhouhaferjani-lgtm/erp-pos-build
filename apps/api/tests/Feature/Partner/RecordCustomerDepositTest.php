@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
@@ -25,12 +26,15 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\DepositReferenceRefusal;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -506,6 +510,172 @@ final class RecordCustomerDepositTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * R2-K-prev V1 — FROZEN REPOSITORY, the ops-realistic arm.
+     *
+     * `TreasuryDepositBridge::apply()` passes `allowWhileFrozen: false` for a
+     * server-only DEPOSIT_RECEIPT, so `TreasuryMovementService::record()` throws
+     * `RepositoryFrozenException` when `payment_repositories.frozen_at` is set —
+     * and it throws POST-seal, in the projection run. A cash count freezes the
+     * drawer routinely; a back-office user submitting a deposit inside the
+     * freeze/reopen window used to mint a permanent hash-chained orphan.
+     *
+     * Ticket: 2026-08-05-deposit-residual-seal-before-resolve-vectors.md V1.
+     */
+    public function test_post_returns_422_for_a_frozen_repository_without_sealing_a_receipt(): void
+    {
+        DB::table('payment_repositories')
+            ->where('id', $this->repository->id)
+            ->update(['frozen_at' => now(), 'frozen_reason' => 'cash count in progress']);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * R2-K-prev V1, NARROWING proof — a freeze that lands AFTER the pre-flight
+     * read must still be refused, because the pre-flight is re-run INSIDE the
+     * transaction that seals the event.
+     *
+     * The freeze is applied from a one-shot `TransactionBeginning` listener, so
+     * it commits between the pre-transaction pre-flight and the append. If the
+     * only check were the pre-transaction one, the receipt would be sealed here
+     * and the assertion below would fail.
+     *
+     * This NARROWS the race to the width of the sealing transaction; it does NOT
+     * close it — the projection runs after that transaction commits, so a freeze
+     * landing in the gap still mints an orphan. Recoverability is R2-K-rec.
+     */
+    public function test_a_freeze_landing_after_the_pre_flight_is_refused_inside_the_sealing_transaction(): void
+    {
+        $service = app(RecordCustomerDepositService::class);
+        $fired = false;
+
+        Event::listen(TransactionBeginning::class, function () use (&$fired): void {
+            if ($fired) {
+                return;
+            }
+            $fired = true;
+
+            DB::table('payment_repositories')
+                ->where('id', $this->repository->id)
+                ->update(['frozen_at' => now(), 'frozen_reason' => 'frozen mid-request']);
+        });
+
+        try {
+            $service->record(
+                partner: $this->customer,
+                actorUserId: $this->user->id,
+                actorName: $this->user->name,
+                currencyCode: 'TND',
+                amount: '11.111',
+                methodCode: 'CASH',
+                repositoryId: $this->repository->id,
+                notes: null,
+            );
+            $this->fail('record() must re-verify the freeze inside the sealing transaction.');
+        } catch (UnresolvableDepositReferenceException $e) {
+            $this->assertSame(DepositReferenceRefusal::RepositoryFrozen, $e->refusal);
+        }
+
+        $this->assertTrue($fired, 'The freeze must be applied from inside the sealing transaction to be a valid probe.');
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * R2-K-prev V2 — ACTOR WITHOUT AN ACTIVE COMPANY MEMBERSHIP.
+     *
+     * `TreasuryDepositBridge::resolveActorUserId()` requires the payload actor to
+     * be an `Active` member of the event's company and throws otherwise — POST
+     * seal. The refusal must move ahead of the seal.
+     *
+     * Driven at the service level on purpose: over HTTP the request-entry
+     * `CompanyContextMiddleware::userHasAccessToCompany()` already 403s a
+     * non-member, so this leg is the belt-and-braces guard for the mid-request
+     * revocation and for any internal (non-HTTP) caller.
+     */
+    public function test_service_refuses_a_deposit_whose_actor_has_no_active_company_membership(): void
+    {
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['status' => MembershipStatus::Revoked->value]);
+
+        $service = app(RecordCustomerDepositService::class);
+
+        try {
+            $service->record(
+                partner: $this->customer,
+                actorUserId: $this->user->id,
+                actorName: $this->user->name,
+                currencyCode: 'TND',
+                amount: '11.111',
+                methodCode: 'CASH',
+                repositoryId: $this->repository->id,
+                notes: null,
+            );
+            $this->fail('record() must refuse an actor without an active company membership before authoring the receipt.');
+        } catch (UnresolvableDepositReferenceException $e) {
+            $this->assertSame(DepositReferenceRefusal::ActorNotActiveCompanyMember, $e->refusal);
+            $this->assertStringContainsString($this->user->id, $e->getMessage());
+        }
+
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * R2-K-prev V2, NARROWING proof over the real HTTP surface — the membership
+     * is revoked AFTER `CompanyContextMiddleware` and after the pre-transaction
+     * pre-flight, from a one-shot `TransactionBeginning` listener. Only the
+     * in-transaction re-verification can catch it, and it must land as a 422
+     * with nothing sealed rather than a 500 plus an orphan.
+     *
+     * Same honest scope as the freeze leg: the window is narrowed to the sealing
+     * transaction, not closed.
+     */
+    public function test_post_refuses_a_membership_revoked_after_the_pre_flight_without_sealing_a_receipt(): void
+    {
+        $fired = false;
+
+        Event::listen(TransactionBeginning::class, function () use (&$fired): void {
+            if ($fired) {
+                return;
+            }
+            $fired = true;
+
+            DB::table('user_company_memberships')
+                ->where('user_id', $this->user->id)
+                ->where('company_id', $this->company->id)
+                ->update(['status' => MembershipStatus::Revoked->value]);
+        });
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CASH',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'BUSINESS_ERROR');
+        $this->assertTrue($fired, 'The revocation must be applied from inside the sealing transaction to be a valid probe.');
         $this->assertNoDepositWasSealed();
     }
 
