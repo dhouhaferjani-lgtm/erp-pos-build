@@ -350,3 +350,135 @@ two one-line doc/guard edits for MINOR-2/MINOR-3 **before the harness acquires c
 since T-1 and R2-A2 will be reading these docblocks as the contract. MINOR-4 and the
 `T2MigrationRollbackTest` red (plus its non-transactional shared-DB hazard) go to the
 orchestrator's ticket.
+
+---
+---
+
+# Fix-round re-verify — commit `658d93af4`
+
+**Scope:** narrowed to MINOR-1 / MINOR-2 / MINOR-3 only, per the coordinator. Everything
+verified in the first round above stands and was not re-litigated.
+**Environment:** fresh disposable database `autoerp_r2i_gate2` (created for this pass, dropped
+after) — never the shared `autoerp`. Six throwaway probe methods written, run, deleted;
+`git status` verified clean.
+
+## Verdict: **CLEAR TO MERGE**
+
+All three MINORs are genuinely closed. One **new cosmetic MINOR-5** (the MINOR-2 guard covers
+the wrong `up()` call for the harness's own default baseline) — non-blocking, 3-line follow-up.
+
+### Full-file re-runs
+
+| Config | Result |
+|---|---|
+| live PG (`autoerp_r2i_gate2`, `phpunit-pgsql.xml`), both files | **45 passed (196 assertions)** — `migration down order is fk safe and reapply is clean` ✓, `…irreversible no op down…` ✓ |
+| sqlite (default `phpunit.xml`), both files | **25 passed / 20 pgsql-skipped (149 assertions)** — both target tests ✓ |
+
+No shared-DB collision on my side (I never pointed a run at `autoerp`).
+
+### MINOR-1 — CLOSED, and the §1e coverage loss is RESTORED
+
+`BankStatementAggregateSchemaTest.php:680-724`. The block now tears the 7 aggregate migrations
+back down, deletes their `migrations` rows, runs the real migrator, then asserts the 5 tables,
+`matching_window_days`, and (PG-only) the `reject_bank_statement_match_execution_mutation()`
+trigger function come back.
+
+**My original sabotage probe, re-run against the new block** — torn-down schema, bookkeeping
+rows left intact (the exact vacuity condition where the OLD block passed):
+
+```
+[M1-C] exit=0 out=INFO  Nothing to migrate.
+FAILED … m1 without bookkeeping delete now fails
+statement_import_profiles should exist after the real migrator re-applies
+Failed asserting that false is true.
+```
+
+**It now fails where it previously passed.** The bookkeeping delete is load-bearing, and the
+new assertions have teeth.
+
+**Post-migrate sabotage** (reproducing the lane's own claim independently): drop
+`bank_statement_match_executions` after `migrate` returns →
+`bank_statement_match_executions should exist after the real migrator re-applies / Failed
+asserting that false is true`. Confirmed.
+
+**Control** (the new block verbatim, unsabotaged): `INFO Running migrations.` — the migrator
+does *real work*, and afterwards all 5 tables + the column + `pg_proc` count 1 + **7 restored
+bookkeeping rows** are present. So the block genuinely exercises the `tenants:migrate` deploy
+path from a torn-down state. **The one coverage regression flagged in §1e ("re-apply via the
+real migrator") is fully restored**, and without reintroducing any `--step` fragility. The
+replacement comment (`:680-687`) is now accurate.
+
+### MINOR-2 — CLOSED as documented; guard covers the *second* `up()` only → **new MINOR-5**
+
+The PRECONDITION docblock (`ProvesTenantMigrationRoundTrip.php:161-167`) is exactly right and
+is the part that carries the weight.
+
+**Their probe reproduced** — `110006` in NOT-APPLIED state (column dropped first):
+
+```
+FAILED … m2 not applied state  AssertionFailedError
+assertTenantMigrationIsIrreversibleNoOp() requires an idempotent up() — calling up() a second
+time on '2026_07_19_110006_…' threw Illuminate\Database\QueryException: SQLSTATE[42701]…
+  at tests/Traits/ProvesTenantMigrationRoundTrip.php:183
+```
+Named error fires. ✅
+
+**But in APPLIED state** — which is the harness's own documented baseline
+(`:26-28`: "Requires the consuming test to already have a fully migrated tenant schema
+(`RefreshDatabase`, or an equivalent baseline) before calling either entry point") — the
+guard does **not** fire:
+
+```
+FAILED … m2 applied state  QueryException
+SQLSTATE[42701]: Duplicate column: column "matching_window_days" … already exists
+  12 tests/Traits/ProvesTenantMigrationRoundTrip.php:177
+```
+
+The try/catch wraps only the **second** `up()` (`:180-190`); the **first** `up()` at `:177` is
+unguarded. Under the documented baseline the migration is already applied, so the *first* call
+is the re-run — meaning the opaque error the fix set out to replace still surfaces on the
+**default** path, and the named message fires only on the non-default one.
+
+**MINOR-5 (new, cosmetic, non-blocking):** wrap the `:177` call in the same try/catch (or
+extract a shared `upOrFailPrecondition()` used by both). ~3 lines. Not a blocker: the docblock
+precondition now exists, and the failure is loud either way — only the message quality differs.
+
+### MINOR-3 — CLOSED, verified against a real CONCURRENTLY migration
+
+`ProvesTenantMigrationRoundTrip.php:75-83`. Probed with
+`database/migrations/tenant/2026_06_02_100008_add_variant_id_to_product_batches.php`
+(`public $withinTransaction = false;` at `:12`, `CREATE UNIQUE INDEX CONCURRENTLY` at `:27,:30`):
+
+```
+FAILED … m3 concurrently guard  AssertionFailedError
+Tenant migration '2026_06_02_100008_add_variant_id_to_product_batches.php' declares
+$withinTransaction = false (a CREATE INDEX CONCURRENTLY migration, most likely) — this harness
+runs up()/down() directly under RefreshDatabase's transaction, which PostgreSQL refuses for
+CONCURRENTLY statements. Use the non-transactional require-and-call pattern from
+T2MigrationRollbackTest instead.
+  at tests/Traits/ProvesTenantMigrationRoundTrip.php:76
+```
+
+Fires at require time, before any DDL, with the T2 pointer. Exactly as specified. `$withinTransaction`
+is declared `public $withinTransaction = true` on the base `Illuminate\…\Migration`, so the
+`=== false` check is always defined — no `??` needed. ✅
+
+### Gates re-run on the fix round
+
+- **Pint:** `{"result":"pass"}` on all 4 files. ✅
+- **Ad-hoc PHPStan L8:** still exactly **7 errors, 0 in new code** — the same pre-existing
+  lines as round 1 (`BankStatementAggregateSchemaTest.php:86,131,402,435,452,617`,
+  `BackfillPurchaseStampDutyAccountTest.php:140`). The new `Migration` import and the
+  `Migration&ReversibleTenantMigration` intersection types introduce nothing. ✅
+
+## Open after this round (none blocking)
+
+- **MINOR-5** (new, above) — guard the first `up()` too.
+- **MINOR-4** — single `$assertApplied` closure for all four applied checkpoints; the concrete
+  thing R2-A2 will trip over. Ticket.
+- **NIT-1/2/3** — interface namespace/naming, unchecked `@var` cast. Cosmetic.
+- **`T2MigrationRollbackTest` red** (pre-existing, confirmed round 1) plus its
+  non-transactional shared-DB hazard. Orchestrator's ticket.
+- **R2-A2 briefing points** from §4 are unchanged and still owed to that lane — in particular
+  that the harness proves **no data survival**, and that MINOR-3's guard now makes the
+  CONCURRENTLY exclusion a hard, loud boundary rather than a prose warning.

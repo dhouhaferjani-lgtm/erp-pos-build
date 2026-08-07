@@ -174,7 +174,22 @@ trait ProvesTenantMigrationRoundTrip
     ): void {
         [$migration] = $this->requireTenantMigrations($filename);
 
-        $migration->up();
+        // MINOR-5 (gate re-verify): under the harness's documented baseline
+        // (schema already fully migrated by RefreshDatabase) THIS first call
+        // is already a re-run — it needs the same idempotency guard as the
+        // explicit second call below, or the default path surfaces a raw
+        // SQLSTATE instead of the named precondition failure.
+        try {
+            $migration->up();
+        } catch (Throwable $e) {
+            $this->fail(
+                'assertTenantMigrationIsIrreversibleNoOp() requires an idempotent up() — '.
+                "calling up() on '{$filename}' against the already-migrated baseline threw ".
+                $e::class.': '.$e->getMessage().
+                '. This entry point is for data backfills whose up() self-guards against being '.
+                're-run; ordinary schema DDL belongs in assertTenantMigrationRoundTrips() instead.',
+            );
+        }
         $assertApplied('after the initial forward apply');
 
         try {
