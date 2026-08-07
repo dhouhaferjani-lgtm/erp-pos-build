@@ -20,6 +20,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Tests\Traits\ProvesTenantMigrationRoundTrip;
 
 /**
  * Q1 gate finding I-1 (2026-08-07) —
@@ -47,6 +48,7 @@ use Tests\TestCase;
  */
 final class BackfillPurchaseStampDutyAccountTest extends TestCase
 {
+    use ProvesTenantMigrationRoundTrip;
     use RefreshDatabase;
 
     private Tenant $tenant;
@@ -216,6 +218,39 @@ final class BackfillPurchaseStampDutyAccountTest extends TestCase
 
         $this->assertSame($afterFirst, Account::query()->where('company_id', $company->id)->count());
         $this->assertSame($accountId, Account::findByPurpose($company->id, SystemAccountPurpose::PurchaseStampDuty)?->id);
+    }
+
+    /**
+     * Demonstrates {@see ProvesTenantMigrationRoundTrip} against
+     * this migration (R2-I lane, plan items T-1/R2-A2) — the migration's own
+     * `down()` is a DECLARED no-op (see its docblock: the account may already
+     * carry posted journal lines, so unmapping the purpose would make credit
+     * notes unpostable again). The harness's job here is to prove `down()`
+     * changes NOTHING rather than silently skip rollback coverage: forward
+     * apply creates/maps the account, an idempotent re-apply changes nothing,
+     * `down()` must ALSO change nothing (not delete/unmap the account), and a
+     * final re-apply stays safe.
+     */
+    public function test_the_backfill_declares_an_irreversible_no_op_down_via_the_round_trip_harness(): void
+    {
+        $company = $this->company('TN', 'TND');
+        (new TunisiaChartOfAccountsSeeder)->run($company->id, $this->tenant->id);
+        $this->stripPurchaseStampDuty($company->id);
+        $baselineCount = Account::query()->where('company_id', $company->id)->count();
+
+        $this->assertTenantMigrationIsIrreversibleNoOp(
+            '2026_08_07_100000_backfill_purchase_stamp_duty_account.php',
+            function (string $context) use ($company, $baselineCount): void {
+                $account = Account::findByPurpose($company->id, SystemAccountPurpose::PurchaseStampDuty);
+                $this->assertNotNull($account, "PurchaseStampDuty account should exist {$context}.");
+                $this->assertSame('6354', $account->code, "PurchaseStampDuty code should be 6354 {$context}.");
+                $this->assertSame(
+                    $baselineCount + 1,
+                    Account::query()->where('company_id', $company->id)->count(),
+                    "account count should be baseline+1 {$context} — down() must not delete or unmap the backfilled account.",
+                );
+            },
+        );
     }
 
     private function runBackfill(): void

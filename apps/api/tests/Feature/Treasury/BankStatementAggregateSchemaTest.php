@@ -28,10 +28,44 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\TestCase;
+use Tests\Traits\ProvesTenantMigrationRoundTrip;
 
 final class BankStatementAggregateSchemaTest extends TestCase
 {
+    use ProvesTenantMigrationRoundTrip;
     use RefreshDatabase;
+
+    /**
+     * The bank-statement aggregate's own migrations, forward dependency
+     * order — by NAME, not by a step count. A fixed `--step` count breaks
+     * the instant any other tenant migration lands anywhere after these
+     * (it already did: the 2026-08-06 `allow_negative` migration shifted
+     * the rollback window, and every later lane's migrations will too).
+     * Naming the files makes the test immune to that. `110006` is included
+     * because it alters `statement_import_profiles`, one of this
+     * aggregate's own tables; `110007` (`add_checkpoint_flag_to_
+     * repository_movements`) is deliberately excluded — it touches
+     * `repository_movements`, a table this aggregate references but does
+     * not own, and isn't part of what this test asserts.
+     */
+    private const AGGREGATE_MIGRATIONS = [
+        '2026_07_19_110000_create_statement_import_profiles.php',
+        '2026_07_19_110001_create_bank_statements.php',
+        '2026_07_19_110002_create_bank_statement_lines.php',
+        '2026_07_19_110003_create_bank_statement_line_allocations.php',
+        '2026_07_19_110004_create_bank_statement_match_executions.php',
+        '2026_07_19_110005_make_statement_deduplication_void_aware.php',
+        '2026_07_19_110006_add_matching_window_to_statement_profiles.php',
+    ];
+
+    /** @var list<string> */
+    private const AGGREGATE_TABLES = [
+        'statement_import_profiles',
+        'bank_statements',
+        'bank_statement_lines',
+        'bank_statement_line_allocations',
+        'bank_statement_match_executions',
+    ];
 
     public function test_models_relations_enum_casts_and_state_helpers_round_trip(): void
     {
@@ -625,25 +659,29 @@ final class BankStatementAggregateSchemaTest extends TestCase
 
     public function test_migration_down_order_is_fk_safe_and_reapply_is_clean(): void
     {
-        $this->assertSame(0, Artisan::call('migrate:rollback', [
-            '--force' => true,
-            '--step' => 6,
-            '--path' => 'database/migrations/tenant',
-        ]), Artisan::output());
+        $this->assertTenantMigrationRoundTrips(
+            self::AGGREGATE_MIGRATIONS,
+            function (string $context): void {
+                foreach (self::AGGREGATE_TABLES as $table) {
+                    $this->assertTrue(Schema::hasTable($table), "{$table} should exist {$context}.");
+                }
+                $this->assertTrue(
+                    Schema::hasColumn('statement_import_profiles', 'matching_window_days'),
+                    "statement_import_profiles.matching_window_days should exist {$context}.",
+                );
+            },
+            function (string $context): void {
+                foreach (self::AGGREGATE_TABLES as $table) {
+                    $this->assertFalse(Schema::hasTable($table), "{$table} should not exist {$context}.");
+                }
+            },
+        );
 
-        foreach (['bank_statement_match_executions', 'bank_statement_line_allocations', 'bank_statement_lines', 'bank_statements', 'statement_import_profiles'] as $table) {
-            $this->assertFalse(Schema::hasTable($table));
-        }
-
-        $this->assertSame(0, Artisan::call('migrate', [
-            '--force' => true,
-            '--path' => 'database/migrations/tenant',
-        ]), Artisan::output());
-
-        foreach (['statement_import_profiles', 'bank_statements', 'bank_statement_lines', 'bank_statement_line_allocations', 'bank_statement_match_executions'] as $table) {
-            $this->assertTrue(Schema::hasTable($table));
-        }
-
+        // The direct up()/down() calls above never touch the `migrations`
+        // bookkeeping table (still recording these as applied from the
+        // suite's initial `RefreshDatabase` migrate) — prove a real
+        // `artisan migrate` afterwards stays a clean no-op rather than
+        // trying to re-run them against tables that already exist.
         $this->assertSame(0, Artisan::call('migrate', [
             '--force' => true,
             '--path' => 'database/migrations/tenant',
