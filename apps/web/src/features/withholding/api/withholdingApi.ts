@@ -1,4 +1,4 @@
-import { apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { api, apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
 import type {
   WithholdingPreviewRequest,
   WithholdingPreviewResponse,
@@ -25,7 +25,16 @@ export async function previewWithholding(
 }
 
 /**
- * List withholding certificates with filters
+ * List withholding certificates with filters.
+ *
+ * FIXED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #4,
+ * §178-220): this endpoint is genuinely cursor-paginated (`meta` + `links`),
+ * so per docs/conventions/01-API-RESPONSES.md it must use `api.get` and
+ * return `response.data` directly — NOT `apiGet`, which already unwraps
+ * `response.data.data` and would silently resolve to the bare certificate
+ * array, losing `meta`/`links` and permanently emptying
+ * `WithholdingCertificatesList` (`data?.data` on an array is always
+ * `undefined`). Do NOT switch this back to `apiGet`.
  */
 export async function fetchWithholdingCertificates(
   filters?: CertificateFilters
@@ -46,7 +55,12 @@ export async function fetchWithholdingCertificates(
 
   const url = `/withholding/certificates${params.toString() ? `?${params.toString()}` : ''}`;
 
-  return apiGet(url);
+  const response = await api.get<{
+    data: WithholdingCertificate[];
+    meta: { per_page: number; has_more: boolean };
+    links: { next: string | null; prev: string | null };
+  }>(url);
+  return response.data;
 }
 
 /**

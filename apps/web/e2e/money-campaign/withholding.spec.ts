@@ -205,29 +205,31 @@ test.describe('MTP-WHT — withholding certificates & sales withholding tracking
     const listResponse = await listSettled
     expect(listResponse.status(), 'the list query itself must succeed (200)').toBe(200)
 
-    // TICKETED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #4):
-    // the page is PERMANENTLY EMPTY. `fetchWithholdingCertificates()`
-    // (features/withholding/api/withholdingApi.ts:48) returns `apiGet(url)`, and
-    // `apiGet` already unwraps `response.data.data` (lib/api.ts:225-228) — so it
-    // resolves to the certificate ARRAY, not the `{data, meta, links}` envelope its
-    // declared return type claims. `WithholdingCertificatesList` then reads
-    // `data?.data ?? []` (WithholdingCertificatesList.tsx:80) -> `array.data` is
-    // `undefined` -> always `[]`. Convention 14 (docs/conventions/01-API-RESPONSES.md)
-    // double-unwrap.
+    // FIXED (docs/superpowers/tickets/2026-08-03-w5a-withholding-defects.md #4):
+    // was TRIPWIRE (#4) — GREEN pre-fix, pinning the DEFECT that the page was
+    // PERMANENTLY EMPTY. `fetchWithholdingCertificates()`
+    // (features/withholding/api/withholdingApi.ts) used to return `apiGet(url)`,
+    // and `apiGet` already unwraps `response.data.data` (lib/api.ts) — so it
+    // resolved to the certificate ARRAY, not the `{data, meta, links}` envelope
+    // its declared return type claimed. `WithholdingCertificatesList` then read
+    // `data?.data ?? []` (WithholdingCertificatesList.tsx) -> `array.data` was
+    // always `undefined` -> always `[]`. Convention 14
+    // (docs/conventions/01-API-RESPONSES.md) double-unwrap.
     //
-    // TRIPWIRE (#4) — GREEN today, pinning the DEFECT: the API returned exactly one
-    // row for this partner (asserted above), yet the settled page renders its empty
-    // state and no row for the certificate. When the unwrap fix lands this goes RED;
-    // the deliberate update is to assert the row IS visible and renders gross
-    // 1,000.000 / withheld 15.000 / rate 1.50% at scale 3.
+    // Fix: `fetchWithholdingCertificates()` now calls `api.get` directly and
+    // returns `response.data` (the paginated envelope), per the documented
+    // pattern for cursor-paginated endpoints — so the row renders.
     await expect(
       page.getByText(/no withholding certificates/i),
-      'TRIPWIRE (#4): the list renders its empty state while the API holds >= 1 certificate'
-    ).toBeVisible({ timeout: 15_000 })
+      'FIXED (was TRIPWIRE #4): the empty state must NOT render — the API holds >= 1 certificate'
+    ).not.toBeVisible()
+    const row = page.locator('tr', { hasText: cert.certificate_number })
     await expect(
-      page.locator('tr', { hasText: cert.certificate_number }),
-      'TRIPWIRE (#4): the certificate row must NOT render today (double-unwrap)'
-    ).toHaveCount(0)
+      row,
+      'FIXED (was TRIPWIRE #4): the certificate row now renders'
+    ).toHaveCount(1)
+    await expect(row, 'gross rendered at scale 3, comma decimal (fr-TN)').toContainText(GROSS_1000_RE)
+    await expect(row, 'withheld rendered at scale 3, comma decimal (fr-TN)').toContainText('15,000')
   })
 
   test('MTP-WHT-02: certificate DETAIL renders gross/rate/withheld/net at their scales and net == gross - withheld', async ({
