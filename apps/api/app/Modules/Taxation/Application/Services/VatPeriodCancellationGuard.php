@@ -30,7 +30,17 @@ use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
  * has ever been closed or filed for that span, so there is nothing to protect.
  * Fail-closed on absence would make every document uncancellable on every tenant
  * that has not begun declaring VAT — which is all of them at launch — and would
- * be a far worse regression than the gap being closed here.
+ * be a far worse regression than the gap being closed here. This matches the
+ * house precedent exactly: `GeneralLedgerService::postEntryNow()` refuses to post
+ * into a CLOSED `fiscal_periods` row but deliberately allows an absent one
+ * ("absence of configuration is not the same as a deliberately closed period",
+ * `FiscalPeriodResolverService::isDateInClosedPeriod()`).
+ *
+ * NOT a duplicate of that fiscal-period guard, which is orthogonal: it gates the
+ * entry's OWN `entry_date`, and a cancellation reversal is dated `now()`. So it
+ * protects the CURRENT period while this guard protects the period the ORIGINAL
+ * document sits in — the one whose declaration the withdrawal would disturb, and
+ * the one nothing checked before R2-F1.
  */
 final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
 {
