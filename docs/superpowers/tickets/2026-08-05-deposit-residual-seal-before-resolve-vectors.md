@@ -68,10 +68,25 @@ cash deposit. Its pre-fix symptom was subtler than V1/V2: a **clean 422** (becau
 orphan — the client saw a sensible refusal while the sealed receipt survived.
 
 **Not mirrored, deliberately:** the actor-row-exists arm of `resolveActorUserId()`. Only
-its ACTIVE-membership arm is reproduced. `fiscal_events.actor_user_id` and
-`user_company_memberships.user_id` both FK to `users`, so a membership row proves the user
-row and a hard delete cascades both away together; the extra query can never change the
-answer.
+its ACTIVE-membership arm is reproduced, because that arm implies the existence half of
+the other: `user_company_memberships.user_id` is FK → `users.id` with `ON DELETE CASCADE`
+(`2025_11_30_106000_create_user_company_memberships_table.php:53`) and `User` uses no
+`SoftDeletes`, so an Active membership row cannot outlive the user row it names. The extra
+query can never change the answer.
+
+> **Correction (authz round-2 gate, m2-1).** An earlier revision of this ticket and of the
+> service docblock justified the omission with *"`fiscal_events.actor_user_id` and
+> `user_company_memberships.user_id` both FK to `users` … a hard delete cascades both away
+> together."* That was **factually wrong on two counts** and is withdrawn: `fiscal_events`
+> has **no `actor_user_id` column** (the actor lives in the canonical payload; the table
+> carries `operator_id`, `2026_05_14_100001_create_fiscal_events_table.php:30`), and it
+> declares **no foreign keys at all** — which is correct and deliberate for an append-only
+> hash chain. Cascade-deleting sealed fiscal events must never be written down as true.
+> The membership-FK clause above is the whole argument and stands on its own.
+>
+> Scope note: that clause proves a LIVE USER ROW and nothing more. The bridge's lookup also
+> carries a `tenant_id` predicate, which the inference does not independently establish —
+> it holds only because memberships and users are read from the same per-tenant database.
 
 **Still OPEN after this lane:** everything in the "residual" column below. The pre-flights
 cannot close a TOCTOU race whose losing consumer runs *after* the sealing transaction
@@ -205,11 +220,15 @@ group is the sole carrier of the company gate) and
 
   **The ACTIVE-membership predicate now has THREE independent copies:**
 
-  | Site | Purpose |
-  |---|---|
-  | `CompanyContext::userHasAccessToCompany()` — `CompanyContext.php:146-152` | request-entry company gate (`CompanyContextMiddleware`) |
-  | `TreasuryDepositBridge::resolveActorUserId()` — `TreasuryDepositBridge.php:432-436` | post-seal projection invariant |
-  | `DepositReferenceResolutionService::refusalFor()` — `DepositReferenceResolutionService.php:132-140` | pre-seal refusal (R2-K-prev) |
+  Line numbers below are re-cited against the R2-K-prev tip
+  (`fix/r2k-prev-deposit-preflight`), since the pre-flight predicate moved during the
+  round-2/3 gate rounds:
+
+  | Site | Predicate body | Purpose |
+  |---|---|---|
+  | `CompanyContext::userHasAccessToCompany()` | `CompanyContext.php:148-151` (method `:146-152`) | request-entry company gate (`CompanyContextMiddleware`) |
+  | `TreasuryDepositBridge::resolveActorUserId()` | `TreasuryDepositBridge.php:432-436` | post-seal projection invariant |
+  | `DepositReferenceResolutionService::refusalFor()` | `DepositReferenceResolutionService.php:186-190` | pre-seal refusal (R2-K-prev) |
 
   Three copies of "is this user an Active member of this company" is exactly the drift
   surface rule 6 exists to prevent — and the failure would be silent in the worst

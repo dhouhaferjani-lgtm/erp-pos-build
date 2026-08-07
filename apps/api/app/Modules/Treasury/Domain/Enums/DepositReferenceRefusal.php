@@ -16,12 +16,22 @@ use App\Modules\Treasury\Application\Services\DepositReferenceResolutionService;
  * delete route, so every invariant that can only be discovered post-seal mints a
  * permanent orphan that over-states the customer's deposit history.
  *
- * **Three cases are TOCTOU-shaped, not input validation** —
+ * **EVERY case here reads mutable state, so NO case closes its race.** Each is a
+ * point-in-time read that the projection re-performs later, so checking it
+ * pre-seal NARROWS the window to the width of the sealing transaction rather
+ * than eliminating it — the projection runs after that transaction commits.
+ * Orphans remain possible until the recoverability lane (R2-K-rec) lands a
+ * disposition. (An earlier revision singled out three cases as "TOCTOU-shaped,
+ * not input validation"; that distinction was wrong — a payment method or
+ * repository deactivated between dialog-open and submit is just as much a
+ * time-of-check/time-of-use vector, and is exactly what the round-1
+ * `is_active` regression tests cover.)
+ *
+ * What DOES separate them is blame, not mechanism: for
  * {@see self::RepositoryFrozen}, {@see self::ActorNotActiveCompanyMember} and
- * {@see self::RepositoryBehindCheckpoint} (R2-K-prev). Checking them pre-seal
- * NARROWS the race to the width of the sealing transaction; it does NOT close
- * it, because the projection runs after that transaction commits. Orphans remain
- * possible until the recoverability lane (R2-K-rec) lands a disposition.
+ * {@see self::RepositoryBehindCheckpoint} the caller did nothing wrong and
+ * cannot fix the request — only ops can (reopen the drawer, restore the
+ * membership, reopen the statement).
  *
  * **Five cases are PATH-CONDITIONAL, and a deposit takes exactly one path.** The
  * three movement-port-derived cases ({@see self::RepositoryCurrencyMismatch},

@@ -56,12 +56,20 @@ use Illuminate\Support\Facades\DB;
  * them would silently under- or over-refuse one tail.
  *
  * **Deliberate omission, recorded for parity (fiscal gate m-2 / authz m-1).**
- * `resolveActorUserId()` has TWO arms: the actor row must exist in the tenant,
- * and it must hold an Active membership. Only the second is mirrored. The first
- * is unreachable in practice — `fiscal_events.actor_user_id` and
- * `user_company_memberships.user_id` both FK to `users`, so a membership row
- * proves the user row, and a hard delete cascades both away together. Mirroring
- * it would add a query that can never change the answer.
+ * `resolveActorUserId()` has TWO arms: the actor row must exist, and it must
+ * hold an Active membership. Only the second is mirrored, because the second
+ * IMPLIES the existence half of the first:
+ * `user_company_memberships.user_id` is a foreign key to `users.id` with
+ * `ON DELETE CASCADE` (`2025_11_30_106000_create_user_company_memberships_table.php:53`)
+ * and `User` uses no `SoftDeletes`, so an Active membership row cannot outlive
+ * the user row it names. A separate existence query could never change the
+ * answer.
+ *
+ * Scoped precisely: that argument proves a LIVE USER ROW, and nothing more. The
+ * bridge's lookup additionally carries a `tenant_id` predicate, which this
+ * inference does not independently establish — it holds only because
+ * memberships and users are read from the same per-tenant database. Recorded
+ * rather than glossed.
  *
  * **HONEST SCOPE — the three TOCTOU rows NARROW a race, they do not close it
  * (R2-K-prev, ticket §48-63).** A freeze, a membership revocation and a

@@ -702,6 +702,19 @@ final class RecordCustomerDepositTest extends TestCase
      */
     public function test_post_returns_422_for_a_repository_reconciled_through_today_without_sealing_a_receipt(): void
     {
+        // O-1 (round-2 gate): one non-reproducible red was observed here, where
+        // assertNoDepositWasSealed() found a receipt while every status
+        // assertion passed. This precondition makes the two candidate causes
+        // distinguishable on the next occurrence: if it trips, a NEIGHBOURING
+        // test leaked through RefreshDatabase; if only the closing assertion
+        // trips, this guard genuinely failed to refuse.
+        $this->assertSame(
+            0,
+            FiscalEvent::query()->where('event_type', FiscalEventType::DEPOSIT_RECEIPT)->count(),
+            'Precondition: the chain must be empty before this test acts. A non-zero count '
+            .'here means a previous test leaked a DEPOSIT_RECEIPT, not that this guard failed.'
+        );
+
         DB::table('payment_repositories')
             ->where('id', $this->repository->id)
             ->update(['last_reconciled_at' => now()->endOfDay()]);
