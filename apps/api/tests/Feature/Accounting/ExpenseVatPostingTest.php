@@ -15,6 +15,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Expense\Application\DTOs\PayExpenseRequestData;
 use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Identity\Domain\User;
@@ -211,20 +212,58 @@ final class ExpenseVatPostingTest extends TestCase
             $this->expectedLine(SystemAccountPurpose::GeneralExpense, null, '119.000', '0.000', 'VAT Vendor', 0),
             $this->expectedLine(SystemAccountPurpose::SupplierPayable, $this->supplier->id, '0.000', '119.000', 'Expense payable', 1),
         ], $this->linePayloads($entry));
-        $detail = DocumentTaxDetail::query()
-            ->where('document_id', $expense->id)
-            ->firstOrFail();
-        $this->assertSame('0.000', $detail->tax_amount);
-        // I-3 (2026-08-06 gate,
-        // docs/superpowers/reviews/2026-08-06-q2-expense-vat-base-gate.md):
-        // a fully non-deductible expense STILL declares the full facial
-        // subtotal as tax_base (only tax_amount goes to 0.000) -- this
-        // pins the CURRENT writer behaviour, not a resolved decision. The
-        // ticket only discusses the 80%-deductible case; the 0% case is
-        // outside its stated scope and an owner/expert ruling on it is
-        // still PENDING (see the writeDeductibleVatSnapshot() docblock).
-        // This assertion may need to flip once that ruling lands.
-        $this->assertSame('100.000', $detail->tax_base);
+        // I-3 EXPERT RULING (2026-08-07,
+        // docs/superpowers/tickets/2026-08-06-q2-gate-minor-followups.md):
+        // "Exclure totalement la charge de la déclaration mensuelle de TVA"
+        // -- a fully non-deductible expense is EXCLUDED ENTIRELY from the
+        // VAT declaration. Declaring a base with a nonzero rate but zero
+        // deducted VAT (Base x Taux != 0) auto-rejects on the DGI
+        // JIBAYA/SINDA teledeclaration portal, so the writer must produce
+        // NO DocumentTaxDetail row at all -- not the interim full-base
+        // shape this test used to pin.
+        $this->assertFalse(
+            DocumentTaxDetail::query()->where('document_id', $expense->id)->exists(),
+            'A 0%-deductible expense must write NO DocumentTaxDetail row per the I-3 ruling.',
+        );
+    }
+
+    /**
+     * I-3 ruling, consequence 1 (see the sibling test above): the writer's
+     * delete-then-create block must still run its DELETE half when the
+     * create half is skipped, so a re-post of a previously-snapshotted
+     * expense (e.g. a correction workflow that reopens a posted expense to
+     * Draft and re-posts it at 0% deductible) cleans up its own stale row
+     * rather than leaving an orphaned, now-wrong DocumentTaxDetail behind.
+     */
+    public function test_zero_percent_deductible_repost_deletes_the_previously_snapshotted_row(): void
+    {
+        [$expense] = $this->postVatExpense([
+            'vat_deductible_percent' => '80.00',
+        ]);
+        $this->assertTrue(
+            DocumentTaxDetail::query()->where('document_id', $expense->id)->exists(),
+            'precondition: the 80%-deductible post must have written a row',
+        );
+
+        // Simulate a correction workflow re-opening the posted expense to
+        // Draft with its deductible percent revised down to 0% -- there is
+        // no public unpost() on ExpenseService (see the 2026-08-06 gate's
+        // I-1 finding, which used the same manual-DB-state technique for
+        // the same reason), so the status/metadata are flipped directly.
+        // document_number is left as-is -- post() overwrites it
+        // unconditionally on every call.
+        $expense->status = DocumentStatus::Draft;
+        $expense->save();
+        $expense->expenseMetadata()->update(['vat_deductible_percent' => '0.00']);
+
+        $reopened = $expense->fresh(['expenseMetadata']);
+        $this->assertNotNull($reopened);
+        $this->service->post($reopened, $this->user);
+
+        $this->assertFalse(
+            DocumentTaxDetail::query()->where('document_id', $expense->id)->exists(),
+            'The re-post at 0% deductible must delete the stale 80%-deductible row and write nothing new.',
+        );
     }
 
     public function test_vatless_expense_keeps_the_exact_legacy_two_line_shape_and_has_no_tax_detail(): void

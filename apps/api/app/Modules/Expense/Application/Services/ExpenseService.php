@@ -446,21 +446,36 @@ final class ExpenseService
      * mathematical-control convenience, not a fiscal-declaration
      * requirement. This OVERRULES the V5 deductible-proportion base below.
      *
-     * I-3 (2026-08-06 gate, docs/superpowers/reviews/2026-08-06-q2-expense-vat-base-gate.md):
-     * a fully NON-deductible expense (vat_deductible_percent = 0.00) is NOT
-     * special-cased below -- it still writes tax_base = the full facial
-     * subtotal, with tax_amount = 0.000 (V5 wrote 0.000 / 0.000 instead).
-     * The ticket's worked example only discusses the 80%-deductible case;
-     * whether the 0% case should also declare the full base (facial value
-     * of a wholly non-deductible purchase) is, per the gate, OUTSIDE the
-     * ticket's stated scope, and an explicit OWNER/EXPERT RULING ON THE
-     * 0% CASE IS PENDING. This is documented here as the CURRENT behaviour,
+     * I-3 -- EXPERT RULING RECEIVED 2026-08-07 (
+     * docs/superpowers/tickets/2026-08-06-q2-gate-minor-followups.md,
+     * originally raised at docs/superpowers/reviews/2026-08-06-q2-expense-vat-base-gate.md):
+     * a fully NON-deductible expense (vat_deductible_percent = 0.00) is
+     * EXCLUDED ENTIRELY from the VAT declaration -- verbatim from the
+     * expert: "Exclure totalement la charge de la déclaration mensuelle de
+     * TVA et de son annexe des achats." / "Abandonner le comportement
+     * provisoire (interim behaviour) qui déclare la base avec une TVA à
+     * zéro." Justification: a non-deductible expense is booked fully TTC
+     * (no VAT flow in the accounts), and the DGI's JIBAYA/SINDA
+     * teledeclaration portal auto-rejects a filing that declares a base
+     * against a nonzero rate with a forced-zero deductible amount --
+     * Base × Taux != 0 is a mathematical inconsistency the portal detects
+     * and refuses. (The RAS module handles any withholding on the purchase
+     * annually via the Déclaration Annuelle de l'Employeur -- this monthly
+     * VAT exclusion does not touch that.) This SUPERSEDES the interim
+     * full-base/zero-VAT shape that used to ship here (see the "kept for
+     * history" note below): at 0% deductible the method now writes NO
+     * DocumentTaxDetail row at all -- same as the no-VAT early return
+     * above -- pinned by
+     * ExpenseVatPostingTest::test_zero_percent_deductible_vat_omits_the_input_vat_line.
+     * The delete-then-create block below still runs its DELETE half (keyed
+     * on this writer's own `sequence_order = 1` slot) even when the create
+     * half is skipped, so a re-post of a previously-snapshotted expense
+     * whose percent later drops to 0% cleans up its own stale row --
      * pinned by
-     * ExpenseVatPostingTest::test_zero_percent_deductible_vat_omits_the_input_vat_line,
-     * not as a resolved decision -- it may flip once the ruling lands. The
-     * backfill command's expense leg (BackfillTaxDetailsCommand) SKIPS AND
-     * REPORTS 0%-deductible rows rather than rewriting them, precisely
-     * because this is still open.
+     * ExpenseVatPostingTest::test_zero_percent_deductible_repost_deletes_the_previously_snapshotted_row.
+     * The backfill command's expense leg (BackfillTaxDetailsCommand) now
+     * REMEDIATES (deletes, not skips) existing 0%-deductible rows written
+     * under either pre-ruling shape.
      *
      * V5 (2026-08-03 gate, docs/superpowers/reviews/2026-08-03-vat-declaration-gate.md,
      * SUPERSEDED by the Q2 ruling above -- kept for history):
@@ -502,6 +517,23 @@ final class ExpenseService
 
         $rawDeductiblePercent = $metadata !== null ? $metadata->vat_deductible_percent : null;
         $deductiblePercent = (string) ($rawDeductiblePercent ?? '100.00');
+
+        // Delete this writer's own stable slot FIRST, unconditionally --
+        // see the I-3 docblock note above. A previously-snapshotted expense
+        // whose deductible percent has since dropped to 0% must have its
+        // stale row removed even though the create half below is skipped
+        // for that case.
+        DocumentTaxDetail::where('document_id', $expense->id)
+            ->where('sequence_order', 1)
+            ->delete();
+
+        // I-3 EXPERT RULING: 0%-deductible expenses are excluded entirely
+        // from the VAT declaration -- write no row. See the docblock above
+        // for the verbatim ruling.
+        if (bccomp($deductiblePercent, '0', 2) === 0) { // precision-ok: vat_deductible_percent is decimal(5,2), a percentage — not currency-scaled
+            return;
+        }
+
         $deductibleVat = ExpenseVatSplit::deductible($vatAmount, $deductiblePercent, $scale);
         $vatRate = $metadata?->vat_rate;
         $taxName = $vatRate !== null ? "TVA {$vatRate}%" : 'TVA';
@@ -511,13 +543,14 @@ final class ExpenseService
         // (below), which stays prorated to the deductible percent. See the
         // docblock above for the verbatim ruling and citation. Formatted
         // as a bcmath-safe numeric string at the resolved currency scale;
-        // never cast to float.
+        // never cast to float. Truncation (not half-up rounding) is
+        // deliberate here (m-3, 2026-08-06 gate): the base is an attested
+        // FACIAL value copied from the expense's own stored subtotal, not a
+        // computed intermediate that needs rounding -- there is no
+        // sub-scale precision to lose, so bcformatStrict's truncate
+        // semantics and bcround's half-up semantics agree trivially.
         $subtotal = (string) ($expense->subtotal ?? '0');
         $taxBase = CurrencyScale::bcformatStrict($subtotal, $scale);
-
-        DocumentTaxDetail::where('document_id', $expense->id)
-            ->where('sequence_order', 1)
-            ->delete();
 
         DocumentTaxDetail::create([
             'document_id' => $expense->id,
