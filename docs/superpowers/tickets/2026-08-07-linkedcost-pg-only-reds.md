@@ -20,3 +20,10 @@ so its `DROP TABLE product_variants` fails ("Dependent objects still exist") on 
 tree. Pre-existing dev red (gate to confirm at base). Fix = convert it to the NEW
 `ProvesTenantMigrationRoundTrip` harness from lane R2-I — the intended first real-world
 consumer. Same test-debt family as the LinkedCost PG reds above; both bite at T-1.
+
+**R2-I gate addendum (2026-08-07):** T2MigrationRollbackTest has NO RefreshDatabase
+(CONCURRENTLY constraint), so its failure leaves the SHARED PG test DB partially rolled back —
+cascading damage to any suite that runs after it. Fix it BEFORE T-1 makes the PG leg
+CI-required. Harness notes for the converter: one-closure-per-checkpoint limitation (gate
+MINOR-4); harness proves schema round-trip but never exercises the real migrator —
+harness-green ≠ tenants:migrate-safe (that's T-1's job).
