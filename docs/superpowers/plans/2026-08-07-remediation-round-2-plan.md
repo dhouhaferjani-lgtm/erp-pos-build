@@ -1,10 +1,18 @@
-# Remediation Round 2 — plan v3 (2026-08-07)
+# Remediation Round 2 — plan v4 (2026-08-07)
 
-**v2 → v3:** Codex round 2 = REJECT (record: `…-codex-review-round2.md`; round 1 dispositions:
-3 RESOLVED, 7 PARTIAL). v3 closes the round-2 BLOCKER (Phase R rebuilt as an executable
-decision gate: every ruling now has alternatives, an owner, a recording artifact, and an
-outcome→behavior mapping per branch) and all 7 new MAJORs. Overtaken by events since v2:
-**R-a IS ANSWERED and R2-G IS SHIPPED+PUSHED (`d8efb5df0`)** — reflected below.
+**v3 → v4:** Codex round 3 = REJECT with an explicit dispatch-safety carve-out (record:
+`…-codex-review-round3.md`): R2-I/C/P/H/O safe; K and L decision-blocked. v4: the shared
+rulings artifact **now EXISTS** (`docs/superpowers/tickets/2026-08-07-round2-rulings-record.md`,
+R-a recorded, every branch has a named executable consumer, new R-i credit-notes.confirm
+policy); K split into K-prev (dispatchable) + K-rec (blocked on R-g, and preflights honestly
+labeled race-NARROWING not closure); L's R5 subtask blocked on R-i (rest dispatches),
+allow_negative subtask gains a treasury gate; R2-M sub-decisions (cut-over, account) owned by
+R-b; R2-N defines BOTH activation branches; R2-O ordered BEFORE 0.7/any C-2 invocation;
+R2-D terminal ratchet reruns full-tree static analysis POST-repair + implicated specialist
+gates, over all ACTIVATED lanes (non-activation recorded); partner deferral REPLACED by
+assigned lane R2-S (the old reason was factually wrong — the 409 guard covers 3 of ~14
+partner_id tables); T-10 carries the hasTable console/scheduler sweep.
+**R-a ANSWERED and R2-G SHIPPED (`d8efb5df0`).**
 
 **Process per lane:** unchanged (worktree → TDD → specialist gates → fix → re-gate → ff merge
 + green-proof). **Cross-lane rules:** (1) dependents rebase onto current dev and re-run their
@@ -22,8 +30,11 @@ over it" paradox is resolved there).
 | R2-C | tenancy-authz + API-contract/FE consumer |
 | R2-P | (1) precision+inventory-costing (2) imports (3) taxation+procurement — independent |
 | R2-H | tenancy-authz + taxation + FE/API-contract |
-| R2-K | fiscal-pos + tenancy-authz |
-| R2-L | precision + FE + tenancy-authz (permission surface) + Document/Taxation (tax pipeline) |
+| R2-K-prev | fiscal-pos + tenancy-authz |
+| R2-K-rec | fiscal-pos + treasury (blocked on R-g; device-release flag if R-g=(2)) |
+| R2-L | precision + FE + tenancy-authz (permission surface) + Document/Taxation (tax pipeline) + **treasury (allow_negative subtask)** |
+| R2-Q0/Q/R | per rulings record (R-d disable branch / R-e reject / R-f fix-now) |
+| R2-S | tenancy-authz + treasury (partner reference-guard extension) |
 | R2-A1 | tenancy-authz |
 | R2-A2 | tenancy-authz + release/data |
 | R2-A3 | precision + FE |
@@ -31,7 +42,7 @@ over it" paradox is resolved there).
 | R2-E | backend concurrency/DB + Document-domain + FE (+POS negative-scope regression) |
 | R2-F1..F5 | accountant-ruling gate first; then GL + inventory-costing + taxation + treasury |
 | R2-M | GL/accounting + release/data (timbre residue, if R-b rules split) |
-| R2-N | treasury (conditional paid/balance write-path fix) |
+| R2-N | treasury + Document/DB-contract (conditional; BOTH branches defined below) |
 | R2-J | tenancy-authz (narrow) |
 | R2-D | precision + static-analysis owner (final full-tree pass, see sequence) |
 
@@ -66,7 +77,10 @@ outcome→behavior mapping. A lane blocked on a ruling CANNOT dispatch until its
 ANSWERED in the artifact.)
 
 **Artifact for ALL rulings:** `docs/superpowers/tickets/2026-08-07-round2-rulings-record.md`
-(created at first answer; verbatim answer + selected branch per ruling).
+— **EXISTS as of v4** (R-a recorded; R-b..R-i rows carry alternatives + sub-decisions + a
+named executable consumer PER BRANCH, incl. the R-e-reject lane R2-Q, R-f-fix lane R2-R, and
+R-d-disable lane R2-Q0). NEW ruling R-i (credit-notes.confirm policy) extracted from R2-L
+with a recommendation on file.
 
 - **R-a** ✅ ANSWERED 2026-08-07 (expert): 0%-deductible EXCLUDED entirely.
   Outcome mapping executed: writer writes no row + deletes stale; backfill remediates both
@@ -119,18 +133,27 @@ ANSWERED in the artifact.)
 - R2-C shared-scope reports (both parts: inactive-location leak + 403 swallow/leak).
 - R2-P purchasing trio (three independent gates as in the matrix).
 - R2-H withholding (all three deliverables + tripwires).
-- R2-K deposit seal-before-resolve — BOTH vectors: frozen-repository preflight AND
-  membership-revoked-mid-request (membership preflight + authz reachability check per ticket
-  §65-80); gates fiscal-pos + tenancy-authz. The RECOVERABILITY half (what to do with
-  already-orphaned receipts) waits for R-g; the lane ships the two preventions first.
+- R2-K-prev deposit seal-before-resolve PREVENTION sublane — BOTH vectors: frozen-repository
+  preflight AND membership-revoked-mid-request (membership preflight + authz reachability
+  check per ticket §65-80); gates fiscal-pos + tenancy-authz. HONEST SCOPE (round-3): these
+  preflights NARROW the TOCTOU races (ticket §48-63), they do not close them — orphans remain
+  possible until K-rec.
+- R2-K-rec RECOVERABILITY sublane — BLOCKED on R-g (three branches, each with its consumer
+  mapping in the rulings record); implements the chosen orphan-disposition shape + detection
+  of existing orphans. NOT Wave-1.
 - R2-L small certified-money carryovers — WITH its full gate set (matrix): R1 rounding
-  unification (Document/Taxation review), R5 credit-notes.confirm permission decided+aligned
-  across seeder/route/FE (tenancy-authz review), CN operator notice, CN PDF whole-unit
-  surface, TND reconciliation truncation. **Plus (round-2 completeness): the repobal
-  `allow_negative` admin FE toggle** (treasury FE affordance, tenancy-authz-checked).
+  unification (Document/Taxation review), CN operator notice, CN PDF whole-unit surface,
+  TND reconciliation truncation, and the repobal `allow_negative` admin FE toggle
+  (**treasury-gated subtask** — default/polarity must be reviewed against the guard's
+  type-derived semantics). **The R5 credit-notes.confirm subtask is BLOCKED on ruling R-i**
+  (permission policy is an owner decision, recommendation on file in the rulings record) —
+  the rest of the lane dispatches without it; R5 lands as a follow-up commit once R-i is
+  answered.
 - R2-O (NEW, tiny, test-only): fix the C-2 fixture itself — authorTier4CardFiscalSale gets a
   location predicate so every campaign run stops minting NEW warehouse fiscal receipts
   (`2026-08-06-c2-fixture-terminal-location.md:51-69`). Fiscal-pos narrow gate.
+  **ORDERING EDGE (round-3): R2-O must land BEFORE Phase-0 step 0.7 and before ANY other
+  C-2-invoking campaign run** — the defect compounds per invocation.
 
 **Wave 2 (as prerequisites clear):**
 - R2-A1 cross-company authz (F-1/F-5) — pre-launch regardless of R-d.
@@ -145,25 +168,31 @@ ANSWERED in the artifact.)
   `2026-08-06-l2-remaining-balance-due-consumers.md:22-87`, NOT "4 PaymentController
   writers"; a fully credit-noted invoice must stop being smart-allocatable.**
 - R2-M timbre residue (only if R-b→split; after F2).
-- R2-N paid/balance write-path fix (conditional, activated by 0.3c evidence).
+- R2-N paid/balance integrity lane (conditional, 0.3c evidence — BOTH branches defined,
+  round-3): branch W (write-path defect proven) → enumerate every status writer, enforce the
+  paid⇒zero-balance invariant DOMAIN-side, API refuses direct `paid` writes; branch D (direct
+  data patching proven) → data cleanup + the SAME API refusal of direct `paid` writes.
+  Either branch: treasury + Document/DB-contract gates.
 - R2-J import-job compat (conditional, activated by 0.3f evidence).
 - **R2-F-adjacent (round-2 completeness):** `2026-08-06-l2-gl-gate-minor-followups.md` is
   ASSIGNED: supplier-invoices-invisible-in-aged-payables (§79-98) joins R2-C's report
   surface (same aged-AP query family); the reversal audit/ordering/coupling follow-ups
   (§13-65,100-129) join F2's deliverables.
-- R2-D bcmath/is_numeric code fixes (early, Wave 2) — the RULE lands in the final sequence:
-  **all Phase-1 PHP lanes merged → D's rule + parsefloat-rule hardening land together on the
-  integrated tree → ONE full-tree PHPStan/ESLint run → a single repair commit for any
-  stragglers → final integration re-gate.** This replaces v2's impossible "last but rebased
-  over" wording: the rule is not a rebase obligation for lanes; it is a terminal ratchet
-  with its own repair pass.
+- R2-D bcmath/is_numeric code fixes (early, Wave 2) — the RULE lands in the terminal
+  sequence (round-3 corrected): **all ACTIVATED Phase-1 PHP lanes merged (conditional
+  M/N/J: activation or non-activation RECORDED in the rulings record, so the terminal
+  condition is always evaluable) → D's rule + parsefloat-rule hardening land on the
+  integrated tree → full-tree PHPStan/ESLint run → repair commit → full-tree PHPStan/ESLint
+  RERUN on the repaired tree (must be clean) → every specialist gate implicated by repair
+  changes re-runs → final integration re-gate.**
 
 **Deferred WITH REASON (complete list — round-2 completeness closures included):**
 - W-7 owner-dashboard UI money coverage → post-launch (T-5 explicitly excludes it).
-- `2026-08-06-l6-partners-followups.md` partner soft-delete-into-invisibility → DEFERRED
-  post-launch WITH REASON: partner delete now 409s when referenced (BUG-007 fix); the
-  residual is a pre-existing listing/visibility UX for already-soft-deleted partners, not a
-  money or integrity path; ticket stays open.
+- ~~partner soft-delete deferral~~ **WITHDRAWN (round-3: the stated reason was factually
+  false — the 409 guard covers 3 of ~14 partner_id tables).** ASSIGNED instead: **lane R2-S**
+  (Wave 2, small): extend PartnerReferenceCounter to the remaining partner_id tables
+  (journal_lines, vouchers, work orders, …) per `2026-08-06-l6-partners-followups.md:14-38`;
+  gates per matrix.
 - `2026-08-06-pos-product-images-never-populated.md` → DEFERRED to the next coordinated
   device release train WITH REASON: fix spans POS device build + server ProductData emission
   (a device-release dependency this round cannot ship); rides with the next device version
@@ -181,7 +210,10 @@ T-1 PG-mode CI leg (CI-required sharded; includes tenant-migration coverage BEFO
     harness conversions) · T-5 neutral harness → R2-C-bound cases · T-4 after R2-G (G is
     shipped — T-4 is UNBLOCKED NOW, may run in Wave 1 of Phase 2) · T-6 after R2-B/R2-E ·
     T-7, T-8 anytime · T-9 after Phase 0 · **T-10 (NEW): architecture-guard debt — wire the
-    cross-tenant annotation AST check, triage the 5 pre-existing failures, ratchet.**
+    cross-tenant annotation AST check, triage the 5 pre-existing failures, ratchet, AND the
+    ticket's mandatory console/scheduler `Schema::hasTable()` sweep (a central-context
+    command must not launder a missing tenant DB into a clean verdict) per
+    `2026-08-05-cross-tenant-annotation-ast-check.md:62-76,128-133`.**
 Red-test product defects = STOP + orchestrator triage, never silent widening.
 Also owed promptly (dev is RED): the unfunded-fixture treasury repair
 (`2026-08-07-repobal-lane-followups` escalation — 3 live ExpenseVatPostingTest reds).
