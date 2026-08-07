@@ -191,6 +191,13 @@ describe('PartnerDetailPage delete (BUG-007)', () => {
     })
     // Not the raw server string, and definitely not a navigation away.
     expect(mockToast.error).toHaveBeenCalledWith(expect.stringMatching(/cannot be deleted/i))
+    // R2-S: ~21 tables can block this delete — a voucher, an appointment, a
+    // vehicle, a POS customer alias. The copy must not promise a reason it
+    // cannot know; it used to say "invoices, payments or receipts", which was
+    // simply wrong for most blockers.
+    expect(mockToast.error).not.toHaveBeenCalledWith(
+      expect.stringMatching(/invoice|payment|receipt/i),
+    )
     expect(screen.getByTestId('pathname')).toHaveTextContent('/sales/customers/partner-1')
   })
 })

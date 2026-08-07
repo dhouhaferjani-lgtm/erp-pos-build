@@ -70,7 +70,7 @@
       "title": "Supprimer {{entity}}",
       "confirm": "Supprimer « {{name}} » ? Cette action est irréversible.",
       "success": "{{entity}} supprimé",
-      "blocked": "« {{name}} » ne peut pas être supprimé : des factures, paiements ou tickets y sont encore rattachés. Désactivez-le plutôt.",
+      "blocked": "« {{name}} » ne peut pas être supprimé : d’autres enregistrements y font encore référence. Désactivez-le plutôt.",
       "failed": "Échec de la suppression de {{entity}}"
     },
     "taxInfo": {

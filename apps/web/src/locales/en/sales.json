@@ -70,7 +70,7 @@
       "title": "Delete {{entity}}",
       "confirm": "Delete “{{name}}”? This action cannot be undone.",
       "success": "{{entity}} deleted",
-      "blocked": "“{{name}}” cannot be deleted: it is still referenced by invoices, payments or receipts. Deactivate it instead.",
+      "blocked": "“{{name}}” cannot be deleted: other records still reference it. Deactivate it instead.",
       "failed": "Failed to delete {{entity}}"
     },
     "taxInfo": {

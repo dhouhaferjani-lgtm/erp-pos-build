@@ -248,9 +248,17 @@ export function PartnerDetailPage() {
       void navigate(basePath)
     },
     onError: (mutationError: unknown) => {
-      // The server refuses (409 PARTNER_HAS_DOCUMENTS) when invoices, payments
-      // or POS receipts still reference the partner. Surface the actionable,
-      // translated message rather than the raw English server string.
+      // The server refuses (409 PARTNER_HAS_DOCUMENTS) when ANY of ~21
+      // tables still references the partner — not just invoices/payments/POS
+      // receipts as originally shipped. It can equally be an unredeemed
+      // voucher, a booked appointment, a vehicle, a work-order line, a
+      // loyalty membership or a POS device customer alias (which, being the
+      // device identity map, is a common one). `error.details` carries the
+      // per-table counts; the toast copy is deliberately table-agnostic
+      // rather than naming a reason it cannot know. Rendering the per-table
+      // breakdown is a separate ticket.
+      // Surface the translated message rather than the raw English server
+      // string.
       if (
         isApiError(mutationError) &&
         mutationError.response?.status === 409 &&
