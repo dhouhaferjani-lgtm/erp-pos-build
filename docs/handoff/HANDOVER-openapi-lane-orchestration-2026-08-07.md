@@ -27,9 +27,26 @@ An autonomous Codex desktop lane generating an **OpenAPI 3.1 specification for t
 | 2 | Selector needs all-admin + all-external + 13 tenant = 32, but tranche frozen at 25 (5+7+13) | **My error again.** Fixed the admin count 5→12 but left the *derived* 25-ceiling and 5/7/13 split frozen. | Option A: tranche = **32 ops, 12/7/13**. Plus a **mandatory derived-constant sweep** so partial corrections stop recurring. | `b9bf3bf5f`, `c5eef5c9e` |
 | 3 | Breadth audit proves ≥104 complete-overlay ops vs immutable ceiling of 101 | **Not my error** — the sweep confirmed 101 was independently frozen. A real collision between a pre-measurement guess and measured reality. | Ruling 1: `$ref` shared component IS a reusable carrier → the 84 collapse to 1. Ruling 2: overlay ceilings become **reported measures, not admission gates**. Plus a standing rule (below). | `b5e4bda00` |
 
-**Immediate pending action:** the stall-3 resume prompt (§6) has **not been dispatched yet**. The owner was about to paste it when we opened this session. Confirm with them whether it went out before doing anything else.
-
 The lane's derived-constant sweep (`docs/superpowers/reviews/2026-08-07-openapi-derived-constant-reconciliation.md`, on the lane branch) is now **part of the frozen contract** — it reconciled every dependent value and found no remaining governance question.
+
+### ▶ YOUR STARTING POSITION: the stall-3 resume prompt WAS DISPATCHED (owner, 2026-08-07)
+
+The §6 prompt has been sent to the Codex desktop conversation. **The lane is running.** Do **not** re-dispatch it — that would duplicate a live lane.
+
+**Your first real task is to WAIT for the lane's next report, then triage it.** Do not start speculative work on the lane in the meantime; the branch is clean and the lane owns it. Useful things you *may* do while waiting: read the ruling chain and prior verdicts so you can judge fast, and stand up the codebase-findings register (§8).
+
+### Triage guide — what to do with the incoming feedback
+
+| What comes back | Verdict | Your action |
+|---|---|---|
+| **Progress report** — breadth classification re-run with Ruling 1, overlay/carrier counts reported as measurements, selector/closure proceeding | Working as intended | Acknowledge, confirm the counts are *reported* not gated, let it continue to fan-out. No ruling needed. |
+| **A judgment call surfaced, mechanically underivable** — e.g. the 9 binary/stream responses are borderline shape-identical | Legitimate | Rule on it. Prefer the truthful modeling; a carrier is only valid where shapes are *provably* identical (Ruling 1b). When genuinely 50/50, charge them individually — over-charging is safe, a wrong carrier is a lie in the spec. |
+| **NO-GO in a mandatory-stop category** — behavior change, determinism failure, truthfulness compromise (permissive schema / float money / surface bleed) | **Real. Honor it.** | Rule on substance. Does **not** count toward the numeric-stall escalation counter. |
+| **NO-GO on a count-based ceiling while all correctness properties still hold** | **Standing-rule violation** — the lane should have recorded, noted, and continued | Do **NOT** issue a new ruling or adjust any number. Re-dispatch pointing at the standing rule in `b5e4bda00`, quoting it, and instruct it to continue. This is a cheap correction, not a governance event. |
+| **Another count-based NO-GO after that re-dispatch** | **Escalation trigger fires** | Stop patching. Tell the owner plainly: the contract design is beyond repair. Recommend restarting the lane with a thin contract — keep the correctness properties (§4), drop every pre-frozen count. |
+| **Handback: lane complete** | Ready for gates | Run the dual gate (spec-truthfulness pass + a zero-behavior verification), then promote per the normal flow. Never push `origin/dev` from the lane. |
+
+Calibration note: the standing rule was issued precisely so numeric ceilings stop costing round-trips. If the lane honors it, stalls 1–3's failure mode is closed. Judge the *category* of the stop first — that single question routes every response above.
 
 ---
 
@@ -69,7 +86,9 @@ Zero behavior change (byte-identical `route:list`) · determinism (same tree ⇒
 
 ---
 
-## 6. The pending resume prompt (dispatch verbatim if it hasn't gone out)
+## 6. The stall-3 resume prompt — ✅ ALREADY DISPATCHED 2026-08-07, kept for reference only
+
+**Do not re-send this.** It is recorded here so you know exactly what the lane was told, and so you can quote its clauses (especially the STANDING RULE paragraph) when triaging the reply.
 
 ```
 RESUME AUTHORIZED. Your breadth-cap NO-GO is ACCEPTED AS PROVEN — the 104 lower bound,
