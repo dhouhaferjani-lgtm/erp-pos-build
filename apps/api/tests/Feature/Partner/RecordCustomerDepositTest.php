@@ -607,6 +607,85 @@ final class RecordCustomerDepositTest extends TestCase
     }
 
     /**
+     * R2-K-prev round-2 gate — the maturity path has its OWN post-seal
+     * invariants, and skipping the movement-port refusals must not skip THOSE.
+     *
+     * `InstrumentLifecycleService::receive()` refuses an instrument whose
+     * currency is not the COMPANY currency (`InstrumentLifecycleService.php:74-80`)
+     * — note the operand: company, NOT repository. It throws inside the
+     * projection, POST-seal.
+     *
+     * Reachable from plain client input: `RecordDepositRequest.php:92` accepts
+     * any `size:3` currency and `PartnerDepositController.php:57-59` forwards it
+     * verbatim. Amount is `'11'` so it survives the controller's currency-scale
+     * check against EUR (scale 2) and actually reaches the vector.
+     */
+    public function test_post_returns_422_for_a_maturity_tender_in_a_non_company_currency(): void
+    {
+        $this->seedChequePortfolioAccount();
+
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CHECK',
+            'name' => 'Cheque',
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11',
+                'payment_method_code' => 'CHECK',
+                'repository_id' => $this->repository->id,
+                'currency' => 'EUR',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
+     * R2-K-prev round-2 gate, second maturity invariant — the portfolio account
+     * the cheque posts into must resolve.
+     *
+     * `HandlesMaturityTenderLeg::portfolioAccountId()` calls
+     * `InstrumentAccountResolver::resolveOrFail()` (`InstrumentAccountResolver.php:35-39`),
+     * which throws `MissingInstrumentAccountException` when the company has no
+     * active checks-to-collect account — POST-seal, inside the projection.
+     *
+     * Ops-realistic: a company whose chart of accounts was never seeded with
+     * `5312` (TN) / `5112` accepts cheques from the UI and orphans every one.
+     * Deliberately does NOT call `seedChequePortfolioAccount()`.
+     */
+    public function test_post_returns_422_for_a_maturity_tender_with_no_portfolio_account(): void
+    {
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CHECK',
+            'name' => 'Cheque',
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson(
+            "/api/v1/partners/{$this->customer->id}/deposits",
+            [
+                'amount' => '11.111',
+                'payment_method_code' => 'CHECK',
+                'repository_id' => $this->repository->id,
+                'currency' => 'TND',
+            ],
+        );
+
+        $response->assertStatus(422);
+        $this->assertNoDepositWasSealed();
+    }
+
+    /**
      * R2-K-prev, authz gate I-2 — the movement port's THIRD rejecting guard.
      *
      * `TreasuryDepositBridge.php:273` passes `allowBehindCheckpoint =
