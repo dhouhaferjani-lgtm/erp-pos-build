@@ -117,7 +117,7 @@ class QuoteDiscountTotalsTest extends TestCase
      * The discount-BLIND numbers the pre-fix controller produced were
      * 350.000 / 70.000 / 420.000.
      *
-     * @return array<int, array<string, string>>
+     * @return list<array{description: string, quantity: numeric-string, unit_price: numeric-string, discount_percent?: numeric-string, discount_amount?: numeric-string, tax_rate: numeric-string}>
      */
     private function discountLinesPayload(): array
     {
@@ -150,7 +150,7 @@ class QuoteDiscountTotalsTest extends TestCase
      * {@see DocumentLine::computeLineTotal()} (the single source of truth for
      * line-level discount arithmetic), tax is derived from that NET base.
      *
-     * @return array{subtotal: string, tax_amount: string, total: string}
+     * @return array{subtotal: numeric-string, tax_amount: numeric-string, total: numeric-string}
      */
     private function canonicalHeader(): array
     {
@@ -159,7 +159,6 @@ class QuoteDiscountTotalsTest extends TestCase
         $taxAmount = '0';
 
         foreach ($this->discountLinesPayload() as $line) {
-            /** @var numeric-string $net */
             $net = DocumentLine::computeLineTotal(
                 $line['quantity'],
                 $line['unit_price'],
@@ -181,6 +180,9 @@ class QuoteDiscountTotalsTest extends TestCase
     /**
      * Assert a persisted money column equals an expected decimal string,
      * comparing with bccomp at the currency scale (never a float compare).
+     *
+     * @param  numeric-string  $expected
+     * @param  numeric-string  $actual
      */
     private function assertMoneyEquals(string $expected, string $actual, string $message): void
     {
@@ -207,9 +209,9 @@ class QuoteDiscountTotalsTest extends TestCase
         $quote = Document::findOrFail($response->json('data.id'));
         $canonical = $this->canonicalHeader();
 
-        $this->assertMoneyEquals($canonical['subtotal'], (string) $quote->subtotal, 'Quote subtotal ignores line discounts');
-        $this->assertMoneyEquals($canonical['tax_amount'], (string) $quote->tax_amount, 'Quote tax_amount is computed on a discount-blind base');
-        $this->assertMoneyEquals($canonical['total'], (string) $quote->total, 'Quote total ignores line discounts');
+        $this->assertMoneyEquals($canonical['subtotal'], $quote->subtotal ?? '0', 'Quote subtotal ignores line discounts');
+        $this->assertMoneyEquals($canonical['tax_amount'], $quote->tax_amount ?? '0', 'Quote tax_amount is computed on a discount-blind base');
+        $this->assertMoneyEquals($canonical['total'], $quote->total ?? '0', 'Quote total ignores line discounts');
     }
 
     public function test_quote_store_persists_line_total_net_of_discount(): void
@@ -224,13 +226,14 @@ class QuoteDiscountTotalsTest extends TestCase
 
         /** @var Document $quote */
         $quote = Document::with('lines')->findOrFail($response->json('data.id'));
-        $lines = $quote->lines->sortBy('line_number')->values();
+        /** @var list<DocumentLine> $lines */
+        $lines = $quote->lines->sortBy('line_number')->values()->all();
 
         $this->assertCount(2, $lines);
         // 2 × 100.000 − 10% = 180.000
-        $this->assertMoneyEquals('180', (string) $lines[0]->line_total, 'Percent-discounted line_total is gross, not net');
+        $this->assertMoneyEquals('180', $lines[0]->line_total, 'Percent-discounted line_total is gross, not net');
         // 3 × 50.000 − 30.000 = 120.000
-        $this->assertMoneyEquals('120', (string) $lines[1]->line_total, 'Amount-discounted line_total is gross, not net');
+        $this->assertMoneyEquals('120', $lines[1]->line_total, 'Amount-discounted line_total is gross, not net');
     }
 
     public function test_quote_store_header_equals_sum_of_persisted_line_totals(): void
@@ -249,10 +252,10 @@ class QuoteDiscountTotalsTest extends TestCase
         $scale = $this->scale();
         $sum = '0';
         foreach ($quote->lines as $line) {
-            $sum = bcadd($sum, (string) $line->line_total, $scale);
+            $sum = bcadd($sum, $line->line_total, $scale);
         }
 
-        $this->assertMoneyEquals($sum, (string) $quote->subtotal, 'Quote subtotal diverges from the sum of its own line totals');
+        $this->assertMoneyEquals($sum, $quote->subtotal ?? '0', 'Quote subtotal diverges from the sum of its own line totals');
     }
 
     // --------------------------------------------------------------- update
@@ -283,13 +286,14 @@ class QuoteDiscountTotalsTest extends TestCase
         $quote = Document::with('lines')->findOrFail($quoteId);
         $canonical = $this->canonicalHeader();
 
-        $this->assertMoneyEquals($canonical['subtotal'], (string) $quote->subtotal, 'Updated quote subtotal ignores line discounts');
-        $this->assertMoneyEquals($canonical['tax_amount'], (string) $quote->tax_amount, 'Updated quote tax_amount is computed on a discount-blind base');
-        $this->assertMoneyEquals($canonical['total'], (string) $quote->total, 'Updated quote total ignores line discounts');
+        $this->assertMoneyEquals($canonical['subtotal'], $quote->subtotal ?? '0', 'Updated quote subtotal ignores line discounts');
+        $this->assertMoneyEquals($canonical['tax_amount'], $quote->tax_amount ?? '0', 'Updated quote tax_amount is computed on a discount-blind base');
+        $this->assertMoneyEquals($canonical['total'], $quote->total ?? '0', 'Updated quote total ignores line discounts');
 
-        $lines = $quote->lines->sortBy('line_number')->values();
-        $this->assertMoneyEquals('180', (string) $lines[0]->line_total, 'Updated percent-discounted line_total is gross, not net');
-        $this->assertMoneyEquals('120', (string) $lines[1]->line_total, 'Updated amount-discounted line_total is gross, not net');
+        /** @var list<DocumentLine> $lines */
+        $lines = $quote->lines->sortBy('line_number')->values()->all();
+        $this->assertMoneyEquals('180', $lines[0]->line_total, 'Updated percent-discounted line_total is gross, not net');
+        $this->assertMoneyEquals('120', $lines[1]->line_total, 'Updated amount-discounted line_total is gross, not net');
     }
 
     // -------------------------------------------------------------- confirm
@@ -306,9 +310,9 @@ class QuoteDiscountTotalsTest extends TestCase
 
         /** @var Document $draft */
         $draft = Document::findOrFail($quoteId);
-        $draftSubtotal = (string) $draft->subtotal;
-        $draftTax = (string) $draft->tax_amount;
-        $draftTotal = (string) $draft->total;
+        $draftSubtotal = $draft->subtotal ?? '0';
+        $draftTax = $draft->tax_amount ?? '0';
+        $draftTotal = $draft->total ?? '0';
 
         $confirm = $this->actingAs($this->user)->postJson("/api/v1/quotes/{$quoteId}/confirm");
         $confirm->assertStatus(200);
@@ -319,9 +323,9 @@ class QuoteDiscountTotalsTest extends TestCase
         // Byte-identical decimal strings: confirm() recomputes tax/total from
         // DocumentLine::calculateTotal() (discount-AWARE), so a discount-blind
         // draft header silently moves the moment the quote is confirmed.
-        $this->assertSame($draftSubtotal, (string) $confirmed->subtotal, 'Confirming a quote moved its subtotal');
-        $this->assertSame($draftTax, (string) $confirmed->tax_amount, 'Confirming a quote moved its tax_amount');
-        $this->assertSame($draftTotal, (string) $confirmed->total, 'Confirming a quote moved its total');
+        $this->assertSame($draftSubtotal, $confirmed->subtotal ?? '0', 'Confirming a quote moved its subtotal');
+        $this->assertSame($draftTax, $confirmed->tax_amount ?? '0', 'Confirming a quote moved its tax_amount');
+        $this->assertSame($draftTotal, $confirmed->total ?? '0', 'Confirming a quote moved its total');
     }
 
     // ----------------------------------------------------------- conversion
@@ -350,15 +354,15 @@ class QuoteDiscountTotalsTest extends TestCase
 
         // Decimal-string equality — the converted document must carry exactly
         // the money the quote it came from carried.
-        $this->assertSame((string) $quote->subtotal, (string) $order->subtotal, 'Quote→order conversion changed the subtotal');
-        $this->assertSame((string) $quote->tax_amount, (string) $order->tax_amount, 'Quote→order conversion changed the tax_amount');
-        $this->assertSame((string) $quote->total, (string) $order->total, 'Quote→order conversion changed the total');
+        $this->assertSame($quote->subtotal ?? '0', $order->subtotal ?? '0', 'Quote→order conversion changed the subtotal');
+        $this->assertSame($quote->tax_amount ?? '0', $order->tax_amount ?? '0', 'Quote→order conversion changed the tax_amount');
+        $this->assertSame($quote->total ?? '0', $order->total ?? '0', 'Quote→order conversion changed the total');
 
         // …and it must be the CANONICAL money, not merely a consistent copy of
         // a wrong number.
         $canonical = $this->canonicalHeader();
-        $this->assertMoneyEquals($canonical['subtotal'], (string) $order->subtotal, 'Converted order subtotal ignores the quote line discounts');
-        $this->assertMoneyEquals($canonical['total'], (string) $order->total, 'Converted order total ignores the quote line discounts');
+        $this->assertMoneyEquals($canonical['subtotal'], $order->subtotal ?? '0', 'Converted order subtotal ignores the quote line discounts');
+        $this->assertMoneyEquals($canonical['total'], $order->total ?? '0', 'Converted order total ignores the quote line discounts');
     }
 
     public function test_quote_conversion_chain_reaches_an_invoice_with_unchanged_totals(): void
@@ -385,9 +389,9 @@ class QuoteDiscountTotalsTest extends TestCase
         $quote = Document::findOrFail($quoteId);
 
         // 2 × 100.000 − 10% = 180.000 net, 20% VAT = 36.000, total 216.000.
-        $this->assertMoneyEquals('180', (string) $quote->subtotal, 'Confirmed quote subtotal ignores the line discount');
-        $this->assertMoneyEquals('36', (string) $quote->tax_amount, 'Confirmed quote tax is computed on a discount-blind base');
-        $this->assertMoneyEquals('216', (string) $quote->total, 'Confirmed quote total ignores the line discount');
+        $this->assertMoneyEquals('180', $quote->subtotal ?? '0', 'Confirmed quote subtotal ignores the line discount');
+        $this->assertMoneyEquals('36', $quote->tax_amount ?? '0', 'Confirmed quote tax is computed on a discount-blind base');
+        $this->assertMoneyEquals('216', $quote->total ?? '0', 'Confirmed quote total ignores the line discount');
 
         $order = $this->actingAs($this->user)->postJson("/api/v1/quotes/{$quoteId}/convert-to-order");
         $order->assertStatus(201);
@@ -396,7 +400,7 @@ class QuoteDiscountTotalsTest extends TestCase
         $orderModel = Document::findOrFail($order->json('data.id'));
         $orderModel->update(['status' => DocumentStatus::Confirmed]);
 
-        $this->assertSame((string) $quote->subtotal, (string) $orderModel->subtotal, 'Quote→order changed the subtotal');
-        $this->assertSame((string) $quote->total, (string) $orderModel->total, 'Quote→order changed the total');
+        $this->assertSame($quote->subtotal ?? '0', $orderModel->subtotal ?? '0', 'Quote→order changed the subtotal');
+        $this->assertSame($quote->total ?? '0', $orderModel->total ?? '0', 'Quote→order changed the total');
     }
 }
