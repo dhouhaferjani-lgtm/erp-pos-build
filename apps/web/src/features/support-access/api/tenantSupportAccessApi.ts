@@ -1,8 +1,8 @@
 import { apiGet, apiPost } from '@/lib/api'
 import type { CreateSupportWindowInput, SupportAccessGrant, SupportAccessOverview } from '../types'
 
-export function getTenantSupportAccess(): Promise<SupportAccessOverview> {
-  return apiGet('/support-access')
+export function getTenantSupportAccess(page = 1, perPage = 25): Promise<SupportAccessOverview> {
+  return apiGet(`/support-access?page=${page}&per_page=${perPage}`)
 }
 
 export function createSupportWindow(input: CreateSupportWindowInput): Promise<SupportAccessGrant> {

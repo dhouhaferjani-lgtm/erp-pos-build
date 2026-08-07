@@ -6,10 +6,13 @@ namespace App\Modules\SupportAccess\Presentation\Middleware;
 
 use App\Modules\Identity\Domain\User;
 use App\Modules\SupportAccess\Application\Services\RequestImpersonationContext;
+use App\Modules\SupportAccess\Application\Services\SessionAuditService;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\SessionAccessLevel;
+use App\Modules\SupportAccess\Domain\Enums\SessionEndReason;
+use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\SupportAccess\Domain\Services\EffectivePermissionService;
 use App\Shared\DTOs\SupportAccess\ImpersonationContextData;
 use Carbon\CarbonImmutable;
@@ -29,6 +32,7 @@ final class ImpersonationContext
         private readonly RequestImpersonationContext $context,
         private readonly EffectivePermissionService $permissions,
         private readonly PermissionRegistrar $permissionRegistrar,
+        private readonly SessionAuditService $audit,
     ) {}
 
     /** @param Closure(Request): Response $next */
@@ -67,6 +71,11 @@ final class ImpersonationContext
         }
 
         if ($context === null) {
+            $auditFailure = $this->auditEndedAttempt($request, $user, $token, $claims);
+            if ($auditFailure !== null) {
+                return $auditFailure;
+            }
+
             return $this->ended();
         }
 
@@ -77,6 +86,58 @@ final class ImpersonationContext
         } finally {
             $this->context->clear();
         }
+    }
+
+    /** @param array{shaped: bool, valid: bool, tenant_id: string, operator_id: string, session_id: string} $claims */
+    private function auditEndedAttempt(
+        Request $request,
+        User $user,
+        PersonalAccessToken $token,
+        array $claims,
+    ): ?JsonResponse {
+        try {
+            $session = ImpersonationSession::query()->find($claims['session_id']);
+            if ($session === null
+                || $session->operator_id !== $claims['operator_id']
+                || $session->subject_user_id !== $user->id
+                || $session->tenant_id !== $claims['tenant_id']
+                || $user->tenant_id !== $claims['tenant_id']
+                || (int) $session->personal_access_token_id !== (int) $token->getKey()) {
+                return null;
+            }
+
+            $grant = ImpersonationGrant::query()->find($session->grant_id);
+            if ($grant === null || $grant->tenant_id !== $session->tenant_id) {
+                return null;
+            }
+
+            if ($session->ended_at === null) {
+                $now = CarbonImmutable::now();
+                $reason = ($grant->status === GrantStatus::Revoked || $grant->revoked_at !== null)
+                    ? SessionEndReason::GrantRevoked
+                    : SessionEndReason::Expired;
+                $this->audit->recordLifecycleEvent(
+                    $session,
+                    SessionEventType::SessionEnded,
+                    $now,
+                    ImpersonationSession::class,
+                    $session->id,
+                    $grant->ticket_ref,
+                );
+                $session->update(['ended_at' => $now, 'end_reason' => $reason]);
+            }
+
+            $this->audit->recordEndedRequest($session->refresh(), $grant->ticket_ref, $request);
+        } catch (Throwable) {
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPERSONATION_AUDIT_UNAVAILABLE',
+                    'message' => 'Support access is unavailable because its audit trail could not be recorded.',
+                ],
+            ], 503);
+        }
+
+        return null;
     }
 
     /**

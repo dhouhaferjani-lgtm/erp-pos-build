@@ -1,3 +1,5 @@
+import type { OffsetPaginationMeta } from '@/types/pagination'
+
 export type GrantStatus =
   | 'pending_tenant_approval'
   | 'pending_internal_approval'
@@ -37,11 +39,15 @@ export interface SupportAccessLogEntry {
   id: string
   session_id: string
   subject_user_id: string
+  operator_name: string
   event_type: string
   outcome: string
   action: string | null
   http_method: string | null
   ticket_ref: string | null
+  reason: string
+  access_level: 'read_only' | 'write_elevated'
+  duration_seconds: number
   occurred_at: string
 }
 
@@ -50,6 +56,7 @@ export interface SupportAccessOverview {
   active_sessions: SupportAccessSession[]
   log: SupportAccessLogEntry[]
   pending_elevations: SupportAccessElevation[]
+  log_meta: OffsetPaginationMeta | null
 }
 
 export interface SupportAccessElevation {

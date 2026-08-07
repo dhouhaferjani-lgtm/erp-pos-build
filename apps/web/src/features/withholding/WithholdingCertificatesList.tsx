@@ -100,22 +100,31 @@ export function WithholdingCertificatesList() {
     }
   }
 
-  const handleDownloadPDF = (id: string) => {
-    const url = downloadCertificatePDF(id)
-    window.open(url, '_blank')
-    toast.success(t('messages.downloadStarted'))
+  const handleDownloadPDF = async (id: string) => {
+    try {
+      await downloadCertificatePDF(id)
+      toast.success(t('messages.downloadStarted'))
+    } catch {
+      toast.error(t('common:errors.generic'))
+    }
   }
 
-  const handleDownloadTEJXML = (id: string) => {
-    const url = downloadCertificateTEJXML(id)
-    window.open(url, '_blank')
-    toast.success(t('messages.downloadStarted'))
+  const handleDownloadTEJXML = async (id: string) => {
+    try {
+      await downloadCertificateTEJXML(id)
+      toast.success(t('messages.downloadStarted'))
+    } catch {
+      toast.error(t('common:errors.generic'))
+    }
   }
 
-  const handleDownloadBatchXML = () => {
-    const url = downloadBatchTEJXML(filters.year, filters.direction)
-    window.open(url, '_blank')
-    toast.success(t('messages.downloadStarted'))
+  const handleDownloadBatchXML = async () => {
+    try {
+      await downloadBatchTEJXML(filters.year, filters.direction)
+      toast.success(t('messages.downloadStarted'))
+    } catch {
+      toast.error(t('common:errors.generic'))
+    }
   }
 
   const columns: DataTableColumn<WithholdingCertificate>[] = [
@@ -211,7 +220,7 @@ export function WithholdingCertificatesList() {
               variant="ghost"
               size="sm"
               className="p-1"
-              onClick={() => { handleDownloadPDF(cert.id) }}
+              onClick={() => { void handleDownloadPDF(cert.id) }}
               title={t('certificates.actions.downloadPDF')}
             >
               <FileText className="h-4 w-4" />
@@ -223,7 +232,7 @@ export function WithholdingCertificatesList() {
               variant="ghost"
               size="sm"
               className="p-1"
-              onClick={() => { handleDownloadTEJXML(cert.id) }}
+              onClick={() => { void handleDownloadTEJXML(cert.id) }}
               title={t('certificates.actions.downloadTEJ')}
             >
               <Download className="h-4 w-4" />

@@ -53,14 +53,14 @@ export function ImpersonationBanner() {
   }
 
   return (
-    <div role="status" className={`border-b px-4 py-3 ${endingSoon ? tokens.intent.danger.bgStrong : tokens.intent.warning.bgStrong} ${endingSoon ? tokens.intent.danger.borderStrong : tokens.intent.warning.borderFocus}`}>
+    <div role="region" aria-label={t('banner.active', { subject: context.subject_name })} className={`border-b px-4 py-3 ${endingSoon ? tokens.intent.danger.bgStrong : tokens.intent.warning.bgStrong} ${endingSoon ? tokens.intent.danger.borderStrong : tokens.intent.warning.borderFocus}`}>
       <div className={`mx-auto flex max-w-[1600px] flex-wrap items-center gap-x-5 gap-y-2 ${tokens.text.inverse}`}>
         <ShieldAlert className="h-5 w-5 shrink-0" />
         <p className="font-semibold">{t('banner.active', { subject: context.subject_name })}</p>
         <p className={`text-sm ${tokens.text.inverseAlpha90}`}>{context.reason} · {context.ticket_ref}</p>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${tokens.surface.inverseAlpha15}`}>{t(`access.${context.access_level}`)}</span>
-        <span className="ms-auto inline-flex items-center gap-2 font-mono text-sm font-semibold"><Clock3 className="h-4 w-4" />{minutes}:{seconds}</span>
-        {endingSoon && <span className="text-sm font-bold">{t('banner.endingSoon')}</span>}
+        <span role="timer" aria-live="off" className="ms-auto inline-flex items-center gap-2 font-mono text-sm font-semibold"><Clock3 className="h-4 w-4" />{minutes}:{seconds}</span>
+        {endingSoon && <span aria-live="polite" className="text-sm font-bold">{t('banner.endingSoon')}</span>}
         <Button type="button" variant="ghost" size="sm" disabled={exiting} onClick={() => { void exit() }} className={`gap-2 border ${tokens.border.inverseAlpha40} ${tokens.surface.inverseAlpha10} ${tokens.text.inverse} ${tokens.surface.hoverInverseAlpha20}`}><LogOut className="h-4 w-4" />{t('banner.exit')}</Button>
       </div>
     </div>

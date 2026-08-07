@@ -10,6 +10,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\SupportAccess\Infrastructure\Audit\TenantImpersonationAuditStore;
 use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
 use App\Shared\Contracts\SupportAccess\TenantImpersonationAuditWriter;
+use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -25,6 +26,11 @@ final class AuditService implements TenantImpersonationAuditWriter
     public function writeImpersonationMirror(ImpersonationAuditMirrorData $event): void
     {
         $this->impersonationAuditStore->write($event);
+    }
+
+    public function writeGrantMirror(GrantAuditMirrorData $event): void
+    {
+        $this->impersonationAuditStore->writeGrant($event);
     }
 
     /**

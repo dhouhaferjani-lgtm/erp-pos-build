@@ -26,7 +26,7 @@ function localDate(minutesFromNow: number): string {
 export function SupportWindowForm({ busy, onSubmit }: Props) {
   const { t } = useTranslation('support-access')
   const schema = z.object({
-    subject_user_id: z.string(),
+    subject_user_id: z.union([z.literal(''), z.uuid(t('validation.uuid'))]),
     reason: z.string().trim().min(1, t('validation.required')),
     ticket_ref: z.string().trim().min(1, t('validation.required')),
     starts_at: z.string().min(1, t('validation.required')),
@@ -34,6 +34,9 @@ export function SupportWindowForm({ busy, onSubmit }: Props) {
   }).refine(
     (values) => Date.parse(values.expires_at) > Date.parse(values.starts_at),
     { path: ['expires_at'], message: t('validation.expiryAfterStart') },
+  ).refine(
+    (values) => Date.parse(values.expires_at) <= Date.parse(values.starts_at) + (7 * 24 * 60 * 60 * 1000),
+    { path: ['expires_at'], message: t('validation.maxWindow') },
   )
   const form = useForm<SupportWindowFormValues>({
     resolver: zodResolver(schema),
@@ -61,7 +64,7 @@ export function SupportWindowForm({ busy, onSubmit }: Props) {
       <h2 className={`text-lg font-semibold ${tokens.text.primary}`}>{t('window.title')}</h2>
       <p className={`mt-1 text-sm ${tokens.text.muted}`}>{t('window.description')}</p>
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <FormField label={t('fields.subjectOptional')} htmlFor="support-window-subject">
+        <FormField label={t('fields.subjectOptional')} htmlFor="support-window-subject" error={form.formState.errors.subject_user_id?.message}>
           <Input id="support-window-subject" {...form.register('subject_user_id')} className="w-full" />
         </FormField>
         <FormField label={t('fields.ticket')} htmlFor="support-window-ticket" required error={form.formState.errors.ticket_ref?.message}>

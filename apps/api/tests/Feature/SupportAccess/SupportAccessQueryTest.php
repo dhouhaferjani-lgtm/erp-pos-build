@@ -82,6 +82,10 @@ final class SupportAccessQueryTest extends TestCase
             ->assertJsonPath('data.active_sessions.0.id', $session->id)
             ->assertJsonPath('data.log.0.session_id', $session->id)
             ->assertJsonPath('data.log.0.ticket_ref', 'SUP-8001')
+            ->assertJsonPath('data.log.0.operator_name', 'Support Operator')
+            ->assertJsonPath('data.log.0.reason', 'Investigate tenant issue')
+            ->assertJsonPath('data.log.0.access_level', 'read_only')
+            ->assertJsonPath('data.log_meta.total', 1)
             ->assertJsonMissing(['ticket_ref' => 'SUP-PRIVATE']);
 
         $encoded = $response->getContent();
@@ -105,8 +109,9 @@ final class SupportAccessQueryTest extends TestCase
         ]);
         $otherTenant = Tenant::factory()->create();
         $otherSubject = User::factory()->create(['tenant_id' => $otherTenant->id]);
-        $second = $this->grant($otherTenant, $otherSubject, 'SUP-8102');
         $otherOperator = $this->superAdmin('other-operator@example.test');
+        $second = $this->grant($otherTenant, $otherSubject, 'SUP-8102');
+        $second->update(['operator_id' => $otherOperator->id]);
         ImpersonationSession::query()->create([
             'grant_id' => $second->id,
             'operator_id' => $otherOperator->id,
@@ -123,7 +128,7 @@ final class SupportAccessQueryTest extends TestCase
             ->assertJsonCount(1, 'data.grants')
             ->assertJsonPath('meta.current_page', 1)
             ->assertJsonPath('meta.per_page', 1)
-            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('meta.from', 1)
             ->assertJsonPath('meta.to', 1);
 
@@ -131,7 +136,7 @@ final class SupportAccessQueryTest extends TestCase
             ->getJson('/api/v1/admin/impersonation?per_page=20');
         $all->assertOk();
         self::assertEqualsCanonicalizing(
-            [$first->id, $second->id],
+            [$first->id],
             collect($all->json('data.grants'))->pluck('id')->all(),
         );
         $all->assertJsonPath('data.pending_elevations.0.id', $elevation->id)
@@ -240,7 +245,7 @@ final class SupportAccessQueryTest extends TestCase
     {
         return SuperAdmin::query()->create([
             'id' => Str::uuid()->toString(),
-            'name' => $email,
+            'name' => 'Support Operator',
             'email' => $email,
             'password' => Hash::make('password'),
             'role' => 'super_admin',

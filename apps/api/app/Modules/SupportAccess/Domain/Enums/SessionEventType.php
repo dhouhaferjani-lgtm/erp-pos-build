@@ -10,11 +10,13 @@ enum SessionEventType: string
     case GrantApproved = 'grant_approved';
     case GrantRejected = 'grant_rejected';
     case GrantRevoked = 'grant_revoked';
+    case GrantExpired = 'grant_expired';
     case SessionStarted = 'session_started';
     case SessionEnded = 'session_ended';
     case RequestReceived = 'request_received';
     case RequestAuthorized = 'request_authorized';
     case RequestDenied = 'request_denied';
+    case RequestFailed = 'request_failed';
     case WriteElevationRequested = 'write_elevation_requested';
     case WriteElevationApproved = 'write_elevation_approved';
     case WriteElevationRejected = 'write_elevation_rejected';

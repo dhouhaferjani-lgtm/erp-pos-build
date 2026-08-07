@@ -15,5 +15,8 @@ final class ImpersonationAuditDetailsData extends Data
         public ?string $error_code,
         public ?string $resource_type,
         public ?string $resource_id,
+        public ?string $grant_chain_head = null,
+        public ?string $request_ip = null,
+        public ?string $user_agent = null,
     ) {}
 }

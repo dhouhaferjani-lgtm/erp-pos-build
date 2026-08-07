@@ -115,16 +115,22 @@ export function WithholdingCertificateDetail() {
     }
   }
 
-  const handleDownloadPDF = () => {
-    const url = downloadCertificatePDF(id!)
-    window.open(url, '_blank')
-    toast.success(t('messages.downloadStarted'))
+  const handleDownloadPDF = async () => {
+    try {
+      await downloadCertificatePDF(id!)
+      toast.success(t('messages.downloadStarted'))
+    } catch {
+      toast.error(t('common:errors.generic'))
+    }
   }
 
-  const handleDownloadTEJXML = () => {
-    const url = downloadCertificateTEJXML(id!)
-    window.open(url, '_blank')
-    toast.success(t('messages.downloadStarted'))
+  const handleDownloadTEJXML = async () => {
+    try {
+      await downloadCertificateTEJXML(id!)
+      toast.success(t('messages.downloadStarted'))
+    } catch {
+      toast.error(t('common:errors.generic'))
+    }
   }
 
   const renderCertificateBadge = (status: CertificateStatus) => (

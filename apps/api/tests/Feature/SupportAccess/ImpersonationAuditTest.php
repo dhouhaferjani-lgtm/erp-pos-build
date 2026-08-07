@@ -15,6 +15,7 @@ use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\SupportAccess\Application\Services\ElevationService;
 use App\Modules\SupportAccess\Application\Services\RequestImpersonationContext;
 use App\Modules\SupportAccess\Application\Services\SessionLifecycleService;
+use App\Modules\SupportAccess\Domain\Entities\ImpersonationAuditDelivery;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
@@ -27,9 +28,11 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Services\AdminAuditService;
 use App\Shared\Contracts\SupportAccess\AdminImpersonationAuditWriter;
 use App\Shared\Contracts\SupportAccess\TenantImpersonationAuditWriter;
+use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationContextData;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -99,6 +102,69 @@ final class ImpersonationAuditTest extends TestCase
         ])->get('/_test/impersonation-audit/denied-response', static fn () => response()->json([
             'error' => ['code' => 'PROBE_DENIED', 'message' => 'Probe denied.'],
         ], 422))->name('test.impersonation-audit.denied-response');
+        Route::middleware([
+            'api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class,
+        ])->get('/_test/impersonation-audit/failure-response', static fn () => response()->json([
+            'error' => ['code' => 'PROBE_FAILED', 'message' => 'Probe failed.'],
+        ], 500))->name('test.impersonation-audit.failure-response');
+        Route::middleware([
+            'api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class,
+        ])->get('/_test/impersonation-audit/throws', static function (): never {
+            throw new RuntimeException('downstream exploded');
+        })->name('test.impersonation-audit.throws');
+        Route::middleware([
+            'api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class,
+        ])->get('/_test/impersonation-audit/throws-denied', static function (): never {
+            throw new AuthorizationException('downstream denied');
+        })->name('test.impersonation-audit.throws-denied');
+    }
+
+    public function test_thrown_authorization_exception_appends_a_denied_terminal_event(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->bearer($plainToken)->getJson('/_test/impersonation-audit/throws-denied');
+            self::fail('The authorization exception must be rethrown after auditing.');
+        } catch (AuthorizationException $exception) {
+            self::assertSame('downstream denied', $exception->getMessage());
+        }
+
+        $denied = ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestDenied)
+            ->latest('sequence')
+            ->firstOrFail();
+        self::assertSame(AuditOutcome::Denied, $denied->outcome);
+        self::assertSame(403, $denied->details->response_status);
+    }
+
+    public function test_returned_500_and_thrown_exception_append_failed_terminal_events(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+
+        $this->bearer($plainToken)
+            ->getJson('/_test/impersonation-audit/failure-response')
+            ->assertStatus(500);
+
+        Auth::forgetGuards();
+        $this->withoutExceptionHandling();
+        try {
+            $this->bearer($plainToken)->getJson('/_test/impersonation-audit/throws');
+            self::fail('The downstream exception must be rethrown after auditing.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('downstream exploded', $exception->getMessage());
+        }
+
+        $failed = ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestFailed)
+            ->orderBy('sequence')
+            ->get();
+        self::assertCount(2, $failed);
+        self::assertSame([500, 500], $failed->pluck('details.response_status')->all());
+        self::assertSame([AuditOutcome::Failed, AuditOutcome::Failed], $failed->pluck('outcome')->all());
     }
 
     public function test_request_received_and_terminating_outcome_use_a_validated_uuid_and_real_status(): void
@@ -162,14 +228,14 @@ final class ImpersonationAuditTest extends TestCase
             ->where('session_id', $session->id)
             ->orderBy('sequence')
             ->get();
-        self::assertCount(9, $events);
-        self::assertSame(range(1, 9), $events->pluck('sequence')->all());
+        self::assertCount(7, $events);
+        self::assertSame(range(1, 7), $events->pluck('sequence')->all());
         self::assertSame(str_repeat('0', 64), $events[0]->previous_hash);
         foreach ($events->slice(1)->values() as $index => $event) {
             self::assertSame($events[$index]->hash, $event->previous_hash);
         }
-        self::assertSame(9, $session->fresh()?->chain_sequence);
-        self::assertSame($events[8]->hash, $session->fresh()?->chain_head_hash);
+        self::assertSame(7, $session->fresh()?->chain_sequence);
+        self::assertSame($events[6]->hash, $session->fresh()?->chain_head_hash);
 
         $tenantMirrors = $this->tenantAuditStore->forEvents(
             $this->tenant->id,
@@ -215,6 +281,8 @@ final class ImpersonationAuditTest extends TestCase
             {
                 throw new RuntimeException('tenant audit unavailable');
             }
+
+            public function writeGrantMirror(GrantAuditMirrorData $event): void {}
         });
 
         $this->bearer($plainToken)->getJson('/_test/impersonation-audit/read')
@@ -240,6 +308,8 @@ final class ImpersonationAuditTest extends TestCase
             {
                 throw new RuntimeException('admin audit unavailable');
             }
+
+            public function writeGrantMirror(GrantAuditMirrorData $event): void {}
         });
 
         $this->bearer($plainToken)->getJson('/_test/impersonation-audit/read')
@@ -252,6 +322,53 @@ final class ImpersonationAuditTest extends TestCase
         self::assertSame($beforeTenant, $this->tenantMirrorCount($session->id));
     }
 
+    public function test_terminal_mirror_failure_leaves_a_durable_reconcilable_delivery(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+        $realWriter = $this->app->make(TenantImpersonationAuditWriter::class);
+        $this->app->instance(TenantImpersonationAuditWriter::class, new class($realWriter) implements TenantImpersonationAuditWriter
+        {
+            private int $attempts = 0;
+
+            public function __construct(private readonly TenantImpersonationAuditWriter $delegate) {}
+
+            public function writeImpersonationMirror(ImpersonationAuditMirrorData $event): void
+            {
+                $this->attempts++;
+                if ($this->attempts === 2) {
+                    throw new RuntimeException('terminal tenant mirror unavailable');
+                }
+                $this->delegate->writeImpersonationMirror($event);
+            }
+
+            public function writeGrantMirror(GrantAuditMirrorData $event): void
+            {
+                $this->delegate->writeGrantMirror($event);
+            }
+        });
+
+        $this->bearer($plainToken)->getJson('/_test/impersonation-audit/read')
+            ->assertStatus(503)
+            ->assertJsonPath('error.code', 'IMPERSONATION_AUDIT_UNAVAILABLE');
+        self::assertSame(1, self::$probeHits, 'The test must fail only after downstream dispatch.');
+
+        $delivery = ImpersonationAuditDelivery::query()
+            ->where('aggregate_type', 'session')
+            ->whereNull('tenant_delivered_at')
+            ->latest('created_at')
+            ->firstOrFail();
+        self::assertNotNull($delivery->admin_delivered_at);
+        self::assertSame(1, $delivery->attempt_count);
+
+        $this->app->instance(TenantImpersonationAuditWriter::class, $realWriter);
+        $this->artisan('support-access:audit-reconcile')->assertExitCode(0);
+        self::assertNotNull($delivery->fresh()?->tenant_delivered_at);
+        self::assertSame(
+            ImpersonationSessionEvent::query()->where('session_id', $session->id)->count(),
+            $this->tenantMirrorCount($session->id),
+        );
+    }
+
     public function test_verify_command_detects_a_missing_mirror(): void
     {
         [, $session, $plainToken] = $this->startedSession();
@@ -262,6 +379,23 @@ final class ImpersonationAuditTest extends TestCase
 
         AdminAuditLog::query()->where('impersonation_session_id', $session->id)->update([
             'impersonation_hash' => str_repeat('f', 64),
+        ]);
+
+        $this->artisan('support-access:audit-verify', ['--session' => $session->id])
+            ->assertExitCode(1);
+    }
+
+    public function test_verify_command_detects_semantic_mirror_tampering(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+        $this->bearer($plainToken)->getJson('/_test/impersonation-audit/read')->assertOk();
+
+        $event = ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestAuthorized)
+            ->firstOrFail();
+        AdminAuditLog::query()->where('impersonation_event_id', $event->id)->update([
+            'new_values' => ['outcome' => 'allowed', 'method' => 'DELETE', 'path' => '/tampered', 'details' => []],
         ]);
 
         $this->artisan('support-access:audit-verify', ['--session' => $session->id])
@@ -357,8 +491,6 @@ final class ImpersonationAuditTest extends TestCase
             ->orderBy('sequence')
             ->get();
         self::assertEqualsCanonicalizing([
-            SessionEventType::GrantRequested,
-            SessionEventType::GrantApproved,
             SessionEventType::SessionStarted,
             SessionEventType::WriteElevationRequested,
             SessionEventType::WriteElevationRejected,

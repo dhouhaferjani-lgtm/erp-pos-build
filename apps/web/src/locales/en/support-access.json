@@ -11,7 +11,7 @@
     "startsAt": "Window starts",
     "expiresAt": "Window expires"
   },
-  "validation": { "required": "This field is required.", "expiryAfterStart": "Expiry must be after the start." },
+  "validation": { "required": "This field is required.", "expiryAfterStart": "Expiry must be after the start.", "uuid": "Enter a valid user ID.", "maxWindow": "A support window cannot exceed seven days." },
   "window": {
     "title": "Pre-grant a support window",
     "description": "Create a time-boxed window for a documented support purpose. Starting a session still creates a complete audit trail."
@@ -24,7 +24,10 @@
   "history": {
     "title": "Support activity",
     "description": "A sanitized tenant-visible record of support access.",
-    "empty": "No support activity has been recorded."
+    "empty": "No support activity has been recorded.",
+    "operator": "Accessed by {{name}}",
+    "duration_one": "{{count}} minute",
+    "duration_other": "{{count}} minutes"
   },
   "active": {
     "title": "Support is currently active",

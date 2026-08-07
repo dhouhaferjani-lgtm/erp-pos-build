@@ -10,8 +10,10 @@ use App\Modules\SupportAccess\Application\DTOs\GrantData;
 use App\Modules\SupportAccess\Application\DTOs\GrantRequestData;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
+use App\Modules\SupportAccess\Domain\Enums\AuditOutcome;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\GrantType;
+use App\Modules\SupportAccess\Domain\Enums\SessionEndReason;
 use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\SupportAccess\Domain\Repositories\ImpersonationGrantRepository;
 use App\Modules\SupportAccess\Domain\Services\ConfiguredApproverSet;
@@ -36,6 +38,7 @@ final class GrantLifecycleService
         private readonly SupportAccessNotifier $notifier,
         private readonly ImpersonationContextProvider $impersonationContext,
         private readonly SessionAuditService $sessionAudit,
+        private readonly GrantAuditService $grantAudit,
     ) {}
 
     public function requestIncident(SuperAdmin $operator, GrantRequestData $data): GrantData
@@ -68,6 +71,16 @@ final class GrantLifecycleService
             'starts_at' => $data->starts_at,
             'expires_at' => $data->expires_at,
         ]);
+        $this->grantAudit->record(
+            $grant,
+            SessionEventType::GrantRequested,
+            AuditOutcome::Observed,
+            $operator->id,
+            'super_admin',
+            $grant->reason,
+            'tenant_consent',
+            CarbonImmutable::instance($grant->requested_at),
+        );
         $this->notifier->grantRequested($grant->id, $grant->tenant_id, $grant->ticket_ref);
 
         return GrantData::fromModel($grant);
@@ -90,7 +103,7 @@ final class GrantLifecycleService
         $requiresSecondApproval = $this->requiresSensitiveTenantApproval($tenant);
         $now = CarbonImmutable::now();
 
-        return GrantData::fromModel($this->grants->create([
+        $grant = $this->grants->create([
             'tenant_id' => $tenantAdmin->tenant_id,
             'subject_user_id' => $data->subject_user_id,
             'operator_id' => null,
@@ -105,15 +118,41 @@ final class GrantLifecycleService
             'expires_at' => $data->expires_at,
             'tenant_approved_by' => $tenantAdmin->id,
             'tenant_approved_at' => $now,
-        ]));
+        ]);
+        $this->grantAudit->record(
+            $grant,
+            SessionEventType::GrantRequested,
+            AuditOutcome::Observed,
+            $tenantAdmin->id,
+            'tenant_user',
+            $grant->reason,
+            'pre_granted_window',
+            $now,
+        );
+        $this->grantAudit->record(
+            $grant,
+            SessionEventType::GrantApproved,
+            AuditOutcome::Allowed,
+            $tenantAdmin->id,
+            'tenant_user',
+            null,
+            'tenant_consent',
+            $now,
+        );
+
+        return GrantData::fromModel($grant->refresh());
     }
 
     public function approveByTenant(User $tenantAdmin, string $grantId): GrantData
     {
-        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin): void {
+        $expired = false;
+        $approvedAt = null;
+        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin, &$expired, &$approvedAt): void {
             $this->authorizeTenantManager($tenantAdmin, $grant);
 
             if ($this->expireIfElapsed($grant)) {
+                $expired = true;
+
                 return;
             }
 
@@ -124,10 +163,26 @@ final class GrantLifecycleService
             $tenant = Tenant::query()->findOrFail($grant->tenant_id);
             $grant->tenant_approved_by = $tenantAdmin->id;
             $grant->tenant_approved_at = CarbonImmutable::now();
+            $approvedAt = $grant->tenant_approved_at;
             $grant->status = $this->requiresSensitiveTenantApproval($tenant)
                 ? GrantStatus::PendingInternalApproval
                 : GrantStatus::Active;
         });
+
+        if ($expired) {
+            $this->recordExpiry($grant, $tenantAdmin->id, 'tenant_user');
+        } elseif ($approvedAt instanceof CarbonImmutable) {
+            $this->grantAudit->record(
+                $grant,
+                SessionEventType::GrantApproved,
+                AuditOutcome::Allowed,
+                $tenantAdmin->id,
+                'tenant_user',
+                null,
+                'tenant_consent',
+                $approvedAt,
+            );
+        }
 
         $this->throwIfExpired($grant);
 
@@ -140,9 +195,13 @@ final class GrantLifecycleService
             throw new InvalidArgumentException('A rejection reason is required.');
         }
 
-        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin, $reason): void {
+        $expired = false;
+        $rejectedAt = null;
+        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($tenantAdmin, $reason, &$expired, &$rejectedAt): void {
             $this->authorizeTenantManager($tenantAdmin, $grant);
             if ($this->expireIfElapsed($grant)) {
+                $expired = true;
+
                 return;
             }
             if ($grant->status !== GrantStatus::PendingTenantApproval) {
@@ -152,8 +211,24 @@ final class GrantLifecycleService
             $grant->status = GrantStatus::Rejected;
             $grant->rejected_by = $tenantAdmin->id;
             $grant->rejected_at = CarbonImmutable::now();
+            $rejectedAt = $grant->rejected_at;
             $grant->rejection_reason = trim($reason);
         });
+
+        if ($expired) {
+            $this->recordExpiry($grant, $tenantAdmin->id, 'tenant_user');
+        } elseif ($rejectedAt instanceof CarbonImmutable) {
+            $this->grantAudit->record(
+                $grant,
+                SessionEventType::GrantRejected,
+                AuditOutcome::Denied,
+                $tenantAdmin->id,
+                'tenant_user',
+                trim($reason),
+                'tenant_consent',
+                $rejectedAt,
+            );
+        }
 
         $this->throwIfExpired($grant);
 
@@ -162,11 +237,15 @@ final class GrantLifecycleService
 
     public function approveSecond(SuperAdmin $approver, string $grantId): GrantData
     {
-        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($approver): void {
+        $expired = false;
+        $approvedAt = null;
+        $grant = $this->grants->mutateLocked($grantId, function (ImpersonationGrant $grant) use ($approver, &$expired, &$approvedAt): void {
             if ($grant->operator_id === $approver->id || ! $this->approvers->allows($approver)) {
                 throw new AuthorizationException('A distinct configured approver is required.');
             }
             if ($this->expireIfElapsed($grant)) {
+                $expired = true;
+
                 return;
             }
             if ($grant->status !== GrantStatus::PendingInternalApproval) {
@@ -176,7 +255,23 @@ final class GrantLifecycleService
             $grant->status = GrantStatus::Active;
             $grant->second_approved_by = $approver->id;
             $grant->second_approved_at = CarbonImmutable::now();
+            $approvedAt = $grant->second_approved_at;
         });
+
+        if ($expired) {
+            $this->recordExpiry($grant, $approver->id, 'support_approver');
+        } elseif ($approvedAt instanceof CarbonImmutable) {
+            $this->grantAudit->record(
+                $grant,
+                SessionEventType::GrantApproved,
+                AuditOutcome::Allowed,
+                $approver->id,
+                'support_approver',
+                null,
+                'internal_four_eyes',
+                $approvedAt,
+            );
+        }
 
         $this->throwIfExpired($grant);
 
@@ -210,6 +305,17 @@ final class GrantLifecycleService
                 throw new DomainException('Revoked grant is missing its transition timestamp.');
             }
 
+            $this->grantAudit->record(
+                $grant,
+                SessionEventType::GrantRevoked,
+                AuditOutcome::Denied,
+                $actor->id,
+                $actor instanceof User ? 'tenant_user' : 'super_admin',
+                trim($reason),
+                'revocation',
+                CarbonImmutable::instance($revokedAt),
+            );
+
             ImpersonationSession::query()
                 ->where('grant_id', $grant->id)
                 ->whereNull('ended_at')
@@ -222,10 +328,35 @@ final class GrantLifecycleService
                         resourceId: $grant->id,
                         ticketRef: $grant->ticket_ref,
                     );
+                    $this->sessionAudit->recordLifecycleEvent(
+                        session: $session,
+                        eventType: SessionEventType::SessionEnded,
+                        occurredAt: CarbonImmutable::instance($revokedAt),
+                        resourceType: ImpersonationSession::class,
+                        resourceId: $session->id,
+                        ticketRef: $grant->ticket_ref,
+                    );
+                    $session->update([
+                        'ended_at' => $revokedAt,
+                        'end_reason' => SessionEndReason::GrantRevoked,
+                    ]);
                 });
         }
 
         return GrantData::fromModel($grant);
+    }
+
+    private function recordExpiry(ImpersonationGrant $grant, string $actorId, string $actorType): void
+    {
+        $this->grantAudit->record(
+            $grant,
+            SessionEventType::GrantExpired,
+            AuditOutcome::Denied,
+            $actorId,
+            $actorType,
+            'Grant window elapsed.',
+            'expiry',
+        );
     }
 
     private function validateRequest(GrantRequestData $data): void

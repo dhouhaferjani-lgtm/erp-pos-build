@@ -22,6 +22,7 @@ use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\GrantType;
+use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Artisan;
@@ -147,11 +148,17 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
         self::assertEqualsCanonicalizing(['products.view'], $started->permissions);
 
         $this->bearer($started->plain_text_token)
+            ->withHeader('X-Request-ID', 'not-a-postgres-uuid')
             ->getJson('/api/v1/auth/me')
             ->assertOk()
             ->assertJsonPath('data.id', $subject->id)
             ->assertJsonPath('data.impersonation.session_id', $session->id)
             ->assertJsonPath('data.impersonation.access_level', 'read_only');
+        $received = ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestReceived)
+            ->firstOrFail();
+        self::assertTrue(Str::isUuid($received->request_id));
 
         $elevations = $this->app->make(ElevationService::class);
         $elevation = $elevations->request($operator, $session->id, 'Update a non-fiscal product description');
@@ -169,9 +176,9 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
             ->where('session_id', $session->id)
             ->orderBy('sequence')
             ->get();
-        self::assertCount(9, $events);
-        self::assertSame(9, AdminAuditLog::query()->where('impersonation_session_id', $session->id)->count());
-        self::assertSame(9, $this->tenant->run(
+        self::assertCount(7, $events);
+        self::assertSame(7, AdminAuditLog::query()->where('impersonation_session_id', $session->id)->count());
+        self::assertSame(7, $this->tenant->run(
             fn (): int => AuditEvent::query()->where('impersonation_session_id', $session->id)->count(),
         ));
 
@@ -186,7 +193,28 @@ final class SupportAccessPostgresEndToEndTest extends TestCase
         self::assertSame(10, $this->tenant->run(
             fn (): int => AuditEvent::query()->where('impersonation_session_id', $session->id)->count(),
         ));
-        $this->artisan('support-access:audit-verify', ['--session' => $session->id])->assertExitCode(0);
+        foreach (ImpersonationSessionEvent::query()->where('session_id', $session->id)->orderBy('sequence')->get() as $event) {
+            $mirror = $this->tenant->run(fn (): AuditEvent => AuditEvent::query()
+                ->where('impersonation_event_id', $event->id)
+                ->firstOrFail());
+            self::assertSame('support_access.'.$event->event_type->value, $mirror->event_type, "event_type {$event->id}");
+            self::assertEquals($event->details->toArray(), $mirror->payload, "payload {$event->id}");
+            self::assertEquals([
+                'outcome' => $event->outcome->value,
+                'method' => $event->http_method,
+                'path' => $event->path,
+            ], $mirror->metadata, "metadata {$event->id}");
+        }
+        self::assertSame(
+            0,
+            Artisan::call('support-access:audit-verify', ['--session' => $session->id]),
+            Artisan::output(),
+        );
+        self::assertSame(
+            0,
+            Artisan::call('support-access:audit-verify', ['--grant' => $grant->id]),
+            Artisan::output(),
+        );
     }
 
     /** @return array{User, User, Company} */

@@ -12,6 +12,7 @@ use App\Modules\SupportAccess\Infrastructure\Identity\EloquentTenantSubjectDirec
 use App\Modules\SupportAccess\Infrastructure\Identity\TenantSubjectTokenAdapter;
 use App\Modules\SupportAccess\Infrastructure\Notifications\TenantDatabaseSupportAccessNotifier;
 use App\Modules\SupportAccess\Infrastructure\Repositories\EloquentImpersonationGrantRepository;
+use App\Modules\SupportAccess\Presentation\Console\ReconcileImpersonationAuditCommand;
 use App\Modules\SupportAccess\Presentation\Console\VerifyImpersonationAuditCommand;
 use App\Services\AdminAuditService;
 use App\Shared\Contracts\SupportAccess\AdminImpersonationAuditWriter;
@@ -42,7 +43,10 @@ final class SupportAccessServiceProvider extends ServiceProvider
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
 
         if ($this->app->runningInConsole()) {
-            $this->commands([VerifyImpersonationAuditCommand::class]);
+            $this->commands([
+                VerifyImpersonationAuditCommand::class,
+                ReconcileImpersonationAuditCommand::class,
+            ]);
         }
     }
 }

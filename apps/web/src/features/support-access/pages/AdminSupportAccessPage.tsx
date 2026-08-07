@@ -23,7 +23,7 @@ export function AdminSupportAccessPage() {
   const queryClient = useQueryClient()
   const [dialogOpen, setDialogOpen] = useState(false)
   const [page, setPage] = useState(1)
-  const [perPage, setPerPage] = useState(20)
+  const [perPage, setPerPage] = useState(25)
   const access = useAdminSupportAccess(page, perPage)
   const adminRole = useAdminAuthStore((state) => state.admin?.role)
   const canOperate = adminRole === 'super_admin'

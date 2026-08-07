@@ -56,6 +56,16 @@ final class SupportAccessConfigurationTest extends TestCase
         $this->app->make(SupportAccessConfigurationValidator::class)->validate();
     }
 
+    public function test_empty_hard_block_lists_fail_closed_during_validation(): void
+    {
+        config()->set('support_access.write_guard.hard_block_route_patterns', []);
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('hard_block_route_patterns');
+
+        $this->app->make(SupportAccessConfigurationValidator::class)->validate();
+    }
+
     public function test_approver_set_fails_closed_for_empty_malformed_inactive_and_unknown_accounts(): void
     {
         $active = $this->superAdmin('partner@example.test', true, 'support_approver');

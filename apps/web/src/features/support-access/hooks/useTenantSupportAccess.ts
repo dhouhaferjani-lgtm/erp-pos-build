@@ -15,15 +15,15 @@ export const tenantSupportAccessKeys = {
   overview: () => ['support-access', 'overview'] as const,
 }
 
-export function useTenantSupportAccess() {
+export function useTenantSupportAccess(page = 1, perPage = 25) {
   const { t } = useTranslation('support-access')
   const queryClient = useQueryClient()
   const query = useQuery({
-    queryKey: tenantScopedKey(tenantSupportAccessKeys.overview()),
-    queryFn: getTenantSupportAccess,
+    queryKey: tenantScopedKey([...tenantSupportAccessKeys.overview(), page, perPage]),
+    queryFn: () => getTenantSupportAccess(page, perPage),
   })
   const refresh = async () => queryClient.invalidateQueries({
-    queryKey: ['support-access', 'overview'],
+    queryKey: tenantScopedKey(tenantSupportAccessKeys.overview()),
   })
   const onError = () => { toast.error(t('errors.mutation')) }
   const createMutation = useMutation({ mutationFn: createSupportWindow, onSuccess: refresh, onError })

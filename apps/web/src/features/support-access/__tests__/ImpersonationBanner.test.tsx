@@ -41,9 +41,10 @@ describe('ImpersonationBanner', () => {
 
   it('is persistent, non-dismissible, and warns when five minutes remain', () => {
     renderBanner()
-    expect(screen.getByRole('status')).toHaveTextContent('Tenant Subject')
-    expect(screen.getByRole('status')).toHaveTextContent('SUP-9000')
-    expect(screen.getByRole('status')).toHaveTextContent(/read-only/i)
+    expect(screen.getByRole('region', { name: /Tenant Subject/i })).toHaveTextContent('Tenant Subject')
+    expect(screen.getByRole('region', { name: /Tenant Subject/i })).toHaveTextContent('SUP-9000')
+    expect(screen.getByRole('region', { name: /Tenant Subject/i })).toHaveTextContent(/read-only/i)
+    expect(screen.getByRole('timer')).toHaveAttribute('aria-live', 'off')
     expect(screen.queryByRole('button', { name: /dismiss|close/i })).not.toBeInTheDocument()
 
     act(() => { vi.advanceTimersByTime(2_000) })

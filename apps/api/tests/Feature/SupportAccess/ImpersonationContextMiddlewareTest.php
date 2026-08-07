@@ -19,6 +19,7 @@ use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\GrantType;
+use App\Modules\SupportAccess\Domain\Enums\SessionEndReason;
 use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\SupportAccess\Presentation\Middleware\ImpersonationContext;
 use App\Modules\Tenant\Domain\Tenant;
@@ -221,7 +222,39 @@ final class ImpersonationContextMiddlewareTest extends TestCase
         $this->bearer($plainToken)->getJson('/_test/impersonation-context')
             ->assertUnauthorized()
             ->assertJsonPath('error.code', 'IMPERSONATION_ENDED');
-        self::assertNotNull($session->fresh());
+        $freshSession = $session->fresh();
+        self::assertNotNull($freshSession?->ended_at);
+        self::assertSame(SessionEndReason::GrantRevoked, $freshSession?->end_reason);
+        self::assertSame(1, ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::SessionEnded)
+            ->count());
+        self::assertSame(1, ImpersonationSessionEvent::query()
+            ->where('session_id', $session->id)
+            ->where('event_type', SessionEventType::RequestDenied)
+            ->count());
+    }
+
+    public function test_expired_session_is_closed_and_the_denied_probe_is_chained(): void
+    {
+        [, $session, $plainToken] = $this->startedSession();
+        $session->update(['expires_at' => now()->subSecond()]);
+
+        $this->bearer($plainToken)->getJson('/_test/impersonation-context')
+            ->assertUnauthorized()
+            ->assertJsonPath('error.code', 'IMPERSONATION_ENDED');
+
+        $fresh = $session->fresh();
+        self::assertSame(SessionEndReason::Expired, $fresh?->end_reason);
+        self::assertSame(
+            [SessionEventType::SessionEnded, SessionEventType::RequestDenied],
+            ImpersonationSessionEvent::query()
+                ->where('session_id', $session->id)
+                ->whereIn('event_type', [SessionEventType::SessionEnded, SessionEventType::RequestDenied])
+                ->orderBy('sequence')
+                ->pluck('event_type')
+                ->all(),
+        );
     }
 
     public function test_central_session_lookup_failure_is_not_downgraded_to_ordinary_access(): void

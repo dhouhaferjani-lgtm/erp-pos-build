@@ -12,9 +12,12 @@ use App\Modules\SupportAccess\Application\DTOs\GrantRequestData;
 use App\Modules\SupportAccess\Application\Services\GrantLifecycleService;
 use App\Modules\SupportAccess\Application\Services\RequestImpersonationContext;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
+use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrantEvent;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\GrantType;
 use App\Modules\SupportAccess\Domain\Enums\SessionAccessLevel;
+use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
+use App\Modules\SupportAccess\Domain\Services\GrantChainVerifier;
 use App\Modules\SupportAccess\Infrastructure\Notifications\SupportAccessGrantNotification;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Architecture\CrossTenantRoute;
@@ -119,6 +122,51 @@ final class GrantLifecycleTest extends TestCase
             'Not an approved support period',
             ImpersonationGrant::query()->findOrFail($grant->id)->rejection_reason,
         );
+
+        $events = ImpersonationGrantEvent::query()
+            ->where('grant_id', $grant->id)
+            ->orderBy('sequence')
+            ->get();
+        self::assertSame(
+            [SessionEventType::GrantRequested, SessionEventType::GrantRejected],
+            $events->pluck('event_type')->all(),
+        );
+        self::assertSame([1, 2], $events->pluck('sequence')->all());
+        self::assertSame($events[0]->hash, $events[1]->previous_hash);
+        self::assertDatabaseHas('admin_audit_logs', [
+            'impersonation_event_id' => $events[1]->id,
+            'impersonation_session_id' => null,
+        ]);
+        self::assertTrue(DB::table('audit_events')
+            ->where('impersonation_event_id', $events[1]->id)
+            ->whereNull('impersonation_session_id')
+            ->exists());
+    }
+
+    public function test_grant_chain_verifier_rejects_semantic_tampering(): void
+    {
+        $grant = $this->service->requestIncident($this->operator, $this->incidentData());
+        $this->service->approveByTenant($this->tenantAdmin, $grant->id);
+
+        $fresh = ImpersonationGrant::query()->findOrFail($grant->id);
+        $events = ImpersonationGrantEvent::query()
+            ->where('grant_id', $grant->id)
+            ->orderBy('sequence')
+            ->get();
+        $verifier = $this->app->make(GrantChainVerifier::class);
+        self::assertTrue($verifier->verify($events, $fresh->chain_head_hash)->valid);
+
+        $events[0]->event_type = SessionEventType::GrantRejected;
+
+        self::assertFalse($verifier->verify($events, $fresh->chain_head_hash)->valid);
+
+        $this->artisan('support-access:audit-verify', ['--grant' => $grant->id])
+            ->assertExitCode(0);
+
+        DB::table('admin_audit_logs')->where('impersonation_event_id', $events[1]->id)
+            ->update(['action' => 'impersonation_tampered']);
+        $this->artisan('support-access:audit-verify', ['--grant' => $grant->id])
+            ->assertExitCode(1);
     }
 
     public function test_incident_request_rejects_a_subject_from_another_tenant(): void

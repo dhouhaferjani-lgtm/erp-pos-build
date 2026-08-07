@@ -26,6 +26,7 @@ final class AdminSupportAccessQueryController extends Controller
 
         $result = $this->queries->adminOverview(
             operatorId: $operator->id,
+            isApprover: $operator->role === 'support_approver',
             page: $request->integer('page', 1),
             perPage: $request->integer('per_page', 20),
         );

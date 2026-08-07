@@ -34,7 +34,7 @@ final class SupportAccessConfigurationValidator
     private function stringList(string $key): array
     {
         $value = $this->config->get('support_access.'.$key);
-        if (! is_array($value)) {
+        if (! is_array($value) || $value === []) {
             throw new LogicException("support_access.{$key} must be a list of non-empty strings.");
         }
 

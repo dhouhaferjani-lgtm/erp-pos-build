@@ -5,23 +5,27 @@ declare(strict_types=1);
 namespace App\Modules\SupportAccess\Application\Services;
 
 use App\Modules\SupportAccess\Domain\DTOs\ImpersonationAuditDetailsData;
+use App\Modules\SupportAccess\Domain\Entities\ImpersonationAuditDelivery;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionEvent;
 use App\Modules\SupportAccess\Domain\Enums\AuditOutcome;
 use App\Modules\SupportAccess\Domain\Enums\SessionEventType;
 use App\Modules\SupportAccess\Domain\Services\SessionChainHasher;
-use App\Shared\Contracts\SupportAccess\AdminImpersonationAuditWriter;
-use App\Shared\Contracts\SupportAccess\TenantImpersonationAuditWriter;
 use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationContextData;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Throwable;
 
 final class SessionAuditService
 {
@@ -29,8 +33,7 @@ final class SessionAuditService
         private readonly DatabaseManager $database,
         private readonly Repository $config,
         private readonly SessionChainHasher $hasher,
-        private readonly AdminImpersonationAuditWriter $adminWriter,
-        private readonly TenantImpersonationAuditWriter $tenantWriter,
+        private readonly AuditMirrorDeliveryService $delivery,
     ) {}
 
     public function recordRequestReceived(
@@ -52,7 +55,8 @@ final class SessionAuditService
         string $requestId,
     ): ImpersonationAuditMirrorData {
         $status = $response->getStatusCode();
-        $denied = $status >= 400;
+        $failed = $status >= 500;
+        $denied = $status >= 400 && ! $failed;
         $errorCode = null;
         if ($denied && $response instanceof JsonResponse) {
             $payload = $response->getData(true);
@@ -63,9 +67,58 @@ final class SessionAuditService
         return $this->recordRequest(
             context: $context,
             request: $request,
-            eventType: $denied ? SessionEventType::RequestDenied : SessionEventType::RequestAuthorized,
-            outcome: $denied ? AuditOutcome::Denied : AuditOutcome::Allowed,
+            eventType: $failed
+                ? SessionEventType::RequestFailed
+                : ($denied ? SessionEventType::RequestDenied : SessionEventType::RequestAuthorized),
+            outcome: $failed
+                ? AuditOutcome::Failed
+                : ($denied ? AuditOutcome::Denied : AuditOutcome::Allowed),
             errorCode: $errorCode,
+            responseStatus: $status,
+            requestId: $requestId,
+            allowEnded: true,
+        );
+    }
+
+    public function recordFailedRequest(
+        ImpersonationContextData $context,
+        Request $request,
+        string $requestId,
+        string $errorCode = 'IMPERSONATION_REQUEST_FAILED',
+    ): ImpersonationAuditMirrorData {
+        return $this->recordRequest(
+            context: $context,
+            request: $request,
+            eventType: SessionEventType::RequestFailed,
+            outcome: AuditOutcome::Failed,
+            errorCode: $errorCode,
+            responseStatus: 500,
+            requestId: $requestId,
+            allowEnded: true,
+        );
+    }
+
+    public function recordExceptionRequest(
+        ImpersonationContextData $context,
+        Request $request,
+        string $requestId,
+        Throwable $exception,
+    ): ImpersonationAuditMirrorData {
+        $status = match (true) {
+            $exception instanceof AuthorizationException => 403,
+            $exception instanceof ValidationException => 422,
+            $exception instanceof ModelNotFoundException => 404,
+            $exception instanceof HttpExceptionInterface => $exception->getStatusCode(),
+            default => 500,
+        };
+        $failed = $status >= 500;
+
+        return $this->recordRequest(
+            context: $context,
+            request: $request,
+            eventType: $failed ? SessionEventType::RequestFailed : SessionEventType::RequestDenied,
+            outcome: $failed ? AuditOutcome::Failed : AuditOutcome::Denied,
+            errorCode: $failed ? 'IMPERSONATION_REQUEST_FAILED' : 'IMPERSONATION_REQUEST_DENIED',
             responseStatus: $status,
             requestId: $requestId,
             allowEnded: true,
@@ -87,6 +140,32 @@ final class SessionAuditService
         );
     }
 
+    public function recordEndedRequest(
+        ImpersonationSession $session,
+        string $ticketRef,
+        Request $request,
+    ): ImpersonationAuditMirrorData {
+        return $this->recordRequest(
+            context: new ImpersonationContextData(
+                operator_id: $session->operator_id,
+                session_id: $session->id,
+                subject_user_id: $session->subject_user_id,
+                subject_name: '',
+                tenant_id: $session->tenant_id,
+                access_level: $session->access_level,
+                reason: '',
+                ticket_ref: $ticketRef,
+                expires_at: CarbonImmutable::instance($session->expires_at),
+            ),
+            request: $request,
+            eventType: SessionEventType::RequestDenied,
+            outcome: AuditOutcome::Denied,
+            errorCode: 'IMPERSONATION_ENDED',
+            responseStatus: 401,
+            allowEnded: true,
+        );
+    }
+
     public function recordLifecycleEvent(
         ImpersonationSession $session,
         SessionEventType $eventType,
@@ -94,6 +173,7 @@ final class SessionAuditService
         ?string $resourceType = null,
         ?string $resourceId = null,
         ?string $ticketRef = null,
+        ?string $grantChainHead = null,
     ): ImpersonationAuditMirrorData {
         return $this->append(
             sessionId: $session->id,
@@ -112,6 +192,7 @@ final class SessionAuditService
                 error_code: null,
                 resource_type: $resourceType,
                 resource_id: $resourceId,
+                grant_chain_head: $grantChainHead,
             ),
             occurredAt: $occurredAt,
         );
@@ -144,6 +225,8 @@ final class SessionAuditService
                 error_code: $errorCode,
                 resource_type: null,
                 resource_id: null,
+                request_ip: $request->ip(),
+                user_agent: $request->userAgent(),
             ),
             allowEnded: $allowEnded,
         );
@@ -235,6 +318,11 @@ final class SessionAuditService
                 'hash' => $mirror->hash,
                 'occurred_at' => $mirror->occurred_at,
             ]);
+            ImpersonationAuditDelivery::query()->create([
+                'event_id' => $mirror->event_id,
+                'aggregate_type' => 'session',
+                'tenant_id' => $mirror->tenant_id,
+            ]);
             $session->update([
                 'chain_sequence' => $sequence,
                 'chain_previous_hash' => $previousHash,
@@ -244,8 +332,7 @@ final class SessionAuditService
             return $mirror;
         });
 
-        $this->adminWriter->writeImpersonationMirror($mirror);
-        $this->tenantWriter->writeImpersonationMirror($mirror);
+        $this->delivery->deliverSession($mirror);
 
         return $mirror;
     }

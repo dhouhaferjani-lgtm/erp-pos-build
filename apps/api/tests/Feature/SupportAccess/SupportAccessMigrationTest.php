@@ -32,6 +32,8 @@ final class SupportAccessMigrationTest extends TestCase
             'impersonation_elevations',
             'impersonation_session_permissions',
             'impersonation_session_events',
+            'impersonation_grant_events',
+            'impersonation_audit_deliveries',
         ] as $table) {
             self::assertTrue(Schema::hasTable($table), "Missing central table {$table}");
         }
@@ -44,6 +46,9 @@ final class SupportAccessMigrationTest extends TestCase
         ]));
         self::assertTrue(Schema::hasColumns('admin_audit_logs', $this->auditAttributionColumns()));
         self::assertTrue(Schema::hasColumns('audit_events', $this->auditAttributionColumns()));
+        self::assertTrue(Schema::hasColumns('impersonation_grants', [
+            'chain_sequence', 'chain_previous_hash', 'chain_head_hash',
+        ]));
 
         $subjectColumn = collect(Schema::getColumns('impersonation_grants'))
             ->firstWhere('name', 'subject_user_id');

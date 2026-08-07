@@ -6,6 +6,7 @@ namespace App\Modules\SupportAccess\Infrastructure\Audit;
 
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Closure;
 use Illuminate\Contracts\Config\Repository;
@@ -48,6 +49,42 @@ final class TenantImpersonationAuditStore
                 'occurred_at' => $event->occurred_at,
                 'impersonator_id' => $event->operator_id,
                 'impersonation_session_id' => $event->session_id,
+                'impersonation_event_id' => $event->event_id,
+                'impersonation_sequence' => $event->sequence,
+                'impersonation_previous_hash' => $event->previous_hash,
+                'impersonation_hash' => $event->hash,
+            ]);
+            $audit->recomputeHash();
+            $audit->saveOrFail();
+        });
+    }
+
+    public function writeGrant(GrantAuditMirrorData $event): void
+    {
+        $this->run($event->tenant_id, function () use ($event): void {
+            $audit = new AuditEvent;
+            $audit->companyId = '';
+            $audit->userId = $event->actor_type === 'tenant_user' ? $event->actor_id : ($event->subject_user_id ?? '');
+            $audit->eventType = 'support_access.'.$event->event_type;
+            $audit->aggregateType = 'ImpersonationGrant';
+            $audit->aggregateId = $event->grant_id;
+            $audit->occurredAt = Carbon::instance($event->occurred_at);
+            $audit->forceFill([
+                'tenant_id' => $event->tenant_id,
+                'company_id' => null,
+                'user_id' => $audit->userId === '' ? null : $audit->userId,
+                'event_type' => $audit->eventType,
+                'aggregate_type' => $audit->aggregateType,
+                'aggregate_id' => $audit->aggregateId,
+                'payload' => $event->details,
+                'metadata' => [
+                    'outcome' => $event->outcome,
+                    'actor_id' => $event->actor_id,
+                    'actor_type' => $event->actor_type,
+                ],
+                'occurred_at' => $event->occurred_at,
+                'impersonator_id' => $event->operator_id,
+                'impersonation_session_id' => null,
                 'impersonation_event_id' => $event->event_id,
                 'impersonation_sequence' => $event->sequence,
                 'impersonation_previous_hash' => $event->previous_hash,

@@ -11,7 +11,7 @@
     "startsAt": "Début de la fenêtre",
     "expiresAt": "Fin de la fenêtre"
   },
-  "validation": { "required": "Ce champ est obligatoire.", "expiryAfterStart": "La fin doit être postérieure au début." },
+  "validation": { "required": "Ce champ est obligatoire.", "expiryAfterStart": "La fin doit être postérieure au début.", "uuid": "Saisissez un identifiant utilisateur valide.", "maxWindow": "Une fenêtre d'assistance ne peut pas dépasser sept jours." },
   "window": {
     "title": "Préautoriser une fenêtre d'assistance",
     "description": "Créez une fenêtre limitée dans le temps pour un objectif documenté. Chaque session reste intégralement auditée."
@@ -24,7 +24,10 @@
   "history": {
     "title": "Activité de l'assistance",
     "description": "Journal assaini des accès d'assistance visible par le locataire.",
-    "empty": "Aucune activité d'assistance enregistrée."
+    "empty": "Aucune activité d'assistance enregistrée.",
+    "operator": "Accès par {{name}}",
+    "duration_one": "{{count}} minute",
+    "duration_other": "{{count}} minutes"
   },
   "active": { "title": "L'assistance est actuellement active", "description_one": "{{count}} session d'assistance active", "description_other": "{{count}} sessions d'assistance actives" },
   "actions": { "createWindow": "Créer la fenêtre", "approve": "Approuver", "reject": "Refuser", "revoke": "Révoquer" },

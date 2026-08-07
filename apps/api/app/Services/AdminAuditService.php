@@ -9,6 +9,7 @@ use App\Models\SuperAdmin;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\SupportAccess\AdminImpersonationAuditWriter;
 use App\Shared\Contracts\SupportAccess\ImpersonationContextProvider;
+use App\Shared\DTOs\SupportAccess\GrantAuditMirrorData;
 use App\Shared\DTOs\SupportAccess\ImpersonationAuditMirrorData;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -35,10 +36,36 @@ class AdminAuditService implements AdminImpersonationAuditWriter
                 'details' => $event->details,
             ],
             'notes' => 'Consent-gated support access audit mirror.',
-            'ip_address' => $this->request->ip(),
-            'user_agent' => $this->request->userAgent(),
+            'ip_address' => $event->details['request_ip'] ?? null,
+            'user_agent' => $event->details['user_agent'] ?? null,
             'impersonator_id' => $event->operator_id,
             'impersonation_session_id' => $event->session_id,
+            'impersonation_event_id' => $event->event_id,
+            'impersonation_sequence' => $event->sequence,
+            'impersonation_previous_hash' => $event->previous_hash,
+            'impersonation_hash' => $event->hash,
+        ]);
+    }
+
+    public function writeGrantMirror(GrantAuditMirrorData $event): void
+    {
+        AdminAuditLog::query()->create([
+            'super_admin_id' => $event->operator_id,
+            'tenant_id' => $event->tenant_id,
+            'action' => 'impersonation_'.$event->event_type,
+            'entity_type' => 'impersonation_grant',
+            'entity_id' => $event->grant_id,
+            'new_values' => [
+                'outcome' => $event->outcome,
+                'actor_id' => $event->actor_id,
+                'actor_type' => $event->actor_type,
+                'details' => $event->details,
+            ],
+            'notes' => 'Consent-gated support grant audit mirror.',
+            'ip_address' => $event->details['request_ip'] ?? null,
+            'user_agent' => $event->details['user_agent'] ?? null,
+            'impersonator_id' => $event->operator_id,
+            'impersonation_session_id' => null,
             'impersonation_event_id' => $event->event_id,
             'impersonation_sequence' => $event->sequence,
             'impersonation_previous_hash' => $event->previous_hash,

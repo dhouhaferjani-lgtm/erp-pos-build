@@ -19,7 +19,7 @@ final class ImpersonationActionClassifierRouteTableTest extends TestCase
         $misses = [];
 
         foreach (RouteFacade::getRoutes() as $route) {
-            if (! $route instanceof Route || ! $this->isProtectedFinancialController($route->getActionName())) {
+            if (! $route instanceof Route || ! $this->isProtectedMutation($route)) {
                 continue;
             }
 
@@ -37,13 +37,22 @@ final class ImpersonationActionClassifierRouteTableTest extends TestCase
             }
         }
 
-        self::assertSame([], $misses, "Financial write routes escaped the impersonation hard block:\n".implode("\n", $misses));
+        self::assertSame([], $misses, "Protected write routes escaped the impersonation hard block:\n".implode("\n", $misses));
     }
 
-    private function isProtectedFinancialController(string $action): bool
+    private function isProtectedMutation(Route $route): bool
     {
+        $action = $route->getActionName();
         foreach (['\\Modules\\POS\\', '\\Modules\\Fiscal\\', '\\Modules\\Accounting\\'] as $namespace) {
             if (str_contains($action, $namespace)) {
+                return true;
+            }
+        }
+
+        $name = $route->getName() ?? '';
+        foreach (['users.*', 'roles.*', 'auth.forgot-password', 'auth.reset-password',
+            'tenants.*delete*', 'tenants.*deprovision*'] as $pattern) {
+            if (fnmatch($pattern, $name, FNM_NOESCAPE)) {
                 return true;
             }
         }

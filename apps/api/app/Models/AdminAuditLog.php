@@ -12,7 +12,7 @@ use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 /**
  * @property string $id
- * @property string $super_admin_id
+ * @property string|null $super_admin_id
  * @property string|null $tenant_id
  * @property string $action
  * @property string|null $entity_type

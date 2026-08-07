@@ -2069,11 +2069,15 @@ export type SupportAccessLogEntryData = {
 id: string;
 session_id: string;
 subject_user_id: string;
+operator_name: string;
 event_type: App.Modules.SupportAccess.Domain.Enums.SessionEventType;
 outcome: App.Modules.SupportAccess.Domain.Enums.AuditOutcome;
 action: string | null;
 http_method: string | null;
 ticket_ref: string | null;
+reason: string;
+access_level: string;
+duration_seconds: number;
 occurred_at: any;
 };
 export type SupportAccessOverviewData = {
@@ -2081,6 +2085,7 @@ grants: Array<any>;
 active_sessions: Array<App.Modules.SupportAccess.Application.DTOs.SessionData>;
 log: Array<App.Modules.SupportAccess.Application.DTOs.SupportAccessLogEntryData>;
 pending_elevations: Array<App.Modules.SupportAccess.Application.DTOs.ElevationData>;
+log_meta: Array<any> | null;
 };
 }
 declare namespace App.Modules.SupportAccess.Domain.Enums {
@@ -2091,7 +2096,7 @@ export type GrantType = 'per_incident' | 'pre_granted_window';
 export type ImpersonationActionDecision = 'safe' | 'requires_elevation' | 'hard_blocked';
 export type SessionAccessLevel = 'read_only' | 'write_elevated';
 export type SessionEndReason = 'exited' | 'revoked' | 'expired' | 'grant_revoked' | 'operator_ended';
-export type SessionEventType = 'grant_requested' | 'grant_approved' | 'grant_rejected' | 'grant_revoked' | 'session_started' | 'session_ended' | 'request_received' | 'request_authorized' | 'request_denied' | 'write_elevation_requested' | 'write_elevation_approved' | 'write_elevation_rejected';
+export type SessionEventType = 'grant_requested' | 'grant_approved' | 'grant_rejected' | 'grant_revoked' | 'grant_expired' | 'session_started' | 'session_ended' | 'request_received' | 'request_authorized' | 'request_denied' | 'request_failed' | 'write_elevation_requested' | 'write_elevation_approved' | 'write_elevation_rejected';
 }
 declare namespace App.Modules.Taxation.Domain.Enums {
 export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';

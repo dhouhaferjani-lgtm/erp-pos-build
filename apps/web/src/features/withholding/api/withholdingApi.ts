@@ -1,4 +1,4 @@
-import { api, apiGet, apiPost, apiPatch, apiDelete } from '@/lib/api';
+import { api, apiGet, apiPost, apiPatch, apiDelete, authenticatedDownload } from '@/lib/api';
 import type {
   WithholdingPreviewRequest,
   WithholdingPreviewResponse,
@@ -128,15 +128,15 @@ export async function deleteWithholdingCertificate(id: string): Promise<void> {
 /**
  * Download certificate as PDF
  */
-export function downloadCertificatePDF(id: string): string {
-  return `/api/v1/withholding/certificates/${id}/download-pdf`;
+export function downloadCertificatePDF(id: string): Promise<void> {
+  return authenticatedDownload(`/withholding/certificates/${id}/download-pdf`);
 }
 
 /**
  * Download TEJ XML for single certificate
  */
-export function downloadCertificateTEJXML(id: string): string {
-  return `/api/v1/withholding/certificates/${id}/download-tej-xml`;
+export function downloadCertificateTEJXML(id: string): Promise<void> {
+  return authenticatedDownload(`/withholding/certificates/${id}/download-tej-xml`);
 }
 
 /**
@@ -145,12 +145,12 @@ export function downloadCertificateTEJXML(id: string): string {
 export function downloadBatchTEJXML(
   year?: number,
   direction?: string
-): string {
+): Promise<void> {
   const params = new URLSearchParams();
   if (year) params.append('year', year.toString());
   if (direction) params.append('direction', direction);
 
-  return `/api/v1/withholding/certificates/export-tej-batch${params.toString() ? `?${params.toString()}` : ''}`;
+  return authenticatedDownload(`/withholding/certificates/export-tej-batch${params.toString() ? `?${params.toString()}` : ''}`);
 }
 
 /**

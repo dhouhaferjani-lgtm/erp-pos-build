@@ -41,6 +41,8 @@ return [
         'readonly_post_routes' => ['support-access.sessions.exit'],
         'hard_block_route_patterns' => [
             'support-access.*',
+            'users.*',
+            'roles.*',
             'auth.forgot-password',
             'auth.reset-password',
             'users.reset-password',
@@ -59,6 +61,7 @@ return [
         ],
         'hard_block_path_patterns' => [
             '#/support-access(?:/|$)#i',
+            '#/(?:users|roles)(?:/|$)#i',
             '#/(?:forgot-password|reset-password)(?:/|$)#i',
             '#/users/[^/]+/reset-password(?:/|$)#i',
             '#/tenants/[^/]+/(?:delete|deprovision)(?:/|$)#i',

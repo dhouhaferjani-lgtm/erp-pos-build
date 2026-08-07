@@ -13,8 +13,9 @@ final class EffectivePermissionService
     /** @var list<string> */
     private const NEVER_INTERSECTABLE = [
         'support-access.*',
-        'roles.manage',
-        'users.assign-roles',
+        'roles.*',
+        'users.*',
+        'auth.*',
     ];
 
     public function __construct(private readonly Repository $config) {}

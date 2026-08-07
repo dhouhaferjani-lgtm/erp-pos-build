@@ -33,6 +33,9 @@ use Stancl\Tenancy\Database\Concerns\CentralConnection;
  * @property string|null $revoked_by
  * @property CarbonImmutable|null $revoked_at
  * @property string|null $revocation_reason
+ * @property int $chain_sequence
+ * @property string|null $chain_previous_hash
+ * @property string|null $chain_head_hash
  */
 final class ImpersonationGrant extends Model
 {
@@ -43,7 +46,8 @@ final class ImpersonationGrant extends Model
         'tenant_id', 'subject_user_id', 'operator_id', 'type', 'status', 'reason', 'ticket_ref',
         'requested_at', 'starts_at', 'expires_at', 'tenant_approved_by', 'tenant_approved_at',
         'second_approved_by', 'second_approved_at', 'rejected_by', 'rejected_at',
-        'rejection_reason', 'revoked_by', 'revoked_at', 'revocation_reason',
+        'rejection_reason', 'revoked_by', 'revoked_at', 'revocation_reason', 'chain_sequence',
+        'chain_previous_hash', 'chain_head_hash',
     ];
 
     /** @return array<string, string> */
@@ -59,6 +63,7 @@ final class ImpersonationGrant extends Model
             'second_approved_at' => 'immutable_datetime',
             'rejected_at' => 'immutable_datetime',
             'revoked_at' => 'immutable_datetime',
+            'chain_sequence' => 'integer',
         ];
     }
 }

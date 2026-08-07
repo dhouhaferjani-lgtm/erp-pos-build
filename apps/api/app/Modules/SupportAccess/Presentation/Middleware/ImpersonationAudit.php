@@ -41,7 +41,17 @@ final class ImpersonationAudit
             return $this->unavailable();
         }
 
-        $response = $next($request);
+        try {
+            $response = $next($request);
+        } catch (Throwable $exception) {
+            try {
+                $this->audit->recordExceptionRequest($context, $request, $mirror->request_id, $exception);
+            } catch (Throwable) {
+                return $this->unavailable();
+            }
+
+            throw $exception;
+        }
 
         try {
             $this->audit->recordTerminatingRequest($context, $request, $response, $mirror->request_id);

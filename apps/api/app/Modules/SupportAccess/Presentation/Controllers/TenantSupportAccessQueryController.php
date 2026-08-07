@@ -20,7 +20,11 @@ final class TenantSupportAccessQueryController extends Controller
         abort_unless($user instanceof User, 401);
 
         return response()->json([
-            'data' => $this->queries->tenantOverview($user->tenant_id)->toArray(),
+            'data' => $this->queries->tenantOverview(
+                $user->tenant_id,
+                $request->integer('page', 1),
+                $request->integer('per_page', 25),
+            )->toArray(),
         ]);
     }
 }

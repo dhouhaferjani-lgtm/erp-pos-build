@@ -10,6 +10,7 @@ use App\Modules\SupportAccess\Application\DTOs\StartedSessionData;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationGrant;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSession;
 use App\Modules\SupportAccess\Domain\Entities\ImpersonationSessionPermission;
+use App\Modules\SupportAccess\Domain\Enums\AuditOutcome;
 use App\Modules\SupportAccess\Domain\Enums\GrantStatus;
 use App\Modules\SupportAccess\Domain\Enums\SessionAccessLevel;
 use App\Modules\SupportAccess\Domain\Enums\SessionEndReason;
@@ -34,6 +35,7 @@ final class SessionLifecycleService
         private readonly Repository $config,
         private readonly DatabaseManager $database,
         private readonly SessionAuditService $audit,
+        private readonly GrantAuditService $grantAudit,
     ) {}
 
     public function start(SuperAdmin $operator, string $grantId, string $subjectUserId): StartedSessionData
@@ -91,30 +93,12 @@ final class SessionLifecycleService
 
                 $this->audit->recordLifecycleEvent(
                     $session,
-                    SessionEventType::GrantRequested,
-                    CarbonImmutable::instance($grant->requested_at),
-                    'ImpersonationGrant',
-                    $grant->id,
-                    $grant->ticket_ref,
-                );
-                $approvedAt = $grant->second_approved_at ?? $grant->tenant_approved_at;
-                if ($approvedAt !== null) {
-                    $this->audit->recordLifecycleEvent(
-                        $session,
-                        SessionEventType::GrantApproved,
-                        CarbonImmutable::instance($approvedAt),
-                        'ImpersonationGrant',
-                        $grant->id,
-                        $grant->ticket_ref,
-                    );
-                }
-                $this->audit->recordLifecycleEvent(
-                    $session,
                     SessionEventType::SessionStarted,
                     CarbonImmutable::instance($session->started_at),
                     'ImpersonationSession',
                     $session->id,
                     $grant->ticket_ref,
+                    $grant->chain_head_hash,
                 );
 
                 $started = new StartedSessionData(
@@ -186,6 +170,16 @@ final class SessionLifecycleService
                     'revoked_at' => $now,
                     'revocation_reason' => 'Subject exited support access.',
                 ]);
+                $this->grantAudit->record(
+                    $grant->refresh(),
+                    SessionEventType::GrantRevoked,
+                    AuditOutcome::Denied,
+                    $subject->id,
+                    'tenant_user',
+                    'Subject exited support access.',
+                    'subject_exit',
+                    $now,
+                );
             }
 
             $this->tokens->revoke($tokenId);
