@@ -181,3 +181,148 @@ stamp-inclusive `total` (exactly the pre-existing fixture
 old shape with no signal. Once C-1 is fixed this becomes the disposition question the ticket
 already defers to the accountant list; it should be written down as such, and any backfill of
 the column on already-posted CNs must NOT retro-change their sealed GL.
+
+---
+
+# Fix-round re-verify (2026-08-07, commits `f55a7e2c4` · `da4a442d8` · `823d119cf` · `52cf6b84d` · `b778b20ce`)
+
+Scope: ONLY the round-1 findings. Diff `eb7730a3b..HEAD` = 9 files, +962/−12, of which
+**one tenant migration** — the lane is now MIGRATION-BEARING and must ride its own push (D-2).
+
+## VERDICT: CLEAR TO MERGE
+
+All five findings resolved and re-verified from the code and from live runs. Two carry-over
+notes below, neither blocking.
+
+### C-1 — RESOLVED (verified from the real flow, not a fixture)
+`CreditNoteService::applyConfirmEquivalentTotals()` `:104-116` (stamp at `:113`) and
+`CreditNoteController::confirm()` `:293-306` now persist `stamp_duty_amount`
+(`$taxResult->documentTaxTotal`) and `line_tax_amount` (`->lineItemsTaxTotal`).
+`applyConfirmEquivalentTotals()` is the single funnel for all three create paths, and
+`confirm()` recomputes independently — both patched, so the draft→confirm→post lifecycle is
+covered end to end.
+
+Decisive E2E rerun **by name**, green:
+`CreditNoteMoneyLaneTest::test_amount_based_credit_note_with_tn_stamp_persists_column_and_posts_ex_stamp_gl_and_allocation`
+(1 test, 16 assertions). It goes through the real `POST /api/v1/credit-notes` → `/confirm` →
+`/post`, writes **no** `stamp_duty_amount` fixture, and asserts: column `'0.600'` at draft AND
+after confirm; 411 credit `'50.000'` (ex-stamp); 6354 debit `'0.600'`; 4375 credit `'0.600'`;
+entry balances; `CreditNoteAllocation.amount === $arLine->credit`; invoice `balance_due`
+118.810 → 68.810. Full file 12/12 green.
+
+**The round-1 evidence pin (`CreditNoteMoneyLaneTest:487`, `120.600`/`0.000`) — how it was
+updated:** the `120.600` total assertion is UNCHANGED (correct: `total` always folded the
+stamp in); a NEW assertion was inserted at `:504-509` flipping the column expectation to
+`'0.600'`, i.e. the exact pin whose old implicit value proved the round-1 defect. The
+fixture's allocation assertions (`120.000` allocated / `0.600` unallocated) are unchanged and
+still green — correctly acknowledged in the commit message as a degenerate case where old and
+new clamps coincide (`min(120.600, 120.000) == min(120.000, 120.000)`), which is why the new
+partial-credit E2E (clamp never engages) is the one that actually discriminates.
+
+**m-3 draft case:** covered — a pre-fix DRAFT confirmed post-fix gets the column from
+`confirm()`'s own recompute (asserted in the E2E). **Residue (see N-1 below):** a CN already in
+`Confirmed` status at deploy time is short-circuited by the idempotency guard
+`CreditNoteController.php:269-273` and never recomputes.
+
+### C-2 — RESOLVED
+`CreditNoteService::allocateCreditNote()` `:1298-1307` allocates `total − stamp_duty_amount`
+(bcmath, at `scaleFor($invoice)`, guarded by `bccomp(...) > 0`), mirroring the already
+duty-exclusive `remainingCreditHeadroom()` `:138-163`. GL 411 movement and the
+`credit_note_allocations.amount` that drives the `balance_due` trigger are now the same
+number — asserted directly against each other in the E2E (`assertSame($arLine->credit,
+$allocation->amount)`), so the two can no longer drift by construction.
+
+**Clamp path:** `test_over_credit_allocation_clamps_balance_due_at_zero` green — allocation
+floors at `balance_due` 120.000 while GL 411 credits 120.000 (ex-stamp), i.e. the two AGREE on
+this path too. Reruns: `CreditNoteAllocationTest` + `AgedReceivablesScalingTest` +
+`AgedOutstandingSourceTest` + `AgedAgingBucketsTest` + backfill test = 32/32;
+`CreditNoteAllocationExhaustiveProbeTest` + `CreditNoteGLIntegrationTest` = 16/16.
+Aged-AR is `documents.balance_due`-driven (`AgedReceivablesService.php:151-158`) and that
+column now moves by exactly the GL's 411 amount.
+
+### I-1 — RESOLVED
+`database/migrations/tenant/2026_08_07_100000_backfill_purchase_stamp_duty_account.php`.
+Guard ladder verified line-by-line against the modeled
+`2026_08_05_120000_backfill_sales_rounding_difference_accounts.php:75-140`: per-company loop
+over `companies`; chartless skip (`:74-76`); already-purpose-mapped skip (`hasPurpose`,
+`:101-103`); claim-an-existing-unpurposed-account-at-the-preferred-code (`:117-141`, avoids
+the `accounts_company_code_unique` violation); `nextFreeCode()` fallback (`:190-208`);
+`Log::warning` + `return` — **never throws** (`:145-156`); `down()` deliberately a no-op.
+Codes correct and match the seeders: `'TN','FR' => '6354'` (cf. `TunisiaChartOfAccountsSeeder.php:247`,
+`FranceChartOfAccountsSeeder.php:254`), `default => '6350'` (cf.
+`GenericChartOfAccountsSeeder.php:180`), country dispatch mirroring
+`ChartOfAccountsService::getSeederForCountry()`. Type forced `'expense'`, parent resolved
+`63`→`6000` / `6000`. Idempotent by the two skips. `BackfillPurchaseStampDutyAccountTest`
+(8 cases: TN/FR/Generic, chartless, already-has, map-onto-user-account, next-free-code,
+idempotency) green.
+
+**`requiredPurposes()` decision — advisory claim VERIFIED, reasoning ACCEPTED.**
+`SystemAccountPurpose::requiredPurposes()` (`:160-175`) has exactly one consumer chain:
+`ChartOfAccountsService::validateCompanyAccounts()` (`:47-51`) →
+`AccountPurposeController::validate()` (`:58-76`), a read-only `GET
+/companies/{id}/accounts/purposes/validate` (`routes.php:65-67`). Nothing gates posting,
+seeding or company creation on it. So omitting `PurchaseStampDuty` neither weakens nor
+strengthens any enforcement — the migration plus the runtime 422
+(`GlResidualRefusal::NoCreditNoteStampAccount`) are the real protection. Accepted.
+Non-blocking follow-up: adding it would be zero-risk (all three seeders + this backfill now
+guarantee it) and would surface the gap in the admin advisory screen.
+
+### I-2 — RESOLVED
+`GeneralLedgerService::createFromCreditNote()` `:258` resolves once via
+`$this->scaleResolver->getScaleSafe($creditNote->currency, 3)` and reuses `$scale` at all
+three arithmetic sites. Verified mechanically: `git diff 8cc674c6d..HEAD -- apps/api/app |
+grep 'getScale()'` → **no matches**; no `$this->scale()` call remains anywhere in the method
+body (only in the explanatory comment).
+
+### m-1 — RESOLVED
+`AccountingService.php:691-692`: `$isStampDuty` now additionally requires
+`$plan->stampExpenseAccount === null`, so the "Stamp duty (timbre) reversal" wording survives
+only for the legacy stampless-CN shape; any entry that also writes a real stamp pair labels
+its residual leg "Tax rounding difference reversal". New test
+`test_credit_note_residual_leg_is_labelled_rounding_dust_not_stamp_duty_when_a_stamp_pair_is_also_written`
+is a genuine discriminator: TND (scale 3, deliberately not the file's default EUR/scale 2 —
+which would truncate the ULP away), `total` bumped to 1.791 so a real 0.001 dust leg coexists
+with the 0.600 stamp on the SAME 4375 account; asserts two distinct lines matched by amount
+(not line order) and checks the descriptions both ways.
+
+### New regression surface from persisting `line_tax_amount` on CNs — NONE
+`documents.line_tax_amount` has **zero readers** in `app/`: every occurrence is a write
+(`DocumentTotalsCalculator.php:52`, `CreditNoteService.php:112`,
+`CreditNoteController.php:303`, `CreateSupplierInvoiceService.php:134`) plus the model
+property/cast/fillable (`Document.php:59,140,190`). It is not exposed by `DocumentData`. The
+frontend total strip (`apps/web/src/features/documents/components/DocumentTotals.tsx:101,148`)
+reads the LIVE tax-breakdown endpoint (`DocumentController.php:336-337` →
+`DocumentTaxBreakdownResource:45-46`), not the persisted columns, so CN displays are
+unchanged. The newly-populated `stamp_duty_amount` on CNs is read only by the Q1 paths
+(`residualPlan()`, `createCreditNoteGLEntries()`, `createFromCreditNote()`) and
+`allocateCreditNote()`; the other readers (`CreateSupplierInvoiceService.php:208`,
+`SupplierInvoicePostingService.php:274`) are purchase-side and never see a customer CN.
+
+### Full re-run (by path, live)
+`CreditNoteMoneyLaneTest` 12/12 · backfill + `CreditNoteAllocationTest` +
+`AgedReceivablesScalingTest` + `AgedOutstandingSourceTest` + `AgedAgingBucketsTest` 32/32 ·
+`CreditNoteAllocationExhaustiveProbeTest` + `CreditNoteGLIntegrationTest` 16/16 ·
+`DocumentGLIntegrationTest` + `GLIntegrationTest` + `DocumentCancellationGlReversalTest` +
+`GLHashIntegrationTest` + `InvoiceGLIntegrationTest` + `DocumentGlPreflightTest` +
+`CompleteSalesCycleWithReturnTest` 79/79 (1 skip). PHPStan level 8 on all four changed app
+files **and the migration**: OK, no errors.
+
+## Open, non-blocking
+
+- **N-1 (deploy note, m-3 residue).** A credit note already in `Confirmed` status when this
+  ships is short-circuited by `CreditNoteController.php:269-273` (idempotent early return) and
+  never recomputes, so it posts with `stamp_duty_amount = '0.000'` → the legacy stamp-inclusive
+  shape. Self-consistent (GL and `balance_due` still agree with each other), just pre-ruling.
+  Bounded to the deploy window; add to the same accountant-disposition list as the already-posted
+  CNs. Cheap mitigation if wanted: post-deploy, recompute the column on Confirmed-not-Posted CNs.
+- **N-2 (pre-existing, out of Q1 scope).** When the allocation clamp genuinely bites (CN
+  ex-stamp amount > remaining `balance_due`), GL 411 still moves by the full ex-stamp amount
+  while the allocation is floored at the balance — the ORIGINAL N1 clamp divergence, structurally
+  unchanged by this lane (before: full stamp-inclusive vs clamped; now: full ex-stamp vs clamped).
+  The expert answered the stamp question, not the over-credit question. Keep on the N1 line.
+- **N-3.** Generic chart account label "Purchase Stamp Duty" (`GenericChartOfAccountsSeeder.php:180`)
+  and the enum case name — cosmetic follow-up per round-1 m-2, still unreachable (Generic seeds no
+  `SalesStampDutyPayable`).
+- **D-2.** Lane is migration-bearing (`2026_08_07_100000_backfill_purchase_stamp_duty_account.php`):
+  push separately; `tenants:migrate` auto-runs on staging. The migration is self-guarding and
+  needs no manual prerequisite.
