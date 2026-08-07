@@ -143,7 +143,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
             'name' => 'Doliprane 1000mg',
             'type' => ProductType::Part,
             'cost_price' => '5.000',
-            'selling_price' => '10.000',
+            'sale_price' => '10.000',
             'is_active' => true,
         ]);
 
@@ -197,7 +197,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
             self::assertSame(PeriodLockRefusalCode::PeriodFiled, $exception->refusalCode);
         }
 
-        self::assertSame(DocumentStatus::Posted, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
         self::assertSame(
             0,
             JournalEntry::query()
@@ -219,6 +219,9 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 
         $invoice = $this->postedInvoiceWithGl($documentDate);
         $entryCountBefore = JournalEntry::query()->count();
+        // RefreshDatabase already holds one wrapping transaction; the assertion is
+        // that the cancel's OWN transaction is gone, not that the level is zero.
+        $transactionLevelBefore = DB::transactionLevel();
 
         try {
             $this->postingService->cancel($invoice, 'refused', $this->user->id);
@@ -227,21 +230,25 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
             // expected
         }
 
-        self::assertSame(0, DB::transactionLevel(), 'The refusal must not leave an open transaction');
+        self::assertSame(
+            $transactionLevelBefore,
+            DB::transactionLevel(),
+            'The refusal must not leave the cancel transaction open',
+        );
         self::assertSame(
             $entryCountBefore,
             JournalEntry::query()->count(),
             'Nothing at all may be persisted by a refused cancel',
         );
-        self::assertSame(DocumentStatus::Posted, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
 
         // Reopen the period: the very same cancel must now succeed and write its
         // reversal, proving the refusal was the ONLY thing standing in the way.
         $period->update(['status' => VatPeriodStatus::Open]);
 
-        $this->postingService->cancel($invoice->fresh(['lines']), 'now allowed', $this->user->id);
+        $this->postingService->cancel($this->reload($invoice), 'now allowed', $this->user->id);
 
-        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($invoice));
         self::assertSame(
             1,
             JournalEntry::query()
@@ -300,7 +307,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
             self::assertSame(PeriodLockRefusalCode::PeriodFiled, $exception->refusalCode);
         }
 
-        self::assertSame(DocumentStatus::Posted, $supplierInvoice->fresh()->status);
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($supplierInvoice));
     }
 
     // ------------------------------------------------------ happy paths ---
@@ -314,7 +321,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 
         $this->postingService->cancel($invoice, 'customer withdrew', $this->user->id);
 
-        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($invoice));
         self::assertSame(
             1,
             JournalEntry::query()
@@ -334,7 +341,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 
         $this->postingService->cancel($supplierInvoice, 'duplicate entry', $this->user->id);
 
-        self::assertSame(DocumentStatus::Cancelled, $supplierInvoice->fresh()->status);
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($supplierInvoice));
     }
 
     /**
@@ -351,7 +358,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 
         $this->postingService->cancel($invoice, 'no periods configured', $this->user->id);
 
-        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($invoice));
     }
 
     /**
@@ -379,7 +386,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 
         $this->postingService->cancel($invoice, 'other company period is irrelevant', $this->user->id);
 
-        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($invoice));
     }
 
     /**
@@ -395,7 +402,7 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 
         $this->postingService->cancel($invoice, 'different month', $this->user->id);
 
-        self::assertSame(DocumentStatus::Cancelled, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Cancelled, $this->freshStatus($invoice));
     }
 
     // ---------------------------------------------------------- HTTP 422 ---
@@ -415,10 +422,21 @@ final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
         self::assertIsString($response->json('error.message'));
         self::assertNotSame('', $response->json('error.message'));
 
-        self::assertSame(DocumentStatus::Posted, $invoice->fresh()->status);
+        self::assertSame(DocumentStatus::Posted, $this->freshStatus($invoice));
     }
 
     // ------------------------------------------------------------ helpers ---
+
+    private function freshStatus(Document $document): DocumentStatus
+    {
+        return $this->reload($document)->status;
+    }
+
+    private function reload(Document $document): Document
+    {
+        /** @var Document */
+        return Document::query()->with('lines')->findOrFail($document->id);
+    }
 
     private function vatPeriodFor(Carbon $date, VatPeriodStatus $status, ?string $companyId = null): VatPeriod
     {
