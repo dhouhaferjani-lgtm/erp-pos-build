@@ -18,13 +18,20 @@ use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
  *
  * PERIOD RESOLUTION — the document's `document_date`, NOT `now()` and NOT
  * `cancelled_at`. That is the date the ledger and the declaration both key on for
- * this document: `AccountingService::createInvoiceGLEntries()` and
- * `GeneralLedgerService::createSupplierInvoiceEntry()` both stamp
- * `entry_date = $document->document_date`, and
- * `EloquentVatDataRepository::aggregateByRateAndDirection()` filters the
- * declaration on `documents.document_date`. So `document_date` IS the accounting
- * date, and the period covering it is exactly the declaration the withdrawal
- * would disturb.
+ * this document, verified at the stamp sites:
+ *   - AR: `AccountingService::createInvoiceGLEntries()` (declared `:425`, stamps
+ *     at `:441`) and `createCreditNoteGLEntries()` (declared `:577`, stamps at
+ *     `:593`); likewise `GeneralLedgerService::createFromInvoice()` (`:130`,
+ *     stamps at `:146`) and `createFromCreditNote()` (`:214`, stamps at `:230`).
+ *     All stamp `entry_date = $document->document_date`.
+ *   - AP: `GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry()`
+ *     (declared `:1921`) stamps `entry_date = $supplierInvoice->document_date`
+ *     at `:1996`. (Do NOT cite `createSupplierInvoiceJournalEntry()` `:684` — it
+ *     is dead code and takes a caller-supplied date.)
+ *   - Declaration: `EloquentVatDataRepository::aggregateByRateAndDirection()`
+ *     filters on `documents.document_date` (`:41`).
+ * So `document_date` IS the accounting date, and the period covering it is the
+ * one the withdrawal would disturb.
  *
  * ABSENT PERIOD = PERMITTED. No `vat_periods` row covering the date means nothing
  * has ever been closed or filed for that span, so there is nothing to protect.
@@ -36,22 +43,47 @@ use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
  * ("absence of configuration is not the same as a deliberately closed period",
  * `FiscalPeriodResolverService::isDateInClosedPeriod()`).
  *
- * NOT a duplicate of that fiscal-period guard, which is orthogonal: it gates the
- * entry's OWN `entry_date`, and a cancellation reversal is dated `now()`. So it
- * protects the CURRENT period while this guard protects the period the ORIGINAL
- * document sits in — the one whose declaration the withdrawal would disturb, and
- * the one nothing checked before R2-F1.
+ * RELATIONSHIP TO THE FISCAL-PERIOD GUARD — orthogonal, and NOT a safety net.
+ * `fiscal_periods` (Accounting) and `vat_periods` (Taxation) are separate tables
+ * with separate lifecycles. The fiscal-period check lives in
+ * `GeneralLedgerService::postEntryNow()` (`:3265-3267`) and gates the entry's own
+ * `entry_date`. A cancellation reversal is dated `now()`, so one might expect
+ * that guard to cover the reversal — IT DOES NOT:
+ * `AccountingService::reverseDocumentGl()` writes the reversal with
+ * `JournalEntry::create()` directly (`:933-947`) and never routes through
+ * `postEntryNow()`, so a REVCAN entry can seal into a CLOSED fiscal period today.
+ * That is a PRE-EXISTING hole, out of R2-F1's scope and ticketed for F2:
+ * `docs/superpowers/tickets/2026-08-07-cancel-reversal-bypasses-closed-fiscal-period.md`.
+ * This guard protects only the period the ORIGINAL document sits in, which
+ * nothing checked before R2-F1.
  */
 final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
 {
     /**
-     * Purchase-side document types — the R-c c2 population.
+     * Sales-side types that carry a declaration and a GL entry. Settled by GL
+     * gate ruling 6a — NOT part of the c2 ruling.
+     *
+     * @var list<DocumentType>
+     */
+    private const SALES_DECLARATION_BEARING_TYPES = [
+        DocumentType::Invoice,
+        DocumentType::CreditNote,
+    ];
+
+    /**
+     * Purchase-side types that carry a GL entry (AP / expense / input VAT) — the
+     * R-c c2 population.
+     *
+     * PurchaseOrder and PurchaseQuoteRequest are deliberately ABSENT: they post
+     * no journal entry and write no `document_tax_details` row, so locking them
+     * would refuse a cancellation with zero fiscal justification (taxation gate
+     * I-4). Expense IS present — it is the only purchase-side type the VAT
+     * declaration actually reads (`EloquentVatDataRepository:42` restricts to
+     * invoice/credit_note/expense).
      *
      * @var list<DocumentType>
      */
     private const PURCHASE_DOCUMENT_TYPES = [
-        DocumentType::PurchaseOrder,
-        DocumentType::PurchaseQuoteRequest,
         DocumentType::SupplierInvoice,
         DocumentType::SupplierCreditNote,
         DocumentType::Expense,
@@ -86,34 +118,58 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
     /**
      * ===== R-c c2 SEAM — REVERSIBLE, DO NOT INLINE =====
      *
+     * SCOPE OF THE "DEFAULT FOR ALL DOCUMENT TYPES" INSTRUCTION (taxation gate
+     * I-4, ruling adopted): the round-2 plan's intent was DECLARATION AND LEDGER
+     * PROTECTION, not literal totality. Applying the lock to types that post no
+     * journal entry and write no `document_tax_details` row (Quote, SalesOrder,
+     * DeliveryNote, ReturnNote, PurchaseOrder, PurchaseQuoteRequest, Income)
+     * protects nothing, and would make such a document PERMANENTLY uncancellable
+     * the moment a lane wires its cancellation through
+     * `DocumentPostingService::cancel()` — a fiscal refusal with no fiscal
+     * justification. The population is therefore narrowed to the types that
+     * actually reach the ledger or the declaration.
+     *
      * Ruling R-c c2 (`docs/superpowers/tickets/2026-08-07-round2-rulings-record.md`)
      * is still OPEN: for a PURCHASE document whose period is CLOSED/FILED, the
      * expert may rule either "refuse the cancel" (the mirror of the AR refusal) or
-     * "reverse in the current period" (let the cancel through; the AP/input-VAT
-     * mirror F2 will add is dated `now()` like every other reversal).
+     * "reverse in the current period" (let the cancel through; the AP mirror F2
+     * will add is dated `now()` like every other reversal).
      *
-     * Per the round-2 plan, F1 ships the DEFAULT — refusal EVERYWHERE, sales and
-     * purchase alike — because a supplier invoice's deductible input VAT sits in
-     * the very same filed declaration as the output VAT, so withdrawing it after
-     * filing has the identical retroactive problem. The default is explicitly
-     * flagged reversible.
+     * F1 ships REFUSE as the default, explicitly flagged reversible. The
+     * justification is AP and trial-balance integrity, NOT output-VAT symmetry:
+     * a supplier invoice's input VAT is not in the declaration at all today
+     * (`EloquentVatDataRepository:42` reads invoice/credit_note/expense only —
+     * `supplier_invoice` appears nowhere in Taxation). What a supplier invoice
+     * DOES carry is a GL entry dated `document_date`
+     * (`createSupplierInvoiceGrIrClearingEntry`), so withdrawing it inside a
+     * period whose books are closed is a ledger-integrity problem regardless of
+     * VAT — and `Expense`, which IS declared, sits in the same branch. Refusing
+     * is also the forward-compatible default: if F2/F3 bring supplier invoices
+     * into the declaration, no behaviour has to change.
      *
-     * If c2 comes back as "reverse-in-current-period", the ONLY change is the
-     * `return true;` inside the purchase branch below, which becomes
-     * `return false;` — plus flipping the two purchase-document expectations in
+     * TO FLIP (if c2 returns "reverse-in-current-period"): change the
+     * `return true;` inside the purchase branch below to `return false;` and flip
+     * the two purchase-document expectations in
      * `tests/Feature/Document/CancelRefusedOnNonOpenVatPeriodTest.php`. No other
      * call site, contract, error code or migration moves.
+     *
+     * !! DO NOT FLIP BEFORE F2's AP MIRROR IS MERGED (GL gate I-4) !! Flipping
+     * TODAY yields a cancel with NO GL REVERSAL AT ALL:
+     * `AccountingService::reverseDocumentGl()` returns `null` for any type other
+     * than Invoice/CreditNote (`:833`), and `SupplierInvoice` takes
+     * `DocumentPostingService::cancel()`'s non-fiscal branch — so the GR-IR / AP /
+     * expense legs would simply stand forever. The refusal is currently the ONLY
+     * thing preventing that. Flip only once F2 has wired the AP reversal.
      */
     private function refusalAppliesTo(DocumentType $type): bool
     {
         if (in_array($type, self::PURCHASE_DOCUMENT_TYPES, true)) {
-            // R-c c2 DEFAULT (pending ruling) — refuse, exactly like the sales
-            // side. Flip this single line to `return false;` to adopt the
-            // "reverse-in-current-period" branch.
+            // R-c c2 DEFAULT (pending ruling) — refuse. See the flip warning above.
             return true;
         }
 
         // Sales side: settled by GL gate ruling 6a, NOT part of the c2 ruling.
-        return true;
+        // Every other type posts nothing and is deliberately NOT locked.
+        return in_array($type, self::SALES_DECLARATION_BEARING_TYPES, true);
     }
 }
