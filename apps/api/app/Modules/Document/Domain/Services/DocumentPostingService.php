@@ -23,6 +23,7 @@ use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
 use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
+use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -52,6 +53,7 @@ final class DocumentPostingService
         private readonly ReceiptLineGuardInterface $receiptLineGuard,
         private readonly DocumentGlPreflightInterface $glPreflight,
         private readonly DocumentGlReversalInterface $glReversal,
+        private readonly DocumentPeriodLockInterface $periodLock,
     ) {}
 
     /**
@@ -166,6 +168,29 @@ final class DocumentPostingService
             if ($requiresFiscalChain && $this->hasBlockingAllocations($document)) {
                 throw new \DomainException('DOCUMENT_HAS_PAYMENTS');
             }
+
+            // R2-F1 / GL gate ruling 6a, second condition. The reversal below is
+            // dated `now()` on purpose — back-dating it to the document's own date
+            // would retroactively rewrite a trial balance or VAT-payable balance
+            // under a declaration that may already be filed. That dating is only
+            // SAFE while the document's own period is still OPEN: cancelling a
+            // January invoice in March silently leaves January's declared VAT
+            // untouched while the GL moves in March.
+            //
+            // So once the covering `vat_periods` row is CLOSED or FILED the
+            // withdrawal is refused outright and the accountant is pointed at a
+            // credit note (avoir), which is what FR/TN practice requires anyway.
+            //
+            // Placed BEFORE the GL reversal and inside this transaction: the
+            // refusal rolls the cancel back with it, so no reversal is sealed and
+            // no document is left half-withdrawn. It applies to BOTH branches —
+            // non-fiscal document types (supplier invoices, expenses) post AP and
+            // deductible input VAT into the same declaration.
+            //
+            // The purchase-document arm is the DEFAULT pending ruling R-c c2 and
+            // is explicitly reversible — the single seam is
+            // `VatPeriodCancellationGuard::refusalAppliesTo()`.
+            $this->periodLock->assertCancellationPeriodIsOpen($document);
 
             // Update status and fiscal_status if it's a fiscal document
             $updateData = [
