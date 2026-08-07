@@ -16,9 +16,11 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\DTOs\TransferIntent;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Events\RepositoryMovementRecorded;
 use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
 use App\Modules\Treasury\Domain\Exceptions\IdempotencyConflictException;
+use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryMovement;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
@@ -68,6 +70,8 @@ final class TreasuryMovementServiceTransferTest extends TestCase
         string $balance = '0.000',
         string $currency = 'TND',
         ?string $glAccountId = null,
+        RepositoryType $type = RepositoryType::CashRegister,
+        ?bool $allowNegative = null,
     ): PaymentRepository {
         return PaymentRepository::factory()->for($this->company)->create([
             'tenant_id' => $this->tenant->id,
@@ -75,6 +79,10 @@ final class TreasuryMovementServiceTransferTest extends TestCase
             'balance' => $balance,
             'next_movement_ordinal' => 0,
             'gl_account_id' => $glAccountId,
+            'type' => $type,
+            // Omit the key entirely (rather than an explicit null) when the
+            // caller wants the model's type-derived default to apply.
+            ...($allowNegative !== null ? ['allow_negative' => $allowNegative] : []),
         ]);
     }
 
@@ -241,6 +249,70 @@ final class TreasuryMovementServiceTransferTest extends TestCase
         $this->expectException(CurrencyMismatchException::class);
 
         $this->service()->transfer($this->intent($from, $to, currency: 'TND'));
+    }
+
+    // W-5b Option B (gate CRITICAL fix, 2026-08-07): the OUT leg (source
+    // repository) is guarded exactly like record() — a register→safe
+    // over-balance transfer is refused, BOTH balances are untouched, and (in
+    // the cross-GL-account shape) the Draft JE the transfer would have posted
+    // stays Draft (rolled back, never sealed).
+    public function test_transfer_out_leg_below_zero_is_refused_and_both_balances_and_je_are_untouched(): void
+    {
+        $registerAccount = $this->seedAccount('531001');
+        $safeAccount = $this->seedAccount('531002');
+        $register = $this->seedRepository(balance: '10.000', type: RepositoryType::CashRegister, glAccountId: $registerAccount->id);
+        $safe = $this->seedRepository(balance: '0.000', type: RepositoryType::Safe, glAccountId: $safeAccount->id);
+        $draft = $this->makeDraftTransferEntry($safeAccount, $registerAccount, '1000.000');
+
+        try {
+            $this->service()->transfer($this->intent($register, $safe, amount: '1000.000', journalEntryId: $draft->id));
+            $this->fail('Expected InsufficientRepositoryBalanceException.');
+        } catch (InsufficientRepositoryBalanceException $e) {
+            $this->assertSame($register->id, $e->repositoryId);
+            $this->assertSame('10.000', $e->available);
+            $this->assertSame('1000.000', $e->requested);
+            $this->assertSame('-990.000', $e->resultingBalance);
+        }
+
+        $register->refresh();
+        $safe->refresh();
+        $this->assertSame('10.000', $register->balance);
+        $this->assertSame('0.000', $safe->balance);
+        $this->assertSame(0, $register->next_movement_ordinal);
+        $this->assertSame(0, $safe->next_movement_ordinal);
+        $this->assertSame(0, RepositoryMovement::where('transfer_group_id', '!=', null)->count());
+
+        // The transaction rolled back — the Draft JE was never posted/sealed.
+        $this->assertSame(JournalEntryStatus::Draft, JournalEntry::findOrFail($draft->id)->status);
+    }
+
+    // Exact-zero result is ALLOWED on a transfer OUT leg too — draining a
+    // register to the safe down to the last cent is not "negative".
+    public function test_transfer_out_leg_to_exactly_zero_is_allowed(): void
+    {
+        $from = $this->seedRepository(balance: '30.000', type: RepositoryType::CashRegister);
+        $to = $this->seedRepository(balance: '0.000', type: RepositoryType::Safe);
+
+        $result = $this->service()->transfer($this->intent($from, $to, amount: '30.000'));
+
+        $this->assertSame('0.000', $result->outLeg->balanceAfter);
+        $from->refresh();
+        $this->assertSame('0.000', $from->balance);
+    }
+
+    // A bank_account source (allow_negative = true by type-derived default)
+    // may transfer out into an authorised overdraft — no exception.
+    public function test_transfer_out_leg_from_bank_account_allows_negative_by_default(): void
+    {
+        $bank = $this->seedRepository(balance: '5.000', type: RepositoryType::BankAccount);
+        $this->assertTrue($bank->allow_negative);
+        $safe = $this->seedRepository(balance: '0.000', type: RepositoryType::Safe);
+
+        $result = $this->service()->transfer($this->intent($bank, $safe, amount: '9.000'));
+
+        $this->assertSame('-4.000', $result->outLeg->balanceAfter);
+        $bank->refresh();
+        $this->assertSame('-4.000', $bank->balance);
     }
 
     // (c) A failure on the second leg rolls back BOTH — no half-transfer. A

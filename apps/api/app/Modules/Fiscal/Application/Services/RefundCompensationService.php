@@ -292,6 +292,19 @@ final class RefundCompensationService
                 // 'refund_writeoff' leg discriminator can never equal
                 // 'payment:{i}' for any integer i, so this can never collide
                 // with that same event's own payment-leg movement.
+                //
+                // Gate fix (2026-08-07, IMPORTANT #4 — orchestrator ruling):
+                // this is dead-letter/quarantine REMEDIATION of a refund the
+                // device already paid out in cash (compensate() only reaches
+                // here for an already-physical event, per the class docblock)
+                // — it belongs to the same replay class as the bridges'
+                // device-authored legs, not to the interactive-caller class.
+                // If the correlated SALE_RECEIPT projection also failed, the
+                // server-side drawer balance can be below this write-off and
+                // a hard 422 with no override would dead-end the operator's
+                // already-attested remediation. allowNegative: true records +
+                // alerts instead of throwing, per the ruling's "record +
+                // alert, never block replay writers".
                 $movementResult = $this->movementService->record(new MovementIntent(
                     repositoryId: (string) $repository->id,
                     tenantId: $tenantId,
@@ -308,6 +321,7 @@ final class RefundCompensationService
                     reversesMovementId: null,
                     createdBy: $operatorId,
                     notes: "Refund compensation ({$compensationClass}): {$operatorAttestation}",
+                    allowNegative: true,
                 ));
 
                 DB::table('fiscal_refund_compensations')->insert([

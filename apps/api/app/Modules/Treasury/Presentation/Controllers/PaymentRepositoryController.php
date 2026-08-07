@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentRepository;
@@ -77,6 +78,11 @@ class PaymentRepositoryController extends Controller
             ],
             'name' => ['required', 'string', 'max:100'],
             'type' => ['required', 'string', Rule::in(['cash_register', 'safe', 'bank_account', 'virtual'])],
+            // Owner ruling (W-5b Option B backend write path): an explicit
+            // value always wins over the type-derived default; omit the key
+            // entirely to let PaymentRepository::booted()'s creating hook
+            // derive it from `type`.
+            'allow_negative' => ['sometimes', 'boolean'],
             'bank_id' => ['nullable', 'uuid', ScopedExists::tenant('banks', $tenantId)],
             'bank_name' => ['nullable', 'string', 'max:100'],
             'account_number' => ['nullable', 'string', 'max:50'],
@@ -96,6 +102,10 @@ class PaymentRepositoryController extends Controller
             'code' => $validated['code'],
             'name' => $validated['name'],
             'type' => $validated['type'],
+            // Omit the key entirely when absent from the payload (rather than
+            // passing an explicit null) — the model's creating hook only
+            // derives from `type` when the attribute is genuinely unset.
+            ...(array_key_exists('allow_negative', $validated) ? ['allow_negative' => $validated['allow_negative']] : []),
             'bank_id' => $validated['bank_id'] ?? null,
             'bank_name' => $validated['bank_name'] ?? null,
             'account_number' => $validated['account_number'] ?? null,
@@ -139,6 +149,9 @@ class PaymentRepositoryController extends Controller
             ],
             'name' => ['sometimes', 'string', 'max:100'],
             'type' => ['sometimes', 'string', Rule::in(['cash_register', 'safe', 'bank_account', 'virtual'])],
+            // Owner ruling (W-5b Option B backend write path): an explicit
+            // value always wins over the type-derived default.
+            'allow_negative' => ['sometimes', 'boolean'],
             'bank_id' => ['nullable', 'uuid', ScopedExists::tenant('banks', $tenantId)],
             'bank_name' => ['nullable', 'string', 'max:100'],
             'account_number' => ['nullable', 'string', 'max:50'],
@@ -150,6 +163,21 @@ class PaymentRepositoryController extends Controller
             'gl_account_id' => ['nullable', 'uuid', Rule::exists('accounts', 'id')->where('company_id', $companyId)],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+
+        // Gate fix (2026-08-07, IMPORTANT #1 — type-change drift): re-derive
+        // allow_negative from the NEW type ONLY when this same payload didn't
+        // also send an explicit allow_negative. This is the authoritative,
+        // and only, place this re-derivation happens — see
+        // PaymentRepository::booted()'s docblock for why a model-level
+        // `updating` hook cannot do this correctly (Eloquent dirty-checking
+        // cannot distinguish "explicitly re-sent the same value" from "never
+        // sent"; only the caller holding the real request payload can).
+        if (array_key_exists('type', $validated) && ! array_key_exists('allow_negative', $validated)) {
+            $validated['allow_negative'] = PaymentRepository::defaultAllowNegativeForType(
+                RepositoryType::from((string) $validated['type']),
+            );
+        }
+
         if (array_key_exists('gl_account_id', $validated)) {
             $freshRepository = DB::transaction(function () use (
                 $companyId,

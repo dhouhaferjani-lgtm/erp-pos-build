@@ -26,6 +26,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\PermissionRegistrar;
@@ -237,6 +238,51 @@ final class RefundCompensationControllerTest extends TestCase
         $this->assertDatabaseCount('repository_movements', 1);
         $this->repository->refresh();
         self::assertSame($balanceAfterFirst, (string) $this->repository->balance);
+    }
+
+    // =================================================================
+    // W-5b Option B (gate IMPORTANT #4, orchestrator ruling, 2026-08-07):
+    // compensate() is dead-letter/quarantine REMEDIATION of a refund the
+    // device already paid out in cash — it belongs to the replay class, so
+    // an outflow that would take the drawer negative RECORDS and ALERTS
+    // instead of a hard 422 that would dead-end an already-attested
+    // operator remediation.
+    // =================================================================
+
+    public function test_compensation_on_a_would_go_negative_repository_records_and_warns_not_422(): void
+    {
+        Log::spy();
+        Sanctum::actingAs($this->operator);
+
+        // The fixture repository opens at balance 0.00 (factory default) and
+        // the fiscal event's refund amount is 20.00 — this compensation
+        // write-off would take it to -20.00.
+        $this->assertSame('0.000', (string) $this->repository->fresh()?->balance);
+
+        $response = $this->postJson('/api/v1/fiscal/refund-compensations', [
+            'fiscal_event_id' => $this->rejectedEvent->id,
+            'compensation_class' => 'invalid_refund',
+            'operator_attestation' => 'I reconciled the drawer for this shift and confirm cash left it.',
+        ]);
+
+        // No 422 — the write-off is recorded, not blocked.
+        $response->assertStatus(201);
+
+        $this->repository->refresh();
+        $this->assertSame('-20.000', (string) $this->repository->balance);
+        $this->assertDatabaseCount('repository_movements', 1);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->with(
+                'Treasury movement recorded a negative repository balance',
+                // EUR's ISO 4217 scale is 2 (the default), unlike the
+                // model's `decimal:3` display cast used above — the raw
+                // bcmath result the port computes (and logs) is '-20.00'.
+                \Mockery::on(fn (array $context): bool => $context['repository_id'] === $this->repository->id
+                    && $context['balance_after'] === '-20.00'
+                    && $context['source_type'] === 'fiscal_event'),
+            );
     }
 
     // =================================================================

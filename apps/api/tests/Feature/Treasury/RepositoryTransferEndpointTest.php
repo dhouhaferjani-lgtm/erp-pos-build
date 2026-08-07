@@ -13,9 +13,13 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Services\RepositoryTransferService;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -216,6 +220,13 @@ final class RepositoryTransferEndpointTest extends TestCase
         $cash = $this->seedRepository('CASH-01', RepositoryType::CashRegister, $cashAccount->id);
         $bank = $this->seedRepository('BANK-01', RepositoryType::BankAccount, $bankAccount->id);
         $safe = $this->seedRepository('SAFE-01', RepositoryType::Safe, $cashAccount->id);
+        // W-5b Option B: $cash is the OUT-leg source for both transfers below
+        // (125.000 + 50.000 = 175.000) — fund it through the movement port
+        // (NOT the factory's direct-balance bracket, which would leave the
+        // cached balance with no backing movement and trip
+        // treasury:reconcile's drift check) so the new guard doesn't refuse
+        // the first transfer.
+        $this->fundRepository($cash, '500.000');
         $crossGlGroupId = (string) Str::uuid();
 
         $this->postTransfer($cash, $bank, '125.000', ['transfer_group_id' => $crossGlGroupId])
@@ -261,6 +272,65 @@ final class RepositoryTransferEndpointTest extends TestCase
 
         $inactive = $this->seedRepository('SAFE-OFF', RepositoryType::Safe, $account->id, active: false);
         $this->assertBusinessError($this->postTransfer($source, $inactive, '10.000'));
+    }
+
+    /**
+     * W-5b Option B (gate CRITICAL fix, 2026-08-07) — end-to-end through the
+     * real HTTP route: a register→safe transfer for more than the register
+     * holds is refused with the typed 422 envelope, not a silent negative
+     * balance. This is the exact scenario the gate's throwaway probe proved
+     * unguarded before the fix (cash_register 10.000 -> transfer 1000.000 ->
+     * would have landed at -990.000 with no exception).
+     */
+    public function test_transfer_over_balance_returns_typed_422_and_moves_nothing(): void
+    {
+        [$account] = $this->seedCashAndBankAccounts();
+        $register = $this->seedRepository('CASH-01', RepositoryType::CashRegister, $account->id, '10.000');
+        $safe = $this->seedRepository('SAFE-01', RepositoryType::Safe, $account->id);
+
+        $response = $this->postTransfer($register, $safe, '1000.000');
+
+        $response->assertUnprocessable()
+            ->assertJsonPath('error.code', 'INSUFFICIENT_REPOSITORY_BALANCE')
+            ->assertJsonPath('error.repository_id', $register->id)
+            ->assertJsonPath('error.available', '10.000')
+            ->assertJsonPath('error.requested', '1000.000')
+            ->assertJsonPath('error.resulting_balance', '-990.000');
+
+        $register->refresh();
+        $safe->refresh();
+        $this->assertSame('10.000', $register->balance);
+        $this->assertSame('0.000', $safe->balance);
+        $this->assertSame(0, DB::table('repository_movements')->count());
+    }
+
+    /**
+     * Fund a repository through the movement port (mirrors
+     * PaymentRepositorySeeder::recordOpeningBalance()) so the balance is
+     * backed by a real movement — required for treasury:reconcile's drift
+     * check to stay green, unlike the factory's direct-balance bracket.
+     */
+    private function fundRepository(PaymentRepository $repository, string $amount): void
+    {
+        DB::transaction(fn () => app(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $repository->tenant_id,
+            companyId: $repository->company_id,
+            direction: MovementDirection::In,
+            amount: $amount,
+            currency: $repository->currency,
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $repository->id,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'Test fixture opening balance',
+            allowWhileFrozen: false,
+        )));
+        $repository->refresh();
     }
 
     /**

@@ -123,13 +123,125 @@ class PaymentRepositoryTest extends TestCase
         $response->assertJsonPath('data.code', 'CASH_REG_01');
         $response->assertJsonPath('data.type', 'cash_register');
         $response->assertJsonPath('data.balance', '0.000');
+        // Gate fix (2026-08-07, IMPORTANT #3): the 201 response used to
+        // return allow_negative: null for every non-bank type (create()
+        // never populated the attribute in memory, and store() only ->load()s
+        // relations, never ->refresh()es). It must agree with a subsequent
+        // GET, which always read `false` via a fresh model.
+        $response->assertJsonPath('data.allow_negative', false);
 
         $this->assertDatabaseHas('payment_repositories', [
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH_REG_01',
             'type' => 'cash_register',
+            'allow_negative' => false,
         ]);
+    }
+
+    /**
+     * Owner ruling (W-5b Option B backend write path, gate IMPORTANT #2):
+     * allow_negative has a real write path — an explicit value in the create
+     * payload wins over the type-derived default.
+     */
+    public function test_can_create_cash_register_with_allow_negative_explicitly_honored(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payment-repositories', [
+            'code' => 'CASH_REG_NEG',
+            'name' => 'Negative-Tolerant Till',
+            'type' => 'cash_register',
+            'allow_negative' => true,
+        ]);
+
+        $response->assertStatus(201);
+        $response->assertJsonPath('data.allow_negative', true);
+
+        $this->assertDatabaseHas('payment_repositories', [
+            'code' => 'CASH_REG_NEG',
+            'allow_negative' => true,
+        ]);
+    }
+
+    public function test_update_can_flip_allow_negative(): void
+    {
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_REG_FLIP',
+            'name' => 'Till',
+            'type' => 'cash_register',
+            'is_active' => true,
+        ]);
+        $this->assertFalse($repository->fresh()?->allow_negative);
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'allow_negative' => true,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.allow_negative', true);
+        $this->assertTrue($repository->fresh()?->allow_negative);
+    }
+
+    /**
+     * Gate fix (2026-08-07, IMPORTANT #1 — type-change drift): a PATCH that
+     * changes `type` WITHOUT an explicit `allow_negative` in the same payload
+     * re-derives from the new type, so a bank_account converted to a
+     * cash_register doesn't silently keep allow_negative = true (a till on
+     * which the W-5b guard would be dead).
+     */
+    public function test_update_type_change_re_derives_allow_negative_when_not_explicitly_sent(): void
+    {
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'BANK_TO_CASH',
+            'name' => 'Was a bank account',
+            'type' => 'bank_account',
+            'is_active' => true,
+        ]);
+        $this->assertTrue($repository->fresh()?->allow_negative);
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'type' => 'cash_register',
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.type', 'cash_register');
+        $response->assertJsonPath('data.allow_negative', false);
+        $this->assertFalse($repository->fresh()?->allow_negative);
+    }
+
+    /**
+     * The reverse direction, and the explicit-override escape hatch in the
+     * SAME payload: converting cash_register -> bank_account WITH an
+     * explicit allow_negative honors the explicit value instead of the
+     * type-derived default (which would have been true here too, so this
+     * specifically proves the explicit value is read, not coincidentally
+     * matching the derivation).
+     */
+    public function test_update_type_change_honors_explicit_allow_negative_in_the_same_payload(): void
+    {
+        $repository = PaymentRepository::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CASH_TO_BANK',
+            'name' => 'Was a cash register',
+            'type' => 'cash_register',
+            'is_active' => true,
+        ]);
+        $this->assertFalse($repository->fresh()?->allow_negative);
+
+        $response = $this->actingAs($this->user)->patchJson("/api/v1/payment-repositories/{$repository->id}", [
+            'type' => 'bank_account',
+            'allow_negative' => false,
+        ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.type', 'bank_account');
+        // Explicit false wins over the type-derived true.
+        $response->assertJsonPath('data.allow_negative', false);
+        $this->assertFalse($repository->fresh()?->allow_negative);
     }
 
     public function test_tenant_backfill_migration_copies_gl_account_to_missing_account_id(): void

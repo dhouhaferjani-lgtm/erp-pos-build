@@ -271,12 +271,19 @@ final class TreasuryDepositBridge implements FiscalEventProjector
                 notes: null,
                 allowWhileFrozen: ! $event->event_type->isServerOnly(),
                 allowBehindCheckpoint: ! $event->event_type->isServerOnly(),
-                // W-5b Option B intent-flag sweep: this bridge runs inside
-                // ApplyFiscalEventProjectionJob (ShouldQueue), mirroring the
-                // allowWhileFrozen precedent site-for-site. Direction is
-                // always In here so the negative-balance guard never
-                // actually trips on this leg — set for consistency/defense
-                // in depth, not because this specific call can go negative.
+                // W-5b Option B intent-flag sweep (gate MINOR fix,
+                // 2026-08-07): this bridge only ever handles DEPOSIT_RECEIPT
+                // (see handlesEventType()), which IS in
+                // FiscalEventType::isServerOnly()'s list — so
+                // `! $event->event_type->isServerOnly()` is CONSTANT FALSE on
+                // this leg, exactly like allowWhileFrozen two lines above
+                // (see that comment). Direction is also always In here, so
+                // the guard is Out-only-exempt regardless. Kept as the same
+                // expression as the sibling bridges for a uniform, mirrorable
+                // shape across all three sites — this is NOT "defense in
+                // depth" (nothing here can ever evaluate true); it is an
+                // inert placeholder that costs nothing and keeps the three
+                // call sites textually identical.
                 allowNegative: ! $event->event_type->isServerOnly(),
             ));
         });

@@ -102,35 +102,14 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
             $intent->allowBehindCheckpoint,
         );
 
-        // 3.5 W-5b Option B (owner ruling 2026-08-05): a physical/pseudo-
-        // physical repository (cash_register/safe/virtual, allow_negative =
-        // false by type-derived default) must never be driven below zero;
-        // a bank_account may run an authorised overdraft (allow_negative =
-        // true) and is never touched by this guard. Only an OUTFLOW can
-        // drive the balance down, so INFLOW is exempt outright. Exact zero
-        // is NOT negative (bccomp < 0, not <= 0) — draining a till to the
-        // last cent is allowed. Mirrors the allowWhileFrozen policy shape
-        // exactly: the explicit intent->allowNegative flag (queued/replay/
-        // bridge writers only — see MovementIntent docblock) RECORDS the
-        // movement and alerts instead of throwing, so a queue worker never
-        // dies replaying a fact that already physically happened.
-        $recordedNegative = false;
-        if ($intent->direction === MovementDirection::Out && ! $repo->allow_negative) {
-            $resultingBalance = bcsub($repo->balance ?? '0', $intent->amount, $scale);
-            if (bccomp($resultingBalance, '0', $scale) < 0) {
-                if ($intent->allowNegative) {
-                    $recordedNegative = true; // derived/replay writer: record + alert, never throw
-                } else {
-                    throw new InsufficientRepositoryBalanceException(
-                        $intent->repositoryId,
-                        $repo->balance ?? '0',
-                        $intent->amount,
-                        $resultingBalance,
-                        $intent->currency,
-                    );
-                }
-            }
-        }
+        // 3.5 W-5b Option B (owner ruling 2026-08-05) — see assertOutflowAllowed().
+        $recordedNegative = $this->assertOutflowAllowed(
+            $repo,
+            $intent->direction,
+            $intent->amount,
+            $scale,
+            $intent->allowNegative,
+        );
 
         // MED-10: set the port GUC in the OUTER transaction, BEFORE the
         // savepoint, so a duplicate-key rollback-to-savepoint cannot unset it
@@ -206,9 +185,22 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                 // have refused. No thrown exception, no failed_jobs entry — just
                 // a structured warning carrying everything a human needs to spot
                 // and reconcile the now-negative till. Mirrors the
-                // recordedBehindCheckpoint Log::warning above (the only ACTIVE
-                // alert-emission precedent in this port for a "recorded but
-                // flagged" movement).
+                // recordedBehindCheckpoint Log::warning above — the only alert
+                // precedent ALREADY WIRED INSIDE THIS PORT for a "recorded but
+                // flagged" movement.
+                //
+                // Gate fix (2026-08-07, IMPORTANT #5): TreasuryAlertNotification
+                // itself is NOT unwired — it is live at six call sites
+                // (ReconcileTreasuryCommand, InstrumentMaturityAlertsCommand,
+                // GenerateRecurringExpensesCommand) with a passing recipient-
+                // resolution test. The narrow, accurate claim is only that THIS
+                // port (record()) has never emitted one — Log::warning was kept
+                // as the mechanism here as a deliberate hot-path choice (no
+                // permission-resolution/recipient-lookup added to the single
+                // write port every movement converges on), not because the
+                // notification mechanism doesn't exist elsewhere. A
+                // TreasuryAlertNotification upgrade for this specific alert is
+                // being ticketed separately.
                 DB::afterCommit(fn () => Log::warning('Treasury movement recorded a negative repository balance', [
                     'movement_id' => $movementId,
                     'repository_id' => $repo->id,
@@ -307,6 +299,18 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
 
             $this->checkpointDisposition($fromRepo, $occurredAt, false);
             $this->checkpointDisposition($toRepo, $occurredAt, false);
+
+            // 4.5 W-5b Option B (gate CRITICAL fix, 2026-08-07): the OUT leg
+            // debits $fromRepo exactly like record() debits its repository —
+            // same predicate, same helper, so the two public writers cannot
+            // drift. TransferIntent carries no allowNegative: there is no
+            // queued transfer writer (TransferIntent is constructed only in
+            // RepositoryTransferService::transfer(), an interactive HTTP
+            // path), so this hard-blocks unconditionally. The return value is
+            // always false here (allowNegative forced false — it can never
+            // reach the "record + alert" branch) and is intentionally
+            // discarded.
+            $this->assertOutflowAllowed($fromRepo, MovementDirection::Out, $intent->amount, $scale, false);
 
             // 5. MED-10: open the port GUC in the OUTER transaction, BEFORE the
             // savepoint, so a duplicate-key rollback-to-savepoint cannot unset it
@@ -468,6 +472,66 @@ final readonly class TreasuryMovementService implements TreasuryMovementServiceI
                 'frozen_at' => null,
                 'frozen_reason' => null,
             ]);
+    }
+
+    /**
+     * W-5b Option B (owner ruling 2026-08-05, gate CRITICAL fix 2026-08-07):
+     * the SOLE balance-sufficiency predicate, shared by {@see record()} and
+     * {@see transfer()} — the gate proved the two writers had drifted
+     * (transfer() debited a repository straight into insertMovementLeg()
+     * with no check at all, so a register→safe transfer could silently mint
+     * a large negative till). Called after the repository row lock AND after
+     * the idempotent-replay short-circuit in both callers, so a replay of an
+     * already-recorded movement never re-trips the guard.
+     *
+     * A physical/pseudo-physical repository (cash_register/safe/virtual,
+     * `allow_negative = false` by type-derived default) must never be driven
+     * below zero; a bank_account may run an authorised overdraft
+     * (`allow_negative = true`) and is never touched by this guard. Only an
+     * OUTFLOW can drive the balance down, so INFLOW is exempt outright. Exact
+     * zero is NOT negative (bccomp < 0, not <= 0) — draining a till to the
+     * last cent is allowed.
+     *
+     * $allowNegative is the explicit intent-level replay bypass (mirrors
+     * `allowWhileFrozen`): true ONLY for queued/replay/bridge writers
+     * (record()'s MovementIntent::$allowNegative). transfer() has no queued
+     * writer — TransferIntent is constructed only from the interactive
+     * repository-transfer endpoint — so it always passes false and hard-
+     * blocks; it can never reach the "recorded negative" return branch.
+     *
+     * @param  numeric-string  $amount
+     * @return bool true when the write is a "recorded negative" replay
+     *              bypass the caller must alert on after commit; false when
+     *              nothing exceptional happened (inflow, repo already
+     *              allows negative, or the result stays >= 0).
+     */
+    private function assertOutflowAllowed(
+        PaymentRepository $repo,
+        MovementDirection $direction,
+        string $amount,
+        int $scale,
+        bool $allowNegative,
+    ): bool {
+        if ($direction !== MovementDirection::Out || $repo->allow_negative) {
+            return false;
+        }
+
+        $resultingBalance = bcsub($repo->balance ?? '0', $amount, $scale);
+        if (bccomp($resultingBalance, '0', $scale) >= 0) {
+            return false;
+        }
+
+        if ($allowNegative) {
+            return true; // derived/replay writer: record + alert, never throw
+        }
+
+        throw new InsufficientRepositoryBalanceException(
+            $repo->id,
+            $repo->balance ?? '0',
+            $amount,
+            $resultingBalance,
+            $repo->currency,
+        );
     }
 
     /**

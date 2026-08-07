@@ -113,20 +113,63 @@ class PaymentRepository extends Model
             // W-5b Option B: allow_negative defaults from RepositoryType — a
             // bank account may run an authorised overdraft (allow_negative =
             // true); every other type (cash_register/safe/virtual) is a till
-            // that cannot hold negative cash and is left to the column
-            // default (false). Only derive when the caller has not already
-            // supplied an explicit value — mirrors the currency default
-            // above, never overriding an explicit choice.
+            // that cannot hold negative cash. Only derive when the caller has
+            // not already supplied an explicit value — mirrors the currency
+            // default above, never overriding an explicit choice. Gate fix
+            // (2026-08-07, IMPORTANT #3): set the attribute EXPLICITLY in
+            // both branches (not just the BankAccount one) so the in-memory
+            // model returned by create()/forceCreate() already carries the
+            // correct value — the prior version left non-bank types `null`
+            // in memory (only the DB column default caught it), so a
+            // create() response serialized `allow_negative: null` instead of
+            // `false` until the next ->fresh()/->refresh().
             if ($repository->getAttribute('allow_negative') === null) {
                 $type = $repository->getAttribute('type');
                 $typeEnum = $type instanceof RepositoryType
                     ? $type
                     : (is_string($type) ? RepositoryType::tryFrom($type) : null);
-                if ($typeEnum === RepositoryType::BankAccount) {
-                    $repository->allow_negative = true;
-                }
+                $repository->allow_negative = $typeEnum !== null && self::defaultAllowNegativeForType($typeEnum);
             }
         });
+
+        // Gate fix (2026-08-07, IMPORTANT #1): `type` is mutable via PATCH
+        // (PaymentRepositoryController::update()), but the type-derived
+        // default above only ever fires on `creating`. Converting a
+        // bank_account (allow_negative = true) to a cash_register would leave
+        // allow_negative = true — a till on which the W-5b guard is silently
+        // dead — unless something re-derives it.
+        //
+        // DELIBERATELY NOT a model-level `updating` hook: Eloquent's
+        // `isDirty('allow_negative')` cannot distinguish "the caller
+        // explicitly re-sent the same value this attribute already has" from
+        // "the caller never touched this attribute at all" — both leave the
+        // attribute clean. A dirty-check-based hook is therefore WRONG in the
+        // exact case that matters most: an explicit override that happens to
+        // coincide with the type's derived default (e.g. explicitly setting
+        // `allow_negative: false` in the same payload as `type: bank_account`
+        // — bank_account's derived default is also... true, so this really
+        // means an explicit override to the NON-default value looks
+        // "unchanged" whenever it matches whatever the attribute already was
+        // before the request). Only the caller that owns the ORIGINAL request
+        // payload can tell "explicitly sent" from "omitted" — that is
+        // PaymentRepositoryController::update(), which performs this
+        // re-derivation precisely, reading `array_key_exists('allow_negative',
+        // $validated)` directly, before mass-assignment ever reaches this
+        // model. See that method for the authoritative implementation.
+    }
+
+    /**
+     * The single source of truth for W-5b Option B's type-derived
+     * `allow_negative` default, shared by the creating/updating hooks above
+     * AND by PaymentRepositoryController::update() (which needs to know the
+     * derivation BEFORE mass-assignment, to distinguish "type changed, no
+     * explicit allow_negative in this payload" from "type changed, caller
+     * explicitly re-affirmed a value" — a distinction `isDirty()` alone
+     * cannot make when the explicit value happens to match the current one).
+     */
+    public static function defaultAllowNegativeForType(RepositoryType $type): bool
+    {
+        return $type === RepositoryType::BankAccount;
     }
 
     protected $fillable = [
