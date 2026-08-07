@@ -29,3 +29,9 @@ Also carried here: gate I-1 orchestrator ruling record — `reports.manage` REMO
 manager role in-lane (manager could POST /vat/periods/{id}/file while 403 on reading the
 period list; "manager gets OPERATIONAL ONLY" governs). If the owner wants managers to run
 period lifecycle ops, that's a deliberate re-grant with its own ruling, not a default.
+
+4. **R2-H addition (2026-08-07):** the withholding lane adds `taxation.withholding_rules.manage`
+   (admin+accountant). Deploy sequence is seeder-FIRST then cache-reset (cache-reset cannot
+   create the row); staging's `SYNC_PERMISSIONS_ON_BOOT=true` covers it on deploy —
+   VERIFY the flag on any NEW environment before this reaches a tenant, else the rules group
+   403s everyone including admin (API-only surface today).
