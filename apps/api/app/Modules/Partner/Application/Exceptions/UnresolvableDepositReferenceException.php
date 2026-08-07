@@ -46,15 +46,17 @@ final class UnresolvableDepositReferenceException extends DomainException
         ?string $repositoryId,
         string $currencyCode,
         string $companyId,
+        string $actorUserId,
     ): self {
         return new self($refusal, sprintf(
-            '%s [%s] Refusing to author a DEPOSIT_RECEIPT (method_code=%s, repository_id=%s, currency=%s, company=%s).',
+            '%s [%s] Refusing to author a DEPOSIT_RECEIPT (method_code=%s, repository_id=%s, currency=%s, company=%s, actor_user_id=%s).',
             $refusal->message(),
             $refusal->value,
             $methodCode,
             $repositoryId ?? '(null)',
             $currencyCode,
             $companyId,
+            $actorUserId,
         ));
     }
 }

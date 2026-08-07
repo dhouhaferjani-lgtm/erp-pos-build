@@ -71,23 +71,7 @@ final class RecordCustomerDepositService
         // DepositReferenceResolutionService. `RecordDepositRequest` carries the
         // cheap subset as field-level rules, so an HTTP caller usually gets a
         // field-scoped 422 first; this is the complete check.
-        $refusal = $this->referenceResolution->refusalFor(
-            tenantId: $partner->tenant_id,
-            companyId: $partner->company_id,
-            methodCode: $methodCode,
-            repositoryId: $repositoryId,
-            currencyCode: $currencyCode,
-        );
-
-        if ($refusal !== null) {
-            throw UnresolvableDepositReferenceException::forRefusal(
-                refusal: $refusal,
-                methodCode: $methodCode,
-                repositoryId: $repositoryId,
-                currencyCode: $currencyCode,
-                companyId: $partner->company_id,
-            );
-        }
+        $this->assertProjectable($partner, $methodCode, $repositoryId, $currencyCode, $actorUserId);
 
         $scale = CurrencyScale::for($currencyCode);
 
@@ -102,6 +86,25 @@ final class RecordCustomerDepositService
             $repositoryId,
             $notes,
         ) {
+            // R2-K-prev — RE-VERIFY inside the sealing transaction.
+            //
+            // HONEST SCOPE (contractual, Codex round-3): two of the refusals are
+            // time-of-check/time-of-use vectors, not input validation — the
+            // repository can be frozen (a cash count) and the actor's company
+            // membership can be revoked between the pre-flight above and the
+            // moment the projection runs. Re-reading them HERE narrows the race
+            // from "the whole request" to "the width of this transaction", and a
+            // refusal rolls the transaction back so nothing is sealed.
+            //
+            // It does NOT close the race. `runSeededProjectionsSync()` below runs
+            // AFTER this transaction commits, so a freeze or a revocation landing
+            // in that gap still mints a permanent hash-chained orphan receipt.
+            // Detection and disposition of such orphans is the separate
+            // recoverability lane (R2-K-rec) and is deliberately not attempted
+            // here. Ticket:
+            // docs/superpowers/tickets/2026-08-05-deposit-residual-seal-before-resolve-vectors.md
+            $this->assertProjectable($partner, $methodCode, $repositoryId, $currencyCode, $actorUserId);
+
             $event = $this->fiscalEventService->appendDepositReceipt(
                 partner: $partner,
                 actorUserId: $actorUserId,
@@ -151,6 +154,47 @@ final class RecordCustomerDepositService
             receivableBalance: $this->balance($partner->receivable_balance, $scale),
             creditBalance: $this->balance($partner->credit_balance, $scale),
             netBalance: CurrencyScale::bcformat($partner->net_balance, $scale),
+        );
+    }
+
+    /**
+     * Refuse the deposit unless every Treasury reference the projection will
+     * need resolves right now.
+     *
+     * Called TWICE by design (W-5c D1 + R2-K-prev): once before the transaction
+     * opens, so the common case fails cheaply without taking any lock, and once
+     * inside it, immediately before the append — see the call site for the
+     * TOCTOU scope statement.
+     *
+     * @throws UnresolvableDepositReferenceException
+     */
+    private function assertProjectable(
+        Partner $partner,
+        string $methodCode,
+        ?string $repositoryId,
+        string $currencyCode,
+        string $actorUserId,
+    ): void {
+        $refusal = $this->referenceResolution->refusalFor(
+            tenantId: $partner->tenant_id,
+            companyId: $partner->company_id,
+            methodCode: $methodCode,
+            repositoryId: $repositoryId,
+            currencyCode: $currencyCode,
+            actorUserId: $actorUserId,
+        );
+
+        if ($refusal === null) {
+            return;
+        }
+
+        throw UnresolvableDepositReferenceException::forRefusal(
+            refusal: $refusal,
+            methodCode: $methodCode,
+            repositoryId: $repositoryId,
+            currencyCode: $currencyCode,
+            companyId: $partner->company_id,
+            actorUserId: $actorUserId,
         );
     }
 
