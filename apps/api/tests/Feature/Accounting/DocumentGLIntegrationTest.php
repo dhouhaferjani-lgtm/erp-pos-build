@@ -470,4 +470,147 @@ class DocumentGLIntegrationTest extends TestCase
         $this->assertEquals('0.000', $creditAr->debit);
         $this->assertEquals('600.000', $creditAr->credit);
     }
+
+    /**
+     * Q1 (2026-08-07 expert-comptable ruling) — `GeneralLedgerService::createFromCreditNote()`
+     * must credit AR/411 with the EX-STAMP amount only and book the credit
+     * note's own stamp duty as a separate self-balancing pair, exactly like
+     * `AccountingService::createCreditNoteGLEntries()` (the live posting path).
+     *
+     * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md §Q1
+     */
+    public function test_credit_note_with_stamp_duty_credits_ar_ex_stamp_and_books_a_separate_fiscal_charge_pair(): void
+    {
+        $stampChargeAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '6354',
+            'name' => 'Droits d\'enregistrement et de timbre',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::PurchaseStampDuty,
+            'is_active' => true,
+        ]);
+        $stampPayableAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4375',
+            'name' => 'Droit de timbre à reverser',
+            'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable,
+            'is_active' => true,
+        ]);
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'CN-DEAD-STAMP-'.uniqid(),
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '500.00',
+            'stamp_duty_amount' => '1.000',
+            'tax_amount' => '101.00', // 100 line VAT + 1 stamp
+            'total' => '601.00',
+            'balance_due' => '601.00',
+        ]);
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 1,
+            'description' => 'Returned product, own-stamp CN',
+            'quantity' => '1.00',
+            'unit_price' => '500.00',
+            'tax_rate' => '20.00',
+            'line_total' => '500.00',
+        ]);
+        $creditNote = $this->postingService->post($creditNote);
+
+        $entry = $this->glService->createFromCreditNote($creditNote, $this->user);
+
+        // AR credited EX-STAMP: 500 + 100 = 600, NOT the stamp-inclusive 601.
+        $arLine = $entry->lines->where('account_id', $this->receivableAccount->id)->first();
+        $this->assertNotNull($arLine);
+        $this->assertEquals('0.000', $arLine->debit);
+        $this->assertEquals('600.000', $arLine->credit, 'AR/411 must be credited ex-stamp only (Q1 ruling)');
+
+        // Line VAT reversal unchanged — the stamp must not land on VatCollected.
+        $vatLine = $entry->lines->where('account_id', $this->vatAccount->id)->first();
+        $this->assertNotNull($vatLine);
+        $this->assertEquals('100.000', $vatLine->debit);
+
+        // NEW self-balancing stamp pair.
+        $stampChargeLine = $entry->lines->where('account_id', $stampChargeAccount->id)->first();
+        $this->assertNotNull($stampChargeLine, 'A DEBIT leg on the fiscal-charge expense account must exist');
+        $this->assertEquals('1.000', $stampChargeLine->debit);
+        $this->assertEquals('0.000', $stampChargeLine->credit);
+
+        $stampPayableLine = $entry->lines->where('account_id', $stampPayableAccount->id)->first();
+        $this->assertNotNull($stampPayableLine, 'A CREDIT leg on the stamp-payable liability must exist');
+        $this->assertEquals('0.000', $stampPayableLine->debit);
+        $this->assertEquals('1.000', $stampPayableLine->credit);
+
+        // Whole entry stays balanced, string-exact.
+        $debits = '0';
+        $credits = '0';
+        foreach ($entry->lines as $line) {
+            $debits = bcadd($debits, (string) $line->debit, 3);
+            $credits = bcadd($credits, (string) $line->credit, 3);
+        }
+        $this->assertSame($credits, $debits);
+        $this->assertSame('601.000', $debits);
+    }
+
+    /**
+     * Fail-closed: the dead-code `createFromCreditNote()` must never silently
+     * drop a credit note's stamp duty when the chart cannot represent it — it
+     * reuses `getAccountByPurpose()`'s existing RuntimeException idiom (this
+     * class's established fail-closed pattern; unlike `AccountingService`, this
+     * dead-code path has no 422 preflight machinery of its own).
+     */
+    public function test_credit_note_with_stamp_duty_fails_closed_when_the_chart_has_no_stamp_charge_account(): void
+    {
+        // No PurchaseStampDuty account created — deliberately absent.
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '4375',
+            'name' => 'Droit de timbre à reverser',
+            'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::SalesStampDutyPayable,
+            'is_active' => true,
+        ]);
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CreditNote,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'CN-DEAD-NOACCT-'.uniqid(),
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '500.00',
+            'stamp_duty_amount' => '1.000',
+            'tax_amount' => '101.00',
+            'total' => '601.00',
+            'balance_due' => '601.00',
+        ]);
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 1,
+            'description' => 'Returned product, own-stamp CN, no charge account',
+            'quantity' => '1.00',
+            'unit_price' => '500.00',
+            'tax_rate' => '20.00',
+            'line_total' => '500.00',
+        ]);
+        $creditNote = $creditNote->fresh(['lines']);
+        $creditNote->update(['status' => DocumentStatus::Confirmed]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/purchase_stamp_duty/');
+
+        $this->glService->createFromCreditNote($creditNote->fresh(['lines']), $this->user);
+    }
 }

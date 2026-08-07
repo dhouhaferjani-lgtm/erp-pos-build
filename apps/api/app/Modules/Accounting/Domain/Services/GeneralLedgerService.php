@@ -197,8 +197,19 @@ final class GeneralLedgerService
      * Create journal entry from a credit note.
      * This is the reverse of an invoice:
      * Debit: Sales Revenue (subtotal)
-     * Debit: VAT Payable (tax)
-     * Credit: Accounts Receivable (total)
+     * Debit: VAT Payable (line tax only — see Q1 below)
+     * Debit: fiscal-charge expense / Credit: stamp-duty payable (the credit
+     *        note's OWN stamp duty, when it carries one — see Q1 below)
+     * Credit: Accounts Receivable (total, EX-STAMP — see Q1 below)
+     *
+     * Q1 (2026-08-07 expert-comptable ruling): "Le compte client (411) ne doit
+     * être diminué que du montant crédité hors timbre, et le timbre de l'avoir
+     * doit être comptabilisé séparément comme une charge fiscale pour
+     * l'entreprise." `documents.stamp_duty_amount` is bundled into `tax_amount`
+     * (`tax_amount = line VAT + stamp_duty_amount`) — this method peels it back
+     * out so it neither reduces AR nor lands on VatCollected, and books it as a
+     * separate self-balancing pair instead.
+     * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md §Q1
      */
     public function createFromCreditNote(Document $creditNote, User $user): JournalEntry
     {
@@ -236,26 +247,70 @@ final class GeneralLedgerService
                 'line_order' => $lineOrder++,
             ]);
 
-            // Debit: VAT Payable (tax amount) - only if there's tax
+            // Q1 — `tax_amount` bundles the LINE VAT with the credit note's own
+            // `stamp_duty_amount`; only the line VAT belongs on VatCollected.
+            /** @var numeric-string $stampDutyAmount */
+            $stampDutyAmount = $creditNote->stamp_duty_amount ?? '0';
+            $hasStampDuty = bccomp($stampDutyAmount, '0', $this->scale()) > 0;
+
+            /** @var numeric-string $taxAmount */
             $taxAmount = $creditNote->tax_amount ?? '0';
-            if (bccomp($taxAmount, '0', $this->scale()) > 0) {
+            /** @var numeric-string $lineVatAmount */
+            $lineVatAmount = $hasStampDuty ? bcsub($taxAmount, $stampDutyAmount, $this->scale()) : $taxAmount;
+
+            // Debit: VAT Payable (line tax only) - only if there's tax
+            if (bccomp($lineVatAmount, '0', $this->scale()) > 0) {
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $taxAccount->id,
-                    'debit' => $taxAmount,
+                    'debit' => $lineVatAmount,
                     'credit' => '0',
                     'description' => 'VAT payable reversal',
                     'line_order' => $lineOrder++,
                 ]);
             }
 
-            // Credit: Accounts Receivable (total) - reduces receivable - with partner for subledger
+            // Q1 — the credit note's own stamp duty, booked as a separate
+            // self-balancing pair: DEBIT the fiscal-charge expense account (the
+            // company bears this cost), CREDIT the stamp-payable liability (the
+            // company owes the avoir's timbre to the State). Fail-closed via
+            // `getAccountByPurpose()`'s existing RuntimeException idiom — this
+            // class's established pattern — rather than silently dropping the
+            // charge or sealing an unbalanced entry.
+            if ($hasStampDuty) {
+                $stampExpenseAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::PurchaseStampDuty);
+                $stampPayableAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::SalesStampDutyPayable);
+
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $stampExpenseAccount->id,
+                    'debit' => $stampDutyAmount,
+                    'credit' => '0',
+                    'description' => 'Stamp duty (timbre) on credit note — fiscal charge',
+                    'line_order' => $lineOrder++,
+                ]);
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $stampPayableAccount->id,
+                    'debit' => '0',
+                    'credit' => $stampDutyAmount,
+                    'description' => 'Stamp duty (timbre) payable — credit note',
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
+            // Credit: Accounts Receivable — EX-STAMP only (Q1) - with partner for subledger
+            /** @var numeric-string $total */
+            $total = $creditNote->total ?? '0';
+            /** @var numeric-string $arCreditAmount */
+            $arCreditAmount = $hasStampDuty ? bcsub($total, $stampDutyAmount, $this->scale()) : $total;
+
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $receivableAccount->id,
                 'partner_id' => $creditNote->partner_id,
                 'debit' => '0',
-                'credit' => $creditNote->total ?? '0',
+                'credit' => $arCreditAmount,
                 'description' => 'Accounts receivable reduction',
                 'line_order' => $lineOrder,
             ]);
