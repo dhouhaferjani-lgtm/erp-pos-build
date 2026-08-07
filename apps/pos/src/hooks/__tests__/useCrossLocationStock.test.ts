@@ -36,7 +36,7 @@ vi.mock('@/lib/db/repositories/crossLocationStockRepository', () => ({
 
 import { useCrossLocationStock } from '@/hooks/useCrossLocationStock';
 
-const AS_OF = '2026-06-14T10:00:00Z';
+const AS_OF = new Date().toISOString();
 
 const payload = {
   product_id: 'p1',

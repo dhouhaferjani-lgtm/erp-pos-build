@@ -8,6 +8,7 @@ vi.mock('@/lib/api', () => ({
 
 vi.mock('@/lib/db/repositories/pendingCustomerRepository', () => ({
   getPendingCustomers: vi.fn(),
+  markPendingCustomerFailed: vi.fn().mockResolvedValue(undefined),
   markPendingCustomerResolved: vi.fn().mockResolvedValue(undefined),
   storeCustomerAlias: vi.fn().mockResolvedValue(undefined),
   StaleCustomerAliasConflictError: class StaleCustomerAliasConflictError extends Error {},
@@ -20,15 +21,12 @@ vi.mock('@/lib/db/repositories/customerRepository', () => ({
 import { apiPost } from '@/lib/api';
 import {
   getPendingCustomers,
+  markPendingCustomerFailed,
   markPendingCustomerResolved,
   storeCustomerAlias,
 } from '@/lib/db/repositories/pendingCustomerRepository';
 import { promoteCustomerServerId } from '@/lib/db/repositories/customerRepository';
-import {
-  PendingCustomerSyncResponseError,
-  PendingCustomerSyncScopeError,
-  pushPendingCustomers,
-} from '../pendingCustomerSyncService';
+import { pushPendingCustomers } from '../pendingCustomerSyncService';
 
 const db = {} as Database;
 const TENANT_ID = 'tenant-1';
@@ -101,7 +99,7 @@ describe('pushPendingCustomers', () => {
     );
   });
 
-  it('fails loudly when the server returns another tenant or company', async () => {
+  it('parks the row when the server returns another tenant or company', async () => {
     const row = pending();
     vi.mocked(getPendingCustomers).mockResolvedValueOnce([row]);
     vi.mocked(apiPost).mockResolvedValueOnce({
@@ -112,16 +110,21 @@ describe('pushPendingCustomers', () => {
       resolved_at: '2026-05-21T12:01:00.000Z',
     });
 
-    await expect(pushPendingCustomers(db, TENANT_ID, COMPANY_ID)).rejects.toBeInstanceOf(
-      PendingCustomerSyncScopeError,
-    );
+    await expect(pushPendingCustomers(db, TENANT_ID, COMPANY_ID)).resolves.toBe(0);
 
+    expect(markPendingCustomerFailed).toHaveBeenCalledWith(
+      db,
+      TENANT_ID,
+      COMPANY_ID,
+      row.client_customer_uuid,
+      expect.stringContaining('resolved outside active scope'),
+    );
     expect(storeCustomerAlias).not.toHaveBeenCalled();
     expect(promoteCustomerServerId).not.toHaveBeenCalled();
     expect(markPendingCustomerResolved).not.toHaveBeenCalled();
   });
 
-  it('fails loudly when the server returns a mismatched client customer uuid', async () => {
+  it('parks the row when the server returns a mismatched client customer uuid', async () => {
     const row = pending();
     vi.mocked(getPendingCustomers).mockResolvedValueOnce([row]);
     vi.mocked(apiPost).mockResolvedValueOnce({
@@ -132,10 +135,15 @@ describe('pushPendingCustomers', () => {
       resolved_at: '2026-05-21T12:01:00.000Z',
     });
 
-    await expect(pushPendingCustomers(db, TENANT_ID, COMPANY_ID)).rejects.toBeInstanceOf(
-      PendingCustomerSyncResponseError,
-    );
+    await expect(pushPendingCustomers(db, TENANT_ID, COMPANY_ID)).resolves.toBe(0);
 
+    expect(markPendingCustomerFailed).toHaveBeenCalledWith(
+      db,
+      TENANT_ID,
+      COMPANY_ID,
+      row.client_customer_uuid,
+      expect.stringContaining('mismatched client_customer_uuid'),
+    );
     expect(storeCustomerAlias).not.toHaveBeenCalled();
     expect(promoteCustomerServerId).not.toHaveBeenCalled();
     expect(markPendingCustomerResolved).not.toHaveBeenCalled();

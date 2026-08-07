@@ -263,9 +263,9 @@ describe('inventory queryKey shapes', () => {
     })
 
     const keys = inventoryKeysFromCache(queryClient)
-    expectScoped(keys.find((k) => k[0] === 'locations'), ['locations'])
-    expectScoped(keys.find((k) => k[0] === 'stock-levels'), ['stock-levels', '', null])
-    expectScoped(keys.find((k) => k[0] === 'stock-movements'), ['stock-movements', '', 'all', null])
+    expectScoped(keys.find((k) => k[0] === 'locations'), ['locations', { locScope: 'all' }])
+    expectScoped(keys.find((k) => k[0] === 'stock-levels'), ['stock-levels', '', { locScope: 'all' }])
+    expectScoped(keys.find((k) => k[0] === 'stock-movements'), ['stock-movements', '', 'all', { locScope: 'all' }])
   })
 
   it('wraps platform and product subcomponent keys (.314-.318)', async () => {
@@ -293,7 +293,7 @@ describe('inventory queryKey shapes', () => {
     const keys = inventoryKeysFromCache(queryClient)
     expectScoped(keys.find((k) => k[0] === 'platform'), ['platform', 'catalog-lookup', '5901234123457'])
     expectScoped(keys.find((k) => k[0] === 'product-documents'), ['product-documents', 'prod-1', 1, 25])
-    expectScoped(keys.find((k) => k[0] === 'product-movements'), ['product-movements', 'prod-1', [], 1, 25])
+    expectScoped(keys.find((k) => k[0] === 'product-movements'), ['product-movements', 'prod-1', 1, 25, '', { locScope: 'all' }])
     expectScoped(keys.find((k) => k[0] === 'product-stock'), ['product-stock', 'prod-1'])
     expectScoped(keys.find((k) => k[0] === 'margin-check'), ['margin-check', 'prod-1', '20'])
   })
