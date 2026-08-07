@@ -55,8 +55,17 @@ class ProportionalMoneyAllocator
             } elseif (bccomp($base, '0', $workingScale) <= 0) {
                 $share = CurrencyScale::bcformatStrict('0', $scale);
             } else {
-                $proportion = bcdiv($base, $subtotal, $workingScale);
-                $share = CurrencyScale::bcformatStrict(bcmul($formattedTotal, $proportion, $workingScale), $scale);
+                // Compute the share in ONE division step — multiply first, divide
+                // once — so nothing is truncated before the multiplication. The
+                // two-step "truncate the proportion, then multiply" path drifts a
+                // millime on ratios that are not exactly representable in decimal
+                // (e.g. 100/150), even though the absorber still forces the total
+                // sum to reconcile (ticket 2026-08-03-w4-purchasing-inventory-defects
+                // #1 / MTP-PUR-17).
+                $share = CurrencyScale::bcformatStrict(
+                    bcdiv(bcmul($formattedTotal, $base, $workingScale), $subtotal, $workingScale),
+                    $scale,
+                );
             }
 
             $shares[$index] = $share;

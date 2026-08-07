@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Inventory\Application\Services\GoodsReceiptService;
 use App\Modules\Inventory\Application\Services\LandedCostService;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
@@ -286,6 +287,85 @@ class LandedCostBcmathTest extends TestCase
             0,
             bccomp('50.000', $allocatedSum, 3),
             "Allocated sum {$allocatedSum} must equal input 50.000 exactly",
+        );
+    }
+
+    /**
+     * Ticket 2026-08-03-w4-purchasing-inventory-defects.md #1 (MTP-PUR-17).
+     *
+     * Freight 30.000 over line values 100.000 / 50.000 — a ratio (100/150,
+     * 50/150) that is NOT exactly representable in decimal. Before the fix
+     * this drifted a millime: L1 = 19.999000, L2 = 10.001000 (the absorber
+     * silently swallowing the residue), even though the SUM still
+     * reconciled to 30.000. The exact proportional split is L1 = 20.000,
+     * L2 = 10.000, giving landed_unit_cost 12.000000 on BOTH lines.
+     */
+    public function test_allocation_matches_ticket_shape_exact_conservation_and_per_product_amounts(): void
+    {
+        $po = $this->makePurchaseOrder('PO-LC-MTPPUR17');
+
+        // Line 1: 10 x 10.000 = 100.000. Line 2: 5 x 10.000 = 50.000.
+        $lineA = $this->makeLine($po, 1, quantity: '10', unitPrice: '10.000');
+        $lineB = $this->makeLine($po, 2, quantity: '5', unitPrice: '10.000');
+
+        DocumentAdditionalCost::create([
+            'document_id' => $po->id,
+            'cost_type' => 'shipping',
+            'description' => 'W4 freight',
+            'amount' => '30.000',
+        ]);
+
+        /** @var LandedCostService $service */
+        $service = app(LandedCostService::class);
+        $service->allocateCosts($po->fresh(['lines']) ?? $po);
+
+        $reloaded = $po->fresh(['lines']);
+        $this->assertNotNull($reloaded);
+        $byId = $reloaded->lines->keyBy('id');
+        /** @var DocumentLine $reloadedA */
+        $reloadedA = $byId->get($lineA->id);
+        /** @var DocumentLine $reloadedB */
+        $reloadedB = $byId->get($lineB->id);
+
+        // Per-product amounts — the exact proportional split, no drift.
+        $this->assertSame('20.000000', (string) $reloadedA->allocated_costs);
+        $this->assertSame('10.000000', (string) $reloadedB->allocated_costs);
+        $this->assertSame('12.000000', (string) $reloadedA->landed_unit_cost);
+        $this->assertSame('12.000000', (string) $reloadedB->landed_unit_cost);
+
+        // Exact conservation: the allocated parts sum exactly to the input total.
+        $this->assertSame(
+            0,
+            bccomp('30.000', bcadd((string) $reloadedA->allocated_costs, (string) $reloadedB->allocated_costs, 6), 6),
+        );
+
+        // ── Downstream consumer sweep: WAC recompute sees the CONSERVED figures ──
+        // Receive both lines in full. WeightedAverageCostService::recordPurchase()
+        // (called by GoodsReceiptService::receiveGoods) uses line->landed_unit_cost
+        // as its cost basis, and with company-owned qty starting at 0 for a fresh
+        // product, the resulting WAC equals the landed unit cost exactly.
+        $productA = Product::query()->findOrFail((string) $reloadedA->product_id);
+        $productB = Product::query()->findOrFail((string) $reloadedB->product_id);
+
+        /** @var GoodsReceiptService $receiptService */
+        $receiptService = app(GoodsReceiptService::class);
+        $receiptService->receiveGoods($reloaded, [
+            $reloadedA->id => '10.0000',
+            $reloadedB->id => '5.0000',
+        ]);
+
+        $productA->refresh();
+        $productB->refresh();
+
+        $this->assertSame(
+            0,
+            bccomp('12.000000', (string) $productA->cost_price, 6),
+            "product A WAC {$productA->cost_price} must equal the conserved landed unit cost 12.000000",
+        );
+        $this->assertSame(
+            0,
+            bccomp('12.000000', (string) $productB->cost_price, 6),
+            "product B WAC {$productB->cost_price} must equal the conserved landed unit cost 12.000000",
         );
     }
 
