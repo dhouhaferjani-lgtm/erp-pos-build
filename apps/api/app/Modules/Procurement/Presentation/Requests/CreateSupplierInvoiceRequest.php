@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Procurement\Application\ProcurementPolicyResolver;
+use App\Modules\Procurement\Application\PurchaseBonusGate;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
@@ -32,6 +33,7 @@ final class CreateSupplierInvoiceRequest extends FormRequest
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly ProcurementPolicyResolver $policyResolver,
+        private readonly PurchaseBonusGate $purchaseBonusGate,
     ) {
         parent::__construct();
     }
@@ -63,8 +65,10 @@ final class CreateSupplierInvoiceRequest extends FormRequest
      */
     public function rules(): array
     {
-        $companyId = $this->companyContext->requireCompanyId();
-        $tenantId = $this->companyContext->requireCompany()->tenant_id;
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
+        $tenantId = $company->tenant_id;
+        $purchaseBonusEnabled = $this->purchaseBonusGate->enabledFor($company);
         $invoiceFirstWithoutSources = $this->boolean('invoice_first_delivered') || $this->boolean('pending_receipt');
         $sourceDocumentIdsRule = $invoiceFirstWithoutSources ? ['nullable', 'array'] : ['required', 'array', 'min:1'];
         $sourceLineIdRule = $invoiceFirstWithoutSources ? ['nullable', 'uuid'] : ['required', 'uuid'];
@@ -133,6 +137,15 @@ final class CreateSupplierInvoiceRequest extends FormRequest
                 'max:100',
                 'regex:/^-?\d+(\.\d{1,2})?$/',
             ],
+            // Ticket 2026-08-03-w4-purchasing-inventory-defects.md #2: without this
+            // declared, validated() strips is_bonus_line on every request and a
+            // bonus/free-goods receipt can never be invoiced (the matcher's whole
+            // bonus arm becomes unreachable). Gated the same way
+            // CreateDocumentRequest gates PO bonus lines: prohibited when the
+            // company is outside PurchaseBonusGate (module + country allowlist).
+            'lines.*.is_bonus_line' => $purchaseBonusEnabled
+                ? ['nullable', 'boolean']
+                : ['prohibited'],
             'lines.*.batch' => ['nullable', 'array'],
             'lines.*.batch.batch_number' => ['required_with:lines.*.batch', 'string', 'max:100'],
             'lines.*.batch.expiry_date' => ['required_with:lines.*.batch', 'date_format:Y-m-d'],
