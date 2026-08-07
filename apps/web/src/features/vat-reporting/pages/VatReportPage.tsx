@@ -10,11 +10,17 @@ import { VatPeriodStatusBadge } from '../components/VatPeriodStatusBadge'
 import { VatExportMenu } from '../components/VatExportMenu'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
+import { useCurrency } from '@/hooks/useCurrency'
+import { bccomp } from '@/lib/decimal'
 
 export function VatReportPage() {
   const { t } = useTranslation(['finance'])
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  // m-6 (2026-08-06 gate): render/compare through the currency-aware,
+  // float-free path (rule 19) instead of a local parseFloat'd
+  // Intl.NumberFormat helper and a parseFloat sign comparison.
+  const { format: formatAmount } = useCurrency()
 
   const { data: report, isLoading, error, refetch } = useVatReport(id)
 
@@ -100,16 +106,16 @@ export function VatReportPage() {
             <div className="space-y-2">
               <div className="flex justify-between text-sm">
                 <span className={`${colorTokens.text.muted}`}>{t('finance:vatReporting.detail.creditBroughtForward')}</span>
-                <span className="font-medium">{formatAmount(report.credit_brought_forward)}</span>
+                <span className="font-medium">{formatAmount(report.credit_brought_forward, { symbol: false })}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className={`${colorTokens.text.muted}`}>{t('finance:vatReporting.detail.fromPreviousPeriod')}</span>
-                <span className="font-medium">{formatAmount(report.credit_carried_forward)}</span>
+                <span className="font-medium">{formatAmount(report.credit_carried_forward, { symbol: false })}</span>
               </div>
               <div className={`flex justify-between border-t ${colorTokens.border.default} pt-2 text-base font-bold`}>
                 <span>{t('finance:vatReporting.detail.amountPayable')}</span>
-                <span className={parseFloat(report.amount_payable) > 0 ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`}>
-                  {formatAmount(report.amount_payable)}
+                <span className={bccomp(report.amount_payable, '0') > 0 ? `${colorTokens.intent.danger.text}` : `${colorTokens.intent.success.text}`}>
+                  {formatAmount(report.amount_payable, { symbol: false })}
                 </span>
               </div>
             </div>
@@ -118,11 +124,4 @@ export function VatReportPage() {
       ) : null}
     </div>
   )
-}
-
-function formatAmount(value: string): string {
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(parseFloat(value))
 }

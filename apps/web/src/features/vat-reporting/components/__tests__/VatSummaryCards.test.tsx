@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { VatSummaryCards } from '../VatSummaryCards'
+import { useCompanyStore } from '@/stores/companyStore'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -16,6 +17,33 @@ vi.mock('react-i18next', () => ({
 }))
 
 describe('VatSummaryCards', () => {
+  // m-6 (2026-08-06 gate): amounts render through the currency-aware
+  // `useCurrency().format()` path, which keys locale/decimals off the
+  // ACTIVE COMPANY's currency. Pin a USD company (locale en-US, 2
+  // decimals) so the expected strings below stay unambiguous.
+  beforeEach(() => {
+    useCompanyStore.setState({
+      currentCompanyId: 'c1',
+      companies: [
+        {
+          id: 'c1',
+          name: 'Test Co',
+          legalName: 'Test Co LLC',
+          taxId: null,
+          countryCode: 'US',
+          currency: 'USD',
+          locale: 'en-US',
+          timezone: 'America/New_York',
+        },
+      ],
+      isLoading: false,
+    })
+  })
+
+  afterEach(() => {
+    useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+  })
+
   it('renders 4 cards with provided amounts', () => {
     render(
       <VatSummaryCards

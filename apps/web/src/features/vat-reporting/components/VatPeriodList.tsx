@@ -6,6 +6,7 @@ import { Button } from '@/components/atoms/Button/Button'
 import type { VatPeriod } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { useCurrency } from '@/hooks/useCurrency'
 
 interface VatPeriodListProps {
   periods: VatPeriod[]
@@ -16,14 +17,6 @@ interface VatPeriodListProps {
   isClosing?: boolean
   isFiling?: boolean
   isReopening?: boolean
-}
-
-function formatAmount(value: string | null): string {
-  if (value === null) return '-'
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(parseFloat(value))
 }
 
 export function VatPeriodList({
@@ -37,6 +30,11 @@ export function VatPeriodList({
   isReopening = false,
 }: VatPeriodListProps) {
   const { t } = useTranslation('finance')
+  // m-6 (2026-08-06 gate): render through the currency-aware formatter
+  // (rule 19 -- no parseFloat/Number on money) instead of a hardcoded
+  // en-US Intl.NumberFormat over a parseFloat'd value.
+  const { format } = useCurrency()
+  const formatAmount = (value: string | null): string => (value === null ? '-' : format(value, { symbol: false }))
   const [confirmAction, setConfirmAction] = useState<{
     type: 'close' | 'file' | 'reopen'
     periodId: string

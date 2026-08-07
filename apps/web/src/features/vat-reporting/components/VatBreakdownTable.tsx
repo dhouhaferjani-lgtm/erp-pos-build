@@ -2,25 +2,23 @@ import { useTranslation } from 'react-i18next'
 import type { VatRateBreakdown } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd } from '@/lib/decimal'
 
 interface VatBreakdownTableProps {
   breakdowns: VatRateBreakdown[]
   showRecoverable?: boolean
 }
 
-function formatAmount(value: string | number): string {
-  const num = typeof value === 'string' ? parseFloat(value) : value
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(num)
-}
-
 export function VatBreakdownTable({ breakdowns, showRecoverable }: VatBreakdownTableProps) {
   const { t } = useTranslation('finance')
+  // m-6 (2026-08-06 gate): base_amount/vat_amount are canonical decimal
+  // strings -- summed with bcadd (never parseFloat/+) and rendered through
+  // the currency-aware formatter so no float ever touches these values.
+  const { format } = useCurrency()
 
-  const totalBase = breakdowns.reduce((sum, b) => sum + parseFloat(b.base_amount), 0)
-  const totalVat = breakdowns.reduce((sum, b) => sum + parseFloat(b.vat_amount), 0)
+  const totalBase = breakdowns.reduce((sum, b) => bcadd(sum, b.base_amount), '0')
+  const totalVat = breakdowns.reduce((sum, b) => bcadd(sum, b.vat_amount), '0')
   const totalDocs = breakdowns.reduce((sum, b) => sum + b.document_count, 0)
 
   return (
@@ -54,10 +52,10 @@ export function VatBreakdownTable({ breakdowns, showRecoverable }: VatBreakdownT
                 {breakdown.tax_rate}
               </td>
               <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
-                {formatAmount(breakdown.base_amount)}
+                {format(breakdown.base_amount, { symbol: false })}
               </td>
               <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
-                {formatAmount(breakdown.vat_amount)}
+                {format(breakdown.vat_amount, { symbol: false })}
               </td>
               <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
                 {breakdown.document_count}
@@ -77,10 +75,10 @@ export function VatBreakdownTable({ breakdowns, showRecoverable }: VatBreakdownT
               {t('finance:vatReporting.total')}
             </td>
             <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
-              {formatAmount(totalBase)}
+              {format(totalBase, { symbol: false })}
             </td>
             <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
-              {formatAmount(totalVat)}
+              {format(totalVat, { symbol: false })}
             </td>
             <td className={`whitespace-nowrap px-6 py-4 text-end text-sm ${colorTokens.text.primary}`}>
               {totalDocs}

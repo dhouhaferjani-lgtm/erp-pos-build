@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { formatDecimalAmount } from '@/lib/format'
 
 interface VatSpecialItemsProps {
   specialItems: Record<string, unknown>
@@ -25,21 +26,24 @@ const countryItemConfigs: Record<string, SpecialItemConfig[]> = {
   ],
 }
 
+// m-6 (2026-08-06 gate): these values mix money (timbre_fiscal_amount,
+// retenue_source_amount, credit_tva_previous, eu_acquisitions_vat) and
+// plain counts (timbre_fiscal_count) with no type tag to tell them apart
+// at this layer, so a currency-scaled formatter can't be applied uniformly
+// here. The precision-safe fix keeps the exact prior 'en-US'/2dp display
+// behaviour but routes the string branch through the canonical
+// float-free path (lib/format's formatDecimalAmount, Big.js/BigInt
+// internally) instead of `parseFloat` -- rule 19: no float ever touches a
+// numeric-string amount, even for a value that may turn out to be a count.
 function formatItemValue(value: unknown): string {
   if (value === null || value === undefined) return '-'
   if (typeof value === 'number') {
-    return new Intl.NumberFormat('en-US', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value)
+    return formatDecimalAmount(value, 'en-US', 2)
   }
   if (typeof value === 'string') {
-    const num = parseFloat(value)
-    if (!isNaN(num)) {
-      return new Intl.NumberFormat('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(num)
+    const isNumeric = value.trim() !== '' && !isNaN(Number(value))
+    if (isNumeric) {
+      return formatDecimalAmount(value, 'en-US', 2)
     }
     return value
   }

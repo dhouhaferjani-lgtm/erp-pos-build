@@ -8,19 +8,22 @@ import { useVatPeriodActions } from '../hooks/useVatPeriodActions'
 import { VatPeriodList } from '../components/VatPeriodList'
 import { VatSummaryCards } from '../components/VatSummaryCards'
 import { useCurrency } from '@/hooks/useCurrency'
+import { bcadd } from '@/lib/decimal'
 import type { VatPeriod } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 
+// m-6 (2026-08-06 gate): accumulate with bcadd (Big.js, never a float `+=`
+// off a parseFloat'd value) -- rule 19.
 function computeYtdTotals(periods: VatPeriod[], decimals: number) {
-  let totalOutput = 0
-  let totalInput = 0
+  let totalOutput = '0'
+  let totalInput = '0'
   let creditCarried = '0'
   let amountPayable = '0'
 
   for (const period of periods) {
-    totalOutput += parseFloat(period.total_output_vat ?? '0')
-    totalInput += parseFloat(period.total_input_vat ?? '0')
+    totalOutput = bcadd(totalOutput, period.total_output_vat ?? '0', decimals)
+    totalInput = bcadd(totalInput, period.total_input_vat ?? '0', decimals)
   }
 
   // Use the most recent period's credit/payable as the running total.
@@ -34,8 +37,8 @@ function computeYtdTotals(periods: VatPeriod[], decimals: number) {
   }
 
   return {
-    outputVat: totalOutput.toFixed(decimals),
-    inputVat: totalInput.toFixed(decimals),
+    outputVat: totalOutput,
+    inputVat: totalInput,
     creditBroughtForward: creditCarried,
     amountPayable,
   }

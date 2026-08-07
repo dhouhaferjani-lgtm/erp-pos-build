@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import { VatBreakdownTable } from '../VatBreakdownTable'
 import type { VatRateBreakdown } from '../../types'
+import { useCompanyStore } from '@/stores/companyStore'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -36,6 +37,35 @@ const mockBreakdowns: VatRateBreakdown[] = [
 ]
 
 describe('VatBreakdownTable', () => {
+  // m-6 (2026-08-06 gate): amounts are now formatted through the
+  // currency-aware `useCurrency().format()` path (rule 19 -- no
+  // parseFloat/Number on money), which keys its locale/decimals off the
+  // ACTIVE COMPANY's currency, not a hardcoded 'en-US'. Pin a USD company
+  // (locale en-US, 2 decimals) so the expected strings below stay
+  // unambiguous and match the table's own grouping/decimal rules.
+  beforeEach(() => {
+    useCompanyStore.setState({
+      currentCompanyId: 'c1',
+      companies: [
+        {
+          id: 'c1',
+          name: 'Test Co',
+          legalName: 'Test Co LLC',
+          taxId: null,
+          countryCode: 'US',
+          currency: 'USD',
+          locale: 'en-US',
+          timezone: 'America/New_York',
+        },
+      ],
+      isLoading: false,
+    })
+  })
+
+  afterEach(() => {
+    useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
+  })
+
   it('renders rate rows with correct amounts', () => {
     render(<VatBreakdownTable breakdowns={mockBreakdowns} />)
     expect(screen.getByText('20.00')).toBeInTheDocument()
