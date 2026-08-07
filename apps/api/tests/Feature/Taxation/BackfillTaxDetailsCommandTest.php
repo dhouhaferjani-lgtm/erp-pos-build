@@ -831,6 +831,81 @@ final class BackfillTaxDetailsCommandTest extends TestCase
         $this->assertSame('80.000', $rowB->tax_base);
     }
 
+    /**
+     * m-3 (2026-08-06 gate): the backfill leg compares/writes tax_base at
+     * the RESOLVED CURRENCY scale (2 for EUR) against a decimal(15,3)
+     * column. Pin that a scale-2 currency does not produce a false
+     * rewrite/no-op mismatch -- the bccomp guard and the stored value must
+     * agree on both sides of the comparison at the same scale.
+     */
+    public function test_expense_leg_scale_two_eur_currency_base_and_bccomp_guard_agree(): void
+    {
+        $eurCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Backfill EUR Company',
+            'legal_name' => 'Backfill EUR Company SARL',
+            'tax_id' => 'EUR777',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $eurCompany->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::Expense,
+            'status' => DocumentStatus::Posted,
+            'document_number' => 'EXP-EUR-SCALE2-0001',
+            'document_date' => '2026-01-10',
+            'currency' => 'EUR',
+            'subtotal' => '100.00',
+            'tax_amount' => '19.00',
+            'total' => '119.00',
+        ]);
+        ExpenseMetadata::create([
+            'document_id' => $document->id,
+            'vendor_name' => 'EUR Scale-2 Vendor',
+            'is_paid' => false,
+            'vat_rate' => '19.00',
+            'vat_deductible_percent' => '80.00',
+        ]);
+        // V5 legacy shape: base = subtotal × 80% = 80.00.
+        DocumentTaxDetail::create([
+            'document_id' => $document->id,
+            'sequence_order' => 1,
+            'tax_code' => null,
+            'tax_name' => 'TVA 19.00%',
+            'tax_type' => TaxType::Percentage,
+            'tax_rate' => '19.00',
+            'tax_base' => '80.000',
+            'tax_amount' => '15.200',
+            'is_stamp_duty' => false,
+            'created_at' => now(),
+        ]);
+
+        $this->command('vat:backfill-tax-details', ['--company' => $eurCompany->id, '--apply' => true])
+            ->expectsOutputToContain('Rewrote 1')
+            ->assertSuccessful();
+
+        $detail = DocumentTaxDetail::where('document_id', $document->id)->firstOrFail();
+        // Rewritten to the full facial subtotal -- the decimal(15,3) column
+        // pads the EUR scale-2 value with a trailing zero on read.
+        $this->assertSame('100.000', $detail->tax_base);
+
+        // The bccomp no-op guard must now agree with the freshly-written
+        // value at the SAME (EUR) scale -- a second run must find nothing
+        // left to fix, not a false rewrite from a scale mismatch.
+        $this->command('vat:backfill-tax-details', ['--company' => $eurCompany->id, '--apply' => true])
+            ->expectsOutputToContain('Rewrote 0')
+            ->assertSuccessful();
+
+        $detail->refresh();
+        $this->assertSame('100.000', $detail->tax_base);
+        $this->assertSame('15.200', $detail->tax_amount);
+    }
+
     public function test_expense_leg_apply_is_idempotent_on_a_second_run(): void
     {
         $expense = $this->createLegacyExpense('80.00');

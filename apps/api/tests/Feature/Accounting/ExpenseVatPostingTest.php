@@ -317,10 +317,23 @@ final class ExpenseVatPostingTest extends TestCase
             $this->expectedLine(SystemAccountPurpose::VatDeductible, null, '0.010', '0.000', 'TVA déductible', 1),
             $this->expectedLine(SystemAccountPurpose::SupplierPayable, $this->supplier->id, '0.000', '1.010', 'Expense payable', 2),
         ], $this->linePayloads($entry));
-        $this->assertSame('0.010', DocumentTaxDetail::query()
-            ->where('document_id', $expense->id)
-            ->firstOrFail()
-            ->tax_amount);
+        $detail = DocumentTaxDetail::query()->where('document_id', $expense->id)->firstOrFail();
+        $this->assertSame('0.010', $detail->tax_amount);
+        // m-3 (2026-08-06 gate): tax_base is written and compared at the
+        // RESOLVED CURRENCY scale (2 for EUR), not the column's own
+        // decimal(15,3) scale. subtotal = total(1.01) - vat(0.01) = 1.00 at
+        // EUR scale; bcformatStrict('1.000', 2) truncates the stored,
+        // Eloquent-cast '1.000' back down to '1.00' before writing, and the
+        // decimal(15,3) column pads it back out to '1.000' on read -- so
+        // this pins that the round-trip through a scale-2 currency lands on
+        // the exact facial subtotal, not a truncated-then-repadded
+        // approximation. Truncation (not half-up rounding, contrary to
+        // V5's bcround convention) is deliberate: tax_base is copied
+        // verbatim from the expense's own already-scaled stored subtotal,
+        // not computed here, so there is no sub-scale precision for a
+        // rounding convention to act on -- see the docblock on
+        // writeDeductibleVatSnapshot().
+        $this->assertSame('1.000', $detail->tax_base);
     }
 
     public function test_supplier_payable_balance_increases_by_gross_total_then_returns_to_prior_after_settlement(): void
