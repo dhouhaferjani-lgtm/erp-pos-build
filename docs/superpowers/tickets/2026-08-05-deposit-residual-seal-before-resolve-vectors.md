@@ -22,8 +22,8 @@ argument and three new `DepositReferenceRefusal` cases —
 transaction (cheap fail, no lock) and once **inside** it, immediately before
 `appendDepositReceipt()`, so a refusal rolls back with nothing sealed.
 
-**Movement-port refusals are CONDITIONAL — this is load-bearing.** Both merge gates found
-independently that the port-derived refusals must not fire on a maturity tender:
+**A deposit takes exactly ONE of two tails, and NEITHER MAY BE EMPTY.** Both merge gates
+found independently that the port-derived refusals must not fire on a maturity tender:
 `TreasuryDepositBridge` sets `shouldRecordMovement = false` at :169-174 and returns at
 :217-219 **before** `TreasuryMovementService::record()` runs for a cheque/effet, so the
 currency guard, the freeze policy and the checkpoint policy never execute on that path.
@@ -33,6 +33,28 @@ freeze is irrelevant). `RepositoryCurrencyMismatch`, `RepositoryFrozen` and
 `RepositoryBehindCheckpoint` are therefore gated on the non-maturity path; the predicate
 is not re-derived but delegated to the same `HandlesMaturityTenderLeg` collaborator the
 bridge consults, so the two cannot drift.
+
+The **round-2 fiscal re-gate then caught the mirror-image defect**: skipping the port's
+refusals is right, but returning "nothing to check" is not — the maturity path runs
+`handleMaturityLeg()`, which has two rejecting steps of its own, and both were newly
+unrefused. Both were reproduced on the branch as clean 422s with a sealed orphan:
+
+| Maturity refusal | Post-seal counterpart | Note |
+|---|---|---|
+| `MissingInstrumentPortfolioAccount` | `HandlesMaturityTenderLeg::portfolioAccountId()` (:69) → `InstrumentAccountResolver::resolveOrFail()` (:35-39) | ops-realistic: a company whose CoA never got `5312`/`5112`/`413` accepts cheques and orphans every one |
+| `InstrumentCurrencyMismatchesCompany` | `InstrumentLifecycleService::receive()` (:74-80), reached at :76 | plain client input: `RecordDepositRequest.php:92` accepts any `size:3` currency, the controller forwards it verbatim |
+
+**The two currency checks are NOT the same check.** The movement path compares the tender
+against the RECEIVING REPOSITORY's currency; the maturity path against the COMPANY's.
+Neither implies the other — round 1's unconditional repository-currency check was covering
+the maturity case only *incidentally*, which is why removing it for maturity tenders
+opened a real regression. They are now two enum cases with two operands, documented as
+non-interchangeable.
+
+Ordering note for future readers: the maturity checks run portfolio-account FIRST, then
+currency, because that is the order `handleMaturityLeg()` hits them (:69 before :76) — the
+same "refusal you see is the one you would have hit post-seal" principle the movement tail
+follows.
 
 **`RepositoryBehindCheckpoint` (authz gate I-2)** mirrors
 `TreasuryMovementService::checkpointDisposition()` (:852-874) evaluated with
@@ -194,6 +216,36 @@ group is the sole carrier of the company gate) and
   direction (a pre-flight that says yes while the projection says no re-opens the orphan
   vector this whole ticket is about).
 
+  **4th drift-list entry — checkpoint date logic (Treasury-INTERNAL, added round 2).**
+  `DepositReferenceResolutionService::checkpointRefusal()` duplicates the company-timezone
+  date comparison in `TreasuryMovementService::checkpointDisposition()` (:852-874). Unlike
+  the three above this one does not cross a module boundary — it is Treasury-to-Treasury —
+  but it is the *most* fragile of the four, because the duplicated logic is a timezone
+  conversion plus a string date comparison where an off-by-one-day divergence would be
+  invisible in tests and would re-open the orphan vector.
+
+  It could not be delegated the way the maturity predicate was: `checkpointDisposition()`
+  is `private` to `TreasuryMovementService` and there is no shared surface to reuse.
+  Extracting one would mean editing `TreasuryMovementService`, whose class header
+  documents a deliberate guard ORDERING that forbids casual edits — so the round-2
+  re-gate ruled this **acceptable-with-ticket-line, NOT extract-now**.
+
+  Sketch for whoever does extract it:
+
+  ```
+  Treasury/Domain/CheckpointPolicy            (or Application/Services)
+      isBehindCheckpoint(
+          ?CarbonInterface $checkpoint,
+          CarbonInterface $occurredAt,
+          string $companyTimezone,
+      ): bool
+  ```
+
+  consumed by BOTH `TreasuryMovementService::checkpointDisposition()` (which keeps owning
+  the allow-flag branch and the throw) and this pre-flight (which maps the boolean to
+  `RepositoryBehindCheckpoint`). Same "fix them together or not at all" clause as the
+  membership and account ports above.
+
   **Recorded as debt, not fixed.** Clean shape is a pair of small `Shared/Contracts/` read
   ports that ALL sites depend on:
 
@@ -206,8 +258,14 @@ group is the sole carrier of the company gate) and
 
   Fix them together or not at all.
 
-  **Counter-example done right, same lane:** the *maturity* predicate
-  (`has_maturity && instrument_kind ∈ {Cheque, Effet}`) is NOT re-derived — the service
-  constructor-injects the same `HandlesMaturityTenderLeg` collaborator the bridge consults,
-  so that one cannot drift by construction. That is the shape the two ports above should
-  reach.
+  **Counter-examples done right, same lane.** Two predicates in this service are NOT
+  re-derived and therefore cannot drift at all:
+  - the *maturity* predicate (`has_maturity && instrument_kind ∈ {Cheque, Effet}`) — the
+    service constructor-injects the same `HandlesMaturityTenderLeg` the bridge consults;
+  - the *portfolio-account* predicate — the pre-flight calls
+    `HandlesMaturityTenderLeg::portfolioAccountId()` itself inside a `try/catch` for
+    `MissingInstrumentAccountException`, i.e. it asks "would this throw?" by invoking the
+    very code that throws, rather than re-deriving the purpose match and the resolver's
+    lookup.
+
+  That is the shape all four drift-list entries above should reach.
