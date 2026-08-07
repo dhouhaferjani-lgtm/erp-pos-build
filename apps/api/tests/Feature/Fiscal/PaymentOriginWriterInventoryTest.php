@@ -24,6 +24,9 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
@@ -36,6 +39,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
 use App\Modules\Treasury\Domain\Services\VendorRefundService;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -74,6 +78,14 @@ use Tests\TestCase;
 final class PaymentOriginWriterInventoryTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * Opening balance laid down on every ledgered fixture till by
+     * {@see self::fundRepository()}. Comfortably above the largest refund
+     * these tests issue (150.00 EUR), so the W-5b balance-sufficiency guard
+     * never participates in what this origin-inventory test asserts.
+     */
+    private const TILL_OPENING_BALANCE = '1000.00';
 
     private Tenant $tenant;
 
@@ -220,7 +232,7 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'is_active' => true,
         ]);
 
-        return $this->ledgeredCashRegister = PaymentRepository::create([
+        $register = PaymentRepository::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => 'CASH-REFUND',
@@ -229,6 +241,49 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'is_active' => true,
             'gl_account_id' => $bankAccount->id,
         ]);
+
+        // W-5b Option B: the refund tests below drive an OUTFLOW through the
+        // movement port, and the originals they reverse are seeded as bare
+        // Payment rows (Payment::factory()) that never moved cash into the
+        // till. A cash_register derives allow_negative = false, so the till
+        // must actually hold the money it refunds.
+        $this->fundRepository($register, self::TILL_OPENING_BALANCE);
+
+        return $this->ledgeredCashRegister = $register;
+    }
+
+    /**
+     * Fund a repository through the movement port (mirrors
+     * PaymentRepositorySeeder::recordOpeningBalance() and the sibling fixture
+     * fixes in PaymentGlPostingTest / VendorPrepaymentRefundTest /
+     * ExpenseVatPostingTest) — `balance` is port-managed and NOT fillable, so
+     * a plain create() carrying a 'balance' key is silently dropped and the
+     * repository is always minted at zero.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function fundRepository(PaymentRepository $repository, string $amount): void
+    {
+        DB::transaction(fn () => $this->app->make(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $repository->tenant_id,
+            companyId: $repository->company_id,
+            direction: MovementDirection::In,
+            amount: $amount,
+            currency: $repository->currency,
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $repository->id,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'Test fixture opening balance',
+            allowWhileFrozen: false,
+        )));
+
+        $repository->refresh();
     }
 
     // -----------------------------------------------------------------
@@ -614,6 +669,11 @@ final class PaymentOriginWriterInventoryTest extends TestCase
             'is_active' => true,
             'gl_account_id' => $bankAccount->id,
         ]);
+
+        // Same unfunded-till gap as ledgeredCashRegister(): the prepayment
+        // below is a bare Payment row, so no cash ever entered this register
+        // — fund it before refundPrepayment() drives its outflow.
+        $this->fundRepository($ledgeredRepository, self::TILL_OPENING_BALANCE);
 
         // Seed a prepayment allocation so totalAllocated >= refund amount.
         $prepayment = Payment::factory()->create([
