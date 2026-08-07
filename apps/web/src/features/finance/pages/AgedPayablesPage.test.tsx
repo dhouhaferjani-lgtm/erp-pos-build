@@ -157,6 +157,25 @@ describe('AgedPayablesPage', () => {
     }
   })
 
+  it('renders a QueryError instead of a silent empty table when the query errors', () => {
+    // Ticket 2026-08-06-l3-cash-scope-residuals.md (b): an out-of-scope
+    // location_ids request now 403s cleanly instead of 500ing — but this
+    // page never destructured `error`/`refetch` at all, so ANY query error
+    // (403 or otherwise) fell through to the success branch and rendered an
+    // empty table with all-zero totals and no indication anything failed.
+    mockUseAgedPayables.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Requested location is outside your allowed scope.'),
+      refetch: vi.fn(),
+    })
+
+    renderPage()
+
+    expect(screen.getByText('finance:reports.agedPayablesReport.loadError')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+  })
+
   it('links vendor names to supplier detail pages', () => {
     mockUseAgedPayables.mockReturnValue({
       data: fixture,

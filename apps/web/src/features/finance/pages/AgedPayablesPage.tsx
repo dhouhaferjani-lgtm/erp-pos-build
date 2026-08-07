@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAgedPayables } from '../hooks/useAgedPayables'
+import { QueryError } from '@/components/QueryError'
 import { PageHeader } from '../../../components/molecules/PageHeader'
 import { Button } from '../../../components/atoms/Button/Button'
 import { FormField } from '../../../components/atoms/FormField/FormField'
@@ -21,7 +22,7 @@ export function AgedPayablesPage() {
   const { currentCompany } = useCompany()
   const [asOfDate, setAsOfDate] = useState<string>(() => getTodayDateInputValue())
 
-  const { data: payablesData, isLoading } = useAgedPayables({
+  const { data: payablesData, isLoading, error, refetch } = useAgedPayables({
     as_of_date: asOfDate,
   })
 
@@ -93,6 +94,14 @@ export function AgedPayablesPage() {
       {/* Report */}
       {isLoading ? (
         <div className={textColors.tertiary}>{t('finance:reports.common.loading')}</div>
+      ) : error ? (
+        <QueryError
+          error={error}
+          onRetry={() => {
+            void refetch()
+          }}
+          title={t('finance:reports.agedPayablesReport.loadError')}
+        />
       ) : (
         <div className="overflow-x-auto">
           <DataTable className={cn('min-w-full divide-y', borderColors.divideDefault)}>
