@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Modules\Marketplace\Providers;
 
+use App\Modules\Marketplace\Application\Services\MarketplacePartnerReferenceSource;
 use App\Modules\Marketplace\Infrastructure\Commands\MarketplaceDeltaSyncCommand;
 use App\Modules\Marketplace\Infrastructure\Commands\MarketplaceReconcileCommand;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
@@ -14,6 +16,14 @@ class MarketplaceServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([MarketplacePartnerReferenceSource::class], PartnerReferenceSource::class);
+
         $this->mergeConfigFrom(
             __DIR__.'/../../../../config/marketplace.php',
             'marketplace',

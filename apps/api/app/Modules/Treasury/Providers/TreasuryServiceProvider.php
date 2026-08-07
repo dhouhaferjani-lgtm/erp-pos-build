@@ -23,6 +23,7 @@ use App\Modules\Treasury\Application\Services\PaymentToleranceService;
 use App\Modules\Treasury\Application\Services\StatementActionRegistry;
 use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
+use App\Modules\Treasury\Application\Services\TreasuryPartnerReferenceSource;
 use App\Modules\Treasury\Application\Services\XlsxStatementParser;
 use App\Modules\Treasury\Domain\Enums\StatementParserKey;
 use App\Modules\Treasury\Infrastructure\EloquentOutboundInstrumentPaymentLinkResolver;
@@ -32,6 +33,7 @@ use App\Modules\Treasury\Presentation\Console\BackfillLocationAttributionCommand
 use App\Modules\Treasury\Presentation\Console\InstrumentMaturityAlertsCommand;
 use App\Modules\Treasury\Presentation\Console\ReconcileTreasuryCommand;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
@@ -44,6 +46,14 @@ class TreasuryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([TreasuryPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         // Module-boundary contract: POS A1 and B2B A2 close-with-tolerance
         // depend on this interface from Shared/Contracts/Treasury, not on the
         // concrete service. Singleton because the service is stateless and

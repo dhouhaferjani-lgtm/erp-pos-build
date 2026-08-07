@@ -12,9 +12,11 @@ use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Application\Projections\ZReportProjection;
 use App\Modules\POS\Application\Projections\ZSessionLifecycleProjection;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
+use App\Modules\POS\Application\Services\PosPartnerReferenceSource;
 use App\Modules\POS\Application\Services\TerminalSyncHealthSourceService;
 use App\Modules\POS\Commands\VerifyPosChainCommand;
 use App\Shared\Contracts\Compliance\Nf525DataProviderContract;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use App\Shared\Contracts\POS\TerminalSyncHealthSource;
 use Illuminate\Support\ServiceProvider;
 
@@ -34,6 +36,14 @@ final class POSServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([PosPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         // Services are auto-resolved via constructor injection.
         // Cross-module contracts published by POS are bound explicitly:
         $this->app->bind(

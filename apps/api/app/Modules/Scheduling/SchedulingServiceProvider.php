@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Scheduling;
 
+use App\Modules\Scheduling\Application\Services\SchedulingPartnerReferenceSource;
 use App\Modules\Scheduling\Domain\Contracts\AppointmentRepositoryInterface;
 use App\Modules\Scheduling\Domain\Contracts\AppointmentSequenceInterface;
 use App\Modules\Scheduling\Domain\Contracts\BayRepositoryInterface;
@@ -16,6 +17,7 @@ use App\Modules\Scheduling\Infrastructure\Persistence\EloquentAppointmentReposit
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentAppointmentSequence;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentBayRepository;
 use App\Modules\Scheduling\Infrastructure\Persistence\EloquentScheduleConfigRepository;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Contracts\Config\Repository as ConfigRepository;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -32,6 +34,14 @@ final class SchedulingServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([SchedulingPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         $this->app->bind(AppointmentRepositoryInterface::class, EloquentAppointmentRepository::class);
         $this->app->bind(BayRepositoryInterface::class, EloquentBayRepository::class);
         $this->app->bind(ScheduleConfigRepositoryInterface::class, EloquentScheduleConfigRepository::class);

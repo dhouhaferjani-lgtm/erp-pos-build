@@ -10,6 +10,7 @@ use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderBundleService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderCreationService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderLineService;
 use App\Modules\Workshop\WorkOrder\Application\Services\WorkOrderTransitionService;
+use App\Modules\Workshop\WorkOrder\Application\Services\WorkshopPartnerReferenceSource;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderCreationServiceInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderLineRepositoryInterface;
 use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderRepositoryInterface;
@@ -17,6 +18,7 @@ use App\Modules\Workshop\WorkOrder\Domain\Contracts\WorkOrderSequenceInterface;
 use App\Modules\Workshop\WorkOrder\Infrastructure\Persistence\EloquentWorkOrderLineRepository;
 use App\Modules\Workshop\WorkOrder\Infrastructure\Persistence\EloquentWorkOrderRepository;
 use App\Modules\Workshop\WorkOrder\Infrastructure\Persistence\EloquentWorkOrderSequence;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -29,6 +31,14 @@ final class WorkshopWorkOrderServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([WorkshopPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         $this->app->bind(
             WorkOrderRepositoryInterface::class,
             EloquentWorkOrderRepository::class,

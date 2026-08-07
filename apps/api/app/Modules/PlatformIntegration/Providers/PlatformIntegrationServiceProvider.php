@@ -6,13 +6,23 @@ namespace App\Modules\PlatformIntegration\Providers;
 
 use App\Modules\PlatformIntegration\Application\Commands\CheckPendingEnrichmentsCommand;
 use App\Modules\PlatformIntegration\Application\Contracts\PlatformVehicleQueryInterface;
+use App\Modules\PlatformIntegration\Application\Services\PlatformIntegrationPartnerReferenceSource;
 use App\Modules\PlatformIntegration\Infrastructure\Platform\EloquentPlatformVehicleQuery;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Support\ServiceProvider;
 
 class PlatformIntegrationServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([PlatformIntegrationPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         $this->app->bind(
             PlatformVehicleQueryInterface::class,
             EloquentPlatformVehicleQuery::class,

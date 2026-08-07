@@ -6,6 +6,7 @@ namespace App\Modules\Document\Providers;
 
 use App\Modules\Document\Application\Observers\DocumentMediaCascadeObserver;
 use App\Modules\Document\Application\Projections\DocumentAccountChargeFactureBridge;
+use App\Modules\Document\Application\Services\DocumentPartnerReferenceSource;
 use App\Modules\Document\Application\Services\OperationResolver;
 use App\Modules\Document\Domain\Contracts\DocumentVehicleContextWriterInterface;
 use App\Modules\Document\Domain\Document;
@@ -21,12 +22,21 @@ use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Infrastructure\Persistence\EloquentDocumentVehicleContextWriter;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Shared\Contracts\Document\OperationResolverInterface;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Support\ServiceProvider;
 
 class DocumentServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([DocumentPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         $this->app->singleton(DocumentNumberingService::class);
 
         $this->app->bind(

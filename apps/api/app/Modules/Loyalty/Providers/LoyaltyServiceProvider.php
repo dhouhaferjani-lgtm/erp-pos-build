@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Loyalty\Providers;
 
 use App\Modules\Contact\Domain\Contact;
+use App\Modules\Loyalty\Application\Services\LoyaltyPartnerReferenceSource;
 use App\Modules\Loyalty\Application\Services\SaleEarningService;
 use App\Modules\Loyalty\Domain\Repositories\EarningRuleRepositoryInterface;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
@@ -24,6 +25,7 @@ use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTierRepository;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTransactionRepository;
 use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\ServiceProvider;
 
@@ -31,6 +33,14 @@ class LoyaltyServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([LoyaltyPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         // Bind cross-module earning contract
         $this->app->bind(LoyaltyEarningContract::class, SaleEarningService::class);
 

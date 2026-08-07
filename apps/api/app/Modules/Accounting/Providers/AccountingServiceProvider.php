@@ -4,14 +4,24 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Providers;
 
+use App\Modules\Accounting\Application\Services\AccountingPartnerReferenceSource;
 use App\Modules\Accounting\Infrastructure\Commands\BackfillRefundCompensationAccountsCommand;
 use App\Modules\Accounting\Presentation\Console\CheckSubledgerReconciliationCommand;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Support\ServiceProvider;
 
 class AccountingServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        // Partner delete guard (lane R2-S): this module answers for its own
+        // partner-referencing tables. Consumed by
+        // `PartnerReferenceCounter` via
+        // `app->tagged(PartnerReferenceSource::class)`. Tagged in
+        // `register()` (not `boot()`) to match the `FiscalEventProjector`
+        // precedent.
+        $this->app->tag([AccountingPartnerReferenceSource::class], PartnerReferenceSource::class);
+
         //
     }
 

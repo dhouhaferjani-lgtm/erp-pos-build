@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Tests\Unit\Partner;
 
 use App\Modules\Partner\Application\Services\PartnerReferenceCounter;
+use App\Shared\Contracts\Partner\PartnerReferenceSource;
+use App\Shared\Partner\TableBackedPartnerReferenceSource;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -19,11 +22,11 @@ use Tests\TestCase;
  *
  * ROOT CAUSE: `PartnerReferenceCounter` constructor-injected
  * `Illuminate\Database\ConnectionInterface`. Laravel resolves that to a
- * CONCRETE connection object at construction time, and `PartnerController`
- * (which builds this class as a dependency) is `make()`'d during
- * `Route::gatherMiddleware()` -> `controllerMiddleware()` — which runs
- * BEFORE the route's own middleware pipeline (`ResolveTenancy`) has swapped
- * `database.default` from `central` to the tenant DB. The captured
+ * CONCRETE connection object at the moment the container builds it, and
+ * `PartnerController` (which builds this dependency graph) is `make()`'d
+ * during `Route::gatherMiddleware()` -> `controllerMiddleware()` — which
+ * runs BEFORE the route's own middleware pipeline (`ResolveTenancy`) has
+ * swapped `database.default` from `central` to the tenant DB. The captured
  * connection was therefore permanently pinned to `central`, which has no
  * tenant tables — every partner delete 500'd, with or without documents.
  *
@@ -44,6 +47,13 @@ use Tests\TestCase;
  * and the call (mirroring what `ResolveTenancy` does mid-request via
  * Stancl's `tenancy()->initialize()` -> `DatabaseTenancyBootstrapper`),
  * which is the only way to observe the defect in isolation.
+ *
+ * LANE R2-S: the counter no longer reads tables itself — every owning module
+ * tags an `App\Shared\Contracts\Partner\PartnerReferenceSource`. The timing
+ * rule therefore has to hold for EVERY tagged source, so the probe schema
+ * below is built from what the sources themselves declare rather than from
+ * a hardcoded table list. A new source with a construction-time connection
+ * fails here the day it is tagged.
  */
 class PartnerReferenceCounterConnectionTimingTest extends TestCase
 {
@@ -63,14 +73,19 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
                 'foreign_key_constraints' => false,
             ]);
 
-            foreach (['documents', 'payments', 'pos_receipts'] as $table) {
-                Schema::connection($connectionName)->create($table, function ($blueprint) use ($table): void {
-                    $blueprint->id();
-                    $blueprint->string('partner_id');
-                    if ($table === 'documents') {
-                        $blueprint->timestamp('deleted_at')->nullable();
-                    }
-                });
+            foreach ($this->declaredTables() as $table) {
+                Schema::connection($connectionName)->create(
+                    $table->table,
+                    function (Blueprint $blueprint) use ($table): void {
+                        $blueprint->id();
+                        foreach ($table->columns as $column) {
+                            $blueprint->string($column)->nullable();
+                        }
+                        if ($table->hasSoftDeletes) {
+                            $blueprint->timestamp('deleted_at')->nullable();
+                        }
+                    },
+                );
             }
         }
 
@@ -102,8 +117,8 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
         $counter = $this->app->make(PartnerReferenceCounter::class);
 
         // Simulate ResolveTenancy's mid-request swap, which happens AFTER
-        // the controller (and this counter, one of its constructor
-        // dependencies) has already been built.
+        // the controller (and this counter, plus every tagged source it
+        // consumes) has already been built.
         Config::set('database.default', self::CONNECTION_AT_CALL_TIME);
 
         DB::connection(self::CONNECTION_AT_CALL_TIME)->table('documents')->insert([
@@ -143,5 +158,64 @@ class PartnerReferenceCounterConnectionTimingTest extends TestCase
         $counts = $counter->countFor($partnerId);
 
         $this->assertSame([], $counts);
+    }
+
+    public function test_every_tagged_source_is_queried_on_the_call_time_connection(): void
+    {
+        // Per-source coverage: plant one row for the partner on the
+        // "after" connection in EVERY declared table and assert the counter
+        // reports every one of them. A source that resolved its connection
+        // at construction time contributes nothing here and the missing key
+        // names it.
+        $partnerId = (string) Str::uuid();
+
+        Config::set('database.default', self::CONNECTION_AT_CONSTRUCTION);
+
+        /** @var PartnerReferenceCounter $counter */
+        $counter = $this->app->make(PartnerReferenceCounter::class);
+
+        Config::set('database.default', self::CONNECTION_AT_CALL_TIME);
+
+        $expected = [];
+        foreach ($this->declaredTables() as $table) {
+            DB::connection(self::CONNECTION_AT_CALL_TIME)->table($table->table)->insert([
+                $table->columns[0] => $partnerId,
+            ]);
+            $expected[$table->table] = 1;
+        }
+
+        $counts = $counter->countFor($partnerId);
+        ksort($expected);
+        ksort($counts);
+
+        $this->assertSame($expected, $counts);
+    }
+
+    /**
+     * Every table declared by every tagged source.
+     *
+     * @return list<\App\Shared\Partner\PartnerReferenceTable>
+     */
+    private function declaredTables(): array
+    {
+        $tables = [];
+
+        /** @var PartnerReferenceSource $source */
+        foreach ($this->app->tagged(PartnerReferenceSource::class) as $source) {
+            $this->assertInstanceOf(
+                TableBackedPartnerReferenceSource::class,
+                $source,
+                $source::class.' is tagged as a PartnerReferenceSource but does not extend '
+                .'TableBackedPartnerReferenceSource, so neither the connection-timing rule nor '
+                .'the schema-contract test can be enforced for it. Extend the base class, or '
+                .'extend these two tests to cover the new shape.',
+            );
+
+            foreach ($source->tables() as $table) {
+                $tables[] = $table;
+            }
+        }
+
+        return $tables;
     }
 }
