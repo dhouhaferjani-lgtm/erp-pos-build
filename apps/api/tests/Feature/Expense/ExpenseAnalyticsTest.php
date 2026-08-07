@@ -133,6 +133,40 @@ final class ExpenseAnalyticsTest extends TestCase
         self::assertSame('100.00', $response->json('data.tiles.total'));
     }
 
+    /**
+     * Ticket 2026-08-06-l3-cash-scope-residuals.md (a), P1 — F-2 (merge gate
+     * 2026-08-07): ExpenseAnalyticsController shares the byte-identical
+     * `isUnrestricted($companyId, $effective) ? [] : $effective` collapse
+     * that leaked in ReportsController. A principal restricted to exactly
+     * today's active locations used to be misclassified "unrestricted" the
+     * moment any OTHER company location went inactive, so an unscoped read
+     * surfaced that deactivated location's expenses on the analytics tiles
+     * too. `LocationScopeBoundary::isUnrestricted()` is shared, so fixing it
+     * at the source closes this family in one place — this test is the
+     * Expense-family proof.
+     */
+    public function test_a_deactivated_out_of_grant_location_does_not_leak_into_unscoped_analytics(): void
+    {
+        $storeA = Location::factory()->create(['company_id' => $this->company->id]);
+        $storeB = Location::factory()->create(['company_id' => $this->company->id]);
+        $storeB->update(['is_active' => false]);
+
+        $this->expense($this->company, $this->rent, '2026-07-01', '100.00')->update(['location_id' => $storeA->id]);
+        $this->expense($this->company, $this->rent, '2026-07-02', '40.00')->update(['location_id' => $storeB->id]);
+
+        UserCompanyMembership::query()
+            ->where('user_id', $this->manager->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => json_encode([$storeA->id], JSON_THROW_ON_ERROR)]);
+
+        $response = $this->getAnalytics([
+            'date_from' => '2026-07-01',
+            'date_to' => '2026-07-31',
+        ])->assertOk();
+
+        self::assertSame('100.00', $response->json('data.tiles.total'));
+    }
+
     public function test_default_window_is_six_months_through_today_and_excludes_drafts(): void
     {
         $this->seedSixMonthMatrix();
