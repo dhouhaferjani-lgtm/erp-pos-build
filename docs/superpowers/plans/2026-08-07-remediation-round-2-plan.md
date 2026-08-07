@@ -1,182 +1,190 @@
-# Remediation Round 2 — plan v2 (2026-08-07)
+# Remediation Round 2 — plan v3 (2026-08-07)
 
-**v1 → v2:** Codex adversarial round 1 = REJECT (record:
-`docs/superpowers/reviews/2026-08-07-remediation-round-2-plan-codex-review.md`). v2 folds in
-all 4 BLOCKERs, 9 MAJORs, the minor, the three open-question recommendations, and the
-completeness appendix. Every appendix ticket is now either assigned to a lane, assigned to
-Phase 0 discovery, or EXPLICITLY deferred with reason.
+**v2 → v3:** Codex round 2 = REJECT (record: `…-codex-review-round2.md`; round 1 dispositions:
+3 RESOLVED, 7 PARTIAL). v3 closes the round-2 BLOCKER (Phase R rebuilt as an executable
+decision gate: every ruling now has alternatives, an owner, a recording artifact, and an
+outcome→behavior mapping per branch) and all 7 new MAJORs. Overtaken by events since v2:
+**R-a IS ANSWERED and R2-G IS SHIPPED+PUSHED (`d8efb5df0`)** — reflected below.
 
-**Trigger:** owner directive post L5/Q-rulings batch (staging push DONE `2219b49e3` +
-`f4e641a59`): burn down the remaining pre-launch defect pile with a parallel
-test-coverage track.
-**Process per lane:** worktree off dev → TDD implementer → specialist gate(s) per the
-reviewer matrix below → fix round → re-gate → orchestrator merges ff with green-proof.
-**NEW cross-lane rules (Codex MAJOR):** (1) every dependent lane REBASES onto current dev and
-re-runs its specialist gate before merge — narrow re-gates are insufficient when a consumed
-contract changed; (2) migration/backfill lanes additionally need dry-run/apply parity,
-idempotent rerun, per-tenant counts, and rollback/restore posture (a "release/data" gate);
-(3) two combined integration gates: Document-lifecycle gate after B/E/F-block, VAT/backfill
-gate after F-block/G/T-4; (4) the repo-wide PHPStan rule (D) lands LAST, after every PHP lane
-has rebased over it.
+**Process per lane:** unchanged (worktree → TDD → specialist gates → fix → re-gate → ff merge
++ green-proof). **Cross-lane rules:** (1) dependents rebase onto current dev and re-run their
+specialist gate; (2) migration/backfill lanes add the release/data gate (dry-run/apply
+parity, idempotent rerun, per-tenant counts, rollback/restore posture); (3) combined
+integration gates: Document-lifecycle after B/E/F-block, VAT/backfill after F-block/T-4;
+(4) static-analysis ratchets land per the R2-D sequence below (the v2 "lands last / rebase
+over it" paradox is resolved there).
+
+**Reviewer matrix** (v2 referenced it without including it — it is THIS table):
+
+| Lane | Gates |
+|---|---|
+| R2-I | general + release/data |
+| R2-C | tenancy-authz + API-contract/FE consumer |
+| R2-P | (1) precision+inventory-costing (2) imports (3) taxation+procurement — independent |
+| R2-H | tenancy-authz + taxation + FE/API-contract |
+| R2-K | fiscal-pos + tenancy-authz |
+| R2-L | precision + FE + tenancy-authz (permission surface) + Document/Taxation (tax pipeline) |
+| R2-A1 | tenancy-authz |
+| R2-A2 | tenancy-authz + release/data |
+| R2-A3 | precision + FE |
+| R2-B | treasury/precision + Document-conversion |
+| R2-E | backend concurrency/DB + Document-domain + FE (+POS negative-scope regression) |
+| R2-F1..F5 | accountant-ruling gate first; then GL + inventory-costing + taxation + treasury |
+| R2-M | GL/accounting + release/data (timbre residue, if R-b rules split) |
+| R2-N | treasury (conditional paid/balance write-path fix) |
+| R2-J | tenancy-authz (narrow) |
+| R2-D | precision + static-analysis owner (final full-tree pass, see sequence) |
 
 ---
 
-## Phase 0 — DATA-READINESS GATE on staging (blocking; named outputs, zero
-unresolved-or-undisposed acceptance)
+## Phase 0 — DATA-READINESS GATE on staging (blocking; named artifacts; owner/release
+sign-off with captured evidence)
 
-Code is deployed (origin/dev `f4e641a59`). Phase 0 is now about DATA and OPERATIONAL
-evidence, each item producing an artifact (SQL output / command exit code / signed line):
+0.1 `channels:reconcile` full contract (exit code, drift/prune evidence, 3-part verification,
+    real webhook probe).
+0.2 Permission reseed verification (manager-403 spot-checks ×2) + custom-grant drift check
+    BEFORE trusting boot-sync.
+0.3 Detection queries per tenant → accountant-disposition list:
+    a. negative document lines · b. negative repositories (pre/post-migrate variants)
+    c. paid-with-balance_due=total (~23 docs): run the investigation; if the WRITE-PATH
+       branch is proven, **conditional lane R2-N activates** (treasury gate) — the gate
+       cannot close on "documented but unresolved"
+    d. lineless posted documents · e. **VAT backfill skips: FIXED/adjusted until the skip
+       list is EMPTY** — disposition-instead-of-fix is NOT permitted (ticket
+       `2026-08-03-vat-regate-carryovers` §N2 requires empty; v2's "or file disposition"
+       escape is withdrawn). Pre-filing hard requirement.
+    f. `failed_jobs` legacy-import query → activates R2-J if rows exist, else recorded
+       prophylactic deferral
+0.4 Branch-register `location_id` data task (runbook 4.2).
+0.5 Consolidated accountant-disposition list (C-2 receipt, W-6 D1b 19.000, negative lines,
+    legacy/confirmed-window CNs, 0.3 outputs).
+0.6 Phase-E launch-sheet corrections landed + owner-approved before any sheet executes.
+0.7 Staging smoke green.
 
-0.1 `channels:reconcile` — FULL contract per ticket `2026-08-05-channels-reconcile-…`:
-    exit-code check, drift/prune report captured, 3-part verification + real webhook probe.
-0.2 Permission reseed verification: boot-sync ran (SYNC_PERMISSIONS_ON_BOOT=true) — verify
-    with manager-403 spot-checks (trial-balance AND vat-periods/file) + custom-grant drift
-    check BEFORE trusting sync (clobbers customisations).
-0.3 Detection queries, per tenant, outputs filed to the accountant-disposition list:
-    a. negative document lines (discount lane SQL, incl. demo -75.000)
-    b. negative repositories (post-migrate query; blocked-type variant)
-    c. paid-with-balance_due=total (~23 docs — ticket `2026-08-03-paid-with-…`): run the
-       investigation query; classify seed-vs-write-path before any Phase-1 merge touches AR
-    d. lineless posted documents (TN timbre distortion — ticket `2026-08-05-lineless-…`)
-    e. VAT backfill skips — resolve EVERY skip or file disposition (MANDATORY pre-filing,
-       ticket `2026-08-03-vat-regate-carryovers` §N2)
-    f. `failed_jobs` legacy-import evidence query (ticket `2026-08-05-bindstenantcontext-…`)
-       → if rows exist, the import-compat fix (R2-J) becomes pre-launch; else explicit
-       prophylactic deferral recorded
-0.4 Branch-register `location_id` data task (runbook 4.2; L3 residual (d)) — tenant #1's 4
-    branch registers, else the branch cash journal-leg contributes nothing.
-0.5 Accountant-disposition list CONSOLIDATED (immutable/campaign contaminants): C-2 warehouse
-    fiscal sale, W-6 D1b stranded 19.000, negative-line artifacts, legacy stamp-inclusive
-    posted CNs + N-1 confirmed-window CNs, 0.3 outputs.
-0.6 Phase-E launch-sheet corrections (ticket `2026-08-05-wave2-phase-e-doc-updates-owed`):
-    exit-code/tenant-coverage/removed-flag fixes landed + owner-approved BEFORE any sheet is
-    executed as a gate.
-0.7 Staging smoke (campaign smoke spec) green. Owner/release sign-off with captured evidence
-    — not only an orchestrator code green-proof.
+## Phase R — DECISION GATE (each ruling: owner · alternatives · recorded-answer artifact ·
+outcome→behavior mapping. A lane blocked on a ruling CANNOT dispatch until its row is
+ANSWERED in the artifact.)
 
-## Phase R — RULINGS REQUIRED BEFORE THEIR LANES (owner and/or expert-comptable; nothing in
-this phase writes code)
+**Artifact for ALL rulings:** `docs/superpowers/tickets/2026-08-07-round2-rulings-record.md`
+(created at first answer; verbatim answer + selected branch per ruling).
 
-R-a (expert) I-3: 0%-deductible expense declared base → unblocks R2-G.
-R-b (expert) N-9 TN timbre account carries rounding noise (`2026-08-05-tn-timbre-…`) →
-    may make R2-G migration-bearing.
-R-c (expert/product) R2-F cluster rulings: (1) cancel-reversal inventory treatment
-    (restock vs offsetting leg); (2) AP/input-VAT CLOSED/FILED-period treatment;
-    (3) VAT-declaration reconciliation approach; (4) correcting-entry escape-hatch design
-    choice (a-vs-b, `2026-08-06-l2-correcting-entry-escape-hatch`).
-R-d (owner) Multi-company posture for launch: EITHER hard-disable company creation/switching
-    for the launch cohort (API-level refusal + test, not UI-hide) and defer A2/A3 — OR keep
-    it enabled and A2 (numbering schema) + A3 (mixed-currency report contract,
-    `2026-08-05-l4-mixed-currency-report-scale` §67-88) are pre-launch. Codex recommends:
-    A1 is pre-launch regardless (demonstrated P0 breach); disable-and-defer is the only
-    defensible fast-follow shape.
-R-e (owner) W-7 F-8: web documents use the COMPANY discount cap, not the user's POS cap —
-    ruling + launch-checklist correction (`2026-08-03-w7-cross-cutting-findings` §381-420).
-R-f (owner) Remittance UX disposition (`2026-08-03-w5b-…` §16-41): irreversible remit
-    without reviewable draft — accept-for-launch or schedule.
+- **R-a** ✅ ANSWERED 2026-08-07 (expert): 0%-deductible EXCLUDED entirely.
+  Outcome mapping executed: writer writes no row + deletes stale; backfill remediates both
+  legacy shapes. **R2-G SHIPPED (`d8efb5df0`).** CLOSED.
+- **R-b** (expert) N-9 timbre residue: **Alternatives:** (1) keep absorbing ≤tolerance dust
+  in 4375 (status quo, document it) · (2) split dust to SalesRoundingDifference always (4375
+  carries ONLY true stamp liability) → changes `AccountingService::residualPlan()` + TN
+  seeder + tenant backfill posture. **Mapping:** (1) → docblock+expert-sign-off line only;
+  (2) → **lane R2-M** (GL/accounting + release/data gates, ordered AFTER F2 — both touch
+  residualPlan; migration-bearing if backfill required). R-b blocks R2-M only; G is shipped
+  and unaffected.
+- **R-c** (expert/product) cancellation cluster — four decisions WITH alternatives:
+  c1 inventory on cancel-reversal: restock (movement-port reversal) vs offsetting
+  COGS-contra leg (no stock touch) — mapping: F2 implements the chosen leg shape;
+  c2 AP/input-VAT when original period CLOSED/FILED: reverse-in-current-period vs
+  refuse-cancel (mirror of the AR refusal) — mapping: F1's gate behavior for purchase docs;
+  c3 VAT-declaration reconciliation: reversal-aware aggregation vs correction-row emission —
+  mapping: F3's design;
+  c4 escape hatch: (a) correcting-entry document w/ `source_document_id` (schema-bearing) vs
+  (b) admin-gated manual JE with mandatory link annotation — mapping: F4's shape (a→
+  release/data gate added).
+  **F1 note (round-2 B2 remnant): F1's non-OPEN-period refusal is the DEFAULT pending c2,
+  explicitly flagged reversible; F1 may dispatch first with refusal-everywhere, F2..F4 wait
+  for c1..c4.**
+- **R-d** (owner) multi-company posture: disable-and-defer (API-level refusal + pinned test;
+  A2/A3 deferred) vs keep-enabled (A2+A3 pre-launch). **Secondary rulings owned by R-d if
+  keep-enabled:** d1 identifier contract for A2 — company-inclusive uniqueness vs company
+  discriminator column (alternatives per `2026-08-03-w8-isolation-findings.md:106-123`);
+  d2 mixed-currency report contract for A3 — refuse-mixed-aggregate vs per-row currency
+  emission (family-wide, `2026-08-05-l4-mixed-currency-report-scale.md:67-88`).
+- **R-e** (owner) W-7 F-8 web-uses-company-discount-cap: **Mapping:** accept → launch-sheet
+  correction (0.6 scope) + recorded rationale; reject → small document-validation lane
+  (per-user cap resolution) added to Wave 2.
+- **R-f** (owner) remittance UX: **Mapping:** accept-for-launch → risk-accepted line in the
+  rulings record + post-launch backlog; fix-now → draft-step lane (treasury + FE gates).
+- **R-g** (orchestrator/product, NEW) deposit recoverability: what happens to a sealed
+  DEPOSIT_RECEIPT whose projection can never apply — void-annotate vs compensating fiscal
+  event vs manual-disposition register. **Blocks R2-K's remediation half** (the two preflight
+  closures can proceed; see R2-K).
+- **R-h** (owner, NEW) `fiscal:backfill` register-or-delete: the command is ABSENT from the
+  production CLI while an owner checklist references it (`2026-08-05-cross-tenant-…:106-133`)
+  — an operator can believe a fiscal backfill ran when no command exists. Decide: register a
+  real command or delete the checklist reference. Cheap; blocks nothing but MUST be answered
+  before the E-9 sheets run (feeds 0.6).
 
-## Phase 1 — correctness lanes (MERGE GRAPH, not free parallelism)
+## Phase 1 — correctness lanes (merge graph)
 
-**Wave 1 (no shared surfaces, dispatch immediately):**
-R2-I  **Test/migration infra pre-fix** (NEW; unblocks every migration-bearing lane):
-      BankStatementAggregateSchemaTest name/batch-targeted rollback (kills the --step-6
-      trap); tenant migration forward/rollback proof harness (feeds T-1). Gate: general +
-      release/data.
-R2-C  **Shared-scope report hardening** (WIDENED): (a) implicit inactive-location leak
-      (`2026-08-06-l3-cash-scope-residuals` part (a), P1) AND (b) resolver-403 swallow → 500
-      + message leak (part (b)) on aged-AR/AP + upcomingPayments. Contract note: T-5 consumes
-      the corrected envelope. Gate: tenancy-authz + narrow API-contract/FE consumer check.
-R2-P  **Purchasing P1 trio** (NEW — Codex BLOCKER; one lane, three independent gates):
-      (1) landed-cost allocator millime drift → WAC/COGS contamination; (2) bonus/free-goods
-      receipts un-invoiceable (blocks routine TN pharmacy flow); (3) RFQ-awarded PO carries
-      zero VAT. Source: `2026-08-03-w4-purchasing-inventory-defects.md`. Gates: precision +
-      inventory-costing (1); imports/procurement (2); taxation + procurement (3).
-R2-H  **Withholding lane** (WIDENED — Codex BLOCKER): (1) zero-effective-rate manufactures
-      fictitious sequenced fiscal certificates — prevent; (2) certificate-list
-      response-contract repair (list permanently empty); (3) route gates for BOTH
-      certificates and withholding-rules groups. Include the ticket's named campaign
-      tripwires in the gate. Source: `2026-08-03-w5a-withholding-defects.md`.
-      Gate: tenancy-authz (routes) + taxation domain + FE/API-contract.
-R2-K  **Deposit seal-before-resolve residual vectors** (NEW): frozen-repository race can
-      mint a sealed DEPOSIT_RECEIPT that never projects; recoverability ruling + fix
-      (`2026-08-05-deposit-residual-seal-…`, OPEN). Gate: fiscal-pos.
-R2-L  **Small certified-money carryovers** (NEW, one lane): R1 draft-vs-confirm millime
-      unification + R5 credit-notes.confirm permission (`2026-08-03-f2f3-regate-carryovers`);
-      CN requested-vs-credited operator notice (N2) + CN PDF whole-unit rendering gate (C2)
-      (`2026-08-03-credit-note-regate-carryovers`); TND inventory-reconciliation unit-cost
-      truncation (`2026-08-05-l4-web-followups` §44-59 — live tenant-#1 precision).
-      Gate: precision + FE.
+**Wave 1 (dispatch immediately):**
+- R2-I infra pre-fix (rollback-test retargeting + tenant-migration harness; feeds T-1/A2).
+- R2-C shared-scope reports (both parts: inactive-location leak + 403 swallow/leak).
+- R2-P purchasing trio (three independent gates as in the matrix).
+- R2-H withholding (all three deliverables + tripwires).
+- R2-K deposit seal-before-resolve — BOTH vectors: frozen-repository preflight AND
+  membership-revoked-mid-request (membership preflight + authz reachability check per ticket
+  §65-80); gates fiscal-pos + tenancy-authz. The RECOVERABILITY half (what to do with
+  already-orphaned receipts) waits for R-g; the lane ships the two preventions first.
+- R2-L small certified-money carryovers — WITH its full gate set (matrix): R1 rounding
+  unification (Document/Taxation review), R5 credit-notes.confirm permission decided+aligned
+  across seeder/route/FE (tenancy-authz review), CN operator notice, CN PDF whole-unit
+  surface, TND reconciliation truncation. **Plus (round-2 completeness): the repobal
+  `allow_negative` admin FE toggle** (treasury FE affordance, tenancy-authz-checked).
+- R2-O (NEW, tiny, test-only): fix the C-2 fixture itself — authorTier4CardFiscalSale gets a
+  location predicate so every campaign run stops minting NEW warehouse fiscal receipts
+  (`2026-08-06-c2-fixture-terminal-location.md:51-69`). Fiscal-pos narrow gate.
 
-**Wave 2 (dependencies; dispatch as prerequisites clear):**
-R2-A1 **Cross-company authz** (pre-launch regardless of R-d): journal/account company
-      scoping, target-company currency on post(), POST /companies commit-then-500 repair,
-      denial tests. Source: `2026-08-03-w8-isolation-findings.md` F-1/F-5 (CORRECTED
-      citation). Gate: tenancy-authz.
-R2-A2 **Company-aware document numbering** (ONLY under R-d=keep-enabled): identifier-contract
-      ruling → schema migration with the R2-I harness, per-tenant preflight, constraint
-      inspection, duplicate-number functional proof, EXPLICIT statement that rollback is
-      unavailable once company-local duplicates exist. Gate: tenancy-authz + release/data.
-R2-A3 **Mixed-currency report contract** (ONLY under R-d=keep-enabled): refuse-or-per-row
-      ruling applied family-wide. Gate: precision + FE.
-R2-B  **Quote totals apply line discounts** (after discount-lane contracts stable; before
-      any tenant issues quotes): QuoteController through computeLineTotal; conversion
-      recompute proof. Gate: treasury/precision + Document-conversion review.
-R2-E  **Optimistic locking** (after R2-F-block lands — shared document lifecycle):
-      REQUIRED `expected_updated_at` payload on every mutable Draft/Confirmed update path
-      incl. autosave (Workshop convention precedent), checked under tenant+company-scoped
-      lockForUpdate INSIDE the replace transaction, typed 409 w/ current+expected. EXPLICIT
-      POS exemption + negative-scope regression (`/pos/sync/fiscal-events` accepts existing
-      envelope). Gate: backend concurrency/DB + Document-domain + FE.
-R2-F  **Cancellation cluster — SPLIT, blocked on R-c:**
-      F1 cancellation policy/period gates (refuse cancel when period ≠ OPEN) →
-      F2 GL + inventory/AP reversals per ruling →
-      F3 VAT-declaration reconciliation (BOTH work items of `l2-gl-vat-declaration-desync`) →
-      F4 correcting-entry escape hatch (may become schema-bearing per design choice) →
-      F5 remaining balance_due??total consumers (SmartPayment + 4 PaymentController writers).
-      Each sublane merges only after the contract it consumes is fixed. Gates: accountant
-      ruling first; then GL + inventory-costing + taxation + treasury integration review.
-R2-G  **Q2/I-3 + backfill hardening** (blocked on R-a; NOT "narrow"): I-3 ruling
-      implementation; FILED-period reporting with its own escalation message (m-7);
-      multi-period ->get() (m-8); dry-run-mode assertions (m-9); scale-2 pin (m-3);
-      VatBreakdownTable parseFloat (m-6). Gates: taxation/compliance + release/data +
-      precision + FE. Merges BEFORE T-4 generalizes the contract.
-R2-J  **Legacy import-job unserialize compat** (conditional on Phase-0 0.3f evidence).
-      Gate: tenancy-authz (narrow).
-R2-D  **is_numeric+bcmath sweep + PHPStan rule** — code fixes early, the REPO-WIDE PHPStan
-      rule lands LAST in the round (after all PHP lanes rebase). Gate: precision +
-      static-analysis owner.
+**Wave 2 (as prerequisites clear):**
+- R2-A1 cross-company authz (F-1/F-5) — pre-launch regardless of R-d.
+- R2-A2 numbering schema (keep-enabled branch only; blocked on R-d/d1; needs R2-I harness).
+- R2-A3 mixed-currency contract (keep-enabled branch only; blocked on R-d/d2).
+- R2-B quote totals (before any tenant issues quotes).
+- R2-E optimistic locking (after F-block; contract per v2, unchanged).
+- R2-F1..F5 cancellation cluster — F1 may lead with default-refusal (see R-c); F2..F4 on
+  c1..c4; **F5 scope CORRECTED (round-2 MAJOR): the balance_due??total consumers are
+  `PaymentController::storeMultiple()`, TWO `PaymentAllocationService` methods, and
+  `SmartPaymentController::previewAllocation()` — read/cap paths per
+  `2026-08-06-l2-remaining-balance-due-consumers.md:22-87`, NOT "4 PaymentController
+  writers"; a fully credit-noted invoice must stop being smart-allocatable.**
+- R2-M timbre residue (only if R-b→split; after F2).
+- R2-N paid/balance write-path fix (conditional, activated by 0.3c evidence).
+- R2-J import-job compat (conditional, activated by 0.3f evidence).
+- **R2-F-adjacent (round-2 completeness):** `2026-08-06-l2-gl-gate-minor-followups.md` is
+  ASSIGNED: supplier-invoices-invisible-in-aged-payables (§79-98) joins R2-C's report
+  surface (same aged-AP query family); the reversal audit/ordering/coupling follow-ups
+  (§13-65,100-129) join F2's deliverables.
+- R2-D bcmath/is_numeric code fixes (early, Wave 2) — the RULE lands in the final sequence:
+  **all Phase-1 PHP lanes merged → D's rule + parsefloat-rule hardening land together on the
+  integrated tree → ONE full-tree PHPStan/ESLint run → a single repair commit for any
+  stragglers → final integration re-gate.** This replaces v2's impossible "last but rebased
+  over" wording: the rule is not a rebase obligation for lanes; it is a terminal ratchet
+  with its own repair pass.
 
-**Deferred WITH REASON (recorded, not silently dropped):**
-- W-7 owner-dashboard UI money coverage (`w7-owner-dashboard-untestable`): accepted debt
-  this round; named in T-5 as EXCLUDED (harness first; dashboard cases post-launch).
-- `2026-08-05-cross-tenant-annotation-ast-check` (architecture guard + 5 pre-existing
-  failures + dead fiscal:backfill): test/ops launch-debt → T-10 backlog line, owner ruling
-  on fiscal:backfill register-or-delete already owed.
-- Marketplace T7, 86ing, impersonation, device Z gross-as-net (own gated program), §Z/§Y
-  legs, prod-env buildout, configurable CN-stamp feature: unchanged deferrals.
+**Deferred WITH REASON (complete list — round-2 completeness closures included):**
+- W-7 owner-dashboard UI money coverage → post-launch (T-5 explicitly excludes it).
+- `2026-08-06-l6-partners-followups.md` partner soft-delete-into-invisibility → DEFERRED
+  post-launch WITH REASON: partner delete now 409s when referenced (BUG-007 fix); the
+  residual is a pre-existing listing/visibility UX for already-soft-deleted partners, not a
+  money or integrity path; ticket stays open.
+- `2026-08-06-pos-product-images-never-populated.md` → DEFERRED to the next coordinated
+  device release train WITH REASON: fix spans POS device build + server ProductData emission
+  (a device-release dependency this round cannot ship); rides with the next device version
+  alongside the v67 wave. NOT part of the Z-gross-as-net program.
+- Cross-tenant annotation AST check + 5 pre-existing architecture failures → **T-10**
+  (now a REAL Phase-2 item, see below); the `fiscal:backfill` operator risk is carved OUT of
+  the deferral into ruling R-h (pre-E-9).
+- Marketplace T7, 86ing, impersonation, device Z program, §Z/§Y legs, prod-env buildout,
+  configurable CN-stamp feature: unchanged.
 
-## Phase 2 — test-coverage track (ORDERED, not freely parallel)
+## Phase 2 — test-coverage track (ordered)
 
-T-1 PG-mode CI leg — **CI-required on every merge (sharded), small local PG smoke in
-    preflight** (Codex recommendation adopted); MUST include tenant migration
-    forward/rollback coverage BEFORE R2-A2; record measured runtime after first run.
-T-3 → T-2: T-3 tenancy-DI audit produces the risk list; THEN T-2 bearer-auth harness
-    (`actingAsViaBearer()`) converts the tenancy-critical suites it names.
-T-5 error-envelope/FE truth harness: build contract-NEUTRAL harness first (image-rendered
-    helper, route-remount request-fired pattern); bind report-endpoint discrimination cases
-    only AFTER R2-C merges. Owner-dashboard cases explicitly excluded (deferral above).
-T-4 ops-command dry-run sweep: AFTER R2-G merges (shares the backfill contract).
-T-6 stable-t mock + deps closure: AFTER R2-B and R2-E land (same feature surfaces).
-T-7 fr `_many` plurals: independent — anytime.
-T-8 IngressPrecisionTest route-bound override leg: independent — anytime.
-T-9 Playwright proof debt (MTP-DSC-04, flipped perms specs): AFTER Phase 0 (needs deployed
-    staging + reseed) — NOT parallel with it.
-Red-test-discovered product defects in Phase 2 = STOP, triage with orchestrator (explicit
-authority), become mini-lanes — never silently widened.
+T-1 PG-mode CI leg (CI-required sharded; includes tenant-migration coverage BEFORE A2; fix
+    `2026-08-07-linkedcost-pg-only-reds` with it) · T-3 → T-2 (DI audit feeds bearer-auth
+    harness conversions) · T-5 neutral harness → R2-C-bound cases · T-4 after R2-G (G is
+    shipped — T-4 is UNBLOCKED NOW, may run in Wave 1 of Phase 2) · T-6 after R2-B/R2-E ·
+    T-7, T-8 anytime · T-9 after Phase 0 · **T-10 (NEW): architecture-guard debt — wire the
+    cross-tenant annotation AST check, triage the 5 pre-existing failures, ratchet.**
+Red-test product defects = STOP + orchestrator triage, never silent widening.
+Also owed promptly (dev is RED): the unfunded-fixture treasury repair
+(`2026-08-07-repobal-lane-followups` escalation — 3 live ExpenseVatPostingTest reds).
 
-## Resolved open questions (Codex recommendations adopted)
-1. R2-A: A1 pre-launch always; A2/A3 governed by owner ruling R-d (hard-disable is the only
-   defensible deferral shape).
-2. T-1: CI-mandatory sharded on merge; local = small PG smoke.
-3. R2-E: payload `expected_updated_at` (Workshop convention), mandatory, in-transaction
-   check, POS exempted with pinned negative test.
+## Resolved question dispositions (unchanged from v2)
+R2-A1 always pre-launch; A2/A3 per R-d. T-1 CI-mandatory. R2-E payload `expected_updated_at`.
