@@ -35,6 +35,17 @@ use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
  * So `document_date` IS the accounting date, and the period covering it is the
  * one the withdrawal would disturb.
  *
+ * ONE KNOWN DIVERGENCE (GL re-gate I-5 follow-on, recorded not fixed):
+ * `GeneralLedgerService::createFromIncome()` stamps
+ * `entry_date = $metadata->payment_date ?? $income->document_date` (`:4106`) —
+ * the only entry point that does not key purely on `document_date`. When an
+ * Income's `payment_date` and `document_date` fall in DIFFERENT periods this
+ * guard therefore inspects the document's period, not the entry's. Locking on
+ * `document_date` is still strictly better than leaving Income unlocked (the
+ * state before I-5), and changing the contract's date semantics per type is a
+ * ruling, not a refactor. Tracked in
+ * `docs/superpowers/tickets/2026-08-07-r2f1-residuals.md`.
+ *
  * ABSENT PERIOD = PERMITTED. No `vat_periods` row covering the date means nothing
  * has ever been closed or filed for that span, so there is nothing to protect.
  * Fail-closed on absence would make every document uncancellable on every tenant
@@ -62,14 +73,26 @@ use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
 final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
 {
     /**
-     * Sales-side types that carry a declaration and a GL entry. Settled by GL
-     * gate ruling 6a — NOT part of the c2 ruling.
+     * Sales-side types that reach the LEDGER (some of them the declaration too).
+     * Settled by GL gate ruling 6a — NOT part of the c2 ruling.
+     *
+     * Named for the ledger, not the declaration, because the membership test is
+     * DISJUNCTIVE and `Income` satisfies only the ledger half: it posts a journal
+     * entry (`GeneralLedgerService::createFromIncome()`, declared `:4056`, stamped
+     * `:4106`, called synchronously in-transaction by `IncomeService::post():161`)
+     * but is excluded from the VAT declaration
+     * (`EloquentVatDataRepository:42` reads invoice/credit_note/expense only).
+     * The first narrowing pass dropped `Income` on the declaration half alone —
+     * GL re-gate I-5. A ledger-bearing type left unlocked would, once an
+     * Income-cancel lane exists, withdraw from a FILED period with no refusal AND
+     * no GL reversal (`reverseDocumentGl()` returns null for non-Invoice/CreditNote).
      *
      * @var list<DocumentType>
      */
-    private const SALES_DECLARATION_BEARING_TYPES = [
+    private const SALES_LEDGER_BEARING_TYPES = [
         DocumentType::Invoice,
         DocumentType::CreditNote,
+        DocumentType::Income,
     ];
 
     /**
@@ -144,12 +167,21 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
      * I-4, ruling adopted): the round-2 plan's intent was DECLARATION AND LEDGER
      * PROTECTION, not literal totality. Applying the lock to types that post no
      * journal entry and write no `document_tax_details` row (Quote, SalesOrder,
-     * DeliveryNote, ReturnNote, PurchaseOrder, PurchaseQuoteRequest, Income)
-     * protects nothing, and would make such a document PERMANENTLY uncancellable
-     * the moment a lane wires its cancellation through
+     * DeliveryNote, ReturnNote, PurchaseOrder, PurchaseQuoteRequest) protects
+     * nothing, and would make such a document PERMANENTLY uncancellable the
+     * moment a lane wires its cancellation through
      * `DocumentPostingService::cancel()` — a fiscal refusal with no fiscal
      * justification. The population is therefore narrowed to the types that
      * actually reach the ledger or the declaration.
+     *
+     * The test is DISJUNCTIVE — ledger OR declaration — and both halves must be
+     * checked before excluding a type. GL re-gate I-5: the first pass excluded
+     * `Income` after confirming only that the declaration excludes it, while
+     * `GeneralLedgerService::createFromIncome()` posts a real journal entry.
+     * `Income` is now locked. The exhaustive list of GL entry points is the five
+     * `createFrom*` / GR-IR methods — invoice `:130`, credit note `:214`, expense
+     * `:3912`, income `:4056`, supplier-invoice GR-IR `:1921` — and every type
+     * excluded above has none of them.
      *
      * Ruling R-c c2 (`docs/superpowers/tickets/2026-08-07-round2-rulings-record.md`)
      * is still OPEN: for a PURCHASE document whose period is CLOSED/FILED, the
@@ -191,7 +223,8 @@ final class VatPeriodCancellationGuard implements DocumentPeriodLockInterface
         }
 
         // Sales side: settled by GL gate ruling 6a, NOT part of the c2 ruling.
-        // Every other type posts nothing and is deliberately NOT locked.
-        return in_array($type, self::SALES_DECLARATION_BEARING_TYPES, true);
+        // Every other type reaches neither the ledger nor the declaration and is
+        // deliberately NOT locked.
+        return in_array($type, self::SALES_LEDGER_BEARING_TYPES, true);
     }
 }

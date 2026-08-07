@@ -69,11 +69,29 @@ data-readiness sweep.
    `DocumentGlPreflightInterface`, `DocumentGlReversalInterface` and
    `TreasuryMovementServiceInterface`. Consistency with the house contract pattern
    was chosen over avoiding the ratchet.
-5. **Posting (as opposed to cancelling) a new document into a CLOSED/FILED
+5. **Income resolves its period by `document_date`, but its GL entry may be
+   dated `payment_date`** (GL re-gate I-5 follow-on). `createFromIncome()` stamps
+   `entry_date = $metadata->payment_date ?? $income->document_date` (`:4106`) —
+   the only GL entry point that does not key purely on `document_date`. When an
+   Income's `payment_date` and `document_date` straddle a period boundary, the
+   guard inspects the document's period rather than the entry's, so a
+   FILED-period *entry* could still be withdrawn if the *document* sits in an
+   open period (or vice versa, over-refusing).
+
+   NOT fixed here: the round-3 ruling was to adopt the gate's fix as written
+   (move Income into the locked set), and making the contract's date semantics
+   per-type changes what `DocumentPeriodLockInterface` means — a ruling, not a
+   refactor. Locking on `document_date` is strictly better than the pre-I-5
+   state, where Income was not locked at all. **Needs a ruling** before an
+   Income-cancel lane ships; the natural shapes are (a) resolve per type via a
+   small `accountingDateFor(Document)` seam, or (b) declare `document_date`
+   canonical and make `createFromIncome()` stop using `payment_date`.
+
+6. **Posting (as opposed to cancelling) a new document into a CLOSED/FILED
    `vat_periods` row is still unguarded.** Only the GL side has a posting guard,
    and it keys on the separate `fiscal_periods` table. Out of F1's scope — the
    ticket asked only about cancel — but the asymmetry is real.
-6. **Gate item 6d could not be applied as written.** The gate asked to drop the
+7. **Gate item 6d could not be applied as written.** The gate asked to drop the
    `use ...VatPeriodCancellationGuard` import from `DocumentPeriodLockInterface`
    and inline the FQCN in the `@see`. Pint's `fully_qualified_strict_types` fixer
    does the OPPOSITE — it rewrites docblock FQCNs back into imports — so the edit
