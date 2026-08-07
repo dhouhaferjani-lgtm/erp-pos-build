@@ -80,7 +80,14 @@ enum SystemAccountPurpose: string
 
     // Procurement (GR-IR / Domestic P2P)
     case GoodsReceivedNotInvoiced = 'goods_received_not_invoiced'; // 408 — accrued liability until supplier invoice matched
-    case PurchaseStampDuty = 'purchase_stamp_duty';                // Timbre fiscal on domestic purchase documents
+    // Timbre fiscal borne by the company as a fiscal charge. Named for its
+    // original caller (purchase-side GR-IR clearing), but the account it
+    // resolves to (PCG "droits d'enregistrement et de timbre", 63xx) is a
+    // general stamp-duty EXPENSE, not a purchase-specific one — Q1
+    // (2026-08-07 ruling) reuses this SAME purpose for a credit note's own
+    // stamp duty, which the company also bears as a charge (never passed
+    // through to the customer). See AccountingService::createCreditNoteGLEntries().
+    case PurchaseStampDuty = 'purchase_stamp_duty';
     case SalesStampDutyPayable = 'sales_stamp_duty_payable';       // 4375 — droit de timbre collected on sales, remittable to the State (liability)
 
     // Sales invoice/credit-note tax-rounding difference (W-6 D1a).

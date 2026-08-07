@@ -57,6 +57,18 @@ enum GlResidualRefusal: string
      */
     case LegsDoNotBalance = 'legs_do_not_balance';
 
+    /**
+     * Q1 (2026-08-07 expert-comptable ruling) — a CREDIT NOTE carries its own
+     * positive `stamp_duty_amount`, which must book as a separate self-balancing
+     * pair (DEBIT a fiscal-charge expense account, CREDIT the stamp-payable
+     * liability) rather than reduce AR. This chart has no account for one or
+     * both legs of that pair. Distinct from `NoAbsorbingAccount`: that case is
+     * about the ROUNDING residual left over after the stamp is peeled out; this
+     * one is about the stamp itself, which is an exact, explicit amount, never a
+     * rounding artefact.
+     */
+    case NoCreditNoteStampAccount = 'no_credit_note_stamp_account';
+
     public function message(): string
     {
         return match ($this) {
@@ -64,6 +76,7 @@ enum GlResidualRefusal: string
             self::NoAbsorbingAccount => 'The document total exceeds the sum of its lines plus their tax, and this chart of accounts has no account to absorb the difference. Assign a rounding-difference account in Settings -> Chart of Accounts.',
             self::ResidualExceedsRoundingTolerance => 'The document total exceeds the sum of its lines plus their tax by more than tax rounding can explain. If the difference is a document-level charge (for example a stamp duty), assign the account that should carry it in Settings -> Chart of Accounts; otherwise correct the document totals.',
             self::LegsDoNotBalance => 'The general-ledger entry for this document does not balance.',
+            self::NoCreditNoteStampAccount => 'This credit note carries its own stamp duty, which must be booked as a separate fiscal charge rather than reducing the customer balance. Assign both a stamp-duty charge account and a stamp-duty payable account in Settings -> Chart of Accounts.',
         };
     }
 }

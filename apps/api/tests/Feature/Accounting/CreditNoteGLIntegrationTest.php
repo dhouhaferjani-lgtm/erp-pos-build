@@ -7,8 +7,10 @@ namespace Tests\Feature\Accounting;
 use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\GlResidualRefusal;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
+use App\Modules\Accounting\Domain\Exceptions\UnpostableDocumentGlException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -20,6 +22,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
@@ -659,6 +662,188 @@ class CreditNoteGLIntegrationTest extends TestCase
     }
 
     /**
+     * Q1 (2026-08-07 expert-comptable ruling) — RED/GREEN pin for the NEW shape:
+     * a credit note carrying its OWN stamp duty (`documents.stamp_duty_amount`)
+     * must credit 411 with the EX-STAMP amount only, and book the stamp as a
+     * separate self-balancing pair (DEBIT the fiscal-charge expense account,
+     * CREDIT the stamp-payable liability) — it no longer reduces what the
+     * customer owes.
+     *
+     * Fixture: 1.000 net + 0.190 VAT (19%) + 0.600 stamp = 1.790 total.
+     *
+     * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md §Q1
+     * docs/superpowers/tickets/2026-08-03-credit-note-regate-carryovers.md §N1
+     */
+    public function test_credit_note_with_its_own_stamp_duty_credits_ar_ex_stamp_and_books_a_separate_fiscal_charge_pair(): void
+    {
+        $purchaseStampDutyAccount = $this->createPurchaseStampDutyAccount();
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::CreditNote,
+            'document_number' => 'CN-OWNSTAMP-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '1.000',
+            'stamp_duty_amount' => '0.600',
+            'tax_amount' => '0.790',   // 0.190 line VAT + 0.600 stamp
+            'total' => '1.790',
+            'balance_due' => '1.790',
+            'currency' => 'EUR',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $creditNote->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Credited product, own-stamp CN',
+            'quantity' => '1',
+            'unit_price' => '1.000',
+            'tax_rate' => '19.00',
+            'line_total' => '1.000',
+        ]);
+        $creditNote = $creditNote->fresh(['lines']);
+
+        // Consumer sweep (1/2): the L1 preflight must accept the new shape.
+        $this->accountingService->assertDocumentGlIsPostable($creditNote);
+
+        $journalEntryId = $this->accountingService->createCreditNoteGLEntries($creditNote);
+        $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
+
+        // 411 credited EX-STAMP only: 1.000 + 0.190 = 1.190, NOT the stamp-inclusive 1.790.
+        $arLine = $lines->firstWhere('account_id', $this->receivableAccount->id);
+        $this->assertNotNull($arLine, 'AR line should exist');
+        $this->assertSame('0.000', $arLine->debit);
+        $this->assertSame('1.190', $arLine->credit, 'AR/411 must be credited ex-stamp only (Q1 ruling)');
+
+        // Revenue reversal unchanged.
+        $revenueLine = $lines->firstWhere('account_id', $this->productRevenueAccount->id);
+        $this->assertSame('1.000', $revenueLine->debit);
+
+        // Line VAT reversal unchanged — the stamp must NOT land on VatCollected.
+        $vatLine = $lines->firstWhere('account_id', $this->vatCollectedAccount->id);
+        $this->assertNotNull($vatLine);
+        $this->assertSame('0.190', $vatLine->debit);
+
+        // NEW self-balancing stamp pair.
+        $stampChargeLine = $lines->firstWhere('account_id', $purchaseStampDutyAccount->id);
+        $this->assertNotNull($stampChargeLine, 'A DEBIT leg on the fiscal-charge expense account must exist');
+        $this->assertSame('0.600', $stampChargeLine->debit);
+        $this->assertSame('0.000', $stampChargeLine->credit);
+
+        $stampPayableLine = $lines->firstWhere('account_id', $this->salesStampDutyAccount->id);
+        $this->assertNotNull($stampPayableLine, 'A CREDIT leg on the stamp-payable liability must exist');
+        $this->assertSame('0.000', $stampPayableLine->debit);
+        $this->assertSame('0.600', $stampPayableLine->credit);
+
+        // Whole entry stays balanced, string-exact.
+        $debits = '0';
+        $credits = '0';
+        foreach ($lines as $line) {
+            $debits = bcadd($debits, (string) $line->debit, 3);
+            $credits = bcadd($credits, (string) $line->credit, 3);
+        }
+        $this->assertSame($credits, $debits, 'Debits must equal credits (balanced entry)');
+        $this->assertSame('1.790', $debits, 'Total debits must equal the document total');
+
+        // Consumer sweep (2/2): cancelling the new-shape CN mirrors every leg
+        // (including the stamp pair) and stays balanced.
+        $postingService = app(DocumentPostingService::class);
+        $postingService->cancel($creditNote->fresh(['lines']), 'test cancel', $this->user->id);
+
+        $reversal = JournalEntry::query()
+            ->where('source_type', AccountingService::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+            ->where('source_id', $creditNote->id)
+            ->with('lines')
+            ->first();
+        $this->assertNotNull($reversal, 'Cancelling the credit note must write a reversing entry');
+
+        $reversedStampCharge = $reversal->lines->firstWhere('account_id', $purchaseStampDutyAccount->id);
+        $this->assertNotNull($reversedStampCharge, 'The stamp charge leg must be mirrored by the cancel-reversal');
+        $this->assertSame('0.000', $reversedStampCharge->debit);
+        $this->assertSame('0.600', $reversedStampCharge->credit);
+
+        $reversedStampPayable = $reversal->lines->firstWhere('account_id', $this->salesStampDutyAccount->id);
+        $this->assertNotNull($reversedStampPayable, 'The stamp payable leg must be mirrored by the cancel-reversal');
+        $this->assertSame('0.600', $reversedStampPayable->debit);
+        $this->assertSame('0.000', $reversedStampPayable->credit);
+
+        $reversalDebits = '0';
+        $reversalCredits = '0';
+        foreach ($reversal->lines as $line) {
+            $reversalDebits = bcadd($reversalDebits, (string) $line->debit, 3);
+            $reversalCredits = bcadd($reversalCredits, (string) $line->credit, 3);
+        }
+        $this->assertSame($reversalCredits, $reversalDebits, 'The reversal must itself balance');
+    }
+
+    /**
+     * Q1 fail-closed branch: a credit note carries its own stamp duty, but this
+     * chart has no `PurchaseStampDuty` account to carry the DEBIT (fiscal-charge)
+     * leg — the base fixture in `setUp()` never creates one. The pre-flight must
+     * refuse (422), leaving the document Confirmed/unsealed and re-postable,
+     * rather than sealing a wrong or unbalanced entry.
+     */
+    public function test_credit_note_with_stamp_duty_refuses_to_post_when_the_chart_has_no_stamp_charge_account(): void
+    {
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::CreditNote,
+            'document_number' => 'CN-NOCHARGEACCT-'.uniqid(),
+            'partner_id' => $this->customer->id,
+            'document_date' => now(),
+            'status' => DocumentStatus::Posted,
+            'subtotal' => '1.000',
+            'stamp_duty_amount' => '0.600',
+            'tax_amount' => '0.790',
+            'total' => '1.790',
+            'balance_due' => '1.790',
+            'currency' => 'EUR',
+        ]);
+        DocumentLine::create([
+            'id' => Str::uuid()->toString(),
+            'document_id' => $creditNote->id,
+            'product_id' => $this->product1->id,
+            'line_number' => 1,
+            'description' => 'Credited product, own-stamp CN, no charge account',
+            'quantity' => '1',
+            'unit_price' => '1.000',
+            'tax_rate' => '19.00',
+            'line_total' => '1.000',
+        ]);
+        $creditNote = $creditNote->fresh(['lines']);
+
+        try {
+            $this->accountingService->assertDocumentGlIsPostable($creditNote);
+            $this->fail('assertDocumentGlIsPostable() must refuse a stamp-bearing credit note when the chart has no fiscal-charge account.');
+        } catch (UnpostableDocumentGlException $e) {
+            $this->assertSame(GlResidualRefusal::NoCreditNoteStampAccount, $e->refusal);
+        }
+
+        // Bypassing the preflight (defence in depth): posting directly must
+        // never silently drop the stamp pair. A self-balancing pair is
+        // invisible to the Σdebits==Σcredits guard when BOTH legs are omitted
+        // together (this fixture's residual is exactly 0, so the entry would
+        // otherwise balance while silently dropping the company's real fiscal
+        // charge/liability) — an explicit throw is the only correct defence.
+        try {
+            $this->accountingService->createCreditNoteGLEntries($creditNote);
+            $this->fail('createCreditNoteGLEntries() must never seal an entry that silently drops the stamp.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString($creditNote->document_number, $e->getMessage());
+        }
+
+        $this->assertSame(
+            0,
+            JournalEntry::query()->where('source_id', $creditNote->id)->count(),
+            'No journal entry may survive for a document whose stamp pair could not be resolved.'
+        );
+    }
+
+    /**
      * W-6 D1a (credit-note sibling) — `createCreditNoteGLEntries()` repeats the
      * invoice pattern and must refuse an unbalanced reversal for the same reason:
      * a negative residual is a bug, never a rounding artefact, and the entry is
@@ -715,6 +900,24 @@ class CreditNoteGLIntegrationTest extends TestCase
     }
 
     // ==================== HELPER METHODS ====================
+
+    /**
+     * Q1 — the fiscal-charge (DEBIT) account for a credit note's own stamp duty.
+     * NOT created in `setUp()` on purpose: the fail-closed test relies on its
+     * absence to exercise the refusal branch.
+     */
+    private function createPurchaseStampDutyAccount(): Account
+    {
+        return Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '6354',
+            'name' => 'Droits d\'enregistrement et de timbre',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::PurchaseStampDuty,
+            'is_active' => true,
+        ]);
+    }
 
     /**
      * Create a posted credit note with lines

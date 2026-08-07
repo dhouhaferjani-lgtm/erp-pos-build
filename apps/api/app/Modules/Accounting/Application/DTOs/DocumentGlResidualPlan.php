@@ -25,7 +25,10 @@ final readonly class DocumentGlResidualPlan
     /**
      * @param  numeric-string  $revenue  Σ line_total
      * @param  numeric-string  $vat  Σ positive per-rate recomputed VAT
-     * @param  numeric-string  $residual  total − revenue − vat (signed)
+     * @param  numeric-string  $residual  arFacingTotal − revenue − vat (signed) — for a
+     *                                    credit note, arFacingTotal already excludes
+     *                                    $stampDutyAmount (Q1); for every other
+     *                                    document type it is the plain `total`.
      * @param  array<numeric-string, numeric-string>  $taxByRate  rate => recomputed tax
      * @param  Account|null  $absorbingAccount  where a positive residual is booked
      * @param  GlResidualRefusal|null  $refusal  null when the document is postable
@@ -33,6 +36,25 @@ final readonly class DocumentGlResidualPlan
      *                                   entry has no revenue side to balance against
      *                                   — a pre-existing shape this lane does not
      *                                   change. See `residualPlan()`.
+     * @param  numeric-string  $stampDutyAmount  Q1 (2026-08-07 expert-comptable ruling):
+     *                                           a CREDIT NOTE's own stamp duty
+     *                                           (`documents.stamp_duty_amount`), peeled
+     *                                           out of the AR-facing total and booked as
+     *                                           a separate self-balancing pair
+     *                                           ({@see $stampExpenseAccount} /
+     *                                           {@see $stampPayableAccount}) instead of
+     *                                           reducing what the customer owes. Always
+     *                                           `'0'` for every other document type —
+     *                                           Q1 does not change invoice treatment.
+     * @param  Account|null  $stampExpenseAccount  DEBIT leg (fiscal charge borne by the
+     *                                             company) for a positive
+     *                                             $stampDutyAmount; null when the chart
+     *                                             cannot represent it or $stampDutyAmount
+     *                                             is `'0'`.
+     * @param  Account|null  $stampPayableAccount  CREDIT leg (liability owed to the
+     *                                             State) for a positive
+     *                                             $stampDutyAmount; null under the same
+     *                                             conditions as $stampExpenseAccount.
      */
     public function __construct(
         public string $revenue,
@@ -42,6 +64,9 @@ final readonly class DocumentGlResidualPlan
         public ?Account $absorbingAccount,
         public ?GlResidualRefusal $refusal,
         public bool $balanceAssertable = true,
+        public string $stampDutyAmount = '0',
+        public ?Account $stampExpenseAccount = null,
+        public ?Account $stampPayableAccount = null,
     ) {}
 
     public function isPostable(): bool

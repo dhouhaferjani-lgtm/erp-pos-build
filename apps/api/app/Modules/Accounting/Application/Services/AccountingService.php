@@ -122,6 +122,19 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
      *     refusing (gate ruling: refuse, do NOT absorb-with-alert).
      *   - no absorbing account at all → REFUSE rather than silently drop it.
      * - `residual == 0` → nothing to book.
+     *
+     * Q1 (2026-08-07 expert-comptable ruling) — for a CREDIT NOTE only, the
+     * residual above is computed against an AR-FACING total that already
+     * excludes the credit note's OWN `stamp_duty_amount`: "Le compte client
+     * (411) ne doit être diminué que du montant crédité hors timbre, et le
+     * timbre de l'avoir doit être comptabilisé séparément comme une charge
+     * fiscale pour l'entreprise." The stamp itself is resolved and booked as a
+     * SEPARATE self-balancing pair ({@see DocumentGlResidualPlan::$stampExpenseAccount}
+     * / {@see DocumentGlResidualPlan::$stampPayableAccount}), refused
+     * (`GlResidualRefusal::NoCreditNoteStampAccount`) when the chart cannot
+     * represent it. Invoices are UNCHANGED — Q1 does not touch invoice
+     * treatment, and the customer legitimately owes an invoice's own timbre.
+     * docs/superpowers/tickets/2026-08-06-expert-comptable-rulings-q2-q3.md §Q1
      */
     private function residualPlan(Document $document, int $scale): DocumentGlResidualPlan
     {
@@ -155,6 +168,8 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
             return new DocumentGlResidualPlan('0', '0', $total, [], $absorbing, null, false);
         }
 
+        $isCreditNote = $document->type === DocumentType::CreditNote;
+
         /** @var numeric-string $revenue */
         $revenue = '0';
         foreach ($document->lines as $line) {
@@ -176,44 +191,80 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
 
         /** @var numeric-string $documentTotal */
         $documentTotal = (string) ($document->total ?? '0');
+
+        // Q1 — only a CREDIT NOTE's own stamp duty is peeled out here; an
+        // invoice's `stampDutyAmount` stays `'0'` and `$arFacingTotal` stays the
+        // plain `$documentTotal`, so nothing below this line changes for
+        // invoices.
+        /** @var numeric-string $stampDutyAmount */
+        $stampDutyAmount = $isCreditNote ? (string) ($document->stamp_duty_amount ?? '0') : '0';
+        $hasStampDuty = bccomp($stampDutyAmount, '0', $scale) > 0;
+
+        /** @var numeric-string $arFacingTotal */
+        $arFacingTotal = $hasStampDuty
+            ? bcsub($documentTotal, $stampDutyAmount, $scale)
+            : $documentTotal;
+
         /** @var numeric-string $residual */
-        $residual = bcsub($documentTotal, bcadd($revenue, $vat, $scale), $scale);
+        $residual = bcsub($arFacingTotal, bcadd($revenue, $vat, $scale), $scale);
 
         $comparison = bccomp($residual, '0', $scale);
 
-        if ($comparison === 0) {
-            return new DocumentGlResidualPlan($revenue, $vat, $residual, $taxByRate, null, null);
-        }
+        $absorbingAccount = null;
+        $refusal = null;
 
         if ($comparison < 0) {
-            return new DocumentGlResidualPlan(
-                $revenue, $vat, $residual, $taxByRate, null, GlResidualRefusal::NegativeResidual,
-            );
+            $refusal = GlResidualRefusal::NegativeResidual;
+        } elseif ($comparison > 0) {
+            $stampDutyAccount = Account::findByPurpose($document->company_id, SystemAccountPurpose::SalesStampDutyPayable);
+            if ($stampDutyAccount !== null) {
+                $absorbingAccount = $stampDutyAccount;
+            } else {
+                $roundingPurpose = $isCreditNote
+                    ? SystemAccountPurpose::SalesRoundingDifferenceExpense
+                    : SystemAccountPurpose::SalesRoundingDifferenceIncome;
+                $roundingAccount = Account::findByPurpose($document->company_id, $roundingPurpose);
+
+                if ($roundingAccount === null) {
+                    $refusal = GlResidualRefusal::NoAbsorbingAccount;
+                } elseif (bccomp($residual, $this->roundingTolerance($document, $scale), $scale) > 0) {
+                    $refusal = GlResidualRefusal::ResidualExceedsRoundingTolerance;
+                } else {
+                    $absorbingAccount = $roundingAccount;
+                }
+            }
         }
 
-        $stampDutyAccount = Account::findByPurpose($document->company_id, SystemAccountPurpose::SalesStampDutyPayable);
-        if ($stampDutyAccount !== null) {
-            return new DocumentGlResidualPlan($revenue, $vat, $residual, $taxByRate, $stampDutyAccount, null);
+        // Q1 — the credit note's own stamp, self-balancing pair. Only evaluated
+        // when the plan is otherwise postable: a document with a MORE
+        // fundamental defect (negative residual, no rounding home) should
+        // surface THAT refusal, not have it masked by a stamp-account gap.
+        $stampExpenseAccount = null;
+        $stampPayableAccount = null;
+
+        if ($refusal === null && $hasStampDuty) {
+            $stampExpenseAccount = Account::findByPurpose($document->company_id, SystemAccountPurpose::PurchaseStampDuty);
+            $stampPayableAccount = Account::findByPurpose($document->company_id, SystemAccountPurpose::SalesStampDutyPayable);
+
+            if ($stampExpenseAccount === null || $stampPayableAccount === null) {
+                $refusal = GlResidualRefusal::NoCreditNoteStampAccount;
+                $stampExpenseAccount = null;
+                $stampPayableAccount = null;
+            }
         }
 
-        $roundingPurpose = $document->type === DocumentType::CreditNote
-            ? SystemAccountPurpose::SalesRoundingDifferenceExpense
-            : SystemAccountPurpose::SalesRoundingDifferenceIncome;
-        $roundingAccount = Account::findByPurpose($document->company_id, $roundingPurpose);
-
-        if ($roundingAccount === null) {
-            return new DocumentGlResidualPlan(
-                $revenue, $vat, $residual, $taxByRate, null, GlResidualRefusal::NoAbsorbingAccount,
-            );
-        }
-
-        if (bccomp($residual, $this->roundingTolerance($document, $scale), $scale) > 0) {
-            return new DocumentGlResidualPlan(
-                $revenue, $vat, $residual, $taxByRate, null, GlResidualRefusal::ResidualExceedsRoundingTolerance,
-            );
-        }
-
-        return new DocumentGlResidualPlan($revenue, $vat, $residual, $taxByRate, $roundingAccount, null);
+        return new DocumentGlResidualPlan(
+            $revenue,
+            $vat,
+            $residual,
+            $taxByRate,
+            $absorbingAccount,
+            $refusal,
+            true,
+            $stampDutyAmount,
+            $stampExpenseAccount,
+            $stampPayableAccount,
+        );
     }
 
     /**
@@ -566,13 +617,23 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                 SystemAccountPurpose::VatCollected
             );
 
-            // 1. Create AR credit line (full credit note total) - REVERSED from invoice
+            // 1. Create AR credit line - REVERSED from invoice, EX-STAMP only
+            // (Q1, 2026-08-07 ruling): the credit note's own stamp duty no
+            // longer reduces what the customer owes; it books as a separate
+            // self-balancing pair below (3c).
+            /** @var numeric-string $documentTotal */
+            $documentTotal = (string) ($creditNote->total ?? '0');
+            /** @var numeric-string $arCreditAmount */
+            $arCreditAmount = bccomp($plan->stampDutyAmount, '0', $scale) > 0
+                ? bcsub($documentTotal, $plan->stampDutyAmount, $scale)
+                : $documentTotal;
+
             JournalLine::create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $arAccount->id,
                 'partner_id' => $creditNote->partner_id,
                 'debit' => '0',
-                'credit' => $creditNote->total,
+                'credit' => $arCreditAmount,
                 'description' => 'AR reversal from Credit Note '.$creditNote->document_number,
             ]);
 
@@ -624,6 +685,49 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
                     'credit' => '0',
                     'description' => ($isStampDuty ? 'Stamp duty (timbre) reversal' : 'Tax rounding difference reversal')
                         .' from Credit Note '.$creditNote->document_number,
+                ]);
+            }
+
+            // 3c. Q1 (2026-08-07 ruling) — the credit note's OWN stamp duty,
+            // booked as a separate self-balancing pair: DEBIT the fiscal-charge
+            // expense account (the company bears this cost), CREDIT the
+            // stamp-payable liability (the company owes the avoir's timbre to
+            // the State). Never reduces AR — that is exactly what step 1 above
+            // already stopped doing.
+            //
+            // Unreachable via the documented posting flow —
+            // `assertDocumentGlIsPostable()` refuses pre-seal whenever the plan
+            // could not resolve both accounts — but this is DELIBERATELY an
+            // explicit throw, NOT an omit-and-let-`assertLegsBalance()`-catch-it
+            // the way the residual leg above does: a self-balancing pair is,
+            // by construction, invisible to the Σdebits==Σcredits check when
+            // BOTH its legs are dropped together, so silently omitting it would
+            // seal a balanced-but-WRONG entry that drops the company's real
+            // fiscal charge and liability entirely.
+            if (bccomp($plan->stampDutyAmount, '0', $scale) > 0) {
+                if ($plan->stampExpenseAccount === null || $plan->stampPayableAccount === null) {
+                    throw new \RuntimeException(sprintf(
+                        'Credit note %s carries a stamp duty of %s but this chart of accounts has no stamp-charge '
+                        .'and/or stamp-payable account — refusing to post an entry that would silently drop the '
+                        ."company's fiscal charge. This should have been refused at pre-flight.",
+                        $creditNote->document_number ?? $creditNote->id,
+                        $plan->stampDutyAmount,
+                    ));
+                }
+
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $plan->stampExpenseAccount->id,
+                    'debit' => $plan->stampDutyAmount,
+                    'credit' => '0',
+                    'description' => 'Stamp duty (timbre) on Credit Note '.$creditNote->document_number.' — fiscal charge',
+                ]);
+                JournalLine::create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $plan->stampPayableAccount->id,
+                    'debit' => '0',
+                    'credit' => $plan->stampDutyAmount,
+                    'description' => 'Stamp duty (timbre) payable from Credit Note '.$creditNote->document_number,
                 ]);
             }
 
