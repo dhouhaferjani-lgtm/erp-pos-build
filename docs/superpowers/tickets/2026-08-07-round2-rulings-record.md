@@ -17,13 +17,37 @@ Consumers: (1) → docblock + expert-sign-off line, no code. (2) → lane R2-M (
 release/data + treasury gates; after F2; migration-bearing iff 2a=historical or 2b=new
 account).
 
-## R-c — cancellation cluster (expert/product) — ⏳ OPEN (4 decisions)
-c1 inventory on cancel-reversal: restock via movement port vs offsetting COGS-contra leg →
-consumer F2. c2 purchase-doc cancel when period CLOSED/FILED: reverse-in-current vs
-refuse-cancel → consumer F1 (F1 ships default-refusal FIRST, explicitly reversible).
+## R-c — cancellation cluster — c1 + c4 ✅ ANSWERED BY OWNER 2026-08-07; c2 + c3 ⏳ OPEN (expert)
+
+**c1 — ✅ OWNER RULING (verbatim substance):** stock and money are SEPARATE lanes with
+guided intersections. In this ERP, invoices touch money, NOT stock — inventory moves only
+via exit notes (delivery) and return notes. Therefore: **cancelling an invoice performs NO
+automatic stock movement and NO automatic COGS/stock-lane reversal — NEITHER of the two
+alternatives originally posed.** Instead the UI must GUIDE the user: on cancelling an
+invoice for delivered products, prompt "create a return note?". No return note → no
+inventory comes back (COGS stays — the goods are genuinely gone). Return note → its OWN
+document lifecycle (opened/draft → confirmed), and its confirmation drives the stock
+re-entry and its own GL, linked to the cancelled invoice.
+**F2 contract:** (i) invoice-cancel GL reversal mirrors ONLY the invoice's own sealed legs
+(revenue/VAT/AR — the L2 mechanism) — never synthesizes stock-lane legs; (ii) the "COGS
+unreversed on cancel" ticket is RESOLVED as by-design when no return occurs; the deliverable
+becomes the CANCEL-FLOW PROMPT (FE) + return-note creation pre-linked to the cancelled
+invoice + the link surfaced on both documents; (iii) PREMISE VERIFICATION required first:
+confirm in code WHERE COGS actually posts (exit-note/delivery leg vs invoice leg). If any
+path books COGS at invoice-posting, reconcile it to this ruling (COGS belongs to the stock
+lane) BEFORE building the prompt — that discrepancy, if found, is its own finding, not
+silently absorbed.
+
+**c4 — ✅ OWNER RULING: branch (a), strengthened.** "Everything needs to be documented":
+corrections are DOCUMENTS, always. A correction requires creating a correcting document
+LINKED to the original document it refers to (source_document_id). No free-floating manual
+JEs as the correction mechanism. **F4 contract:** correcting-entry document type w/
+mandatory link to the original; schema-bearing → release/data gate + R2-I harness apply.
+
+c2 purchase-doc cancel when period CLOSED/FILED: reverse-in-current vs refuse-cancel →
+consumer F1 (F1 ships default-refusal FIRST, explicitly reversible). ⏳ expert.
 c3 declaration reconciliation: reversal-aware aggregation vs correction-row emission →
-consumer F3. c4 escape hatch: (a) correcting-entry doc w/ source_document_id (schema-bearing
-→ release/data gate) vs (b) admin-gated manual JE w/ mandatory link → consumer F4.
+consumer F3. ⏳ expert.
 
 ## R-d — multi-company launch posture (owner) — ⏳ OPEN
 Disable-and-defer (API refusal + pinned test; A2/A3 deferred) vs keep-enabled (A2+A3
