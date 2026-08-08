@@ -197,11 +197,17 @@ final class StockAdjustmentDocumentService
                         'reservations_ignored_by_user_id' => $ignoreReservations ? $actorId : null,
                     ])->save();
 
+                    // Deltas already applied WITHIN THIS DOCUMENT, per
+                    // (product, variant). See rebasedObservedBefore().
+                    /** @var array<string, numeric-string> $appliedSoFar */
+                    $appliedSoFar = [];
+
                     foreach ($lines as $line) {
                         /** @var numeric-string $delta */
                         $delta = (string) $line->delta_quantity;
-                        /** @var numeric-string $observedBefore */
-                        $observedBefore = (string) $line->observed_before;
+                        $bucket = $line->product_id.'|'.($line->variant_id ?? '');
+                        $observedBefore = $this->rebasedObservedBefore($line, $appliedSoFar[$bucket] ?? '0');
+                        $appliedSoFar[$bucket] = bcadd($appliedSoFar[$bucket] ?? '0', $delta, self::SCALE);
 
                         $movement = $this->stockAdjustmentService->adjustByDelta(
                             productId: $line->product_id,
@@ -486,6 +492,42 @@ final class StockAdjustmentDocumentService
                 );
             }
         }
+    }
+
+    /**
+     * The staleness anchor for a line, rebased by what THIS DOCUMENT has already
+     * applied to the same (product, variant).
+     *
+     * Why this exists: `observed_before` is a (product, variant, location)
+     * AGGREGATE snapshot, but D1b part 5 deliberately allows several lines on one
+     * product when they name different lots ("one line = one lot"), and the four
+     * partial uniques key on `batch_id` precisely to permit it. Comparing every
+     * line's raw snapshot against the locked row would make the SECOND line of any
+     * multi-lot document trip STOCK_MOVED_SINCE_AUTHORING against the FIRST line's
+     * own effect — the document would refuse itself, and T16's required
+     * "Sigma BatchStock equals stock_levels.quantity after a mixed multi-lot post"
+     * would be unreachable. The guard exists to catch movement by SOMEONE ELSE
+     * between authoring and posting; a sibling line in the same transaction is not
+     * that.
+     *
+     * The seam contract is untouched: adjustByDelta() still compares one value
+     * against the locked row. Only the expectation is rebased, here, where the
+     * document's own arithmetic is known. Flagged as Collision C-2 in the task
+     * report; a ruling may prefer a different placement.
+     *
+     * @param  numeric-string  $appliedSoFar
+     * @return numeric-string
+     */
+    private function rebasedObservedBefore(StockAdjustmentLine $line, string $appliedSoFar): string
+    {
+        /** @var numeric-string $observed */
+        $observed = (string) $line->observed_before;
+
+        if (bccomp($appliedSoFar, '0', self::SCALE) === 0) {
+            return $observed;
+        }
+
+        return bcadd($observed, $appliedSoFar, self::SCALE);
     }
 
     /**
