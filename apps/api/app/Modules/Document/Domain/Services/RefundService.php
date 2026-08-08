@@ -881,6 +881,90 @@ class RefundService
     }
 
     /**
+     * Does cancelling this invoice require an explicit decision about the goods?
+     *
+     * Plan CF T7 / CF-D6. TRUE when the invoice carries at least one PHYSICAL line.
+     *
+     * The predicate is `product_id !== null`, which is EXACTLY the live predicate
+     * `ReturnNoteService::receiveStockBack()` keys on. That is deliberate: the read
+     * model must not claim a return decision is needed for a line that would not
+     * restock, nor the reverse. (Its companion test there — `$line->product->is_service`
+     * — is dead: `Product` has no such column or accessor. A service line is one with
+     * `service_id`, and `CreateDocumentRequest` gives that `prohibits:lines.*.product_id`,
+     * so a NULL `product_id` IS the service case.)
+     *
+     * FALSE means the modal renders WITHOUT the option group and posts
+     * `not_applicable` — the modal itself always renders, because `reason` is
+     * `required|max:500` and has no other UI.
+     */
+    public function requiresReturnDecision(Document $invoice): bool
+    {
+        foreach ($invoice->lines as $line) {
+            if ($line->product_id !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Have units actually left the building against this invoice? — CF-D6's
+     * `goods_issued`.
+     *
+     * FAIL CLOSED: no delivery-note linkage, an unconfirmed delivery note, or an
+     * unresolvable location all resolve to FALSE. That matters because posting an
+     * invoice moves NO stock — a catalogue-shaped predicate here would let one click
+     * restock goods that never shipped.
+     *
+     * This is affordance only. The server refuses independently in
+     * `cancelInvoice()` (typed `RETURN_NOTHING_DELIVERED`), because a disabled radio
+     * is not a safety property.
+     */
+    public function hasGoodsIssued(Document $invoice): bool
+    {
+        return $this->deliveredQuantityResolver->hasGoodsIssued($invoice);
+    }
+
+    /**
+     * Delivered quantities per `(product, location)` tuple, for the modal.
+     *
+     * Reported per product AND per location so the modal can EXPLAIN a split rather
+     * than present one opaque number — a user cancelling an invoice whose goods went
+     * out from two warehouses is about to restock into both.
+     *
+     * @return list<array{product_id: string, location_id: string, delivered: string, already_returned: string, remaining: string}>
+     */
+    public function deliveredQuantities(Document $invoice): array
+    {
+        return array_map(
+            static fn (DeliveredQuantityTuple $tuple): array => [
+                'product_id' => $tuple->productId,
+                'location_id' => $tuple->locationId,
+                'delivered' => $tuple->delivered,
+                'already_returned' => $tuple->alreadyReturned,
+                'remaining' => $tuple->remaining,
+            ],
+            $this->deliveredQuantityResolver->resolve($invoice),
+        );
+    }
+
+    /**
+     * The goods decision already recorded for this invoice, if any — CF-D5's
+     * readability half.
+     *
+     * Without this the owner's "the choice is recorded" exists only in the database:
+     * the modal could not tell the user that someone already decided, and would offer
+     * a choice that is going to 422.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function recordedReturnDecision(Document $invoice): ?array
+    {
+        return $this->acceptedDecisionOn($invoice);
+    }
+
+    /**
      * Check if invoice can be credited
      */
     public function canCreditInvoice(Document $invoice): bool

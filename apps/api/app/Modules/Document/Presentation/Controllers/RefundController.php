@@ -334,11 +334,24 @@ class RefundController extends Controller
             // user discover the refusal on submit.
             $reasonCode = $this->refundService->cancellationBlockReason($invoice);
 
+            $invoice->loadMissing('lines');
+
             return response()->json([
                 'data' => [
                     'can_cancel' => $reasonCode === null,
                     'reason_code' => $reasonCode,
                     'status' => $invoice->status->value,
+
+                    // Plan CF T7. Additive — `can_cancel`, `reason_code` and `status`
+                    // are unchanged. CF-D5 and CF-D6 make this endpoint load-bearing
+                    // for the modal's CONTENT, not just for whether the button is
+                    // live: which options render, which are disabled and why, whether
+                    // a decision was already recorded, and how a multi-location
+                    // delivery will be split.
+                    'requires_return_decision' => $this->refundService->requiresReturnDecision($invoice),
+                    'goods_issued' => $this->refundService->hasGoodsIssued($invoice),
+                    'delivered_quantities' => $this->refundService->deliveredQuantities($invoice),
+                    'return_decision' => $this->refundService->recordedReturnDecision($invoice),
                 ],
             ]);
         } catch (\Exception $e) {
