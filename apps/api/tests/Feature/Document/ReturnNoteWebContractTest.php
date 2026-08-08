@@ -20,12 +20,20 @@ use Tests\Traits\BuildsCancelFlowFixtures;
  * described the gap, so nothing caught it.
  *
  * This class posts the EXACT body the web app builds
- * (`apps/web/src/features/documents/CreateReturnNotePage.tsx`, mutationFn) and
- * pins the refusal. It is deliberately a characterisation test of a DEFECT: the
- * "full" and "partial" cases below flip from 422 to 201 when T8 repairs the
- * client, and the flip is the acceptance signal. The `it_accepts_the_backend_…`
- * case pins the shape T8 must produce, so the two halves of the fence can never
- * be satisfied by weakening only one of them.
+ * (`apps/web/src/features/documents/CreateReturnNotePage.tsx`, `buildCreatePayload`)
+ * and pins the result.
+ *
+ * ── T8 HAS LANDED, SO THE FENCE HAS FLIPPED ────────────────────────────────────
+ * Before T8 the two cases below posted the client's invented body and asserted 422
+ * on `partner_id`, `document_date`, `lines`, `lines.*.description` and
+ * `lines.*.unit_price`. They now post the REPAIRED body and assert 201. That flip is
+ * the acceptance signal for T8, and keeping the class means the two sides cannot
+ * drift apart again silently: if either the page's payload or the server's contract
+ * moves without the other, exactly one of these fails.
+ *
+ * The historical 422 case is retained (`test_the_pre_t8_web_payload_is_still_refused`)
+ * so the repair cannot be "undone" by loosening validation instead — the old body must
+ * KEEP failing.
  */
 final class ReturnNoteWebContractTest extends TestCase
 {
@@ -39,11 +47,50 @@ final class ReturnNoteWebContractTest extends TestCase
     }
 
     /**
-     * FULL mode: the page sends no `lines` key at all, plus four keys the server
-     * has never known (`source_invoice_id`, `auto_create_credit_note`,
-     * `refund_method`, and no `partner_id`/`document_date`).
+     * FULL mode, POST-T8: every physical line of the source document, in the canonical
+     * shape. This is `buildCreatePayload()` with `lineMode === 'all'`.
      */
-    public function test_web_full_mode_payload_is_rejected_for_every_missing_key(): void
+    public function test_web_full_mode_payload_is_accepted(): void
+    {
+        $invoice = $this->cfPostedInvoice([[
+            'product_id' => $this->cfProduct->id,
+            'quantity' => '2.0000',
+            'unit_price' => '100.000',
+        ]]);
+
+        $invoice->load('lines');
+
+        $response = $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => now()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $invoice->id,
+                'return_reason' => 'defective',
+                'return_condition' => 'damaged',
+                'notes' => 'Customer returned defective product',
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '2.0000',
+                    'unit_price' => '100.000',
+                    'tax_rate' => '0.00',
+                ]],
+            ]);
+
+        $response->assertCreated();
+
+        self::assertDatabaseHas('documents', [
+            'type' => DocumentType::ReturnNote->value,
+            'source_document_id' => $invoice->id,
+        ]);
+    }
+
+    /**
+     * The historical defect, kept red-on-the-old-shape. If a future change "repairs"
+     * the client by loosening server validation instead, this fails.
+     */
+    public function test_the_pre_t8_web_payload_is_still_refused(): void
     {
         $invoice = $this->cfPostedInvoice([[
             'product_id' => $this->cfProduct->id,
@@ -63,15 +110,14 @@ final class ReturnNoteWebContractTest extends TestCase
 
         $response->assertStatus(422);
 
-        // The three keys the request layer requires and the page never sends.
         $errors = $response->json('error.errors') ?? $response->json('errors');
         self::assertIsArray($errors);
         self::assertArrayHasKey('partner_id', $errors);
         self::assertArrayHasKey('document_date', $errors);
         self::assertArrayHasKey('lines', $errors);
 
-        // `source_invoice_id` is a query FILTER on the index endpoint, never a
-        // create key — so the link the user asked for is silently absent.
+        // `source_invoice_id` is a query FILTER on the index endpoint, never a create
+        // key — so the link the user asked for was silently absent.
         self::assertDatabaseMissing('documents', [
             'type' => DocumentType::ReturnNote->value,
             'source_document_id' => $invoice->id,
@@ -79,43 +125,41 @@ final class ReturnNoteWebContractTest extends TestCase
     }
 
     /**
-     * PARTIAL mode: the page sends `lines[].{line_id, quantity}`. `line_id` is
-     * consumed by a different endpoint entirely (`CreditNoteService`), and each
-     * line fails the two rules it omits.
+     * PARTIAL mode, POST-T8: only the selected lines, at their own quantities, as REAL
+     * lines rather than the `{line_id, quantity}` shape whose `line_id` is consumed by
+     * a different endpoint entirely.
      */
-    public function test_web_partial_mode_payload_is_rejected_for_line_shape(): void
+    public function test_web_partial_mode_payload_is_accepted(): void
     {
         $invoice = $this->cfPostedInvoice([[
             'product_id' => $this->cfProduct->id,
             'quantity' => '5.0000',
             'unit_price' => '100.000',
         ]]);
-        $invoice->load('lines');
-        $sourceLineId = (string) $invoice->lines->first()?->id;
-
         $response = $this->actingAs($this->cfUser, 'sanctum')
             ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => now()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $invoice->id,
                 'return_reason' => 'defective',
                 'notes' => 'Partial return',
-                'auto_create_credit_note' => false,
-                'source_invoice_id' => $invoice->id,
-                'lines' => [
-                    ['line_id' => $sourceLineId, 'quantity' => 2],
-                ],
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    // A fractional quantity as a decimal STRING — impossible before T8,
+                    // which floored the input at 1 and ran `parseInt`.
+                    'quantity' => '0.5000',
+                    'unit_price' => '100.000',
+                    'tax_rate' => '0.00',
+                ]],
             ]);
 
-        $response->assertStatus(422);
+        $response->assertCreated();
 
-        $errors = $response->json('error.errors') ?? $response->json('errors');
-        self::assertIsArray($errors);
-        self::assertArrayHasKey('partner_id', $errors);
-        self::assertArrayHasKey('document_date', $errors);
-        self::assertArrayHasKey('lines.0.description', $errors);
-        self::assertArrayHasKey('lines.0.unit_price', $errors);
-
-        self::assertDatabaseMissing('documents', [
-            'type' => DocumentType::ReturnNote->value,
-            'source_document_id' => $invoice->id,
+        self::assertDatabaseHas('document_lines', [
+            'product_id' => $this->cfProduct->id,
+            'quantity' => '0.5000',
         ]);
     }
 

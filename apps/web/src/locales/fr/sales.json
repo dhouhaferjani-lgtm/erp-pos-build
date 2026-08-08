@@ -491,6 +491,65 @@
       "confirmAndPost": "Confirmer et comptabiliser",
       "confirming": "Confirmation en cours…",
       "success": "Facture comptabilisée avec succès avec les bons de livraison confirmés"
+    },
+    "cancelFlow": {
+      "title": "Annuler la facture {{number}}",
+      "reasonLabel": "Pourquoi cette facture est-elle annulée ?",
+      "reasonPlaceholder": "ex. facture en double, commande annulée par le client",
+      "submit": "Annuler la facture",
+      "keep": "Conserver la facture",
+      "submitting": "Annulation…",
+      "goodsQuestion": "Que deviennent les marchandises ?",
+      "goodsIntro": "L'annulation de la facture ne déplace pas le stock à elle seule. Indiquez ce qu'il advient des marchandises pour que l'inventaire reste juste.",
+      "option1": {
+        "label": "Les produits vont être retournés",
+        "hint": "Un bon de retour au statut brouillon est créé et lié à cette facture, prêt à être confirmé lorsque les marchandises arriveront physiquement."
+      },
+      "option2": {
+        "label": "Les produits ont déjà été retournés",
+        "hint": "Le bon de retour est créé et confirmé à la date ci-dessous, et le stock revient immédiatement.",
+        "dateLabel": "Date de retour des marchandises",
+        "scope": "Cela couvre TOUS les produits livrés de cette facture, et le bon de retour est scellé dès la confirmation — contrairement au brouillon de l'option 1, il ne pourra plus être modifié.",
+        "partialPointer": "Vous ne récupérez qu'une partie des marchandises ? Créez plutôt le bon de retour depuis Ventes → Bons de retour → Nouveau."
+      },
+      "option3": {
+        "label": "Aucun retour — les marchandises ne reviennent pas",
+        "hint": {
+          "goodsIssued": "Les marchandises restent chez le client : aucun stock ne revient et le coût reste imputé. Ce choix est enregistré sur la facture.",
+          "noGoodsIssued": "Rien n'a jamais été livré au titre de cette facture, il n'y a donc rien à retourner. Ce choix est enregistré sur la facture."
+        }
+      },
+      "optionsDisabledReason": "Aucun bon de livraison confirmé n'est lié à cette facture : aucune marchandise n'est sortie du stock et aucune ne peut donc revenir.",
+      "chooseAnOption": "Indiquez ce qu'il advient des marchandises avant d'annuler.",
+      "recorded": {
+        "title": "Décision sur les marchandises enregistrée",
+        "will_return": "Les produits vont être retournés.",
+        "already_returned": "Les produits ont été retournés le {{date}}.",
+        "no_return": "Aucun retour — les marchandises restent chez le client.",
+        "no_goods_issued": "Rien n'a été livré au titre de cette facture.",
+        "not_applicable": "Cette facture ne comporte aucun produit physique."
+      },
+      "success": {
+        "cancelled": "Facture annulée.",
+        "withReturnNote": "Facture annulée et bon de retour {{number}} créé.",
+        "viewReturnNote": "Voir le bon de retour"
+      },
+      "errors": {
+        "DOCUMENT_HAS_PAYMENTS": "Cette facture ne peut pas être annulée car des règlements ou des avoirs y ont déjà été affectés. Désaffectez-les d'abord, ou émettez un avoir à la place.",
+        "DOCUMENT_PERIOD_CLOSED": "Cette facture relève d'une période de TVA clôturée. Demandez à votre comptable de la rouvrir, ou émettez un avoir à la place.",
+        "DOCUMENT_PERIOD_FILED": "Cette facture relève d'une période de TVA déjà déclarée, qui ne peut jamais être rouverte. Émettez un avoir à la place.",
+        "RETURN_PERIOD_CLOSED": "Cette date relève d'une période de TVA clôturée. Choisissez une date dans une période ouverte, ou demandez à votre comptable de la rouvrir.",
+        "RETURN_PERIOD_FILED": "Cette date relève d'une période de TVA déjà déclarée auprès de l'administration fiscale, qui ne peut jamais être rouverte. Choisissez une date dans une période ouverte.",
+        "RETURN_PERIOD_LOCKED": "Cette date relève d'une période comptable clôturée ou verrouillée. Choisissez une date dans une période ouverte.",
+        "RETURN_NOTHING_DELIVERED": "Rien n'a été livré au titre de cette facture qui soit encore disponible au retour. Choisissez plutôt « aucun retour ».",
+        "RETURN_LOCATION_UNRESOLVED": "Aucun bon de livraison confirmé n'indique de quel emplacement les marchandises sont sorties, et en deviner un créerait du stock là où il n'y en a jamais eu. Créez le bon de retour manuellement depuis le bon de livraison.",
+        "RETURN_LOCATION_AMBIGUOUS": "Une partie de la quantité livrée ne peut pas être rattachée à l'emplacement d'origine. Créez le bon de retour manuellement depuis le bon de livraison.",
+        "RETURN_EXCEEDS_DELIVERED_QUANTITY": "Le retour dépasserait la quantité livrée pour {{product}} — seul {{remaining}} reste disponible au retour.",
+        "RETURN_EXCEEDS_INVOICED_QUANTITY": "Le retour dépasserait la quantité facturée pour {{product}} — seul {{remaining}} reste disponible au retour.",
+        "RETURN_DECISION_ALREADY_RECORDED": "Une décision sur les marchandises a déjà été enregistrée pour cette annulation et ne peut plus être modifiée.",
+        "RETURN_DECISION_FORBIDDEN": "Vous pouvez annuler cette facture, mais pas enregistrer le retour de marchandises qu'elle nécessite. Demandez à un responsable de finaliser le retour, ou annulez sans retour.",
+        "unknown": "La facture n'a pas pu être annulée. Réessayez, ou contactez le support si le problème persiste."
+      }
     }
   },
   "deliveryNotes": {

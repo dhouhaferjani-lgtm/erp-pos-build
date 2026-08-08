@@ -98,6 +98,22 @@ export interface Document {
   // Flexible payload for type-specific data
   payload?: Record<string, unknown> | null
 
+  /**
+   * The goods decision recorded when this invoice was cancelled (plan CF T16 / CF-D5).
+   *
+   * Projected by `DocumentData` from `payload.return_decisions` — only the decision that
+   * TOOK EFFECT, never a rejected one. Present on the detail endpoint; absent on list
+   * responses that serialise raw models.
+   */
+  return_decision?: {
+    mode: 'will_return' | 'already_returned' | 'no_return' | 'no_goods_issued' | 'not_applicable'
+    returned_on: string | null
+    return_note_id: string | null
+    decided_by: string | null
+    decided_at: string
+  } | null
+  return_decision_count?: number
+
   // Computed/extended properties
   issue_date?: string  // Alias for document_date (some endpoints use this)
 
