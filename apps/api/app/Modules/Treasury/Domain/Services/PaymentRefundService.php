@@ -1734,8 +1734,26 @@ class PaymentRefundService
         }
 
         // Load original payments in deterministic order: amount DESC, id ASC
+        //
+        // DPA V4 / T14 (gate Important-6) — the `status = Completed` predicate is
+        // LOAD-BEARING, not hygiene. Without it this query returned POS payments
+        // that had already been unwound, while `buildLargestFirstMap()` computes
+        // `alreadyRefunded` from `payment_type = 'refund'` rows ONLY — so a payment
+        // unwound by a path that writes no refund row stayed fully refundable and
+        // could be paid out TWICE. Those paths are real and reachable:
+        // `InstrumentLifecycleService::performCancellation()`'s
+        // `CancellationShape::PosRevenue` arm writes `status => Reversed` directly,
+        // and so does the POS void lane. D-6's refusal to REVERSE a POS payment
+        // does not close this — only this predicate does.
+        //
+        // It changes THREE behaviours, all deliberately: the proration set itself,
+        // the `$receiptTotal` validation ceiling below (which is summed from this
+        // same set, so it correctly shrinks to the still-live legs), and the
+        // `isEmpty()` early return (a fully unwound receipt now prorates nothing
+        // instead of paying out again).
         $originalPayments = Payment::where('company_id', $originalReceipt->company_id)
             ->where('payment_type', PaymentType::POS->value)
+            ->where('status', PaymentStatus::Completed->value)
             ->whereIn('id', function ($query) use ($originalReceipt): void {
                 $query->select('treasury_payment_id')
                     ->from('pos_receipt_payments')

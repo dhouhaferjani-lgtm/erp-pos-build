@@ -332,6 +332,123 @@ class PaymentRefundProrationTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // DPA V4 / T14 — the POS proration over-refund hole (gate Important-6)
+    //
+    // `refundReceiptPayments()`'s proration query filtered `company_id` +
+    // `payment_type = POS` + the receipt sub-select, with NO status predicate,
+    // while `buildLargestFirstMap()` computes `alreadyRefunded` from
+    // `payment_type = 'refund'` rows ONLY. A POS payment reaches `Reversed`
+    // through paths a payment_type gate cannot see —
+    // `InstrumentLifecycleService::performCancellation()`'s
+    // `CancellationShape::PosRevenue` arm writes `status => Reversed` directly,
+    // and so does the POS void lane — so an already-unwound payment stayed fully
+    // refundable. D-6's POS refusal does NOT close this; only the status
+    // predicate does.
+    //
+    // Adding the predicate changes THREE behaviours, all covered below: the
+    // proration set, the `$receiptTotal` validation ceiling, and the `isEmpty()`
+    // early return.
+    // -------------------------------------------------------------------------
+
+    public function test_a_reversed_pos_payment_is_not_prorated_against(): void
+    {
+        [$receipt, $cardPayment, $cashPayment] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+
+        // The card leg was already unwound elsewhere (POS void / PosRevenue
+        // cancellation), which flips status without writing any refund row.
+        $cardPayment->update(['status' => PaymentStatus::Reversed]);
+
+        $allocations = $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '40.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+        );
+
+        $byOriginal = collect($allocations)->keyBy('originalPaymentId');
+
+        $this->assertArrayNotHasKey(
+            $cardPayment->id,
+            $byOriginal->all(),
+            'a reversed POS payment must never be prorated against again',
+        );
+        $this->assertArrayHasKey($cashPayment->id, $byOriginal->all());
+        $this->assertEquals('40.00', $byOriginal[$cashPayment->id]->amount);
+    }
+
+    /**
+     * Behaviour 2 — the `$receiptTotal` validation CEILING is built from the same
+     * `$originalPayments` set, so it shrinks to the still-`Completed` legs. A
+     * refund that was previously accepted (100.00 against a 100.00 receipt whose
+     * card leg is already unwound) is now correctly REJECTED.
+     */
+    public function test_the_validation_ceiling_shrinks_to_the_still_completed_payments(): void
+    {
+        [$receipt, $cardPayment] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+        $cardPayment->update(['status' => PaymentStatus::Reversed]);
+
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('exceeds receipt total (40.00)');
+
+        $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '100.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+        );
+    }
+
+    /**
+     * Behaviour 3 — a FULLY reversed receipt hits the `isEmpty()` early return:
+     * empty array, no proration, no cash out, and NO exception (the early return
+     * runs before the ceiling validation).
+     */
+    public function test_a_fully_reversed_receipt_prorates_nothing_and_does_not_throw(): void
+    {
+        [$receipt, $cardPayment, $cashPayment] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+        $cardPayment->update(['status' => PaymentStatus::Reversed]);
+        $cashPayment->update(['status' => PaymentStatus::Reversed]);
+
+        $refundRowsBefore = Payment::where('payment_type', PaymentType::Refund->value)->count();
+
+        $allocations = $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '100.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+        );
+
+        $this->assertSame([], $allocations, 'nothing left to prorate against');
+        $this->assertSame(
+            $refundRowsBefore,
+            Payment::where('payment_type', PaymentType::Refund->value)->count(),
+            'no refund row is written',
+        );
+    }
+
+    /**
+     * Guards against OVER-tightening: an ordinary all-`Completed` receipt must
+     * prorate exactly as it did before the predicate was added.
+     */
+    public function test_an_ordinary_completed_receipt_prorates_unchanged(): void
+    {
+        [$receipt, $cardPayment, $cashPayment] = $this->makeSaleReceiptWithTwoPayments('60.00', '40.00');
+
+        $allocations = $this->refundService->refundReceiptPayments(
+            originalReceipt: $receipt,
+            totalToRefund: '50.00',
+            strategy: ProrationStrategy::Proportional,
+            refundRequestId: Str::uuid()->toString(),
+        );
+
+        $byOriginal = collect($allocations)->keyBy('originalPaymentId');
+
+        $this->assertCount(2, $allocations);
+        $this->assertEquals('30.00', $byOriginal[$cardPayment->id]->amount);
+        $this->assertEquals('20.00', $byOriginal[$cashPayment->id]->amount);
+    }
+
+    // -------------------------------------------------------------------------
     // LargestFirst proration
     // -------------------------------------------------------------------------
 
