@@ -7,7 +7,10 @@ verbatim answer + selected branch. Every branch has a named executable consumer.
 Verbatim + consequences: `2026-08-06-q2-gate-minor-followups.md` §I-3. Branch selected:
 EXCLUDE ENTIRELY. Consumer executed: R2-G lane, SHIPPED origin/dev `d8efb5df0`. CLOSED.
 
-## R-b — N-9 timbre residue — ⏳ OPEN (expert-comptable)
+## R-b — N-9 timbre residue — ✅ ANSWERED 2026-08-08 (expert-comptable)
+Verbatim + branch: `2026-08-08-expert-comptable-rulings-rb-c2-c3-stamp.md` §Q1. Branch (2)
+dedicated dust account, 2a=PROSPECTIVE-only, 2b=TN-dedicated seeded 6588/7588 (NOT shared
+account). Consumer: lane R2-M — dispatchable (seeded-settings directive applies).
 Alternatives: (1) keep absorbing ≤tolerance dust in 4375 (status quo, documented) ·
 (2) split dust to a rounding-difference account so 4375 carries only true stamp liability.
 **Sub-decisions REQUIRED with branch 2 (round-3 finding):** (2a) cut-over: prospective-only
@@ -72,10 +75,15 @@ mandatory link to the original; schema-bearing → release/data gate + R2-I harn
   reverses_*_id idempotency idiom) — the correcting-document type may need little or no new
   schema.
 
-c2 purchase-doc cancel when period CLOSED/FILED: reverse-in-current vs refuse-cancel →
-consumer F1 (F1 ships default-refusal FIRST, explicitly reversible). ⏳ expert.
-c3 declaration reconciliation: reversal-aware aggregation vs correction-row emission →
-consumer F3. ⏳ expert.
+c2 purchase-doc cancel when period CLOSED/FILED — ✅ ANSWERED 2026-08-08 (expert):
+REVERSE-IN-CURRENT-PERIOD (extourne, DMI régularisation box). Verbatim:
+`2026-08-08-expert-comptable-rulings-rb-c2-c3-stamp.md` §Q3. Adoption GATED on F2's AP
+mirror (reverseDocumentGl null for supplier docs today); F1's shipped refusal stays interim.
+c3 declaration reconciliation — ✅ ANSWERED 2026-08-08 (expert): NET aggregation on the
+declaration + DISTINCT correction lines via linked correcting document (never
+delete/overwrite). Verbatim: same ticket §Q4. Consumer F3 (composes with c4/F4).
+⏳ NEW OPEN: c1-bis (COGS at BL-confirm vs at invoicing; return-note GL entry) — blocks
+F2's GL half; relayed to expert. See same ticket §Still-OPEN.
 
 ### Gate-derived relay notes, 2026-08-07 (R2-F1 taxation gate — inputs for the expert, NOT rulings)
 
