@@ -17,12 +17,12 @@
       "title": "Before posting",
       "netDelta": "Net change",
       "increases": "Increases",
-      "decreases": "Decreases",
-      "lineCount_one": "{{count}} line",
-      "lineCount_other": "{{count}} lines"
+      "decreases": "Decreases"
     },
     "openingBalanceHint": "Setting a product's opening balance? Use the product editor's opening quantity and cost — an adjustment records a correction, not an opening balance.",
-    "openingBalanceLink": "Open the product's inventory settings"
+    "openingBalanceLink": "Open the product's inventory settings",
+    "duplicateLine": "That product is already on this adjustment. Edit the existing line instead.",
+    "loadFailed": "Could not read the current quantity for that product at this location."
   },
   "line": {
     "reason": "Reason",
@@ -74,7 +74,8 @@
     "cancelTitle": "Cancel this draft",
     "cancelReasonLabel": "Reason (optional)",
     "cancelConfirm": "Cancel draft",
-    "cancelDismiss": "Keep draft"
+    "cancelDismiss": "Keep draft",
+    "loadFailed": "Could not load this adjustment."
   },
   "list": {
     "number": "Number",
@@ -95,7 +96,9 @@
     "supplierReceiptHint": "Receiving from a supplier with a price? Record a goods receipt instead.",
     "supplierReceiptLink": "New supplier receipt",
     "transferHint": "Moving stock to another location?",
-    "transferLink": "New stock transfer"
+    "transferLink": "New stock transfer",
+    "loading": "Reading the current quantity…",
+    "loadFailed": "Could not read the current quantity. Close and try again."
   },
   "refusal": {
     "title": "This correction was not applied",
@@ -109,7 +112,9 @@
       "observedBefore": "As observed",
       "quantityBefore": "Current",
       "delta": "Your change",
-      "resulting": "If applied"
+      "resulting": "If applied",
+      "reserved": "Reserved",
+      "available": "Available"
     },
     "STOCK_MOVED_SINCE_AUTHORING": "Stock moved after you started this correction. Re-anchor to the current quantities, or apply your change on top of them anyway.",
     "ADJUSTMENT_EXCEEDS_AVAILABLE": "This decrease is larger than the unreserved stock. Applying it anyway records the stock as gone while the reservations stay promised.",
@@ -122,6 +127,12 @@
     "ADJUSTMENT_ALREADY_CORRECTED": "This adjustment has already been corrected.",
     "CANNOT_CORRECT_A_CORRECTION": "A correction cannot itself be corrected.",
     "LOCATION_ACCESS_DENIED": "You do not have permission to act on this location.",
-    "generic": "The stock adjustment could not be completed."
+    "generic": "The stock adjustment could not be completed.",
+    "POST_PERMISSION_REQUIRED": "You can create this adjustment but not post it. Save it as a draft for someone with posting rights to review."
+  },
+  "validation": {
+    "quantity": "Enter a quantity with at most 4 decimal places.",
+    "nonZero": "Enter a quantity greater than zero — a zero change is not a correction.",
+    "lotRequired": "Choose the lot this correction draws down."
   }
 }

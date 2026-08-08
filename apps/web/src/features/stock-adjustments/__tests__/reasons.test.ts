@@ -65,8 +65,11 @@ describe('status guards', () => {
     expect(isStockAdjustmentStatus('')).toBe(false)
   })
 
-  it('falls back rather than passing an unknown status through', () => {
+  it('returns NULL for an unknown status rather than falling back to draft', () => {
     expect(toStockAdjustmentStatus('posted')).toBe('posted')
-    expect(toStockAdjustmentStatus('something-new')).toBe('draft')
+    // NOT 'draft': draft is the state that ENABLES Post and Cancel, so mapping
+    // an unrecognised backend state onto it would offer two write actions for a
+    // document whose real state forbids them.
+    expect(toStockAdjustmentStatus('something-new')).toBeNull()
   })
 })

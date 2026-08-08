@@ -17,13 +17,12 @@
       "title": "Avant validation",
       "netDelta": "Variation nette",
       "increases": "Augmentations",
-      "decreases": "Diminutions",
-      "lineCount_one": "{{count}} ligne",
-      "lineCount_many": "{{count}} lignes",
-      "lineCount_other": "{{count}} lignes"
+      "decreases": "Diminutions"
     },
     "openingBalanceHint": "Vous saisissez un solde d'ouverture ? Utilisez la quantité et le coût d'ouverture dans la fiche produit — une régularisation enregistre une correction, pas un solde d'ouverture.",
-    "openingBalanceLink": "Ouvrir les paramètres d'inventaire du produit"
+    "openingBalanceLink": "Ouvrir les paramètres d'inventaire du produit",
+    "duplicateLine": "Ce produit figure déjà sur cette régularisation. Modifiez la ligne existante.",
+    "loadFailed": "Impossible de lire la quantité actuelle de ce produit à cet emplacement."
   },
   "line": {
     "reason": "Motif",
@@ -75,7 +74,8 @@
     "cancelTitle": "Annuler ce brouillon",
     "cancelReasonLabel": "Motif (facultatif)",
     "cancelConfirm": "Annuler le brouillon",
-    "cancelDismiss": "Conserver le brouillon"
+    "cancelDismiss": "Conserver le brouillon",
+    "loadFailed": "Impossible de charger cette régularisation."
   },
   "list": {
     "number": "Numéro",
@@ -96,7 +96,9 @@
     "supplierReceiptHint": "Réception fournisseur avec un prix ? Enregistrez plutôt un bon de réception.",
     "supplierReceiptLink": "Nouveau bon de réception",
     "transferHint": "Vous déplacez du stock vers un autre emplacement ?",
-    "transferLink": "Nouveau transfert de stock"
+    "transferLink": "Nouveau transfert de stock",
+    "loading": "Lecture de la quantité actuelle…",
+    "loadFailed": "Impossible de lire la quantité actuelle. Fermez et réessayez."
   },
   "refusal": {
     "title": "Cette correction n'a pas été appliquée",
@@ -110,7 +112,9 @@
       "observedBefore": "Constaté",
       "quantityBefore": "Actuel",
       "delta": "Votre modification",
-      "resulting": "Si appliqué"
+      "resulting": "Si appliqué",
+      "reserved": "Réservé",
+      "available": "Disponible"
     },
     "STOCK_MOVED_SINCE_AUTHORING": "Le stock a bougé depuis le début de cette correction. Recalez sur les quantités actuelles, ou appliquez quand même votre modification par-dessus.",
     "ADJUSTMENT_EXCEEDS_AVAILABLE": "Cette diminution dépasse le stock non réservé. L'appliquer quand même enregistre le stock comme perdu alors que les réservations restent promises.",
@@ -123,6 +127,12 @@
     "ADJUSTMENT_ALREADY_CORRECTED": "Cette régularisation a déjà été corrigée.",
     "CANNOT_CORRECT_A_CORRECTION": "Une correction ne peut pas être corrigée à son tour.",
     "LOCATION_ACCESS_DENIED": "Vous n'avez pas la permission d'agir sur cet emplacement.",
-    "generic": "La régularisation de stock n'a pas pu être effectuée."
+    "generic": "La régularisation de stock n'a pas pu être effectuée.",
+    "POST_PERMISSION_REQUIRED": "Vous pouvez créer cette régularisation mais pas la valider. Enregistrez-la en brouillon pour qu'une personne habilitée la valide."
+  },
+  "validation": {
+    "quantity": "Saisissez une quantité avec au plus 4 décimales.",
+    "nonZero": "Saisissez une quantité supérieure à zéro — une variation nulle n’est pas une correction.",
+    "lotRequired": "Choisissez le lot sur lequel cette correction est prélevée."
   }
 }

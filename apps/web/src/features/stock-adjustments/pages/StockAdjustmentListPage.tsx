@@ -8,6 +8,7 @@ import { DataTable, type DataTableColumn } from '@/components/molecules/DataTabl
 import { EmptyState } from '@/components/molecules/EmptyState'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { RequirePermission } from '@/features/auth/components/RequirePermission'
 import { textColors } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { useStockAdjustmentList } from '../api/queries'
@@ -54,9 +55,10 @@ export function StockAdjustmentListPage() {
     {
       key: 'status',
       header: t('list.status'),
-      render: (adjustment) => (
-        <StockAdjustmentStatusBadge status={toStockAdjustmentStatus(adjustment.status)} />
-      ),
+      render: (adjustment) => {
+        const status = toStockAdjustmentStatus(adjustment.status)
+        return status === null ? adjustment.status : <StockAdjustmentStatusBadge status={status} />
+      },
     },
     {
       key: 'location',
@@ -81,12 +83,16 @@ export function StockAdjustmentListPage() {
         title={t('title')}
         subtitle={t('subtitle')}
         actions={
-          <Link to="/inventory/stock-adjustments/new">
-            <Button variant="primary">
-              <Plus className="me-2 h-4 w-4" />
-              {t('create.title')}
-            </Button>
-          </Link>
+          // The destination route is `.create`-gated, so a `.view`-only operator
+          // would otherwise be walked into a Permission Denied screen.
+          <RequirePermission permission="inventory.adjustments.create" fallback={null}>
+            <Link to="/inventory/stock-adjustments/new">
+              <Button variant="primary">
+                <Plus className="me-2 h-4 w-4" />
+                {t('create.title')}
+              </Button>
+            </Link>
+          </RequirePermission>
         }
         className="mb-0"
       />

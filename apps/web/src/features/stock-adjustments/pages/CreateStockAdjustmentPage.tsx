@@ -2,6 +2,9 @@ import { useCallback, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
+import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/atoms/Button'
 import { FormField } from '@/components/atoms/FormField'
@@ -17,13 +20,22 @@ import { bcadd, bccomp, formatQuantity } from '@/lib/decimal'
 import { semanticColorTokens as tokens, textColors } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateStockAdjustment } from '../api/queries'
 import { stockAdjustmentApi } from '../api/stockAdjustmentApi'
-import { extractRefusal, isAcknowledgeableRefusalCode, refusalMessageKey } from '../api/refusals'
-import type { ApiErrorEnvelope } from '../api/refusals'
+import {
+  extractRefusal,
+  isAcknowledgeableRefusalCode,
+  overrideFlagFor,
+  refusalMessageKey,
+} from '../api/refusals'
+import type { AcknowledgeableRefusalCode, ApiErrorEnvelope } from '../api/refusals'
 import { AcknowledgeableRefusalDialog } from '../components/AcknowledgeableRefusalDialog'
+import { refusalLineKey } from '../lib/refusalLineKey'
+import { LotSelect } from '../components/LotSelect'
 import {
   isAdjustmentReason,
   reasonDirection,
@@ -35,21 +47,18 @@ interface OptionResponse {
   data: { id: string; name: string; code?: string }[]
 }
 
-interface BatchOption {
-  batch_uuid: string
-  batch_number: string
-}
-
 /**
  * One authored line, held as STRINGS end to end.
  *
  * `magnitude` is the unsigned figure the operator types; the signed wire value
  * is derived from the reason at submit time by string concatenation, never by
- * negating a JS number.
+ * negating a JS number. The per-line metadata (`quantityDecimals`,
+ * `hasLotsAtLocation`) comes from the FRESH read taken at line-add and travels
+ * with the row so validation and display never guess.
  */
-interface LineDraft {
-  key: string
+interface LineValues {
   productId: string
+  productName: string
   reason: AdjustmentReason
   magnitude: string
   observedBefore: string
@@ -60,34 +69,24 @@ interface LineDraft {
   note: string
 }
 
-const NEW_LINE_KEY = (): string => Math.random().toString(36).slice(2)
+/**
+ * `note` is a required STRING (empty when unset), not an optional one: under
+ * `exactOptionalPropertyTypes` an optional here makes the zod output type
+ * diverge from FormValues, and the mismatch surfaces as an unreadable
+ * `Resolver<>` error rather than as anything about notes.
+ */
+interface FormValues {
+  locationId: string
+  note: string
+  lines: LineValues[]
+}
 
 /** The signed wire value, negated at STRING level. Never `-Number(x)`. */
-function signedDelta(line: LineDraft): string {
+function signedDelta(line: Pick<LineValues, 'reason' | 'magnitude'>): string {
   if (line.magnitude === '') {
     return '0'
   }
   return reasonDirection(line.reason) === 'in' ? line.magnitude : `-${line.magnitude}`
-}
-
-/**
- * The inline validation for one line, mirroring the server's rules so none of
- * them reaches the operator as a surprise 422.
- */
-function issueFor(line: LineDraft, t: (key: string) => string): string | null {
-  if (line.magnitude === '' || !/^\d+(\.\d{1,4})?$/.test(line.magnitude)) {
-    return t('line.quantity')
-  }
-  // Mirror of the server's `not_in:0`: a zero delta is not a correction.
-  if (bccomp(line.magnitude, '0') === 0) {
-    return t('line.quantity')
-  }
-  // A negative line MUST name a lot when one holds stock here — the rule is
-  // keyed on the LOTS, not on the product flag.
-  if (reasonDirection(line.reason) === 'out' && line.hasLotsAtLocation && line.batchUuid === '') {
-    return t('line.lotRequired')
-  }
-  return null
 }
 
 /**
@@ -103,54 +102,122 @@ export function CreateStockAdjustmentPage() {
   const navigate = useNavigate()
   const { hasPermission } = usePermissions()
   const createMutation = useCreateStockAdjustment()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId)
 
-  const [locationId, setLocationId] = useState('')
-  const [note, setNote] = useState('')
-  const [lines, setLines] = useState<LineDraft[]>([])
   const [pendingProductId, setPendingProductId] = useState('')
   const [refusal, setRefusal] = useState<ApiErrorEnvelope | null>(null)
   const [lineError, setLineError] = useState<string | null>(null)
 
+  const schema = useMemo(
+    () =>
+      z.object({
+        locationId: z.string().min(1, t('validation.required', { defaultValue: t('create.locationLabel') })),
+        note: z.string().max(2000),
+        lines: z
+          .array(
+            z
+              .object({
+                productId: z.string().min(1),
+                productName: z.string(),
+                reason: z.enum(['adjustment_positive', 'adjustment_negative', 'damage', 'write_off']),
+                // Validated as a STRING against a decimal regex, then compared
+                // with bcmath — never Number()/parseFloat, which is the rule-19
+                // breach this whole lane exists to remove.
+                magnitude: z
+                  .string()
+                  .regex(/^\d+(\.\d{1,4})?$/, t('validation.quantity'))
+                  .refine((value) => /[1-9]/.test(value), { message: t('validation.nonZero') }),
+                observedBefore: z.string(),
+                quantityDecimals: z.number(),
+                requiresBatchTracking: z.boolean(),
+                hasLotsAtLocation: z.boolean(),
+                batchUuid: z.string(),
+                note: z.string().max(255),
+              })
+              // A NEGATIVE line must name the lot it draws down whenever one
+              // holds stock here. Mirrored inline so the operator never meets
+              // BATCH_REQUIRED_FOR_LINE as a surprise 422.
+              .refine(
+                (line) =>
+                  !(
+                    reasonDirection(line.reason) === 'out' &&
+                    line.hasLotsAtLocation &&
+                    line.batchUuid === ''
+                  ),
+                { path: ['batchUuid'], message: t('validation.lotRequired') },
+              ),
+          )
+          .min(1, t('create.emptyLines')),
+      }),
+    [t],
+  )
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(schema),
+    defaultValues: { locationId: '', note: '', lines: [] },
+    mode: 'onChange',
+  })
+
+  const { fields, append, remove, replace } = useFieldArray({ control: form.control, name: 'lines' })
+
+  const locationId = useWatch({ control: form.control, name: 'locationId' })
+  const watchedLines = useWatch({ control: form.control, name: 'lines' })
+  // Memoised: `useWatch` returns a fresh array reference each render, and every
+  // derived useMemo/useCallback below depends on it.
+  const lines = useMemo(() => watchedLines, [watchedLines])
+
+  const isDirty = form.formState.isDirty
+  useUnsavedChangesGuard({ isDirty })
+
   const locationsQuery = useQuery({
-    queryKey: tenantScopedKey(['stock-adjustments', 'locations']),
+    // Keyed under its OWN resource literal: keying it under `stock-adjustments`
+    // made the feature's invalidation predicate refetch locations, products and
+    // every lot list on each create/post/cancel/correct.
+    queryKey: tenantScopedKey(['locations', 'options']),
     queryFn: async () => {
       const response = await api.get<OptionResponse>('/locations')
       return response.data.data
     },
+    enabled: !!tenantId && !!companyId,
   })
 
   const productsQuery = useQuery({
-    queryKey: tenantScopedKey(['stock-adjustments', 'products']),
+    queryKey: tenantScopedKey(['products', 'options']),
     queryFn: async () => {
       const response = await api.get<OptionResponse>('/products?per_page=100')
       return response.data.data
     },
+    enabled: !!tenantId && !!companyId,
   })
-
-  const isDirty = locationId !== '' || note !== '' || lines.length > 0
-  useUnsavedChangesGuard({ isDirty })
 
   /**
    * Line-add authors `observed_before` from a FRESH read (D15b), not the list
    * cache — otherwise the staleness guard fires on cache age and operators learn
    * to click "apply anyway", inverting its value.
+   *
+   * The read can fail: `/stock-levels/{p}/{l}` is a `firstOrFail()`, so a
+   * product with no stock row at this location 404s. Unhandled, the line simply
+   * never appeared — no message, no spinner change.
    */
   const addLine = useCallback(async (): Promise<void> => {
     if (pendingProductId === '' || locationId === '') {
       return
     }
     if (lines.some((line) => line.productId === pendingProductId && line.batchUuid === '')) {
-      setLineError(t('create.duplicateLine', { defaultValue: t('create.emptyLines') }))
+      setLineError(t('create.duplicateLine'))
       return
     }
 
-    const level = await stockAdjustmentApi.stockLevel(pendingProductId, locationId)
+    try {
+      const level = await stockAdjustmentApi.stockLevel(pendingProductId, locationId)
+      const name =
+        (productsQuery.data ?? []).find((product) => product.id === pendingProductId)?.name ??
+        pendingProductId
 
-    setLines((current) => [
-      ...current,
-      {
-        key: NEW_LINE_KEY(),
+      append({
         productId: pendingProductId,
+        productName: name,
         reason: 'adjustment_positive',
         magnitude: '',
         observedBefore: level.quantity,
@@ -159,19 +226,13 @@ export function CreateStockAdjustmentPage() {
         hasLotsAtLocation: level.has_lots_at_location,
         batchUuid: '',
         note: '',
-      },
-    ])
-    setPendingProductId('')
-    setLineError(null)
-  }, [pendingProductId, locationId, lines, t])
-
-  const updateLine = useCallback((key: string, patch: Partial<LineDraft>): void => {
-    setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)))
-  }, [])
-
-  const removeLine = useCallback((key: string): void => {
-    setLines((current) => current.filter((line) => line.key !== key))
-  }, [])
+      })
+      setPendingProductId('')
+      setLineError(null)
+    } catch {
+      setLineError(t('create.loadFailed'))
+    }
+  }, [pendingProductId, locationId, lines, append, productsQuery.data, t])
 
   const summary = useMemo(() => {
     let net = '0'
@@ -191,29 +252,30 @@ export function CreateStockAdjustmentPage() {
     return { net, increases, decreases }
   }, [lines])
 
-  const lineIssues = useMemo(
-    () =>
-      lines
-        .map((line) => ({ line, issue: issueFor(line, t) }))
-        .filter((entry): entry is { line: LineDraft; issue: string } => entry.issue !== null)
-        .map((entry) => ({
-          key: entry.line.key,
-          productId: entry.line.productId,
-          issue: entry.issue,
-        })),
-    [lines, t],
-  )
+  /**
+   * The net is a SUM ACROSS UNITS — a document may correct kilograms and pieces
+   * in one go — so there is no single product unit to format it at. The storage
+   * scale is the honest choice for a cross-unit figure, and it is stated here
+   * rather than left as a bare literal for a reviewer to wonder about.
+   */
+  const netDecimals = useMemo(() => {
+    const distinct = new Set(lines.map((line) => line.quantityDecimals))
+    return distinct.size === 1 ? (lines[0]?.quantityDecimals ?? STORAGE_SCALE) : STORAGE_SCALE
+  }, [lines])
 
-  const canSubmit = locationId !== '' && lines.length > 0 && lineIssues.length === 0
-
-  const submit = async (postImmediately: boolean, acknowledge = false): Promise<void> => {
+  const submit = async (
+    values: FormValues,
+    postImmediately: boolean,
+    acknowledgeCode: AcknowledgeableRefusalCode | null = null,
+  ): Promise<void> => {
     try {
       const created = await createMutation.mutateAsync({
-        location_id: locationId,
-        note: note === '' ? null : note,
+        location_id: values.locationId,
+        note: values.note === '' ? null : values.note,
         post_immediately: postImmediately,
-        ...(acknowledge ? { acknowledge_stale: true, ignore_reservations: true } : {}),
-        lines: lines.map((line) => ({
+        // ONLY the flag the operator actually confirmed (D15a.3).
+        ...(acknowledgeCode !== null ? overrideFlagFor(acknowledgeCode) : {}),
+        lines: values.lines.map((line) => ({
           product_id: line.productId,
           batch_uuid: line.batchUuid === '' ? null : line.batchUuid,
           reason_code: line.reason,
@@ -231,62 +293,72 @@ export function CreateStockAdjustmentPage() {
 
   /** Client-side re-anchor: there is nothing persisted to PATCH. */
   const recomputeFromFresh = async (): Promise<void> => {
-    const refreshed = await Promise.all(
-      lines.map(async (line) => {
-        const level = await stockAdjustmentApi.stockLevel(line.productId, locationId)
-        return {
-          ...line,
-          observedBefore: level.quantity,
-          quantityDecimals: level.quantity_decimals,
-          requiresBatchTracking: level.requires_batch_tracking,
-          hasLotsAtLocation: level.has_lots_at_location,
-        }
-      }),
-    )
-    setLines(refreshed)
-    setRefusal(null)
+    try {
+      const current = form.getValues('lines')
+      const refreshed = await Promise.all(
+        current.map(async (line) => {
+          const level = await stockAdjustmentApi.stockLevel(line.productId, locationId)
+          return {
+            ...line,
+            observedBefore: level.quantity,
+            quantityDecimals: level.quantity_decimals,
+            requiresBatchTracking: level.requires_batch_tracking,
+            hasLotsAtLocation: level.has_lots_at_location,
+          }
+        }),
+      )
+      replace(refreshed)
+      setRefusal(null)
+    } catch {
+      setLineError(t('create.loadFailed'))
+    }
   }
 
-  const productName = useCallback(
-    (productId: string): string =>
-      (productsQuery.data ?? []).find((product) => product.id === productId)?.name ?? productId,
-    [productsQuery.data],
-  )
-
-  const lineColumns: DataTableColumn<LineDraft>[] = useMemo(
+  // NOTE: the `lines.${row.index}.x` Controller names below trip
+  // `restrict-template-expressions` (a number in a template literal). It is
+  // accepted rather than worked around: react-hook-form's field paths are typed
+  // as `lines.${number}.x`, so String(index) makes the name un-assignable — the
+  // rule and the library disagree, and the library wins.
+  const lineColumns: DataTableColumn<LineValues & { id: string; index: number }>[] = useMemo(
     () => [
       {
         // The reason is the FIRST cell: the direction is the line's primary
         // fact, and its labels carry the direction in words.
         key: 'reason',
         header: t('line.reason'),
-        render: (line) => (
-          <Select
-            aria-label={t('line.reason')}
-            value={line.reason}
-            onChange={(event) => {
-              // Guard, not cast: the <option> set is derived from
-              // reasonsForProduct(), but the DOM value is a plain string and a
-              // cast would let a stale option through unchecked.
-              const raw = event.target.value
-              if (isAdjustmentReason(raw)) {
-                updateLine(line.key, { reason: raw })
-              }
-            }}
-          >
-            {reasonsForProduct(line.requiresBatchTracking).map((reason) => (
-              <option key={reason} value={reason}>
-                {t(`reason.${reason}`)}
-              </option>
-            ))}
-          </Select>
+        render: (row) => (
+          <FormField error={form.formState.errors.lines?.[row.index]?.reason?.message}>
+            <Controller
+              control={form.control}
+              name={`lines.${row.index}.reason`}
+              render={({ field }) => (
+                <Select
+                  aria-label={t('line.reason')}
+                  value={field.value}
+                  onChange={(event) => {
+                    // Guard, not cast: the DOM value is a plain string.
+                    const raw = event.target.value
+                    if (isAdjustmentReason(raw)) {
+                      field.onChange(raw)
+                    }
+                  }}
+                >
+                  {reasonsForProduct(row.requiresBatchTracking).map((reason) => (
+                    <option key={reason} value={reason}>
+                      {t(`reason.${reason}`)}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            />
+          </FormField>
         ),
       },
       {
         key: 'direction',
         header: t('line.direction.in'),
-        render: (line) =>
-          reasonDirection(line.reason) === 'in' ? (
+        render: (row) =>
+          reasonDirection(row.reason) === 'in' ? (
             <StatusBadge tone="success">
               <ArrowUp className="me-1 inline h-3 w-3" />
               {t('line.direction.in')}
@@ -301,53 +373,69 @@ export function CreateStockAdjustmentPage() {
       {
         key: 'product',
         header: t('line.product'),
-        render: (line) => productName(line.productId),
+        render: (row) => row.productName,
       },
       {
         key: 'lot',
         header: t('line.lot'),
-        render: (line) => (
-          <LotSelect
-            productId={line.productId}
-            value={line.batchUuid}
-            required={reasonDirection(line.reason) === 'out' && line.hasLotsAtLocation}
-            onChange={(batchUuid) => {
-              updateLine(line.key, { batchUuid })
-            }}
-          />
+        render: (row) => (
+          <FormField error={form.formState.errors.lines?.[row.index]?.batchUuid?.message}>
+            <Controller
+              control={form.control}
+              name={`lines.${row.index}.batchUuid`}
+              render={({ field }) => (
+                <LotSelect
+                  productId={row.productId}
+                  value={field.value ?? ''}
+                  required={reasonDirection(row.reason) === 'out' && row.hasLotsAtLocation}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+          </FormField>
         ),
       },
       {
         key: 'magnitude',
         align: 'right',
         header: t('line.quantity'),
-        render: (line) => (
-          <QuantityInput
-            value={line.magnitude}
-            onChange={(magnitude) => {
-              updateLine(line.key, { magnitude })
-            }}
-            decimalPlaces={line.quantityDecimals}
-          />
+        render: (row) => (
+          <FormField error={form.formState.errors.lines?.[row.index]?.magnitude?.message}>
+            {/* Controller, not register(): QuantityInput's onChange emits a
+                STRING, so register's event handler cannot bind it. */}
+            <Controller
+              control={form.control}
+              name={`lines.${row.index}.magnitude`}
+              render={({ field }) => (
+                <QuantityInput
+                  aria-label={t('line.quantity')}
+                  value={field.value ?? ''}
+                  onChange={field.onChange}
+                  decimalPlaces={row.quantityDecimals}
+                  error={form.formState.errors.lines?.[row.index]?.magnitude !== undefined}
+                />
+              )}
+            />
+          </FormField>
         ),
       },
       {
         key: 'preview',
         align: 'right',
         header: t('line.resultingQuantity'),
-        render: (line) => {
-          const delta = signedDelta(line)
-          const after = bcadd(line.observedBefore, delta, line.quantityDecimals)
+        render: (row) => {
+          const delta = signedDelta(row)
+          const after = bcadd(row.observedBefore, delta, row.quantityDecimals)
           // formatQuantity preserves a leading '-' but never adds '+', so the
           // positive sign is rendered explicitly.
           const sign = bccomp(delta, '0') > 0 ? '+' : ''
           return (
             <span className="tabular-nums">
-              {formatQuantity(line.observedBefore, line.quantityDecimals)} →{' '}
-              {formatQuantity(after, line.quantityDecimals)}{' '}
+              {formatQuantity(row.observedBefore, row.quantityDecimals)} →{' '}
+              {formatQuantity(after, row.quantityDecimals)}{' '}
               <span className={textColors.tertiary}>
                 ({sign}
-                {formatQuantity(delta, line.quantityDecimals)})
+                {formatQuantity(delta, row.quantityDecimals)})
               </span>
             </span>
           )
@@ -357,12 +445,12 @@ export function CreateStockAdjustmentPage() {
         key: 'remove',
         align: 'right',
         header: <span className="sr-only">{t('create.removeLine')}</span>,
-        render: (line) => (
+        render: (row) => (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
-              removeLine(line.key)
+              remove(row.index)
             }}
             title={t('create.removeLine')}
           >
@@ -371,43 +459,89 @@ export function CreateStockAdjustmentPage() {
         ),
       },
     ],
-    [t, updateLine, removeLine, productName],
+    [t, form, remove],
   )
+
+  const rows = fields.map((field, index) => ({
+    ...(lines[index] ?? {
+      productId: '',
+      productName: '',
+      reason: 'adjustment_positive' as AdjustmentReason,
+      magnitude: '',
+      observedBefore: '0',
+      quantityDecimals: STORAGE_SCALE,
+      requiresBatchTracking: false,
+      hasLotsAtLocation: false,
+      batchUuid: '',
+      note: '',
+    }),
+    id: field.id,
+    index,
+  }))
 
   const acknowledgeableCode =
     refusal?.code !== undefined && isAcknowledgeableRefusalCode(refusal.code) ? refusal.code : null
+
+  const deltaByKey = useMemo(() => {
+    const map: Record<string, string> = {}
+    for (const line of lines) {
+      map[refusalLineKey({
+        product_id: line.productId,
+        variant_id: null,
+        batch_uuid: line.batchUuid === '' ? null : line.batchUuid,
+      })] = signedDelta(line)
+    }
+    return map
+  }, [lines])
 
   return (
     <div className="flex min-h-full flex-col space-y-6">
       <PageHeader title={t('create.title')} subtitle={t('create.subtitle')} className="mb-0" />
 
       <section className="space-y-4">
-        <FormField label={t('create.locationLabel')} required helperText={t('create.locationHelp')}>
-          <Select
-            value={locationId}
-            onChange={(event) => {
-              setLocationId(event.target.value)
-              // Every line's anchor belongs to the OLD location.
-              setLines([])
-            }}
-          >
-            <option value="">—</option>
-            {(locationsQuery.data ?? []).map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </Select>
+        <FormField
+          label={t('create.locationLabel')}
+          required
+          helperText={t('create.locationHelp')}
+          error={form.formState.errors.locationId?.message}
+        >
+          <Controller
+            control={form.control}
+            name="locationId"
+            render={({ field }) => (
+              <Select
+                aria-label={t('create.locationLabel')}
+                value={field.value}
+                onChange={(event) => {
+                  field.onChange(event.target.value)
+                  // Every line's anchor belongs to the OLD location.
+                  replace([])
+                }}
+              >
+                <option value="">—</option>
+                {(locationsQuery.data ?? []).map((location) => (
+                  <option key={location.id} value={location.id}>
+                    {location.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          />
         </FormField>
 
         <FormField label={t('create.noteLabel')}>
-          <Textarea
-            value={note}
-            onChange={(event) => {
-              setNote(event.target.value)
-            }}
-            rows={2}
-            placeholder={t('create.notePlaceholder')}
+          <Controller
+            control={form.control}
+            name="note"
+            render={({ field }) => (
+              <Textarea
+                aria-label={t('create.noteLabel')}
+                value={field.value}
+                onChange={field.onChange}
+                rows={2}
+                placeholder={t('create.notePlaceholder')}
+              />
+            )}
           />
         </FormField>
       </section>
@@ -416,6 +550,7 @@ export function CreateStockAdjustmentPage() {
         <div className="flex items-end gap-2">
           <FormField label={t('line.product')} className="flex-1">
             <Select
+              aria-label={t('line.product')}
               value={pendingProductId}
               onChange={(event) => {
                 setPendingProductId(event.target.value)
@@ -446,20 +581,10 @@ export function CreateStockAdjustmentPage() {
 
         <DataTable
           columns={lineColumns}
-          data={lines}
-          keyExtractor={(line) => line.key}
+          data={rows}
+          keyExtractor={(row) => row.id}
           emptyState={<div className="py-6 text-center">{t('create.emptyLines')}</div>}
         />
-
-        {lineIssues.length > 0 && (
-          <ul className={textColors.error}>
-            {lineIssues.map((entry) => (
-              <li key={entry.key}>
-                {productName(entry.productId)}: {entry.issue}
-              </li>
-            ))}
-          </ul>
-        )}
       </section>
 
       {/* The document-level summary: a mixed-direction document must be legible
@@ -470,7 +595,7 @@ export function CreateStockAdjustmentPage() {
             <dt className={tokens.text.muted}>{t('create.summary.netDelta')}</dt>
             <dd className="tabular-nums text-lg font-medium">
               {bccomp(summary.net, '0') > 0 ? '+' : ''}
-              {formatQuantity(summary.net, 4)}
+              {formatQuantity(summary.net, netDecimals)}
             </dd>
           </div>
           <div>
@@ -491,9 +616,9 @@ export function CreateStockAdjustmentPage() {
       <StickyFormFooter>
         <Button
           variant="secondary"
-          disabled={!canSubmit || createMutation.isPending}
+          disabled={createMutation.isPending}
           onClick={() => {
-            void submit(false)
+            void form.handleSubmit((values) => submit(values, false))()
           }}
         >
           {t('create.saveDraft')}
@@ -501,9 +626,9 @@ export function CreateStockAdjustmentPage() {
         {hasPermission('inventory.adjustments.post') && (
           <Button
             variant="primary"
-            disabled={!canSubmit || createMutation.isPending}
+            disabled={createMutation.isPending}
             onClick={() => {
-              void submit(true)
+              void form.handleSubmit((values) => submit(values, true))()
             }}
           >
             {t('create.post')}
@@ -519,65 +644,25 @@ export function CreateStockAdjustmentPage() {
           origin="unsaved-form"
           canOverride={hasPermission('inventory.adjustments.post')}
           busy={createMutation.isPending}
+          deltaByKey={deltaByKey}
           onDismiss={() => {
             setRefusal(null)
           }}
           onApplyAnyway={() => {
-            void submit(true, true)
+            void form.handleSubmit((values) => submit(values, true, acknowledgeableCode))()
           }}
-          onReAnchor={() => {
-            void recomputeFromFresh()
-          }}
+          onReAnchor={
+            acknowledgeableCode === 'STOCK_MOVED_SINCE_AUTHORING'
+              ? () => {
+                  void recomputeFromFresh()
+                }
+              : undefined
+          }
         />
       )}
     </div>
   )
 }
 
-/** The lot picker, fed by the batch-stock endpoint the write-off screen uses. */
-function LotSelect({
-  productId,
-  value,
-  required,
-  onChange,
-}: {
-  productId: string
-  value: string
-  required: boolean
-  onChange: (batchUuid: string) => void
-}) {
-  const { t } = useTranslation('stock-adjustments')
-
-  const { data } = useQuery({
-    queryKey: tenantScopedKey(['stock-adjustments', 'batch-stock', productId]),
-    queryFn: async () => {
-      const response = await api.get<{ data: BatchOption[] }>(`/products/${productId}/batch-stock`)
-      return response.data.data
-    },
-    enabled: productId !== '',
-  })
-
-  const options = data ?? []
-
-  if (options.length === 0) {
-    return <span className={textColors.tertiary}>{t('line.lotEmpty')}</span>
-  }
-
-  return (
-    <Select
-      aria-label={t('line.lot')}
-      value={value}
-      onChange={(event) => {
-        onChange(event.target.value)
-      }}
-      error={required && value === ''}
-    >
-      <option value="">—</option>
-      {options.map((option) => (
-        <option key={option.batch_uuid} value={option.batch_uuid}>
-          {option.batch_number}
-        </option>
-      ))}
-    </Select>
-  )
-}
+/** The canonical `decimal(15,4)` quantity scale. */
+const STORAGE_SCALE = 4

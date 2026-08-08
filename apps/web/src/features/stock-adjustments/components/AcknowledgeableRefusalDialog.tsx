@@ -2,8 +2,9 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/atoms/Button'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
 import { Modal } from '@/components/organisms/Modal'
-import { formatQuantity } from '@/lib/decimal'
+import { bcadd, formatQuantity } from '@/lib/decimal'
 import { semanticColorTokens as tokens } from '@/lib/designTokens'
+import { refusalLineKey as keyOf } from '../lib/refusalLineKey'
 import {
   narrowAvailabilityDetails,
   narrowStaleDetails,
@@ -31,11 +32,25 @@ interface Props {
   /** Gated on `inventory.adjustments.post` — overriding a guard is a posting act. */
   canOverride: boolean
   busy?: boolean
+  /**
+   * The operator's authored delta per `(product, variant, lot)`, so the table can
+   * show what they asked for and what it would produce. Optional: the payload
+   * itself does not carry it, and a missing entry renders an em dash rather than
+   * a guess.
+   */
+  deltaByKey?: Record<string, string> | undefined
   onDismiss: () => void
   /** Re-submit with `acknowledge_stale` / `ignore_reservations`. NEVER automatic. */
   onApplyAnyway: () => void
-  /** persisted-draft: PATCH the draft. unsaved-form: recompute client-side. */
-  onReAnchor: () => void
+  /**
+   * persisted-draft: PATCH the draft. unsaved-form: recompute client-side.
+   *
+   * OPTIONAL: re-anchoring only means something for a staleness refusal. For
+   * ADJUSTMENT_EXCEEDS_AVAILABLE there is nothing to re-anchor to, and offering
+   * it produced a no-op that cleared the dialog and read as success — so the
+   * caller omits it and the button disappears.
+   */
+  onReAnchor?: (() => void) | undefined
 }
 
 /**
@@ -58,6 +73,7 @@ export function AcknowledgeableRefusalDialog({
   origin,
   canOverride,
   busy = false,
+  deltaByKey,
   onDismiss,
   onApplyAnyway,
   onReAnchor,
@@ -89,6 +105,31 @@ export function AcknowledgeableRefusalDialog({
       header: t('refusal.table.quantityBefore'),
       render: (line) => formatQuantity(line.quantity_before, line.quantity_decimals),
     },
+    {
+      key: 'delta',
+      align: 'right',
+      header: t('refusal.table.delta'),
+      render: (line) => {
+        const delta = deltaByKey?.[keyOf(line)]
+        return delta === undefined ? '—' : formatQuantity(delta, line.quantity_decimals)
+      },
+    },
+    {
+      // "What you would end up with if you applied it anyway" — the number the
+      // operator is actually deciding about.
+      key: 'resulting',
+      align: 'right',
+      header: t('refusal.table.resulting'),
+      render: (line) => {
+        const delta = deltaByKey?.[keyOf(line)]
+        return delta === undefined
+          ? '—'
+          : formatQuantity(
+              bcadd(line.quantity_before, delta, line.quantity_decimals),
+              line.quantity_decimals,
+            )
+      },
+    },
   ]
   const availability =
     code === 'ADJUSTMENT_EXCEEDS_AVAILABLE' ? narrowAvailabilityDetails(refusal.details) : null
@@ -106,9 +147,7 @@ export function AcknowledgeableRefusalDialog({
               data={staleLines}
               // Keyed on (product, variant, lot) — NEVER on line_id, which is
               // null whenever nothing was persisted (D15a).
-              keyExtractor={(line) =>
-                `${line.product_id}|${line.variant_id ?? ''}|${line.batch_uuid ?? ''}`
-              }
+              keyExtractor={keyOf}
             />
           </div>
         )}
@@ -119,13 +158,28 @@ export function AcknowledgeableRefusalDialog({
             <dd className="text-right tabular-nums">
               {formatQuantity(availability.quantity_before, availability.quantity_decimals)}
             </dd>
-            <dt className={tokens.text.muted}>{t('line.observedBefore')}</dt>
+            {/* `reserved` and `available` are the WHOLE explanation of this
+                refusal — on-hand alone would have allowed the change. Labelling
+                `available` as "As observed" made the one screen whose job is to
+                explain a refusal say the wrong thing. */}
+            <dt className={tokens.text.muted}>{t('refusal.table.reserved')}</dt>
+            <dd className="text-right tabular-nums">
+              {formatQuantity(availability.reserved, availability.quantity_decimals)}
+            </dd>
+            <dt className={tokens.text.muted}>{t('refusal.table.available')}</dt>
             <dd className="text-right tabular-nums">
               {formatQuantity(availability.available, availability.quantity_decimals)}
             </dd>
             <dt className={tokens.text.muted}>{t('refusal.table.delta')}</dt>
             <dd className="text-right tabular-nums">
               {formatQuantity(availability.delta_quantity, availability.quantity_decimals)}
+            </dd>
+            <dt className={tokens.text.muted}>{t('refusal.table.resulting')}</dt>
+            <dd className="text-right tabular-nums">
+              {formatQuantity(
+                bcadd(availability.available, availability.delta_quantity, availability.quantity_decimals),
+                availability.quantity_decimals,
+              )}
             </dd>
           </dl>
         )}
@@ -134,9 +188,11 @@ export function AcknowledgeableRefusalDialog({
         <Button variant="ghost" onClick={onDismiss} disabled={busy}>
           {t('refusal.dismiss')}
         </Button>
-        <Button variant="secondary" onClick={onReAnchor} disabled={busy}>
-          {origin === 'persisted-draft' ? t('refusal.reAnchor') : t('refusal.recompute')}
-        </Button>
+        {onReAnchor !== undefined && (
+          <Button variant="secondary" onClick={onReAnchor} disabled={busy}>
+            {origin === 'persisted-draft' ? t('refusal.reAnchor') : t('refusal.recompute')}
+          </Button>
+        )}
         {canOverride && (
           <Button variant="primary" onClick={onApplyAnyway} disabled={busy}>
             {t('refusal.applyAnyway')}

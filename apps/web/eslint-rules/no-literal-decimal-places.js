@@ -29,6 +29,7 @@ const INCLUDED_DIRS = [
   'features/documents',
   'features/inventory',
   'features/stock-transfers',
+  'features/stock-adjustments',
   'features/batches',
   // ProductInventorySection deliberately EXCLUDED: its opening_qty literal
   // needs unit-selection-aware plumbing — 🎫 ticketed follow-up, not this feature.

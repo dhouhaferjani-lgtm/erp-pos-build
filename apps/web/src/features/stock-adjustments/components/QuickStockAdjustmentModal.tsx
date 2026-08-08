@@ -15,10 +15,16 @@ import { semanticColorTokens as tokens, textColors } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCreateStockAdjustment, useFreshStockLevel } from '../api/queries'
-import { extractRefusal, isAcknowledgeableRefusalCode, refusalMessageKey } from '../api/refusals'
-import type { ApiErrorEnvelope } from '../api/refusals'
-import { reasonsForProduct, type AdjustmentReason } from '../types'
+import {
+  extractRefusal,
+  isAcknowledgeableRefusalCode,
+  overrideFlagFor,
+  refusalMessageKey,
+} from '../api/refusals'
+import type { AcknowledgeableRefusalCode, ApiErrorEnvelope } from '../api/refusals'
+import { reasonDirection, reasonsForProduct, type AdjustmentReason, type StockLevel } from '../types'
 import { AcknowledgeableRefusalDialog } from './AcknowledgeableRefusalDialog'
+import { LotSelect } from './LotSelect'
 
 interface Props {
   open: boolean
@@ -32,6 +38,7 @@ interface QuickAdjustmentValues {
   reason_code: AdjustmentReason
   magnitude: string
   note?: string | undefined
+  batch_uuid?: string | undefined
 }
 
 /**
@@ -55,30 +62,74 @@ export function QuickStockAdjustmentModal({ open, ...props }: Props) {
     return null
   }
 
-  return <QuickStockAdjustmentForm {...props} />
+  return <QuickStockAdjustmentGate {...props} />
+}
+
+/**
+ * The D15b preflight, FAILING CLOSED.
+ *
+ * The form must not exist before the fresh read lands. Rendering it early meant
+ * a submit inside the fetch window posted a FABRICATED anchor of `'0'`, an error
+ * left a fully usable form authoring against `'0'` (the endpoint is a
+ * `firstOrFail()`, so a product with no stock row at this location 404s), and
+ * `damage`/`write_off` were offered on a lot-tracked product until the read
+ * landed — the `USE_BATCH_WRITE_OFF` surprise `reasonsForProduct` exists to
+ * prevent. All three are the same bug: the form outliving its own precondition.
+ */
+function QuickStockAdjustmentGate({ productId, productName, locationId, onClose }: Omit<Props, 'open'>) {
+  const { t } = useTranslation('stock-adjustments')
+  const { data: level, isPending, isError } = useFreshStockLevel(productId, locationId)
+
+  if (isPending || isError) {
+    return (
+      <Modal isOpen onClose={onClose} size="md">
+        <Modal.Header title={t('quickModal.title')} onClose={onClose} />
+        <Modal.Content>
+          <p className={isError ? textColors.error : tokens.text.muted}>
+            {isError ? t('quickModal.loadFailed') : t('quickModal.loading')}
+          </p>
+        </Modal.Content>
+        <Modal.Footer>
+          <Button variant="ghost" onClick={onClose}>
+            {t('quickModal.cancel')}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    )
+  }
+
+  return (
+    <QuickStockAdjustmentForm
+      productId={productId}
+      productName={productName}
+      locationId={locationId}
+      level={level}
+      onClose={onClose}
+    />
+  )
 }
 
 function QuickStockAdjustmentForm({
   productId,
   productName,
   locationId,
+  level,
   onClose,
-}: Omit<Props, 'open'>) {
+}: Omit<Props, 'open'> & { level: StockLevel }) {
   const { t } = useTranslation('stock-adjustments')
   const { hasPermission } = usePermissions()
   const [refusal, setRefusal] = useState<ApiErrorEnvelope | null>(null)
 
-  // The FRESH anchor (D15b). Never the list cache: authoring `observed_before`
-  // from a minutes-old list turns the staleness guard into cache-age noise, and
-  // operators learn to click "apply anyway".
-  const { data: level, refetch } = useFreshStockLevel(productId, locationId)
+  const { refetch } = useFreshStockLevel(productId, locationId)
   const createMutation = useCreateStockAdjustment()
 
-  const decimals = level?.quantity_decimals ?? 4
-  const observedBefore = level?.quantity ?? '0'
+  // No `?? 4` / `?? '0'` fallbacks: the gate above guarantees `level`, so every
+  // one of these is the REAL value or the form does not exist.
+  const decimals = level.quantity_decimals
+  const observedBefore = level.quantity
   const availableReasons = useMemo(
-    () => reasonsForProduct(level?.requires_batch_tracking ?? false),
-    [level?.requires_batch_tracking],
+    () => reasonsForProduct(level.requires_batch_tracking),
+    [level.requires_batch_tracking],
   )
 
   const schema = useMemo(
@@ -90,24 +141,24 @@ function QuickStockAdjustmentForm({
         // the exemplar this form replaces was making.
         magnitude: z
           .string()
-          .regex(/^\d+(\.\d{1,4})?$/, t('validation.quantity', { defaultValue: t('line.quantity') }))
-          .refine((value) => /[1-9]/.test(value), {
-            message: t('validation.nonZero', { defaultValue: t('line.quantity') }),
-          }),
+          .regex(/^\d+(\.\d{1,4})?$/, t('validation.quantity'))
+          .refine((value) => /[1-9]/.test(value), { message: t('validation.nonZero') }),
         note: z.string().max(2000).optional(),
+        batch_uuid: z.string().optional(),
       }),
     [t],
   )
 
   const form = useForm<QuickAdjustmentValues>({
     resolver: zodResolver(schema),
-    defaultValues: { reason_code: 'adjustment_positive', magnitude: '', note: '' },
+    defaultValues: { reason_code: 'adjustment_positive', magnitude: '', note: '', batch_uuid: '' },
   })
 
   // useWatch, not form.watch(): the latter cannot be memoized safely and the
   // lint rule that says so is right — watch() re-subscribes on every render.
   const reason = useWatch({ control: form.control, name: 'reason_code' })
   const magnitude = useWatch({ control: form.control, name: 'magnitude' })
+  const batchUuid = useWatch({ control: form.control, name: 'batch_uuid' }) ?? ''
 
   /**
    * The SIGNED wire value, negated at STRING level.
@@ -116,23 +167,37 @@ function QuickStockAdjustmentForm({
    * what rule 19 forbids.
    */
   const signedDelta = reason === 'adjustment_positive' ? magnitude : `-${magnitude}`
+  // A NEGATIVE line must name the lot it draws down whenever one holds stock
+  // here — the backend refuses it otherwise with BATCH_REQUIRED_FOR_LINE, a
+  // NON-acknowledgeable refusal whose own message tells the operator to name a
+  // lot. Without this field that instruction was unfollowable and lot-tracked
+  // stock could not be decremented from this screen at all.
+  const lotRequired = reasonDirection(reason) === 'out' && level.has_lots_at_location
   const resultingQuantity =
     magnitude === '' ? observedBefore : bcadd(observedBefore, signedDelta, decimals)
 
-  const submit = async (values: QuickAdjustmentValues, acknowledge: boolean): Promise<void> => {
+  const submit = async (
+    values: QuickAdjustmentValues,
+    acknowledgeCode: AcknowledgeableRefusalCode | null,
+  ): Promise<void> => {
     const delta =
       values.reason_code === 'adjustment_positive' ? values.magnitude : `-${values.magnitude}`
 
     try {
       await createMutation.mutateAsync({
         location_id: locationId,
-        note: values.note === '' ? null : values.note,
+        note: values.note === undefined || values.note === '' ? null : values.note,
         post_immediately: true,
-        ...(acknowledge ? { acknowledge_stale: true, ignore_reservations: true } : {}),
+        // ONLY the flag the operator actually confirmed (D15a.3). Sending both
+        // silently disables the other guard AND forges a permanent header claim
+        // that they overrode it.
+        ...(acknowledgeCode !== null ? overrideFlagFor(acknowledgeCode) : {}),
         lines: [
           {
             product_id: productId,
             reason_code: values.reason_code,
+            batch_uuid:
+              values.batch_uuid === undefined || values.batch_uuid === '' ? null : values.batch_uuid,
             delta_quantity: delta,
             observed_before: observedBefore,
           },
@@ -165,7 +230,7 @@ function QuickStockAdjustmentForm({
             className="space-y-4"
             onSubmit={(event) => {
               void form.handleSubmit((values) => {
-                void submit(values, false)
+                void submit(values, null)
               })(event)
             }}
           >
@@ -182,6 +247,7 @@ function QuickStockAdjustmentForm({
                 name="reason_code"
                 render={({ field }) => (
                   <Select
+                    aria-label={t('line.reason')}
                     value={field.value}
                     onChange={(event) => {
                       field.onChange(event.target.value)
@@ -197,6 +263,28 @@ function QuickStockAdjustmentForm({
               />
             </FormField>
 
+            {level.has_lots_at_location && (
+              <FormField
+                label={t('line.lot')}
+                required={lotRequired}
+                error={form.formState.errors.batch_uuid?.message}
+                helperText={lotRequired ? t('line.lotRequired') : undefined}
+              >
+                <Controller
+                  control={form.control}
+                  name="batch_uuid"
+                  render={({ field }) => (
+                    <LotSelect
+                      productId={productId}
+                      value={field.value ?? ''}
+                      required={lotRequired}
+                      onChange={field.onChange}
+                    />
+                  )}
+                />
+              </FormField>
+            )}
+
             <FormField
               label={t('line.quantity')}
               required
@@ -209,6 +297,7 @@ function QuickStockAdjustmentForm({
                 name="magnitude"
                 render={({ field }) => (
                   <QuantityInput
+                    aria-label={t('line.quantity')}
                     value={field.value ?? ''}
                     onChange={field.onChange}
                     decimalPlaces={decimals}
@@ -229,6 +318,7 @@ function QuickStockAdjustmentForm({
                 name="note"
                 render={({ field }) => (
                   <Textarea
+                    aria-label={t('create.noteLabel')}
                     value={field.value ?? ''}
                     onChange={field.onChange}
                     rows={2}
@@ -269,7 +359,7 @@ function QuickStockAdjustmentForm({
             variant="primary"
             type="submit"
             form="quick-stock-adjustment-form"
-            disabled={createMutation.isPending}
+            disabled={createMutation.isPending || (lotRequired && batchUuid === '')}
           >
             {t('quickModal.submit')}
           </Button>
@@ -289,7 +379,7 @@ function QuickStockAdjustmentForm({
             setRefusal(null)
           }}
           onApplyAnyway={() => {
-            void submit(form.getValues(), true)
+            void submit(form.getValues(), acknowledgeableCode)
           }}
           onReAnchor={() => {
             void refetch()

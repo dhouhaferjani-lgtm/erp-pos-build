@@ -290,6 +290,7 @@ export function ExpiryWriteOffPage() {
             <div className="flex items-center justify-end gap-3">
               <FormField label={t('expiryWriteOff.reasonLabel')} className="w-48">
                 <Select
+                  aria-label={t('expiryWriteOff.reasonLabel')}
                   value={reason}
                   onChange={(event) => {
                     const raw = event.target.value

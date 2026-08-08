@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/atoms/Button'
 import { FormField } from '@/components/atoms/FormField'
@@ -8,8 +8,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
 import { Modal } from '@/components/organisms/Modal'
 import { PageHeader } from '@/components/molecules/PageHeader'
-import { formatQuantity } from '@/lib/decimal'
-import { semanticColorTokens as tokens } from '@/lib/designTokens'
+import { bcadd, bcsub, formatQuantity } from '@/lib/decimal'
+import { semanticColorTokens as tokens, textColors } from '@/lib/designTokens'
+import { entityRoutes } from '@/lib/entityRoutes'
 import { usePermissions } from '@/hooks/usePermissions'
 import {
   useCancelStockAdjustment,
@@ -18,8 +19,13 @@ import {
   useStockAdjustment,
   useUpdateStockAdjustment,
 } from '../api/queries'
-import { extractRefusal, isAcknowledgeableRefusalCode, refusalMessageKey } from '../api/refusals'
-import type { ApiErrorEnvelope, StaleLine } from '../api/refusals'
+import {
+  extractRefusal,
+  isAcknowledgeableRefusalCode,
+  overrideFlagFor,
+  refusalMessageKey,
+} from '../api/refusals'
+import type { AcknowledgeableRefusalCode, ApiErrorEnvelope, StaleLine } from '../api/refusals'
 import { AcknowledgeableRefusalDialog } from '../components/AcknowledgeableRefusalDialog'
 import { StockAdjustmentStatusBadge } from '../components/StockAdjustmentStatusBadge'
 import { narrowStaleDetails } from '../api/refusals'
@@ -43,9 +49,10 @@ import type { StockAdjustmentLine } from '../types'
 export function StockAdjustmentDetailPage() {
   const { t } = useTranslation(['stock-adjustments', 'common'])
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const { hasPermission } = usePermissions()
 
-  const { data: adjustment, isLoading } = useStockAdjustment(id)
+  const { data: adjustment, isLoading, isError } = useStockAdjustment(id)
   const postMutation = usePostStockAdjustment()
   const cancelMutation = useCancelStockAdjustment()
   const correctMutation = useCorrectStockAdjustment()
@@ -56,10 +63,18 @@ export function StockAdjustmentDetailPage() {
   const [cancelReason, setCancelReason] = useState('')
   const [refusal, setRefusal] = useState<ApiErrorEnvelope | null>(null)
 
-  if (isLoading || adjustment === undefined) {
+  if (isLoading) {
     return <div className={tokens.text.muted}>{t('common:status.loading')}</div>
   }
 
+  // A failed fetch used to render the loading text forever, because the guard
+  // keyed on `adjustment === undefined` rather than on the error.
+  if (isError || adjustment === undefined) {
+    return <p className={textColors.error}>{t('detail.loadFailed')}</p>
+  }
+
+  // NULL for a status this frontend does not know: every affordance below is
+  // status-derived, so an unrecognised state must enable nothing.
   const status = toStockAdjustmentStatus(adjustment.status)
   const canPost = status === 'draft' && hasPermission('inventory.adjustments.post')
   const canCancel = status === 'draft' && hasPermission('inventory.adjustments.cancel')
@@ -69,7 +84,7 @@ export function StockAdjustmentDetailPage() {
     adjustment.correction_id === null &&
     hasPermission('inventory.adjustments.create')
 
-  const post = async (acknowledge: boolean): Promise<void> => {
+  const post = async (acknowledgeCode: AcknowledgeableRefusalCode | null): Promise<void> => {
     if (id === undefined) {
       return
     }
@@ -77,7 +92,10 @@ export function StockAdjustmentDetailPage() {
     try {
       await postMutation.mutateAsync({
         id,
-        options: acknowledge ? { acknowledge_stale: true, ignore_reservations: true } : {},
+        // ONLY the flag the operator actually confirmed (D15a.3). Sending both
+        // silently disables the other guard AND forges a permanent header claim
+        // that they overrode it.
+        options: acknowledgeCode !== null ? overrideFlagFor(acknowledgeCode) : {},
       })
       setRefusal(null)
       setConfirmPost(false)
@@ -88,9 +106,21 @@ export function StockAdjustmentDetailPage() {
   }
 
   /**
-   * The RE-ANCHOR: move each refused line's `observed_before` to what the server
-   * says the row actually holds, keeping the operator's intended delta. The
-   * server treats `lines` as a full replacement, and a draft line always has
+   * The RE-ANCHOR (§2's PATCH contract / D15a's persisted-draft branch).
+   *
+   * The operator authored a RESULTING QUANTITY, not a delta — "count it to 12"
+   * expressed as "+2 from the 10 I can see". So re-anchoring preserves the
+   * TARGET and recomputes the delta against the fresh reading:
+   *
+   *     target = observed_before + delta_quantity      (what they meant)
+   *     delta_quantity = target − fresh_before         (how to get there now)
+   *     observed_before = fresh_before
+   *
+   * Keeping the old delta and only moving the anchor would apply +2 on top of
+   * the NEW value and land somewhere the operator never authored — precisely the
+   * silent-wrong-number outcome the staleness guard exists to prevent.
+   *
+   * The server treats `lines` as a full replacement, and a draft line always has
    * `movement_id IS NULL`, so this cannot orphan a movement.
    */
   const reAnchor = async (staleLines: StaleLine[]): Promise<void> => {
@@ -100,7 +130,7 @@ export function StockAdjustmentDetailPage() {
 
     const freshByKey = new Map(
       staleLines.map((line) => [
-        `${line.product_id}|${line.variant_id ?? ''}|${line.batch_uuid ?? ''}`,
+        lineKey(line.product_id, line.variant_id, line.batch_uuid),
         line.quantity_before,
       ]),
     )
@@ -110,25 +140,81 @@ export function StockAdjustmentDetailPage() {
         id,
         input: {
           lines: adjustment.lines.map((line) => {
-            const key = `${line.product_id}|${line.variant_id ?? ''}|${line.batch_uuid ?? ''}`
-            return {
+            const key = lineKey(line.product_id, line.variant_id, line.batch_uuid)
+            const freshBefore = freshByKey.get(key)
+            // Guard, not cast: a reason this frontend cannot represent must not
+            // be silently re-sent as if it were one it can.
+            const reason = isAdjustmentReason(line.reason_code)
+              ? line.reason_code
+              : 'adjustment_negative'
+
+            const base = {
               product_id: line.product_id,
               variant_id: line.variant_id,
               batch_uuid: line.batch_uuid,
-              // Guard, not cast: a reason this frontend cannot represent must
-              // not be silently re-sent as if it were one it can.
-              reason_code: isAdjustmentReason(line.reason_code)
-                ? line.reason_code
-                : 'adjustment_negative',
-              delta_quantity: line.delta_quantity,
-              observed_before: freshByKey.get(key) ?? line.observed_before,
+              reason_code: reason,
               line_note: line.line_note,
+            }
+
+            // Untouched lines keep their own values verbatim.
+            if (freshBefore === undefined) {
+              return {
+                ...base,
+                delta_quantity: line.delta_quantity,
+                observed_before: line.observed_before,
+              }
+            }
+
+            // All string arithmetic — never a Number() round-trip on a quantity.
+            const decimals = line.quantity_decimals
+            const target = bcadd(line.observed_before, line.delta_quantity, decimals)
+
+            return {
+              ...base,
+              delta_quantity: bcsub(target, freshBefore, decimals),
+              observed_before: freshBefore,
             }
           }),
         },
       })
       setRefusal(null)
     } catch (error) {
+      setRefusal(extractRefusal(error))
+    }
+  }
+
+  /**
+   * Cancel and correct route their failures through the SAME surface as post.
+   * Without this, ADJUSTMENT_ALREADY_CORRECTED, CANNOT_CORRECT_A_CORRECTION and
+   * INVALID_ADJUSTMENT_STATE — three codes the refusal map dutifully translates —
+   * could never reach a user. `correct` also navigates to the contra draft it
+   * creates, which is the whole point of pressing it.
+   */
+  const correct = async (): Promise<void> => {
+    if (id === undefined) {
+      return
+    }
+
+    try {
+      const contra = await correctMutation.mutateAsync(id)
+      setRefusal(null)
+      void navigate(entityRoutes.stockAdjustment(contra.id))
+    } catch (error) {
+      setRefusal(extractRefusal(error))
+    }
+  }
+
+  const cancel = async (): Promise<void> => {
+    if (id === undefined) {
+      return
+    }
+
+    try {
+      await cancelMutation.mutateAsync({ id, reason: cancelReason })
+      setRefusal(null)
+      setCancelOpen(false)
+    } catch (error) {
+      setCancelOpen(false)
       setRefusal(extractRefusal(error))
     }
   }
@@ -183,7 +269,7 @@ export function StockAdjustmentDetailPage() {
         }
         actions={
           <div className="flex items-center gap-2">
-            <StockAdjustmentStatusBadge status={status} />
+            {status !== null && <StockAdjustmentStatusBadge status={status} />}
             {canPost && (
               <Button
                 variant="primary"
@@ -207,10 +293,9 @@ export function StockAdjustmentDetailPage() {
             {canCorrect && (
               <Button
                 variant="secondary"
+                disabled={correctMutation.isPending}
                 onClick={() => {
-                  if (id !== undefined) {
-                    correctMutation.mutate(id)
-                  }
+                  void correct()
                 }}
               >
                 {t('detail.correct')}
@@ -275,7 +360,7 @@ export function StockAdjustmentDetailPage() {
         variant="warning"
         isLoading={postMutation.isPending}
         onConfirm={() => {
-          void post(false)
+          void post(null)
         }}
         onClose={() => {
           setConfirmPost(false)
@@ -322,10 +407,7 @@ export function StockAdjustmentDetailPage() {
             variant="primary"
             disabled={cancelMutation.isPending}
             onClick={() => {
-              if (id !== undefined) {
-                cancelMutation.mutate({ id, reason: cancelReason })
-                setCancelOpen(false)
-              }
+              void cancel()
             }}
           >
             {t('detail.cancelConfirm')}
@@ -346,15 +428,27 @@ export function StockAdjustmentDetailPage() {
             setRefusal(null)
           }}
           onApplyAnyway={() => {
-            void post(true)
+            void post(acknowledgeableCode)
           }}
-          onReAnchor={() => {
-            void reAnchor(staleLines ?? [])
-          }}
+          // Re-anchor only means something for a staleness refusal. Offering it
+          // for ADJUSTMENT_EXCEEDS_AVAILABLE produced a no-op PATCH that cleared
+          // the dialog and read as success (gate M-4).
+          onReAnchor={
+            acknowledgeableCode === 'STOCK_MOVED_SINCE_AUTHORING' && staleLines !== null
+              ? () => {
+                  void reAnchor(staleLines)
+                }
+              : undefined
+          }
         />
       )}
     </div>
   )
+}
+
+/** The (product, variant, lot) identity the refusal payload and §2's PATCH share. */
+function lineKey(productId: string, variantId: string | null, batchUuid: string | null): string {
+  return `${productId}|${variantId ?? ''}|${batchUuid ?? ''}`
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {

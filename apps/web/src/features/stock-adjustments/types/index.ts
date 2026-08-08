@@ -123,6 +123,13 @@ export function isAdjustmentReason(value: string): value is AdjustmentReason {
   return (ADJUSTMENT_REASONS as readonly string[]).includes(value)
 }
 
-export function toStockAdjustmentStatus(value: string): StockAdjustmentStatus {
-  return isStockAdjustmentStatus(value) ? value : 'draft'
+/**
+ * Returns NULL for a status this frontend does not know.
+ *
+ * Deliberately not a `'draft'` fallback: `draft` is the state that ENABLES Post
+ * and Cancel, so mapping an unrecognised backend state onto it would offer two
+ * write actions for a document whose real state forbids them.
+ */
+export function toStockAdjustmentStatus(value: string): StockAdjustmentStatus | null {
+  return isStockAdjustmentStatus(value) ? value : null
 }

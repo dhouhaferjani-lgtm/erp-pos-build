@@ -30,6 +30,10 @@ vi.mock('../stock-adjustments/components/QuickStockAdjustmentModal', () => ({
 
 const grantedPermissions = new Set<string>([
   'inventory.adjustments.create',
+  // The quick modal posts immediately, so the Adjust affordance requires BOTH
+  // create and post — a create-only operator would otherwise fill the form and
+  // be refused at the end.
+  'inventory.adjustments.post',
   'inventory.transfers.create',
   'goods-receipt.create-standalone',
 ])
@@ -196,6 +200,18 @@ describe('StockLevelsPage (canonical list)', () => {
 
     expect(hrefs.some((href) => href.startsWith('/inventory/stock-transfers/new'))).toBe(true)
     expect(hrefs.some((href) => href.startsWith('/purchases/receipts/new'))).toBe(true)
+  })
+
+  it('hides the quick-adjust affordance without inventory.adjustments.post', () => {
+    grantedPermissions.delete('inventory.adjustments.post')
+    try {
+      render(<StockLevelsPage />)
+      expect(
+        screen.queryByRole('button', { name: /inventory:stock.adjust/ }),
+      ).not.toBeInTheDocument()
+    } finally {
+      grantedPermissions.add('inventory.adjustments.post')
+    }
   })
 
   it('hides the transfer affordance without inventory.transfers.create', () => {

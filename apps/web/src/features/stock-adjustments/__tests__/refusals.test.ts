@@ -24,8 +24,13 @@ function resolve(messages: unknown, key: string): unknown {
 }
 
 describe('refusal message map', () => {
-  it('covers all eleven codes in BOTH locales', () => {
-    expect(STOCK_ADJUSTMENT_REFUSAL_CODES).toHaveLength(11)
+  it('covers every code the backend can return, in BOTH locales', () => {
+    // Eleven from plan §2's table, plus POST_PERMISSION_REQUIRED — the
+    // controller's two-leg check returns it from every authoring surface, and it
+    // was missing from the map, so a create-only operator filled the whole form
+    // and got the generic fallback.
+    expect(STOCK_ADJUSTMENT_REFUSAL_CODES).toHaveLength(12)
+    expect(STOCK_ADJUSTMENT_REFUSAL_CODES).toContain('POST_PERMISSION_REQUIRED')
 
     for (const code of STOCK_ADJUSTMENT_REFUSAL_CODES) {
       const key = REFUSAL_MESSAGE_KEYS[code]

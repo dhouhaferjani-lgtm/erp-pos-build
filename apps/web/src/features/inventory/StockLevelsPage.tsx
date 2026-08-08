@@ -12,7 +12,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
 import { bccomp, formatQuantity } from '../../lib/decimal'
 import { getQuantityDecimals } from '../../lib/quantityScale'
-import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
+import { tokens, textColors, borderColors, colors, semanticColorTokens } from '../../lib/designTokens'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
 import { Button } from '../../components/atoms/Button/Button'
@@ -182,10 +182,11 @@ export function StockLevelsPage() {
       header: <span className="sr-only">{t('common:actions.actions')}</span>,
       render: (stock) => (
         <div className="flex items-center justify-end gap-1">
-          {/* In / Out / Adjust all open the SAME document-backed modal — the
-              only difference is the reason preselected for the operator. There
-              is no longer a raw endpoint behind any of them. */}
+          {/* The modal posts `post_immediately: true`, which the controller
+              403s without `.post` — so BOTH permissions gate it, or a create-only
+              operator fills the whole form and is refused at the end. */}
           <RequirePermission permission="inventory.adjustments.create" fallback={null}>
+            <RequirePermission permission="inventory.adjustments.post" fallback={null}>
             <Button
               variant="ghost"
               size="sm"
@@ -196,6 +197,7 @@ export function StockLevelsPage() {
               <RefreshCw className="h-3.5 w-3.5" />
               {t('inventory:stock.adjust')}
             </Button>
+            </RequirePermission>
           </RequirePermission>
           {/* A priced, supplier-sourced entry is a goods receipt, not a
               correction. Permission-gated on its DESTINATION's requirement, so
@@ -237,7 +239,8 @@ export function StockLevelsPage() {
             <Link
               to="/inventory/movements"
               className={cn(
-                'inline-flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm font-medium transition-colors',
+                'inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors',
+                semanticColorTokens.surface.base,
                 borderColors.default,
                 textColors.secondary,
                 colors.hover.gray50,
@@ -265,7 +268,7 @@ export function StockLevelsPage() {
       {/* Content */}
       {error ? (
         <div className={cn(tokens.alert.base, tokens.alert.error)}>
-          {t('errors.loadingFailed', 'Error loading data. Please try again.')}
+          {t('common:errors.loadingFailed')}
         </div>
       ) : (
         <DataTable
@@ -273,7 +276,7 @@ export function StockLevelsPage() {
           data={filteredStockLevels}
           keyExtractor={(stock) => stock.id}
           isLoading={isLoading}
-          className={cn('rounded-lg border bg-white', borderColors.light)}
+          className={cn('rounded-lg border', semanticColorTokens.surface.base, borderColors.light)}
           emptyState={
             <div className="py-6">
               <EmptyState
@@ -299,7 +302,7 @@ export function StockLevelsPage() {
       {/* Summary Cards */}
       {stockLevels.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <div className={cn('rounded-lg border bg-white p-4', borderColors.light)}>
+          <div className={cn('rounded-lg border p-4', semanticColorTokens.surface.base, borderColors.light)}>
             <div className={cn('text-sm font-medium', textColors.tertiary)}>{t('inventory:stock.summary.totalProducts')}</div>
             <div className={cn('mt-1 text-2xl font-bold', textColors.primary)}>{total}</div>
           </div>

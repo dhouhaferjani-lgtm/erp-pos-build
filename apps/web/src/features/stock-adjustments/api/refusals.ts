@@ -25,6 +25,10 @@ export const STOCK_ADJUSTMENT_REFUSAL_CODES = [
   'ADJUSTMENT_ALREADY_CORRECTED',
   'CANNOT_CORRECT_A_CORRECTION',
   'LOCATION_ACCESS_DENIED',
+  // Returned by the controller's two-leg check when a create-only operator asks
+  // to post (or to override a guard) — reachable from every authoring surface,
+  // so it needs a message like the rest.
+  'POST_PERMISSION_REQUIRED',
 ] as const
 
 export type StockAdjustmentRefusalCode = (typeof STOCK_ADJUSTMENT_REFUSAL_CODES)[number]
@@ -50,9 +54,28 @@ export const REFUSAL_MESSAGE_KEYS: Record<StockAdjustmentRefusalCode, string> = 
   ADJUSTMENT_ALREADY_CORRECTED: 'refusal.ADJUSTMENT_ALREADY_CORRECTED',
   CANNOT_CORRECT_A_CORRECTION: 'refusal.CANNOT_CORRECT_A_CORRECTION',
   LOCATION_ACCESS_DENIED: 'refusal.LOCATION_ACCESS_DENIED',
+  POST_PERMISSION_REQUIRED: 'refusal.POST_PERMISSION_REQUIRED',
 }
 
 export const GENERIC_REFUSAL_MESSAGE_KEY = 'refusal.generic'
+
+/**
+ * The override flag that acknowledges THIS refusal — and only this one.
+ *
+ * Sending both flags on every "Apply anyway" (a) silently disables the OTHER
+ * guard for that post without the operator ever being told, and (b) writes a
+ * permanent header claim that they overrode it, which the detail page then
+ * renders as fact. D15a.3 says the button sets `acknowledge_stale` OR
+ * `ignore_reservations` respectively; this is that mapping, in one place, so the
+ * three call sites cannot drift apart.
+ */
+export function overrideFlagFor(
+  code: AcknowledgeableRefusalCode,
+): { acknowledge_stale: true } | { ignore_reservations: true } {
+  return code === 'STOCK_MOVED_SINCE_AUTHORING'
+    ? { acknowledge_stale: true }
+    : { ignore_reservations: true }
+}
 
 export function refusalMessageKey(code: string | undefined): string {
   if (code !== undefined && isRefusalCode(code)) {
