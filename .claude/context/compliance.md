@@ -57,6 +57,29 @@ Required for French POS certification:
 - Duplicate/reprint tracking
 - Digital signature (RSA 2048 or ECDSA 256)
 
+### ANNULATION → RETOUR: correction representation after the V9 void sunset (2026-08-08)
+
+Since DPA V9 (owner ruling D3) retired the legacy `POST /pos/receipts/{id}/void`,
+**no production code writes `is_voided = true` any more** — the only assignments left
+are `=> false` (`PosCoreReceiptProjection.php:372`, `ReceiptCreationService.php:603`,
+`ReceiptReturnService.php:773`). The NF525 `<Annulations type="ANNULATION">` section is
+built by `Nf525XmlBuilder::addVoids()` (`:193-215`) from `Nf525DataProvider.php:161-177`,
+which is a **DB-driven query** (`where('is_voided', true)` + `whereBetween('voided_at', …)`),
+**not** event-driven — so the section is now permanently unproducible for NEW events
+while **historical voids still export correctly** through the same date-windowed query
+(no historical fiscal data is lost — do NOT "fix" the empty section by resurrecting an
+`is_voided` writer). The successor representation is **RETOUR by design**: a
+device-authored correction resolves to `ReceiptType::Return`
+(`PosCoreReceiptProjection::resolveReceiptType()` `:568-575`) and is exported as
+`<Retours type="RETOUR">` (`Nf525DataProvider.php:179-198`, `Nf525XmlBuilder.php:216-247`)
+carrying `TicketOriginal` + the fiscal hash — a chained, append-only correcting document,
+strictly stronger than the in-place mutation it replaced. A full cancellation is therefore
+expressed as a **full-quantity REFUND rendered as RETOUR**; device authoring of
+`invoice_type_code = 'VOID'` is hard-refused
+(`apps/pos/src/lib/fiscal/FiscalEventPayloadRegistry.ts:139-152,237`).
+**Expert-comptable / owner ratification of this representation shift is OWED** (the open
+question from `docs/superpowers/reviews/2026-07-31-codex-refund-chain-spec-review.md:168`).
+
 ## E-Invoicing (Factur-X)
 
 For French B2B invoices:
