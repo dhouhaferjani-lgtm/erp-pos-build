@@ -20,11 +20,19 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\RepositoryAdjustment;
+use App\Modules\Treasury\Domain\RepositoryMovement;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Ramsey\Uuid\Uuid;
+use Ramsey\Uuid\UuidInterface;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 use Tests\Traits\AssertsApiValidation;
@@ -483,9 +491,504 @@ final class RepositoryAdjustmentTest extends TestCase
         $this->assertSame(0, $journalEntries);
     }
 
+    /**
+     * DPA lane V3 (document-per-action remediation): the adjustment UUID that
+     * already flowed to the journal entry (`source_type='repository_adjustment'`)
+     * and to the `MovementSourceType::Adjustment` movement must now address a
+     * REAL row — a `repository_adjustments` document. Linkage shape was already
+     * right; the referent did not exist.
+     */
+    public function test_adjustment_creates_a_document_row_cross_linked_to_journal_entry_and_movement(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertCreated();
+
+        $movementId = $response->json('data.movement_id');
+        $this->assertIsString($movementId);
+
+        $movement = RepositoryMovement::query()->findOrFail($movementId);
+
+        $adjustments = RepositoryAdjustment::query()->get();
+        $this->assertCount(1, $adjustments, 'exactly one repository_adjustments document row');
+        $adjustment = $adjustments->firstOrFail();
+
+        // The document IS the referent the movement and the JE already pointed at.
+        $this->assertSame($adjustment->id, $movement->source_id);
+        $this->assertSame(MovementSourceType::Adjustment, $movement->source_type);
+
+        $entry = JournalEntry::query()->whereKey($movement->journal_entry_id)->firstOrFail();
+        $this->assertSame('repository_adjustment', $entry->source_type);
+        $this->assertSame($adjustment->id, $entry->source_id);
+
+        // …and the document links back to both (cross-linked, both directions).
+        $this->assertSame($entry->id, $adjustment->journal_entry_id);
+        $this->assertSame($movement->id, $adjustment->movement_id);
+
+        // Scoping + payload fidelity.
+        $this->assertSame($user->tenant_id, $adjustment->tenant_id);
+        $this->assertSame($company->id, $adjustment->company_id);
+        $this->assertSame($repo->id, $adjustment->payment_repository_id);
+        $this->assertSame(MovementDirection::Out, $adjustment->direction);
+        $this->assertSame(0, bccomp($adjustment->amount, '25.000', 3));
+        $this->assertSame('TND', $adjustment->currency);
+        $this->assertSame(MovementReasonCode::CountVariance, $adjustment->reason_code);
+        $this->assertSame('Till was short at close.', $adjustment->reason_text);
+        $this->assertSame($user->id, $adjustment->created_by);
+    }
+
+    /**
+     * DPA lane V3 requirement 3(b): `record()`'s idempotent-replay path
+     * (`MovementResult::$wasIdempotentHit`) must NOT mint a second adjustment
+     * document. The document is keyed on the SAME discriminator the movement's
+     * idempotency key is built from (`adjustment:{adjustmentId}:main`), so a
+     * replay of the same adjustment id resolves to the already-written row.
+     *
+     * The endpoint mints its adjustment id inline, so a replay is forced here
+     * by pinning the FIRST uuid each request generates (and only the first —
+     * the journal entry, its lines and the movement must all keep unique ids).
+     * The assertion that the pinned id actually landed on the document keeps
+     * this harness honest: if anything ever consumes a uuid ahead of the
+     * controller, this test fails loudly rather than silently testing nothing.
+     */
+    public function test_idempotent_replay_records_exactly_one_adjustment_document_row(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $pinnedAdjustmentId = (string) Str::uuid();
+        $payload = [
+            'direction' => 'out',
+            'amount' => '25.000',
+            'reason_code' => 'count_variance',
+            'reason_text' => 'Till was short at close.',
+        ];
+
+        $this->pinFirstGeneratedUuid($pinnedAdjustmentId);
+        $first = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", $payload)
+            ->assertCreated();
+        Str::createUuidsNormally();
+
+        $this->assertFalse($first->json('data.idempotent_replay'));
+        $this->assertNotNull(RepositoryAdjustment::query()->find($pinnedAdjustmentId), 'the pinned uuid must be the adjustment id — harness precondition');
+
+        $this->pinFirstGeneratedUuid($pinnedAdjustmentId);
+        $second = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", $payload)
+            ->assertCreated();
+        Str::createUuidsNormally();
+
+        // The write port replayed rather than recording a second movement…
+        $this->assertTrue($second->json('data.idempotent_replay'));
+        $this->assertSame($first->json('data.movement_id'), $second->json('data.movement_id'));
+        $this->assertSame(1, RepositoryMovement::query()->where('payment_repository_id', $repo->id)->count());
+
+        // …so exactly ONE adjustment document exists, with its original linkage.
+        $this->assertSame(1, RepositoryAdjustment::query()->count());
+        $adjustment = RepositoryAdjustment::query()->findOrFail($pinnedAdjustmentId);
+        $this->assertSame($first->json('data.movement_id'), $adjustment->movement_id);
+
+        // Balance moved exactly once.
+        $freshRepo = $repo->fresh();
+        $this->assertNotNull($freshRepo);
+        $this->assertSame('475.000', $freshRepo->balance);
+    }
+
+    /**
+     * The 658/758 seeded-purpose precheck refuses BEFORE the transaction opens,
+     * so no adjustment document may be minted on that path either.
+     */
+    public function test_tolerance_purpose_refusal_writes_no_adjustment_document_row(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+
+        $cashAccount = Account::create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'code' => '53',
+            'name' => 'Caisse',
+            'type' => 'asset',
+            'system_purpose' => SystemAccountPurpose::Cash,
+            'is_active' => true,
+        ]);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $cashAccount->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+    }
+
+    /**
+     * An insufficient-balance refusal throws from inside the transaction, AFTER
+     * the document row was written — the rollback must take the document with
+     * the journal entry and the movement.
+     */
+    public function test_insufficient_balance_refusal_rolls_back_the_adjustment_document_row(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '10.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+    }
+
+    /**
+     * Gate C1 (fix round 1) — the document, the journal entry and the movement
+     * must state the SAME amount. `amount` is normalized ONCE at the boundary to
+     * the repository's own currency scale and that single value is fed to all
+     * three; previously only the document was scaled, so an EUR (scale 2)
+     * adjustment of 25.005 stored doc 25.000 against movement/JE 25.005.
+     *
+     * Reproduced by the gate on PostgreSQL; asserted here on both drivers.
+     */
+    public function test_sub_scale_amount_is_normalized_once_so_document_journal_entry_and_movement_agree(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        // EUR — scale 2, below the FormRequest's 3-decimal regex ceiling.
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'EUR',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.005',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertCreated();
+
+        $movement = RepositoryMovement::query()->findOrFail($response->json('data.movement_id'));
+        $adjustment = RepositoryAdjustment::query()->firstOrFail();
+        $entry = JournalEntry::query()->whereKey($movement->journal_entry_id)->with('lines')->firstOrFail();
+
+        // One normalized value everywhere — 25.005 truncated once to EUR's scale.
+        $this->assertSame(0, bccomp($adjustment->amount, '25.00', 2), "document amount {$adjustment->amount}");
+        $this->assertSame(0, bccomp((string) $movement->amount, '25.00', 2), "movement amount {$movement->amount}");
+        $this->assertSame(0, bccomp($adjustment->amount, (string) $movement->amount, 3), 'document and movement must agree');
+
+        foreach ($entry->lines as $line) {
+            $posted = bccomp((string) $line->debit, '0', 3) > 0 ? (string) $line->debit : (string) $line->credit;
+            $this->assertSame(0, bccomp($posted, $adjustment->amount, 3), "journal line {$posted} must agree with the document");
+        }
+
+        // …and the balance moved by that same normalized amount.
+        $freshRepo = $repo->fresh();
+        $this->assertNotNull($freshRepo);
+        $this->assertSame(0, bccomp((string) $freshRepo->balance, '475.00', 2), "balance {$freshRepo->balance}");
+    }
+
+    /**
+     * Gate C2 (fix round 1) — an amount below the currency's smallest unit
+     * passes `required|numeric|gt:0|regex:{1,3}` and normalizes to zero. It used
+     * to reach the pgsql-only `CHECK (amount > 0)` as SQLSTATE 23514 → HTTP 500
+     * (invisible to the sqlite suite, live on the auto-deploying origin/dev
+     * path). It must now be a graceful 422 refused BEFORE any insert.
+     */
+    public function test_amount_below_currency_precision_is_refused_with_422_before_any_write(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'EUR',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $response = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '0.005',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertIsString($response->json('error'));
+
+        // Nothing written, nothing moved — on either driver.
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, RepositoryMovement::query()->count());
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'repository_adjustment')->count());
+
+        $freshRepo = $repo->fresh();
+        $this->assertNotNull($freshRepo);
+        $this->assertSame(0, bccomp((string) $freshRepo->balance, '500.00', 2));
+    }
+
+    /**
+     * Gate C2, scale-0 currency (XOF/XAF/JPY — `CurrencyScale::SCALE_MAP`):
+     * EVERY sub-unit amount normalizes to zero there, so the refusal must not be
+     * a scale-2 special case.
+     */
+    public function test_sub_unit_amount_on_a_zero_scale_currency_is_refused_with_422(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'XOF',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '0.500',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, RepositoryMovement::query()->count());
+    }
+
+    /**
+     * Gate I1 (fix round 1) — a replay must not post a SECOND journal entry.
+     * The GL post used to run unconditionally, ahead of record()'s idempotent
+     * short-circuit, minting an extra posted `repository_adjustment` entry with
+     * no compensating movement and nothing pointing at it. The controller now
+     * reuses the document's entry; the partial unique index on
+     * `journal_entries (source_type, source_id) WHERE … status='posted'` is the
+     * database-level backstop.
+     */
+    public function test_idempotent_replay_posts_exactly_one_journal_entry(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $pinnedAdjustmentId = (string) Str::uuid();
+        $payload = [
+            'direction' => 'out',
+            'amount' => '25.000',
+            'reason_code' => 'count_variance',
+            'reason_text' => 'Till was short at close.',
+        ];
+
+        $this->pinFirstGeneratedUuid($pinnedAdjustmentId);
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", $payload)
+            ->assertCreated();
+        Str::createUuidsNormally();
+
+        $this->pinFirstGeneratedUuid($pinnedAdjustmentId);
+        $second = $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", $payload)
+            ->assertCreated();
+        Str::createUuidsNormally();
+
+        $this->assertTrue($second->json('data.idempotent_replay'));
+
+        $entries = JournalEntry::query()
+            ->where('source_type', 'repository_adjustment')
+            ->where('source_id', $pinnedAdjustmentId)
+            ->get();
+        $this->assertCount(1, $entries, 'a replay must reuse the journal entry, not post a second one');
+
+        $adjustment = RepositoryAdjustment::query()->findOrFail($pinnedAdjustmentId);
+        $this->assertSame($entries->firstOrFail()->id, $adjustment->journal_entry_id);
+    }
+
+    /**
+     * Gate I5 (fix round 1) — the document justifies a posted journal entry and
+     * an append-only movement, so it is immutable apart from the write-once
+     * linkage backfill, and it can never be deleted.
+     */
+    public function test_document_refuses_mutation_and_deletion(): void
+    {
+        [$user, $company] = $this->makeUserWithPermissions(['treasury.adjust', 'treasury.view']);
+        app(CompanyContext::class)->setCompanyId($company->id);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $glAccount = $this->accountFor($user, $company, SystemAccountPurpose::Cash);
+
+        $repo = PaymentRepository::factory()->create([
+            'tenant_id' => $user->tenant_id,
+            'company_id' => $company->id,
+            'balance' => '500.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $glAccount->id,
+        ]);
+
+        $this->actingAs($user, 'sanctum')
+            ->postJson("/api/v1/payment-repositories/{$repo->id}/adjustments", [
+                'direction' => 'out',
+                'amount' => '25.000',
+                'reason_code' => 'count_variance',
+                'reason_text' => 'Till was short at close.',
+            ])
+            ->assertCreated();
+
+        $adjustment = RepositoryAdjustment::query()->firstOrFail();
+
+        // Amount rewrite refused.
+        $adjustment->amount = '1.000';
+        try {
+            $adjustment->save();
+            $this->fail('rewriting a document amount must throw');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('immutable', $e->getMessage());
+        }
+
+        // Repointing an already-set linkage column refused (write-once).
+        $fresh = RepositoryAdjustment::query()->findOrFail($adjustment->id);
+        $fresh->movement_id = (string) Str::uuid();
+        try {
+            $fresh->save();
+            $this->fail('repointing movement_id must throw');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('write-once', $e->getMessage());
+        }
+
+        // Deletion refused.
+        $fresh = RepositoryAdjustment::query()->findOrFail($adjustment->id);
+        try {
+            $fresh->delete();
+            $this->fail('deleting a document must throw');
+        } catch (\LogicException $e) {
+            $this->assertStringContainsString('permanent', $e->getMessage());
+        }
+
+        $this->assertSame(1, RepositoryAdjustment::query()->count());
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    protected function tearDown(): void
+    {
+        Str::createUuidsNormally();
+
+        parent::tearDown();
+    }
+
+    /**
+     * Pin the NEXT uuid the framework generates to $uuid; every later uuid in
+     * the same request falls back to a fresh random one. Caller resets with
+     * {@see Str::createUuidsNormally()}.
+     */
+    private function pinFirstGeneratedUuid(string $uuid): void
+    {
+        $consumed = false;
+
+        Str::createUuidsUsing(function () use ($uuid, &$consumed): UuidInterface {
+            if ($consumed) {
+                return Uuid::uuid4();
+            }
+
+            $consumed = true;
+
+            return Uuid::fromString($uuid);
+        });
+    }
 
     private function accountFor(User $user, Company $company, SystemAccountPurpose $purpose): Account
     {
