@@ -716,7 +716,9 @@
       "returningAllItems": "Retour de tous les {{count}} articles",
       "autoCreateCreditNote": "Créer automatiquement un avoir",
       "autoCreateCreditNoteHint": "Un avoir sera créé automatiquement lorsque ce retour sera confirmé",
-      "create": "Créer le bon de retour"
+      "create": "Créer le bon de retour",
+      "noSourceDocument": "Sélectionnez la facture ou le bon de livraison d'origine avant de créer le retour.",
+      "sourceHasNoPartner": "Ce document ne comporte aucun client ; un bon de retour ne peut donc pas en être créé. Ajoutez d'abord un client au document d'origine."
     },
     "summary": {
       "title": "Résumé des bons de retour",

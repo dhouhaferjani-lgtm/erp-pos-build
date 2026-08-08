@@ -97,7 +97,7 @@ describe('CreateReturnNoteForm', () => {
         sourceDocument: makeSourceDocument({
           lines: [{
             ...makeSourceDocument().lines![0],
-            quantity: 1,
+            quantity: '1',
             quantity_decimals: 3,
           }],
         }),
@@ -325,7 +325,13 @@ describe('CreateReturnNoteForm', () => {
       mockMutate.mockClear()
     })
 
-    it('sends correct payload for full return', async () => {
+    /**
+     * Plan CF T8 / CF-D9. THE test the lane exists for: assert the POSTED BODY against
+     * the backend contract. Before T8 nothing on either side did this — the backend
+     * tests posted the real shape by hand while the client posted an invented one, so
+     * both sides were green and the feature had never once worked.
+     */
+    it('posts the canonical document-create body for a full return', async () => {
       const user = userEvent.setup()
 
       renderForm({ sourceType: 'invoice' })
@@ -339,16 +345,38 @@ describe('CreateReturnNoteForm', () => {
       await waitFor(() => {
         expect(mockMutate).toHaveBeenCalledWith(
           expect.objectContaining({
+            // The three keys `CreateDocumentRequest` requires and the old payload never
+            // sent — each one of them a 422 on its own.
+            partner_id: 'partner-1',
+            document_date: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+            currency: 'TND',
+            // `source_document_id`, not the invented `source_invoice_id` (which is an
+            // index-endpoint query FILTER, accepted by no create route).
+            source_document_id: 'doc-1',
             return_reason: 'defective',
-            source_invoice_id: 'doc-1',
-            auto_create_credit_note: false,
+            lines: [
+              expect.objectContaining({
+                product_id: 'p1',
+                description: 'Test product 1',
+                quantity: '10',
+                unit_price: '100.00',
+              }),
+              expect.objectContaining({ product_id: 'p2' }),
+            ],
           }),
           expect.any(Object)
         )
       })
+
+      // `auto_create_credit_note` is accepted by NOTHING in apps/api/app — zero
+      // occurrences. Sending it was pure noise; it must not reappear.
+      const payload = mockMutate.mock.calls[0][0] as Record<string, unknown>
+      expect(payload).not.toHaveProperty('auto_create_credit_note')
+      expect(payload).not.toHaveProperty('source_invoice_id')
+      expect(payload).not.toHaveProperty('refund_method')
     })
 
-    it('sends lines for partial return', async () => {
+    it('posts only the selected lines, at their own quantities, for a partial return', async () => {
       const user = userEvent.setup()
 
       renderForm()
@@ -368,31 +396,63 @@ describe('CreateReturnNoteForm', () => {
       await waitFor(() => {
         expect(mockMutate).toHaveBeenCalledWith(
           expect.objectContaining({
-            lines: [{ line_id: 'line-1', quantity: 10 }],
+            lines: [
+              // A real line, not the `{line_id, quantity}` shape — which the server
+              // rejects for missing `description` and `unit_price`, and whose
+              // `line_id` is consumed by a different endpoint entirely.
+              expect.objectContaining({
+                product_id: 'p1',
+                description: 'Test product 1',
+                quantity: '10',
+                unit_price: '100.00',
+              }),
+            ],
           }),
           expect.any(Object)
         )
       })
+
+      const payload = mockMutate.mock.calls[0][0] as { lines: unknown[] }
+      expect(payload.lines).toHaveLength(1)
     })
 
-    it('includes auto_create_credit_note when checked', async () => {
+    /**
+     * Quantities are decimal STRINGS (frontend gate I-4). `parseInt(…) || 0` and a
+     * `min="1"` floor made a fractional return impossible for any unit with
+     * `decimal_places > 0` — 0.5 kg silently became 1 kg on a stock document.
+     */
+    it('posts a fractional quantity as a decimal string', async () => {
       const user = userEvent.setup()
 
-      renderForm({ sourceType: 'invoice' })
+      renderForm({
+        sourceDocument: makeSourceDocument({
+          lines: [{
+            ...makeSourceDocument().lines![0],
+            quantity: '10',
+            quantity_decimals: 3,
+          }],
+        }),
+      })
 
-      const autoCreateCheckbox = screen.getByRole('checkbox', { name: /automatically create credit note/i })
-      await user.click(autoCreateCheckbox)
+      const partialButton = screen.getByText('Partial Return')
+      await user.click(partialButton)
+
+      const checkboxes = screen.getAllByRole('checkbox', { name: '' })
+      await user.click(checkboxes[0])
+
+      const quantityInput = screen.getByRole('spinbutton')
+      await user.clear(quantityInput)
+      await user.type(quantityInput, '0.5')
 
       const reasonSelect = screen.getAllByRole('combobox')[0]
       await user.selectOptions(reasonSelect, 'defective')
 
-      const submitButton = screen.getByRole('button', { name: /save/i })
-      await user.click(submitButton)
+      await user.click(screen.getByRole('button', { name: /save/i }))
 
       await waitFor(() => {
         expect(mockMutate).toHaveBeenCalledWith(
           expect.objectContaining({
-            auto_create_credit_note: true,
+            lines: [expect.objectContaining({ quantity: '0.5' })],
           }),
           expect.any(Object)
         )

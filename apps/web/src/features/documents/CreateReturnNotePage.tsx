@@ -28,11 +28,12 @@ import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import type { Invoice } from '@/components/molecules/pickers/InvoiceSearchSelect'
 import type { DeliveryNote } from '@/components/molecules/pickers/DeliveryNoteSearchSelect'
-import type { ReturnReason } from '@/types/returnNote'
+import type { CreateReturnNoteRequest, ReturnReason } from '@/types/returnNote'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { formatQuantity } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 
 // Source type for return note
 type SourceType = 'delivery_note' | 'invoice'
@@ -70,7 +71,12 @@ interface DocumentLine {
   product_id: string
   product_code: string
   description: string
-  quantity: number
+  /**
+   * A decimal STRING (rule 19). It was `number`, which silently truncated fractional
+   * returns for any unit with `decimal_places > 0` — and the backend type has always
+   * been `DocumentLineData.quantity: string`.
+   */
+  quantity: string
   quantity_decimals?: number | null
   unit_price: string
   tax_rate: string
@@ -107,7 +113,7 @@ export function CreateReturnNotePage() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [selectedDeliveryNote, setSelectedDeliveryNote] = useState<DeliveryNote | null>(null)
   const [selectedLineIds, setSelectedLineIds] = useState<Set<string>>(new Set())
-  const [lineQuantities, setLineQuantities] = useState<Map<string, number>>(new Map())
+  const [lineQuantities, setLineQuantities] = useState<Map<string, string>>(new Map())
 
   // React Hook Form
   const {
@@ -123,10 +129,18 @@ export function CreateReturnNotePage() {
     },
   })
 
+  /**
+   * Plan CF T8 / CF-D9 (frontend gate C-2). `partner_id` and `currency` were BOTH
+   * absent here, and the backend requires `partner_id`. Because the type simply did not
+   * mention them, TypeScript could not catch the omission and the failure reached
+   * runtime as a 422.
+   */
   type DocumentDetailResponse = {
     document_number: string
     document_date: string
     partner?: { id: string; name: string } | null
+    partner_id: string | null
+    currency: string
     total: string
     lines: DocumentLine[]
   }
@@ -164,9 +178,11 @@ export function CreateReturnNotePage() {
     selectedLineIds.forEach((lineId) => {
       const line = documentLines.find(l => l.id === lineId)
       if (line) {
-        const quantity = lineQuantities.get(lineId) || line.quantity
-        const unitPrice = parseFloat(line.unit_price)
-        const taxRate = parseFloat(line.tax_rate)
+        // DISPLAY ONLY. These Numbers must never reach the payload — the posted
+        // quantities and prices are the strings themselves (rule 19).
+        const quantity = Number(lineQuantities.get(lineId) ?? line.quantity)
+        const unitPrice = Number(line.unit_price)
+        const taxRate = Number(line.tax_rate)
         const subtotal = unitPrice * quantity
         const tax = subtotal * (taxRate / 100)
         total += subtotal + tax
@@ -202,9 +218,18 @@ export function CreateReturnNotePage() {
     })
   }
 
-  // Update line quantity
-  const handleQuantityChange = (lineId: string, value: number, maxQuantity: number) => {
-    const quantity = Math.max(1, Math.min(value, maxQuantity))
+  /**
+   * Update a line's return quantity.
+   *
+   * Plan CF T8 / frontend gate I-4. The old signature took a `number` and clamped with
+   * `Math.max(1, …)`, which made a fractional return IMPOSSIBLE for any unit with
+   * `decimal_places > 0` — 0.5 kg became 1 kg, silently, on a stock document. The value
+   * is a decimal string end to end now, and the floor-at-1 clamp is gone; the cap
+   * against the source quantity survives, because over-returning is a real error the
+   * server also refuses.
+   */
+  const handleQuantityChange = (lineId: string, value: string, maxQuantity: string) => {
+    const quantity = Number(value) > Number(maxQuantity) ? maxQuantity : value
     setLineQuantities((prev) => {
       const newMap = new Map(prev)
       newMap.set(lineId, quantity)
@@ -212,33 +237,64 @@ export function CreateReturnNotePage() {
     })
   }
 
+  /**
+   * Build the create payload in the CANONICAL document-create shape.
+   *
+   * Plan CF T8 / CF-D9. Everything this used to send was invented client-side:
+   * `source_invoice_id` (an index-endpoint query filter), `auto_create_credit_note`
+   * (zero occurrences anywhere in `apps/api/app`), `refund_method` (not a create key),
+   * and `lines[].line_id` (consumed by `CreditNoteService`, a different endpoint).
+   * Meanwhile `partner_id`, `document_date` and the per-line `description` +
+   * `unit_price` the server requires were never sent at all. Both modes 422'd.
+   *
+   * `any` is gone with it — the payload is typed, so the next omission fails to
+   * compile instead of reaching runtime as a 422.
+   */
+  const buildCreatePayload = (
+    data: ReturnNoteFormData,
+    document: DocumentDetailResponse,
+  ): CreateReturnNoteRequest => {
+    const sourceId = sourceType === 'invoice' ? selectedInvoice?.id : selectedDeliveryNote?.id
+
+    const selected = lineMode === 'partial'
+      ? documentLines.filter((line) => selectedLineIds.has(line.id))
+      : documentLines
+
+    return {
+      // Non-null by construction: submit is blocked upstream when the source document
+      // carries no partner (see onSubmit) rather than posting a null the server refuses.
+      partner_id: document.partner_id as string,
+      document_date: new Date().toISOString().slice(0, 10),
+      currency: document.currency,
+      ...(sourceId ? { source_document_id: sourceId } : {}),
+      return_reason: data.return_reason,
+      ...(data.return_condition ? { return_condition: data.return_condition } : {}),
+      ...(data.notes ? { notes: data.notes } : {}),
+      lines: selected.map((line) => ({
+        ...(line.product_id ? { product_id: line.product_id } : {}),
+        description: line.description,
+        // Strings end to end. `unit_price` is the source line's net/HT value copied
+        // VERBATIM — never round-tripped through a number (rule 19).
+        quantity: lineMode === 'partial'
+          ? (lineQuantities.get(line.id) ?? line.quantity)
+          : line.quantity,
+        unit_price: line.unit_price,
+        tax_rate: line.tax_rate,
+      })),
+    }
+  }
+
   // Create return note mutation
   const createMutation = useMutation({
     mutationFn: async (data: ReturnNoteFormData) => {
-      const payload: any = {
-        return_reason: data.return_reason,
-        ...(data.return_condition && { return_condition: data.return_condition }),
-        ...(data.refund_method && { refund_method: data.refund_method }),
-        ...(data.notes && { notes: data.notes }),
-        auto_create_credit_note: data.auto_create_credit_note,
+      if (!currentDocument) {
+        throw new Error(t('sales:returnNotes.form.noSourceDocument'))
       }
 
-      // Add source document
-      if (sourceType === 'invoice' && selectedInvoice) {
-        payload.source_invoice_id = selectedInvoice.id
-      } else if (sourceType === 'delivery_note' && selectedDeliveryNote) {
-        payload.source_delivery_note_id = selectedDeliveryNote.id
-      }
-
-      // Add lines for partial return
-      if (lineMode === 'partial' && selectedLineIds.size > 0) {
-        payload.lines = Array.from(selectedLineIds).map((lineId) => ({
-          line_id: lineId,
-          quantity: lineQuantities.get(lineId) || 0,
-        }))
-      }
-
-      const response = await api.post<{ data?: { id?: string }; id?: string }>('/return-notes', payload)
+      const response = await api.post<{ data?: { id?: string }; id?: string }>(
+        '/return-notes',
+        buildCreatePayload(data, currentDocument),
+      )
       return response.data
     },
     onSuccess: async (createdReturnNote) => {
@@ -258,6 +314,15 @@ export function CreateReturnNotePage() {
     // Validate line selection for partial mode
     if (lineMode === 'partial' && selectedLineIds.size === 0) {
       toast.error(t('sales:returnNotes.form.noLinesSelected'))
+      return
+    }
+
+    // Plan CF T8, null-partner path. `partner_id` is `required` on the server, and a
+    // source document CAN legitimately have no partner. Block here with a translated
+    // message rather than posting a null and letting the user discover it as a raw 422
+    // — the whole point of repairing this contract was to stop doing that.
+    if (!currentDocument?.partner_id) {
+      toast.error(t('sales:returnNotes.form.sourceHasNoPartner'))
       return
     }
 
@@ -477,10 +542,12 @@ export function CreateReturnNotePage() {
                     <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
                       {documentLines.map((line) => {
                         const isSelected = selectedLineIds.has(line.id)
-                        const returnQty = lineQuantities.get(line.id) || line.quantity
-                        const unitPrice = parseFloat(line.unit_price)
-                        const taxRate = parseFloat(line.tax_rate)
-                        const subtotal = unitPrice * returnQty
+                        const returnQty = lineQuantities.get(line.id) ?? line.quantity
+                        // DISPLAY ONLY — these Numbers never reach the payload, which
+                        // carries the source strings verbatim (rule 19).
+                        const unitPrice = Number(line.unit_price)
+                        const taxRate = Number(line.tax_rate)
+                        const subtotal = unitPrice * Number(returnQty)
                         const tax = subtotal * (taxRate / 100)
                         const total = subtotal + tax
 
@@ -504,16 +571,23 @@ export function CreateReturnNotePage() {
                             </td>
                             <td className="px-3 py-3 text-end">
                               {isSelected ? (
-                                <input
-                                  type="number"
-                                  min="1"
-                                  max={line.quantity}
+                                /*
+                                 * Plan CF T8 / frontend gate I-4. This was a raw numeric
+                                 * input floored at 1, whose onChange ran
+                                 * `parseInt(...) || 1`, so a 0.5 kg return became 1 kg
+                                 * — silently, on a stock document, for every unit with
+                                 * decimal_places > 0. QuantityInput keeps the value a
+                                 * canonical decimal string end to end and takes its
+                                 * step from the product unit's own precision. The
+                                 * floor-at-1 clamp is deliberately NOT carried over.
+                                 */
+                                <QuantityInput
                                   value={returnQty}
-                                  onChange={(e) => {
-                                    handleQuantityChange(line.id, parseInt(e.target.value) || 1, line.quantity)
-                                  }}
+                                  onChange={(value) => { handleQuantityChange(line.id, value, line.quantity) }}
+                                  decimalPlaces={getQuantityDecimals(line)}
+                                  max={line.quantity}
                                   disabled={isSubmitting}
-                                  className={`w-20 rounded-md ${colorClasses.borderGray300} px-2 py-1 text-sm text-end`}
+                                  className="w-24 text-end"
                                 />
                               ) : (
                                 <span className={`text-sm ${colorClasses.textGray400}`}>-</span>

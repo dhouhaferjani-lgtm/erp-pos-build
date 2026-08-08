@@ -119,14 +119,27 @@ export function useCreateReturnNote() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('return-notes', tenantId, companyId),
         }),
-        returnNote.metadata.source_invoice_id
+        // Plan CF T8. `returnNote.metadata` never existed on any response — the
+        // endpoint returns `DocumentData::fromModel()`, which has no `metadata` key,
+        // and `ReturnNoteMetadata` is instantiated nowhere in `apps/api/app`. Reading
+        // it threw the moment a create succeeded, which before T8 it never did.
+        //
+        // One `source_document_id` replaces the two invented keys, and the source could
+        // be either an invoice or a delivery note, so both prefixes are invalidated.
+        //
+        // These stay BARE literal prefixes on purpose: `invalidateQueries` is a cache
+        // FILTER factory whose `queryKey` is a positional PREFIX matcher, and
+        // `tenantScopedKey` appends SUFFIXES — wrapping a filter is a proven no-op that
+        // `audit-tanstack-keys.mjs` flags as an error. Storage keys get
+        // `tenantScopedKey`; cache filters stay bare.
+        returnNote.source_document_id
           ? queryClient.invalidateQueries({
-            queryKey: ['invoice', returnNote.metadata.source_invoice_id],
+            queryKey: ['invoice', returnNote.source_document_id],
           })
           : Promise.resolve(),
-        returnNote.metadata.source_delivery_note_id
+        returnNote.source_document_id
           ? queryClient.invalidateQueries({
-            queryKey: ['delivery-note', returnNote.metadata.source_delivery_note_id],
+            queryKey: ['delivery-note', returnNote.source_document_id],
           })
           : Promise.resolve(),
         queryClient.invalidateQueries({

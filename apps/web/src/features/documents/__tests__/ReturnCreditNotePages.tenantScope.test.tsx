@@ -169,6 +169,10 @@ const documentDetail = {
   document_date: '2026-05-11',
   partner: { id: 'partner-1', name: 'Partner' },
   partner_id: 'partner-1',
+  // Plan CF T8 / CF-D9: the create payload carries the source document's currency, and
+  // `partner_id` is `required` on the server. Both were absent from the page's response
+  // type, which is why TypeScript could not catch the omission.
+  currency: 'TND',
   total: '10.000',
   lines: [
     {
@@ -177,7 +181,8 @@ const documentDetail = {
       product_code: 'P-1',
       product_name: 'Product 1',
       description: 'Product 1',
-      quantity: 1,
+      // A decimal STRING, matching DocumentLineData (rule 19).
+      quantity: '1',
       unit_price: '10.000',
       tax_rate: '0.000',
       total: '10.000',
@@ -301,8 +306,18 @@ describe('return and credit note page tenant scope', () => {
     await user.click(screen.getByRole('button', { name: 'sales:returnNotes.form.create' }))
 
     await waitFor(() => {
+      // Plan CF T8 / CF-D9: the CANONICAL document-create shape. `source_invoice_id`
+      // was never a create key — it is an index-endpoint query filter.
       expect(mockApiPost).toHaveBeenCalledWith('/return-notes', expect.objectContaining({
-        source_invoice_id: 'invoice-1',
+        partner_id: 'partner-1',
+        currency: 'TND',
+        source_document_id: 'invoice-1',
+        lines: [expect.objectContaining({
+          product_id: 'product-1',
+          description: 'Product 1',
+          quantity: '1',
+          unit_price: '10.000',
+        })],
       }))
       expect(queryClient.getQueryState(['return-notes', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
       expect(mockNavigate).toHaveBeenCalledWith('/sales/return-notes/created-1')

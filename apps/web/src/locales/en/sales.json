@@ -716,7 +716,9 @@
       "returningAllItems": "Returning all {{count}} items",
       "autoCreateCreditNote": "Automatically create credit note",
       "autoCreateCreditNoteHint": "A credit note will be created automatically when this return is confirmed",
-      "create": "Create Return Note"
+      "create": "Create Return Note",
+      "noSourceDocument": "Select the invoice or delivery note the goods came from before creating the return.",
+      "sourceHasNoPartner": "This document has no customer on it, so a return note cannot be created from it. Add a customer to the source document first."
     },
     "summary": {
       "title": "Return Note Summary",
