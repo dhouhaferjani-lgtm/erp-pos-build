@@ -10,7 +10,8 @@
 The Import module handles:
 - Bulk import of products, customers, suppliers
 - Legacy ERP migration (opening balances, historical data)
-- Ongoing data feeds (price lists, inventory updates)
+- Ongoing data feeds (price lists, catalog updates) — note that stock QUANTITY
+  is not importable on an ongoing basis; see "Stock Levels — RETIRED" below
 - Data validation and error handling
 
 ---
@@ -44,7 +45,9 @@ Level 3 (Items)
 └── Products (requires suppliers, categories)
 
 Level 4 (State)
-├── Stock Levels (requires products, locations)
+├── Opening stock — carried BY the Products import (quantity + purchase_price
+│                   + location_code), not a separate step. See "Opening stock"
+│                   below; the standalone Stock Levels import is RETIRED.
 └── Opening Balances (requires customers, suppliers)
 ```
 
@@ -165,24 +168,48 @@ For legacy ERP migrations, provide a guided flow:
 - Prices must be positive numbers
 - Tax codes must exist
 
-### Stock Levels
+### Stock Levels — RETIRED (owner ruling D4, 2026-08-08)
 
-**Required Fields:**
-- `sku` - Product reference
-- `location` - Location code
-- `quantity` - Current quantity
+**Do not use. There is no `stock_levels` import.** The API refuses
+`POST /api/v1/imports` with `type=stock_levels` (422, validation error on
+`type`), refuses the CSV template, and the migration wizard no longer offers it.
+The enum case survives *only* so pre-deprecation jobs stay readable in the
+import history.
 
-**Optional Fields:**
-- `average_cost`
+It was the first import ever implemented, and it set an **absolute** quantity
+through `InventoryService::upsertStockLevel` — a bare `StockLevel::updateOrCreate`
+with **no stock movement, no justifying document, no WAC or GL posting**, and
+`reserved` silently reset to 0. That made every quantity it wrote invisible to
+the ledger-based detectors. The writer has been deleted.
 
-**Validation Rules:**
-- Product (SKU) must exist
-- Location must exist
-- Quantity must be >= 0
+> **Correction:** earlier revisions of this page claimed the import "creates a
+> stock adjustment transaction". It never did — that is precisely the defect
+> that retired it. No `stock_movements` row was ever written by this path.
 
-**Behavior:**
-- Creates stock adjustment transaction
-- Sets initial average cost if provided
+**Use the Products import instead.** It carries the same data and routes it
+through the compliant opening-stock path.
+
+#### Opening stock (the supported path)
+
+Add these columns to your **Products** import file:
+
+| Column | Purpose |
+|---|---|
+| `quantity` | Opening quantity on hand |
+| `purchase_price` | Unit cost, seeds the weighted-average cost |
+| `location_code` | Where the stock sits |
+
+Behaviour — `ProductOpeningStockPhase` → `OpeningBalancePostingService`:
+- Posts a real **Opening** `stock_movement` (a document-backed action).
+- Seeds the weighted-average cost from `purchase_price`.
+- Writes the matching GL entry.
+- **Enter-once guard:** a second opening for the same product raises
+  `OpeningAlreadyExistsException` rather than silently overwriting.
+- **Reset affordance:** to correct an opening, use `ResetOpeningBalanceService`,
+  which reverses the original movement instead of clobbering the quantity.
+
+To *change* stock after opening, use a document: Purchase Order → Goods Receipt
+Note for increases, or a stock adjustment/count for corrections.
 
 ### Opening Balances
 
@@ -454,9 +481,10 @@ function ImportValidationGrid({ jobId }) {
 ```php
 class ImportDependencyChecker
 {
+    // NOTE: 'stock_levels' was removed here — the import type is retired
+    // (owner ruling D4). Opening stock rides the products import.
     private array $dependencies = [
         'products' => ['categories', 'suppliers'],
-        'stock_levels' => ['products', 'locations'],
         'opening_balances' => ['customers', 'suppliers'],
     ];
 

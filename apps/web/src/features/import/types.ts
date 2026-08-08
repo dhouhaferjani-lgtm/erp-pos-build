@@ -21,7 +21,20 @@ export type ImportType =
  */
 export const DEPRECATED_IMPORT_TYPES = ['stock_levels'] as const satisfies readonly ImportType[]
 
-export function isDeprecatedImportType(type: ImportType): boolean {
+export type DeprecatedImportType = (typeof DEPRECATED_IMPORT_TYPES)[number]
+
+/**
+ * The import types a user can still start.
+ *
+ * Use this — not `ImportType` — as the key of any per-type config map the
+ * wizard needs, so TypeScript keeps enforcing exhaustiveness for every LIVE
+ * type. A `Partial<Record<ImportType, …>>` would silently accept a future type
+ * with no entry.
+ */
+export type LiveImportType = Exclude<ImportType, DeprecatedImportType>
+
+/** Type predicate, so callers narrow to `LiveImportType` in the else branch. */
+export function isDeprecatedImportType(type: ImportType): type is DeprecatedImportType {
   return (DEPRECATED_IMPORT_TYPES as readonly ImportType[]).includes(type)
 }
 

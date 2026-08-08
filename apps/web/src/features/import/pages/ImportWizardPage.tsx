@@ -24,7 +24,7 @@ import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
 import { isDeprecatedImportType } from '../types'
-import type { ImportJobOptions, ImportType, LocationNodeType } from '../types'
+import type { ImportJobOptions, ImportType, LiveImportType, LocationNodeType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Select } from '@/components/atoms/Select/Select'
@@ -118,9 +118,12 @@ function defaultPlacementNodeType(depth: number): LocationNodeType {
 }
 
 // Target columns per import type.
-// Partial: retired types (see DEPRECATED_IMPORT_TYPES) have no columns because
-// they can no longer be imported — the wizard short-circuits before reading this.
-const TARGET_COLUMNS: Partial<Record<ImportType, { name: string; required: boolean; description?: string }[]>> = {
+// Keyed by LiveImportType, NOT ImportType: retired types are excluded from the
+// key set (they can no longer be imported), while every type that IS live must
+// still have an entry or this fails to compile. Do not widen this to a Partial —
+// a live type with no entry would give `isMappingValid` an empty required-column
+// list, i.e. "valid" with zero mappings.
+const TARGET_COLUMNS: Record<LiveImportType, { name: string; required: boolean; description?: string }[]> = {
   parties: [
     { name: 'name', required: true },
     { name: 'type', required: true },
@@ -567,8 +570,11 @@ export function ImportWizardPage() {
 
   // Check if mapping is valid
   const isMappingValid = useMemo(() => {
-    const targetCols = TARGET_COLUMNS[importType] ?? []
-    const requiredCols = targetCols.filter((c) => c.required).map((c) => c.name)
+    // A retired type can never be mapped — and must not fall through to
+    // `every()` over an empty required list, which would report "valid".
+    if (isDeprecatedImportType(importType)) return false
+
+    const requiredCols = TARGET_COLUMNS[importType].flatMap((c) => (c.required ? [c.name] : []))
     const mappedTargets = new Set(Object.values(columnMapping))
     return requiredCols.every((col) => mappedTargets.has(col))
   }, [importType, columnMapping])
@@ -662,7 +668,7 @@ export function ImportWizardPage() {
 
             <ColumnMapper
               sourceColumns={sourceColumns}
-              targetColumns={TARGET_COLUMNS[importType] ?? []}
+              targetColumns={isDeprecatedImportType(importType) ? [] : TARGET_COLUMNS[importType]}
               suggestions={suggestions}
               mapping={columnMapping}
               onMappingChange={setColumnMapping}
