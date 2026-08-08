@@ -20,6 +20,9 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
@@ -30,6 +33,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\MultiPaymentService;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -446,8 +450,11 @@ final class PaymentReversalDocumentTest extends TestCase
             'Cr the repository GL account at the net',
         );
 
+        // Scoped to the REFUND-sourced leg: the fixture's opening balance is itself
+        // a (port-recorded) movement on this repository.
         $movements = DB::table('repository_movements')
             ->where('payment_repository_id', $repository->id)
+            ->where('source_type', MovementSourceType::Refund->value)
             ->get();
         self::assertCount(1, $movements);
         self::assertSame('out', (string) $movements->first()->direction);
@@ -567,6 +574,9 @@ final class PaymentReversalDocumentTest extends TestCase
     {
         $paymentsBefore = Payment::query()->count();
         $allocationsBefore = PaymentAllocation::query()->count();
+        // Relative, not absolute: a ledgered-repository fixture carries a
+        // port-recorded opening-balance movement of its own.
+        $movementsBefore = DB::table('repository_movements')->count();
 
         try {
             $this->refundService->reversePayment($original, 'must refuse', $this->user->id);
@@ -586,7 +596,11 @@ final class PaymentReversalDocumentTest extends TestCase
             0,
             Payment::query()->where('payment_type', PaymentType::Reversal->value)->count(),
         );
-        $this->assertDatabaseCount('repository_movements', 0);
+        self::assertSame(
+            $movementsBefore,
+            DB::table('repository_movements')->count(),
+            'no cash movement was recorded',
+        );
         self::assertSame(
             0,
             JournalEntry::query()->where('company_id', $this->company->id)
@@ -713,8 +727,13 @@ final class PaymentReversalDocumentTest extends TestCase
 
     /**
      * `balance` and `currency` are PORT-MANAGED on `PaymentRepository` (Task 22)
-     * and deliberately not fillable, so the fixture seeds them with a direct
-     * column write — the only way to stand up an opening balance in a test.
+     * and deliberately not fillable.
+     *
+     * `currency` is seeded with a direct column write (the `forbid_direct_balance_write`
+     * trigger guards `balance` only). The opening BALANCE must go through
+     * `TreasuryMovementService` — a Postgres trigger rejects any direct write to
+     * that column, and it is a no-op on SQLite, so a direct update passes locally
+     * and fails on the real database.
      */
     private function ledgeredRepository(string $currency = 'EUR'): PaymentRepository
     {
@@ -730,7 +749,28 @@ final class PaymentReversalDocumentTest extends TestCase
 
         DB::table('payment_repositories')
             ->where('id', $repository->id)
-            ->update(['balance' => '1000.000', 'currency' => $currency]);
+            ->update(['currency' => $currency]);
+
+        $repository->refresh();
+
+        DB::transaction(fn () => app(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $repository->tenant_id,
+            companyId: $repository->company_id,
+            direction: MovementDirection::In,
+            amount: '1000.000',
+            currency: $repository->currency,
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $repository->id,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'Test fixture opening balance',
+            allowWhileFrozen: false,
+        )));
 
         return $repository->fresh() ?? $repository;
     }
