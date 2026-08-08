@@ -21,6 +21,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
+use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Product\Domain\Product;
@@ -37,7 +38,11 @@ use Tests\TestCase;
  *
  * `restock` restores stock (unless the product's own `RestockPolicyResolver`
  * resolves `RestockPolicy::Never` — "regulated never-restock honored");
- * `scrap` / `not_received` do not.
+ * `not_received` does nothing at all.
+ *
+ * `scrap` (DPA V10) writes the canonical TWO-LEG pair — restore (+qty) then a
+ * cost-bearing, GL-posted write-off (−qty) — so the net sellable quantity is
+ * unchanged while the destruction is properly documented and costed.
  *
  * Rule 20 — every `apply()` call clears `CompanyContext` first.
  */
@@ -165,7 +170,8 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             $writeOff->occurred_at->toIso8601String(),
         );
 
-        // Movement-keyed Dr COGS / Cr Inventory. EUR scale 2: 2.000 × 3 = 6.00
+        // Movement-keyed Dr COGS / Cr Inventory. EUR scale 2: 2.000 × 3 = 6.00,
+        // persisted at the journal_lines decimal(_,3) storage scale.
         $entry = JournalEntry::query()
             ->where('company_id', $this->companyId)
             ->where('source_type', 'batch_write_off')
@@ -173,8 +179,8 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             ->with('lines')
             ->sole();
 
-        self::assertSame('6.00', (string) $entry->lines->firstWhere('debit', '>', '0')->debit);
-        self::assertSame('6.00', (string) $entry->lines->firstWhere('credit', '>', '0')->credit);
+        self::assertSame('6.000', (string) $entry->lines->firstWhere('debit', '>', '0')->debit);
+        self::assertSame('6.000', (string) $entry->lines->firstWhere('credit', '>', '0')->credit);
     }
 
     /**
@@ -256,6 +262,45 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
         $stockLevel->refresh();
         self::assertSame('5.0000', $stockLevel->quantity, 'regulated never-restock policy must be honored even when disposition=restock');
+    }
+
+    /**
+     * A projector may never REJECT an already-signed event (Model 1 §4.1).
+     * When the scrap pair cannot complete — here: no `stock_levels` row exists
+     * at the terminal's location, so the restore leg no-ops and the write-off
+     * leg cannot issue — the SAVEPOINT rolls BOTH legs back. `apply()` must
+     * still succeed, the receipt must still project, and no half-applied
+     * phantom `+qty` restore may survive.
+     */
+    public function test_scrap_disposition_failure_rolls_back_both_legs_without_failing_the_projection(): void
+    {
+        $this->seedWriteOffAccounts();
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+
+        // Deliberately NO stock_levels row for this product/location.
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $this->project($sale);
+
+        $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
+        $this->project($refund);
+
+        // The refund receipt still projected (the projector did not reject it).
+        self::assertTrue(
+            Receipt::query()->where('fiscal_event_id', $refund->id)->exists(),
+        );
+
+        // Neither leg survived, and no zero-quantity stock row was left behind.
+        self::assertSame(0, StockMovement::query()->where('product_id', $product->id)->count());
+        self::assertSame(0, StockLevel::query()->where('product_id', $product->id)->count());
+        self::assertSame(0, JournalEntry::query()
+            ->where('company_id', $this->companyId)
+            ->where('source_type', 'batch_write_off')
+            ->count());
     }
 
     // =================================================================

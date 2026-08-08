@@ -28,6 +28,7 @@ use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\PosPaymentPolicyResolver;
+use App\Modules\POS\Application\Services\ReturnScrapWriteOffService;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\PaymentInstrumentKind;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -171,6 +172,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly AuditService $auditService,
         private readonly PosPaymentPolicyResolver $posPaymentPolicyResolver,
         private readonly RestockPolicyResolver $restockPolicyResolver,
+        private readonly ReturnScrapWriteOffService $returnScrapWriteOffService,
     ) {}
 
     public function name(): string
@@ -1812,12 +1814,17 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *     regulated/controlled item's disposition=restock is silently
      *     NOT applied rather than corrupting sellable stock; logged for
      *     operator visibility).
-     *   - `scrap` / `not_received` — no stock movement at all (net stock
-     *     effect zero either way; unlike the legacy interactive
-     *     `ReceiptReturnService::restoreStock()`+`writeOffReturnedStock()`
-     *     pair, this does not additionally write a paired audit-trail
-     *     movement — a deliberate simplification for this launch, not an
-     *     attempt to reproduce the legacy write-off ledger entries here).
+     *   - `not_received` — no stock movement at all (the goods never came
+     *     back, so there is nothing to restore and nothing to destroy).
+     *   - `scrap` — the SAME two-leg pair the interactive server return path
+     *     writes (DPA V10): restore (`+qty`, `pos_return`) then a COST-BEARING
+     *     write-off (`−qty`, `write_off`, Dr COGS / Cr Inventory keyed on the
+     *     movement) via `ReturnScrapWriteOffService`. Net sellable quantity is
+     *     unchanged — exactly as when this branch skipped entirely — but the
+     *     destruction is now a costed, GL-posted act instead of an invisible
+     *     one. `RestockPolicy::Never` is deliberately NOT consulted here: a
+     *     regulated never-restock item being DESTROYED is the correct outcome,
+     *     and the pair never leaves it sellable.
      */
     private function restockForLines(
         string $receiptId,
@@ -1838,8 +1845,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 if ($reference !== null) {
                     $disposition = ReturnLineDisposition::tryFrom($reference->disposition);
 
-                    if ($disposition === ReturnLineDisposition::NotReceived
-                        || $disposition === ReturnLineDisposition::Scrap) {
+                    if ($disposition === ReturnLineDisposition::NotReceived) {
+                        continue;
+                    }
+
+                    if ($disposition === ReturnLineDisposition::Scrap) {
+                        $this->applyScrapDisposition(
+                            receiptId: $receiptId,
+                            event: $event,
+                            terminal: $terminal,
+                            view: $view,
+                            productId: $productId,
+                            quantity: $line->quantity,
+                            variantId: $line->variantId,
+                        );
+
                         continue;
                     }
 
@@ -1871,6 +1891,87 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // occurred_at = DEVICE event time of the refund/void event.
                 occurredAt: $event->event_time_device,
             );
+        }
+    }
+
+    /**
+     * SCRAP disposition on a v4 REFUND line — DPA V10.
+     *
+     * Writes the SAME two-leg pair as the interactive server return path
+     * (`ReceiptReturnService`): the goods come back (`restockStock`, `+qty`),
+     * then they are destroyed by a cost-bearing, GL-posted write-off
+     * (`ReturnScrapWriteOffService`, `−qty`). Net sellable quantity is
+     * unchanged, so this is a pure ADDITION of ledger truth on top of the
+     * previous "skip entirely" behavior — no stock figure moves that did not
+     * move before.
+     *
+     * **Replay safety.** `apply()` is guarded by the `pos_receipts.fiscal_event_id`
+     * idempotency probe, so a re-projected event never reaches this method a
+     * second time; the write-off journal entry is additionally keyed on the
+     * movement id, so it cannot duplicate independently.
+     *
+     * **A projector may never REJECT an already-signed event** (Model 1, §4.1).
+     * The pair therefore runs inside its own SAVEPOINT: if either leg throws
+     * (absent stock row, variant-grain mismatch, insufficient available
+     * quantity), BOTH legs roll back and the line falls back to the previous
+     * net-zero / no-movement outcome, logged for operator follow-up, rather
+     * than leaving the restore leg stranded as a phantom `+qty`.
+     *
+     * Rule 20: no `CompanyContext` is touched — the currency comes from the
+     * canonical payload and is passed explicitly.
+     */
+    private function applyScrapDisposition(
+        string $receiptId,
+        FiscalEvent $event,
+        Terminal $terminal,
+        SaleReceiptCanonicalView $view,
+        string $productId,
+        string $quantity,
+        ?string $variantId,
+    ): void {
+        // Canonical `line_items[].quantity` is a positive decimal magnitude
+        // (enforced by FiscalPayloadConstraintValidator's quantity regex) —
+        // same narrowing `restockStock` applies to the identical value.
+        /** @var numeric-string $qty */
+        $qty = $quantity;
+
+        try {
+            DB::transaction(function () use ($receiptId, $event, $terminal, $view, $productId, $quantity, $qty, $variantId): void {
+                $this->restockStock(
+                    tenantId: $event->tenant_id,
+                    companyId: $event->company_id,
+                    locationId: (string) $terminal->location_id,
+                    productId: $productId,
+                    quantity: $quantity,
+                    receiptId: $receiptId,
+                    cashierId: $event->operator_id,
+                    variantId: $variantId,
+                    occurredAt: $event->event_time_device,
+                );
+
+                $this->returnScrapWriteOffService->writeOff(
+                    tenantId: $event->tenant_id,
+                    companyId: $event->company_id,
+                    locationId: (string) $terminal->location_id,
+                    productId: $productId,
+                    quantity: $qty,
+                    returnReceiptId: $receiptId,
+                    returnReceiptNumber: $view->payload->receiptUuid,
+                    currencyCode: $view->payload->currencyCode,
+                    cashierId: $event->operator_id,
+                    variantId: $variantId,
+                    occurredAt: $event->event_time_device,
+                );
+            });
+        } catch (\Throwable $e) {
+            Log::error('PosCoreReceiptProjection: scrap-disposition write-off failed; both legs rolled back, no stock movement recorded for this line', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

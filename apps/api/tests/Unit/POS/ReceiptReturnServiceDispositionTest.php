@@ -17,6 +17,7 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\LegacyCorrectionGuard;
 use App\Modules\POS\Application\Services\ReceiptFinalizationService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
+use App\Modules\POS\Application\Services\ReturnScrapWriteOffService;
 use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
@@ -97,6 +98,7 @@ class ReceiptReturnServiceDispositionTest extends TestCase
             $this->app->make(ReceiptHashService::class),
             $this->app->make(RestockPolicyResolver::class),
             $this->app->make(LegacyCorrectionGuard::class),
+            $this->app->make(ReturnScrapWriteOffService::class),
         );
     }
 
@@ -286,8 +288,14 @@ class ReceiptReturnServiceDispositionTest extends TestCase
         $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('reason', 'pos_return')->count());
         $this->assertSame(1, StockMovement::where('product_id', $product->id)->where('reason', 'write_off')->count());
 
+        // DPA V10: the write-off leg now goes through the compliant chain
+        // (StockAdjustmentService::issue), so its movement_type is the canonical
+        // decrement type ISSUE — the same shape BatchWriteOffService produces —
+        // instead of the ad-hoc ADJUSTMENT the raw pre-V10 INSERT wrote. The
+        // reference_type string is UNCHANGED (it is now the backing value of
+        // StockMovementReferenceType::PosReceiptReturnScrap).
         $writeOff = StockMovement::where('product_id', $product->id)->where('reason', 'write_off')->firstOrFail();
-        $this->assertSame(MovementType::Adjustment->value, $writeOff->movement_type->value);
+        $this->assertSame(MovementType::Issue->value, $writeOff->movement_type->value);
         $this->assertSame('pos_receipt_return_scrap', $writeOff->reference_type);
 
         // Batch stock NOT inflated — restitution was skipped for SCRAP.

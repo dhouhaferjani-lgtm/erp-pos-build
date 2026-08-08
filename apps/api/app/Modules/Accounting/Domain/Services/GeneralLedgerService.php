@@ -4350,8 +4350,19 @@ final class GeneralLedgerService
         ?string $postedByUserId = null,
         ?string $currencyCode = null,
     ): ?JournalEntry {
+        // Rule 19/20: prefer the EXPLICIT currency when the caller supplied one.
+        // A bare no-arg getScale() reads CompanyContext, which is unbound in
+        // queued/projection contexts (the POS scrap write-off posts from the
+        // fiscal projector) and throws there — silently swallowing the entry via
+        // the callers' RuntimeException guard. Request-context callers already
+        // pass their own company currency, so this is behaviour-identical for
+        // them.
+        $scale = $currencyCode !== null
+            ? $this->scaleResolver->getScale($currencyCode)
+            : $this->scale();
+
         /** @var numeric-string $amount */
-        if (bccomp($amount, '0', $this->scale()) <= 0) {
+        if (bccomp($amount, '0', $scale) <= 0) {
             return null;
         }
 

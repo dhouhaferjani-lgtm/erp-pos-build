@@ -53,4 +53,21 @@ enum StockMovementReferenceType: string
      * the movement (count correction or onboarding opening).
      */
     case InventoryCounting = 'inventory_counting';
+
+    /**
+     * A `pos_receipts` RETURN receipt whose line carried `disposition = scrap`
+     * — the document that justifies DESTROYING the returned goods (DPA V10).
+     *
+     * The return receipt itself only justifies the RE-ENTRY leg (`+qty`,
+     * `MovementReason::POSReturn`, still written raw by the POS return/refund
+     * paths — their own lane). The scrap leg is a second, economically distinct
+     * act (`−qty`, `MovementReason::WriteOff`, cost-bearing, GL-posted), so it
+     * gets its own reference type rather than sharing the re-entry leg's.
+     *
+     * The backing value is the string the pre-DPA raw write-off already wrote
+     * (`ReceiptReturnService::writeOffReturnedStock()`); it is preserved
+     * verbatim so historical rows and this seam share one vocabulary and no
+     * existing reader has to be migrated.
+     */
+    case PosReceiptReturnScrap = 'pos_receipt_return_scrap';
 }
