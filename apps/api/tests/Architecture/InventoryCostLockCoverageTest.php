@@ -31,14 +31,15 @@ final class InventoryCostLockCoverageTest extends TestCase
     public static function mustLockProvider(): array
     {
         return [
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordPurchase'],
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordReturn'],
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordCostAdjustment'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function receive'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjust'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function transfer'],
-            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post'],
-            ['app/Modules/Inventory/Application/Services/InventoryService.php', 'public function upsertStockLevel'],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordPurchase('],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordReturn('],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordCostAdjustment('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function receive('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjust('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjustByDelta('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function transfer('],
+            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post('],
+            ['app/Modules/Inventory/Application/Services/InventoryService.php', 'public function upsertStockLevel('],
         ];
     }
 
@@ -51,8 +52,8 @@ final class InventoryCostLockCoverageTest extends TestCase
     public static function mustNotLockProvider(): array
     {
         return [
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordSale'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function issue'],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordSale('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function issue('],
         ];
     }
 
@@ -105,11 +106,12 @@ final class InventoryCostLockCoverageTest extends TestCase
     public static function multiProductSeamCallerProvider(): array
     {
         return [
-            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete'],
-            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel'],
-            ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function receiveGoods'],
-            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post'],
-            ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm'],
+            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete('],
+            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel('],
+            ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function receiveGoods('],
+            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post('],
+            ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm('],
+            ['app/Modules/Inventory/Application/Services/StockAdjustmentDocumentService.php', 'public function post('],
         ];
     }
 
@@ -151,6 +153,44 @@ final class InventoryCostLockCoverageTest extends TestCase
                 .'deadlocks (see WAC foundation review r2/r3/r4).'
             );
         }
+    }
+
+    /**
+     * DPA V7 / T2 (inventory gate I-2) — close the PREFIX hole.
+     *
+     * extractMethodBody() locates a method with a bare `strpos($source,
+     * $signature)`, and `'public function adjust'` is a PREFIX of
+     * `'public function adjustByDelta'`. If the new method were ever declared
+     * ABOVE adjust(), the `adjust` row would extract the WRONG body, both bodies
+     * contain `costLock->acquire`, the assertion would pass — and the pin on
+     * adjust() would be silently gone.
+     *
+     * Every provider row now carries a trailing `(` so the paren disambiguates.
+     * This test is the belt to that braces: the two extracted bodies must not be
+     * the same string, which is only possible if one signature matched the other.
+     */
+    #[Test]
+    public function test_adjust_and_adjust_by_delta_extract_distinct_bodies(): void
+    {
+        $path = base_path('app/Modules/Inventory/Domain/Services/StockAdjustmentService.php');
+
+        $adjust = $this->extractMethodBody($path, 'public function adjust(');
+        $adjustByDelta = $this->extractMethodBody($path, 'public function adjustByDelta(');
+
+        $this->assertNotSame(
+            $adjust,
+            $adjustByDelta,
+            "'public function adjust' is a PREFIX of 'public function adjustByDelta': if the two "
+            .'extracted bodies are identical, one signature matched the other and the pin on the '
+            .'shorter name is silently gone. Keep the trailing "(" on every provider row.'
+        );
+
+        // Both must be real bodies, not one truncated by a bad match.
+        $this->assertStringContainsString('costLock->acquire(', $adjust);
+        $this->assertStringContainsString('costLock->acquire(', $adjustByDelta);
+        // Only the delta form carries the staleness / availability guards.
+        $this->assertStringContainsString('StockMovedSinceAuthoringException', $adjustByDelta);
+        $this->assertStringNotContainsString('StockMovedSinceAuthoringException', $adjust);
     }
 
     #[Test]

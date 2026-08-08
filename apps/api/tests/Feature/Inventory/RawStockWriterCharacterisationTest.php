@@ -308,7 +308,16 @@ final class RawStockWriterCharacterisationTest extends TestCase
 
     // ------------------------------------------------------- the C2 desyncs
 
-    public function test_positive_adjust_inflates_the_default_lot_to_the_whole_aggregate(): void
+    /**
+     * UNCHANGED by V7, deliberately (see StockAdjustmentService::
+     * postAdjustmentWithinLock()'s `$deltaBasedDefaultLot` note and the report's
+     * Collision C-1): the LEGACY absolute path keeps the target-based default-lot
+     * reconciliation, because the counting listener drives it and that lane's
+     * invariant is "reconcile the lot UP TO the aggregate". The C2 desync this
+     * pins is fixed on the DELTA-native path — the only manual route, and the one
+     * gate finding C2 is actually about — asserted in StockAdjustByDeltaTest.
+     */
+    public function test_positive_adjust_still_reconciles_the_default_lot_to_the_aggregate(): void
     {
         $product = $this->batchTrackedProduct();
         $level = $this->seedStock('100.0000', $product);
@@ -325,12 +334,8 @@ final class RawStockWriterCharacterisationTest extends TestCase
 
         $level->refresh();
         $this->assertSame('105.0000', (string) $level->quantity);
-
-        // The real lot is untouched...
         $this->assertSame('100.0000', $this->lotQuantity($realLot));
 
-        // ...and the DEFAULT lot is topped up to the post-update AGGREGATE
-        // (105), not by the delta (5): Σ lots = 205 vs aggregate 105.
         $defaultLot = Batch::query()
             ->where('product_id', $product->id)
             ->where('batch_number', 'DEFAULT')
@@ -338,13 +343,14 @@ final class RawStockWriterCharacterisationTest extends TestCase
 
         $this->assertSame('105.0000', $this->lotQuantity($defaultLot));
         $this->assertSame('205.0000', $this->totalLotQuantity($product));
-        $this->assertNotSame(
-            (string) $level->quantity,
-            $this->totalLotQuantity($product),
-            'C2 case 1: Σ BatchStock must equal the aggregate — today it does not.'
-        );
     }
 
+    /**
+     * STILL TRUE for the legacy ABSOLUTE path: `adjust()` passes `batchId: null`,
+     * and a null-lot negative is deliberately a no-op there (D1b part 3's fourth
+     * branch). It is unreachable from the document, which refuses a negative line
+     * whenever a lot with stock exists at the location (T16).
+     */
     public function test_negative_adjust_decrements_no_lot_at_all(): void
     {
         $product = $this->batchTrackedProduct();
