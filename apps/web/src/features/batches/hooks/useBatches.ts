@@ -39,7 +39,7 @@ export const batchKeys = {
   detail: (uuid: string) => [...batchKeys.details(), uuid] as const,
   expiring: (days: number) => [...batchKeys.all, 'expiring', days] as const,
   stock: (uuid: string) => [...batchKeys.all, 'stock', uuid] as const,
-  fefo: (productId: string, locationId: number, quantity: number) =>
+  fefo: (productId: string, locationId: number, quantity: string) =>
     [...batchKeys.all, 'fefo', productId, locationId, quantity] as const,
   productBatches: (productId: string, variantId: string | null = null) =>
     [...batchKeys.all, 'product', productId, variantId] as const,
@@ -125,7 +125,7 @@ export function useBatchStock(uuid: string): UseQueryResult<BatchStockByLocation
 export function useFEFOSuggestions(
   productId: string,
   locationId: number,
-  quantity: number,
+  quantity: string,
   enabled: boolean = true
 ): UseQueryResult<FEFOResult> {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
@@ -134,7 +134,7 @@ export function useFEFOSuggestions(
   return useQuery({
     queryKey: tenantScopedKey(batchKeys.fefo(productId, locationId, quantity)),
     queryFn: () => getFEFOSuggestions(productId, locationId, quantity),
-    enabled: enabled && Boolean(productId) && Boolean(locationId) && quantity > 0 && tenantId !== null && companyId !== null,
+    enabled: enabled && Boolean(productId) && Boolean(locationId) && Number(quantity) > 0 && tenantId !== null && companyId !== null,
     staleTime: 10000, // 10 seconds for POS suggestions
   })
 }

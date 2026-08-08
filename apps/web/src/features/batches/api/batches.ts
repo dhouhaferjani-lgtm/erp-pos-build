@@ -124,11 +124,11 @@ export async function getBatchStock(uuid: string): Promise<BatchStockByLocation[
 export async function getFEFOSuggestions(
   productId: string,
   locationId: number,
-  quantity: number
+  quantity: string
 ): Promise<FEFOResult> {
   return apiGet<FEFOResult>(`/pos/products/${productId}/batches`, {
     location_id: String(locationId),
-    quantity: String(quantity),
+    quantity,
   })
 }
 

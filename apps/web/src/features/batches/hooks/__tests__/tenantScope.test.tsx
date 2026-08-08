@@ -194,16 +194,16 @@ function fefoFixture(): FEFOResult {
     suggestions: [
       {
         batch: batchFixture('batch-1'),
-        quantity: 1,
+        quantity: '1.0000',
         available_quantity: 10,
         expiry_status: 'OK',
         days_until_expiry: 365,
       },
     ],
     fully_fulfilled: true,
-    total_allocated: 1,
-    requested_quantity: 1,
-    shortfall: 0,
+    total_allocated: '1.0000',
+    requested_quantity: '1.0000',
+    shortfall: '0.0000',
   }
 }
 
@@ -247,7 +247,7 @@ describe('batch hooks tenant scope', () => {
       batches: useBatches(batchParams),
       batchStock: useBatchStock('batch-1'),
       expiring: useExpiringProducts(30),
-      fefo: useFEFOSuggestions('product-1', 1, 1),
+      fefo: useFEFOSuggestions('product-1', 1, '1.0000'),
       productBatches: useProductBatches('product-1'),
     }), { wrapper })
 
@@ -265,7 +265,7 @@ describe('batch hooks tenant scope', () => {
       ['batches', 'list', batchParams, 'tenant-A', 'company-1'],
       ['batches', 'stock', 'batch-1', 'tenant-A', 'company-1'],
       ['batches', 'expiring', 30, 'tenant-A', 'company-1'],
-      ['batches', 'fefo', 'product-1', 1, 1, 'tenant-A', 'company-1'],
+      ['batches', 'fefo', 'product-1', 1, '1.0000', 'tenant-A', 'company-1'],
       ['batches', 'product', 'product-1', null, 'tenant-A', 'company-1'],
     ]))
   })
@@ -280,7 +280,7 @@ describe('batch hooks tenant scope', () => {
       batches: useBatches(batchParams),
       batchStock: useBatchStock('batch-1'),
       expiring: useExpiringProducts(30),
-      fefo: useFEFOSuggestions('product-1', 1, 1),
+      fefo: useFEFOSuggestions('product-1', 1, '1.0000'),
       productBatches: useProductBatches('product-1'),
     }), { wrapper })
 
@@ -349,7 +349,7 @@ describe('batch hooks tenant scope', () => {
       { marker: 'tenant-B-expiring-preserved' },
     )
     queryClient.setQueryData(
-      ['batches', 'fefo', 'product-1', 1, 1, 'tenant-B', 'company-1'],
+      ['batches', 'fefo', 'product-1', 1, '1.0000', 'tenant-B', 'company-1'],
       { marker: 'tenant-B-fefo-preserved' },
     )
     queryClient.setQueryData(
@@ -366,7 +366,7 @@ describe('batch hooks tenant scope', () => {
       batches: useBatches(batchParams),
       batchStock: useBatchStock('batch-1'),
       expiring: useExpiringProducts(30),
-      fefo: useFEFOSuggestions('product-1', 1, 1),
+      fefo: useFEFOSuggestions('product-1', 1, '1.0000'),
       productBatches: useProductBatches('product-1'),
       productDetail: useProductDetailProbe(productDetailQueryFn),
     }), { wrapper })
@@ -489,7 +489,7 @@ describe('batch hooks tenant scope', () => {
       'fefo',
       'product-1',
       1,
-      1,
+      '1.0000',
       'tenant-B',
       'company-1',
     ])).toEqual({ marker: 'tenant-B-fefo-preserved' })
