@@ -404,16 +404,22 @@ final class DocumentCancellationGlReversalTest extends TestCase
     }
 
     /**
-     * GL gate IMPORTANT — the refusal used to say "Post a correcting entry
-     * first", which is impossible advice: `AccountingService::reverseDocumentGl()`
-     * only counts entries with `source_type = 'Document' AND source_id =
-     * $document->id AND status = Posted` (`:730-737`), and the only manual-entry
-     * writer, `JournalEntryController::store()`, hard-codes
-     * `source_type = 'manual'` — a correcting entry created through the only
-     * available endpoint can NEVER enter that predicate. The message must not
-     * send an accountant down a path that does nothing.
+     * The refusal must name a remedy that ACTUALLY WORKS.
+     *
+     * History: the message originally said "Post a correcting entry first",
+     * which was impossible advice — `reverseDocumentGl()` only counted entries
+     * with `source_type = 'Document' AND source_id = $document->id`, and the only
+     * manual-entry writer, `JournalEntryController::store()`, hard-codes
+     * `source_type = 'manual'`, so no correcting entry reachable through the
+     * product could enter that predicate. The GL gate replaced it with "contact
+     * support" — honest, but a dead end.
+     *
+     * R2-F4 (owner ruling c4) built the remedy: a correcting-entry DOCUMENT
+     * linked via `source_document_id`, whose legs the reversal now counts. The
+     * message points at it again, and this time the loop really closes —
+     * `CorrectingEntryUnblocksCancellationTest` drives it end to end.
      */
-    public function test_the_refusal_message_does_not_recommend_an_impossible_remedy(): void
+    public function test_the_refusal_message_names_the_correcting_entry_remedy(): void
     {
         $invoice = $this->postedInvoiceWithGl();
         $original = $this->glEntryFor($invoice);
@@ -430,10 +436,20 @@ final class DocumentCancellationGlReversalTest extends TestCase
             $this->postingService->cancel($invoice, 'should refuse', $this->user->id);
             self::fail('Cancelling must refuse rather than seal an unbalanced reversal');
         } catch (\DomainException $exception) {
-            self::assertStringNotContainsString(
-                'Post a correcting entry first',
+            self::assertStringContainsString(
+                'CORRECTING ENTRY',
                 $exception->getMessage(),
-                'That remedy is currently impossible through the journal-entry endpoint',
+                'The remedy the message names must be the one the product actually offers',
+            );
+            self::assertStringNotContainsString(
+                'no self-service way',
+                $exception->getMessage(),
+                'There IS a self-service way now — R2-F4 built it',
+            );
+            self::assertStringContainsString(
+                '19.000',
+                $exception->getMessage(),
+                'The message must state the difference the correction has to cover',
             );
         }
     }

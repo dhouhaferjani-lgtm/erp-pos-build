@@ -21,7 +21,6 @@ use App\Modules\Document\Application\DTOs\CorrectingEntryLegData;
 use App\Modules\Document\Application\DTOs\CorrectingEntryPayload;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
-use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
@@ -67,7 +66,7 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      * posted?" and idempotence would be unimplementable. The link to the
      * original is not lost — it lives on `documents.source_document_id`, which is
      * exactly where owner ruling c4 requires it, and
-     * {@see self::correctingEntriesFor()} is the one query that resolves it.
+     * {@see self::correctingEntryDocumentIdsFor()} is the one query that resolves it.
      *
      * @var string
      */
@@ -846,7 +845,10 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      *    Σcr(mirror) == Σdr(original), so a balanced original yields a balanced
      *    mirror. Only an original that was ALREADY unbalanced can fail, and that
      *    is refused rather than sealed — see {@see UnreversibleDocumentGlException}.
-     *    The assertion runs BEFORE anything is written.
+     *    The assertion runs BEFORE anything is written. R2-F4: "the original" here
+     *    means the document's whole ledger footprint — its own entry PLUS every
+     *    correcting-entry document linked to it — so a correction that rebalances
+     *    it lifts the refusal. {@see self::documentLedgerFootprint()}.
      * 3. **Idempotence.** A document is reversed at most once, keyed on
      *    `source_type = DOCUMENT_CANCELLATION_SOURCE_TYPE` + `source_id`. Note
      *    that `journal_entries(source_type, source_id)` carries no uniqueness
@@ -874,15 +876,28 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             return null;
         }
 
-        /** @var Collection<int, JournalEntry> $originals */
-        $originals = JournalEntry::query()
-            ->where('company_id', $document->company_id)
-            ->where('source_type', self::DOCUMENT_SOURCE_TYPE)
-            ->where('source_id', $document->id)
-            ->where('status', JournalEntryStatus::Posted)
-            ->with('lines')
-            ->orderBy('chain_sequence')
-            ->get();
+        // R2-F4 — the document's WHOLE ledger footprint, not just the entry its
+        // own posting sealed: every correcting-entry document linked to it
+        // (`documents.source_document_id`) contributes its legs here too.
+        //
+        // Two consequences, both intended:
+        //   (a) THE ESCAPE HATCH. The balance count below now SEES a correction,
+        //       so an original that was sealed out of balance can be repaired by
+        //       a correcting document and then cancelled. Before this, the count
+        //       matched only `source_type = 'Document' AND source_id = $document->id`
+        //       while the only manual-entry writer hard-codes `'manual'`, so no
+        //       correction reachable through the product could ever enter the
+        //       predicate and the refusal was a permanent dead end
+        //       (`docs/superpowers/tickets/2026-08-06-l2-correcting-entry-escape-hatch.md`).
+        //   (b) The mirror REVERSES the corrections too. Withdrawing the document
+        //       must withdraw everything posted about it; leaving a correction's
+        //       legs standing would strand a correction of a document that no
+        //       longer exists.
+        //
+        // For an uncorrected document this is byte-identical to the previous
+        // query — the OR branch is not even emitted when there are no linked
+        // corrections.
+        $originals = $this->documentLedgerFootprint($document);
 
         if ($originals->isEmpty()) {
             // Never reached the ledger — a document posted before GL existed, a
@@ -1160,16 +1175,27 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      * `source_document_id` carries no FK and no scoping of its own
      * (`2025_11_30_080000_create_documents_table.php:33`).
      *
+     * DELIBERATELY UNFILTERED BY DOCUMENT STATUS, and `withTrashed()`. The
+     * question this list feeds is "what is in the LEDGER", and the ledger is
+     * immutable: once a correcting entry is sealed, its legs are part of the
+     * target's balance whatever later happens to the document row that produced
+     * it. Filtering on `documents.status` (or letting the soft-delete scope run)
+     * would silently drop sealed legs from the aggregate and hand both the
+     * balance invariant and `reverseDocumentGl()` a false picture — the exact
+     * class of divergence that made the escape-hatch dead end possible. The
+     * posted-ness that DOES matter is asserted on the journal entry itself in
+     * {@see self::documentLedgerFootprint()}.
+     *
      * @return list<string> The correcting documents' ids.
      */
     private function correctingEntryDocumentIdsFor(Document $target): array
     {
         /** @var list<string> */
         return Document::query()
+            ->withTrashed()
             ->where('company_id', $target->company_id)
             ->where('type', DocumentType::CorrectingEntry)
             ->where('source_document_id', $target->id)
-            ->where('status', DocumentStatus::Posted)
             ->pluck('id')
             ->all();
     }

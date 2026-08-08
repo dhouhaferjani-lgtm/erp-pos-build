@@ -20,16 +20,23 @@ use DomainException;
  * exists to prevent, and `GeneralLedgerHashService::verifyChain()` would never
  * catch it.
  *
- * GL gate IMPORTANT: the message used to say "Post a correcting entry first" —
- * impossible advice. `AccountingService::reverseDocumentGl()`'s balance count
- * only matches `source_type = 'Document' AND source_id = $document->id`
- * (`:730-737`), and the only manual-entry writer,
- * `JournalEntryController::store()`, hard-codes `source_type = 'manual'`
- * (`:100-102`) — a correcting entry created through the only available endpoint
- * can NEVER enter that predicate, so the document is permanently un-cancellable
- * with no self-service remedy today. The message now says that plainly instead
- * of sending an accountant down a path that does nothing.
+ * HISTORY, and why the advice in the message changed twice. The message
+ * originally said "Post a correcting entry first" — impossible advice at the
+ * time: `reverseDocumentGl()`'s balance count matched only
+ * `source_type = 'Document' AND source_id = $document->id`, and the only
+ * manual-entry writer, `JournalEntryController::store()`, hard-codes
+ * `source_type = 'manual'` (`:100-102`), so a correcting entry created through
+ * the only available endpoint could NEVER enter that predicate. The GL gate
+ * therefore replaced it with "contact support", which was honest but a dead end.
+ *
+ * R2-F4 (owner ruling c4) built the missing remedy: a correcting-entry DOCUMENT
+ * linked to the original via `source_document_id`, whose legs
+ * `reverseDocumentGl()` now counts through
+ * `AccountingService::documentLedgerFootprint()`. The advice is self-service
+ * again — and this time it is true, pinned by
+ * `CorrectingEntryUnblocksCancellationTest`.
  * docs/superpowers/tickets/2026-08-06-l2-correcting-entry-escape-hatch.md
+ * docs/superpowers/tickets/2026-08-07-round2-rulings-record.md (R-c c4)
  *
  * Extending `DomainException` makes it a 422 `BUSINESS_ERROR` via
  * `bootstrap/app.php`, and because the reversal runs INSIDE the cancel
@@ -51,16 +58,19 @@ final class UnreversibleDocumentGlException extends DomainException
         string $totalCredits,
     ): self {
         return new self(sprintf(
-            'Document %s cannot be cancelled: its journal entry %s is out of balance '
-            .'(debits %s, credits %s), so reversing it would seal a second unbalanced '
-            .'entry into the chain. There is currently no self-service way to correct '
-            .'this — the journal-entry endpoint cannot post an entry that resolves this '
-            .'imbalance. Contact accounting/engineering support to correct the '
-            .'underlying ledger entry manually before retrying.',
+            'Document %s cannot be cancelled: its ledger entries (starting with %s) are out of '
+            .'balance (debits %s, credits %s), so reversing them would seal a second unbalanced '
+            .'entry into the chain. Create a CORRECTING ENTRY against this document for the '
+            .'difference of %s, post it, and then retry the cancellation.',
             $documentNumber,
             $entryNumber,
             $totalDebits,
             $totalCredits,
+            bcsub(
+                bccomp($totalDebits, $totalCredits, 6) > 0 ? $totalDebits : $totalCredits,
+                bccomp($totalDebits, $totalCredits, 6) > 0 ? $totalCredits : $totalDebits,
+                3,
+            ),
         ));
     }
 }

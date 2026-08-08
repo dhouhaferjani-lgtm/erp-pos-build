@@ -220,7 +220,8 @@ final class CorrectingEntryGlPostingTest extends TestCase
             new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
         ]);
         $this->corrections->postCorrectingEntryGl($first);
-        $first->update(['status' => DocumentStatus::Posted]);
+        // Deliberately NOT flipping $first to Posted: the LEDGER is the source of
+        // truth for what has been corrected, not the document row's status.
 
         // The target now balances (0 + 19.000 debit vs 19.000 credit). A second
         // correction must therefore be self-balancing to be accepted...
