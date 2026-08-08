@@ -35,6 +35,14 @@ namespace App\Shared\Contracts\Treasury;
  * `performCancellation()`), just without requiring the payment already
  * `Reversed` — the caller is IN THE PROCESS of reversing it, in the same
  * transaction.
+ *
+ * DPA V4 (plan D-5): the method now RETURNS the id of the cancellation journal
+ * entry it posted, or `null` when it posted none. That return value is what lets
+ * `reversePayment()` build a reversing DOCUMENT that LINKS the existing
+ * AR-restoring entry instead of creating a second one — review finding C2's
+ * double credit — and it is also the branch discriminator: a non-`null` return
+ * means "the instrument lane already handled the GL and no cash moved", so the
+ * reversal's own cash branch is skipped entirely.
  */
 interface InstrumentReversalCancellerInterface
 {
@@ -89,6 +97,14 @@ interface InstrumentReversalCancellerInterface
      * @param  string|null  $userId  Actor recorded on the GL entry / audit event.
      * @param  string  $reason  Free-text audit reason, persisted on the
      *                          `InstrumentEvent` row.
+     * @return string|null The id of the cancellation journal entry that was
+     *                     posted, or `null` when NONE was posted. Implementations
+     *                     post the reversing entry ONLY when the linked payment
+     *                     carries a `journal_entry_id` — the instrument lane
+     *                     deliberately declines to reverse GL that was never
+     *                     posted, and V4's D-17 symmetry rule applies the same
+     *                     principle to the cash branch. Callers MUST treat
+     *                     `null` as "nothing was posted", never as an error.
      *
      * @throws \DomainException When the instrument is outbound, not currently
      *                          `Received`, is not linked to `$paymentId` (H1),
@@ -99,5 +115,5 @@ interface InstrumentReversalCancellerInterface
      *                          not-found exception, never leaked raw).
      * @throws \LogicException When called outside an open DB transaction.
      */
-    public function cancelForPaymentReversal(string $instrumentId, string $paymentId, string $tenantId, string $companyId, ?string $userId, string $reason): void;
+    public function cancelForPaymentReversal(string $instrumentId, string $paymentId, string $tenantId, string $companyId, ?string $userId, string $reason): ?string;
 }

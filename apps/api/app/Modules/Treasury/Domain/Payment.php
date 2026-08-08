@@ -298,6 +298,11 @@ class Payment extends Model
     /**
      * Scope for outgoing payments only.
      *
+     * DPA V4 (T2/M4): `Reversal` joins the whitelist because a reversal's cash
+     * branch physically moves money out (`PaymentType::isOutgoing()`). This
+     * scope has no callers today, so the edit is forward hygiene rather than a
+     * behaviour change — but it must stay consistent with the enum.
+     *
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
@@ -306,6 +311,7 @@ class Payment extends Model
         return $query->whereIn('payment_type', [
             PaymentType::Refund->value,
             PaymentType::SupplierPayment->value,
+            PaymentType::Reversal->value,
         ]);
     }
 
@@ -323,6 +329,18 @@ class Payment extends Model
     public function isRefund(): bool
     {
         return $this->payment_type === PaymentType::Refund;
+    }
+
+    /**
+     * Check if this is a reversing document (DPA V4).
+     *
+     * A `Reversal` row is NOT a refund: it is written at most once per original
+     * payment, carries the NET unreversed amount, and is deliberately invisible
+     * to the refund-total readers (plan D-11).
+     */
+    public function isReversal(): bool
+    {
+        return $this->payment_type === PaymentType::Reversal;
     }
 
     /**

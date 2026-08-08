@@ -64,6 +64,34 @@ final readonly class CashMovementsReportService
     /**
      * @var list<string>
      */
+    /**
+     * DPA V4 (plan D-12, REVISED after the code gate's Critical) — `Reversal` is
+     * deliberately ABSENT from this list, so a reversal Payment row never reaches
+     * the payments leg.
+     *
+     * A reversal Payment row is NEGATIVE by design, and the payments leg selects
+     * `CAST(payments.amount AS TEXT)` verbatim. Admitting it and resolving it to
+     * `direction = out` therefore reports a cash OUT of `-60.00`, which the FE
+     * renders raw — the user sees `Out: -60.00 / Net: +60.00` for a 60 cash
+     * outflow, inverting the sign of the period's net cash.
+     *
+     * The reversal is reported through its GL TWIN instead (`journalLinesQuery`),
+     * which already emits the repository account's `credit` as a POSITIVE `out`
+     * against the correct GL account. Three properties fall out for free, which is
+     * why this is the cheaper and more self-consistent side to report from:
+     *   - correct sign and direction with no `CASE`-arm surgery;
+     *   - no hand-counted positional binding to keep aligned (the plan itself
+     *     flagged an off-by-one there as silently mislabelling every row);
+     *   - an INSTRUMENT-branch reversal contributes ZERO rows automatically,
+     *     because it posts no `customer_payment_refund` entry at all — no
+     *     admission gate needed.
+     * The twin survives the payment-backed de-duplication below because
+     * `customer_payment_refund` is deliberately outside
+     * `PAYMENT_BACKED_SOURCE_TYPES` (D-9 reuses the refund source type rather than
+     * minting a new one).
+     *
+     * @var list<string>
+     */
     private const OUTGOING_PAYMENT_TYPES = [
         PaymentType::Refund->value,
         PaymentType::SupplierPayment->value,
@@ -291,6 +319,11 @@ final readonly class CashMovementsReportService
                     JournalEntryStatus::Posted->value,
                     CashMovementSourceType::PosReceiptRefund->value,
                     CashMovementDirection::Out->value,
+                    // ⚠️ HAND-COUNTED POSITIONAL LIST — these bindings must stay
+                    // aligned with the `CASE` arms above, in order. An off-by-one
+                    // here silently mislabels the direction of EVERY row in the
+                    // report. DPA V4 deliberately did NOT widen this arm: a
+                    // reversal is reported through its GL twin, not this leg.
                     PaymentType::Refund->value,
                     PaymentType::SupplierPayment->value,
                     CashMovementDirection::Out->value,
