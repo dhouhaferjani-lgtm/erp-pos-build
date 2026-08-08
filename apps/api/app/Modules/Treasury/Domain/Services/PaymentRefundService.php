@@ -98,6 +98,8 @@ class PaymentRefundService
             throw new \RuntimeException('Only completed payments can be refunded');
         }
 
+        $this->assertRefundableSubject($payment);
+
         // Task 18: a stable request id is REQUIRED for DB-level idempotency + the
         // movement key. The admin endpoint supplies a client UUID; direct callers
         // that omit one get a per-call UUID (each call is then its own request).
@@ -263,6 +265,11 @@ class PaymentRefundService
             throw new \RuntimeException('Only completed payments can be refunded');
         }
 
+        // BEFORE the per-request amount checks below: this is a precondition on the
+        // SUBJECT of the refund, and it must be what refuses a negative original —
+        // not the incidental `amount > originalAmount` comparison (T12).
+        $this->assertRefundableSubject($payment);
+
         // Validate refund amount (per-request bounds; the cumulative over-refund
         // guard runs under the original-payment lock inside the transaction).
         /** @var numeric-string $amount */
@@ -375,6 +382,44 @@ class PaymentRefundService
             }
 
             throw $e;
+        }
+    }
+
+    /**
+     * DPA V4 / T12 (gate Important-4) — only a POSITIVE payment can be refunded.
+     *
+     * `PaymentType::Reversal` mints a second class of negative payment row, and
+     * nothing forbade refunding one. The hole is real, not theoretical: with a
+     * `-600.000` row as the original, `assertWithinRefundableBalance()` computes
+     * `projected = bcadd('0', '-600.000') = '-600.000'` and
+     * `bccomp('-600.000', '-600.000') === 0`, which is NOT `> 0` — so the
+     * over-refund guard PASSES and produces a `+600` "refund of a reversal" plus a
+     * `Dr AR / Cr cash` entry in the wrong direction.
+     *
+     * `partialRefund()` was protected only INCIDENTALLY, by the
+     * `amount > originalAmount` comparison rejecting a positive request against a
+     * negative original. Incidental protection is not a rule, and it produced a
+     * misleading message. Both entry points now fail by rule, before any write.
+     *
+     * The predicate is AMOUNT-based rather than an enum whitelist so it covers
+     * `Refund`, `Reversal`, and any future negative class with nothing to keep in
+     * sync. It also closes the PRE-EXISTING hole for `Refund` rows — refunding a
+     * refund was reachable before V4 existed.
+     *
+     * This is the symmetric counterpart of D-6's refuse-to-reverse-a-reversal.
+     */
+    private function assertRefundableSubject(Payment $payment): void
+    {
+        $scale = $this->scaleResolver->getScale($payment->currency);
+        /** @var numeric-string $amount */
+        $amount = CurrencyScale::bcformat((string) $payment->amount, $scale);
+
+        if (bccomp($amount, '0', $scale) <= 0) {
+            throw new \DomainException(
+                "payment {$payment->id} has a non-positive amount ({$amount}) and cannot be refunded — "
+                .'only a positive payment can be. A refund or reversal row is itself the undo of a '
+                .'payment; refund or reverse the ORIGINAL payment instead.'
+            );
         }
     }
 
@@ -1434,37 +1479,115 @@ class PaymentRefundService
 
         $documentIds = array_keys($liveByDocument);
         sort($documentIds);
-        $lastIndex = count($documentIds) - 1;
 
+        // DPA V4 / T13 — CAP EVERY SLICE, THEN REDISTRIBUTE THE RESIDUAL.
+        //
+        // The pre-V4 loop capped non-last slices against `$remainingToAllocate` but
+        // gave the LAST document `$remainingToAllocate` verbatim, with no cap
+        // against its own live share. Because each share is TRUNCATED to currency
+        // scale, every non-last slice is <= its exact share and all the dust
+        // accumulates onto the last one, which could therefore be OVER-unwound —
+        // producing a negative lineage net and a `balance_due` ABOVE the document
+        // total (the C6 invariant). Worked fixture: three documents live `0.333`
+        // each, `liveTotal = toUnwind = 0.999` → doc1/doc2 truncate to `0.332` and
+        // doc3 receives `0.335` against a `0.333` share.
+        //
+        // Capping the last slice and STOPPING THERE is the mirror-image defect: the
+        // same fixture then unwinds `0.997`, silently leaving `0.002` of the refund
+        // NEVER unwound. The documents keep allocation they should have lost, so
+        // `balance_due` lands BELOW the true receivable while the refund journal
+        // entry debited AR for the full `0.999` — an AR understatement and a
+        // document-vs-GL divergence. Both defects are caught only by the invariant
+        // `Σ slices == toUnwind`; "no slice exceeds its live share" and
+        // "`balance_due <= total`" are both SATISFIED by the under-unwind.
+        //
+        // Pass 1 floors each share to scale and records its fractional remainder.
+        // Pass 2 is a SINGLE bounded largest-remainder sweep: walk the documents in
+        // (remainder DESC, document_id ASC) order and give each one up to its
+        // remaining headroom, capped by what is left of the residual. No iterative
+        // re-proration.
+        //
+        // Termination is guaranteed, not hoped for: `Σ headroom = liveTotal −
+        // Σ base` and `residual = toUnwind − Σ base`, and `$toUnwind` was already
+        // clamped to `<= $liveTotal` above, so `residual <= Σ headroom` always. The
+        // ordering makes the outcome deterministic across drivers.
+        $highScale = $scale + 10;
+
+        /** @var array<string, numeric-string> $slices */
+        $slices = [];
+        /** @var array<string, numeric-string> $remainders */
+        $remainders = [];
         /** @var numeric-string $allocated */
         $allocated = '0';
+
+        foreach ($documentIds as $documentId) {
+            /** @var numeric-string $share */
+            $share = $liveByDocument[$documentId];
+            /** @var numeric-string $ratio */
+            $ratio = bcdiv($share, $liveTotal, $highScale);
+            /** @var numeric-string $exact */
+            $exact = bcmul($ratio, $toUnwind, $highScale);
+            /** @var numeric-string $slice */
+            $slice = CurrencyScale::bcformat($exact, $scale);
+
+            // Cap EVERY slice — including what used to be the last one — against the
+            // document's own live share.
+            if (bccomp($slice, $share, $scale) > 0) {
+                /** @var numeric-string $slice */
+                $slice = $share;
+            }
+
+            $slices[$documentId] = $slice;
+            $remainders[$documentId] = bcsub($exact, $slice, $highScale);
+            $allocated = bcadd($allocated, $slice, $scale);
+        }
+
+        /** @var numeric-string $residual */
+        $residual = bcsub($toUnwind, $allocated, $scale);
+
+        if (bccomp($residual, '0', $scale) > 0) {
+            $ordered = $documentIds;
+            usort($ordered, static function (string $a, string $b) use ($remainders, $highScale): int {
+                $byRemainder = bccomp($remainders[$b], $remainders[$a], $highScale);
+
+                return $byRemainder !== 0 ? $byRemainder : strcmp($a, $b);
+            });
+
+            foreach ($ordered as $documentId) {
+                if (bccomp($residual, '0', $scale) <= 0) {
+                    break;
+                }
+
+                /** @var numeric-string $headroom */
+                $headroom = bcsub($liveByDocument[$documentId], $slices[$documentId], $scale);
+                if (bccomp($headroom, '0', $scale) <= 0) {
+                    continue;
+                }
+
+                /** @var numeric-string $topUp */
+                $topUp = bccomp($headroom, $residual, $scale) > 0 ? $residual : $headroom;
+                $slices[$documentId] = bcadd($slices[$documentId], $topUp, $scale);
+                $allocated = bcadd($allocated, $topUp, $scale);
+                $residual = bcsub($residual, $topUp, $scale);
+            }
+        }
+
+        // Fail closed on the invariant rather than writing a silently wrong split.
+        // Unreachable given the clamp above; kept because the alternative to an
+        // exception here is unreversed money drift discovered at reconcile time.
+        if (bccomp($allocated, $toUnwind, $scale) !== 0) {
+            throw new \DomainException(
+                "pro-rata unwind could not distribute {$toUnwind} exactly (allocated {$allocated}); "
+                .'refusing to write a split that would leave the document set and the GL out of step.'
+            );
+        }
+
         /** @var list<string> $touchedDocumentIds */
         $touchedDocumentIds = [];
 
-        foreach ($documentIds as $index => $documentId) {
-            /** @var numeric-string $remainingToAllocate */
-            $remainingToAllocate = bcsub($toUnwind, $allocated, $scale);
-            if (bccomp($remainingToAllocate, '0', $scale) <= 0) {
-                break;
-            }
-
-            if ($index === $lastIndex) {
-                /** @var numeric-string $slice */
-                $slice = $remainingToAllocate;
-            } else {
-                /** @var numeric-string $share */
-                $share = $liveByDocument[$documentId];
-                /** @var numeric-string $ratio */
-                $ratio = bcdiv($share, $liveTotal, $scale + 10);
-                /** @var numeric-string $raw */
-                $raw = bcmul($ratio, $toUnwind, $scale + 10);
-                /** @var numeric-string $slice */
-                $slice = CurrencyScale::bcformat($raw, $scale);
-                if (bccomp($slice, $remainingToAllocate, $scale) > 0) {
-                    $slice = $remainingToAllocate;
-                }
-            }
-
+        foreach ($documentIds as $documentId) {
+            /** @var numeric-string $slice */
+            $slice = $slices[$documentId];
             if (bccomp($slice, '0', $scale) <= 0) {
                 continue;
             }
@@ -1475,7 +1598,6 @@ class PaymentRefundService
                 'amount' => bcmul($slice, '-1', $scale),
             ]);
 
-            $allocated = bcadd($allocated, $slice, $scale);
             $touchedDocumentIds[] = $documentId;
         }
 

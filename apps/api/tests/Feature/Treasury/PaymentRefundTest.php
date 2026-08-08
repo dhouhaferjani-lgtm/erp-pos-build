@@ -671,6 +671,91 @@ class PaymentRefundTest extends TestCase
         $this->assertEquals(PaymentStatus::Reversed, $payment->status);
     }
 
+    /**
+     * DPA V4 / T12 (gate Important-4) — a NON-POSITIVE payment cannot be refunded.
+     *
+     * D-6 forbids REVERSING a `Refund`/`Reversal` row, but nothing forbade
+     * REFUNDING one, and V4 mints a second class of negative payment. The hole was
+     * verified real: with a `-600` row as the original, `assertWithinRefundableBalance()`
+     * computes `projected = 0 + (-600) = -600` and `bccomp('-600','-600') === 0`,
+     * which is NOT `> 0`, so the over-refund guard PASSES — producing a `+600`
+     * "refund of a reversal" plus a `Dr AR / Cr cash` entry in the wrong direction.
+     *
+     * The guard is AMOUNT-based, not an enum whitelist, so it covers `Refund`,
+     * `Reversal` and any future negative class without a list to keep in sync — and
+     * it closes the PRE-EXISTING hole for `Refund` rows at the same time.
+     */
+    public function test_a_reversal_row_cannot_be_refunded(): void
+    {
+        $payment = $this->createPaymentWithAllocation('600.00');
+        $reversal = $this->refundService->reversePayment($payment, 'reverse first', $this->user->id);
+        $this->assertInstanceOf(Payment::class, $reversal);
+
+        $paymentsBefore = Payment::count();
+        $allocationsBefore = PaymentAllocation::count();
+
+        try {
+            $this->refundService->refundPayment($reversal, 'refund the reversal', $this->user->id);
+            $this->fail('refunding a reversal row must be refused');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('positive', strtolower($exception->getMessage()));
+        }
+
+        $this->assertSame($paymentsBefore, Payment::count(), 'no refund row written');
+        $this->assertSame($allocationsBefore, PaymentAllocation::count());
+    }
+
+    public function test_a_refund_row_cannot_be_refunded(): void
+    {
+        $payment = $this->createPaymentWithAllocation('600.00');
+        $refund = $this->refundService->refundPayment($payment, 'refund first', $this->user->id);
+
+        $paymentsBefore = Payment::count();
+
+        try {
+            $this->refundService->refundPayment($refund, 'refund the refund', $this->user->id);
+            $this->fail('refunding a refund row must be refused');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('positive', strtolower($exception->getMessage()));
+        }
+
+        $this->assertSame($paymentsBefore, Payment::count());
+    }
+
+    /**
+     * `partialRefund()` was protected only INCIDENTALLY — by the
+     * `amount > originalAmount` comparison, which happens to reject a positive
+     * request against a negative original. It must now fail by RULE, with the new
+     * message, not by accident.
+     */
+    public function test_partial_refund_of_a_negative_payment_fails_by_rule_not_by_accident(): void
+    {
+        $payment = $this->createPaymentWithAllocation('600.00');
+        $reversal = $this->refundService->reversePayment($payment, 'reverse first', $this->user->id);
+        $this->assertInstanceOf(Payment::class, $reversal);
+
+        try {
+            $this->refundService->partialRefund($reversal, '100.00', 'partial the reversal', $this->user->id);
+            $this->fail('partially refunding a reversal row must be refused');
+        } catch (\DomainException $exception) {
+            $this->assertStringContainsString('positive', strtolower($exception->getMessage()));
+            $this->assertStringNotContainsString('cannot exceed original payment amount', $exception->getMessage());
+        }
+    }
+
+    /** The guard must not touch an ordinary positive payment. */
+    public function test_an_ordinary_positive_payment_is_still_refundable(): void
+    {
+        $payment = $this->createPaymentWithAllocation('600.00');
+
+        $refund = $this->refundService->refundPayment($payment, 'ordinary refund', $this->user->id);
+        $this->assertEquals('-600.000', $refund->amount);
+
+        $second = $this->createPaymentWithAllocation('600.00');
+        $partial = $this->refundService->partialRefund($second, '100.00', 'ordinary partial', $this->user->id);
+        $this->assertEquals('-100.000', $partial->amount);
+    }
+
     public function test_multiple_partial_refunds_accumulate(): void
     {
         $payment = $this->createPaymentWithAllocation('1000.00');
