@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -14,6 +14,21 @@ import { semanticColorTokens, textColors, borderColors } from '@/lib/designToken
 import { CancelErrorCodes, type ReturnDecisionMode } from '../api/cancelInvoice'
 import type { CanCancelResponse } from '../hooks/useCancelInvoice'
 
+/**
+ * Today's date in the BROWSER'S LOCAL timezone, as `YYYY-MM-DD`.
+ *
+ * Gate CF round 1, fiscal MINOR: `new Date().toISOString().slice(0, 10)` is a UTC date,
+ * while the server validates `before_or_equal:today` in the APP timezone. For a TN
+ * tenant (UTC+1) between 00:00 and 01:00 local it pre-filled and max-capped `returned_on`
+ * at *yesterday*; east of UTC it can be tomorrow and 422 with no inline message.
+ */
+function todayLocalIsoDate(): string {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
 /** The radio the user clicks. What gets POSTED depends on the branch — see below. */
 type GoodsOption = 'will_return' | 'already_returned' | 'no_return'
 
@@ -22,10 +37,21 @@ export interface CancelInvoiceModalProps {
   onClose: () => void
   invoiceNumber: string
   canCancel: CanCancelResponse | undefined
+  /**
+   * FALSE while `/can-cancel` is still in flight or has failed. Gate CF round 1, B3:
+   * the modal must not offer a submittable form until the server has told it what this
+   * invoice actually is.
+   */
+  canCancelResolved: boolean
   isSubmitting: boolean
   /** The typed refusal from the last attempt, if any. */
   errorCode?: string | undefined
   errorDetails?: Record<string, unknown> | undefined
+  /**
+   * TRUE once a submit has come back failed. Needed because a 422 can arrive with NO
+   * readable `error.code` at all, and "no code" must still produce actionable feedback.
+   */
+  submitFailed?: boolean | undefined
   onSubmit: (input: { reason: string; mode: ReturnDecisionMode; returnedOn?: string }) => void
 }
 
@@ -70,17 +96,33 @@ export function CancelInvoiceModal({
   onClose,
   invoiceNumber,
   canCancel,
+  canCancelResolved,
   isSubmitting,
   errorCode,
   errorDetails,
+  submitFailed,
   onSubmit,
 }: CancelInvoiceModalProps) {
   const { t } = useTranslation(['sales', 'common'])
 
-  const requiresDecision = canCancel?.requires_return_decision ?? false
-  // FAIL CLOSED: while `can-cancel` is still loading, or if it could not be resolved,
-  // treat the invoice as having issued no goods. The safe default is the one that
-  // cannot restock inventory that never left.
+  /**
+   * FAIL CLOSED IN BOTH DIRECTIONS (gate CF round 1, Blocker B3).
+   *
+   * `requires_return_decision` previously defaulted to FALSE, which fails OPEN — the
+   * direction that SKIPS the goods question entirely and posts `not_applicable`. The
+   * modal mounts the moment the invoice loads, while `/can-cancel` is still in flight,
+   * and permanently if that endpoint errors, so a user clicking Cancel in that window got
+   * a modal with no goods question and recorded "this invoice has no physical products"
+   * against an invoice with delivered goods.
+   *
+   * Unknown now means "assume there IS a decision to make" (ask the question) and
+   * "assume no goods issued" (do not offer a restock that could create inventory). Both
+   * defaults point away from a silent, irreversible mistake. The server enforces the same
+   * facts independently — `RETURN_DECISION_MISMATCHES_GOODS` and
+   * `RETURN_NOTHING_DELIVERED` — because a UI default is affordance, not a safety
+   * property.
+   */
+  const requiresDecision = canCancel?.requires_return_decision ?? true
   const goodsIssued = canCancel?.goods_issued ?? false
 
   const schema = useMemo(
@@ -97,7 +139,17 @@ export function CancelInvoiceModal({
             message: t('sales:invoices.cancelFlow.chooseAnOption'),
           })
           : z.enum(['will_return', 'already_returned', 'no_return']).optional(),
-        returnedOn: z.string().optional(),
+        // A REAL constraint, not a bare optional string (gate CF round 1, m3). The field
+        // renders `required` and the server enforces `required_if` +
+        // `before_or_equal:today`; a zod schema that constrains nothing is also what fed
+        // B2's silent path, since a client-side miss became a code-less 422.
+        returnedOn: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, t('sales:invoices.cancelFlow.option2.dateLabel'))
+          .refine((value) => value <= todayLocalIsoDate(), {
+            message: t('sales:invoices.cancelFlow.errors.futureReturnDate'),
+          })
+          .optional(),
       }),
     [requiresDecision, t],
   )
@@ -108,6 +160,7 @@ export function CancelInvoiceModal({
     control,
     handleSubmit,
     watch,
+    reset,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
@@ -117,9 +170,31 @@ export function CancelInvoiceModal({
       // there, so making the user click it would be ceremony. In the goods_issued
       // branch nothing is pre-selected — the decision must be deliberate.
       ...(requiresDecision && !goodsIssued ? { goodsOption: 'no_return' as const } : {}),
-      returnedOn: new Date().toISOString().slice(0, 10),
+      returnedOn: todayLocalIsoDate(),
     },
   })
+
+  /**
+   * Re-apply the branch defaults once `/can-cancel` resolves — and again whenever the
+   * modal reopens.
+   *
+   * Gate CF round 1, MAJOR M1 + fiscal IMPORTANT. RHF captures `defaultValues` ONCE at
+   * mount, and the modal is mounted on the page's first render (`Modal` itself returns
+   * null when closed), so `canCancel` is `undefined` at that moment. Nothing called
+   * `reset`, so plan T10's binding option→mode table row — "option 3 **pre-selected**"
+   * in the `!goods_issued` branch — never held in the running app, and stale form state
+   * (reason text, chosen option, date) survived close/reopen. The unit test passed only
+   * because it injected `canCancel` at mount: the one state the live app never starts in.
+   */
+  useEffect(() => {
+    if (!isOpen) return
+
+    reset({
+      reason: '',
+      ...(requiresDecision && !goodsIssued ? { goodsOption: 'no_return' as const } : {}),
+      returnedOn: todayLocalIsoDate(),
+    })
+  }, [isOpen, requiresDecision, goodsIssued, reset])
 
   const selectedOption = watch('goodsOption')
 
@@ -145,7 +220,18 @@ export function CancelInvoiceModal({
   }
 
   const bannerMessage = useMemo(() => {
-    if (!errorCode) return null
+    if (!errorCode) {
+      // Gate CF round 1, Blocker B2. A 422 can arrive with NO readable `error.code` at
+      // all — a Laravel `ValidationException` (`{message, errors}`) or the surviving
+      // generic flat envelope `{error: <string>, code: <string>}` that T6 deliberately
+      // left in place. `extractErrorCode` reads `error.code` and yields undefined for
+      // both, so the banner was suppressed, no inline error rendered and no toast fired:
+      // the user clicked Cancel and NOTHING happened. Plan T10 mandates the opposite
+      // verbatim — "an explicit translated fallback for '422 with no readable
+      // error.code'" — and the key existed but was reachable only for a PRESENT but
+      // unrecognised code.
+      return submitFailed === true ? t('sales:invoices.cancelFlow.errors.unknown') : null
+    }
 
     // Period refusals render INLINE on the date field, not as a banner — the obstacle
     // is the date the user typed, and a banner would not tell them where to fix it.
@@ -176,7 +262,7 @@ export function CancelInvoiceModal({
     return known.includes(errorCode)
       ? t(`sales:invoices.cancelFlow.errors.${errorCode}`)
       : t('sales:invoices.cancelFlow.errors.unknown')
-  }, [errorCode, errorDetails, t])
+  }, [errorCode, errorDetails, submitFailed, t])
 
   const periodError = useMemo(() => {
     if (
@@ -310,7 +396,7 @@ export function CancelInvoiceModal({
                               <Input
                                 {...dateField}
                                 type="date"
-                                max={new Date().toISOString().slice(0, 10)}
+                                max={todayLocalIsoDate()}
                                 disabled={isSubmitting}
                               />
                             </FormField>
@@ -351,11 +437,23 @@ export function CancelInvoiceModal({
           </fieldset>
         )}
 
+        {!canCancelResolved && (
+          <p className={`text-sm ${textColors.secondary}`} role="status">
+            {t('sales:invoices.cancelFlow.loading')}
+          </p>
+        )}
+
         <div className={`flex justify-end gap-3 border-t ${borderColors.default} pt-4`}>
           <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
             {t('sales:invoices.cancelFlow.keep')}
           </Button>
-          <Button type="submit" variant="danger" disabled={isSubmitting}>
+          {/*
+            * Submit stays disabled until `/can-cancel` has answered (B3). Everything the
+            * modal decides — whether to ask the goods question at all, which options are
+            * live, which mode option 3 posts — depends on that answer, so submitting
+            * before it lands is submitting a guess about physical reality.
+            */}
+          <Button type="submit" variant="danger" disabled={isSubmitting || !canCancelResolved}>
             {isSubmitting
               ? t('sales:invoices.cancelFlow.submitting')
               : t('sales:invoices.cancelFlow.submit')}

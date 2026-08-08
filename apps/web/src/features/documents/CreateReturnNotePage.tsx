@@ -23,7 +23,6 @@ import { InvoiceSearchSelect } from '@/components/molecules/pickers/InvoiceSearc
 import { DeliveryNoteSearchSelect } from '@/components/molecules/pickers/DeliveryNoteSearchSelect'
 import { ReturnReasonSelect } from './components/ReturnReasonSelect'
 import { ReturnConditionSelect } from './components/ReturnConditionSelect'
-import { RefundMethodSelect } from './components/RefundMethodSelect'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import type { Invoice } from '@/components/molecules/pickers/InvoiceSearchSelect'
@@ -45,9 +44,7 @@ const returnNoteSchema = z.object({
   source_delivery_note_id: z.string().optional(),
   return_reason: z.enum(['defective', 'wrong_item', 'customer_regret', 'damaged_in_transit', 'warranty', 'exchange', 'other']),
   return_condition: z.enum(['unopened', 'used', 'damaged', 'unusable']).optional(),
-  refund_method: z.enum(['original_payment', 'store_credit', 'exchange', 'none']).optional(),
   notes: z.string().optional(),
-  auto_create_credit_note: z.boolean().default(false),
 }).refine(
   (data) => data.source_invoice_id || data.source_delivery_note_id,
   {
@@ -61,9 +58,7 @@ type ReturnNoteFormData = {
   source_invoice_id?: string | undefined
   source_delivery_note_id?: string | undefined
   return_condition?: 'unopened' | 'used' | 'damaged' | 'unusable' | undefined
-  refund_method?: 'original_payment' | 'store_credit' | 'exchange' | 'none' | undefined
   notes?: string | undefined
-  auto_create_credit_note: boolean
 }
 
 interface DocumentLine {
@@ -125,7 +120,6 @@ export function CreateReturnNotePage() {
     resolver: zodResolver(returnNoteSchema) as never,
     defaultValues: {
       return_reason: 'defective',
-      auto_create_credit_note: false,
     },
   })
 
@@ -317,6 +311,22 @@ export function CreateReturnNotePage() {
       return
     }
 
+    // Gate CF round 1, MAJOR M5. `QuantityInput` emits `''` when the box is cleared and
+    // `buildCreatePayload` forwards the raw string, so an emptied line posted a quantity
+    // the server refuses with `gt:0` / required — a Laravel validation 422 that reaches
+    // the user as axios' bare "Request failed with status code 422". The sibling surface
+    // got exactly this guard in the same commit (`CreateReturnNoteForm`'s `canSubmit`),
+    // so the asymmetry was an oversight, not a decision.
+    if (lineMode === 'partial') {
+      for (const lineId of selectedLineIds) {
+        const quantity = lineQuantities.get(lineId)
+        if (quantity !== undefined && (quantity === '' || Number(quantity) <= 0)) {
+          toast.error(t('sales:returnNotes.form.invalidQuantity'))
+          return
+        }
+      }
+    }
+
     // Plan CF T8, null-partner path. `partner_id` is `required` on the server, and a
     // source document CAN legitimately have no partner. Block here with a translated
     // message rather than posting a null and letting the user discover it as a raw 422
@@ -365,7 +375,6 @@ export function CreateReturnNotePage() {
                   setSourceType('delivery_note')
                   setSelectedInvoice(null)
                   setValue('source_invoice_id', undefined)
-                  setValue('auto_create_credit_note', false)
                   setSelectedLineIds(new Set())
                   setLineQuantities(new Map())
                 }}
@@ -671,18 +680,24 @@ export function CreateReturnNotePage() {
                 )}
               />
 
-              {/* Refund Method */}
-              <Controller
-                name="refund_method"
-                control={control}
-                render={({ field }) => (
-                  <RefundMethodSelect
-                    value={field.value || ''}
-                    onChange={field.onChange}
-                    disabled={isSubmitting}
-                  />
-                )}
-              />
+              {/*
+                * Refund method and auto-create-credit-note are NOT RENDERED (gate CF
+                * round 1, MAJOR M3 / plan Q-D).
+                *
+                * Neither key is accepted by any server route — `auto_create_credit_note`
+                * matches ZERO occurrences in `apps/api/app`, and `refund_method` is not a
+                * create key — so T8 correctly dropped both from the payload. But BEFORE
+                * T8 the whole request 422'd, so ticking the box did nothing LOUDLY;
+                * after T8 the create SUCCEEDS and the choice is discarded behind a
+                * success toast. Rendering a no-op control on a document flow is the
+                * newly-reachable silent discard that the governing ruling — "explicit,
+                * never silent" — exists to prevent.
+                *
+                * Removed rather than disabled: a disabled control still advertises a
+                * capability the system does not have. Q-D decides whether to wire
+                * `auto_create_credit_note` to `POST /invoices/{id}/credit-full` as a real
+                * second document; until then the honest UI is no control at all.
+                */}
 
               {/* Notes */}
               <div>
@@ -705,34 +720,6 @@ export function CreateReturnNotePage() {
                 />
               </div>
 
-              {/* Auto-create credit note (invoice only) */}
-              {sourceType === 'invoice' && (
-                <div className={`rounded-lg border ${colorClasses.borderBlue200} ${colorClasses.bgBlue50} p-4`}>
-                  <Controller
-                    name="auto_create_credit_note"
-                    control={control}
-                    render={({ field }) => (
-                      <label className="flex items-start gap-3">
-                        <input
-                          type="checkbox"
-                          checked={field.value}
-                          onChange={field.onChange}
-                          disabled={isSubmitting}
-                          className={`mt-1 h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
-                        />
-                        <div className="flex-1">
-                          <span className={`text-sm font-medium ${colorClasses.textGray900}`}>
-                            {t('sales:returnNotes.form.autoCreateCreditNote')}
-                          </span>
-                          <p className={`mt-1 text-sm ${colorClasses.textGray600}`}>
-                            {t('sales:returnNotes.form.autoCreateCreditNoteHint')}
-                          </p>
-                        </div>
-                      </label>
-                    )}
-                  />
-                </div>
-              )}
             </div>
           </div>
         )}

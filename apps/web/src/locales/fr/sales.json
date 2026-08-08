@@ -549,8 +549,10 @@
         "RETURN_DECISION_ALREADY_RECORDED": "Une décision sur les marchandises a déjà été enregistrée pour cette annulation et ne peut plus être modifiée.",
         "RETURN_DECISION_FORBIDDEN": "Vous pouvez annuler cette facture, mais pas enregistrer le retour de marchandises qu'elle nécessite. Demandez à un responsable de finaliser le retour, ou annulez sans retour.",
         "unknown": "La facture n'a pas pu être annulée. Réessayez, ou contactez le support si le problème persiste.",
-        "RETURN_DECISION_MISMATCHES_GOODS": "Cette facture comporte des produits : elle ne peut donc pas être annulée sans indiquer ce qu'il advient des marchandises. Rechargez la page et choisissez une option."
-      }
+        "RETURN_DECISION_MISMATCHES_GOODS": "Cette facture comporte des produits : elle ne peut donc pas être annulée sans indiquer ce qu'il advient des marchandises. Rechargez la page et choisissez une option.",
+        "futureReturnDate": "La date de retour ne peut pas être dans le futur."
+      },
+      "loading": "Vérification de cette facture…"
     }
   },
   "deliveryNotes": {
@@ -778,7 +780,8 @@
       "autoCreateCreditNoteHint": "Un avoir sera créé automatiquement lorsque ce retour sera confirmé",
       "create": "Créer le bon de retour",
       "noSourceDocument": "Sélectionnez la facture ou le bon de livraison d'origine avant de créer le retour.",
-      "sourceHasNoPartner": "Ce document ne comporte aucun client ; un bon de retour ne peut donc pas en être créé. Ajoutez d'abord un client au document d'origine."
+      "sourceHasNoPartner": "Ce document ne comporte aucun client ; un bon de retour ne peut donc pas en être créé. Ajoutez d'abord un client au document d'origine.",
+      "invalidQuantity": "Saisissez une quantité de retour supérieure à zéro pour chaque ligne sélectionnée."
     },
     "summary": {
       "title": "Résumé des bons de retour",

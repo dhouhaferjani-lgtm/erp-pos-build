@@ -122,24 +122,25 @@ describe('CreateReturnNoteForm', () => {
       expect(screen.getAllByText('*')[0]).toBeInTheDocument()
     })
 
-    it('shows optional condition and refund method fields', () => {
+    it('shows the optional condition field', () => {
       renderForm()
 
-      // "Condition" is used by both ReturnConditionSelect and its inline
-      // help text, so assert at least one label renders.
-      expect(screen.getAllByText(/Condition/i).length).toBeGreaterThanOrEqual(1)
-      expect(screen.getByText(/Refund Method/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/Condition/i).length).toBeGreaterThan(0)
     })
 
-    it('shows auto-create credit note checkbox for invoices', () => {
+    /**
+     * Gate CF round 1, MAJOR M3 / plan Q-D. The refund-method select and the
+     * auto-create-credit-note checkbox are GONE, not merely unbound. Neither key is
+     * accepted by any server route, so T8 dropped both from the payload — and before T8
+     * the whole request 422'd, so ticking the box failed LOUDLY. After T8 the create
+     * SUCCEEDS and the choice would be discarded behind a success toast: a newly
+     * reachable silent discard on a document flow, in the lane whose governing ruling is
+     * "explicit, never silent".
+     */
+    it('does not render controls whose value no server route accepts', () => {
       renderForm({ sourceType: 'invoice' })
 
-      expect(screen.getByText(/Automatically create credit note/i)).toBeInTheDocument()
-    })
-
-    it('hides auto-create credit note checkbox for delivery notes', () => {
-      renderForm({ sourceType: 'delivery_note' })
-
+      expect(screen.queryByText(/Refund Method/i)).not.toBeInTheDocument()
       expect(screen.queryByText(/Automatically create credit note/i)).not.toBeInTheDocument()
     })
   })

@@ -94,6 +94,19 @@ export function useCancelInvoice({ invoiceId, onSuccess, onError }: UseCancelInv
         // `queryKey` is a positional PREFIX matcher, while `tenantScopedKey` appends
         // SUFFIXES — wrapping a filter is a proven no-op that `audit-tanstack-keys.mjs`
         // flags as an error.
+        // THE key the invoice detail page actually stores under —
+        // `tenantScopedKey(['document', 'invoice', id])` (InvoiceDetailPage.tsx). Gate
+        // CF round 1, Blocker B1: this set was copied from `useReturnNotes`, whose
+        // `['invoice', id]` target is `CreateReturnNotePage`'s key, not this page's.
+        // `invalidateQueries.queryKey` is a positional PREFIX matcher and
+        // `'document' !== 'invoice'`, so after a successful cancel the badge still read
+        // *posted*, the Cancel action stayed live, and the T16 recorded-decision block —
+        // the entire FE half of CF-D5's "the choice is recorded" — never appeared. The
+        // `documents` predicate did not rescue it either: it requires `k[0] ===
+        // 'documents'`, and this key's head is the singular `'document'`.
+        queryClient.invalidateQueries({ queryKey: ['document', 'invoice', invoiceId] }),
+        // Kept: this is `CreateReturnNotePage`'s key, and a cancel changes what that page
+        // may return against.
         queryClient.invalidateQueries({ queryKey: ['invoice', invoiceId] }),
         queryClient.invalidateQueries({ queryKey: ['invoice-can-cancel', invoiceId] }),
         queryClient.invalidateQueries({

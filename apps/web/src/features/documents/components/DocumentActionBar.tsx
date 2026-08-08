@@ -196,8 +196,15 @@ export function DocumentActionBar({
       onClick: onCancel,
       // Mirror the server: enabled only when it says yes.
       disabled: isActionPending || canCancelInvoice === false,
+      // Gate CF round 1, m2: only three `CancelBlockReason` values have copy keys, and a
+      // missing key would render the RAW key as a tooltip. `defaultValue` keeps an
+      // unmapped code from leaking into the UI.
       ...(cancelReasonCode
-        ? { title: t(`sales:invoices.cancelFlow.errors.${cancelReasonCode}`) }
+        ? {
+          title: t(`sales:invoices.cancelFlow.errors.${cancelReasonCode}`, {
+            defaultValue: t('sales:invoices.cancelFlow.errors.unknown'),
+          }),
+        }
         : {}),
     })
   }

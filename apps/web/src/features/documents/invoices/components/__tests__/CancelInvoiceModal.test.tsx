@@ -36,6 +36,7 @@ function renderModal(overrides: Partial<Parameters<typeof CancelInvoiceModal>[0]
       onClose={onClose}
       invoiceNumber="INV-2026-0001"
       canCancel={canCancel()}
+      canCancelResolved
       isSubmitting={false}
       onSubmit={onSubmit}
       {...overrides}
@@ -170,6 +171,64 @@ describe('CancelInvoiceModal', () => {
     })
   })
 
+  describe('before /can-cancel resolves (the state the live app starts in)', () => {
+    /**
+     * Gate CF round 1, Blocker B3. `requires_return_decision` used to default to FALSE —
+     * failing OPEN, the direction that skips the goods question entirely and posts
+     * `not_applicable`. The modal mounts while `/can-cancel` is still in flight, and
+     * permanently if it errors, so this was reachable in one click and wrote a false
+     * statement about physical reality onto a fiscal document.
+     */
+    it('still asks the goods question when can-cancel is unresolved', () => {
+      renderModal({ canCancel: undefined, canCancelResolved: false })
+
+      expect(screen.getByText('sales:invoices.cancelFlow.goodsQuestion')).toBeInTheDocument()
+    })
+
+    it('blocks submit until can-cancel has answered', () => {
+      renderModal({ canCancel: undefined, canCancelResolved: false })
+
+      expect(screen.getByRole('button', { name: 'sales:invoices.cancelFlow.submit' })).toBeDisabled()
+      expect(screen.getByRole('status')).toHaveTextContent('sales:invoices.cancelFlow.loading')
+    })
+
+    /**
+     * Gate CF round 1, MAJOR M1 + fiscal IMPORTANT. RHF captures `defaultValues` once at
+     * mount, so the plan-mandated "option 3 pre-selected" for the `!goods_issued` branch
+     * never happened in the app — the previous test only passed because it injected
+     * `canCancel` AT MOUNT, the one state the live app never starts in.
+     */
+    it('applies the branch defaults once can-cancel resolves after mount', async () => {
+      const { rerender } = render(
+        <CancelInvoiceModal
+          isOpen
+          onClose={onClose}
+          invoiceNumber="INV-2026-0001"
+          canCancel={undefined}
+          canCancelResolved={false}
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+
+      rerender(
+        <CancelInvoiceModal
+          isOpen
+          onClose={onClose}
+          invoiceNumber="INV-2026-0001"
+          canCancel={canCancel({ goods_issued: false })}
+          canCancelResolved
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+
+      await waitFor(() => {
+        expect(screen.getAllByRole('radio')[2]).toBeChecked()
+      })
+    })
+  })
+
   it('pre-selects nothing when all three options are live', () => {
     renderModal()
 
@@ -247,11 +306,30 @@ describe('CancelInvoiceModal', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('2.0000')
     })
 
-    it('falls back to a translated message for a 422 with no readable code', () => {
-      renderModal({ errorCode: 'SOMETHING_NOBODY_TYPED' })
+    it('falls back to a translated message for a present but unrecognised code', () => {
+      renderModal({ errorCode: 'SOMETHING_NOBODY_TYPED', submitFailed: true })
 
-      // Without this the user would see axios' bare "Request failed with status code 422".
       expect(screen.getByRole('alert')).toHaveTextContent('sales:invoices.cancelFlow.errors.unknown')
+    })
+
+    /**
+     * Gate CF round 1, Blocker B2 — the case the previous test only appeared to cover.
+     * It passed a PRESENT-but-unknown code; the live silent paths carry NO code at all
+     * (a Laravel `ValidationException` `{message, errors}`, and the surviving generic
+     * flat envelope `{error: <string>, code: <string>}` T6 left in place). Both make
+     * `extractErrorCode` return undefined, and the banner was gated on the code being
+     * truthy — so the user clicked Cancel and nothing whatsoever happened.
+     */
+    it('falls back to a translated message when the failed submit carried NO code', () => {
+      renderModal({ errorCode: undefined, submitFailed: true })
+
+      expect(screen.getByRole('alert')).toHaveTextContent('sales:invoices.cancelFlow.errors.unknown')
+    })
+
+    it('shows no banner before any submit has failed', () => {
+      renderModal({ errorCode: undefined, submitFailed: false })
+
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
 
     it('stays open after an error so the user can fix and retry', () => {

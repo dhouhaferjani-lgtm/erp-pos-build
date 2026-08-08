@@ -70,19 +70,6 @@ export interface PartnerInfo {
 }
 
 /**
- * Return note metadata
- */
-export interface ReturnNoteMetadata {
-  return_reason: ReturnReason
-  return_condition?: ReturnCondition | null
-  refund_method?: RefundMethod | null
-  source_delivery_note_id?: string | null
-  source_invoice_id?: string | null
-  linked_credit_note_id?: string | null
-  notes?: string | null
-}
-
-/**
  * Return note from API response
  */
 export interface ReturnNote {

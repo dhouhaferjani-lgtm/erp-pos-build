@@ -37,7 +37,7 @@ import { Input } from '../../../components/atoms/Input/Input'
 import { StatusBadge } from '../../../components/atoms/StatusBadge/StatusBadge'
 import { Textarea } from '../../../components/atoms/Textarea/Textarea'
 import { EntityLink } from '../../../components/molecules/EntityLink'
-import { tokens, textColors, borderColors } from '../../../lib/designTokens'
+import { tokens, textColors, borderColors, semanticColorTokens } from '../../../lib/designTokens'
 import { CloseWithWriteoffSection } from './components/CloseWithWriteoffSection'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
@@ -80,6 +80,12 @@ export function InvoiceDetailPage() {
   const [cancelError, setCancelError] = useState<
     { code?: string | undefined; details?: Record<string, unknown> | undefined } | undefined
   >(undefined)
+  /**
+   * A submit came back failed. Tracked SEPARATELY from `cancelError.code` because a 422
+   * can carry no readable code at all — and "no code" must still produce actionable
+   * feedback rather than a silently dead button (gate CF round 1, Blocker B2).
+   */
+  const [cancelSubmitFailed, setCancelSubmitFailed] = useState(false)
   const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showDeliveryConfirmationModal, setShowDeliveryConfirmationModal] = useState(false)
@@ -199,6 +205,7 @@ export function InvoiceDetailPage() {
     onSuccess: (response) => {
       setShowCancelModal(false)
       setCancelError(undefined)
+      setCancelSubmitFailed(false)
 
       const returnNote = response.return_decision?.return_note ?? null
       if (returnNote) {
@@ -223,10 +230,19 @@ export function InvoiceDetailPage() {
       // The modal STAYS OPEN so the user can fix the date or pick another option —
       // and, on a network error, retry. That retry is why the server's
       // identical-replay path has to return 200 with the existing return note.
+      setCancelSubmitFailed(true)
+
       const body = error.response?.data
       setCancelError({
         code: extractErrorCode(error) ?? body?.error?.code,
-        details: body?.error as Record<string, unknown> | undefined,
+        // `error.DETAILS`, not the whole `error` object (gate CF round 1, MAJOR M2).
+        // The renderer nests the payload one level deeper, so `details.product_id` and
+        // `details.remaining_returnable` were both undefined and the product-named
+        // quantity refusal interpolated empty strings: "…exceed what was delivered for
+        //  — only  is still available to return." Plan §2 makes naming the product
+        // MANDATORY precisely because CF-D7 removed the line UI, so that banner is the
+        // one refusal that is unactionable without its details.
+        details: body?.error?.['details'] as Record<string, unknown> | undefined,
       })
     },
   })
@@ -356,7 +372,7 @@ export function InvoiceDetailPage() {
               document={invoice}
               basePath="/sales/invoices"
               isActionPending={isActionPending}
-              onCancel={() => { setCancelError(undefined); setShowCancelModal(true); }}
+              onCancel={() => { setCancelError(undefined); setCancelSubmitFailed(false); setShowCancelModal(true); }}
               canCancelInvoice={canCancelQuery.data?.can_cancel ?? true}
               cancelReasonCode={canCancelQuery.data?.reason_code ?? null}
               onConfirm={() => { setConfirmAction('confirm'); }}
@@ -403,13 +419,16 @@ export function InvoiceDetailPage() {
           * the goods came back, stayed out, or never shipped.
           */}
         {invoice.return_decision && (
-          <div className={`rounded-lg border ${borderColors.light} ${colorClasses.bgGray50} p-4`}>
+          <div className={`rounded-lg border ${borderColors.light} ${semanticColorTokens.intent.neutral.bgSubtle} p-4`}>
             <p className={`text-sm font-medium ${textColors.primary}`}>
               {t('sales:invoices.cancelFlow.recorded.title')}
             </p>
             <p className={`mt-1 text-sm ${textColors.secondary}`}>
               {t(`sales:invoices.cancelFlow.recorded.${invoice.return_decision.mode}`, {
-                date: invoice.return_decision.returned_on ?? '',
+                // Locale-formatted, not the raw ISO string (gate CF round 1, m8).
+                date: invoice.return_decision.returned_on
+                  ? new Date(invoice.return_decision.returned_on).toLocaleDateString()
+                  : '',
               })}
             </p>
             {invoice.return_decision.return_note_id && (
@@ -655,12 +674,14 @@ export function InvoiceDetailPage() {
         */}
       <CancelInvoiceModal
         isOpen={showCancelModal}
-        onClose={() => { setShowCancelModal(false); setCancelError(undefined) }}
+        onClose={() => { setShowCancelModal(false); setCancelError(undefined); setCancelSubmitFailed(false) }}
         invoiceNumber={invoice.document_number ?? ''}
         canCancel={canCancelQuery.data}
+        canCancelResolved={canCancelQuery.isSuccess}
         isSubmitting={cancelMutation.isPending}
         errorCode={cancelError?.code}
         errorDetails={cancelError?.details}
+        submitFailed={cancelSubmitFailed}
         onSubmit={({ reason, mode, returnedOn }) => {
           cancelMutation.mutate({
             reason,

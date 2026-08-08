@@ -113,4 +113,31 @@ describe('DocumentActionBar — guided cancel action', () => {
 
     expect(screen.queryByText('documents.cancel')).not.toBeInTheDocument()
   })
+
+  /**
+   * Gate CF round 1, m4. T11 mandates "disabled with `title` when `reason_code` is set" —
+   * the bar must MIRROR the server rather than offer a live button that 422s. A FILED VAT
+   * period can never be reopened, so that button would be a permanent dead end: exactly
+   * the case the read model exists to pre-empt.
+   */
+  it('renders Cancel disabled with the reason as its title when the server refuses', () => {
+    renderBar({
+      onCancel: vi.fn(),
+      canCancelInvoice: false,
+      cancelReasonCode: 'DOCUMENT_PERIOD_FILED',
+    })
+
+    const action = screen.getByText('documents.cancel').closest('button')
+    expect(action).toBeDisabled()
+    expect(action).toHaveAttribute(
+      'title',
+      'sales:invoices.cancelFlow.errors.DOCUMENT_PERIOD_FILED',
+    )
+  })
+
+  it('leaves Cancel enabled when the server permits it', () => {
+    renderBar({ onCancel: vi.fn(), canCancelInvoice: true, cancelReasonCode: null })
+
+    expect(screen.getByText('documents.cancel').closest('button')).not.toBeDisabled()
+  })
 })

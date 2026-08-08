@@ -14,10 +14,8 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { useCreateReturnNote } from '../hooks/useReturnNotes'
 import { ReturnReasonSelect } from './ReturnReasonSelect'
 import { ReturnConditionSelect } from './ReturnConditionSelect'
-import { RefundMethodSelect } from './RefundMethodSelect'
 import type { ReturnReason } from './ReturnReasonSelect'
 import type { ReturnCondition } from './ReturnConditionSelect'
-import type { RefundMethod } from './RefundMethodSelect'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { formatQuantity } from '@/lib/decimal'
@@ -101,8 +99,6 @@ export function CreateReturnNoteForm({
   const [returnMode, setReturnMode] = useState<ReturnMode>('full')
   const [returnReason, setReturnReason] = useState<ReturnReason | ''>('')
   const [returnCondition, setReturnCondition] = useState<ReturnCondition | ''>('')
-  const [refundMethod, setRefundMethod] = useState<RefundMethod | ''>('')
-  const [autoCreateCreditNote, setAutoCreateCreditNote] = useState(false)
   const [selectedLines, setSelectedLines] = useState<Map<string, string>>(new Map())
 
   const {
@@ -415,35 +411,14 @@ export function CreateReturnNoteForm({
         disabled={isSubmitting}
       />
 
-      {/* Refund Method Field (Optional) */}
-      <RefundMethodSelect
-        value={refundMethod}
-        onChange={setRefundMethod}
-        disabled={isSubmitting}
-      />
-
-      {/* Auto-Create Credit Note Checkbox */}
-      {sourceType === 'invoice' && (
-        <div className={`rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-4`}>
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={autoCreateCreditNote}
-              onChange={(e) => { setAutoCreateCreditNote(e.target.checked); }}
-              disabled={isSubmitting}
-              className={`mt-1 h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
-            />
-            <div className="flex-1">
-              <span className={`text-sm font-medium ${colorClasses.textGray900}`}>
-                {t('sales:returnNotes.form.autoCreateCreditNote', 'Automatically create credit note')}
-              </span>
-              <p className={`mt-1 text-sm ${colorClasses.textGray500}`}>
-                {t('sales:returnNotes.form.autoCreateCreditNoteHint', 'A credit note will be created automatically when this return is confirmed')}
-              </p>
-            </div>
-          </label>
-        </div>
-      )}
+      {/*
+        * Refund method and auto-create-credit-note are NOT RENDERED (gate CF round 1,
+        * MAJOR M3 / plan Q-D) — see the matching note in CreateReturnNotePage. Neither
+        * key is accepted by any server route, so T8 dropped both from the payload;
+        * before T8 the request 422'd so the control failed LOUDLY, and after T8 the
+        * create succeeds and the choice is discarded behind a success toast. A silent
+        * discard on a document flow is exactly what the governing ruling forbids.
+        */}
 
       {/* Notes Field */}
       <div>

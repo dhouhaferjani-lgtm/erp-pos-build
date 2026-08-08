@@ -549,8 +549,10 @@
         "RETURN_DECISION_ALREADY_RECORDED": "A decision about the goods has already been recorded for this cancellation and cannot be changed.",
         "RETURN_DECISION_FORBIDDEN": "You can cancel this invoice, but not record the goods return it needs. Ask a manager to complete the return, or cancel without a return.",
         "unknown": "The invoice could not be cancelled. Please try again, or contact support if it keeps happening.",
-        "RETURN_DECISION_MISMATCHES_GOODS": "This invoice has products on it, so it cannot be cancelled without saying what happens to the goods. Reload the page and choose an option."
-      }
+        "RETURN_DECISION_MISMATCHES_GOODS": "This invoice has products on it, so it cannot be cancelled without saying what happens to the goods. Reload the page and choose an option.",
+        "futureReturnDate": "The return date cannot be in the future."
+      },
+      "loading": "Checking this invoice…"
     }
   },
   "deliveryNotes": {
@@ -778,7 +780,8 @@
       "autoCreateCreditNoteHint": "A credit note will be created automatically when this return is confirmed",
       "create": "Create Return Note",
       "noSourceDocument": "Select the invoice or delivery note the goods came from before creating the return.",
-      "sourceHasNoPartner": "This document has no customer on it, so a return note cannot be created from it. Add a customer to the source document first."
+      "sourceHasNoPartner": "This document has no customer on it, so a return note cannot be created from it. Add a customer to the source document first.",
+      "invalidQuantity": "Enter a return quantity greater than zero for every selected line."
     },
     "summary": {
       "title": "Return Note Summary",
