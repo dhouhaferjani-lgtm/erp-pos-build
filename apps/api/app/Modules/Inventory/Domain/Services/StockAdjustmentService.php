@@ -210,6 +210,8 @@ final class StockAdjustmentService
      * @param  int|null  $batchId  Optional batch ID for batch-tracked products
      * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
      * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
+     * @param  CarbonInterface|null  $occurredAt  Business event time; POS-originated callers thread the
+     *                                            DEVICE event time here. Defaults to now() (server clock).
      *
      * @throws InsufficientStockException
      */
@@ -226,6 +228,7 @@ final class StockAdjustmentService
         ?string $unitCost = null,
         ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null,
+        ?CarbonInterface $occurredAt = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
         $this->assertReferenceLinkagePaired($referenceType, $referenceId);
@@ -233,7 +236,7 @@ final class StockAdjustmentService
         // Pure decrement: NO advisory seam (mustNotLock). It mutates an existing
         // variant-scoped row via lockStockLevel()'s row lock, which serializes it
         // against any in-flight recompute holding that row.
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost, $referenceType, $referenceId): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost, $referenceType, $referenceId, $occurredAt): StockMovement {
             $stockLevel = $this->lockStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId), $variantId);
 
             /** @var numeric-string $available */
@@ -268,6 +271,7 @@ final class StockAdjustmentService
                 variantId: $variantId,
                 reason: $reason,
                 unitCost: $unitCost,
+                occurredAt: $occurredAt,
                 referenceType: $referenceType,
                 referenceId: $referenceId,
             );

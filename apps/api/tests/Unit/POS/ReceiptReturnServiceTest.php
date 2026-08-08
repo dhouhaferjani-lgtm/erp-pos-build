@@ -16,6 +16,7 @@ use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Services\LegacyCorrectionGuard;
 use App\Modules\POS\Application\Services\ReceiptFinalizationService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
+use App\Modules\POS\Application\Services\ReturnScrapWriteOffService;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Receipt;
@@ -95,6 +96,7 @@ class ReceiptReturnServiceTest extends TestCase
             $this->app->make(ReceiptHashService::class),
             $this->app->make(RestockPolicyResolver::class),
             $this->app->make(LegacyCorrectionGuard::class),
+            $this->app->make(ReturnScrapWriteOffService::class),
         );
     }
 

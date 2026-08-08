@@ -14,6 +14,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -98,6 +99,40 @@ final class ReverseWriteOffService
             throw new \DomainException(
                 'Only write-off issue movements can be reversed; movement '
                 .$original->id.' is of type '.$original->movement_type->value.'.'
+            );
+        }
+
+        // 1a-quater. A POS RETURN SCRAP is not a batch write-off and must not be
+        //            reversed here (DPA V10 gate C3).
+        //
+        //            Until V10 the POS scrap movement was typed `Adjustment`, so
+        //            the guard above rejected it by accident. V10 routes it through
+        //            StockAdjustmentService::issue() — correct for costing, but it
+        //            makes the movement indistinguishable from a lot write-off to
+        //            every remaining guard here, while the web Reverse action is
+        //            gated on `reason` ALONE. One click would then:
+        //              (a) receive() physically destroyed goods back into SELLABLE
+        //                  stock while the return receipt still says
+        //                  `disposition = scrap` — ledger and fiscal document in
+        //                  direct contradiction with no compensating document,
+        //                  i.e. the exact document-per-action violation this lane
+        //                  exists to remediate; and
+        //              (b) on a batch-tracked product (every product in the
+        //                  parapharmacy vertical) inflate the lot ledger: a POS
+        //                  scrap writes NO inventory_batch_movements row, so the
+        //                  lot-restore branch below is skipped, but receive() with
+        //                  batchId: null runs ensureDefaultBatchForImplicitPositiveStock,
+        //                  which tops the DEFAULT lot up to the WHOLE aggregate on
+        //                  top of the real lots — SUM(inventory_batch_stock) >
+        //                  stock_levels.quantity.
+        //
+        //            A scrap disposition is undone by CORRECTING THE RETURN (which
+        //            re-authors both legs through the fiscal document), never by a
+        //            batch write-off reversal.
+        if ($original->reference_type === StockMovementReferenceType::PosReceiptReturnScrap->value) {
+            throw new \DomainException(
+                'Movement '.$original->id.' is a POS return scrap write-off and cannot be reversed here; '
+                .'a scrap disposition is undone by correcting the return receipt, not by a batch write-off reversal.'
             );
         }
 

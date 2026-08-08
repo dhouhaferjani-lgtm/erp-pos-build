@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -13,13 +18,17 @@ use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
+use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -30,7 +39,11 @@ use Tests\TestCase;
  *
  * `restock` restores stock (unless the product's own `RestockPolicyResolver`
  * resolves `RestockPolicy::Never` — "regulated never-restock honored");
- * `scrap` / `not_received` do not.
+ * `not_received` does nothing at all.
+ *
+ * `scrap` (DPA V10) writes the canonical TWO-LEG pair — restore (+qty) then a
+ * cost-bearing, GL-posted write-off (−qty) — so the net sellable quantity is
+ * unchanged while the destruction is properly documented and costed.
  *
  * Rule 20 — every `apply()` call clears `CompanyContext` first.
  */
@@ -100,9 +113,23 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         self::assertSame('7.0000', $stockLevel->quantity);
     }
 
-    public function test_scrap_disposition_does_not_restock(): void
+    /**
+     * DPA V10 — the v4 device-refund projection must produce the SAME two-leg
+     * SCRAP outcome as the interactive server return path: restore (+qty,
+     * `pos_return`) then a COST-BEARING write-off (−qty, `write_off`) carrying
+     * a movement-keyed Dr COGS / Cr Inventory journal entry. Net sellable
+     * quantity is unchanged — what changes is that the destruction is now
+     * recorded and costed instead of silently skipped.
+     */
+    public function test_scrap_disposition_records_costed_two_leg_write_off(): void
     {
-        $product = Product::factory()->create(['tenant_id' => $this->tenantId, 'company_id' => $this->companyId]);
+        $this->seedWriteOffAccounts();
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
         $stockLevel = $this->seedStockLevel($product->id, '10.0000');
 
         $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
@@ -113,8 +140,96 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
         $this->project($refund);
 
+        // Net sellable quantity unchanged — the two legs cancel.
         $stockLevel->refresh();
-        self::assertSame('5.0000', $stockLevel->quantity, 'scrap must NOT restore stock');
+        self::assertSame('5.0000', $stockLevel->quantity, 'scrap nets to zero sellable change');
+
+        // Leg 1 — restore.
+        self::assertSame(1, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSReturn->value)
+            ->count());
+
+        // Leg 2 — costed write-off carrying the S0 document linkage.
+        $writeOff = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::WriteOff->value)
+            ->sole();
+
+        self::assertSame('3.000000', (string) $writeOff->unit_cost);
+        self::assertSame('6.000000', (string) $writeOff->total_cost);
+        self::assertSame(
+            StockMovementReferenceType::PosReceiptReturnScrap->value,
+            $writeOff->reference_type,
+        );
+
+        // occurred_at = DEVICE event time of the refund event (same rule the
+        // restore leg follows), not server wall-clock.
+        self::assertNotNull($writeOff->occurred_at);
+        self::assertSame(
+            $refund->event_time_device->toIso8601String(),
+            $writeOff->occurred_at->toIso8601String(),
+        );
+
+        // Movement-keyed Dr COGS / Cr Inventory. EUR scale 2: 2.000 × 3 = 6.00,
+        // persisted at the journal_lines decimal(_,3) storage scale.
+        $entry = JournalEntry::query()
+            ->where('company_id', $this->companyId)
+            ->where('source_type', 'batch_write_off')
+            ->where('source_id', $writeOff->id)
+            ->with('lines')
+            ->sole();
+
+        self::assertSame('6.000', (string) $entry->lines->firstWhere('debit', '>', '0')->debit);
+        self::assertSame('6.000', (string) $entry->lines->firstWhere('credit', '>', '0')->credit);
+
+        // Gate I6 — a Draft entry appears in no trial balance / P&L / balance
+        // sheet, so "the entry exists" is not the spec claim. It must be SEALED.
+        self::assertSame(JournalEntryStatus::Posted, $entry->status);
+        self::assertNotNull($entry->posted_at);
+        self::assertNotNull($entry->fiscal_hash);
+    }
+
+    /**
+     * Replay safety: `apply()` is guarded by the `pos_receipts.fiscal_event_id`
+     * idempotency probe, so re-projecting the SAME refund event must not write
+     * a second write-off movement (and therefore not a second journal entry —
+     * the entry is keyed on the movement id).
+     */
+    public function test_scrap_disposition_write_off_is_idempotent_on_replay(): void
+    {
+        $this->seedWriteOffAccounts();
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+        $stockLevel = $this->seedStockLevel($product->id, '10.0000');
+
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $this->project($sale);
+
+        $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
+        $this->project($refund);
+        $this->project($refund);
+        $this->project($refund);
+
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity);
+
+        self::assertSame(1, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::WriteOff->value)
+            ->count());
+        self::assertSame(1, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSReturn->value)
+            ->count());
+        self::assertSame(1, JournalEntry::query()
+            ->where('company_id', $this->companyId)
+            ->where('source_type', 'batch_write_off')
+            ->count());
     }
 
     public function test_not_received_disposition_does_not_restock(): void
@@ -156,6 +271,108 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         self::assertSame('5.0000', $stockLevel->quantity, 'regulated never-restock policy must be honored even when disposition=restock');
     }
 
+    /**
+     * A projector may never REJECT an already-signed event (Model 1 §4.1).
+     * When the scrap pair cannot complete the SAVEPOINT rolls BOTH legs back:
+     * `apply()` still succeeds, the receipt still projects, and no half-applied
+     * phantom `+qty` restore survives.
+     *
+     * Gate I2 (fiscal): this uses a GENUINE PARTIAL failure — the restore leg
+     * really does write (+2), and only then does the write-off leg throw
+     * `InsufficientStockException` on an over-reserved row. The earlier
+     * "no stock_levels row" variant proved nothing, because the restore leg
+     * returns early and writes nothing in that case.
+     */
+    public function test_scrap_disposition_failure_rolls_back_a_genuinely_applied_restore_leg(): void
+    {
+        $this->seedWriteOffAccounts();
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+        $stockLevel = $this->seedStockLevel($product->id, '10.0000');
+
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $this->project($sale);
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity);
+
+        // Over-reserve so that AFTER the restore leg applies (+2 ⇒ 7) the
+        // available quantity (7 − 6 = 1) still cannot cover the 2-unit issue.
+        $stockLevel->reserved = '6.0000';
+        $stockLevel->save();
+
+        $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
+        $this->project($refund);
+
+        // The refund receipt still projected (the projector did not reject it).
+        self::assertTrue(Receipt::query()->where('fiscal_event_id', $refund->id)->exists());
+
+        // The applied restore leg was rolled BACK — no phantom +2.
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity, 'the applied restore leg must not survive alone');
+        self::assertSame(0, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSReturn->value)
+            ->count());
+        self::assertSame(0, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::WriteOff->value)
+            ->count());
+        self::assertSame(0, JournalEntry::query()
+            ->where('company_id', $this->companyId)
+            ->where('source_type', 'batch_write_off')
+            ->count());
+    }
+
+    /**
+     * Gate C1 (fiscal, reviewer-reproduced). `Product` uses SoftDeletes, so a
+     * product archived between the sale and the refund projection is
+     * unresolvable. Before the fix the write-off leg RETURNED NULL and the
+     * savepoint COMMITTED with only the restore leg applied — the projector
+     * itself authored a permanent `+qty` restock of goods the device said were
+     * destroyed (5 → 7). The pair is now atomic.
+     */
+    public function test_scrap_with_soft_deleted_product_writes_neither_leg(): void
+    {
+        $this->seedWriteOffAccounts();
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+        $stockLevel = $this->seedStockLevel($product->id, '10.0000');
+
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $this->project($sale);
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity);
+
+        // Archived between the sale and the refund projection.
+        $product->delete();
+
+        $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
+        $this->project($refund);
+
+        self::assertTrue(Receipt::query()->where('fiscal_event_id', $refund->id)->exists());
+
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity, 'NO phantom restock of destroyed goods');
+
+        // Only the original SALE decrement survives — neither refund leg was written.
+        self::assertSame(0, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->whereIn('reason', [MovementReason::POSReturn->value, MovementReason::WriteOff->value])
+            ->count());
+        self::assertSame(1, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSSale->value)
+            ->count());
+    }
+
     // =================================================================
     // Helpers
     // =================================================================
@@ -164,6 +381,29 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
     {
         app(CompanyContext::class)->clear();
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+    }
+
+    private function seedWriteOffAccounts(): void
+    {
+        Account::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '601',
+            'name' => 'Cost of Goods Sold',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::CostOfGoodsSold,
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '311',
+            'name' => 'Inventory Asset',
+            'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::Inventory,
+            'is_active' => true,
+        ]);
     }
 
     private function seedStockLevel(string $productId, string $quantity): StockLevel
