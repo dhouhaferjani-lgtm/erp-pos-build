@@ -173,17 +173,12 @@ final class BatchWriteOffService
     /**
      * Resolve the per-unit cost for a write-off, used in BOTH the GL amount
      * calculation (calculateWriteOffAmount) and the movement cost snapshot
-     * (writeOff). A single private method guarantees the two call-sites always
-     * read from the same source, so that a future Phase C reversing journal
-     * entry — which reads unit_cost from the stored movement row — will exactly
-     * reconstruct the original write-off GL entry.
+     * (writeOff), so a Phase C reversing journal entry — which reads unit_cost
+     * from the stored movement row — exactly reconstructs the original entry.
      *
-     * Fallback chain (callers annotate the return as numeric-string via @var):
-     *   weighted_average_cost (virtual accessor, if ever added) ?? cost_price (DB-persisted WAC) ?? '0.00'
-     *
-     * Returns a string that is always numeric; callers narrow to numeric-string
-     * via @var annotation since PHPStan cannot statically prove the chain above
-     * is always numeric from the @property string type on Product.
+     * The chain itself lives on `Product::resolveWriteOffUnitCost()` so that
+     * EVERY write-off flavour (this one and POS return scrap, DPA V10) reads one
+     * definition; gate V10-I5 caught the two having independently drifted.
      */
     private function resolveUnitCost(?Product $product): string
     {
@@ -191,6 +186,6 @@ final class BatchWriteOffService
             return '0.00';
         }
 
-        return (string) ($product->weighted_average_cost ?? $product->cost_price ?? '0.00');
+        return $product->resolveWriteOffUnitCost();
     }
 }

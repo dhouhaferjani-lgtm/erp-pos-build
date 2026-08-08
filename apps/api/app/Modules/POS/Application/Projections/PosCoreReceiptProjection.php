@@ -49,6 +49,7 @@ use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
 use App\Shared\Domain\CashRoundingCutover;
+use App\Shared\Domain\ConcurrencyFault;
 use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -1912,10 +1913,21 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *
      * **A projector may never REJECT an already-signed event** (Model 1, §4.1).
      * The pair therefore runs inside its own SAVEPOINT: if either leg throws
-     * (absent stock row, variant-grain mismatch, insufficient available
+     * (archived product, variant-grain mismatch, insufficient available
      * quantity), BOTH legs roll back and the line falls back to the previous
      * net-zero / no-movement outcome, logged for operator follow-up, rather
-     * than leaving the restore leg stranded as a phantom `+qty`.
+     * than leaving the restore leg stranded as a phantom `+qty`. The write-off
+     * service THROWS rather than declining quietly precisely so this savepoint
+     * gets the chance to undo the restore leg (gate C1).
+     *
+     * **Retryable concurrency faults are the ONE thing NOT contained** (gate C2).
+     * Laravel does not issue `ROLLBACK TO SAVEPOINT` for a nested deadlock /
+     * serialization failure, so swallowing one would leave the enclosing
+     * PostgreSQL transaction aborted (25P02) and let `apply()` "COMMIT" a
+     * silently rolled-back receipt — the whole projection lost while its
+     * projection row says applied and the event is never retried. Both legs take
+     * `lockForUpdate` on `stock_levels`, so this block is genuinely
+     * contention-prone. See {@see ConcurrencyFault}.
      *
      * Rule 20: no `CompanyContext` is touched — the currency comes from the
      * canonical payload and is passed explicitly.
@@ -1934,6 +1946,24 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         // same narrowing `restockStock` applies to the identical value.
         /** @var numeric-string $qty */
         $qty = $quantity;
+
+        // No `stock_levels` row at this grain (service / non-inventory item, or a
+        // variant grain that was never stocked): both legs are no-ops by
+        // construction — `restockStock` logs and returns, and there is nothing to
+        // destroy. Bail BEFORE the savepoint so this benign, recurring case does
+        // not emit an ERROR on every occurrence (gate M2 log-noise), and so
+        // `issue()` never materialises a zero-quantity row just to fail on it.
+        if (! $this->scrapStockGrainExists($event->company_id, (string) $terminal->location_id, $productId, $variantId)) {
+            Log::warning('PosCoreReceiptProjection: no stock_levels row for a scrap line; neither leg recorded', [
+                'fiscal_event_id' => $event->id,
+                'receipt_id' => $receiptId,
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'location_id' => $terminal->location_id,
+            ]);
+
+            return;
+        }
 
         try {
             DB::transaction(function () use ($receiptId, $event, $terminal, $view, $productId, $quantity, $qty, $variantId): void {
@@ -1964,6 +1994,14 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 );
             });
         } catch (\Throwable $e) {
+            // Gate C2: a retryable concurrency fault is NOT the projector
+            // rejecting a signed event — it is infrastructure, and the job's own
+            // retry is the correct handling. Swallowing it silently loses the
+            // whole receipt (see the method docblock).
+            if (ConcurrencyFault::isRetryable($e)) {
+                throw $e;
+            }
+
             Log::error('PosCoreReceiptProjection: scrap-disposition write-off failed; both legs rolled back, no stock movement recorded for this line', [
                 'fiscal_event_id' => $event->id,
                 'receipt_id' => $receiptId,
@@ -1973,6 +2011,29 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Does a `stock_levels` row exist at the exact grain the scrap pair would
+     * touch? Mirrors `restockStock`'s variant-aware lookup (no lock — this is a
+     * pre-flight benign-case probe; both legs take their own locks).
+     */
+    private function scrapStockGrainExists(
+        string $companyId,
+        string $locationId,
+        string $productId,
+        ?string $variantId,
+    ): bool {
+        return StockLevel::query()
+            ->where('product_id', $productId)
+            ->where('location_id', $locationId)
+            ->where('company_id', $companyId)
+            ->when(
+                $variantId !== null,
+                fn ($query) => $query->where('variant_id', $variantId),
+                fn ($query) => $query->whereNull('variant_id'),
+            )
+            ->exists();
     }
 
     /**

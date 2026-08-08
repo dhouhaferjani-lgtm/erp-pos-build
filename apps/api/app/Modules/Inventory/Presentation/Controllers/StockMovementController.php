@@ -304,6 +304,12 @@ class StockMovementController extends Controller
             'quantity_before' => $movement->quantity_before,
             'quantity_after' => $movement->quantity_after,
             'reference' => $movement->reference,
+            // The raw document-linkage morph type (StockMovementReferenceType and
+            // the pre-DPA legacy conventions). Exposed so the client can gate
+            // actions that are only valid for SOME write-offs — a POS return scrap
+            // carries reason=write_off but is NOT reversible through
+            // ReverseWriteOffService (DPA V10 gate C3).
+            'reference_type' => $movement->reference_type,
             'source_document_id' => $sourceDocument?->id,
             'source_document_type' => $sourceDocument?->type->value,
             'notes' => $movement->notes,

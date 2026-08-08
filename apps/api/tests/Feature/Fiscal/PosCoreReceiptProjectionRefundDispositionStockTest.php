@@ -361,7 +361,16 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
         $stockLevel->refresh();
         self::assertSame('5.0000', $stockLevel->quantity, 'NO phantom restock of destroyed goods');
-        self::assertSame(0, StockMovement::query()->where('product_id', $product->id)->count());
+
+        // Only the original SALE decrement survives — neither refund leg was written.
+        self::assertSame(0, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->whereIn('reason', [MovementReason::POSReturn->value, MovementReason::WriteOff->value])
+            ->count());
+        self::assertSame(1, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSSale->value)
+            ->count());
     }
 
     // =================================================================

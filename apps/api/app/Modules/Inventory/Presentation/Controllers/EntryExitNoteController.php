@@ -280,8 +280,11 @@ final class EntryExitNoteController extends Controller
         // Reference types written through the document-linkage seam carry a
         // canonical, translatable code (DPA S0). Resolving through the enum keeps
         // this list and the seam's vocabulary from drifting apart.
+        // EVERY canonical case resolves, not just a hand-listed one — otherwise a
+        // newly adopted reference type renders raw to the user (rule 11). Each case
+        // needs a matching `movements.sourceTypes.<value>` translation key.
         $canonical = StockMovementReferenceType::tryFrom($movement->reference_type ?? '');
-        if ($canonical === StockMovementReferenceType::InventoryCounting) {
+        if ($canonical !== null) {
             return $canonical->value;
         }
 

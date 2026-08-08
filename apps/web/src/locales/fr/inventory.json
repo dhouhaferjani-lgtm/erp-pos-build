@@ -403,7 +403,8 @@
       "delivery_note": "Bon de livraison",
       "stock_transfer": "Transfert de stock",
       "adjustment_batch": "Ajustement",
-      "inventory_counting": "Inventaire"
+      "inventory_counting": "Inventaire",
+      "pos_receipt_return_scrap": "Rebut sur retour caisse"
     },
     "empty": {
       "title": "Aucun bon d'entrée/sortie",

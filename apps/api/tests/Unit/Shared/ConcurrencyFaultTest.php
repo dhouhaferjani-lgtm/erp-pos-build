@@ -9,6 +9,7 @@ use App\Shared\Domain\ConcurrencyFault;
 use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use PDOException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -52,9 +53,7 @@ final class ConcurrencyFaultTest extends TestCase
         ];
     }
 
-    /**
-     * @dataProvider retryableSqlStates
-     */
+    #[DataProvider('retryableSqlStates')]
     public function test_query_exception_with_a_retryable_sqlstate_is_retryable(string $sqlState): void
     {
         self::assertTrue(

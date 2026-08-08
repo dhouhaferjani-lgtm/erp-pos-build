@@ -37,6 +37,7 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\ExpenseVatSplit;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * General Ledger Service for creating and managing journal entries.
@@ -4335,10 +4336,38 @@ final class GeneralLedgerService
     }
 
     /**
-     * Create journal entry for inventory write-off (expired/damaged batch stock).
+     * True when this company has BOTH accounts an inventory write-off entry
+     * needs. Lets a caller decide up front whether posting is possible, instead
+     * of calling {@see createInventoryWriteOffEntry} and catching the bare
+     * RuntimeException `Account::findByPurposeOrFail` throws — a catch that
+     * inevitably also swallows genuine faults (ModelNotFound, QueryException,
+     * ClosedFiscalPeriod all extend RuntimeException) and silently leaves
+     * destroyed inventory on the balance sheet (DPA V10 gate M4/I7).
+     */
+    public function hasInventoryWriteOffAccounts(string $companyId): bool
+    {
+        return Account::findByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold) !== null
+            && Account::findByPurpose($companyId, SystemAccountPurpose::Inventory) !== null;
+    }
+
+    /**
+     * Create journal entry for inventory write-off (expired/damaged batch stock,
+     * POS return scrap).
      *
      * Debit: Cost of Goods Sold (write-off expense)
      * Credit: Inventory (asset reduction)
+     *
+     * @param  bool  $postSynchronously  Seal + persist the entry INSIDE the caller's
+     *                                   transaction via {@see postEntryNow} instead of
+     *                                   deferring the whole post to `DB::afterCommit`.
+     *                                   REQUIRED for queue/projection callers: the
+     *                                   deferred path runs in autocommit, where the
+     *                                   per-company `pg_advisory_xact_lock` that
+     *                                   serializes `chain_sequence` allocation degrades
+     *                                   to a no-op (duplicate sequences under concurrent
+     *                                   workers), and where a post-commit throw leaves
+     *                                   the entry Draft forever — invisible to every
+     *                                   trial balance, P&L and balance sheet.
      */
     public function createInventoryWriteOffEntry(
         string $companyId,
@@ -4349,14 +4378,20 @@ final class GeneralLedgerService
         string $movementId,
         ?string $postedByUserId = null,
         ?string $currencyCode = null,
+        bool $postSynchronously = false,
     ): ?JournalEntry {
         // Rule 19/20: prefer the EXPLICIT currency when the caller supplied one.
         // A bare no-arg getScale() reads CompanyContext, which is unbound in
         // queued/projection contexts (the POS scrap write-off posts from the
         // fiscal projector) and throws there — silently swallowing the entry via
-        // the callers' RuntimeException guard. Request-context callers already
-        // pass their own company currency, so this is behaviour-identical for
-        // them.
+        // the callers' RuntimeException guard.
+        //
+        // NOTE: this is NOT strictly behaviour-identical for the pre-existing
+        // caller — getScale($code) reads the static ISO 4217 map while the no-arg
+        // path reads the company country's `currency_decimal_places` column, so a
+        // country row that overrides the ISO scale now resolves differently here.
+        // The only use is the `bccomp($amount, '0')` zero-test below, so the
+        // observable difference is confined to sub-minor-unit amounts.
         $scale = $currencyCode !== null
             ? $this->scaleResolver->getScale($currencyCode)
             : $this->scale();
@@ -4369,9 +4404,24 @@ final class GeneralLedgerService
         $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
         $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
 
+        // Resolve the actor DEFENSIVELY. On the POS projection path the id is
+        // `fiscal_events.operator_id` — a device-authored bare uuid column with no
+        // FK, which this projector already treats as untrusted elsewhere. A
+        // `findOrFail` here used to abort the whole GL leg (and, under the callers'
+        // RuntimeException guard, silently), producing a costed destruction with no
+        // journal entry at all. An unresolvable actor degrades to a
+        // system-generated post — never to "no entry".
         $user = null;
         if ($postedByUserId !== null) {
-            $user = User::query()->findOrFail($postedByUserId);
+            $user = User::query()->find($postedByUserId);
+
+            if ($user === null) {
+                Log::error('createInventoryWriteOffEntry: postedByUserId does not resolve to a User; posting the write-off entry as system-generated', [
+                    'company_id' => $companyId,
+                    'movement_id' => $movementId,
+                    'posted_by_user_id' => $postedByUserId,
+                ]);
+            }
         }
 
         $entry = DB::transaction(function () use (
@@ -4418,7 +4468,14 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($user !== null) {
+        if ($postSynchronously) {
+            // Seal + persist in the caller's transaction: the entry and the stock
+            // movement commit or roll back as ONE unit, and the chain advisory lock
+            // is actually effective (it only is inside an explicit transaction).
+            // postEntryNow accepts a null actor, so an unresolvable device operator
+            // still yields a POSTED entry with posted_by = null.
+            $this->postEntryNow($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+        } elseif ($user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
         }
 

@@ -44,6 +44,8 @@ interface StockMovement {
   quantity_before: string
   quantity_after: string
   reference: string
+  /** Document-linkage morph type (StockMovementReferenceType value) or null. */
+  reference_type: string | null
   source_document_id: string | null
   source_document_type: string | null
   notes: string | null
@@ -71,6 +73,25 @@ type ReversibleWriteOffReason = typeof REVERSIBLE_WRITE_OFF_REASONS[number]
 
 function isReversibleWriteOff(reason: string | null): reason is ReversibleWriteOffReason {
   return reason !== null && (REVERSIBLE_WRITE_OFF_REASONS as readonly string[]).includes(reason)
+}
+
+/**
+ * Document-linkage types whose write-off movements the backend REFUSES to
+ * reverse. Mirrors StockMovementReferenceType::PosReceiptReturnScrap exactly.
+ *
+ * A POS return scrap carries reason='write_off' and movement_type='issue', so it
+ * is indistinguishable from a lot write-off by reason alone — but it is undone by
+ * CORRECTING THE RETURN, never by ReverseWriteOffService (which would put
+ * physically destroyed goods back into sellable stock and inflate the DEFAULT lot
+ * on batch-tracked products). Keep this in sync with the backend guard.
+ */
+const NON_REVERSIBLE_REFERENCE_TYPES = ['pos_receipt_return_scrap'] as const
+
+function isReversibleMovement(movement: StockMovement): boolean {
+  if (!isReversibleWriteOff(movement.reason)) return false
+
+  return movement.reference_type === null
+    || !(NON_REVERSIBLE_REFERENCE_TYPES as readonly string[]).includes(movement.reference_type)
 }
 
 /**
@@ -297,7 +318,7 @@ export function StockMovementsPage() {
       key: 'actions',
       header: '',
       render: (movement) => {
-        if (!isReversibleWriteOff(movement.reason)) return null
+        if (!isReversibleMovement(movement)) return null
         if (!canReverseWriteOff) return null
         if (movement.is_reversed) {
           return (

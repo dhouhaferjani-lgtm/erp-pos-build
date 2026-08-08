@@ -39,6 +39,7 @@ use App\Modules\Voucher\Application\DTOs\VoucherIssuanceRequest;
 use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\ConcurrencyFault;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -431,6 +432,27 @@ final class ReceiptReturnService
                 /** @var numeric-string $alreadyReturnedQty */
                 $alreadyReturnedQty = $returnLine['already_returned'];
 
+                if ($disposition === ReturnLineDisposition::Scrap) {
+                    // The scrap PAIR (receive back, then destroy) is ATOMIC and
+                    // CONTAINED — see applyScrapPair.
+                    $this->applyScrapPair(
+                        tenantId: $terminal->tenant_id,
+                        companyId: $companyId,
+                        locationId: $originalReceipt->location_id,
+                        productId: $originalLine->product_id,
+                        quantity: $qty,
+                        returnReceiptId: $draft->id,
+                        returnReceiptNumber: $draft->receipt_number,
+                        currencyCode: $draft->currency,
+                        cashierId: $cashier->id,
+                        variantId: $originalLine->variant_id,
+                    );
+
+                    continue;
+                }
+
+                // RESTOCK.
+                //
                 // Variant symmetry rule: the restore must target the exact
                 // stock row the sale decremented. Both paths now decrement at
                 // the line's grain — a VARIANT line (whether draft-path or
@@ -451,29 +473,12 @@ final class ReceiptReturnService
                     variantId: $originalLine->variant_id,
                 );
 
-                if ($disposition === ReturnLineDisposition::Scrap) {
-                    // Net the received qty back out as a write-off; batch restitution skipped
-                    // (scrapped goods never re-enter a sellable batch).
-                    $this->writeOffReturnedStock(
-                        tenantId: $terminal->tenant_id,
-                        companyId: $companyId,
-                        locationId: $originalReceipt->location_id,
-                        productId: $originalLine->product_id,
-                        quantity: $qty,
-                        returnReceiptId: $draft->id,
-                        returnReceiptNumber: $draft->receipt_number,
-                        currencyCode: $draft->currency,
-                        cashierId: $cashier->id,
-                        variantId: $originalLine->variant_id,
-                    );
-                } else { // RESTOCK
-                    $this->restoreBatchAllocations(
-                        originalLine: $originalLine,
-                        returnQuantity: $qty,
-                        alreadyReturnedQuantity: $alreadyReturnedQty,
-                        locationId: $originalReceipt->location_id,
-                    );
-                }
+                $this->restoreBatchAllocations(
+                    originalLine: $originalLine,
+                    returnQuantity: $qty,
+                    alreadyReturnedQuantity: $alreadyReturnedQty,
+                    locationId: $originalReceipt->location_id,
+                );
             }
 
             // ─────────────────────────────────────────────────────────────────
@@ -1328,28 +1333,38 @@ final class ReceiptReturnService
     }
 
     /**
-     * Write off the received-back quantity for a SCRAP return (DPA V10).
+     * The SCRAP disposition pair — receive the goods back, then DESTROY them —
+     * applied ATOMICALLY and CONTAINED (DPA V10 + gate fix round 1).
      *
-     * Called immediately after restoreStock so the two movements form a matched
-     * pair: the aggregate stock_levels.quantity returns to its pre-return value
-     * while the ledger records both legs (re-entry + write-off).
-     *
-     * COST-BEARING (V10). This used to be a raw quantity-only
+     * COST-BEARING. The destruction leg used to be a raw quantity-only
      * `StockMovement::create()` with explicitly no unit cost, no WAC involvement
-     * and no GL — the return note was silently doing double duty as a
-     * destruction document and inventory value walked off the balance sheet.
-     * The destruction now goes through the settled write-off idiom
-     * (`ReturnScrapWriteOffService`): cost-resolved
-     * `StockAdjustmentService::issue()` + movement-keyed Dr COGS / Cr Inventory.
+     * and no GL — the return note was silently doing double duty as a destruction
+     * document and inventory value walked off the balance sheet. It now goes
+     * through the settled write-off idiom (`ReturnScrapWriteOffService`):
+     * cost-resolved `StockAdjustmentService::issue()` + a movement-keyed
+     * Dr COGS / Cr Inventory entry sealed in this same transaction.
      *
-     * The pre-check below preserves the historical no-op: when no stock_levels
-     * row exists, `restoreStock` already logged and skipped its own leg, so the
-     * write-off leg must skip too rather than let `issue()` materialise a zero
-     * row and throw InsufficientStock.
+     * ATOMIC (gate C1). The two legs are only meaningful together, so they run
+     * inside ONE SAVEPOINT. If the destruction leg cannot be recorded — archived
+     * product, variant-grain mismatch, an over-reserved row that fails `issue()`'s
+     * availability check — the re-entry leg is rolled back with it. Committing the
+     * re-entry leg alone would permanently ADD physically destroyed goods to
+     * sellable stock, which is worse than recording nothing.
+     *
+     * CONTAINED (gate I3). A destruction leg appended to an ALREADY AUTHORISED
+     * refund must never turn that refund into a 500: `issue()`'s
+     * `quantity − reserved` availability rule is semantically irrelevant when
+     * destroying goods you physically hold, and a legacy line's NULL variant_id on
+     * a since-variantised product is a data-shape artefact, not a reason to refuse
+     * a customer's money. Both are logged at ERROR and skipped. This also makes
+     * the interactive path behave EXACTLY like the projection path for the same
+     * economic act.
+     *
+     * NOT contained: retryable concurrency faults — see ConcurrencyFault.
      *
      * @param  numeric-string  $quantity
      */
-    private function writeOffReturnedStock(
+    private function applyScrapPair(
         string $tenantId,
         string $companyId,
         string $locationId,
@@ -1361,32 +1376,69 @@ final class ReceiptReturnService
         string $cashierId,
         ?string $variantId = null,
     ): void {
-        // Unreachable via normal pipeline (restoreStock already found+locked this row in
-        // the same transaction); kept as a defense for any future direct callers.
-        $stockLevel = $this->resolveStockLevelForUpdate($productId, $locationId, $companyId, $variantId);
-
-        if ($stockLevel === null) {
-            Log::warning('No stock level for scrap write-off during return', [
+        // No stock_levels row at all (service / non-inventory item): both legs are
+        // no-ops by construction — `restoreStock` logs and skips, and there is
+        // nothing to destroy. Return BEFORE the savepoint so this benign case does
+        // not surface as an ERROR-level containment (gate M2 log-noise).
+        if ($this->resolveStockLevelForUpdate($productId, $locationId, $companyId, $variantId) === null) {
+            Log::warning('No stock level for scrap pair during return; neither leg recorded', [
                 'product_id' => $productId,
                 'variant_id' => $variantId,
                 'location_id' => $locationId,
+                'return_receipt_id' => $returnReceiptId,
             ]);
 
             return;
         }
 
-        $this->returnScrapWriteOffService->writeOff(
-            tenantId: $tenantId,
-            companyId: $companyId,
-            locationId: $locationId,
-            productId: $productId,
-            quantity: $quantity,
-            returnReceiptId: $returnReceiptId,
-            returnReceiptNumber: $returnReceiptNumber,
-            currencyCode: $currencyCode,
-            cashierId: $cashierId,
-            variantId: $variantId,
-        );
+        try {
+            DB::transaction(function () use (
+                $tenantId, $companyId, $locationId, $productId, $quantity,
+                $returnReceiptId, $returnReceiptNumber, $currencyCode, $cashierId, $variantId,
+            ): void {
+                $this->restoreStock(
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    locationId: $locationId,
+                    productId: $productId,
+                    quantity: $quantity,
+                    returnReceiptId: $returnReceiptId,
+                    cashierId: $cashierId,
+                    variantId: $variantId,
+                );
+
+                $this->returnScrapWriteOffService->writeOff(
+                    tenantId: $tenantId,
+                    companyId: $companyId,
+                    locationId: $locationId,
+                    productId: $productId,
+                    quantity: $quantity,
+                    returnReceiptId: $returnReceiptId,
+                    returnReceiptNumber: $returnReceiptNumber,
+                    currencyCode: $currencyCode,
+                    cashierId: $cashierId,
+                    variantId: $variantId,
+                );
+            });
+        } catch (\Throwable $e) {
+            // A deadlock / serialization failure / aborted transaction is a
+            // RETRYABLE INFRASTRUCTURE fault, not a domain outcome. Laravel does
+            // not issue ROLLBACK TO SAVEPOINT for a nested concurrency error, so
+            // swallowing it here would leave the enclosing PostgreSQL transaction
+            // aborted and let `runReturnTransaction` "COMMIT" a silently
+            // rolled-back refund. Re-throw and let the caller fail loudly.
+            if (ConcurrencyFault::isRetryable($e)) {
+                throw $e;
+            }
+
+            Log::error('POS scrap pair could not be recorded; BOTH legs rolled back, the refund itself is unaffected', [
+                'return_receipt_id' => $returnReceiptId,
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+                'quantity' => $quantity,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
