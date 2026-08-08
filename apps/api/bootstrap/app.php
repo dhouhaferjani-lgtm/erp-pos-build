@@ -10,6 +10,7 @@ use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
@@ -479,6 +480,26 @@ return Application::configure(basePath: dirname(__DIR__))
                         'document_number' => $e->documentNumber,
                         'period_label' => $e->periodLabel,
                         'period_status' => $e->periodStatus->value,
+                    ],
+                ], 422);
+            }
+        });
+
+        // Plan CF T2 — the return-note over-return cap, moved out of
+        // `ReturnNoteController` into `ReturnNoteService` so the guided cancel flow
+        // and the standalone `POST /return-notes` cannot drift apart (fiscal gate
+        // I-8). The guard used to throw a Presentation `HttpResponseException` with
+        // a hand-built body; this entry reproduces that body EXACTLY — same
+        // `error.code`, same five `details` keys — so nothing asserting on the old
+        // envelope regresses. Registered BEFORE the generic DomainException handler
+        // (Laravel 11 matches render callbacks in registration order).
+        $exceptions->render(function (ReturnQuantityExceededException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => $e->refusalCode,
+                        'message' => $e->getMessage(),
+                        'details' => $e->details(),
                     ],
                 ], 422);
             }

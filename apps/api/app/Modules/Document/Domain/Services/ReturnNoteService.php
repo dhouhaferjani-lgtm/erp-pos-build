@@ -9,14 +9,20 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\DTOs\CreateReturnNoteData;
+use App\Modules\Document\Domain\DTOs\CreateReturnNoteLineData;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
+use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -38,12 +44,269 @@ use Illuminate\Support\Facades\DB;
  */
 final class ReturnNoteService
 {
+    /**
+     * Quantities are compared at the canonical quantity scale throughout.
+     */
+    private const QUANTITY_SCALE = 4;
+
     public function __construct(
         private readonly WeightedAverageCostService $wacService,
         private readonly FiscalHashService $hashService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly ProductCostLock $costLock,
+        private readonly DocumentNumberingService $numberingService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
+
+    /**
+     * Create a DRAFT return note.
+     *
+     * Plan CF T2 / CF-D1. This body used to live in
+     * `ReturnNoteController::store()`, which meant the guided cancel flow could
+     * only reach it by re-implementing it — the "side-channel writer" the owner
+     * ruling forbids. It lives here so the manual `POST /return-notes` route and
+     * the composite `POST /invoices/{id}/cancel` share one create path and cannot
+     * drift.
+     *
+     * ASSUMES AN OPEN TRANSACTION. The caller owns the transaction boundary
+     * because the composite needs the create, the confirm, the stock movement and
+     * the invoice void to be ONE atomic act (CF-D4). Number generation runs in a
+     * nested transaction (savepoint) via `generateForKeyOnce()`, so the
+     * `document_sequences` row lock is held to the OUTER commit — deliberate: a
+     * gap in the fiscal numbering sequence is worse than the contention.
+     *
+     * SCALE comes from the entity currency, never from a bare `getScale()`
+     * (rule 19 context-safety): the composite runs from a controller today but the
+     * service must stay usable from a console or queued context where no
+     * CompanyContext is bound.
+     *
+     * @throws ReturnQuantityExceededException When a line exceeds what the source
+     *                                         document still has available to return.
+     */
+    public function createDraft(CreateReturnNoteData $data, Company $company): Document
+    {
+        $currency = $data->currency ?? $company->currency;
+        $scale = $this->scaleResolver->getScale($currency);
+
+        // When linked to a source document, a customer cannot return more than was
+        // invoiced (net of earlier returns). Race-safe: the source row is locked
+        // FOR UPDATE for the rest of the caller's transaction.
+        if ($data->sourceDocumentId !== null) {
+            $this->assertWithinReturnableQuantities(
+                $data->sourceDocumentId,
+                $data->lines,
+                $company->id,
+            );
+        }
+
+        $documentNumber = $this->numberingService->generateNumber(
+            $company->tenant_id,
+            $company->id,
+            DocumentType::ReturnNote,
+        );
+
+        $payload = [];
+        if ($data->returnReason !== null) {
+            $payload['return_reason'] = $data->returnReason;
+        }
+        if ($data->returnCondition !== null) {
+            $payload['return_condition'] = $data->returnCondition;
+        }
+
+        $returnNote = Document::create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'type' => DocumentType::ReturnNote,
+            'fiscal_category' => FiscalCategory::ReturnNote,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => $documentNumber,
+            'document_date' => $data->documentDate,
+            'partner_id' => $data->partnerId,
+            'source_document_id' => $data->sourceDocumentId,
+            'location_id' => $data->locationId,
+            'currency' => $currency,
+            'notes' => $data->notes,
+            'subtotal' => '0.00',
+            'tax_amount' => '0.00',
+            'total' => '0.00',
+            'payload' => $payload === [] ? null : $payload,
+        ]);
+
+        $this->createDraftLines($returnNote, $data->lines, $company, $scale);
+
+        /** @var Document */
+        return $returnNote->refresh()->load(['lines']);
+    }
+
+    /**
+     * @param  list<CreateReturnNoteLineData>  $lines
+     */
+    private function createDraftLines(Document $returnNote, array $lines, Company $company, int $scale): void
+    {
+        if ($lines === []) {
+            return;
+        }
+
+        // Batch-fetch products for the designation snapshot (1 query).
+        $productIds = array_values(array_filter(array_map(
+            static fn (CreateReturnNoteLineData $line): ?string => $line->productId,
+            $lines,
+        )));
+        $products = Product::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereIn('id', $productIds)
+            ->get()
+            ->keyBy('id');
+
+        $subtotal = '0.00';
+        $taxAmount = '0.00';
+
+        foreach ($lines as $index => $line) {
+            // The canonical NET line total: gross minus the line discount, floored
+            // at zero. `DocumentLine::computeLineTotal()` is the single source of
+            // truth for that arithmetic (`DocumentLine.php:283-303`) and it honours
+            // `discount_percent`'s precedence over a flat `discount_amount` —
+            // load-bearing for CF-D11's tuple split, where the flat amount is
+            // PRORATED across the split lines.
+            $lineTotal = DocumentLine::computeLineTotal(
+                $line->quantity,
+                $line->unitPrice,
+                $line->discountPercent,
+                $line->discountAmount,
+                $scale,
+            );
+
+            // The rate FRACTION is not a monetary value, so it does not take the
+            // currency scale: `tax_rate` is validated at 2 decimal places
+            // (`CreateDocumentRequest.php:141`) and 4 is the precision the house
+            // uses for every percent→fraction conversion
+            // (`TaxCalculationService.php:140`, and the pre-T2 controller body this
+            // was extracted from). The MONEY truncation is the surrounding bcmul at
+            // the resolved $scale.
+            $rateFraction = bcdiv($line->taxRate ?? '0.00', '100', 4); // precision-ok: percent→fraction, not money
+            $lineTax = bcmul($lineTotal, $rateFraction, $scale);
+
+            $product = $line->productId !== null ? $products->get($line->productId) : null;
+            $defaultName = $product !== null ? (string) $product->name : '';
+
+            DocumentLine::create([
+                'document_id' => $returnNote->id,
+                'product_id' => $line->productId,
+                'location_id' => $line->locationId,
+                'line_number' => $index + 1,
+                'description' => $line->description,
+                'designation_default_snapshot' => $defaultName !== '' ? mb_substr($defaultName, 0, 500) : null,
+                'quantity' => $line->quantity,
+                'unit_price' => $line->unitPrice,
+                'discount_percent' => $line->discountPercent,
+                'discount_amount' => $line->discountAmount,
+                'tax_rate' => $line->taxRate ?? '0.00',
+                'line_total' => $lineTotal,
+                'notes' => $line->notes,
+            ]);
+
+            $subtotal = bcadd($subtotal, $lineTotal, $scale);
+            $taxAmount = bcadd($taxAmount, $lineTax, $scale);
+        }
+
+        $returnNote->update([
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'total' => bcadd($subtotal, $taxAmount, $scale),
+        ]);
+    }
+
+    /**
+     * Reject a return that would exceed the source document's quantity for any
+     * product, accounting for quantities already returned on prior return notes.
+     *
+     * Moved here from `ReturnNoteController::assertWithinReturnableQuantities()` by
+     * plan CF T2 so the composite cancel flow is capped by the same code as the
+     * standalone route. The refusal is now a typed domain exception
+     * ({@see ReturnQuantityExceededException}) rather than a Presentation
+     * `HttpResponseException` — same code, same `details`, rendered in
+     * `bootstrap/app.php`.
+     *
+     * The source document row is locked FOR UPDATE so two concurrent returns
+     * against the same invoice serialise and cannot jointly over-return. Netting
+     * spans every return note on the source whose status is not Cancelled, so even
+     * a DRAFT return note left behind by a `will_return` decision already counts
+     * against the cap.
+     *
+     * @param  list<CreateReturnNoteLineData>  $requestLines
+     *
+     * @throws ReturnQuantityExceededException
+     */
+    public function assertWithinReturnableQuantities(string $sourceDocumentId, array $requestLines, string $companyId): void
+    {
+        /** @var Document|null $source */
+        $source = Document::query()
+            ->where('company_id', $companyId)
+            ->with('lines')
+            ->lockForUpdate()
+            ->find($sourceDocumentId);
+
+        // No resolvable source → nothing to cap against (other validation owns the
+        // existence contract); leave the create path unchanged.
+        if ($source === null) {
+            return;
+        }
+
+        $qtyScale = self::QUANTITY_SCALE;
+
+        /** @var array<string, numeric-string> $invoiced */
+        $invoiced = [];
+        foreach ($source->lines as $line) {
+            if ($line->product_id === null) {
+                continue;
+            }
+            $invoiced[$line->product_id] = bcadd($invoiced[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
+        }
+
+        /** @var array<string, numeric-string> $alreadyReturned */
+        $alreadyReturned = [];
+        $priorReturnLines = DocumentLine::query()
+            ->whereHas('document', static function (Builder $query) use ($sourceDocumentId, $companyId): void {
+                /** @var Builder<Document> $query */
+                $query->where('company_id', $companyId)
+                    ->where('type', DocumentType::ReturnNote)
+                    ->where('source_document_id', $sourceDocumentId)
+                    ->where('status', '!=', DocumentStatus::Cancelled->value);
+            })
+            ->get();
+        foreach ($priorReturnLines as $line) {
+            if ($line->product_id === null) {
+                continue;
+            }
+            $alreadyReturned[$line->product_id] = bcadd($alreadyReturned[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
+        }
+
+        /** @var array<string, numeric-string> $requested */
+        $requested = [];
+        foreach ($requestLines as $line) {
+            if ($line->productId === null) {
+                continue;
+            }
+            $requested[$line->productId] = bcadd($requested[$line->productId] ?? '0', $line->quantity, $qtyScale);
+        }
+
+        foreach ($requested as $productId => $qty) {
+            /** @var numeric-string $remaining */
+            $remaining = bcsub($invoiced[$productId] ?? '0', $alreadyReturned[$productId] ?? '0', $qtyScale);
+
+            if (bccomp($qty, $remaining, $qtyScale) > 0) {
+                throw ReturnQuantityExceededException::exceedsInvoiced(
+                    $productId,
+                    $qty,
+                    $remaining,
+                    $invoiced[$productId] ?? '0',
+                    $alreadyReturned[$productId] ?? '0',
+                );
+            }
+        }
+    }
 
     /**
      * Confirm a return note, adding it to the fiscal hash chain.

@@ -6,27 +6,24 @@ namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
-use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\DTOs\CreateReturnNoteData;
+use App\Modules\Document\Domain\DTOs\CreateReturnNoteLineData;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Document\Domain\Enums\FiscalCategory;
-use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\ReturnCondition;
 use App\Modules\Document\Domain\Enums\ReturnReason;
-use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Enum;
 
@@ -48,102 +45,12 @@ class ReturnNoteController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
         private readonly ReturnNoteService $returnNoteService,
-        private readonly DocumentNumberingService $numberingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     private function scale(): int
     {
         return $this->scaleResolver->getScale();
-    }
-
-    /**
-     * Reject a return that would exceed the source invoice's quantity for any
-     * product, accounting for quantities already returned on prior return notes.
-     *
-     * Quantities are compared at the canonical quantity scale (4). The source
-     * document is locked FOR UPDATE so two concurrent returns against the same
-     * invoice serialise and cannot jointly over-return.
-     *
-     * @param  array<int, array<string, mixed>>  $requestLines
-     */
-    private function assertWithinReturnableQuantities(string $sourceDocumentId, array $requestLines, string $companyId): void
-    {
-        /** @var Document|null $source */
-        $source = Document::query()
-            ->where('company_id', $companyId)
-            ->with('lines')
-            ->lockForUpdate()
-            ->find($sourceDocumentId);
-
-        // No resolvable source → nothing to cap against (other validation owns
-        // the existence contract); leave the create path unchanged.
-        if ($source === null) {
-            return;
-        }
-
-        $qtyScale = 4;
-
-        /** @var array<string, numeric-string> $invoiced */
-        $invoiced = [];
-        foreach ($source->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-            $invoiced[$line->product_id] = bcadd($invoiced[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
-        }
-
-        // Quantities already returned against this source on non-cancelled return notes.
-        /** @var array<string, numeric-string> $alreadyReturned */
-        $alreadyReturned = [];
-        $priorReturnLines = DocumentLine::query()
-            ->whereHas('document', static function (Builder $query) use ($sourceDocumentId, $companyId): void {
-                /** @var Builder<Document> $query */
-                $query->where('company_id', $companyId)
-                    ->where('type', DocumentType::ReturnNote)
-                    ->where('source_document_id', $sourceDocumentId)
-                    ->where('status', '!=', DocumentStatus::Cancelled->value);
-            })
-            ->get();
-        foreach ($priorReturnLines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-            $alreadyReturned[$line->product_id] = bcadd($alreadyReturned[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
-        }
-
-        // Requested quantities on this return, summed per product.
-        /** @var array<string, numeric-string> $requested */
-        $requested = [];
-        foreach ($requestLines as $line) {
-            $productId = $line['product_id'] ?? null;
-            if ($productId === null) {
-                continue;
-            }
-            /** @var numeric-string $qty */
-            $qty = (string) ($line['quantity'] ?? '0');
-            $requested[(string) $productId] = bcadd($requested[(string) $productId] ?? '0', $qty, $qtyScale);
-        }
-
-        foreach ($requested as $productId => $qty) {
-            $remaining = bcsub($invoiced[$productId] ?? '0', $alreadyReturned[$productId] ?? '0', $qtyScale);
-
-            if (bccomp($qty, $remaining, $qtyScale) > 0) {
-                throw new HttpResponseException(response()->json([
-                    'error' => [
-                        'code' => 'RETURN_EXCEEDS_INVOICED_QUANTITY',
-                        'message' => 'Return quantity exceeds the invoiced quantity available to return',
-                        'details' => [
-                            'product_id' => $productId,
-                            'requested' => $qty,
-                            'remaining_returnable' => $remaining,
-                            'invoiced' => $invoiced[$productId] ?? '0',
-                            'already_returned' => $alreadyReturned[$productId] ?? '0',
-                        ],
-                    ],
-                ], 422));
-            }
-        }
     }
 
     /**
@@ -255,127 +162,68 @@ class ReturnNoteController extends Controller
 
         return DB::transaction(function () use ($data, $request): JsonResponse {
             $company = $this->companyContext->requireCompany();
-            $companyId = $company->id;
-            $tenantId = $company->tenant_id;
 
-            // When linked to a source invoice, a customer cannot return more than
-            // was invoiced (net of earlier returns). Mirrors the POS return-cap
-            // (ReceiptReturnService::validateReturnQuantities). Race-safe: the
-            // source document row is locked for the duration of this transaction.
-            if (isset($data['source_document_id'])) {
-                $this->assertWithinReturnableQuantities(
-                    (string) $data['source_document_id'],
-                    is_array($data['lines'] ?? null) ? $data['lines'] : [],
-                    $companyId,
-                );
-            }
-
-            // Generate document number
-            $documentNumber = $this->numberingService->generateNumber(
-                $tenantId,
-                $companyId,
-                DocumentType::ReturnNote
-            );
-
-            // Resolve location using LocationContext fallback chain
+            // Plan CF T2: the create body now lives in ReturnNoteService so the
+            // guided cancel flow (CF-D1's one composite call) creates return notes
+            // through the SAME domain path this route takes. This controller is a
+            // thin adapter: validated array in, DTO out, and the ONLY thing it
+            // still owns is the Presentation-level location fallback chain
+            // (LocationContext reads request/session state and must not leak into
+            // Domain). The composite deliberately does NOT use that fallback —
+            // CF-D11 forbids restocking into a guessed location.
             $locationId = $this->locationContext->resolveLocationId(
                 $data['location_id'] ?? null,
                 $company->id
             );
 
-            // Create return note in Draft status
-            $returnNote = Document::create([
-                'tenant_id' => $company->tenant_id,
-                'company_id' => $company->id,
-                'type' => DocumentType::ReturnNote,
-                'fiscal_category' => FiscalCategory::ReturnNote,
-                'fiscal_status' => FiscalStatus::Draft,
-                'status' => DocumentStatus::Draft,
-                'document_number' => $documentNumber,
-                'document_date' => $data['document_date'],
-                'partner_id' => $data['partner_id'],
-                'source_document_id' => $data['source_document_id'] ?? null,
-                'location_id' => $locationId,
-                'currency' => $data['currency'] ?? $company->currency,
-                'notes' => $data['notes'] ?? null,
-                'subtotal' => '0.00',
-                'tax_amount' => '0.00',
-                'total' => '0.00',
-            ]);
+            /** @var array<int, array<string, mixed>> $lineRows */
+            $lineRows = is_array($data['lines'] ?? null) ? $data['lines'] : [];
 
-            // Store return note metadata (reason, condition)
-            $metadata = [];
-            if ($request->has('return_reason')) {
-                $metadata['return_reason'] = $request->input('return_reason');
-            }
-            if ($request->has('return_condition')) {
-                $metadata['return_condition'] = $request->input('return_condition');
-            }
-            if (! empty($metadata)) {
-                $returnNote->update(['payload' => $metadata]);
-            }
+            $returnNote = $this->returnNoteService->createDraft(
+                new CreateReturnNoteData(
+                    partnerId: (string) $data['partner_id'],
+                    documentDate: Carbon::parse((string) $data['document_date']),
+                    lines: array_values(array_map(
+                        static function (array $line): CreateReturnNoteLineData {
+                            /** @var numeric-string $quantity */
+                            $quantity = (string) $line['quantity'];
+                            /** @var numeric-string $unitPrice */
+                            $unitPrice = (string) $line['unit_price'];
+                            /** @var numeric-string|null $taxRate */
+                            $taxRate = isset($line['tax_rate']) ? (string) $line['tax_rate'] : null;
+                            /** @var numeric-string|null $discountPercent */
+                            $discountPercent = isset($line['discount_percent']) ? (string) $line['discount_percent'] : null;
+                            /** @var numeric-string|null $discountAmount */
+                            $discountAmount = isset($line['discount_amount']) ? (string) $line['discount_amount'] : null;
 
-            // Create document lines
-            if (isset($data['lines']) && is_array($data['lines'])) {
-                $subtotal = '0.00';
-                $taxAmount = '0.00';
+                            return new CreateReturnNoteLineData(
+                                productId: isset($line['product_id']) ? (string) $line['product_id'] : null,
+                                description: (string) $line['description'],
+                                quantity: $quantity,
+                                unitPrice: $unitPrice,
+                                taxRate: $taxRate,
+                                discountPercent: $discountPercent,
+                                discountAmount: $discountAmount,
+                                locationId: isset($line['location_id']) ? (string) $line['location_id'] : null,
+                                notes: isset($line['notes']) ? (string) $line['notes'] : null,
+                            );
+                        },
+                        $lineRows,
+                    )),
+                    currency: isset($data['currency']) ? (string) $data['currency'] : null,
+                    sourceDocumentId: isset($data['source_document_id']) ? (string) $data['source_document_id'] : null,
+                    locationId: $locationId,
+                    notes: isset($data['notes']) ? (string) $data['notes'] : null,
+                    returnReason: $request->has('return_reason') ? (string) $request->input('return_reason') : null,
+                    returnCondition: $request->has('return_condition') ? (string) $request->input('return_condition') : null,
+                ),
+                $company,
+            );
 
-                // Batch-fetch products for snapshot capture (1 query)
-                /** @var array<int, array{product_id?: string, description: string, quantity: string, unit_price: string, tax_rate?: string, location_id?: string, notes?: string}> $storeLines */
-                $storeLines = $data['lines'];
-                $storeProductIds = collect($storeLines)->pluck('product_id')->filter()->unique()->values()->toArray();
-                /** @var Collection<int, Product> $storeProducts */
-                $storeProducts = Product::query()->where('tenant_id', $tenantId)->where('company_id', $companyId)->whereIn('id', $storeProductIds)->get()->keyBy('id');
-
-                foreach ($data['lines'] as $index => $lineData) {
-                    $lineTotal = bcmul(
-                        $lineData['quantity'],
-                        $lineData['unit_price'],
-                        $this->scale()
-                    );
-
-                    $lineTax = bcmul(
-                        $lineTotal,
-                        bcdiv($lineData['tax_rate'] ?? '0.00', '100', 4),
-                        $this->scale()
-                    );
-
-                    /** @var Product|null $storeLineProduct */
-                    $storeLineProduct = isset($lineData['product_id']) ? $storeProducts->get($lineData['product_id']) : null;
-                    $storeDefaultName = $storeLineProduct !== null ? (string) $storeLineProduct->name : '';
-
-                    DocumentLine::create([
-                        'document_id' => $returnNote->id,
-                        'product_id' => $lineData['product_id'] ?? null,
-                        'location_id' => $lineData['location_id'] ?? null, // Optional per-line location
-                        'line_number' => $index + 1,
-                        'description' => $lineData['description'],
-                        'designation_default_snapshot' => $storeDefaultName !== '' ? mb_substr($storeDefaultName, 0, 500) : null,
-                        'quantity' => $lineData['quantity'],
-                        'unit_price' => $lineData['unit_price'],
-                        'tax_rate' => $lineData['tax_rate'] ?? '0.00',
-                        'line_total' => $lineTotal,
-                        'notes' => $lineData['notes'] ?? null,
-                    ]);
-
-                    $subtotal = bcadd($subtotal, $lineTotal, $this->scale());
-                    $taxAmount = bcadd($taxAmount, $lineTax, $this->scale());
-                }
-
-                $total = bcadd($subtotal, $taxAmount, $this->scale());
-
-                // Update document totals
-                $returnNote->update([
-                    'subtotal' => $subtotal,
-                    'tax_amount' => $taxAmount,
-                    'total' => $total,
-                ]);
-            }
-
-            // Load relations and return
+            $scale = $this->scaleResolver->getScale($returnNote->currency);
             $returnNote->load($this->defaultRelations());
 
-            return $this->documentCreatedResponse($returnNote, $this->scale());
+            return $this->documentCreatedResponse($returnNote, $scale);
         });
     }
 
