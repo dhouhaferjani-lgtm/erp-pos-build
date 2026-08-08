@@ -39,6 +39,21 @@ use Illuminate\Support\Str;
 
 class PaymentRefundService
 {
+    /**
+     * Storage scale of `payment_allocations.amount` — `NUMERIC(15,3)` since
+     * `2026_06_22_120000_widen_payment_allocations_amount_to_scale_3`.
+     *
+     * This is deliberately NOT a currency scale. It is the scale a stored
+     * allocation row can carry, which for a 2-decimal currency such as EUR is
+     * WIDER than the currency scale — and reachable, because
+     * `PaymentController::store()` validates allocation amounts with
+     * `regex:/^\d+(\.\d{1,3})?$/` and applies no currency-scale narrowing.
+     * `reversePayment()` uses it so an allocation mirror negates the stored rows
+     * EXACTLY; money at rest on the reversal document itself still uses the
+     * currency scale (rule 19 / D-14).
+     */
+    private const ALLOCATION_STORAGE_SCALE = 3;
+
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly GeneralLedgerService $glService,
@@ -935,8 +950,27 @@ class PaymentRefundService
 
                 // D-3/D-3b: per-document NET of the whole lineage. The reversal
                 // has no in-flight sibling to exclude, hence null.
+                //
+                // Computed at the ALLOCATION STORAGE scale, NOT the currency scale
+                // (gate I-2). `payment_allocations.amount` is `NUMERIC(15,3)` while
+                // EUR resolves to scale 2, and a 3-decimal allocation on a 2-decimal
+                // currency is reachable through the public API
+                // (`PaymentController.php:406` validates `allocations.*.amount` with
+                // `regex:/^\d+(\.\d{1,3})?$/` and applies no currency-scale
+                // narrowing). Summing at scale 2 would TRUNCATE the net, so the
+                // mirror would under-restore and the lineage would settle at
+                // `+0.005` instead of `0` — leaving `balance_due` permanently BELOW
+                // the document total after a "full" reversal. This is the one place
+                // where the currency scale is the wrong ruler: the mirror's job is
+                // to negate STORED ROWS exactly, so it must use the column's scale.
+                //
+                // This does NOT contradict D-14: `netUnreversed` above — the money
+                // at rest on the reversal document — stays at currency scale. D-3
+                // already establishes these as two independent figures.
+                $allocationScale = max($scale, self::ALLOCATION_STORAGE_SCALE);
+
                 /** @var array<string, numeric-string> $netByDocument */
-                $netByDocument = $this->netLiveAllocationsByDocument($original, $scale, null);
+                $netByDocument = $this->netLiveAllocationsByDocument($original, $allocationScale, null);
 
                 // The reversing document. Modelled on refundPayment()'s negative
                 // child row, MINUS D-19's three deliberate exclusions:
@@ -955,6 +989,16 @@ class PaymentRefundService
                     'company_id' => $original->company_id,
                     'partner_id' => $original->partner_id,
                     'payment_method_id' => $original->payment_method_id,
+                    // Copied from the original even on the INSTRUMENT branch, where
+                    // no cash moves — the reversing document belongs to the same
+                    // till as the payment it unwinds, and the cash branch needs it
+                    // to resolve the repository. Neutral for the cash-movements
+                    // report, which reports a reversal through its GL twin and so
+                    // never joins this row to a repository (see
+                    // CashMovementsReportService::OUTGOING_PAYMENT_TYPES). Any
+                    // FUTURE reader that joins `payments` to `payment_repositories`
+                    // must filter on a posted cash leg, or it will attribute an
+                    // instrument-branch reversal to a till it never touched.
                     'repository_id' => $original->repository_id,
                     'location_id' => $original->location_id,
                     'amount' => CurrencyScale::bcformatStrict(bcmul($netUnreversed, '-1', $scale), $scale),
@@ -978,7 +1022,10 @@ class PaymentRefundService
                     PaymentAllocation::create([
                         'payment_id' => $reversal->id,
                         'document_id' => $documentId,
-                        'amount' => CurrencyScale::bcformatStrict(bcmul($net, '-1', $scale), $scale),
+                        'amount' => CurrencyScale::bcformatStrict(
+                            bcmul($net, '-1', $allocationScale),
+                            $allocationScale,
+                        ),
                     ]);
                 }
 
@@ -1041,7 +1088,19 @@ class PaymentRefundService
                     'notes' => ($original->notes ?? '')."\n\nReversed: {$reason}",
                 ]);
 
-                DB::afterCommit(function () use ($original, $reversal, $netUnreversed): void {
+                DB::afterCommit(function () use ($original, $reversal): void {
+                    // `reversedAmount` is read back off the PERSISTED reversal row
+                    // rather than from the in-memory `$netUnreversed`, so it passes
+                    // through the SAME `decimal:3` cast as the frozen `amount`
+                    // field beside it (gate Minor). Taking it from `$netUnreversed`
+                    // emitted it at the CURRENCY scale — `'600.00'` next to
+                    // `'1000.000'` in one `array<string, string>` payload, which is
+                    // numerically right but a different shape, so a lexical
+                    // comparator or a payload diff would flag them as mismatched.
+                    // Same source, same cast, same shape by construction.
+                    /** @var numeric-string $reversedAmount */
+                    $reversedAmount = ltrim((string) $reversal->amount, '-');
+
                     event(new PaymentReversed(
                         paymentId: $original->id,
                         tenantId: $original->tenant_id,
@@ -1050,7 +1109,7 @@ class PaymentRefundService
                         currency: $original->currency,
                         reversedAt: now()->toIso8601String(),
                         reversalPaymentId: $reversal->id,
-                        reversedAmount: $netUnreversed,
+                        reversedAmount: $reversedAmount,
                     ));
                 });
 
@@ -1109,7 +1168,18 @@ class PaymentRefundService
                 .'accounts-receivable leg; use the POS void/return lane.',
             PaymentType::Refund, PaymentType::Reversal => 'a refund or reversal row cannot itself be reversed; '
                 .'reverse or refund the original payment instead.',
-            default => "payment type {$type->value} has no supported reversal shape.",
+            // EXHAUSTIVE — no `default` arm, deliberately (gate Minor). The two
+            // SUPPORTED shapes are named so the compiler, not a generic fallback,
+            // is what forces a decision when a future PaymentType is added: the
+            // same engineering the rest of the lane applies to `reversalSupport()`
+            // and to the instrument-status gate. Callers only reach this method
+            // for an `Unsupported` shape, so these two arms are unreachable —
+            // stating them is the point.
+            PaymentType::DocumentPayment,
+            PaymentType::CreditApplication => throw new \LogicException(
+                "unsupportedReversalMessage() called for {$type->value}, which IS reversible; "
+                .'the caller must gate on reversalSupport() first.'
+            ),
         };
     }
 

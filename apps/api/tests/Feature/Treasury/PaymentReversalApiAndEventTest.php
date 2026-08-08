@@ -116,13 +116,11 @@ final class PaymentReversalApiAndEventTest extends TestCase
                 self::assertSame($original->id, $event->paymentId);
                 self::assertSame('1000.000', $event->amount, 'the frozen field still reports the ORIGINAL amount');
                 self::assertSame($reversal->id, $event->reversalPaymentId);
-                // The net is emitted at CURRENCY scale (EUR = 2), which is the
-                // canonical monetary scale per rule 19. The frozen `amount` field
-                // reads through the model's `decimal:3` storage cast, so the two
-                // fields legitimately carry different trailing precision for the
-                // same currency — compare them numerically, never lexically.
-                self::assertSame('600.00', $event->reversedAmount, 'the additive field reports the NET');
-                self::assertSame(0, bccomp('600', (string) $event->reversedAmount, 3));
+                // Both money fields pass through the model's `decimal:3` cast, so
+                // the payload is shape-consistent — `'600.000'` beside
+                // `'1000.000'`, not `'600.00'` beside `'1000.000'`. A payload diff
+                // or a lexical comparator sees one convention, not two.
+                self::assertSame('600.000', $event->reversedAmount, 'the additive field reports the NET');
                 self::assertSame(
                     0,
                     bccomp((string) $reversal->amount, '-600', 3),
@@ -132,7 +130,12 @@ final class PaymentReversalApiAndEventTest extends TestCase
                 $payload = $event->getAuditPayload();
                 self::assertSame('1000.000', $payload['amount']);
                 self::assertSame($reversal->id, $payload['reversal_payment_id']);
-                self::assertSame('600.00', $payload['reversed_amount']);
+                self::assertSame('600.000', $payload['reversed_amount']);
+                self::assertSame(
+                    strlen(substr(strrchr($payload['amount'], '.') ?: '', 1)),
+                    strlen(substr(strrchr($payload['reversed_amount'], '.') ?: '', 1)),
+                    'both money fields in the payload must carry the same decimal shape',
+                );
 
                 return true;
             },

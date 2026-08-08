@@ -64,31 +64,38 @@ final readonly class CashMovementsReportService
     /**
      * @var list<string>
      */
+    /**
+     * DPA V4 (plan D-12, REVISED after the code gate's Critical) — `Reversal` is
+     * deliberately ABSENT from this list, so a reversal Payment row never reaches
+     * the payments leg.
+     *
+     * A reversal Payment row is NEGATIVE by design, and the payments leg selects
+     * `CAST(payments.amount AS TEXT)` verbatim. Admitting it and resolving it to
+     * `direction = out` therefore reports a cash OUT of `-60.00`, which the FE
+     * renders raw — the user sees `Out: -60.00 / Net: +60.00` for a 60 cash
+     * outflow, inverting the sign of the period's net cash.
+     *
+     * The reversal is reported through its GL TWIN instead (`journalLinesQuery`),
+     * which already emits the repository account's `credit` as a POSITIVE `out`
+     * against the correct GL account. Three properties fall out for free, which is
+     * why this is the cheaper and more self-consistent side to report from:
+     *   - correct sign and direction with no `CASE`-arm surgery;
+     *   - no hand-counted positional binding to keep aligned (the plan itself
+     *     flagged an off-by-one there as silently mislabelling every row);
+     *   - an INSTRUMENT-branch reversal contributes ZERO rows automatically,
+     *     because it posts no `customer_payment_refund` entry at all — no
+     *     admission gate needed.
+     * The twin survives the payment-backed de-duplication below because
+     * `customer_payment_refund` is deliberately outside
+     * `PAYMENT_BACKED_SOURCE_TYPES` (D-9 reuses the refund source type rather than
+     * minting a new one).
+     *
+     * @var list<string>
+     */
     private const OUTGOING_PAYMENT_TYPES = [
         PaymentType::Refund->value,
         PaymentType::SupplierPayment->value,
-        // DPA V4 (plan D-12 part 1): a payment reversal's CASH branch physically
-        // moves money out of the repository, so it belongs in this report.
-        // Admission is NOT unconditional — see the `reversal` EXISTS gate in
-        // paymentsQuery(): an INSTRUMENT-branch reversal moves no cash and must
-        // contribute no row.
-        PaymentType::Reversal->value,
     ];
-
-    /**
-     * `journal_entries.source_type` of the cash leg a REVERSAL posts.
-     *
-     * DPA V4 (plan D-9): the reversal deliberately REUSES
-     * `createPaymentRefundJournalEntry()` and therefore its `'customer_payment_refund'`
-     * source type, rather than minting a new one — a new value would need
-     * `JournalCode::fromSourceType()` coverage plus additions to
-     * `PAYMENT_BACKED_SOURCE_TYPES` and `CashMovementSourceType`, all risk and no
-     * reader benefit. Kept as a raw literal for the same reason `'advance'` and
-     * `'supplier_advance_refund'` are literals below: it is a `journal_entries`
-     * source type, not a cash-movement source type, so it does not belong in the
-     * `CashMovementSourceType` enum.
-     */
-    private const REVERSAL_CASH_LEG_SOURCE_TYPE = 'customer_payment_refund';
 
     /**
      * @var list<string>
@@ -259,31 +266,6 @@ final readonly class CashMovementsReportService
             ->whereIn('payments.payment_type', $this->movingPaymentTypes())
             ->whereIn('payment_repositories.type', self::CASH_REPOSITORY_TYPES)
             ->whereNotNull('payment_repositories.gl_account_id')
-            // DPA V4 (plan D-12 part 2) — REVERSAL ADMISSION GATE.
-            //
-            // This report is driven off `payments`, not `repository_movements`. A
-            // reversing document copies `repository_id` from the original and is
-            // stamped `Completed`, so it satisfies every predicate above even when
-            // it moved NO cash — which is exactly what the INSTRUMENT branch does
-            // (the instrument's own cancellation entry is the reversal's whole GL
-            // effect; no cash ever arrived, so none leaves). Admitting `reversal`
-            // unconditionally would therefore emit a PHANTOM cash row for every
-            // instrument-branch reversal.
-            //
-            // Admit a reversal only when a POSTED cash leg actually exists for it.
-            // Non-reversal rows are untouched by the first disjunct.
-            ->where(function (Builder $admission): void {
-                $admission
-                    ->where('payments.payment_type', '<>', PaymentType::Reversal->value)
-                    ->orWhereExists(function (Builder $exists): void {
-                        $exists->selectRaw('1')
-                            ->from('journal_entries as reversal_cash_leg')
-                            ->whereColumn('reversal_cash_leg.company_id', 'payments.company_id')
-                            ->whereColumn('reversal_cash_leg.source_id', 'payments.id')
-                            ->where('reversal_cash_leg.source_type', self::REVERSAL_CASH_LEG_SOURCE_TYPE)
-                            ->where('reversal_cash_leg.status', JournalEntryStatus::Posted->value);
-                    });
-            })
             ->selectRaw('payments.payment_date as date')
             ->selectRaw(
                 'CASE
@@ -319,7 +301,7 @@ final readonly class CashMovementsReportService
                             AND refund_entries.status = ?
                             AND refund_entries.source_type = ?
                     ) THEN ?
-                    WHEN payments.payment_type IN (?, ?, ?) THEN ?
+                    WHEN payments.payment_type IN (?, ?) THEN ?
                     ELSE ?
                 END as direction',
                 [
@@ -340,14 +322,10 @@ final readonly class CashMovementsReportService
                     // ⚠️ HAND-COUNTED POSITIONAL LIST — these bindings must stay
                     // aligned with the `CASE` arms above, in order. An off-by-one
                     // here silently mislabels the direction of EVERY row in the
-                    // report. DPA V4 (plan D-12 part 3) widened the arm below from
-                    // two payment types to three; the third binding is the new one.
-                    // Every reversal row that reaches this CASE provably has a
-                    // posted cash leg (the admission gate above), so resolving it
-                    // to Out is always correct.
+                    // report. DPA V4 deliberately did NOT widen this arm: a
+                    // reversal is reported through its GL twin, not this leg.
                     PaymentType::Refund->value,
                     PaymentType::SupplierPayment->value,
-                    PaymentType::Reversal->value,
                     CashMovementDirection::Out->value,
                     CashMovementDirection::In->value,
                 ],
@@ -484,35 +462,6 @@ final readonly class CashMovementsReportService
                     ->whereIn('represented_payments.payment_type', $this->movingPaymentTypes());
 
                 $this->applyPaymentFilters($query, $from, $to, $repositoryId, 'represented_payments');
-            })
-            // DPA V4 (plan D-12, FOURTH part — see task-v4-report.md). The
-            // payment-backed dedup above keys on
-            // `journal_entries.source_type IN PAYMENT_BACKED_SOURCE_TYPES`, and a
-            // reversal's cash leg posts `customer_payment_refund`, which is
-            // deliberately NOT in that list (D-9 keeps the source type shared with
-            // the refund lane rather than minting a new one). Without this clause a
-            // cash-branch reversal is emitted TWICE — once as its payment row and
-            // once as its GL twin — which is precisely the double count gate
-            // Minor-7 flagged as reachable and which the count-based T10 test
-            // catches.
-            //
-            // Scoped strictly to `payment_type = reversal`. The SAME double count
-            // exists TODAY for ordinary `refund` rows carrying a
-            // `customer_payment_refund` cash leg (verified live: two rows, and the
-            // payments-leg row reports a NEGATIVE amount with direction `out`).
-            // That is a PRE-EXISTING defect in this report, not one V4 introduces,
-            // and widening this clause to cover it would change the reported totals
-            // of a live report — out of V4's boundary. Ticketed separately.
-            ->whereNotExists(function (Builder $query) use ($companyId, $from, $to, $repositoryId): void {
-                $query->selectRaw('1')
-                    ->from('payments as represented_reversals')
-                    ->whereColumn('represented_reversals.id', 'journal_entries.source_id')
-                    ->where('journal_entries.source_type', self::REVERSAL_CASH_LEG_SOURCE_TYPE)
-                    ->where('represented_reversals.company_id', $companyId)
-                    ->where('represented_reversals.payment_type', PaymentType::Reversal->value)
-                    ->where('represented_reversals.status', PaymentStatus::Completed->value);
-
-                $this->applyPaymentFilters($query, $from, $to, $repositoryId, 'represented_reversals');
             })
             ->whereNotExists(function (Builder $query) use ($companyId, $from, $to, $repositoryId): void {
                 $query->selectRaw('1')

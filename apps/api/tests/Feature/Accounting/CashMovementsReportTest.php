@@ -234,22 +234,29 @@ final class CashMovementsReportTest extends TestCase
     }
 
     /**
-     * DPA V4 / T10 (plan D-12) — a CASH-branch reversal is one cash OUTFLOW.
+     * DPA V4 / T10 (plan D-12) — a CASH-branch reversal is ONE cash OUTFLOW of a
+     * POSITIVE amount, and it moves `meta.totals` in the right direction.
      *
-     * Tracing a `reversal` row through the four direction `CASE` arms before this
-     * fix: arms 1/2 need `source_type IN PAYMENT_BACKED_SOURCE_TYPES` and a
-     * reversal posts `customer_payment_refund`, which is NOT in that list → miss;
-     * arm 3 needs `pos_receipt_refund` → miss; arm 4 was a two-literal
-     * `payment_type IN (?, ?)` → miss. So every reversal fell to `ELSE => In` and
-     * was reported as a cash INFLOW of a negative amount.
+     * A `reversal` Payment row is NEGATIVE by design. The report's payments leg
+     * selects `CAST(payments.amount AS TEXT)` verbatim, so admitting that row and
+     * resolving it to `direction = out` reports a cash OUT of `-60.00` — which the
+     * FE renders raw (`CashMovementsReportPage.tsx`, `formatCurrency` with no
+     * `abs`), giving the user `Out: -60.00 / Net: +60.00` for a 60 cash outflow: a
+     * 120 swing in the wrong direction.
      *
-     * Gate Minor-7: the assertion is on the COUNT, not on mere presence. The union
-     * de-duplicates via `journalLinesQuery`'s `whereNotExists` over
-     * `PAYMENT_BACKED_SOURCE_TYPES`, and `customer_payment_refund` is absent from
-     * that list, so a DOUBLE COUNT is reachable and "appears with direction out"
-     * would pass anyway.
+     * The row that carries the CORRECT figure is the GL twin — `journalLinesQuery`
+     * emits the repository account's `credit` as a positive `out` — so the reversal
+     * is reported through that leg and the payments leg is left out of it entirely.
+     * The twin is also AUTOMATICALLY absent for an instrument-branch reversal,
+     * which posts no `customer_payment_refund` entry at all.
+     *
+     * Assertions cover count (gate Minor-7 — a double count is reachable because
+     * `customer_payment_refund` is deliberately outside `PAYMENT_BACKED_SOURCE_TYPES`
+     * per D-9), SIGN, DIRECTION and `meta.totals`. Count alone cannot see a sign
+     * error — that gap is exactly how the negative-amount row shipped green in the
+     * first implementation round.
      */
-    public function test_cash_movements_report_counts_a_cash_backed_reversal_once_as_an_outflow(): void
+    public function test_cash_movements_report_counts_a_cash_backed_reversal_once_as_a_positive_outflow(): void
     {
         $reversal = $this->payment(
             repository: $this->cashRepository,
@@ -258,7 +265,7 @@ final class CashMovementsReportTest extends TestCase
             paymentType: PaymentType::Reversal,
         );
 
-        // The posted cash leg that admits the row (D-12 part 2).
+        // The posted cash leg: Cr the repository GL account (money leaves).
         $entry = $this->journalEntry('2026-07-01', 'customer_payment_refund', $reversal->id);
         $this->journalLine($entry, $this->cashAccount, '0.000', '60.000', 'Payment reversed');
 
@@ -273,22 +280,34 @@ final class CashMovementsReportTest extends TestCase
         ));
 
         self::assertCount(1, $rows, 'exactly one row — never double-counted through the GL twin');
-        self::assertSame('out', $rows[0]['direction'], 'a reversal returns money: OUT, never the ELSE=>In default');
-        self::assertSame('payment', $rows[0]['source_type']);
+        self::assertSame('out', $rows[0]['direction'], 'a reversal returns money: OUT');
+        self::assertSame(
+            '60.00',
+            $rows[0]['amount'],
+            'the amount must be POSITIVE — a negative "out" inverts the period net',
+        );
+        self::assertSame('customer_payment_refund', $rows[0]['source_type']);
+        self::assertSame('1100', $rows[0]['gl_account'], 'attributed to the cash account the money left');
+
+        // The figure that actually reaches the user's screen.
+        $response->assertJsonPath('meta.totals.EUR.in', '0.00');
+        $response->assertJsonPath('meta.totals.EUR.out', '60.00');
+        $response->assertJsonPath('meta.totals.EUR.net', '-60.00');
     }
 
     /**
      * DPA V4 / T10, gate Important-2 — an INSTRUMENT-branch reversal contributes
-     * ZERO rows.
+     * ZERO rows, and moves `meta.totals` not at all.
      *
-     * The report is driven off `payments`, not `repository_movements`, and the
-     * reversal row copies `repository_id` from the original while being stamped
-     * `Completed` — so admitting `reversal` to `OUTGOING_PAYMENT_TYPES`
-     * unconditionally would emit a PHANTOM cash row for every instrument-branch
-     * reversal, which by design moved no cash and posted no
-     * `customer_payment_refund` entry. The admission `EXISTS` gate is what
-     * prevents it. (`DeferredTenderGuardsTest` asserts the same reality from the
-     * other side: zero movements, zero refund entries.)
+     * An instrument-branch reversal moves no cash and posts no
+     * `customer_payment_refund` entry — the instrument's own cancellation entry is
+     * its whole GL effect. Reporting the reversal through its GL twin makes this
+     * fall out for free: no entry, no twin, no row. (Reporting it through the
+     * payments leg would have needed an explicit admission gate, because the
+     * reversal row copies `repository_id` from the original and is stamped
+     * `Completed`, so it satisfies every payments-leg predicate even though no cash
+     * moved.) `DeferredTenderGuardsTest` asserts the same reality from the other
+     * side: zero movements, zero refund entries.
      */
     public function test_cash_movements_report_omits_a_reversal_with_no_posted_cash_leg(): void
     {
@@ -311,11 +330,16 @@ final class CashMovementsReportTest extends TestCase
 
         self::assertCount(0, $rows, 'no posted cash leg => no cash row (no phantom outflow)');
         self::assertSame(0, (int) $response->json('meta.total'));
+        self::assertSame(
+            [],
+            (array) $response->json('meta.totals'),
+            'an instrument-branch reversal must not move the period totals at all',
+        );
     }
 
     /**
-     * A DRAFT cash leg does not admit the row either — the `EXISTS` gate requires a
-     * POSTED entry, matching every other arm of this report.
+     * A DRAFT cash leg produces no row either — `journalLinesQuery` admits only
+     * POSTED entries, matching every other leg of this report.
      */
     public function test_cash_movements_report_omits_a_reversal_whose_cash_leg_is_only_draft(): void
     {
@@ -341,8 +365,8 @@ final class CashMovementsReportTest extends TestCase
         self::assertSame(0, (int) $response->json('meta.total'));
     }
 
-    /** The admission gate must not touch NON-reversal rows. */
-    public function test_the_reversal_admission_gate_leaves_ordinary_payments_alone(): void
+    /** Guards against over-reach: ordinary payments keep reporting as before. */
+    public function test_the_reversal_handling_leaves_ordinary_payments_alone(): void
     {
         $payment = $this->payment(
             repository: $this->cashRepository,
@@ -357,6 +381,9 @@ final class CashMovementsReportTest extends TestCase
         $response->assertOk();
         $response->assertJsonPath('data.0.source_id', $payment->id);
         $response->assertJsonPath('data.0.direction', 'in');
+        $response->assertJsonPath('data.0.amount', '25.00');
+        $response->assertJsonPath('meta.totals.EUR.in', '25.00');
+        $response->assertJsonPath('meta.totals.EUR.net', '25.00');
         self::assertSame(1, (int) $response->json('meta.total'));
     }
 
@@ -399,6 +426,14 @@ final class CashMovementsReportTest extends TestCase
         self::assertSame('out', $byId[$refund->id] ?? null);
         self::assertSame('out', $byId[$supplier->id] ?? null);
         self::assertSame('in', $byId[$incoming->id] ?? null);
+
+        // DPA V4 did NOT widen this arm — a reversal is reported through its GL
+        // twin — so the binding list still has exactly two payment-type literals.
+        // If a future change widens it, this reminder travels with the test.
+        self::assertNotContains(
+            PaymentType::Reversal->value,
+            [PaymentType::Refund->value, PaymentType::SupplierPayment->value],
+        );
     }
 
     public function test_cash_movements_report_requires_authentication(): void

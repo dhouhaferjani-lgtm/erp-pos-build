@@ -138,6 +138,49 @@ final class PaymentReversalDocumentTest extends TestCase
         self::assertStringContainsString('Reversed: Data entry error', (string) $original->notes);
     }
 
+    /**
+     * Gate I-2 — the lane's headline invariant must hold when the ALLOCATION
+     * storage scale exceeds the CURRENCY scale.
+     *
+     * `payment_allocations.amount` is `NUMERIC(15,3)`
+     * (`2026_06_22_120000_widen_payment_allocations_amount_to_scale_3`), while EUR
+     * resolves to currency scale 2. A 3-decimal allocation on a 2-decimal currency
+     * is REACHABLE through the public API: `PaymentController.php:406` validates
+     * `allocations.*.amount` with `regex:/^\d+(\.\d{1,3})?$/` and applies no
+     * currency-scale narrowing.
+     *
+     * Summing those rows at currency scale would TRUNCATE the net, so the mirror
+     * would under-restore: the lineage would sum to `+0.005` instead of `0`, and
+     * `balance_due` would settle permanently BELOW the document total after a
+     * "full" reversal — with the cash branch posting `Dr AR` at the truncated net,
+     * so the subledger and the GL drift together. The direction is below the total,
+     * so C6 itself is not violated, but "SUM == 0 by construction" would be false.
+     *
+     * The net map is therefore computed at the allocation storage scale.
+     */
+    public function test_a_three_decimal_allocation_on_a_two_decimal_currency_still_nets_to_zero(): void
+    {
+        // The DOCUMENT total stays at the currency scale — the case under test is
+        // an allocation carrying more decimals than its currency, not a
+        // sub-scale document total (which `recomputeDocumentBalances()` handles on
+        // the shared refund path and which V4 does not touch).
+        $invoice = $this->paidInvoice('500.01');
+        $original = $this->paymentAllocatedTo([[$invoice, '500.005']], '500.01');
+
+        $reversal = $this->refundService->reversePayment($original, 'sub-scale allocation', $this->user->id);
+
+        self::assertInstanceOf(Payment::class, $reversal);
+
+        $mirror = PaymentAllocation::query()->where('payment_id', $reversal->id)->sole();
+        self::assertSame(
+            0,
+            bccomp('-500.005', (string) $mirror->amount, 3),
+            'the mirror must negate the stored allocation EXACTLY, not its currency-scale truncation',
+        );
+
+        $this->assertDocumentNetsToZero($invoice);
+    }
+
     /** D-19: three fields must be deliberately EXCLUDED from the reversal row. */
     public function test_the_reversal_row_carries_none_of_the_three_excluded_fields(): void
     {
