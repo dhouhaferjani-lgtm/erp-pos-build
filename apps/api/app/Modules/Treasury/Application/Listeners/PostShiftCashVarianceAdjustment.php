@@ -13,6 +13,8 @@ use App\Modules\Treasury\Application\Services\TenderRepositoryResolver;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
+use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -73,13 +75,19 @@ use Throwable;
  * physically entered the drawer. The tolerance is therefore already netted out
  * of "expected", and an honest count of a shift that wrote one off is BALANCED.
  *
- * The one exception is handled explicitly: the device's LEGACY fallback
- * attributes `receipt.total` when a receipt carries no per-payment breakdown,
- * which inflates expected by exactly the shortfall and WOULD re-book it. Its
- * server-visible shadow — a tolerance-bearing receipt with no
- * `pos_receipt_payments` rows — is probed via
- * {@see PaymentToleranceQueryService::hasUnattributableToleranceForShift()} and
- * refuses the booking. See the lane report for the worked example on both bases.
+ * That is the whole substantive answer, and it holds on both bases. The device's
+ * LEGACY fallback — which attributes `receipt.total` when a receipt carries no
+ * per-payment breakdown, inflating expected by exactly the shortfall — is
+ * covered by an additional BELT:
+ * {@see PaymentToleranceQueryService::hasUnattributableToleranceForShift()}
+ * refuses the booking when a shift contains a tolerance-bearing receipt with no
+ * `pos_receipt_payments` rows.
+ *
+ * Be precise about what that belt is (gate re-review N2): NEITHER current writer
+ * of `tolerance_writeoff` can produce that shape, so it is a fail-safe against
+ * legacy/foreign data, NOT a detector for a live defect — and it refuses the
+ * WHOLE shift's GL leg, not the offending receipt's share. See the lane report
+ * §A.2 correction for the evidence and the refusal-breadth caveat.
  *
  * ── Idempotency ─────────────────────────────────────────────────────────────
  * `CashCountRecorded` fires from BOTH the live path
@@ -151,6 +159,28 @@ final readonly class PostShiftCashVarianceAdjustment
 
         try {
             $this->post($event);
+        } catch (InsufficientRepositoryBalanceException $e) {
+            // Gate re-review N4 — this is the disposition of the single riskiest
+            // input (a large unexplained shortfall against a till whose cached
+            // balance has already been swept by a close-of-day deposit), and it
+            // is the exact case the 658 account exists for. Bucketing it under
+            // the generic `exception` reason made it indistinguishable from a
+            // crash without string-matching a class name. It gets its own
+            // queryable reason, and stays a warning rather than an error: the
+            // refusal is a deliberate policy outcome (`allowNegative: false`,
+            // parity with the manual endpoint), not a fault.
+            $this->refuse($event, 'insufficient_repository_balance', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+        } catch (RepositoryFrozenException $e) {
+            // Same reasoning: a frozen till is a policy refusal
+            // (`allowWhileFrozen: false` — this is server-computed, never an
+            // offline device replay), not a crash.
+            $this->refuse($event, 'repository_frozen', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
         } catch (Throwable $e) {
             // Log-never-block: the shift is already closed and the Z report
             // already sealed by the time this runs (the live path dispatches
@@ -308,36 +338,53 @@ final readonly class PostShiftCashVarianceAdjustment
             return;
         }
 
-        $this->auditService->record(
-            companyId: $event->companyId,
-            userId: $event->cashierId,
-            eventType: self::BOOKED_EVENT,
-            aggregateType: 'pos_shift',
-            aggregateId: $event->shiftId,
-            payload: [
+        // Gate re-review N3 — the booking is COMMITTED by the time we get here
+        // (`post()` is transactional). These are post-commit side effects, so a
+        // throw from either of them must NOT reach handle()'s catch, which would
+        // record `treasury.shift_variance_gl_skipped` reason `exception` for a
+        // document + posted journal entry + movement that exist — the exact
+        // opposite signal from the one this audit trail was added to give.
+        try {
+            $this->auditService->record(
+                companyId: $event->companyId,
+                userId: $event->cashierId,
+                eventType: self::BOOKED_EVENT,
+                aggregateType: 'pos_shift',
+                aggregateId: $event->shiftId,
+                payload: [
+                    'adjustment_id' => $result->adjustmentId,
+                    'journal_entry_id' => $result->journalEntryId,
+                    'movement_id' => $result->movementId,
+                    'direction' => $direction->value,
+                    'amount' => $result->normalizedAmount,
+                    'currency' => $repository->currency,
+                    'aggregate_variance' => $signedVariance,
+                    'truncated_residual' => $residual,
+                ],
+                metadata: [
+                    'z_report_id' => $event->zReportId,
+                    'terminal_id' => $event->terminalId,
+                    'repository_id' => $repository->id,
+                ],
+            );
+
+            if (bccomp($residual, '0', self::VARIANCE_SCALE) !== 0) {
+                Log::warning('Shift-close cash variance truncated to the currency scale; residual not booked', [
+                    'shift_id' => $event->shiftId,
+                    'aggregate_variance' => $signedVariance,
+                    'booked_amount' => $result->normalizedAmount,
+                    'residual' => $residual,
+                    'currency' => $repository->currency,
+                ]);
+            }
+        } catch (Throwable $e) {
+            Log::error('Shift-close cash variance WAS booked but its audit trail could not be written', [
+                'shift_id' => $event->shiftId,
                 'adjustment_id' => $result->adjustmentId,
                 'journal_entry_id' => $result->journalEntryId,
                 'movement_id' => $result->movementId,
-                'direction' => $direction->value,
-                'amount' => $result->normalizedAmount,
-                'currency' => $repository->currency,
-                'aggregate_variance' => $signedVariance,
-                'truncated_residual' => $residual,
-            ],
-            metadata: [
-                'z_report_id' => $event->zReportId,
-                'terminal_id' => $event->terminalId,
-                'repository_id' => $repository->id,
-            ],
-        );
-
-        if (bccomp($residual, '0', self::VARIANCE_SCALE) !== 0) {
-            Log::warning('Shift-close cash variance truncated to the currency scale; residual not booked', [
-                'shift_id' => $event->shiftId,
-                'aggregate_variance' => $signedVariance,
-                'booked_amount' => $result->normalizedAmount,
-                'residual' => $residual,
-                'currency' => $repository->currency,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
             ]);
         }
     }

@@ -436,13 +436,26 @@ final class ZReportSyncController extends Controller
             $updates['actual_cash'] = (string) $shiftFields['actual_cash'];
         }
 
-        // G3 C1: the device's own aggregate when it sent one, otherwise the
-        // per-tender sum it DID send. Never left NULL while a non-zero variance
-        // is on the wire — the journal entry the Treasury listener posts is
-        // driven by the very same resolved figure.
-        if (array_key_exists('variance_amount', $shiftFields) && $shiftFields['variance_amount'] !== null) {
-            $updates['variance'] = (string) $shiftFields['variance_amount'];
-        } elseif ($resolvedAggregate !== null) {
+        // G3 C1: the ONE resolved aggregate — the device's own when it sent one,
+        // otherwise the per-tender sum it DID send. Never left NULL while a
+        // non-zero variance is on the wire, and the journal entry the Treasury
+        // listener posts is driven by the very same figure.
+        //
+        // Gate re-review N5: this consumes `resolveSyncedAggregateVariance()`'s
+        // return UNCONDITIONALLY rather than re-reading
+        // `$shiftFields['variance_amount']` itself. Two predicates over one
+        // field (`isset() && is_string()` there, `array_key_exists() && !== null`
+        // here) agreed only by accident of the `['sometimes','nullable','string']`
+        // validation rule; loosening that rule to `numeric` would have sent the
+        // declared value here and the breakdown sum to the event — the C1 defect
+        // reintroduced with no failing test. One source, one predicate.
+        //
+        // Gate re-review N3 (fiscal): it also fixes the scale. The resolver
+        // returns scale 4 on BOTH branches, so `pos_shifts.variance` (decimal:4)
+        // and `descriptionParams['aggregate_amount']` — which lands in
+        // `fraud_alerts.description_params`, a human-facing surface — no longer
+        // carry a payload-dependent scale.
+        if ($resolvedAggregate !== null) {
             $updates['variance'] = $resolvedAggregate;
         }
 
@@ -504,15 +517,15 @@ final class ZReportSyncController extends Controller
         $currencyCode = ($company instanceof Company) ? $company->currency : 'XXX';
         $moneyScale = $this->scaleResolver->getScaleSafe($currencyCode, 3);
 
-        // G3 C1: exactly the figure `applyShiftFields` just stamped on
-        // `pos_shifts.variance` — the device's own aggregate when it sent one,
-        // else the per-tender sum. Falling back to a hard zero here (the old
-        // behaviour) meant OpenFraudAlertForShiftVariance short-circuited on
-        // `isZero()` for every real device shortfall.
+        // G3 C1: EXACTLY the figure `applyShiftFields` just stamped on
+        // `pos_shifts.variance` — same resolver call, same value, same scale, no
+        // second predicate over the raw payload (gate re-review N5/N3). Falling
+        // back to a hard zero here (the old behaviour) meant
+        // OpenFraudAlertForShiftVariance short-circuited on `isZero()` for every
+        // real device shortfall. The zero fallback survives only for the
+        // impossible case of no resolvable aggregate at all.
         /** @var numeric-string $varianceRaw */
-        $varianceRaw = ($shiftFields !== null && isset($shiftFields['variance_amount']) && is_string($shiftFields['variance_amount']))
-            ? $shiftFields['variance_amount']
-            : ($resolvedAggregate ?? CurrencyScale::bcformatStrict('0', $moneyScale));
+        $varianceRaw = $resolvedAggregate ?? CurrencyScale::bcformatStrict('0', $moneyScale);
 
         $severityRaw = ($shiftFields !== null && isset($shiftFields['variance_severity']) && is_string($shiftFields['variance_severity']))
             ? $this->normaliseVarianceSeverity($shiftFields['variance_severity'])

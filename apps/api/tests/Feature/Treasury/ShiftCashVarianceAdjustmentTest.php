@@ -397,6 +397,60 @@ final class ShiftCashVarianceAdjustmentTest extends TestCase
         $this->assertStringContainsString('0.0009', $payload);
     }
 
+    /**
+     * Gate re-review N4 — the disposition of the single riskiest input, which
+     * had no test at all: a shortfall larger than the till's cached balance.
+     *
+     * `allowNegative` stays false (parity with the manual adjustment endpoint),
+     * so the movement port refuses and NOTHING is booked. That is a deliberate
+     * policy outcome pending the owner ruling, not a fault — so it is audited
+     * under its OWN machine-readable reason rather than the generic `exception`
+     * bucket, which is what made it indistinguishable from a crash.
+     */
+    public function test_a_shortfall_larger_than_the_till_balance_is_refused_under_its_own_reason(): void
+    {
+        // A till already swept by a close-of-day deposit.
+        $this->till->forceFill(['balance' => '1.000', 'allow_negative' => false])->save();
+
+        $shiftId = (string) Str::uuid();
+        $this->dispatchCount($shiftId, expected: '120.0000', actual: '115.0000');
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, DB::table('repository_movements')->count());
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'repository_adjustment')->count());
+        $this->assertSame('1.000', $this->till->fresh()?->balance);
+
+        $this->assertRefusalAudited($shiftId, 'insufficient_repository_balance');
+
+        // Specifically NOT the generic crash bucket.
+        $audit = DB::table('audit_events')
+            ->where('event_type', 'treasury.shift_variance_gl_skipped')
+            ->where('aggregate_id', $shiftId)
+            ->first();
+        $this->assertNotNull($audit);
+        $this->assertStringNotContainsString('"reason":"exception"', (string) $audit->payload);
+    }
+
+    /**
+     * The frozen-till companion: also a policy refusal (`allowWhileFrozen` is
+     * false because the amount is server-computed, never an offline device
+     * replay), also its own reason.
+     */
+    public function test_a_frozen_till_is_refused_under_its_own_reason(): void
+    {
+        $this->till->forceFill([
+            'frozen_at' => now(),
+            'frozen_reason' => 'Under reconciliation.',
+        ])->save();
+
+        $shiftId = (string) Str::uuid();
+        $this->dispatchCount($shiftId, expected: '120.0000', actual: '115.0000');
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, DB::table('repository_movements')->count());
+        $this->assertRefusalAudited($shiftId, 'repository_frozen');
+    }
+
     public function test_an_ambiguous_count_is_audited(): void
     {
         $otherRepository = PaymentRepository::factory()->create([

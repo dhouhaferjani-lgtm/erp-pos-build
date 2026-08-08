@@ -191,10 +191,28 @@ final class PaymentToleranceQueryService
      * `expected` is inflated by exactly the shortfall, an honest count reads
      * short, and the shift-variance entry would re-book that shortfall to 658.
      *
-     * The server-visible shadow of that branch is precise: a shift receipt with
-     * a non-zero `tolerance_writeoff` and NO `pos_receipt_payments` rows. This
-     * predicate finds it so the Treasury listener can refuse to book (never
+     * The server-visible shadow of that branch is a shift receipt with a non-zero
+     * `tolerance_writeoff` and NO `pos_receipt_payments` rows, which is what this
+     * predicate looks for so the Treasury listener can refuse to book (never
      * block) rather than post a double count. No device change is involved.
+     *
+     * SCOPE, honestly (gate re-review N2 — do not overstate this): neither
+     * current writer of `tolerance_writeoff` can produce that shape.
+     * `ReceiptPaymentService` only stages a tolerance inside the branch where
+     * `$totalPaid < $receipt->total` with a NON-EMPTY payments array (an empty
+     * one gives `$totalPaid = 0.000`, which the tolerance checker rejects as
+     * beyond threshold), and every supplied payment writes a `ReceiptPayment`
+     * row; `PosCoreReceiptProjection` writes the column on rows whose payments
+     * are written 1:1 from the canonical view, and v3 terminals are 409'd out of
+     * the legacy sync endpoint anyway. So this is a FAIL-SAFE BELT against
+     * legacy rows (e.g. from the retired receipt-sync path) or future writers —
+     * not a detector for a defect that exists today.
+     *
+     * It is also BROAD: one offending receipt refuses the ENTIRE shift's GL leg,
+     * not just that receipt's share. That is the safe direction and it is
+     * audited (`unattributable_tolerance_writeoff`), but the blast radius on real
+     * tenant data has not been measured. If this fires at any volume, measure
+     * before assuming a double-count risk.
      *
      * Non-breaking addition to the frozen v1.1 surface (new method, no existing
      * signature or DTO touched).
