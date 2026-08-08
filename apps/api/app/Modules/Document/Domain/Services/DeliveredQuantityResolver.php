@@ -200,6 +200,24 @@ final class DeliveredQuantityResolver
     }
 
     /**
+     * The ids of the confirmed delivery notes backing this invoice.
+     *
+     * Public because the over-return cap in `ReturnNoteService` has to net prior returns
+     * over the SAME set (gate CF round 1, Critical 2) — re-deriving that traversal at the
+     * call site is how the two would drift, and a drift there restocks the same units
+     * twice.
+     *
+     * @return list<string>
+     */
+    public function confirmedDeliveryNoteIdsFor(Document $invoice): array
+    {
+        return array_map(
+            static fn (Document $note): string => $note->id,
+            $this->confirmedDeliveryNotesFor($invoice),
+        );
+    }
+
+    /**
      * The confirmed delivery notes backing this invoice, through BOTH linkage shapes.
      *
      * @return list<Document>
@@ -277,17 +295,35 @@ final class DeliveredQuantityResolver
      * Return notes created by the guided cancel flow always carry an explicit
      * per-line location (CF-D11), so this only ever applies to hand-built ones.
      *
+     * ── THE SOURCE SET IS THE INVOICE **AND** ITS DELIVERY NOTES (gate CF round 1,
+     * Critical 2) ── Netting only on `source_document_id == invoice` missed every return
+     * note raised against the DELIVERY NOTE. That is not a hypothetical shape: it is the
+     * second entry point (`CreateReturnNoteForm`, rendered from `DeliveryNoteDetailPage`),
+     * which posts the delivery note as its `source_document_id`. Before this lane it
+     * 422'd on every submit, so the gap was invisible; T8 repairs it, which makes the gap
+     * LIVE IN THE SAME MERGE.
+     *
+     * Reproduced by the gate: 5 delivered, returned once through that surface, then the
+     * guided cancel — 200 OK and 10 units in the warehouse. Five delivered, returned
+     * once, ten in stock. Phantom inventory, with no refusal, because both the resolver
+     * and the cap agreed nothing had come back.
+     *
      * @param  array<string, numeric-string>  $delivered  "productId|locationId" ⇒ delivered qty.
      * @return array<string, numeric-string>
      */
     private function priorReturnsPerTuple(Document $invoice, array $delivered): array
     {
+        $sourceIds = array_values(array_unique(array_merge(
+            [$invoice->id],
+            $this->confirmedDeliveryNoteIdsFor($invoice),
+        )));
+
         $priorLines = DocumentLine::query()
-            ->whereHas('document', static function (Builder $query) use ($invoice): void {
+            ->whereHas('document', static function (Builder $query) use ($invoice, $sourceIds): void {
                 /** @var Builder<Document> $query */
                 $query->where('company_id', $invoice->company_id)
                     ->where('type', DocumentType::ReturnNote)
-                    ->where('source_document_id', $invoice->id)
+                    ->whereIn('source_document_id', $sourceIds)
                     ->where('status', '!=', DocumentStatus::Cancelled->value);
             })
             ->with('document')

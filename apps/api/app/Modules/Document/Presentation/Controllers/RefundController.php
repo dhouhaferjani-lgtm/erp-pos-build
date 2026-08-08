@@ -11,6 +11,8 @@ use App\Modules\Document\Domain\DTOs\ReturnDecisionData;
 use App\Modules\Document\Domain\Enums\ReturnDecisionMode;
 use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionForbiddenException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
 use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
@@ -108,7 +110,18 @@ class RefundController extends Controller
             // The pre-existing envelope of the generic branch is left untouched
             // (out of this lane's scope; other consumers assert on it).
             throw $e;
-        } catch (ReturnPeriodLockedException|ReturnQuantityExceededException|ReturnNothingDeliveredException|ReturnLocationUnresolvedException|ReturnLocationAmbiguousException|ReturnDecisionConflictException $e) {
+        } catch (ReturnDecisionForbiddenException $e) {
+            // CF-D8's typed 403. This arm is SEPARATE from the one below because the
+            // exception extends `AuthorizationException`, not `\DomainException` — so
+            // the generic `catch (\Exception)` at the bottom would swallow it BEFORE
+            // Laravel could convert it to `AccessDeniedHttpException` and before the
+            // dedicated `bootstrap/app.php` arm could ever be consulted. Without this
+            // re-throw the whole CF-D8 leg was delivered as
+            // `{error: "This action is unauthorized.", code: "This action is unauthorized."}`
+            // — the exact untyped envelope frontend I-1 exists to eliminate, and the
+            // `RETURN_DECISION_FORBIDDEN` copy T12 wrote could never render.
+            throw $e;
+        } catch (ReturnPeriodLockedException|ReturnQuantityExceededException|ReturnNothingDeliveredException|ReturnLocationUnresolvedException|ReturnLocationAmbiguousException|ReturnDecisionConflictException|ReturnDecisionMismatchesGoodsException $e) {
             // Plan CF T6. Every one of these extends \DomainException, so WITHOUT this
             // arm the generic catch below would flatten them into
             // `{error: <message>, code: <message>}` — a STRING in `error`, against

@@ -13,6 +13,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionForbiddenException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
 use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
@@ -541,6 +542,25 @@ return Application::configure(basePath: dirname(__DIR__))
                         'message' => $e->getMessage(),
                         'invoice_id' => $e->invoiceId,
                         'invoice_number' => $e->invoiceNumber,
+                    ],
+                ], 422);
+            }
+        });
+
+        // Gate CF round 1 / FE B3 — the boundary enforcement of "explicit, never
+        // silent": a decision that ASSERTS AN ABSENCE of goods, posted for an invoice
+        // that has them. The mirror of RETURN_NOTHING_DELIVERED.
+        $exceptions->render(function (ReturnDecisionMismatchesGoodsException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => ReturnDecisionMismatchesGoodsException::CODE,
+                        'message' => $e->getMessage(),
+                        'invoice_id' => $e->invoiceId,
+                        'invoice_number' => $e->invoiceNumber,
+                        'posted_mode' => $e->postedMode,
+                        'requires_return_decision' => $e->requiresReturnDecision,
+                        'goods_issued' => $e->goodsIssued,
                     ],
                 ], 422);
             }

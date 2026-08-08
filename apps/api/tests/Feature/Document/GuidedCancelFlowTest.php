@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\ReturnDecisionMode;
 use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
 use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
 use App\Modules\Document\Domain\Services\RefundService;
@@ -524,6 +525,60 @@ final class GuidedCancelFlowTest extends TestCase
 
         // The replay branch must not clobber the ORIGINAL cancellation record.
         self::assertSame($originalReason, $invoice->refresh()->payload['cancellation_reason'] ?? null);
+    }
+
+    /**
+     * Gate CF round 1 / FE B3 — the boundary enforcement of "explicit, never silent".
+     *
+     * `not_applicable` and `no_goods_issued` are the SERVER's reading of the invoice, not
+     * user opinions. Before this check a stale client, a direct API call, or a modal
+     * rendered before `/can-cancel` resolved could record "this invoice has no physical
+     * products" against an invoice with delivered goods — a false statement about
+     * physical reality, written to `payload.return_decisions` and surfaced by T16.
+     */
+    public function test_not_applicable_is_refused_for_an_invoice_that_has_products(): void
+    {
+        $invoice = $this->deliveredInvoice('4.0000');
+
+        $this->cancel($invoice, ['mode' => ReturnDecisionMode::NotApplicable->value])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnDecisionMismatchesGoodsException::CODE);
+
+        self::assertSame(DocumentStatus::Posted, $invoice->refresh()->status);
+        self::assertArrayNotHasKey('return_decisions', $invoice->payload ?? []);
+    }
+
+    /**
+     * The other absence-claim: "nothing ever shipped" posted for an invoice whose goods
+     * demonstrably did.
+     */
+    public function test_no_goods_issued_is_refused_when_goods_were_actually_issued(): void
+    {
+        $invoice = $this->deliveredInvoice('4.0000');
+
+        $this->cancel($invoice, ['mode' => ReturnDecisionMode::NoGoodsIssued->value])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnDecisionMismatchesGoodsException::CODE);
+
+        self::assertSame(DocumentStatus::Posted, $invoice->refresh()->status);
+    }
+
+    /**
+     * The permissive direction is deliberate. `no_return` for an undelivered invoice is
+     * merely over-cautious, not a false claim, and the goods-bearing modes are already
+     * governed by RETURN_NOTHING_DELIVERED — refusing here would block a lawful choice.
+     */
+    public function test_no_return_is_still_allowed_for_an_undelivered_invoice(): void
+    {
+        $invoice = $this->cfPostedInvoice([[
+            'product_id' => $this->cfProduct->id,
+            'quantity' => '4.0000',
+            'unit_price' => '100.000',
+        ]], ['document_date' => Carbon::today()->subDays(5)->toDateString()]);
+
+        $this->cancel($invoice, ['mode' => ReturnDecisionMode::NoReturn->value])->assertOk();
+
+        $this->assertDecisionRecorded($invoice, ReturnDecisionMode::NoReturn, accepted: true);
     }
 
     // ── validation (T6) ───────────────────────────────────────────────────────

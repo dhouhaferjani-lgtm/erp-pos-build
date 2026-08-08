@@ -59,6 +59,7 @@ final class ReturnNoteService
         private readonly DocumentNumberingService $numberingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
+        private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
     ) {}
 
     /**
@@ -238,6 +239,13 @@ final class ReturnNoteService
      * a DRAFT return note left behind by a `will_return` decision already counts
      * against the cap.
      *
+     * ── AND OVER THE SOURCE'S DELIVERY NOTES (gate CF round 1, Critical 2) ── When the
+     * source is an invoice, prior returns are netted over the invoice AND over the
+     * confirmed delivery notes backing it. A return note raised against the DELIVERY
+     * NOTE — the second entry point, live again as of T8 — would otherwise be invisible
+     * here, so the same units could be returned twice: once against the delivery note
+     * and once against the invoice, with the cap agreeing both times.
+     *
      * @param  list<CreateReturnNoteLineData>  $requestLines
      *
      * @throws ReturnQuantityExceededException
@@ -268,14 +276,22 @@ final class ReturnNoteService
             $invoiced[$line->product_id] = bcadd($invoiced[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
         }
 
+        $sourceIds = [$sourceDocumentId];
+        if ($source->type === DocumentType::Invoice) {
+            $sourceIds = array_values(array_unique(array_merge(
+                $sourceIds,
+                $this->deliveredQuantityResolver->confirmedDeliveryNoteIdsFor($source),
+            )));
+        }
+
         /** @var array<string, numeric-string> $alreadyReturned */
         $alreadyReturned = [];
         $priorReturnLines = DocumentLine::query()
-            ->whereHas('document', static function (Builder $query) use ($sourceDocumentId, $companyId): void {
+            ->whereHas('document', static function (Builder $query) use ($sourceIds, $companyId): void {
                 /** @var Builder<Document> $query */
                 $query->where('company_id', $companyId)
                     ->where('type', DocumentType::ReturnNote)
-                    ->where('source_document_id', $sourceDocumentId)
+                    ->whereIn('source_document_id', $sourceIds)
                     ->where('status', '!=', DocumentStatus::Cancelled->value);
             })
             ->get();

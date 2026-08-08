@@ -548,7 +548,8 @@
         "RETURN_EXCEEDS_INVOICED_QUANTITY": "The return would exceed what was invoiced for {{product}} — only {{remaining}} is still available to return.",
         "RETURN_DECISION_ALREADY_RECORDED": "A decision about the goods has already been recorded for this cancellation and cannot be changed.",
         "RETURN_DECISION_FORBIDDEN": "You can cancel this invoice, but not record the goods return it needs. Ask a manager to complete the return, or cancel without a return.",
-        "unknown": "The invoice could not be cancelled. Please try again, or contact support if it keeps happening."
+        "unknown": "The invoice could not be cancelled. Please try again, or contact support if it keeps happening.",
+        "RETURN_DECISION_MISMATCHES_GOODS": "This invoice has products on it, so it cannot be cancelled without saying what happens to the goods. Reload the page and choose an option."
       }
     }
   },

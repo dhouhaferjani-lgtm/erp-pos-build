@@ -14,8 +14,10 @@ use App\Modules\Document\Domain\DTOs\ReturnDecisionData;
 use App\Modules\Document\Domain\Enums\CancelBlockReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\ReturnDecisionMode;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionForbiddenException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
 use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
@@ -199,6 +201,18 @@ class RefundService
             );
         }
 
+        // ── The goods decision must match what the invoice actually is ───────────
+        // Gate CF round 1 / FE B3. `not_applicable` and `no_goods_issued` are the
+        // SERVER's reading of the invoice, not user opinions — the modal only reports
+        // them. Enforcing that here is what makes "explicit, never silent" a property of
+        // the system rather than of the UI: a stale client, a direct API call, or a modal
+        // rendered before `/can-cancel` resolved could otherwise record a false statement
+        // about physical reality on a fiscal document.
+        //
+        // This is the mirror of `RETURN_NOTHING_DELIVERED` (which refuses a goods
+        // decision when there are no goods); together they close both directions.
+        $this->assertDecisionMatchesGoods($locked, $decision);
+
         // ── CF-D8: authorize each leg the composite is about to perform ───────────
         $this->authorizeDecisionLegs($decision);
 
@@ -263,6 +277,41 @@ class RefundService
         ]);
 
         return $invoice;
+    }
+
+    /**
+     * Refuse a "there are no goods" decision for an invoice that has them.
+     *
+     * `not_applicable` claims the invoice has no physical lines; `no_goods_issued` claims
+     * nothing was ever delivered. Both are checkable, and both are the server's to
+     * decide — so both are checked here rather than trusted from the request.
+     *
+     * The permissive direction is deliberate: a caller posting `no_return` (goods stayed
+     * out) for an invoice with nothing delivered is merely over-cautious, and
+     * `RETURN_NOTHING_DELIVERED` already governs the goods-bearing modes. Only the two
+     * claims that ASSERT AN ABSENCE are refused.
+     */
+    private function assertDecisionMatchesGoods(Document $invoice, ReturnDecisionData $decision): void
+    {
+        if ($decision->mode === ReturnDecisionMode::NotApplicable && $this->requiresReturnDecision($invoice)) {
+            throw new ReturnDecisionMismatchesGoodsException(
+                $invoice->id,
+                (string) $invoice->document_number,
+                $decision->mode->value,
+                true,
+                $this->hasGoodsIssued($invoice),
+            );
+        }
+
+        if ($decision->mode === ReturnDecisionMode::NoGoodsIssued && $this->hasGoodsIssued($invoice)) {
+            throw new ReturnDecisionMismatchesGoodsException(
+                $invoice->id,
+                (string) $invoice->document_number,
+                $decision->mode->value,
+                true,
+                true,
+            );
+        }
     }
 
     /**
@@ -357,30 +406,55 @@ class RefundService
     }
 
     /**
-     * One return-note line per surviving tuple, in the mandated stable sort order.
+     * One return-note line per surviving `(SOURCE INVOICE LINE, location)` pair.
+     *
+     * ── WHY THE KEY IS THE INVOICE LINE, NOT THE PRODUCT (gate CF round 1, Critical 1) ──
+     * The first cut keyed pricing by PRODUCT: `$sourceLineByProduct[$productId] ??= $line`,
+     * first line wins. But `DeliveredQuantityResolver` aggregates delivered quantity
+     * across ALL of that product's invoice lines, so the whole delivered quantity was
+     * priced at the FIRST line's `unit_price`, carried the FIRST line's
+     * `discount_amount`, and was prorated against the FIRST line's `quantity`.
+     *
+     * Two invoice lines for one product is an ORDINARY invoice —
+     * `CreateDocumentRequest` places no `distinct` rule on `lines.*.product_id`, and
+     * CF-D11 point 2 leans on exactly that fact to make the tuple split expressible. So
+     * this was reachable in one click, with no refusal, and it produced wrong money on a
+     * SEALED document whose `total` is a hash input:
+     *   - 3 @ 100.000 (disc 3.000) + 2 @ 50.000, all 5 delivered ⇒ sale net 397.000 but
+     *     a sealed return net of 497.000 — the return overstating the sale by 25 %;
+     *   - 1 @ 100.000 (disc 5.000) + 4 @ 100.000 split 3 + 2 ⇒ `qtyRatio` above 1 and a
+     *     residue sink of **−5.000**: a negative flat discount, i.e. one that INCREASES
+     *     the line net, persisted on a sealed fiscal line.
+     * The sink was doing its job in both cases; its INPUT was wrong. CF-D11 forbids
+     * picking one location for a multi-location quantity and gives that a typed refusal —
+     * it never wrote the price analogue, and picking one price for a multi-line quantity
+     * is the same defect through a different door.
+     *
+     * ── THE ALLOCATION ──
+     * Each tuple's quantity is allocated across that product's invoice lines in
+     * `line_number` order, consuming each line's capacity before moving on, and one
+     * return-note line is emitted per allocation. NEVER divide by a quantity that is not
+     * the quantity being split.
+     *
+     * Order is deterministic — tuples arrive sorted by `(product_id, location_id)` and
+     * lines are consumed in `line_number` order — which matters because the draft total
+     * sums PER-LINE `bcmul` truncations and that total is a hash input.
      *
      * ── FIELD CLASSIFICATION (CF-D11; copying everything verbatim is WRONG) ──
      *   verbatim   `product_id`, `description`, `unit_price`, `tax_rate`,
-     *              `discount_percent` — per-unit and scale-free. Copying
-     *              `unit_price`/`tax_rate` verbatim is what keeps the return note
-     *              mirroring the sale's VAT by construction (CF-D2): line tax comes
-     *              from the line's OWN stored rate, not from the effective
-     *              `TaxConfiguration`.
-     *   tuple's    `quantity`, `location_id` — the whole point of the split.
+     *              `discount_percent` — per-unit and scale-free, taken from THAT
+     *              allocation's own source line. Copying `unit_price`/`tax_rate`
+     *              verbatim is what keeps the return note mirroring the sale's VAT by
+     *              construction (CF-D2): line tax comes from the line's OWN stored rate,
+     *              not from the effective `TaxConfiguration`.
+     *   allocation's `quantity`; tuple's `location_id` — the point of the split.
      *   PRORATED   `discount_amount` — a flat MONEY amount per line, not a rate.
      *
-     * The proration is not a nicety. `DocumentLine::computeLineTotal()` subtracts a
-     * flat `discount_amount` WHOLE from `qty × unit_price` and then floors the line at
-     * zero, so a qty-5 line carrying `discount_amount = 5.000` split 3 + 2 would
-     * subtract 5.000 TWICE: the sealed net and its VAT base understated by the whole
-     * duplicated discount, silently clamped to zero on a small split line — wrong
-     * money on a fiscal document whose `total` is a hash input.
-     *
-     * RESIDUE SINK (required — `bcdiv`/`bcmul` do not sum exactly). Every tuple EXCEPT
-     * THE FIRST is prorated by `qtyRatio`; the first takes
-     * `source − Σ(all others)`. That makes `Σ split == source` true BY CONSTRUCTION at
-     * currency scale, with one named sink, no largest-remainder pass and nothing left
-     * to implementer choice.
+     * The proration is not a nicety. `DocumentLine::computeLineTotal()` subtracts a flat
+     * `discount_amount` WHOLE from `qty × unit_price` and then floors the line at zero,
+     * so a qty-5 line carrying `discount_amount = 5.000` split 3 + 2 would subtract
+     * 5.000 TWICE: the sealed net and its VAT base understated by the whole duplicated
+     * discount, silently clamped to zero on a small split line.
      *
      * `unit_price` here is B2B net/HT — the `documents` lane, not the POS
      * `SALE_RECEIPT` lane where it is tax-inclusive (rule 19). Money and quantity are
@@ -393,117 +467,181 @@ class RefundService
     {
         $scale = $this->scaleResolver->getScale($invoice->currency);
 
-        /** @var array<string, DocumentLine> $sourceLineByProduct */
-        $sourceLineByProduct = [];
+        /** @var array<string, list<DocumentLine>> $linesByProduct */
+        $linesByProduct = [];
         foreach ($invoice->lines->sortBy('line_number') as $line) {
             if ($line->product_id === null) {
                 continue;
             }
-            $sourceLineByProduct[(string) $line->product_id] ??= $line;
+            $linesByProduct[(string) $line->product_id][] = $line;
         }
 
-        /** @var array<string, list<DeliveredQuantityTuple>> $byProduct */
-        $byProduct = [];
+        /** @var array<string, numeric-string> $capacity remaining invoiced qty per source line id */
+        $capacity = [];
+        foreach ($linesByProduct as $productLines) {
+            foreach ($productLines as $line) {
+                $capacity[(string) $line->id] = (string) $line->quantity;
+            }
+        }
+
+        /** @var list<array{line: DocumentLine, tuple: DeliveredQuantityTuple, quantity: numeric-string}> $allocations */
+        $allocations = [];
+
         foreach ($tuples as $tuple) {
-            $byProduct[$tuple->productId][] = $tuple;
-        }
+            $productLines = $linesByProduct[$tuple->productId] ?? [];
 
-        $lines = [];
-
-        foreach ($byProduct as $productId => $productTuples) {
-            $sourceLine = $sourceLineByProduct[$productId] ?? null;
-
-            if ($sourceLine === null) {
-                // Delivered but not invoiced. The over-return cap in
-                // `createDraft()` would refuse it anyway; skipping keeps the refusal
-                // where it belongs rather than inventing a price here.
+            if ($productLines === []) {
+                // Delivered but never invoiced. The over-return cap in `createDraft()`
+                // owns that refusal; inventing a price here would pre-empt it.
                 continue;
             }
 
-            $discounts = $this->prorateFlatDiscount($sourceLine, $productTuples, $scale);
+            /** @var numeric-string $outstanding */
+            $outstanding = $tuple->remaining;
 
-            foreach ($productTuples as $index => $tuple) {
-                /** @var numeric-string $quantity */
-                $quantity = $tuple->remaining;
-                /** @var numeric-string $unitPrice */
-                $unitPrice = (string) $sourceLine->unit_price;
-                /** @var numeric-string|null $taxRate */
-                $taxRate = $sourceLine->tax_rate === null ? null : (string) $sourceLine->tax_rate;
-                /** @var numeric-string|null $discountPercent */
-                $discountPercent = $sourceLine->discount_percent === null ? null : (string) $sourceLine->discount_percent;
+            foreach ($productLines as $index => $line) {
+                if (bccomp($outstanding, '0', self::QUANTITY_SCALE) <= 0) {
+                    break;
+                }
 
-                $lines[] = new CreateReturnNoteLineData(
-                    productId: $productId,
-                    description: (string) $sourceLine->description,
-                    quantity: $quantity,
-                    unitPrice: $unitPrice,
-                    taxRate: $taxRate,
-                    discountPercent: $discountPercent,
-                    discountAmount: $discounts[$index],
-                    locationId: $tuple->locationId,
-                );
+                $lineId = (string) $line->id;
+                $available = $capacity[$lineId];
+                $isLastLine = $index === count($productLines) - 1;
+
+                // On the LAST line, take whatever is left even if it exceeds the line's
+                // remaining capacity. Silently dropping the excess would hide an
+                // over-return from `assertWithinReturnableQuantities()`, which compares
+                // requested-per-product against invoiced-per-product — the refusal has to
+                // still fire.
+                $take = $isLastLine
+                    ? $outstanding
+                    : (bccomp($outstanding, $available, self::QUANTITY_SCALE) > 0 ? $available : $outstanding);
+
+                if (bccomp($take, '0', self::QUANTITY_SCALE) <= 0) {
+                    continue;
+                }
+
+                $allocations[] = ['line' => $line, 'tuple' => $tuple, 'quantity' => $take];
+
+                $capacity[$lineId] = bcsub($available, $take, self::QUANTITY_SCALE);
+                $outstanding = bcsub($outstanding, $take, self::QUANTITY_SCALE);
             }
+        }
+
+        $discounts = $this->prorateFlatDiscounts($allocations, $scale);
+
+        $lines = [];
+        foreach ($allocations as $index => $allocation) {
+            $sourceLine = $allocation['line'];
+            /** @var numeric-string $quantity */
+            $quantity = $allocation['quantity'];
+            /** @var numeric-string $unitPrice */
+            $unitPrice = (string) $sourceLine->unit_price;
+            /** @var numeric-string|null $taxRate */
+            $taxRate = $sourceLine->tax_rate === null ? null : (string) $sourceLine->tax_rate;
+            /** @var numeric-string|null $discountPercent */
+            $discountPercent = $sourceLine->discount_percent === null ? null : (string) $sourceLine->discount_percent;
+
+            $lines[] = new CreateReturnNoteLineData(
+                productId: (string) $sourceLine->product_id,
+                description: (string) $sourceLine->description,
+                quantity: $quantity,
+                unitPrice: $unitPrice,
+                taxRate: $taxRate,
+                discountPercent: $discountPercent,
+                discountAmount: $discounts[$index],
+                locationId: $allocation['tuple']->locationId,
+            );
         }
 
         return $lines;
     }
 
     /**
-     * The flat discount split across a product's tuples, summing EXACTLY to the source
-     * line's amount.
+     * Each source line's flat discount, split across ITS OWN allocations.
+     *
+     * Two properties, both load-bearing:
+     *
+     * 1. **Scaled to what is actually coming back.** The target for a source line is
+     *    `discount × (Σ allocated ÷ line quantity)`, so a partial return of a discounted
+     *    line carries a partial discount. Putting the whole line discount onto a smaller
+     *    quantity would understate the sealed net.
+     * 2. **Summing exactly, via a residue sink.** `bcdiv`/`bcmul` truncate, so every
+     *    allocation except the FIRST for that line is prorated and the first takes
+     *    `target − Σ(others)`. `Σ == target` then holds BY CONSTRUCTION at currency
+     *    scale, with one named sink, no largest-remainder pass and nothing left to
+     *    implementer choice. For a full return `Σ allocated == line quantity`, so the
+     *    target is the source discount exactly.
+     *
+     * Because every ratio is now `allocated ÷ that same line's quantity`, it can never
+     * exceed 1 and the sink can never go negative — the Critical-1 defect is structurally
+     * unreachable rather than merely untested.
      *
      * Prorated whenever `discount_amount` is non-null, even when `discount_percent`
-     * dominates `computeLineTotal()`'s precedence — harmless for the totals, and it
-     * keeps the stored line data honest rather than carrying a misleading flat amount
-     * on every split line.
+     * dominates `computeLineTotal()`'s precedence: harmless for the totals, and it keeps
+     * the stored line data honest rather than carrying a misleading flat amount.
      *
-     * Repo idiom: `SalesOrderToDeliveryNoteConverter` prorates a flat discount by
-     * `qtyRatio = bcdiv($qtyToDeliver, $lineQty, 4)` then
-     * `bcmul($discountAmt, $qtyRatio, scale)` when splitting a line by quantity.
-     *
-     * @param  list<DeliveredQuantityTuple>  $tuples
-     * @return array<int, numeric-string|null> Indexed to match $tuples.
+     * @param  list<array{line: DocumentLine, tuple: DeliveredQuantityTuple, quantity: numeric-string}>  $allocations
+     * @return array<int, numeric-string|null> Indexed to match $allocations.
      */
-    private function prorateFlatDiscount(DocumentLine $sourceLine, array $tuples, int $scale): array
+    private function prorateFlatDiscounts(array $allocations, int $scale): array
     {
-        if ($sourceLine->discount_amount === null) {
-            return array_fill(0, count($tuples), null);
+        /** @var array<int, numeric-string|null> $discounts */
+        $discounts = array_fill(0, count($allocations), null);
+
+        /** @var array<string, list<int>> $indexesByLine */
+        $indexesByLine = [];
+        foreach ($allocations as $index => $allocation) {
+            $indexesByLine[(string) $allocation['line']->id][] = $index;
         }
 
-        /** @var numeric-string $sourceDiscount */
-        $sourceDiscount = (string) $sourceLine->discount_amount;
-        /** @var numeric-string $sourceQuantity */
-        $sourceQuantity = (string) $sourceLine->quantity;
+        foreach ($indexesByLine as $indexes) {
+            $sourceLine = $allocations[$indexes[0]]['line'];
 
-        if (bccomp($sourceQuantity, '0', self::QUANTITY_SCALE) <= 0) {
-            return array_fill(0, count($tuples), null);
-        }
-
-        $discounts = [];
-        $others = '0';
-
-        foreach ($tuples as $index => $tuple) {
-            if ($index === 0) {
-                // The residue sink — filled in once the others are known.
-                $discounts[0] = null;
-
+            if ($sourceLine->discount_amount === null) {
                 continue;
             }
 
-            // precision-ok: a quantity RATIO, not a monetary value. 4 is the canonical
-            // quantity scale and the repo idiom's own literal; the money truncation is
-            // the surrounding bcmul at $scale.
-            $qtyRatio = bcdiv($tuple->remaining, $sourceQuantity, self::QUANTITY_SCALE);
-            /** @var numeric-string $prorated */
-            $prorated = bcmul($sourceDiscount, $qtyRatio, $scale);
+            /** @var numeric-string $sourceDiscount */
+            $sourceDiscount = (string) $sourceLine->discount_amount;
+            /** @var numeric-string $lineQuantity */
+            $lineQuantity = (string) $sourceLine->quantity;
 
-            $discounts[$index] = $prorated;
-            $others = bcadd($others, $prorated, $scale);
+            if (bccomp($lineQuantity, '0', self::QUANTITY_SCALE) <= 0) {
+                continue;
+            }
+
+            $allocated = '0';
+            foreach ($indexes as $index) {
+                $allocated = bcadd($allocated, $allocations[$index]['quantity'], self::QUANTITY_SCALE);
+            }
+
+            // The share of the line discount that belongs to the returned quantity.
+            // precision-ok: a quantity RATIO, not a monetary value — 4 is the canonical
+            // quantity scale; the money truncation is the surrounding bcmul at $scale.
+            $returnedRatio = bcdiv($allocated, $lineQuantity, self::QUANTITY_SCALE);
+            /** @var numeric-string $target */
+            $target = bcmul($sourceDiscount, $returnedRatio, $scale);
+
+            $others = '0';
+            foreach ($indexes as $position => $index) {
+                if ($position === 0) {
+                    continue;
+                }
+
+                // precision-ok: a quantity RATIO, not a monetary value (see above).
+                $qtyRatio = bcdiv($allocations[$index]['quantity'], $lineQuantity, self::QUANTITY_SCALE);
+                /** @var numeric-string $prorated */
+                $prorated = bcmul($sourceDiscount, $qtyRatio, $scale);
+
+                $discounts[$index] = $prorated;
+                $others = bcadd($others, $prorated, $scale);
+            }
+
+            /** @var numeric-string $residue */
+            $residue = bcsub($target, $others, $scale);
+            $discounts[$indexes[0]] = $residue;
         }
-
-        /** @var numeric-string $residue */
-        $residue = bcsub($sourceDiscount, $others, $scale);
-        $discounts[0] = $residue;
 
         return $discounts;
     }
