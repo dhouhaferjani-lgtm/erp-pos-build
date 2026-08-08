@@ -6,6 +6,7 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { useTranslation } from 'react-i18next'
 import { Package, AlertTriangle, MapPin, Plus, RefreshCw, ArrowRightLeft } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { entityRoutes } from '../../lib/entityRoutes'
 import { locationScopedKey } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
@@ -105,7 +106,7 @@ export function StockLevelsPage() {
       header: t('inventory:stock.product'),
       render: (stock) => (
         <Link
-          to={`/inventory/products/${stock.product_id}`}
+          to={entityRoutes.product(stock.product_id)}
           className={cn('font-medium', textColors.primary, textColors.hoverPrimary)}
         >
           {stock.product_name ?? t('inventory:stock.unknownProduct')}

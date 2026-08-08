@@ -62,6 +62,34 @@ interface LineDraft {
 
 const NEW_LINE_KEY = (): string => Math.random().toString(36).slice(2)
 
+/** The signed wire value, negated at STRING level. Never `-Number(x)`. */
+function signedDelta(line: LineDraft): string {
+  if (line.magnitude === '') {
+    return '0'
+  }
+  return reasonDirection(line.reason) === 'in' ? line.magnitude : `-${line.magnitude}`
+}
+
+/**
+ * The inline validation for one line, mirroring the server's rules so none of
+ * them reaches the operator as a surprise 422.
+ */
+function issueFor(line: LineDraft, t: (key: string) => string): string | null {
+  if (line.magnitude === '' || !/^\d+(\.\d{1,4})?$/.test(line.magnitude)) {
+    return t('line.quantity')
+  }
+  // Mirror of the server's `not_in:0`: a zero delta is not a correction.
+  if (bccomp(line.magnitude, '0') === 0) {
+    return t('line.quantity')
+  }
+  // A negative line MUST name a lot when one holds stock here — the rule is
+  // keyed on the LOTS, not on the product flag.
+  if (reasonDirection(line.reason) === 'out' && line.hasLotsAtLocation && line.batchUuid === '') {
+    return t('line.lotRequired')
+  }
+  return null
+}
+
 /**
  * The multi-line stock-adjustment authoring page (DPA V7 / F3).
  *
@@ -145,14 +173,6 @@ export function CreateStockAdjustmentPage() {
     setLines((current) => current.filter((line) => line.key !== key))
   }, [])
 
-  /** The signed wire value, negated at STRING level. Never `-Number(x)`. */
-  const signedDelta = (line: LineDraft): string =>
-    line.magnitude === ''
-      ? '0'
-      : reasonDirection(line.reason) === 'in'
-        ? line.magnitude
-        : `-${line.magnitude}`
-
   const summary = useMemo(() => {
     let net = '0'
     let increases = 0
@@ -173,31 +193,18 @@ export function CreateStockAdjustmentPage() {
 
   const lineIssues = useMemo(
     () =>
-      lines.map((line) => {
-        if (line.magnitude === '' || !/^\d+(\.\d{1,4})?$/.test(line.magnitude)) {
-          return t('line.quantity')
-        }
-        // Inline mirror of the server's `not_in:0`, so a zero delta never reaches
-        // the server as a surprise.
-        if (bccomp(line.magnitude, '0') === 0) {
-          return t('line.quantity')
-        }
-        // A negative line MUST name a lot when one holds stock here — the rule is
-        // keyed on the LOTS, not on the product flag.
-        if (
-          reasonDirection(line.reason) === 'out' &&
-          line.hasLotsAtLocation &&
-          line.batchUuid === ''
-        ) {
-          return t('line.lotRequired')
-        }
-        return null
-      }),
+      lines
+        .map((line) => ({ line, issue: issueFor(line, t) }))
+        .filter((entry): entry is { line: LineDraft; issue: string } => entry.issue !== null)
+        .map((entry) => ({
+          key: entry.line.key,
+          productId: entry.line.productId,
+          issue: entry.issue,
+        })),
     [lines, t],
   )
 
-  const canSubmit =
-    locationId !== '' && lines.length > 0 && lineIssues.every((issue) => issue === null)
+  const canSubmit = locationId !== '' && lines.length > 0 && lineIssues.length === 0
 
   const submit = async (postImmediately: boolean, acknowledge = false): Promise<void> => {
     try {
@@ -444,15 +451,13 @@ export function CreateStockAdjustmentPage() {
           emptyState={<div className="py-6 text-center">{t('create.emptyLines')}</div>}
         />
 
-        {lineIssues.some((issue) => issue !== null) && (
+        {lineIssues.length > 0 && (
           <ul className={textColors.error}>
-            {lineIssues.map((issue, index) =>
-              issue === null ? null : (
-                <li key={lines[index]?.key ?? index}>
-                  {productName(lines[index]?.productId ?? '')}: {issue}
-                </li>
-              ),
-            )}
+            {lineIssues.map((entry) => (
+              <li key={entry.key}>
+                {productName(entry.productId)}: {entry.issue}
+              </li>
+            ))}
           </ul>
         )}
       </section>

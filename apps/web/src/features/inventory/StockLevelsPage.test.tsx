@@ -18,6 +18,34 @@ vi.mock('react-router-dom', () => ({
   ),
 }))
 
+// The quick modal is exercised on its own; here the page only has to hand it the
+// right props and gate the links.
+vi.mock('../stock-adjustments/components/QuickStockAdjustmentModal', () => ({
+  QuickStockAdjustmentModal: ({ productId, productName }: { productId: string; productName: string }) => (
+    <div data-testid="quick-adjust-modal" data-product-id={productId}>
+      {productName}
+    </div>
+  ),
+}))
+
+const grantedPermissions = new Set<string>([
+  'inventory.adjustments.create',
+  'inventory.transfers.create',
+  'goods-receipt.create-standalone',
+])
+
+vi.mock('../auth/components/RequirePermission', () => ({
+  RequirePermission: ({
+    permission,
+    children,
+    fallback = null,
+  }: {
+    permission?: string
+    children: React.ReactNode
+    fallback?: React.ReactNode
+  }) => <>{permission === undefined || grantedPermissions.has(permission) ? children : fallback}</>,
+}))
+
 vi.mock('../../hooks/usePageTitle', () => ({ usePageTitle: () => {} }))
 vi.mock('../../hooks/useLocation', () => ({ useLocation: () => ({ currentLocationId: null }) }))
 vi.mock('../locations/LocationSelector', () => ({ LocationSelector: () => <div data-testid="location-selector" /> }))
@@ -126,12 +154,58 @@ describe('StockLevelsPage (canonical list)', () => {
     expect(pill.className).toContain('rounded-full')
   })
 
-  it('renders the selected stock quantity at the product unit precision', async () => {
+  /**
+   * CARRIED FORWARD from the deleted hand-rolled modal (DPA V7 / F7).
+   *
+   * The original assertion was that the modal shows the selected quantity at the
+   * PRODUCT UNIT's precision (3 dp here, not the storage scale of 4) — a guard
+   * from the UoM display-precision lane whose baselines are empty and must stay
+   * empty. The modal moved, so the guard moves with it: the page must hand the
+   * quick modal the right product, and the modal's own test asserts the
+   * precision of `observed_before` and `quantity_after`.
+   */
+  it('opens the document-backed quick modal for the selected product', async () => {
     const user = userEvent.setup()
     render(<StockLevelsPage />)
 
-    await user.click(screen.getAllByRole('button', { name: 'inventory:stock.adjust' })[0])
+    expect(screen.queryByTestId('quick-adjust-modal')).not.toBeInTheDocument()
 
-    expect(screen.getByText('inventory:stock.modal.currentQuantity').parentElement).toHaveTextContent('50.000')
+    await user.click(screen.getAllByRole('button', { name: /inventory:stock.adjust/ })[0])
+
+    const modal = screen.getByTestId('quick-adjust-modal')
+    expect(modal).toHaveAttribute('data-product-id', 'p-1')
+    expect(modal).toHaveTextContent('Alpha')
+  })
+
+  /**
+   * The four raw writers are GONE. This asserts the page cannot call them —
+   * there is no mutation left on it at all — and that the two destinations it
+   * links to instead are permission-gated on their OWN requirements, so F7
+   * cannot re-create the hole F8 closes.
+   */
+  it('never calls the deleted raw stock endpoints and gates its links', () => {
+    render(<StockLevelsPage />)
+
+    const hrefs = screen
+      .getAllByRole('link')
+      .map((link) => link.getAttribute('href') ?? '')
+
+    for (const raw of ['/stock-movements/receive', '/stock-movements/issue', '/stock-movements/transfer', '/stock-movements/adjust']) {
+      expect(hrefs.some((href) => href.includes(raw))).toBe(false)
+    }
+
+    expect(hrefs.some((href) => href.startsWith('/inventory/stock-transfers/new'))).toBe(true)
+    expect(hrefs.some((href) => href.startsWith('/purchases/receipts/new'))).toBe(true)
+  })
+
+  it('hides the transfer affordance without inventory.transfers.create', () => {
+    grantedPermissions.delete('inventory.transfers.create')
+    try {
+      render(<StockLevelsPage />)
+      const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href') ?? '')
+      expect(hrefs.some((href) => href.startsWith('/inventory/stock-transfers/new'))).toBe(false)
+    } finally {
+      grantedPermissions.add('inventory.transfers.create')
+    }
   })
 })
