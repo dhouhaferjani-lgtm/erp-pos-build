@@ -60,8 +60,7 @@
       "description": "Import your product catalog"
     },
     "stock_levels": {
-      "title": "Stock Levels",
-      "description": "Import opening stock quantities"
+      "title": "Stock Levels"
     },
     "opening_balances": {
       "title": "Opening Balances",
@@ -163,7 +162,12 @@
     "proceedWithErrors": "Some rows have validation errors and will be skipped. Do you want to proceed with valid rows only?",
     "confirmPartialImport": "Import with Errors",
     "partialImportDescription": "{{valid}} rows are valid and will be imported. {{failed}} rows have errors and will be skipped. You can download the failed rows after import.",
-    "proceedWithValid": "Import Valid Rows"
+    "proceedWithValid": "Import Valid Rows",
+    "retired": {
+      "title": "This import is no longer available",
+      "description": "The stock levels import has been retired: it set stock quantities directly, with no stock movement and no justifying document behind them. Import your opening stock with the Products import instead — it accepts a quantity, a purchase price and a location, and records a proper opening stock movement.",
+      "goToProducts": "Go to the Products import"
+    }
   },
   "options": {
     "placementTitle": "Plan storage placements",
