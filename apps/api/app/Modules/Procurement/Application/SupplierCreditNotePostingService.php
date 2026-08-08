@@ -10,10 +10,10 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
-use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Application\DTOs\SupplierGoodsReturnLineData;
+use App\Modules\Inventory\Application\Services\SupplierGoodsReturnNoteService;
+use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnLineKind;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
-use App\Modules\Inventory\Domain\StockLevel;
-use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -43,6 +43,8 @@ use Illuminate\Support\Facades\DB;
  *      locked, so concurrent credit-note posts serialize on it.
  *   5. GoodsReturn per-line quantity guard (HARD) + decrement quantity_invoiced
  *      (reopens the PO line). PriceAdjustment leaves quantity_invoiced untouched.
+ *   5b. Physical units: mint a SUPPLIER GOODS-RETURN NOTE and confirm it, so the
+ *      stock exit hangs off its own document (DPA lane V8 — see below).
  *   6. Post the GL reversing entry via the in-transaction system path (atomic).
  *   7. Draft → Posted.
  *
@@ -56,12 +58,50 @@ use Illuminate\Support\Facades\DB;
  *
  * DEFERRED (Phase 2): the "returned goods no longer in stock → expense /
  * purchase price-variance" variant. Phase 1 always credits Inventory.
+ *
+ * ---------------------------------------------------------------------------
+ * DPA lane V8 — the stock exit is a DOCUMENT, not a side effect
+ * ---------------------------------------------------------------------------
+ *
+ * This service used to raw-write stock inline for bonus goods-return lines
+ * (`issueBonusReturnStock()`: a `stock_levels` decrement plus an `Issue`
+ * `stock_movements` row referencing THIS credit note, with
+ * `avg_cost_before == avg_cost_after` asserting the WAC was untouched — which is
+ * wrong for zero-cost bonus goods, see SupplierGoodsReturnNoteService). Ordinary
+ * goods-return lines, meanwhile, moved no units at all: one reason, two lane
+ * behaviours.
+ *
+ * Now BOTH kinds of line go through one real document, minted and confirmed via
+ * `SupplierGoodsReturnNoteService` inside this same transaction. This service no
+ * longer touches `stock_levels`, `stock_movements` or `products.cost_price`.
+ *
+ * AUTO-CONFIRM, and why (decided from the code, not from a preference):
+ * the pre-V8 behaviour decremented stock UNCONDITIONALLY at post time, in the
+ * same transaction as the GL entry that credits Inventory. The existing contract
+ * therefore already asserts the goods are gone when the credit note posts, and
+ * leaving the note Draft would put the units and the GL out of step in a way the
+ * old code never did. So the note is created AND confirmed here. Letting a user
+ * choose (goods not shipped yet → leave it Draft) is the DEFERRED guided-AP-modal
+ * lane; this path is the "behind the scenes via the same domain transitions"
+ * contract, not a bypass — `createDraft()` then `confirm()` are the real
+ * transitions, and the note is a first-class row either way.
+ *
+ * Lines with no physical product (service lines: `product_id === null`, or a
+ * non-physical product) mint NO note line — nothing left the warehouse. A
+ * GoodsReturn credit note made up entirely of such lines mints no note at all,
+ * which is why the pure-GL tests in SupplierCreditNoteGlTest see none.
+ *
+ * STILL OWED, in c1-bis (GL half), NOT here: a bonus return now preserves
+ * inventory VALUE (see SupplierGoodsReturnNoteService's costing model), but the
+ * GL legs below still expense it (Dr PurchaseExpenses / Cr Inventory at the WAC).
+ * Those legs are deliberately left byte-identical in this lane.
  */
 final class SupplierCreditNotePostingService
 {
     public function __construct(
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly SupplierGoodsReturnNoteService $goodsReturnNoteService,
     ) {}
 
     /**
@@ -71,9 +111,9 @@ final class SupplierCreditNotePostingService
      *                          lines, over-credit (per-line or cumulative), or
      *                          internal inconsistency (fails loudly, rolls back).
      */
-    public function post(Document $creditNote): void
+    public function post(Document $creditNote, ?string $actorId = null): void
     {
-        DB::transaction(function () use ($creditNote): void {
+        DB::transaction(function () use ($creditNote, $actorId): void {
             // HIGH (concurrency fix): reload the credit-note row under FOR UPDATE so every
             // guard in this transaction (type, status, reason) runs against the current,
             // locked DB state rather than the caller-provided (potentially stale) snapshot.
@@ -180,8 +220,33 @@ final class SupplierCreditNotePostingService
 
             // 5. GoodsReturn per-line quantity guard + decrement (PriceAdjustment: no-op).
             if ($reason->decrementsQuantityInvoiced()) {
-                $this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine);
-                $bonusReturnInventoryValue = $this->guardDecrementAndIssueBonusGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine);
+                /** @var list<SupplierGoodsReturnLineData> $returnLines */
+                $returnLines = [
+                    ...$this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine),
+                    ...$this->guardAndDecrementBonusGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine),
+                ];
+
+                // 5b. The units leave through their OWN document, in this same
+                //     transaction (DPA V8). A GoodsReturn made up only of service
+                //     lines produces no physical lines and therefore no note.
+                if ($returnLines !== []) {
+                    $note = $this->goodsReturnNoteService->confirm(
+                        $this->goodsReturnNoteService->createDraft(
+                            tenantId: $creditNote->tenant_id,
+                            companyId: $creditNote->company_id,
+                            partnerId: $creditNote->partner_id,
+                            supplierCreditNoteId: $creditNote->id,
+                            reference: $creditNote->document_number,
+                            lines: $returnLines,
+                            actorId: $actorId,
+                        ),
+                        $actorId,
+                    );
+
+                    // The GL figure comes off the note's own stamped costs, which
+                    // reproduce the pre-V8 `qty x product.cost_price` at scale 6.
+                    $bonusReturnInventoryValue = $this->goodsReturnNoteService->bonusInventoryValue($note);
+                }
             }
 
             // Tax components from the credit-note lines.
@@ -406,11 +471,20 @@ final class SupplierCreditNotePostingService
      * decrement quantity_invoiced (reopens the line). Authoritative WRITE-boundary
      * guard on the LOCKED PO row.
      *
+     * DPA V8: also emits the goods-return note line for each PHYSICAL PO line, so
+     * paid returns move units through the same document bonus returns do. Before
+     * V8 this path moved no stock at all while the GL already credited Inventory
+     * for it — the units side was simply missing.
+     *
      * @param  Collection<int, DocumentLine>  $lockedPoLines
      * @param  SupportCollection<int|string, Collection<int, GoodsReceiptLine>>  $receiptLinesByPoLine
+     * @return list<SupplierGoodsReturnLineData>
      */
-    private function guardAndDecrementGoodsReturn(Document $creditNote, Collection $lockedPoLines, SupportCollection $receiptLinesByPoLine): void
+    private function guardAndDecrementGoodsReturn(Document $creditNote, Collection $lockedPoLines, SupportCollection $receiptLinesByPoLine): array
     {
+        /** @var list<SupplierGoodsReturnLineData> $returnLines */
+        $returnLines = [];
+
         foreach ($this->aggregateReturnedQtyPerPoLine($creditNote, false) as $sourceLineId => $qty) {
             $poLine = $this->resolveLockedPoLine($creditNote, $lockedPoLines, $sourceLineId);
 
@@ -449,7 +523,21 @@ final class SupplierCreditNotePostingService
 
             $poLine->quantity_invoiced = $newInvoiced;
             $poLine->save();
+
+            $line = $this->returnNoteLine(
+                $creditNote,
+                $poLine,
+                $qty,
+                SupplierGoodsReturnLineKind::Ordinary,
+                $receiptLines,
+                requireProduct: false,
+            );
+            if ($line !== null) {
+                $returnLines[] = $line;
+            }
         }
+
+        return $returnLines;
     }
 
     /**
@@ -522,16 +610,20 @@ final class SupplierCreditNotePostingService
 
     /**
      * Bonus GoodsReturn: returned free qty must be > 0 and ≤ free_quantity_invoiced;
-     * decrement only the free counter and issue stock at the current diluted WAC.
+     * decrement only the free counter.
+     *
+     * DPA V8: this method no longer moves stock. It emits a goods-return note line
+     * instead, and the note's confirm issues the units AND un-dilutes the WAC the
+     * free units diluted on entry (which the old inline write got wrong).
      *
      * @param  Collection<int, DocumentLine>  $lockedPoLines
      * @param  SupportCollection<int|string, Collection<int, GoodsReceiptLine>>  $receiptLinesByPoLine
-     * @return numeric-string
+     * @return list<SupplierGoodsReturnLineData>
      */
-    private function guardDecrementAndIssueBonusGoodsReturn(Document $creditNote, Collection $lockedPoLines, SupportCollection $receiptLinesByPoLine): string
+    private function guardAndDecrementBonusGoodsReturn(Document $creditNote, Collection $lockedPoLines, SupportCollection $receiptLinesByPoLine): array
     {
-        /** @var numeric-string $inventoryValue */
-        $inventoryValue = '0.000000';
+        /** @var list<SupplierGoodsReturnLineData> $returnLines */
+        $returnLines = [];
 
         foreach ($this->aggregateReturnedQtyPerPoLine($creditNote, true) as $sourceLineId => $qty) {
             $poLine = $this->resolveLockedPoLine($creditNote, $lockedPoLines, $sourceLineId);
@@ -574,118 +666,110 @@ final class SupplierCreditNotePostingService
             $poLine->free_quantity_invoiced = $newFreeInvoiced;
             $poLine->save();
 
-            $inventoryValue = bcadd(
-                $inventoryValue,
-                $this->issueBonusReturnStock($creditNote, $poLine, $qty),
-                6,
+            $line = $this->returnNoteLine(
+                $creditNote,
+                $poLine,
+                $qty,
+                SupplierGoodsReturnLineKind::Bonus,
+                $receiptLines,
+                // A FREE unit of nothing is an inconsistency, and the pre-V8 path
+                // threw here ("no product_id is attached"). Preserved.
+                requireProduct: true,
             );
+            if ($line !== null) {
+                $returnLines[] = $line;
+            }
         }
 
-        return $inventoryValue;
+        return $returnLines;
     }
 
     /**
+     * Build the goods-return note line for a PO line, or null when nothing
+     * physical left the warehouse.
+     *
+     * Non-physical lines (no `product_id`, or a service product) are SKIPPED
+     * rather than refused — that is the same choice GoodsReceiptService makes on
+     * the inbound leg, and refusing would break every price-style credit note
+     * raised against a service line. `requireProduct` re-imposes the pre-V8 hard
+     * failure on the bonus path, where a missing product really is inconsistent.
+     *
      * @param  numeric-string  $qty
-     * @return numeric-string
+     * @param  Collection<int, GoodsReceiptLine>  $receiptLines
      */
-    private function issueBonusReturnStock(Document $creditNote, DocumentLine $poLine, string $qty): string
-    {
+    private function returnNoteLine(
+        Document $creditNote,
+        DocumentLine $poLine,
+        string $qty,
+        SupplierGoodsReturnLineKind $kind,
+        Collection $receiptLines,
+        bool $requireProduct,
+    ): ?SupplierGoodsReturnLineData {
         $productId = $poLine->product_id;
+
         if ($productId === null) {
-            throw new \DomainException(sprintf(
-                'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: no product_id is attached.',
-                $creditNote->id,
-                $poLine->id,
-            ));
+            if ($requireProduct) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: no product_id is attached.',
+                    $creditNote->id,
+                    $poLine->id,
+                ));
+            }
+
+            return null;
         }
 
-        /** @var Product $product */
+        /** @var Product|null $product */
         $product = Product::query()
             ->whereKey($productId)
             ->where('tenant_id', $creditNote->tenant_id)
             ->where('company_id', $creditNote->company_id)
-            ->lockForUpdate()
-            ->firstOrFail();
-
-        $stockLevelQuery = StockLevel::query()
-            ->where('tenant_id', $creditNote->tenant_id)
-            ->where('company_id', $creditNote->company_id)
-            ->where('product_id', $productId)
-            ->where('quantity', '>', '0');
-
-        if ($poLine->variant_id === null) {
-            $stockLevelQuery->whereNull('variant_id');
-        } else {
-            $stockLevelQuery->where('variant_id', $poLine->variant_id);
-        }
-
-        /** @var StockLevel|null $stockLevel */
-        $stockLevel = $stockLevelQuery
-            ->orderByDesc('quantity')
-            ->lockForUpdate()
             ->first();
 
-        if ($stockLevel === null) {
+        if ($product === null) {
             throw new \DomainException(sprintf(
-                'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: no stock level is available.',
-                $creditNote->id,
-                $poLine->id,
-            ));
-        }
-
-        /** @var numeric-string $quantityBefore */
-        $quantityBefore = $stockLevel->quantity;
-        /** @var numeric-string $quantityAfter */
-        $quantityAfter = bcsub($quantityBefore, $qty, 4);
-
-        if (bccomp($quantityAfter, '0', 4) < 0) {
-            throw new \DomainException(sprintf(
-                'Supplier credit note [%s] cannot return %s bonus units for PO line [%s]: stock would go negative from %s.',
-                $creditNote->id,
-                $qty,
-                $poLine->id,
-                $quantityBefore,
-            ));
-        }
-
-        $rawUnitCost = $product->cost_price;
-        if (! is_numeric($rawUnitCost)) {
-            throw new \DomainException(sprintf(
-                'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: product [%s] has a non-numeric WAC cost.',
+                'Supplier credit note [%s] cannot return stock for PO line [%s]: product [%s] does not '
+                .'belong to this company.',
                 $creditNote->id,
                 $poLine->id,
                 $productId,
             ));
         }
 
-        $unitCost = bcadd($rawUnitCost, '0', 6);
-        /** @var numeric-string $totalCost */
-        $totalCost = bcmul($qty, $unitCost, 6);
+        if (! $product->isPhysical()) {
+            if ($requireProduct) {
+                throw new \DomainException(sprintf(
+                    'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: product [%s] '
+                    .'is not a physical product.',
+                    $creditNote->id,
+                    $poLine->id,
+                    $productId,
+                ));
+            }
 
-        $stockLevel->quantity = $quantityAfter;
-        $stockLevel->save();
+            return null;
+        }
 
-        StockMovement::create([
-            'tenant_id' => $creditNote->tenant_id,
-            'company_id' => $creditNote->company_id,
-            'product_id' => $productId,
-            'variant_id' => $poLine->variant_id,
-            'location_id' => $stockLevel->location_id,
-            'movement_type' => MovementType::Issue,
-            'quantity' => bcmul($qty, '-1', 4),
-            'quantity_before' => $quantityBefore,
-            'quantity_after' => $quantityAfter,
-            'unit_cost' => $unitCost,
-            'total_cost' => $totalCost,
-            'avg_cost_before' => $unitCost,
-            'avg_cost_after' => $unitCost,
-            'reference' => $creditNote->document_number,
-            'reference_type' => Document::class,
-            'reference_id' => $creditNote->id,
-            'occurred_at' => now(),
-        ]);
+        // The receipt the units most plausibly came in on: newest posted receipt
+        // line for this PO line — the SAME ordering decrementReceiptLineInvoiced()
+        // consumes the ledger in, so the note's receipt linkage and the counter
+        // decrement agree on which receipt they are talking about.
+        /** @var GoodsReceiptLine|null $receiptLine */
+        $receiptLine = $receiptLines->sortBy([
+            ['created_at', 'desc'],
+            ['id', 'desc'],
+        ])->first();
 
-        return $totalCost;
+        return new SupplierGoodsReturnLineData(
+            poLineId: (string) $poLine->id,
+            productId: (string) $productId,
+            variantId: $poLine->variant_id,
+            kind: $kind,
+            quantity: $qty,
+            goodsReceiptId: $receiptLine?->goods_receipt_id,
+            goodsReceiptLineId: $receiptLine?->id,
+            preferredLocationId: $receiptLine?->goodsReceipt->location_id ?? $poLine->location_id,
+        );
     }
 
     /**

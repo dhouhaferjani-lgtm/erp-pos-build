@@ -82,4 +82,15 @@ enum StockMovementReferenceType: string
      * type and `recordMovement()` persists `$referenceType?->value`.
      */
     case StockAdjustment = 'stock_adjustment';
+
+    /**
+     * A `supplier_goods_return_notes` row — the document that justifies units
+     * going back to a supplier (DPA lane V8). Both the Issue movement and, for
+     * bonus lines, the quantity-neutral WAC un-dilution adjustment carry it.
+     *
+     * Before V8 these movements were stamped `Document` + the supplier CREDIT
+     * NOTE's id: an AP money document standing in for a stock document. This
+     * case is what replaces that.
+     */
+    case SupplierGoodsReturnNote = 'supplier_goods_return_note';
 }

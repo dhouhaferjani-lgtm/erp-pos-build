@@ -117,6 +117,11 @@ final class InventoryCostLockCoverageTest extends TestCase
             ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function post('],
             ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm('],
             ['app/Modules/Inventory/Application/Services/StockAdjustmentDocumentService.php', 'public function post('],
+            // DPA V8 — the supplier goods-return note's confirm loops over its
+            // lines calling issue() (lock-free) and, for bonus lines,
+            // recordCostAdjustment() (per-product locking seam). It therefore
+            // belongs to exactly this class of caller.
+            ['app/Modules/Inventory/Application/Services/SupplierGoodsReturnNoteService.php', 'public function confirm('],
         ];
     }
 

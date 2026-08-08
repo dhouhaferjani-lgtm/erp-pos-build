@@ -441,4 +441,42 @@ final class SupplierGoodsReturnNoteTest extends TestCase
 
         $this->draft([]);
     }
+
+    // -------------------------------------------------------------------------
+    // 7. The new reference type is renderable (S0 gate finding I-1's contract)
+    // -------------------------------------------------------------------------
+
+    /**
+     * `EntryExitNoteController::sourceType()` emits the enum's backing value
+     * verbatim for every seam-written reference type, and the FE renders it via
+     * `entryExitNotes.sourceTypes.<code>`. An unmapped code is shown raw to the
+     * user (CLAUDE rule 11), so minting an enum case without both locale keys is
+     * a user-visible bug that no other test would catch.
+     */
+    public function test_the_new_reference_type_has_a_translation_in_both_locales(): void
+    {
+        $code = StockMovementReferenceType::SupplierGoodsReturnNote->value;
+
+        foreach (['en', 'fr'] as $locale) {
+            $path = base_path("../web/src/locales/{$locale}/inventory.json");
+            $this->assertFileExists($path);
+
+            /** @var array<string, mixed> $messages */
+            $messages = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+
+            $this->assertIsArray($messages['entryExitNotes'] ?? null);
+            /** @var array<string, mixed> $entryExitNotes */
+            $entryExitNotes = $messages['entryExitNotes'];
+            $this->assertIsArray($entryExitNotes['sourceTypes'] ?? null);
+            /** @var array<string, mixed> $sourceTypes */
+            $sourceTypes = $entryExitNotes['sourceTypes'];
+
+            $this->assertArrayHasKey(
+                $code,
+                $sourceTypes,
+                "entryExitNotes.sourceTypes.{$code} is missing from {$locale}/inventory.json — "
+                .'the Entry/Exit Notes screen would render the raw code.',
+            );
+        }
+    }
 }

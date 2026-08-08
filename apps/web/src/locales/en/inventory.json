@@ -403,7 +403,8 @@
       "adjustment_batch": "Adjustment",
       "inventory_counting": "Inventory count",
       "pos_receipt_return_scrap": "POS return scrap",
-      "stock_adjustment": "Stock adjustment"
+      "stock_adjustment": "Stock adjustment",
+      "supplier_goods_return_note": "Supplier goods return"
     },
     "empty": {
       "title": "No entry/exit notes",

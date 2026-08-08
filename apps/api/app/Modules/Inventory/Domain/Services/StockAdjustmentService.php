@@ -212,6 +212,12 @@ final class StockAdjustmentService
      *                                         movement row so reversals can recover the original
      *                                         cost without recomputing from a changed WAC.
      * @param  int|null  $batchId  Optional batch ID for batch-tracked products
+     * @param  string|null  $userId  Acting user, or null for a document-driven exit with no
+     *                               interactive actor. `stock_movements.user_id` is a NULLABLE
+     *                               FK, and recordMovement() has always accepted null; the
+     *                               parameter was needlessly narrowed here, which forced a
+     *                               document-path caller (DPA V8's supplier goods-return note
+     *                               confirm) to invent a fake actor or pass '' into a uuid column.
      * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
      * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
      * @param  CarbonInterface|null  $occurredAt  Business event time; POS-originated callers thread the
@@ -224,7 +230,7 @@ final class StockAdjustmentService
         string $locationId,
         string $quantity,
         string $reference,
-        string $userId,
+        ?string $userId,
         ?int $batchId = null,
         ?string $expectedCompanyId = null,
         ?string $variantId = null,

@@ -684,7 +684,14 @@ final class SupplierCreditNoteGlTest extends TestCase
             StockMovementReferenceType::SupplierGoodsReturnNote->value,
             $movement->reference_type,
         );
-        $this->assertSame('-1.0000', (string) $movement->quantity);
+        // Sign convention change: the raw write stored a NEGATIVE quantity; the
+        // StockAdjustmentService seam stores an UNSIGNED quantity and carries the
+        // direction in movement_type (+ quantity_before/after). Pin both so the
+        // direction is unambiguous.
+        $this->assertSame('1.0000', (string) $movement->quantity);
+        $this->assertSame('21.0000', (string) $movement->quantity_before);
+        $this->assertSame('20.0000', (string) $movement->quantity_after);
+        $this->assertSame('out', $movement->directionForRow());
         $this->assertSame('4.761904', (string) $movement->unit_cost);
         $this->assertSame($movement->id, $noteLine->movement_id);
 
@@ -784,7 +791,10 @@ final class SupplierCreditNoteGlTest extends TestCase
             ->where('reference_id', $note->id)
             ->where('movement_type', MovementType::Issue)
             ->firstOrFail();
-        $this->assertSame('-2.0000', (string) $movement->quantity);
+        $this->assertSame('2.0000', (string) $movement->quantity);
+        $this->assertSame('20.0000', (string) $movement->quantity_before);
+        $this->assertSame('18.0000', (string) $movement->quantity_after);
+        $this->assertSame('out', $movement->directionForRow());
         $this->assertSame('5.000000', (string) $movement->unit_cost);
 
         $this->assertDatabaseHas('stock_levels', [

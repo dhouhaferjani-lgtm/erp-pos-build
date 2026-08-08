@@ -403,7 +403,8 @@
       "adjustment_batch": "Ajustement",
       "inventory_counting": "Inventaire",
       "pos_receipt_return_scrap": "Rebut sur retour caisse",
-      "stock_adjustment": "Bon de régularisation de stock"
+      "stock_adjustment": "Bon de régularisation de stock",
+      "supplier_goods_return_note": "Retour fournisseur"
     },
     "empty": {
       "title": "Aucun bon d'entrée/sortie",
