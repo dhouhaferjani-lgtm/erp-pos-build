@@ -20,6 +20,7 @@ use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Application\Services\RepositoryAdjustmentService;
 use App\Modules\Treasury\Application\Services\StatementActionRegistry;
 use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
@@ -38,6 +39,7 @@ use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
+use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\ServiceProvider;
@@ -81,6 +83,16 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             TreasuryMovementServiceInterface::class,
             TreasuryMovementService::class,
+        );
+
+        // DPA lane V3/G3 — the single repository-adjustment orchestration port
+        // (document + 658/758 journal entry + movement, one transaction). Bound
+        // to the Shared contract so the POS shift-close cash-variance listener
+        // consumes it without importing the Treasury `RepositoryAdjustment`
+        // domain model or re-implementing the ordering guarantees.
+        $this->app->bind(
+            RepositoryAdjustmentServiceInterface::class,
+            RepositoryAdjustmentService::class,
         );
 
         // Task 3 (treasury burn-down) — read port so the Expense listener
