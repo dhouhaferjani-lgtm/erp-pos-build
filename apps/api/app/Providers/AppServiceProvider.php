@@ -11,6 +11,7 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Observers\JournalEntryObserver;
 use App\Modules\Accounting\Domain\Observers\JournalLineObserver;
+use App\Modules\Accounting\Infrastructure\Adapters\FiscalPeriodLockReader;
 use App\Modules\Company\Application\Services\LocationService;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
@@ -39,6 +40,7 @@ use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Banking\Domain\BankAccountValidator;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
+use App\Shared\Contracts\Accounting\FiscalPeriodLockReaderInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CatalogLookupInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -104,6 +106,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(EnrichmentSubmissionCorrelatorInterface::class, ProductEnrichmentCorrelationService::class);
         $this->app->bind(ProductInventoryQueryInterface::class, ProductInventoryQueryService::class);
         $this->app->bind(BankAccountValidatorInterface::class, BankAccountValidator::class);
+
+        // Plan CF CF-D3. Taxation's return-note backdating guard has to key on
+        // BOTH period tables, and `fiscal_periods` is Accounting's — so the
+        // fiscal-period verdict crosses the module boundary through this Shared
+        // contract rather than through `FiscalPeriodResolverService` directly
+        // (rule 6, and Taxation/Application → Accounting/Application is a deptrac
+        // layer violation besides).
+        $this->app->bind(FiscalPeriodLockReaderInterface::class, FiscalPeriodLockReader::class);
     }
 
     /**

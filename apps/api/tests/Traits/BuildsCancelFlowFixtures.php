@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Traits;
 
 use App\Enums\Vertical;
+use App\Models\Country;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
@@ -61,6 +62,17 @@ trait BuildsCancelFlowFixtures
 
     protected function bootCancelFlowFixtures(string $slug = 'cf-lane'): void
     {
+        // `vat_periods.country_code` carries a real FK to `countries`, so anything
+        // in this lane that creates a VAT period needs the row to exist first.
+        Country::firstOrCreate(
+            ['code' => 'TN'],
+            [
+                'name' => 'Tunisia',
+                'currency_code' => 'TND',
+                'currency_symbol' => 'د.ت',
+            ],
+        );
+
         $this->cfTenant = Tenant::create([
             'name' => 'CF Lane Tenant',
             'slug' => $slug.'-'.bin2hex(random_bytes(3)),

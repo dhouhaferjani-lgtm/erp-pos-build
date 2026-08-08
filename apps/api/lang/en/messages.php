@@ -75,6 +75,13 @@ return [
     'taxation' => [
         'cancel_refused_period_closed' => 'Document :document cannot be cancelled: its VAT period (:period) is closed, so the cancellation would move VAT out of a period that is already settled. Issue a credit note instead, or ask your accountant to reopen :period first.',
         'cancel_refused_period_filed' => 'Document :document cannot be cancelled: its VAT period (:period) has already been filed with the tax authority. A filed period can never be reopened — issue a credit note instead.',
+        // Plan CF CF-D3. A return note dated into a period that is no longer open.
+        // Distinct from the cancel refusals above: the obstacle is the DATE the user
+        // typed, not the invoice, so the remedy is to change the date rather than to
+        // issue a credit note.
+        'return_refused_period_closed' => 'Return note :document cannot be dated :date: the VAT period covering that date (:period) is closed, so the return would move VAT out of a period that is already settled. Choose a date in an open period, or ask your accountant to reopen :period first.',
+        'return_refused_period_filed' => 'Return note :document cannot be dated :date: the VAT period covering that date (:period) has already been filed with the tax authority and can never be reopened. Choose a date in an open period.',
+        'return_refused_period_locked' => 'Return note :document cannot be dated :date: the accounting period covering that date is closed or locked. Choose a date in an open period, or ask your accountant to reopen the period first.',
     ],
 
     // Inventory

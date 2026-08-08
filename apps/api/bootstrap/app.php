@@ -35,6 +35,7 @@ use App\Modules\Voucher\Domain\Exceptions\VoucherInvalidStatusException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisCustomerException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisTerminalException;
 use App\Shared\Exceptions\PermissionDeniedException;
+use App\Shared\Exceptions\ReturnPeriodLockedException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -480,6 +481,27 @@ return Application::configure(basePath: dirname(__DIR__))
                         'document_number' => $e->documentNumber,
                         'period_label' => $e->periodLabel,
                         'period_status' => $e->periodStatus->value,
+                    ],
+                ], 422);
+            }
+        });
+
+        // Plan CF CF-D3 — a return note refused because the period covering the
+        // date the user typed is CLOSED / FILED / locked. Three distinct codes: the
+        // FE renders this INLINE ON THE DATE FIELD (the obstacle is the date, not
+        // the invoice) and only a non-FILED refusal may offer "ask your accountant
+        // to reopen it". `recoverable` is emitted rather than left for the client to
+        // re-derive from the code, so the two can never disagree.
+        $exceptions->render(function (ReturnPeriodLockedException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => $e->refusalCode->value,
+                        'message' => $e->getMessage(),
+                        'document_number' => $e->documentNumber,
+                        'return_date' => $e->returnDate,
+                        'period_label' => $e->periodLabel,
+                        'recoverable' => $e->refusalCode->isRecoverable(),
                     ],
                 ], 422);
             }
