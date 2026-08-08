@@ -67,7 +67,7 @@ goes back to the owner, not silently resolved.
 | D1 | inventory accounting model | G1, G2, V8-GL, RN-GL | ✅ **ANSWERED**: perpetual core, company/country-parameterized, per-category expense-based consumables option (see §3) |
 | D2 | F4 manual-JE correction shape: (a) declare-target vs (b) privileged force | V5 | ✅ **RATIFIED (a)** — corrections are documents, linked |
 | D3 | `voidReceipt` sunset? (already retired on v4-acknowledged terminals, zero FE callers) | V9 | ✅ **RATIFIED: sunset** → V9 shrinks to endpoint retirement + guard; verify no residual consumer before removal |
-| D4 | V6 import: (c) deprecate stock_levels type vs (b) cost_price fallback vs (a) new column | V6 | **(c) provisionally** — the UI card literally advertises "Import opening stock quantities", i.e. the compliant path's exact purpose; owner briefed, final confirm owed |
+| D4 | V6 import: (c) deprecate stock_levels type vs (b) cost_price fallback vs (a) new column | V6 | ✅ **CONFIRMED (c)** — owner 2026-08-08: it was the very first implementation, deprecated; the products import already carries all needed data. Remove the card + type, retire `upsertStockLevel` |
 | D5 | V7 `adjust`: new lightweight `stock_adjustments` DOCUMENT (delta + observed-before) | V7 | ✅ **RATIFIED, with owner-requested research supplement** (§3, D5 bullet: document naming + state-machine best practices BEFORE schema freeze). Note: `StockAdjustmentService` is a writer SERVICE, not a document — the document is new |
 | D6 | Return-note state naming for the modal ("open"=Draft, "closed"=Confirmed — no Closed state exists) | cancel-flow FE strings | ✅ **RATIFIED** mapping |
 | D7 | V6 re-import semantics: refuse-on-second-run + reset affordance (enter-once guard) | V6 | ✅ **RATIFIED** |
