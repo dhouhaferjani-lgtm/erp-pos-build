@@ -338,18 +338,16 @@ final class ImportService
 
         $validRows = $this->getValidRows($job);
         $processedCount = 0;
-        $successCount = 0;
         $executionFailCount = 0;
 
         foreach ($validRows as $row) {
             try {
-                DB::transaction(function () use ($job, $row, &$successCount): void {
+                DB::transaction(function () use ($job, $row): void {
                     $entityId = $this->importRow($job, $row);
                     $row->update([
                         'is_imported' => true,
                         'imported_entity_id' => $entityId,
                     ]);
-                    $successCount++;
                 });
             } catch (\Throwable $e) {
                 $row->update([
@@ -365,16 +363,14 @@ final class ImportService
 
         $this->finalizeImport($job, $this->companyContext->requireCompanyId());
 
-        // Determine status from the ROW LOOP outcome: the loop is what can fail
-        // outright. Finalize phases never fail the job (they report per row).
-        $status = $successCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
-
-        // …but the COUNTS come from row state, because a finalize phase may demote
-        // rows that staged fine yet could not be committed. GL opening balances post
-        // once, for the whole file, AFTER the loop — so the loop's optimistic tally
-        // would otherwise report "N imported" for a file that posted nothing.
+        // Status AND counts come from row state after finalize, because a finalize
+        // phase may demote rows that staged fine yet could not be committed. GL
+        // opening balances post once, for the whole file, AFTER the loop — so the
+        // loop's optimistic tally would otherwise report a green "N imported" for a
+        // file that changed nothing. An import that imported nothing has Failed.
         $importedCount = $job->rows()->where('is_imported', true)->count();
         $totalFailedCount = $job->rows()->where('is_imported', false)->count();
+        $status = $importedCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
 
         $job->update([
             'status' => $status,

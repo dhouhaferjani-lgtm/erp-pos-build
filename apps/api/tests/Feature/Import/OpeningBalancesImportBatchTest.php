@@ -217,17 +217,24 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertNull($lines->firstWhere('account_id', $this->obeAccount->id));
     }
 
-    public function test_unknown_account_becomes_an_invalid_row_not_a_job_failure(): void
+    /**
+     * Requirement 4/5: an unmappable account is actionable per-row feedback, never a
+     * thrown/aborted run. The job's terminal LABEL is Failed because nothing posted —
+     * a green Completed on an import that changed nothing is the failure mode rule 20
+     * exists to prevent.
+     */
+    public function test_unknown_account_becomes_an_invalid_row_without_aborting_the_run(): void
     {
         $job = $this->makeValidatedJob([
             1 => ['account_code' => '999999', 'debit' => '5000.00', 'credit' => '0.00'],
         ]);
 
-        $this->importService->executeImport($job);
+        // Must not throw — the whole point of requirement 4.
+        $result = $this->importService->executeImport($job);
+        $this->assertSame(0, $result['imported_count']);
 
         $job->refresh();
-        $this->assertNotSame(ImportStatus::Failed, $job->status);
-        $this->assertSame(ImportStatus::Completed, $job->status);
+        $this->assertSame(ImportStatus::Failed, $job->status);
 
         $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
 
@@ -262,7 +269,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->importService->executeImport($job);
 
         $job->refresh();
-        $this->assertSame(ImportStatus::Completed, $job->status);
+        $this->assertSame(ImportStatus::Failed, $job->status);
 
         $this->assertSame(
             0,
@@ -280,6 +287,98 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $badRow = $job->rows()->where('row_number', 2)->firstOrFail();
         $this->assertSame('error: validation_failed', $badRow->data['_results']['gl_balance'] ?? null);
         $this->assertStringContainsString('999999', ($badRow->warnings ?? [])[0]['detail'] ?? '');
+    }
+
+    /**
+     * The all-or-nothing guard must be FILE-scoped, not batch-scoped. A row the
+     * IMPORT's own ruleset rejects (blank account_code, or the 3-decimal money
+     * ceiling) never reaches the opening batch at all — the row loop only runs for
+     * is_valid rows — so a guard that only inspects batch rows cannot see it and the
+     * remaining subset would post and lock an understated opening equity.
+     *
+     * @dataProvider ingressRejectedRowProvider
+     *
+     * @param  array<string, string>  $badRow
+     */
+    public function test_a_row_rejected_at_ingress_blocks_the_whole_file(array $badRow): void
+    {
+        $job = $this->makeValidatedJob([
+            1 => ['account_code' => '512000', 'debit' => '5000.00', 'credit' => '0.00'],
+            2 => $badRow,
+        ]);
+
+        $this->assertFalse(
+            $job->rows()->where('row_number', 2)->firstOrFail()->is_valid,
+            'the fixture must actually be rejected at ingress'
+        );
+
+        $this->importService->executeImport($job);
+
+        $this->assertSame(
+            0,
+            JournalEntry::where('company_id', $this->company->id)->count(),
+            'no partial opening balance may be posted'
+        );
+        $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
+
+        $job->refresh();
+        $this->assertSame(0, $job->successful_rows);
+        $this->assertSame(ImportStatus::Failed, $job->status, 'an import that posted nothing has not succeeded');
+
+        $goodRow = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertSame('error: file_not_posted', $goodRow->data['_results']['gl_balance'] ?? null);
+        $this->assertSame('balance_not_posted', ($goodRow->warnings ?? [])[0]['code'] ?? null);
+        $this->assertFalse($goodRow->is_imported);
+        $this->assertNull($goodRow->imported_entity_id);
+
+        // …and the corrected file still imports cleanly afterwards.
+        $corrected = $this->makeValidatedJob([
+            1 => ['account_code' => '512000', 'debit' => '5000.00', 'credit' => '0.00'],
+        ]);
+        $this->importService->executeImport($corrected);
+
+        $entry = JournalEntry::where('company_id', $this->company->id)->firstOrFail();
+        $this->assertSame('opening_balance', $entry->source_type);
+        $this->assertSame(ImportStatus::Completed, $corrected->refresh()->status);
+    }
+
+    /**
+     * @return array<string, array{0: array<string, string>}>
+     */
+    public static function ingressRejectedRowProvider(): array
+    {
+        return [
+            'blank account code' => [['account_code' => '', 'debit' => '100.00', 'credit' => '0.00']],
+            'money beyond three decimals' => [['account_code' => '512000', 'debit' => '100.1234', 'credit' => '0.00']],
+        ];
+    }
+
+    /**
+     * Staging canonicalizes money at STORAGE scale 3 and journal_lines.debit/credit
+     * are decimal(15,3). Computing the opening entry at the currency's DISPLAY scale
+     * (EUR -> 2) would truncate the 3rd decimal into the OBE plug — i.e. silently
+     * into equity.
+     */
+    public function test_the_third_decimal_survives_for_a_two_decimal_display_currency(): void
+    {
+        $this->assertSame('EUR', $this->company->currency);
+
+        $job = $this->makeValidatedJob([
+            1 => ['account_code' => '512000', 'debit' => '100.125', 'credit' => '0.00'],
+        ]);
+
+        $this->importService->executeImport($job);
+
+        $entry = JournalEntry::where('company_id', $this->company->id)->firstOrFail();
+        $lines = $entry->lines()->get();
+
+        $cashLine = $lines->firstWhere('account_id', $this->cashAccount->id);
+        $this->assertNotNull($cashLine);
+        $this->assertSame(0, bccomp($cashLine->debit, '100.125', 3), 'the 3rd decimal must not be truncated');
+
+        $obeLine = $lines->firstWhere('account_id', $this->obeAccount->id);
+        $this->assertNotNull($obeLine);
+        $this->assertSame(0, bccomp($obeLine->credit, '100.125', 3), 'the OBE plug must not absorb a truncated remainder');
     }
 
     public function test_the_corrected_file_can_be_re_imported_after_a_blocked_import(): void
@@ -345,6 +444,8 @@ final class OpeningBalancesImportBatchTest extends TestCase
         ]);
 
         $this->importService->executeImport($job);
+        $entryId = JournalEntry::where('company_id', $this->company->id)->value('id');
+
         $this->importService->finalizeImport($job->refresh(), $this->company->id);
 
         $this->assertSame(1, JournalEntry::where('company_id', $this->company->id)->count());
@@ -352,6 +453,12 @@ final class OpeningBalancesImportBatchTest extends TestCase
             1,
             OpeningBalanceBatch::forCompany($this->company->id)->ofType(OpeningBatchType::Accounting)->count()
         );
+
+        // A redelivery must not wipe the linkage it reports as 'ok'.
+        $row = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertSame('ok', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame($entryId, $row->imported_entity_id);
+        $this->assertTrue($row->is_imported);
     }
 
     public function test_missing_opening_balance_equity_account_warns_instead_of_failing_the_job(): void
@@ -365,7 +472,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->importService->executeImport($job);
 
         $job->refresh();
-        $this->assertSame(ImportStatus::Completed, $job->status);
+        $this->assertSame(ImportStatus::Failed, $job->status);
         $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
 
         $row = $job->rows()->where('row_number', 1)->firstOrFail();

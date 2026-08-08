@@ -9,6 +9,7 @@ use App\Modules\Accounting\Application\Services\OpeningBalanceBatchService;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
 use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Import\Domain\ImportJob;
@@ -35,6 +36,11 @@ use RuntimeException;
 final class AccountingBalancesPhase
 {
     private const RESULT_KEY = 'gl_balance';
+
+    /**
+     * Matches AccountingOpeningService's posted-entry source_type.
+     */
+    private const SOURCE_TYPE = 'opening_balance';
 
     private const WARNING_CODE = 'balance_not_posted';
 
@@ -143,10 +149,36 @@ final class AccountingBalancesPhase
         // path ever created one. A stray Validated batch instead falls through to
         // the unlocked-batch conflict below, which posts nothing.
         if ($batch !== null && $batch->status === OpeningBatchStatus::Locked) {
-            return $this->rowResults($balanceRows, '', '', [self::RESULT_KEY => 'ok']);
+            return $this->postedResults($balanceRows, $batch);
+        }
+
+        // ALL-OR-NOTHING, FILE-SCOPED. A batch-scoped guard cannot see a row the
+        // IMPORT's own ingress rejected: the execution loop only runs for is_valid
+        // rows (ImportService::getValidRows) and canStart() needs only ONE valid row,
+        // so such a row never reaches the batch and would be silently dropped from a
+        // posted, Locked, undeletable opening balance. Comparing the collected rows
+        // against every row the FILE supplied catches all of them at once —
+        // validation failures, the 3-decimal money ceiling, execution errors, and
+        // rows this phase itself declined to collect.
+        $excludedRows = $job->rows()->count() - count($balanceRows);
+
+        if ($excludedRows > 0) {
+            $this->discardOwnDraftBatch($job, $company->id);
+
+            return $this->rowResults(
+                $balanceRows,
+                self::WARNING_CODE,
+                sprintf(
+                    'the file was not posted: %d row(s) were rejected before posting - correct them and re-import the whole file',
+                    $excludedRows
+                ),
+                [self::RESULT_KEY => 'error: file_not_posted'],
+            );
         }
 
         if ($this->openingBalancesLocked($company->id)) {
+            $this->discardOwnDraftBatch($job, $company->id);
+
             return $this->rowResults(
                 $balanceRows,
                 self::WARNING_CODE,
@@ -159,6 +191,8 @@ final class AccountingBalancesPhase
             $this->batchService->clearImportRows($batch);
         } else {
             if ($this->hasUnlockedBatch($company->id)) {
+                $this->discardOwnDraftBatch($job, $company->id);
+
                 return $this->rowResults(
                     $balanceRows,
                     self::WARNING_CODE,
@@ -217,6 +251,11 @@ final class AccountingBalancesPhase
 
         try {
             $entry = $this->accountingOpeningService->postBatch($batch->refresh(), $job->user_id);
+        } catch (UnboundCompanyContextException $e) {
+            // Same guard as the outer catch: an unbound-context fault is the C1 shape
+            // and must stay LOUD, never degrade to a per-row warning. (Symmetry
+            // matters — UnboundCompanyContextException extends RuntimeException.)
+            throw $e;
         } catch (RuntimeException $e) {
             // postBatch is fully transactional, so a failure leaves the batch back in
             // Draft — discard it so it blocks neither a corrected re-import nor the
@@ -235,6 +274,32 @@ final class AccountingBalancesPhase
             static fn (array $item): string => $item['row']->id,
             $balanceRows
         ))->update(['imported_entity_id' => $entry->id]);
+
+        return $this->rowResults($balanceRows, '', '', [self::RESULT_KEY => 'ok']);
+    }
+
+    /**
+     * Idempotent replay of an already-posted job: report 'ok' AND restore the
+     * journal-entry linkage, because run() nulls the placeholder for every row of the
+     * job before it knows the batch is already Locked. Reporting 'ok' while leaving
+     * imported_entity_id NULL would make the linkage a lie on every redelivery.
+     *
+     * @param  list<array{row: ImportRow, payload: array<string, string>}>  $balanceRows
+     * @return list<array{row_id: string, code: string, detail: string, results: array<string, string>}>
+     */
+    private function postedResults(array $balanceRows, OpeningBalanceBatch $batch): array
+    {
+        $entryId = JournalEntry::query()
+            ->where('source_type', self::SOURCE_TYPE)
+            ->where('source_id', $batch->id)
+            ->value('id');
+
+        if ($entryId !== null) {
+            ImportRow::whereIn('id', array_map(
+                static fn (array $entry): string => $entry['row']->id,
+                $balanceRows
+            ))->update(['imported_entity_id' => $entryId]);
+        }
 
         return $this->rowResults($balanceRows, '', '', [self::RESULT_KEY => 'ok']);
     }

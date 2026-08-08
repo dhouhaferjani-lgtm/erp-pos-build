@@ -479,7 +479,12 @@ class ImportTypesTest extends TestCase
         $this->assertSame(0, bccomp($obeLine->credit, '5000', 3));
     }
 
-    public function test_opening_balance_import_marks_missing_account_row_invalid_without_failing_job(): void
+    /**
+     * Requirement 4/5: the unmappable account becomes actionable per-row feedback
+     * rather than an aborted run / opaque execution error. The job's terminal LABEL
+     * is Failed because nothing posted.
+     */
+    public function test_opening_balance_import_marks_missing_account_row_invalid_without_aborting(): void
     {
         /** @var ImportService $importService */
         $importService = app(ImportService::class);
@@ -500,10 +505,12 @@ class ImportTypesTest extends TestCase
         ]);
 
         $importService->validateJob($job);
-        $importService->executeImport($job);
+        // Must not throw — that is what requirement 4 forbids.
+        $result = $importService->executeImport($job);
+        $this->assertSame(0, $result['imported_count']);
 
         $job->refresh();
-        $this->assertEquals(ImportStatus::Completed, $job->status);
+        $this->assertEquals(ImportStatus::Failed, $job->status);
         $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
 
         $row = $job->rows()->where('row_number', 1)->firstOrFail();

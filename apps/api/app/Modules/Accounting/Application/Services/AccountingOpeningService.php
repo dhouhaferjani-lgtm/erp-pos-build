@@ -33,26 +33,53 @@ use RuntimeException;
  */
 class AccountingOpeningService
 {
+    /**
+     * Money is stored at the fixed scale 3 (currency decimal(N,3) floor, rule 19):
+     * the staging JSONB is canonicalized at 3 and journal_lines.debit/credit are
+     * decimal(15,3). This is a STORAGE constant, not a display scale.
+     */
+    private const MONEY_STORAGE_SCALE = 3;
+
     public function __construct(
         private readonly OpeningBalanceBatchService $batchService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     /**
-     * Monetary scale for a batch, resolved from the OWNING COMPANY'S currency.
+     * Monetary scale for a batch, resolved from the OWNING COMPANY'S currency and
+     * floored at the STORAGE scale.
      *
-     * CLAUDE.md rule 19: a bare no-arg getScale() throws UnboundCompanyContextException
-     * outside a request. This service is reached from the queued import worker
-     * (ProcessImportJob -> ImportService::finalizeImport -> AccountingBalancesPhase),
-     * which binds TENANT context only and never binds CompanyContext, so the scale
-     * MUST come from the entity, not from ambient context.
+     * Two separate hazards, both real:
+     *
+     * 1. CLAUDE.md rule 19 — a bare no-arg getScale() throws
+     *    UnboundCompanyContextException outside a request. This service is reached
+     *    from the queued import worker (ProcessImportJob -> finalizeImport ->
+     *    AccountingBalancesPhase), which binds TENANT context only and never binds
+     *    CompanyContext, so the scale MUST come from the entity.
+     *
+     * 2. The scale must be the STORAGE scale, not the currency's DISPLAY scale.
+     *    Staging canonicalizes money at scale 3
+     *    ({@see OpeningBalanceBatchService} MONEY_STORAGE_SCALE, which warns against
+     *    exactly this) and journal_lines.debit/credit are decimal(15,3). Computing at
+     *    a display scale of 2 would map a staged 100.125 to 100.12 and post 100.120,
+     *    with the lost 0.005 silently absorbed by the OBE plug — i.e. into equity.
+     *    The floor keeps a hypothetical >3-decimal currency intact while never
+     *    dropping below the column's precision.
      */
     private function scaleForBatch(OpeningBalanceBatch $batch): int
     {
         /** @var string|null $currency */
         $currency = Company::query()->whereKey($batch->company_id)->value('currency');
 
-        return $this->scaleResolver->getScaleSafe($currency, 3);
+        return $this->moneyScale($currency);
+    }
+
+    private function moneyScale(?string $currency): int
+    {
+        return max(
+            $this->scaleResolver->getScaleSafe($currency, self::MONEY_STORAGE_SCALE),
+            self::MONEY_STORAGE_SCALE,
+        );
     }
 
     /**
@@ -226,7 +253,7 @@ class AccountingOpeningService
         }
 
         $company = Company::findOrFail($batch->company_id);
-        $scale = $this->scaleResolver->getScaleSafe($company->currency, 3);
+        $scale = $this->moneyScale($company->currency);
 
         $entry = DB::transaction(function () use ($batch, $validRows, $company, $userId, $scale): JournalEntry {
             $entryNumber = $this->generateEntryNumber($company->id);

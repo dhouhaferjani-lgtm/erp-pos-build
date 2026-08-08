@@ -159,14 +159,14 @@ final class ProcessImportJob implements ShouldQueue
 
         $importService->finalizeImport($job, $this->companyId);
 
-        // Final status update — mirrors ImportService::executeImport:
-        // the job only fails when the ROW LOOP imported nothing; partial success
-        // completes. Counts come from row state, because a finalize phase may
+        // Final status update — mirrors ImportService::executeImport: status AND
+        // counts come from row state after finalize, because a finalize phase may
         // demote rows it could not commit (GL opening balances post once, for the
-        // whole file, after the loop).
-        $finalStatus = $successCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
+        // whole file, after the loop). Nothing imported => Failed; partial success
+        // completes.
         $importedCount = $job->rows()->where('is_imported', true)->count();
         $totalFailedCount = $job->rows()->where('is_imported', false)->count();
+        $finalStatus = $importedCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
         $job->update([
             'status' => $finalStatus,
             'successful_rows' => $importedCount,
