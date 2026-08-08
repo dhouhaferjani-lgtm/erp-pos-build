@@ -26,8 +26,10 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -105,8 +107,11 @@ final class OnboardingFirstCountTest extends TestCase
         ]);
     }
 
-    private function priorMovement(MovementType $type, ?MovementReason $reason): void
-    {
+    private function priorMovement(
+        MovementType $type,
+        ?MovementReason $reason,
+        ?StockMovementReferenceType $referenceType = null,
+    ): void {
         StockMovement::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -117,6 +122,8 @@ final class OnboardingFirstCountTest extends TestCase
             'quantity' => '1.0000',
             'quantity_before' => '0.0000',
             'quantity_after' => '1.0000',
+            'reference_type' => $referenceType?->value,
+            'reference_id' => $referenceType !== null ? (string) Str::uuid() : null,
             'occurred_at' => CarbonImmutable::now()->subDays(2),
         ]);
     }
@@ -252,5 +259,96 @@ final class OnboardingFirstCountTest extends TestCase
             'movement_type' => MovementType::Opening->value,
             'reason' => MovementReason::OpeningBalance->value,
         ]);
+    }
+
+    // ------------------------------------------------------------------------
+    // DPA V7 / T15 (plan D2a): the stock_adjustments document replaces the raw
+    // manual `receive`, which used to establish the baseline as a NULL-reason
+    // receipt. The baseline gains a THREE-column arm so the reclassification is
+    // behaviour-preserving forward, and deploy-neutral backward.
+    // ------------------------------------------------------------------------
+
+    public function test_a_posted_stock_adjustment_positive_establishes_the_baseline(): void
+    {
+        $this->priorMovement(
+            MovementType::Adjustment,
+            MovementReason::AdjustmentPositive,
+            StockMovementReferenceType::StockAdjustment,
+        );
+
+        $detector = app(FirstCountDetector::class);
+        $this->assertFalse($detector->isFirstCount($this->product->id, $this->location->id, null));
+
+        $this->fireOnboardingCount('10.0000', '3.000000');
+
+        // The count posts as a CORRECTION, and the product's cost at rest is
+        // untouched — applyOpeningWac() must not have run.
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $this->product->id,
+            'movement_type' => MovementType::Adjustment->value,
+            'reason' => MovementReason::CountCorrection->value,
+        ]);
+        $this->assertDatabaseMissing('stock_movements', [
+            'product_id' => $this->product->id,
+            'movement_type' => MovementType::Opening->value,
+        ]);
+        $this->assertSame('0.000000', Product::whereKey($this->product->id)->value('cost_price'));
+    }
+
+    /**
+     * The N-1 regression test: this is the assertion that proves deploy
+     * neutrality. Today's shipped modal writes exactly
+     * (movement_type='adjustment', reason='adjustment_positive') with
+     * `reference_type IS NULL`. A two-column arm would retro-include every such
+     * legacy row and silently stop the product's first count from setting WAC.
+     */
+    public function test_a_legacy_null_reference_type_adjustment_positive_row_is_not_a_baseline(): void
+    {
+        $this->priorMovement(MovementType::Adjustment, MovementReason::AdjustmentPositive, null);
+
+        $detector = app(FirstCountDetector::class);
+        $this->assertTrue(
+            $detector->isFirstCount($this->product->id, $this->location->id, null),
+            'A legacy manual adjustment (reference_type IS NULL) must NOT establish a baseline.'
+        );
+
+        $this->fireOnboardingCount('10.0000', '3.000000');
+
+        $this->assertDatabaseHas('stock_movements', [
+            'product_id' => $this->product->id,
+            'movement_type' => MovementType::Opening->value,
+            'reason' => MovementReason::OpeningBalance->value,
+        ]);
+    }
+
+    public function test_a_negative_stock_adjustment_does_not_establish_the_baseline(): void
+    {
+        $this->priorMovement(
+            MovementType::Adjustment,
+            MovementReason::AdjustmentNegative,
+            StockMovementReferenceType::StockAdjustment,
+        );
+
+        $detector = app(FirstCountDetector::class);
+        $this->assertTrue($detector->isFirstCount($this->product->id, $this->location->id, null));
+    }
+
+    public function test_count_correction_and_opening_balance_reasoned_adjustments_do_not_establish_the_baseline(): void
+    {
+        $detector = app(FirstCountDetector::class);
+
+        $this->priorMovement(
+            MovementType::Adjustment,
+            MovementReason::CountCorrection,
+            StockMovementReferenceType::StockAdjustment,
+        );
+        $this->assertTrue($detector->isFirstCount($this->product->id, $this->location->id, null));
+
+        $this->priorMovement(
+            MovementType::Adjustment,
+            MovementReason::OpeningBalance,
+            StockMovementReferenceType::StockAdjustment,
+        );
+        $this->assertTrue($detector->isFirstCount($this->product->id, $this->location->id, null));
     }
 }
