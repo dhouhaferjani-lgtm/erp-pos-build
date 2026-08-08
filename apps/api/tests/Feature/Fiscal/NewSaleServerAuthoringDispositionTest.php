@@ -34,10 +34,12 @@ use Tests\TestCase;
  * Pins the disposition of the §14.2 new-sale write surface (web POS +
  * Tauri-online + order-close → SALE_RECEIPT path). Three backend routes
  * must return HTTP 410 Gone with structured `NEW_SALE_AUTHORING_RETIRED`
- * error code; the carve-outs (`void`, `processReturn`) and read-only
- * surfaces stay live, since their event types
- * (`SALE_VOID`, `REFUND_RECEIPT`, `PARTIAL_REFUND`) are Phase 2+ reserved
- * — disabling them would also break the offline POS client.
+ * error code; the carve-out (`processReturn`) and read-only surfaces stay
+ * live, since its event types (`REFUND_RECEIPT`, `PARTIAL_REFUND`) are
+ * Phase 2+ reserved — disabling it would also break the offline POS client.
+ *
+ * DPA V9 (owner ruling D3): the `void` carve-out is no longer retained —
+ * it is SUNSET and now answers 410 `LEGACY_VOID_RETIRED`.
  *
  * Discriminated-union test matrix (Task 20 standing pattern) — all
  * dispositioned + knowingly-retained + read-only call-sites pinned in
@@ -45,7 +47,7 @@ use Tests\TestCase;
  *   - POST /pos/receipts           → 410 + NEW_SALE_AUTHORING_RETIRED
  *   - POST /pos/receipts/{id}/payments → 410 (storePayments)
  *   - POST /pos/orders/{id}/close → 410 + zero pos_receipts rows written
- *   - POST /pos/receipts/{id}/void → NOT 410 (knowingly retained)
+ *   - POST /pos/receipts/{id}/void → 410 + LEGACY_VOID_RETIRED (DPA V9 sunset)
  *   - POST /pos/receipts/{id}/return → NOT 410 (knowingly retained)
  *   - GET  /pos/receipts           → still 2xx (index — read-only)
  *   - GET  /pos/receipts/{id}     → still 2xx (show — read-only)
@@ -174,25 +176,26 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
     }
 
     // =================================================================
-    // Knowingly-retained carve-outs — void + processReturn — must NOT 410
+    // Knowingly-retained carve-out — processReturn — must NOT 410.
+    // The void carve-out was SUNSET by DPA V9 (owner ruling D3); its
+    // retirement pin lives immediately below.
     // =================================================================
 
-    public function test_void_route_still_responds_in_phase_1(): void
+    public function test_void_route_is_retired(): void
     {
-        // Round-2 (Codex T29-F1 P2): The void path is a knowingly-retained
-        // §14.2 carve-out because SALE_VOID is Phase 2+ reserved AND the
-        // route survives for sale-receipt voids (VoidReturnModal was
-        // deleted in refund Phase 6; refund is the only POS correction
-        // surface, and return receipts are now rejected with 422 —
-        // see test_void_rejects_return_receipt in ReceiptReturnFlowTest).
-        // Round-1's "assertNotSame(410)" only proved "not retired" — that's
-        // the Task 22 deferred-bail-out test smell standing pattern. The
-        // contract that matters is "the route actually voids the receipt
-        // online". We seed an eligible (non-voided, posted) receipt + valid
-        // reason, hit the route, and assert 2xx + side effects:
-        //   - response: 200 + is_voided=true + void_reason mirrored
-        //   - DB: pos_receipts row updated with is_voided=true + voided_at
-        //         not null + voided_by=cashier + void_reason mirrored
+        // DPA V9 (owner ruling D3 — SUNSET). §14.2 knowingly RETAINED the
+        // void route; V9 retires it. `ReceiptVoidService` mutated the
+        // ORIGINAL sealed receipt in place — restocking and refunding cash
+        // off it with NO justifying void document and NO GL reversal.
+        //
+        // This test is the REGROWTH GUARD: the route must stay a
+        // deterministic 410 + `LEGACY_VOID_RETIRED`, and — critically —
+        // the receipt must be left UNTOUCHED (no is_voided flip, no
+        // voided_at, no restock, no drawer refund). A 404 would be an
+        // acceptable status but a strictly worse contract: the route must
+        // still resolve so `ImpersonationWriteGuard` (api-group middleware,
+        // which never runs on an unmatched path) keeps hard-blocking and
+        // auditing this path.
         $receipt = $this->seedReceipt();
 
         $response = $this->postJson(
@@ -210,19 +213,30 @@ final class NewSaleServerAuthoringDispositionTest extends TestCase
             ),
         );
 
-        $response->assertStatus(200);
-        $this->assertSame(true, $response->json('data.is_voided'));
-        $this->assertSame('Test void', $response->json('data.void_reason'));
-        $this->assertNotNull($response->json('data.voided_at'));
+        $response->assertStatus(410);
+        $response->assertJsonPath('error.code', 'LEGACY_VOID_RETIRED');
 
-        // DB side effects per ReceiptVoidService::voidReceipt.
+        // The sealed receipt must be completely unmutated.
         $row = DB::table('pos_receipts')->where('id', $receipt->id)->first();
         $this->assertNotNull($row);
         /** @var object{is_voided: bool|int, voided_at: ?string, voided_by: ?string, void_reason: ?string} $row */
-        $this->assertTrue((bool) $row->is_voided);
-        $this->assertNotNull($row->voided_at);
-        $this->assertSame($this->user->id, $row->voided_by);
-        $this->assertSame('Test void', $row->void_reason);
+        $this->assertFalse((bool) $row->is_voided);
+        $this->assertNull($row->voided_at);
+        $this->assertNull($row->voided_by);
+        $this->assertNull($row->void_reason);
+    }
+
+    public function test_void_route_is_retired_regardless_of_payload_shape(): void
+    {
+        // The tombstone is a route-level closure, so it short-circuits
+        // BEFORE any validation — same contract as the §14.2 410 closures.
+        // A legacy terminal posting a stale/empty body must still receive
+        // the retirement code, never a 422 that masks it.
+        $receipt = $this->seedReceipt();
+
+        $this->postJson("/api/v1/pos/receipts/{$receipt->id}/void", [])
+            ->assertStatus(410)
+            ->assertJsonPath('error.code', 'LEGACY_VOID_RETIRED');
     }
 
     public function test_process_return_route_still_responds_in_phase_1(): void

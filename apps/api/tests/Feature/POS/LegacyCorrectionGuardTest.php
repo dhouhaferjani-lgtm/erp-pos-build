@@ -6,12 +6,8 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
-use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\LegacyCorrectionGuard;
-use App\Modules\POS\Application\Services\ReceiptVoidService;
-use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
-use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -97,44 +93,16 @@ final class LegacyCorrectionGuardTest extends TestCase
     }
 
     // =================================================================
-    // End-to-end — the 409 + error code through ReceiptVoidService, the
-    // real caller (§17 manifest).
+    // End-to-end coverage.
+    //
+    // DPA V9 (owner ruling D3): the two e2e cases that drove the guard
+    // through `ReceiptVoidService` were removed with that service — the
+    // legacy void endpoint is SUNSET (410 `LEGACY_VOID_RETIRED`). The
+    // guard's SURVIVING caller is `ReceiptReturnService`, and its
+    // end-to-end 409 + `LEGACY_CORRECTION_RETIRED` contract is pinned by
+    // ReceiptReturnRefactorV3Test::
+    // test_legacy_return_http_endpoint_returns_409_on_a_v4_acknowledged_terminal.
+    // The (a)/(b)/(c) cases above remain the guard's own unit contract and
+    // are unchanged by V9.
     // =================================================================
-
-    public function test_void_receipt_on_an_acknowledged_terminal_throws_legacy_correction_retired(): void
-    {
-        $terminal = $this->terminal(fiscalSchemaVersion: 3, acknowledgedAt: now());
-        $cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
-
-        $receipt = Receipt::factory()->create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'location_id' => $terminal->location_id,
-            'terminal_id' => $terminal->id,
-            'receipt_type' => ReceiptType::Sale,
-            'is_voided' => false,
-        ]);
-
-        $this->expectException(LegacyCorrectionRetiredException::class);
-        app(ReceiptVoidService::class)->voidReceipt($receipt, $cashier, 'test void');
-    }
-
-    public function test_void_receipt_on_a_not_acknowledged_terminal_proceeds_past_the_guard(): void
-    {
-        $terminal = $this->terminal(fiscalSchemaVersion: 3, acknowledgedAt: null);
-        $cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);
-
-        $receipt = Receipt::factory()->create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'location_id' => $terminal->location_id,
-            'terminal_id' => $terminal->id,
-            'receipt_type' => ReceiptType::Sale,
-            'is_voided' => false,
-        ]);
-
-        $voided = app(ReceiptVoidService::class)->voidReceipt($receipt, $cashier, 'test void');
-
-        self::assertTrue((bool) $voided->is_voided);
-    }
 }

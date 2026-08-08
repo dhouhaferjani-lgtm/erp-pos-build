@@ -147,9 +147,10 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // short-circuits BEFORE FormRequest validation runs, so callers get the
     // disposition code regardless of payload shape (the FormRequest would
     // otherwise convert a missing field into a 422 and mask the retirement).
-    // Knowingly retained per §14.2: `void` and `processReturn` —
-    // SALE_VOID, REFUND_RECEIPT, PARTIAL_REFUND event types are Phase 2+
-    // reserved and both routes are shared with the offline Tauri POS.
+    // Knowingly retained per §14.2: `processReturn` — REFUND_RECEIPT /
+    // PARTIAL_REFUND event types are Phase 2+ reserved and the route is
+    // shared with the offline Tauri POS. (`void` was ALSO retained at
+    // §14.2 time; it has since been SUNSET — see the void tombstone below.)
     //
     // Auth-middleware contract (Opus T29-F2 P2 deferral — round-2): The 410
     // closures below sit inside the `auth:sanctum` middleware group at
@@ -169,7 +170,40 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ], 410);
     });
     Route::get('/pos/receipts/{id}', [ReceiptController::class, 'show']);
-    Route::post('/pos/receipts/{id}/void', [ReceiptController::class, 'void']);
+    // DPA V9 (owner ruling D3 — SUNSET). The legacy server-authored void
+    // path is RETIRED. `ReceiptVoidService` mutated the ORIGINAL sealed
+    // receipt in place, restocked and refunded cash off it, and wrote NO
+    // justifying void document and NO GL reversal — a document-per-action
+    // violation. The surviving correction surface is the v4 refund rail
+    // (device-authored REFUND_RECEIPT / PARTIAL_REFUND fiscal events →
+    // TreasuryReceiptBridge → GeneralLedgerService::createPOSRefundReversalEntry).
+    //
+    // TOMBSTONE, not deletion — three contracts depend on the route still
+    // resolving:
+    //   1. `ImpersonationWriteGuard` is `api`-GROUP middleware. Laravel
+    //      throws NotFoundHttpException during route matching, i.e. BEFORE
+    //      group middleware runs, so a deleted route would silently drop
+    //      the `IMPERSONATION_ACTION_BLOCKED` hard block AND its
+    //      denied-request audit row for this path
+    //      (config/support_access.php `hard_block_path_patterns`).
+    //   2. A legacy terminal must be able to tell "retired" from "routing
+    //      glitch": 410 + a structured code is deterministic, a bare 404
+    //      is not.
+    //   3. Regrowth guard — this line is the pin. Anything that needs a
+    //      void must author a correcting document, never resurrect this
+    //      endpoint. Status is pinned by
+    //      NewSaleServerAuthoringDispositionTest::test_void_route_is_retired.
+    //
+    // NOT in scope / untouched: the NF525 `ANNULATION` fiscal-event
+    // handling (Nf525EventType::ReceiptVoided) and the v4 refund rail.
+    Route::post('/pos/receipts/{id}/void', function () {
+        return response()->json([
+            'error' => [
+                'code' => 'LEGACY_VOID_RETIRED',
+                'message' => 'POST /api/v1/pos/receipts/{id}/void is retired (document-per-action remediation V9, owner ruling D3). A sealed receipt is corrected by a device-authored refund (REFUND_RECEIPT / PARTIAL_REFUND) ingested via POST /api/v1/pos/sync/fiscal-events, never by mutating the original receipt.',
+            ],
+        ], 410);
+    });
     Route::post('/pos/receipts/{id}/return', [ReceiptController::class, 'processReturn']);
     Route::post('/pos/receipts/{id}/payments', function (string $id) {
         // §14.2 — storePayments is the second new-sale authoring call-site

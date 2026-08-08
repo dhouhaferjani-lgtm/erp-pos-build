@@ -799,12 +799,6 @@ parameters:
 			path: app/Modules/POS/Application/Services/ReceiptReturnService.php
 
 		-
-			message: '#^bcadd\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'
-			identifier: precision.hardcodedBcmathScale
-			count: 1
-			path: app/Modules/POS/Application/Services/ReceiptVoidService.php
-
-		-
 			message: '#^bccomp\(\) called with a hardcoded literal scale in the service layer\. Monetary/quantity scale is currency\- and domain\-dependent — resolve it at runtime \(scale resolver, \$this\-\>scale\(\), CurrencyScale\) or, if a literal is genuinely correct, append a "// precision\-ok\: \<reason\>" comment\.$#'
 			identifier: precision.hardcodedBcmathScale
 			count: 2

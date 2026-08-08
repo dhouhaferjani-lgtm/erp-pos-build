@@ -80,14 +80,14 @@ final class PermissionEnforcementTest extends TestCase
         $response->assertStatus(403);
     }
 
-    public function test_receipt_void_requires_void_receipts_permission(): void
-    {
-        $response = $this->postJson('/api/v1/pos/receipts/00000000-0000-0000-0000-000000000001/void', [
-            'reason' => 'Test void',
-        ]);
-
-        $response->assertStatus(403);
-    }
+    // DPA V9 (owner ruling D3 — SUNSET):
+    // `test_receipt_void_requires_void_receipts_permission` was removed
+    // here. `ReceiptController::void()` (and its
+    // `Gate::authorize('pos.void_receipts')`) no longer exists — the route
+    // is a 410 `LEGACY_VOID_RETIRED` tombstone with no authorization gate
+    // to enforce, so the permission contract is moot for this surface.
+    // Retirement is pinned by
+    // NewSaleServerAuthoringDispositionTest::test_void_route_is_retired.
 
     public function test_report_x_requires_view_reports_permission(): void
     {

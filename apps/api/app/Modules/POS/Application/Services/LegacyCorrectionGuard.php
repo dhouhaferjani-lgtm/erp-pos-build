@@ -8,10 +8,13 @@ use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Terminal;
 
 /**
- * v3-refund-chain-integration spec §9.1/§9.3/§9.4 — shared guard called by
- * both {@see ReceiptReturnService}
- * and {@see ReceiptVoidService}
- * before authoring a legacy (non-fiscal-event) return or void.
+ * v3-refund-chain-integration spec §9.1/§9.3/§9.4 — guard called by
+ * {@see ReceiptReturnService} before authoring a legacy (non-fiscal-event)
+ * return.
+ *
+ * DPA V9 (owner ruling D3): the second caller, `ReceiptVoidService`, was
+ * SUNSET — the legacy void endpoint is now a 410 tombstone. The guard's
+ * contract is unchanged; only its caller set shrank to the return path.
  *
  * **Conditioned on ACKNOWLEDGEMENT, not raw schema version (§9.3).**
  * `pos_terminals.fiscal_schema_version >= 3` alone is NOT the gate —

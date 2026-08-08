@@ -1016,113 +1016,15 @@ final class ReceiptReturnRefactorV3Test extends TestCase
         ]);
     }
 
-    /**
-     * review round-2 MINOR — the VOID endpoint's own 409 companion.
-     * `ReceiptController::void()` has no local `catch (\RuntimeException)`
-     * (unlike `processReturn()`, which had the bug this file's RETURN 409
-     * companion caught and this session fixed), so it was already
-     * expected to correctly reach the global 409 handler -- this proves
-     * it end-to-end rather than leaving it as an untested assumption.
-     */
-    public function test_legacy_void_http_endpoint_returns_409_on_a_v4_acknowledged_terminal(): void
-    {
-        $terminal = Terminal::factory()->create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'location_id' => $this->location->id,
-            'genesis_seed' => $this->genesisSeed,
-            'fiscal_schema_version' => 3,
-            'current_sequence' => 1,
-            'v4_refund_authoring_enabled' => true,
-            'v4_refund_authoring_acknowledged_at' => now(),
-        ]);
-
-        $saleReceipt = Receipt::factory()->create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'location_id' => $this->location->id,
-            'terminal_id' => $terminal->id,
-            'cashier_id' => $this->cashier->id,
-            'receipt_type' => 'sale',
-            'subtotal' => '30.000',
-            'tax_amount' => '0.000',
-            'total' => '30.000',
-            'currency' => 'EUR',
-            'fiscal_status' => FiscalStatus::Fiscalized,
-            'is_voided' => false,
-        ]);
-
-        Sanctum::actingAs($this->cashier);
-
-        $reason = 'Acceptance-test void negative case';
-        $target = [
-            'receipt_id' => $saleReceipt->id,
-            'receipt_number' => $saleReceipt->receipt_number,
-            'reason' => $reason,
-        ];
-
-        $approvalId = (string) Str::uuid();
-        $approvalEventId = (string) Str::uuid();
-        $overrideEventId = (string) Str::uuid();
-
-        $this->storeFiscalEvent($approvalEventId, FiscalEventType::OPERATOR_APPROVAL_GRANTED, [
-            'approval_id' => $approvalId,
-            'approval_scope' => 'void_or_return_override',
-            'cashier_user_id' => $this->cashier->id,
-            'company_id' => $this->company->id,
-            'event_time_device' => now()->toISOString(),
-            'policy_version' => 'pos-void-return-policy-v1',
-            'reason_code' => 'manager_reason',
-            'reason_text' => $reason,
-            'regime_extensions' => null,
-            'requested_at_device' => now()->toISOString(),
-            'resolved_at_device' => now()->toISOString(),
-            'supervisor_user_id' => $this->cashier->id,
-            'supervisor_user_snapshot' => ['name' => $this->cashier->name, 'roles' => ['manager']],
-            'target' => $target,
-            'tenant_id' => $this->tenant->id,
-            'terminal_id' => $terminal->id,
-            'training_flag' => false,
-        ], $terminal->id);
-
-        $this->storeFiscalEvent($overrideEventId, FiscalEventType::OVERRIDE_VOID_OR_RETURN, [
-            'approval_event_id' => $approvalEventId,
-            'approval_id' => $approvalId,
-            'approval_scope' => 'void_or_return_override',
-            'company_id' => $this->company->id,
-            'event_time_device' => now()->toISOString(),
-            'override_context' => [
-                'target_event_type' => 'POS_RECEIPT_VOID',
-                'target_reference_id' => $saleReceipt->id,
-            ],
-            'policy_version' => 'pos-void-return-policy-v1',
-            'reason_code' => 'manager_reason',
-            'reason_text' => $reason,
-            'supervisor_user_id' => $this->cashier->id,
-            'target' => $target,
-            'tenant_id' => $this->tenant->id,
-            'terminal_id' => $terminal->id,
-            'training_flag' => false,
-        ], $terminal->id, $approvalEventId);
-
-        $response = $this->postJson("/api/v1/pos/receipts/{$saleReceipt->id}/void", [
-            'reason' => $reason,
-            'approval_id' => $approvalId,
-            'approval_fiscal_event_id' => $approvalEventId,
-            'approval_scope' => 'void_or_return_override',
-            'approval_supervisor_user_id' => $this->cashier->id,
-            'approval_override_event_id' => $overrideEventId,
-            'authorized_by_user_id' => $this->cashier->id,
-        ]);
-
-        $response->assertStatus(409);
-        $response->assertJsonPath('error.code', 'LEGACY_CORRECTION_RETIRED');
-
-        self::assertDatabaseHas('pos_receipts', [
-            'id' => $saleReceipt->id,
-            'is_voided' => false,
-        ]);
-    }
+    // DPA V9 (owner ruling D3 — SUNSET): the VOID endpoint's 409 companion
+    // (`test_legacy_void_http_endpoint_returns_409_on_a_v4_acknowledged_terminal`)
+    // was removed here. The legacy void endpoint no longer reaches
+    // `LegacyCorrectionGuard` at all — it is a 410 `LEGACY_VOID_RETIRED`
+    // tombstone, pinned by
+    // NewSaleServerAuthoringDispositionTest::test_void_route_is_retired.
+    // The guard's v4-rail 409 contract stays fully covered by the RETURN
+    // companion above
+    // (test_legacy_return_http_endpoint_returns_409_on_a_v4_acknowledged_terminal).
 
     // =====================================================================
     // v2-non-regression companion (D1: default terminal creation changed,

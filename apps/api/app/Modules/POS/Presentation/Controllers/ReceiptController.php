@@ -15,7 +15,6 @@ use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPrintAuditService;
 use App\Modules\POS\Application\Services\ReceiptQrTokenIssuanceService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
-use App\Modules\POS\Application\Services\ReceiptVoidService;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\PrintMethod;
 use App\Modules\POS\Domain\Enums\RefundDestination;
@@ -50,7 +49,6 @@ final class ReceiptController extends Controller
         private readonly ReceiptPdfService $receiptPdfService,
         private readonly ReceiptPrintAuditService $receiptPrintAuditService,
         private readonly ReceiptPaymentService $receiptPaymentService,
-        private readonly ReceiptVoidService $receiptVoidService,
         private readonly ReceiptReturnService $receiptReturnService,
         private readonly ReceiptQrTokenIssuanceService $qrTokenIssuanceService,
         private readonly VoucherLookupService $voucherLookupService,
@@ -147,94 +145,13 @@ final class ReceiptController extends Controller
         ]);
     }
 
-    /**
-     * Void a receipt.
-     *
-     * Marks the receipt as voided, reverses stock movements,
-     * and creates reversal GL entries.
-     *
-     * POST /api/v1/pos/receipts/{id}/void
-     */
-    public function void(Request $request, string $id): JsonResponse
-    {
-        Gate::authorize('pos.void_receipts');
-
-        $request->validate([
-            'reason' => 'required|string|max:255',
-            'approval_id' => 'required|uuid',
-            'approval_fiscal_event_id' => 'required|uuid',
-            'approval_scope' => 'required|in:void_or_return_override',
-            'approval_supervisor_user_id' => 'required|uuid',
-            'approval_override_event_id' => 'required|uuid',
-            'authorized_by_user_id' => 'required|uuid|same:approval_supervisor_user_id',
-        ]);
-
-        $companyId = $this->companyContext->getCompanyId();
-
-        $receipt = Receipt::where('company_id', $companyId)
-            ->with(['lines', 'payments'])
-            ->findOrFail($id);
-
-        if ($receipt->is_voided) {
-            return response()->json([
-                'error' => [
-                    'code' => 'ALREADY_VOIDED',
-                    'message' => 'This receipt has already been voided.',
-                ],
-            ], 422);
-        }
-
-        // Phase 6 guard — refund is the ONLY post-seal correction surface.
-        // A RETURN receipt cannot be voided: the void path never reverses
-        // the batch restitution the return performed (F4), so a later
-        // re-return of the original sale would over-restore
-        // inventory_batch_stock. A wrong return is corrected by a
-        // compensating sale, not by voiding the return.
-        if ($receipt->isReturn()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'CANNOT_VOID_RETURN_RECEIPT',
-                    'message' => 'Return receipts cannot be voided.',
-                ],
-            ], 422);
-        }
-
-        /** @var User $user */
-        $user = Auth::user();
-
-        $this->assertVoidReturnApproval(
-            receipt: $receipt,
-            user: $user,
-            approvalId: (string) $request->input('approval_id'),
-            approvalFiscalEventId: (string) $request->input('approval_fiscal_event_id'),
-            approvalSupervisorUserId: (string) $request->input('approval_supervisor_user_id'),
-            approvalOverrideEventId: (string) $request->input('approval_override_event_id'),
-            targetEventType: 'POS_RECEIPT_VOID',
-            targetReferenceId: $receipt->id,
-            expectedTarget: [
-                'receipt_id' => $receipt->id,
-                'receipt_number' => $receipt->receipt_number,
-                'reason' => (string) $request->input('reason'),
-            ],
-        );
-
-        $voidedReceipt = $this->receiptVoidService->voidReceipt(
-            $receipt,
-            $user,
-            $request->input('reason'),
-            $request->input('approval_supervisor_user_id'),
-        );
-
-        return response()->json([
-            'data' => [
-                'id' => $voidedReceipt->id,
-                'receipt_number' => $voidedReceipt->receipt_number,
-                'is_voided' => true,
-                'voided_at' => $voidedReceipt->voided_at?->toISOString(),
-                'void_reason' => $voidedReceipt->void_reason,
-            ],
-        ]);
-    }
+    // DPA V9 (owner ruling D3 — SUNSET): `void()` and `ReceiptVoidService`
+    // were removed here. The legacy void mutated the ORIGINAL sealed
+    // receipt in place with no justifying document and no GL reversal.
+    // `POST /pos/receipts/{id}/void` is now a 410 `LEGACY_VOID_RETIRED`
+    // tombstone in routes.php; corrections go through the v4 refund rail.
+    // `assertVoidReturnApproval()` below is RETAINED — `processReturn()`
+    // is its surviving caller.
 
     /**
      * Process a partial or full return on a receipt.
@@ -483,9 +400,10 @@ final class ReceiptController extends Controller
      * `NEW_SALE_AUTHORING_RETIRED` at the route-level closure (see
      * `routes.php`). This controller method is preserved for the §14.3
      * chokepoint manifest's reference to `ReceiptCreationService::createReceipt`
-     * (the `(c)` carve-outs `void` / `return` reach the service through
-     * sibling controllers — `ReceiptVoidService` / `ReceiptReturnService`
-     * — not through this method). Do not re-wire this method to a route
+     * (the surviving `(c)` carve-out `return` reaches the service through a
+     * sibling controller — `ReceiptReturnService` — not through this method;
+     * the `void` carve-out was SUNSET by DPA V9, owner ruling D3, and
+     * `ReceiptVoidService` deleted). Do not re-wire this method to a route
      * for new-sale authoring without coordinating with Task 30's CI gate.
      */
     public function store(StoreReceiptRequest $request): JsonResponse
