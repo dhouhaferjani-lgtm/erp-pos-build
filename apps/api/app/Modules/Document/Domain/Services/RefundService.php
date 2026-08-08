@@ -392,7 +392,7 @@ class RefundService
             new CreateReturnNoteData(
                 partnerId: (string) $invoice->partner_id,
                 documentDate: $decision->returnedOn ?? now(),
-                lines: $this->returnNoteLinesFor($invoice, $live),
+                lines: $this->returnNoteLinesFor($invoice, $live, $tuples),
                 currency: $invoice->currency,
                 sourceDocumentId: $invoice->id,
                 // Deliberately NULL: every line carries its own location (CF-D11), and
@@ -436,6 +436,11 @@ class RefundService
      * return-note line is emitted per allocation. NEVER divide by a quantity that is not
      * the quantity being split.
      *
+     * The capacity ledger is seeded from the invoiced quantity MINUS what prior returns
+     * already took (NEW-1) — without that, "each priced from its own source line" holds
+     * only until the first partial return, after which the surviving units get re-priced
+     * from lines that were already consumed.
+     *
      * Order is deterministic — tuples arrive sorted by `(product_id, location_id)` and
      * lines are consumed in `line_number` order — which matters because the draft total
      * sums PER-LINE `bcmul` truncations and that total is a hash input.
@@ -460,10 +465,13 @@ class RefundService
      * `SALE_RECEIPT` lane where it is tax-inclusive (rule 19). Money and quantity are
      * strings end to end.
      *
-     * @param  list<DeliveredQuantityTuple>  $tuples  Already sorted by (product_id, location_id).
+     * @param  list<DeliveredQuantityTuple>  $tuples  Live tuples, sorted by (product_id, location_id).
+     * @param  list<DeliveredQuantityTuple>  $allTuples  Including zero-remaining ones, whose
+     *                                                   `alreadyReturned` is what the capacity
+     *                                                   ledger has to consume.
      * @return list<CreateReturnNoteLineData>
      */
-    private function returnNoteLinesFor(Document $invoice, array $tuples): array
+    private function returnNoteLinesFor(Document $invoice, array $tuples, array $allTuples): array
     {
         $scale = $this->scaleResolver->getScale($invoice->currency);
 
@@ -481,6 +489,39 @@ class RefundService
         foreach ($linesByProduct as $productLines) {
             foreach ($productLines as $line) {
                 $capacity[(string) $line->id] = (string) $line->quantity;
+            }
+        }
+
+        // ── NET PRIOR RETURNS OFF THE LEDGER FIRST (gate CF round 2, NEW-1) ──
+        //
+        // The ledger used to be seeded from the GROSS invoiced quantity and never reduced,
+        // so after a partial return the SURVIVING units were re-priced from lines that had
+        // already been consumed. Reproduced by the gate: `3 @ 100.000` + `2 @ 50.000`
+        // (sale net 400.000), 3 returned, then the guided cancel priced the remaining 2 at
+        // 100.000 — a returned value of 500.000 against a sale of 400.000, sealed, with no
+        // refusal. `assertWithinReturnableQuantities()` nets per PRODUCT (3 + 2 ≤ 5
+        // passes), so the cap cannot see WHICH LINE the units came from. C1's own defect
+        // class, surviving through this door.
+        //
+        // Prior returns are consumed in `line_number` order — the same order a prior
+        // guided return would have consumed them in — so the ledger reconstructs which
+        // lines are actually still outstanding.
+        foreach ($this->priorReturnedByProduct($allTuples) as $productId => $priorReturned) {
+            $outstanding = $priorReturned;
+
+            foreach ($linesByProduct[$productId] ?? [] as $line) {
+                if (bccomp($outstanding, '0', self::QUANTITY_SCALE) <= 0) {
+                    break;
+                }
+
+                $lineId = (string) $line->id;
+                $available = $capacity[$lineId];
+                $consumed = bccomp($outstanding, $available, self::QUANTITY_SCALE) > 0
+                    ? $available
+                    : $outstanding;
+
+                $capacity[$lineId] = bcsub($available, $consumed, self::QUANTITY_SCALE);
+                $outstanding = bcsub($outstanding, $consumed, self::QUANTITY_SCALE);
             }
         }
 
@@ -555,6 +596,33 @@ class RefundService
         }
 
         return $lines;
+    }
+
+    /**
+     * Total already-returned quantity per product, across EVERY tuple.
+     *
+     * Read from the unfiltered tuple list on purpose: a fully-returned tuple has
+     * `remaining = 0` and is dropped before pricing, but its `alreadyReturned` is exactly
+     * the quantity the capacity ledger must consume. Taking this from the live tuples
+     * would miss the very lines a prior return exhausted.
+     *
+     * @param  list<DeliveredQuantityTuple>  $allTuples
+     * @return array<string, numeric-string>
+     */
+    private function priorReturnedByProduct(array $allTuples): array
+    {
+        /** @var array<string, numeric-string> $byProduct */
+        $byProduct = [];
+
+        foreach ($allTuples as $tuple) {
+            $byProduct[$tuple->productId] = bcadd(
+                $byProduct[$tuple->productId] ?? '0',
+                $tuple->alreadyReturned,
+                self::QUANTITY_SCALE,
+            );
+        }
+
+        return $byProduct;
     }
 
     /**

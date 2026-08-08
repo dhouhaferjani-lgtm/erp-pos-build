@@ -36,6 +36,12 @@ export interface CancelInvoiceModalProps {
   isOpen: boolean
   onClose: () => void
   invoiceNumber: string
+  /**
+   * The invoice's own `document_date`. The server enforces
+   * `after_or_equal:<invoice document_date>` on `returned_on`, and without this the modal
+   * could not express that half of the contract at all (gate CF round 2, NB4).
+   */
+  invoiceDocumentDate?: string | undefined
   canCancel: CanCancelResponse | undefined
   /**
    * FALSE while `/can-cancel` is still in flight or has failed. Gate CF round 1, B3:
@@ -43,6 +49,14 @@ export interface CancelInvoiceModalProps {
    * invoice actually is.
    */
   canCancelResolved: boolean
+  /**
+   * TRUE when `/can-cancel` FAILED. Distinct from "not resolved yet" on purpose (gate CF
+   * round 2, NB1): the two need different copy and only one of them is recoverable by
+   * waiting.
+   */
+  canCancelErrored?: boolean | undefined
+  /** Re-runs `/can-cancel`. Without it an errored query is a dead end until page reload. */
+  onRetryCanCancel?: (() => void) | undefined
   isSubmitting: boolean
   /** The typed refusal from the last attempt, if any. */
   errorCode?: string | undefined
@@ -95,8 +109,11 @@ export function CancelInvoiceModal({
   isOpen,
   onClose,
   invoiceNumber,
+  invoiceDocumentDate,
   canCancel,
   canCancelResolved,
+  canCancelErrored,
+  onRetryCanCancel,
   isSubmitting,
   errorCode,
   errorDetails,
@@ -143,11 +160,19 @@ export function CancelInvoiceModal({
         // renders `required` and the server enforces `required_if` +
         // `before_or_equal:today`; a zod schema that constrains nothing is also what fed
         // B2's silent path, since a client-side miss became a code-less 422.
+        // The FULL server contract, with real error sentences (gate CF round 2, NB4 /
+        // m3). Round 1 shipped the ceiling but not the floor, and used a FIELD LABEL
+        // ("Date the goods came back") as the regex's message — which reads as a caption,
+        // not as what went wrong. A client-side miss on the floor became a code-less 422,
+        // which is also what fed B2's silent path.
         returnedOn: z
           .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, t('sales:invoices.cancelFlow.option2.dateLabel'))
+          .regex(/^\d{4}-\d{2}-\d{2}$/, t('sales:invoices.cancelFlow.errors.invalidReturnDate'))
           .refine((value) => value <= todayLocalIsoDate(), {
             message: t('sales:invoices.cancelFlow.errors.futureReturnDate'),
+          })
+          .refine((value) => invoiceDocumentDate === undefined || value >= invoiceDocumentDate, {
+            message: t('sales:invoices.cancelFlow.errors.returnDateBeforeInvoice'),
           })
           .optional(),
       }),
@@ -161,6 +186,7 @@ export function CancelInvoiceModal({
     handleSubmit,
     watch,
     reset,
+    getValues,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
@@ -190,11 +216,17 @@ export function CancelInvoiceModal({
     if (!isOpen) return
 
     reset({
-      reason: '',
+      // PRESERVE what the user already typed (gate CF round 2, NB2). This effect fires
+      // whenever the branch resolves, and B3's own fix makes that window user-visible:
+      // the modal opens saying "Checking this invoice…", the user types their reason
+      // while waiting, `/can-cancel` lands, `goodsIssued` flips false→true — and a blind
+      // `reason: ''` wiped it. Silent input loss, in the lane whose ruling is "explicit,
+      // never silent". Only the BRANCH-DEPENDENT fields are re-derived.
+      reason: getValues('reason') ?? '',
       ...(requiresDecision && !goodsIssued ? { goodsOption: 'no_return' as const } : {}),
-      returnedOn: todayLocalIsoDate(),
+      returnedOn: getValues('returnedOn') ?? todayLocalIsoDate(),
     })
-  }, [isOpen, requiresDecision, goodsIssued, reset])
+  }, [isOpen, requiresDecision, goodsIssued, reset, getValues])
 
   const selectedOption = watch('goodsOption')
 
@@ -322,7 +354,17 @@ export function CancelInvoiceModal({
 
             {optionsDisabled && (
               <p className={`text-sm ${textColors.secondary}`} role="note">
-                {t('sales:invoices.cancelFlow.optionsDisabledReason')}
+                {/*
+                  * While `/can-cancel` is unresolved or errored the delivery state is
+                  * UNKNOWN, so the modal must not state "no confirmed delivery note is
+                  * linked to this invoice" as fact (gate CF round 2, NB1). The
+                  * fail-closed default disables options 1 and 2 either way; only the
+                  * REASON differs, and asserting a falsehood about physical reality is
+                  * precisely what this lane exists to stop.
+                  */}
+                {canCancelResolved
+                  ? t('sales:invoices.cancelFlow.optionsDisabledReason')
+                  : t('sales:invoices.cancelFlow.optionsUnknownReason')}
               </p>
             )}
 
@@ -346,7 +388,11 @@ export function CancelInvoiceModal({
                           {t('sales:invoices.cancelFlow.option1.label')}
                         </span>
                         <span className={`block text-sm ${textColors.secondary}`}>
-                          {t('sales:invoices.cancelFlow.option1.hint')}
+                          {t('sales:invoices.cancelFlow.option1.hint', {
+                            // m7: the state word comes from the canonical return-note
+                            // status key, not a hardcoded "draft"/"brouillon".
+                            status: t('sales:returnNotes.status.draft'),
+                          })}
                         </span>
                       </span>
                     </label>
@@ -374,7 +420,9 @@ export function CancelInvoiceModal({
                           * exists elsewhere.
                           */}
                         <span className={`mt-1 block text-sm ${textColors.secondary}`}>
-                          {t('sales:invoices.cancelFlow.option2.scope')}
+                          {t('sales:invoices.cancelFlow.option2.scope', {
+                            status: t('sales:returnNotes.status.draft'),
+                          })}
                         </span>
                         <span className={`block text-sm ${textColors.secondary}`}>
                           {t('sales:invoices.cancelFlow.option2.partialPointer')}
@@ -397,6 +445,7 @@ export function CancelInvoiceModal({
                                 {...dateField}
                                 type="date"
                                 max={todayLocalIsoDate()}
+                                {...(invoiceDocumentDate !== undefined ? { min: invoiceDocumentDate } : {})}
                                 disabled={isSubmitting}
                               />
                             </FormField>
@@ -437,10 +486,34 @@ export function CancelInvoiceModal({
           </fieldset>
         )}
 
-        {!canCancelResolved && (
+        {!canCancelResolved && !canCancelErrored && (
           <p className={`text-sm ${textColors.secondary}`} role="status">
             {t('sales:invoices.cancelFlow.loading')}
           </p>
+        )}
+
+        {/*
+          * Gate CF round 2, NB1. `checkCancellable()` 422s on any exception and TanStack
+          * does not retry past its default budget, so an errored query left the user with
+          * a live Cancel button, a modal that said it was still *checking*, a permanently
+          * disabled submit, and NO error, NO retry and no explanation until a page
+          * reload. The round-1 directive asked for a loading state AND a translated
+          * failure state; only the loading half shipped.
+          */}
+        {canCancelErrored && (
+          <div
+            className={`flex items-start justify-between gap-3 rounded-lg border ${semanticColorTokens.intent.danger.borderSubtle} ${semanticColorTokens.intent.danger.bgSubtle} p-3`}
+            role="alert"
+          >
+            <p className={`text-sm ${textColors.error}`}>
+              {t('sales:invoices.cancelFlow.checkFailed')}
+            </p>
+            {onRetryCanCancel !== undefined && (
+              <Button type="button" variant="secondary" onClick={onRetryCanCancel} disabled={isSubmitting}>
+                {t('sales:invoices.cancelFlow.retryCheck')}
+              </Button>
+            )}
+          </div>
         )}
 
         <div className={`flex justify-end gap-3 border-t ${borderColors.default} pt-4`}>

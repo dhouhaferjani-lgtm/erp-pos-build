@@ -114,9 +114,6 @@ vi.mock('../components/ReturnConditionSelect', () => ({
   ReturnConditionSelect: () => <select aria-label="return-condition" defaultValue=""><option value="">none</option></select>,
 }))
 
-vi.mock('../components/RefundMethodSelect', () => ({
-  RefundMethodSelect: () => <select aria-label="refund-method" defaultValue=""><option value="">none</option></select>,
-}))
 
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
@@ -323,6 +320,43 @@ describe('return and credit note page tenant scope', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/sales/return-notes/created-1')
     })
     expect(queryClient.getQueryState(['return-notes', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
+  })
+
+  /**
+   * Gate CF round 2, NB6. `QuantityInput` emits `''` when the box is cleared and
+   * `buildCreatePayload` forwards the raw string, so an emptied line posted a quantity
+   * the server refuses with `gt:0` — a Laravel validation 422 that reaches the user as
+   * axios' bare "Request failed with status code 422". The sibling surface got this
+   * guard in the same commit; M5 mirrored it here, and this is the test it shipped
+   * without.
+   */
+  it('blocks submit when a selected line has an empty quantity (.144-.146)', async () => {
+    const user = userEvent.setup()
+    const queryClient = createClient()
+
+    renderWithProviders(<CreateReturnNotePage />, { queryClient })
+
+    // Switch the source type to invoice first, then pick one — the same sequence the
+    // sibling test uses (the toggle and the picker share a label).
+    await user.click(screen.getByRole('button', { name: 'sales:documents.types.invoice' }))
+    const invoiceButtons = screen.getAllByRole('button', { name: 'sales:documents.types.invoice' })
+    await user.click(invoiceButtons[invoiceButtons.length - 1])
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['invoice', 'invoice-1', 'tenant-A', 'company-1'])).toEqual(documentDetail)
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'sales:returnNotes.form.partialReturn' }))
+    await user.click(screen.getAllByRole('checkbox')[0])
+
+    const quantityInput = screen.getByRole('spinbutton')
+    await user.clear(quantityInput)
+
+    await user.click(screen.getByRole('button', { name: 'sales:returnNotes.form.create' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).not.toHaveBeenCalled()
+    })
   })
 
   it('scopes return note detail reads and confirm invalidation (.155-.157)', async () => {

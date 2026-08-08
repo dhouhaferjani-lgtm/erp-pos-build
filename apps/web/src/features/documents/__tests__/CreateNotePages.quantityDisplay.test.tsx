@@ -76,7 +76,6 @@ vi.mock('@/components/documents/DocumentLineEditor', () => ({
 
 vi.mock('../components/ReturnReasonSelect', () => ({ ReturnReasonSelect: () => null }))
 vi.mock('../components/ReturnConditionSelect', () => ({ ReturnConditionSelect: () => null }))
-vi.mock('../components/RefundMethodSelect', () => ({ RefundMethodSelect: () => null }))
 
 function setTenant() {
   useAuthStore.setState({

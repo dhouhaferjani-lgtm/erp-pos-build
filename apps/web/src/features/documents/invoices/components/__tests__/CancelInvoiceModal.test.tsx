@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { CancelInvoiceModal } from '../CancelInvoiceModal'
 import type { CanCancelResponse } from '../../hooks/useCancelInvoice'
@@ -256,7 +256,10 @@ describe('CancelInvoiceModal', () => {
   it('states option 2 scope and points at the partial flow', () => {
     renderModal()
 
-    expect(screen.getByText('sales:invoices.cancelFlow.option2.scope')).toBeInTheDocument()
+    // m7: the state word is interpolated from the canonical return-note status key.
+    expect(
+      screen.getByText(/sales:invoices\.cancelFlow\.option2\.scope/),
+    ).toHaveTextContent('sales:returnNotes.status.draft')
     expect(screen.getByText('sales:invoices.cancelFlow.option2.partialPointer')).toBeInTheDocument()
   })
 
@@ -269,6 +272,121 @@ describe('CancelInvoiceModal', () => {
     // Claiming "the goods stay out" when nothing shipped would be a false statement
     // about physical reality, recorded on a fiscal document.
     expect(screen.getByText('sales:invoices.cancelFlow.option3.hint.noGoodsIssued')).toBeInTheDocument()
+  })
+
+  /**
+   * Gate CF round 2, NB1 (MAJOR). `checkCancellable()` 422s on any exception and TanStack
+   * does not retry past its default budget, so an errored query left the user with a live
+   * Cancel button, a modal that said it was still *checking*, a permanently disabled
+   * submit, and NO error, NO retry and no explanation until a page reload.
+   */
+  describe('when /can-cancel FAILED', () => {
+    it('says so, distinctly from still-loading, and offers a retry', async () => {
+      const user = userEvent.setup()
+      const onRetry = vi.fn()
+
+      renderModal({
+        canCancel: undefined,
+        canCancelResolved: false,
+        canCancelErrored: true,
+        onRetryCanCancel: onRetry,
+      })
+
+      expect(screen.getByRole('alert')).toHaveTextContent('sales:invoices.cancelFlow.checkFailed')
+      // Not the loading copy — waiting will not fix this one.
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+
+      await user.click(screen.getByRole('button', { name: 'sales:invoices.cancelFlow.retryCheck' }))
+      expect(onRetry).toHaveBeenCalled()
+    })
+
+    /**
+     * The subtler half. While unresolved or errored the delivery state is UNKNOWN, so the
+     * modal must NOT assert "no confirmed delivery note is linked to this invoice, so no
+     * goods have left your stock" as fact — a definite falsehood about physical reality,
+     * in the lane that exists to stop exactly that.
+     */
+    it('does not claim the invoice has no deliveries while the answer is unknown', () => {
+      renderModal({ canCancel: undefined, canCancelResolved: false, canCancelErrored: true })
+
+      expect(
+        screen.queryByText('sales:invoices.cancelFlow.optionsDisabledReason'),
+      ).not.toBeInTheDocument()
+      expect(screen.getByText('sales:invoices.cancelFlow.optionsUnknownReason')).toBeInTheDocument()
+    })
+
+    it('states the no-delivery reason as fact only once the server has confirmed it', () => {
+      renderModal({ canCancel: canCancel({ goods_issued: false }), canCancelResolved: true })
+
+      expect(screen.getByText('sales:invoices.cancelFlow.optionsDisabledReason')).toBeInTheDocument()
+    })
+  })
+
+  /**
+   * Gate CF round 2, NB2 — probe-reproduced silent input loss. The reset effect fires when
+   * `/can-cancel` lands, and B3's own fix makes that window user-visible: the modal opens
+   * saying "Checking this invoice…" and the user types while waiting.
+   */
+  it('keeps the reason the user typed while can-cancel was still resolving', async () => {
+    const user = userEvent.setup()
+
+    const { rerender } = render(
+      <CancelInvoiceModal
+        isOpen
+        onClose={onClose}
+        invoiceNumber="INV-2026-0001"
+        canCancel={undefined}
+        canCancelResolved={false}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+      />,
+    )
+
+    await user.type(screen.getByRole('textbox'), 'Duplicate invoice')
+
+    rerender(
+      <CancelInvoiceModal
+        isOpen
+        onClose={onClose}
+        invoiceNumber="INV-2026-0001"
+        canCancel={canCancel({ goods_issued: true })}
+        canCancelResolved
+        isSubmitting={false}
+        onSubmit={onSubmit}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox')).toHaveValue('Duplicate invoice')
+    })
+  })
+
+  /**
+   * Gate CF round 2, NB4 / m3's remaining half. The server enforces
+   * `after_or_equal:<invoice document_date>`; round 1 shipped only the ceiling, so a
+   * client-side miss on the floor became a code-less 422 — which is also what fed B2's
+   * silent path.
+   */
+  it('refuses a return date earlier than the invoice date, inline', async () => {
+    const user = userEvent.setup()
+    renderModal({ invoiceDocumentDate: '2026-08-05' })
+
+    await user.type(screen.getByRole('textbox'), 'Already back')
+    await user.click(screen.getByRole('radio', { name: /option2/ }))
+
+    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement
+    expect(dateInput).toHaveAttribute('min', '2026-08-05')
+
+    // `fireEvent.change` rather than `user.type`: jsdom's date input does not accumulate
+    // keystrokes into a valid value.
+    fireEvent.change(dateInput, { target: { value: '2026-08-01' } })
+    await user.click(screen.getByRole('button', { name: 'sales:invoices.cancelFlow.submit' }))
+
+    // The decisive assertion: the submit is BLOCKED. A client-side miss on the floor
+    // became a code-less 422 — which is also what fed B2's silent path.
+    await waitFor(() => {
+      expect(onSubmit).not.toHaveBeenCalled()
+    })
   })
 
   describe('error rendering', () => {

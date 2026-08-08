@@ -18,7 +18,7 @@ import type { ReturnReason } from './ReturnReasonSelect'
 import type { ReturnCondition } from './ReturnConditionSelect'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
-import { formatQuantity } from '@/lib/decimal'
+import { bccomp, formatQuantity } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { toast } from 'sonner'
@@ -174,7 +174,9 @@ export function CreateReturnNoteForm({
       // A selected line whose box is empty or zero is not a return — block here rather
       // than posting a quantity the server refuses with `gt:0`.
       for (const quantity of selectedLines.values()) {
-        if (quantity === '' || Number(quantity) <= 0) return false
+        // Decimal comparison, not `Number(...)` — see the sibling note in
+        // CreateReturnNotePage (gate CF round 2, m1 / NB6).
+        if (quantity === '' || bccomp(quantity, '0') <= 0) return false
       }
     }
     return true

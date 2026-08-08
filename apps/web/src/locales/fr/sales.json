@@ -503,13 +503,13 @@
       "goodsIntro": "L'annulation de la facture ne déplace pas le stock à elle seule. Indiquez ce qu'il advient des marchandises pour que l'inventaire reste juste.",
       "option1": {
         "label": "Les produits vont être retournés",
-        "hint": "Un bon de retour au statut brouillon est créé et lié à cette facture, prêt à être confirmé lorsque les marchandises arriveront physiquement."
+        "hint": "Un bon de retour au statut {{status}} est créé et lié à cette facture, prêt à être confirmé lorsque les marchandises arriveront physiquement."
       },
       "option2": {
         "label": "Les produits ont déjà été retournés",
         "hint": "Le bon de retour est créé et confirmé à la date ci-dessous, et le stock revient immédiatement.",
         "dateLabel": "Date de retour des marchandises",
-        "scope": "Cela couvre TOUS les produits livrés de cette facture, et le bon de retour est scellé dès la confirmation — contrairement au brouillon de l'option 1, il ne pourra plus être modifié.",
+        "scope": "Cela couvre TOUS les produits livrés de cette facture, et le bon de retour est scellé dès la confirmation — contrairement au statut {{status}} de l'option 1, il ne pourra plus être modifié.",
         "partialPointer": "Vous ne récupérez qu'une partie des marchandises ? Créez plutôt le bon de retour depuis Ventes → Bons de retour → Nouveau."
       },
       "option3": {
@@ -550,9 +550,14 @@
         "RETURN_DECISION_FORBIDDEN": "Vous pouvez annuler cette facture, mais pas enregistrer le retour de marchandises qu'elle nécessite. Demandez à un responsable de finaliser le retour, ou annulez sans retour.",
         "unknown": "La facture n'a pas pu être annulée. Réessayez, ou contactez le support si le problème persiste.",
         "RETURN_DECISION_MISMATCHES_GOODS": "Cette facture comporte des produits : elle ne peut donc pas être annulée sans indiquer ce qu'il advient des marchandises. Rechargez la page et choisissez une option.",
-        "futureReturnDate": "La date de retour ne peut pas être dans le futur."
+        "futureReturnDate": "La date de retour ne peut pas être dans le futur.",
+        "invalidReturnDate": "Saisissez la date de retour sous forme de date.",
+        "returnDateBeforeInvoice": "La date de retour ne peut pas être antérieure à la date de la facture."
       },
-      "loading": "Vérification de cette facture…"
+      "loading": "Vérification de cette facture…",
+      "optionsUnknownReason": "Nous n'avons pas encore pu confirmer ce qui a été livré sur cette facture ; un retour de marchandises ne peut donc pas être enregistré ici.",
+      "checkFailed": "Impossible de vérifier cette facture. Réessayez, ou rechargez la page.",
+      "retryCheck": "Réessayer"
     }
   },
   "deliveryNotes": {
@@ -776,8 +781,6 @@
       "returnDetails": "Détails du retour",
       "noLinesSelected": "Veuillez sélectionner au moins une ligne à retourner",
       "returningAllItems": "Retour de tous les {{count}} articles",
-      "autoCreateCreditNote": "Créer automatiquement un avoir",
-      "autoCreateCreditNoteHint": "Un avoir sera créé automatiquement lorsque ce retour sera confirmé",
       "create": "Créer le bon de retour",
       "noSourceDocument": "Sélectionnez la facture ou le bon de livraison d'origine avant de créer le retour.",
       "sourceHasNoPartner": "Ce document ne comporte aucun client ; un bon de retour ne peut donc pas en être créé. Ajoutez d'abord un client au document d'origine.",

@@ -89,7 +89,10 @@ final class GuidedCancelFlowMultiLineAndNettingTest extends TestCase
         // 3.000 discount, and the 2 priced at 50.000 carrying none.
         self::assertCount(2, $returnNote->lines);
 
-        $byPrice = $returnNote->lines->keyBy(static fn (DocumentLine $line): string => (string) $line->unit_price);
+        /** @var array<string, DocumentLine> $byPrice */
+        $byPrice = $returnNote->lines
+            ->keyBy(static fn (DocumentLine $line): string => (string) $line->unit_price)
+            ->all();
         self::assertSame('3.0000', (string) $byPrice['100.000']->quantity);
         self::assertSame('3.000', (string) $byPrice['100.000']->discount_amount);
         self::assertSame('2.0000', (string) $byPrice['50.000']->quantity);
@@ -336,6 +339,214 @@ final class GuidedCancelFlowMultiLineAndNettingTest extends TestCase
             ->assertJsonPath('error.code', ReturnQuantityExceededException::CODE_INVOICED);
     }
 
+    // ── the MIRROR netting direction (gate CF round 2) ───────────────────────
+
+    /**
+     * The reviewer's three-step sequence, and the decisive one: it STARTS WITH THIS
+     * LANE'S OWN COMPOSITE.
+     *
+     * `will_return` leaves a DRAFT return note against the INVOICE. The DN-side cap only
+     * widened invoice → delivery notes, so from the delivery note it never looked at that
+     * draft: the DN-sourced create succeeded, both notes confirmed, and five delivered
+     * units became ten in stock.
+     *
+     * Round 1 closed one order of operations and left the other open, which reads as
+     * fixed and is not — the worse of the two states.
+     */
+    public function test_a_dn_sourced_return_sees_the_guided_will_return_draft(): void
+    {
+        $dn = $this->dn('5.0000', $this->cfLocationA->id);
+        $invoice = $this->invoiceWithLines([
+            ['quantity' => '5.0000', 'unit_price' => '100.000'],
+        ]);
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$dn]);
+
+        // Step 1 — this lane's guided cancel leaves a DRAFT return note on the invoice.
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", [
+                'reason' => 'Customer cancelled the order',
+                'return_decision' => ['mode' => ReturnDecisionMode::WillReturn->value],
+            ])
+            ->assertOk();
+
+        self::assertSame('0.0000', $this->stockAt($this->cfLocationA->id), 'A draft moves no stock yet.');
+
+        // Step 2 — the SAME five units, claimed again from the delivery-note surface.
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dn->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnQuantityExceededException::CODE_INVOICED);
+
+        // Step 3 — confirming the guided draft restocks exactly the five that left.
+        $draft = $this->returnNoteFor($invoice);
+        self::assertNotNull($draft);
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/return-notes/{$draft->id}/confirm")
+            ->assertOk();
+
+        self::assertSame(
+            '5.0000',
+            $this->stockAt($this->cfLocationA->id),
+            'Five units delivered and claimed twice must never leave ten in the warehouse.',
+        );
+    }
+
+    /**
+     * The same mirror with a CONFIRMED invoice-sourced return as step 1 — the reviewer's
+     * first reproduction.
+     */
+    public function test_a_dn_sourced_return_sees_a_confirmed_invoice_sourced_return(): void
+    {
+        $dn = $this->dn('5.0000', $this->cfLocationA->id);
+        $invoice = $this->invoiceWithLines([
+            ['quantity' => '5.0000', 'unit_price' => '100.000'],
+        ]);
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$dn]);
+
+        $this->cancelAlreadyReturned($invoice)->assertOk();
+        self::assertSame('5.0000', $this->stockAt($this->cfLocationA->id));
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dn->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnQuantityExceededException::CODE_INVOICED);
+
+        self::assertSame('5.0000', $this->stockAt($this->cfLocationA->id));
+    }
+
+    /**
+     * The sales-order linkage shape: the invoice carries `source_document_id = order`, so
+     * the reverse traversal cannot find it by `payload->source_delivery_note_ids` and has
+     * to go through the delivery note's own order.
+     */
+    public function test_the_mirror_also_resolves_through_the_sales_order_shape(): void
+    {
+        $dn = $this->dn('5.0000', $this->cfLocationA->id);
+        $invoice = $this->invoiceWithLines([
+            ['quantity' => '5.0000', 'unit_price' => '100.000'],
+        ]);
+        $order = $this->cfLinkInvoiceViaSalesOrder($invoice, [$dn]);
+        // The delivery note hangs off the same order — the shape SalesOrderToInvoiceConverter produces.
+        $dn->update(['source_document_id' => $order->id]);
+
+        $this->cancelAlreadyReturned($invoice->refresh())->assertOk();
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dn->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnQuantityExceededException::CODE_INVOICED);
+    }
+
+    /**
+     * The bound: an UNINVOICED delivery note has no invoice to net against, so the
+     * DN-only net is already complete and the reverse traversal must not refuse it.
+     */
+    public function test_an_uninvoiced_delivery_note_return_is_still_permitted(): void
+    {
+        $dn = $this->dn('5.0000', $this->cfLocationA->id);
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dn->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertCreated();
+    }
+
+    // ── NEW-1: the capacity ledger must net prior returns ────────────────────
+
+    /**
+     * C1's defect class surviving through the capacity ledger.
+     *
+     * The ledger was seeded from the GROSS invoiced quantity and never reduced by prior
+     * returns, so after a partial return the surviving units were re-priced from lines
+     * that had already been consumed. Reviewer's probe: sale net 400.000, returned value
+     * 500.000 sealed, no refusal — because `assertWithinReturnableQuantities()` nets per
+     * PRODUCT (3 + 2 ≤ 5 passes) and cannot see which LINE the units came from.
+     */
+    public function test_the_capacity_ledger_nets_prior_returns_before_pricing(): void
+    {
+        $invoice = $this->invoiceWithLines([
+            ['quantity' => '3.0000', 'unit_price' => '100.000'],
+            ['quantity' => '2.0000', 'unit_price' => '50.000'],
+        ]);
+        self::assertSame('400.000', (string) $invoice->subtotal);
+
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$this->dn('5.0000', $this->cfLocationA->id)]);
+
+        // A prior confirmed return of 3 units — which consumed the whole first line.
+        $prior = $this->confirmInvoiceSourcedReturn($invoice, '3.0000', '100.000');
+        self::assertSame('300.000', (string) $prior->subtotal);
+
+        $this->cancelAlreadyReturned($invoice)->assertOk();
+
+        $guided = Document::query()
+            ->where('type', DocumentType::ReturnNote)
+            ->where('source_document_id', $invoice->id)
+            ->where('id', '!=', $prior->id)
+            ->with('lines')
+            ->first();
+        self::assertNotNull($guided);
+
+        // The only units left on the invoice are the 2 @ 50.000 — so that is what the
+        // surviving return must be priced at.
+        self::assertSame('100.000', (string) $guided->subtotal);
+        self::assertSame('50.000', (string) $guided->lines->first()?->unit_price);
+
+        // And the total returned value never exceeds what was sold.
+        /** @var numeric-string $returnedValue */
+        $returnedValue = bcadd((string) $prior->subtotal, (string) $guided->subtotal, 3);
+        /** @var numeric-string $invoiceNet */
+        $invoiceNet = (string) $invoice->subtotal;
+        self::assertSame('400.000', $returnedValue);
+        self::assertLessThanOrEqual(0, bccomp($returnedValue, $invoiceNet, 3));
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     /**
@@ -382,6 +593,7 @@ final class GuidedCancelFlowMultiLineAndNettingTest extends TestCase
      */
     private function confirmDeliveryNoteSourcedReturn(Document $deliveryNote, string $quantity): Document
     {
+        /** @var numeric-string $quantity */
         $rn = Document::create([
             'tenant_id' => $this->cfTenant->id,
             'company_id' => $this->cfCompany->id,
@@ -417,6 +629,39 @@ final class GuidedCancelFlowMultiLineAndNettingTest extends TestCase
             ->assertOk();
 
         return $rn->refresh();
+    }
+
+    /**
+     * A CONFIRMED return note raised against the INVOICE, through the real routes.
+     */
+    private function confirmInvoiceSourcedReturn(Document $invoice, string $quantity, string $unitPrice): Document
+    {
+        $created = $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $invoice->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertCreated();
+
+        $id = (string) $created->json('data.id');
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/return-notes/{$id}/confirm")
+            ->assertOk();
+
+        /** @var Document $note */
+        $note = Document::query()->with('lines')->findOrFail($id);
+
+        return $note;
     }
 
     private function returnNoteFor(Document $invoice): ?Document

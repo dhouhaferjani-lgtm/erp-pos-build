@@ -276,13 +276,23 @@ final class ReturnNoteService
             $invoiced[$line->product_id] = bcadd($invoiced[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
         }
 
+        // The netting set is the source document AND everything that shares its physical
+        // movement, in BOTH directions. Round 1 covered invoice → delivery notes; round 2
+        // adds the mirror, because covering one direction only refuses the double return
+        // in one order of operations and permits it in the other.
         $sourceIds = [$sourceDocumentId];
         if ($source->type === DocumentType::Invoice) {
-            $sourceIds = array_values(array_unique(array_merge(
+            $sourceIds = array_merge(
                 $sourceIds,
                 $this->deliveredQuantityResolver->confirmedDeliveryNoteIdsFor($source),
-            )));
+            );
+        } elseif ($source->type === DocumentType::DeliveryNote) {
+            $sourceIds = array_merge(
+                $sourceIds,
+                $this->deliveredQuantityResolver->invoiceIdsBackedByDeliveryNote($source),
+            );
         }
+        $sourceIds = array_values(array_unique($sourceIds));
 
         /** @var array<string, numeric-string> $alreadyReturned */
         $alreadyReturned = [];

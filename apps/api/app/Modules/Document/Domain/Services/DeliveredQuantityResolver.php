@@ -218,6 +218,68 @@ final class DeliveredQuantityResolver
     }
 
     /**
+     * The MIRROR of {@see confirmedDeliveryNoteIdsFor()}: the invoices backed by this
+     * delivery note.
+     *
+     * Gate CF round 2. Round 1 widened the netting invoice → delivery notes and left the
+     * reverse open, so the system refused a double return in one order of operations and
+     * permitted it in the other — which reads as fixed and is not. The reviewer
+     * reproduced it as a three-step sequence STARTING FROM THIS LANE'S OWN COMPOSITE: a
+     * guided `will_return` leaves a DRAFT return note against the invoice, the DN-side
+     * cap never looked at it, a DN-sourced return for the same units was accepted, and
+     * both confirms restocked — five delivered units, ten in the warehouse.
+     *
+     * This is not adjacent legacy exposure. At the lane's base the delivery-note entry
+     * point 422'd on every submit (the T1 characterisation fence); T8 repairs it, so that
+     * surface goes from dead-in-UI to one click IN THIS MERGE.
+     *
+     * BOUNDED — two company-scoped queries, mirroring the forward traversal's two
+     * linkage shapes:
+     *   (a) `DeliveryNoteToInvoiceConverter` writes the delivery note's id into the
+     *       invoice's `payload.source_delivery_note_ids`, so a `whereJsonContains` on
+     *       that path finds it (repo precedent:
+     *       `Document::payloadLinkedSupplierInvoiceChildren()`);
+     *   (b) `SalesOrderToInvoiceConverter` gives the invoice
+     *       `source_document_id = order`, and the delivery note hangs off the same order
+     *       — so an invoice sharing this note's `source_document_id` is backed by it.
+     *
+     * If neither resolves, the delivery note is uninvoiced and the DN-only net is already
+     * complete: there is no legitimate flow to break and no unbounded fan-out.
+     *
+     * @return list<string>
+     */
+    public function invoiceIdsBackedByDeliveryNote(Document $deliveryNote): array
+    {
+        if ($deliveryNote->type !== DocumentType::DeliveryNote) {
+            return [];
+        }
+
+        $ids = Document::query()
+            ->where('company_id', $deliveryNote->company_id)
+            ->where('type', DocumentType::Invoice)
+            ->whereJsonContains('payload->source_delivery_note_ids', $deliveryNote->id)
+            ->pluck('id')
+            ->all();
+
+        // (b) the sales-order shape: same order, so the note backs that invoice.
+        if ($deliveryNote->source_document_id !== null) {
+            $viaOrder = Document::query()
+                ->where('company_id', $deliveryNote->company_id)
+                ->where('type', DocumentType::Invoice)
+                ->where('source_document_id', $deliveryNote->source_document_id)
+                ->pluck('id')
+                ->all();
+
+            $ids = array_merge($ids, $viaOrder);
+        }
+
+        /** @var list<string> $unique */
+        $unique = array_values(array_unique(array_map(static fn (mixed $id): string => (string) $id, $ids)));
+
+        return $unique;
+    }
+
+    /**
      * The confirmed delivery notes backing this invoice, through BOTH linkage shapes.
      *
      * @return list<Document>

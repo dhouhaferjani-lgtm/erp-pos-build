@@ -7,8 +7,24 @@ import type { Document } from '@/types/document'
 const hasPermission = vi.fn()
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    // Honours `defaultValue`, so the m2 fallback is actually exercised (gate CF round 2,
+    // NB7). The previous mock ignored it, which made the added test pass for a MAPPED
+    // code while the unmapped path — the only one the fallback exists for — stayed
+    // untested.
+    t: (key: string, options?: { defaultValue?: string }) =>
+      KNOWN_KEYS.has(key) ? key : (options?.defaultValue ?? key),
+  }),
 }))
+
+/** The three `CancelBlockReason` values that have copy keys. */
+const KNOWN_KEYS = new Set([
+  'documents.cancel',
+  'sales:invoices.cancelFlow.errors.DOCUMENT_PERIOD_FILED',
+  'sales:invoices.cancelFlow.errors.DOCUMENT_PERIOD_CLOSED',
+  'sales:invoices.cancelFlow.errors.DOCUMENT_HAS_PAYMENTS',
+  'sales:invoices.cancelFlow.errors.unknown',
+])
 
 vi.mock('@/hooks/usePermissions', () => ({
   usePermissions: () => ({ hasPermission }),
@@ -133,6 +149,21 @@ describe('DocumentActionBar — guided cancel action', () => {
       'title',
       'sales:invoices.cancelFlow.errors.DOCUMENT_PERIOD_FILED',
     )
+  })
+
+  /**
+   * Gate CF round 2, NB7. Only three of `CancelBlockReason`'s values have copy keys; the
+   * others would have rendered the RAW key as a tooltip.
+   */
+  it('falls back to the generic message for an unmapped refusal code', () => {
+    renderBar({
+      onCancel: vi.fn(),
+      canCancelInvoice: false,
+      cancelReasonCode: 'DOCUMENT_STATUS_NOT_CANCELLABLE',
+    })
+
+    const action = screen.getByText('documents.cancel').closest('button')
+    expect(action).toHaveAttribute('title', 'sales:invoices.cancelFlow.errors.unknown')
   })
 
   it('leaves Cancel enabled when the server permits it', () => {

@@ -7,7 +7,7 @@ import { Calendar, Building2, FileText, Car, Lock } from 'lucide-react'
 import { AxiosError } from 'axios'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatDate } from '../../../lib/format'
 import { formatQuantity } from '../../../lib/decimal'
 import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -426,8 +426,14 @@ export function InvoiceDetailPage() {
             <p className={`mt-1 text-sm ${textColors.secondary}`}>
               {t(`sales:invoices.cancelFlow.recorded.${invoice.return_decision.mode}`, {
                 // Locale-formatted, not the raw ISO string (gate CF round 1, m8).
+                // `formatDate`, not `new Date(...).toLocaleDateString()` (gate CF round 2,
+                // NB3). A date-only string parses as UTC MIDNIGHT and renders a calendar
+                // day early in any zone behind UTC, and a bare `toLocaleDateString()`
+                // ignores the active UI language. `lib/format.ts`'s helper documents both
+                // hazards — m8's fix had copied local precedent instead of the helper,
+                // reintroducing the very bug the round-1 UTC fix removed elsewhere.
                 date: invoice.return_decision.returned_on
-                  ? new Date(invoice.return_decision.returned_on).toLocaleDateString()
+                  ? formatDate(invoice.return_decision.returned_on)
                   : '',
               })}
             </p>
@@ -676,8 +682,11 @@ export function InvoiceDetailPage() {
         isOpen={showCancelModal}
         onClose={() => { setShowCancelModal(false); setCancelError(undefined); setCancelSubmitFailed(false) }}
         invoiceNumber={invoice.document_number ?? ''}
+        invoiceDocumentDate={invoice.document_date}
         canCancel={canCancelQuery.data}
         canCancelResolved={canCancelQuery.isSuccess}
+        canCancelErrored={canCancelQuery.isError}
+        onRetryCanCancel={() => { void canCancelQuery.refetch() }}
         isSubmitting={cancelMutation.isPending}
         errorCode={cancelError?.code}
         errorDetails={cancelError?.details}

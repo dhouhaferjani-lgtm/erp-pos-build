@@ -30,7 +30,7 @@ import type { DeliveryNote } from '@/components/molecules/pickers/DeliveryNoteSe
 import type { CreateReturnNoteRequest, ReturnReason } from '@/types/returnNote'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
-import { formatQuantity } from '@/lib/decimal'
+import { bccomp, formatQuantity } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 
@@ -320,7 +320,11 @@ export function CreateReturnNotePage() {
     if (lineMode === 'partial') {
       for (const lineId of selectedLineIds) {
         const quantity = lineQuantities.get(lineId)
-        if (quantity !== undefined && (quantity === '' || Number(quantity) <= 0)) {
+        // Decimal comparison, not `Number(...)` (gate CF round 2, m1 / NB6). Float
+        // coercion on a quantity is exactly the drift rule 19 forbids, and the round-1
+        // guard moved that ratchet the wrong way in the very files this lane retyped to
+        // decimal strings.
+        if (quantity !== undefined && (quantity === '' || bccomp(quantity, '0') <= 0)) {
           toast.error(t('sales:returnNotes.form.invalidQuantity'))
           return
         }
