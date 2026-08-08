@@ -207,6 +207,35 @@ final class SupplierGoodsReturnNoteTest extends TestCase
     }
 
     /**
+     * A product whose paid cost basis is built from SEVERAL receipts at DIFFERENT
+     * prices, optionally followed by free units and an issue.
+     *
+     * This is the family the single-receipt ceiling cannot represent (gate
+     * re-review N-1): with one price, `C` IS the paid blend; with several, it is
+     * only a proxy for it.
+     *
+     * @param  list<array{qty: numeric-string, cost: numeric-string}>  $receipts
+     */
+    private function multiPriceProduct(array $receipts, string $name = 'V8 Multi Price'): Product
+    {
+        $product = $this->product($name);
+
+        foreach ($receipts as $receipt) {
+            $this->wac()->recordPurchase(
+                product: $product,
+                location: $this->location,
+                quantity: $receipt['qty'],
+                landedUnitCost: $receipt['cost'],
+            );
+        }
+
+        /** @var Product $fresh */
+        $fresh = $product->fresh();
+
+        return $fresh;
+    }
+
+    /**
      * @param  numeric-string  $quantity
      */
     private function lineData(
@@ -216,6 +245,7 @@ final class SupplierGoodsReturnNoteTest extends TestCase
         ?string $poLineId = null,
         ?string $unitCostCeiling = self::PAID_UNIT_COST,
         ?string $preferredLocationId = null,
+        ?string $goodsReceiptLineId = null,
     ): SupplierGoodsReturnLineData {
         return new SupplierGoodsReturnLineData(
             poLineId: $poLineId ?? Str::uuid()->toString(),
@@ -225,7 +255,7 @@ final class SupplierGoodsReturnNoteTest extends TestCase
             quantity: $quantity,
             unitCostCeiling: $unitCostCeiling,
             goodsReceiptId: null,
-            goodsReceiptLineId: null,
+            goodsReceiptLineId: $goodsReceiptLineId,
             preferredLocationId: $preferredLocationId ?? $this->location->id,
         );
     }
@@ -546,6 +576,116 @@ final class SupplierGoodsReturnNoteTest extends TestCase
     }
 
     // -------------------------------------------------------------------------
+    // 4b. THE NAMED RESIDUAL (gate re-review N-1) — the ceiling is ONE receipt's
+    //     price standing in for the paid-cost BLEND. With a single-price receipt
+    //     history the two coincide and the bound is exact (every test above).
+    //     With several prices it is only a proxy, and it misses in BOTH
+    //     directions. These two tests pin that residual so it is visible in the
+    //     suite rather than discovered in production; neither asserts the
+    //     economically right answer, because this lane does not produce it.
+    // -------------------------------------------------------------------------
+
+    /**
+     * Re-review probe: the ceiling is priced ABOVE the paid blend, so it does not
+     * bind and the pre-fix over-credit survives.
+     *
+     * 100 @ 1.000000 then 1 @ 500.000000 (paid blend 600/101 = 5.940594) plus 10
+     * free; sell 100; return the 10 free against the 500.000000 receipt. The cap
+     * is 500.000000, nowhere near the 5.940594 the surviving unit really cost, so
+     * `applied` is the full desired amount and the WAC lands 10x too high.
+     *
+     * NOTE `forgone` reports 0.000000 here: the audit pair says "fully restored",
+     * which is true against the ceiling and false against the blend. c1-bis must
+     * NOT read `forgone` as the whole P&L story on a multi-price history.
+     */
+    public function test_a_ceiling_above_the_paid_blend_does_not_bind_the_undilution(): void
+    {
+        $product = $this->multiPriceProduct([
+            ['qty' => '100.0000', 'cost' => '1.000000'],
+            ['qty' => '1.0000', 'cost' => '500.000000'],
+            ['qty' => '10.0000', 'cost' => '0'],
+        ]);
+        $this->assertSame('5.405405', $this->freshCost($product));
+        $this->assertSame('111.0000', $this->freshStock($product));
+
+        $this->stock()->issue(
+            productId: (string) $product->id,
+            locationId: $this->location->id,
+            quantity: '100.0000',
+            reference: 'V8-PRE-SALE',
+            userId: null,
+            expectedCompanyId: $this->company->id,
+        );
+
+        $note = $this->service()->confirm(
+            $this->draft([$this->lineData(
+                $product,
+                SupplierGoodsReturnLineKind::Bonus,
+                '10.0000',
+                unitCostCeiling: '500.000000',
+            )]),
+            null,
+        );
+
+        $this->assertSame('1.0000', $this->freshStock($product));
+
+        // The paid units really cost 600/101 = 5.940594 each. This is the
+        // residual: bounded (it can never exceed the causing receipt's own
+        // 500.000000) but far above the blend.
+        $this->assertSame('59.459455', $this->freshCost($product));
+
+        $line = $this->bonusLineOf($note);
+        $this->assertSame('54.054050', (string) $line->wac_undilution_applied);
+        $this->assertSame(
+            '0.000000',
+            (string) $line->wac_undilution_forgone,
+            'forgone is measured against the ceiling, not the paid blend — on a multi-price '
+            .'history a zero here does NOT mean the correction was economically complete.',
+        );
+    }
+
+    /**
+     * Re-review probe, the mirror: the ceiling is priced BELOW the paid blend
+     * (a cheaper rebuy after a dearer lot), so the cap swallows the whole
+     * correction and the un-dilution no-ops.
+     *
+     * 10 @ 10.000000 then 10 @ 2.000000 (paid blend 120/20 = 6.000000) plus 1
+     * free; return the free unit against the 2.000000 receipt. Headroom is
+     * negative, so nothing is applied and the WAC stays diluted at 5.714285.
+     */
+    public function test_a_ceiling_below_the_paid_blend_disables_the_undilution(): void
+    {
+        $product = $this->multiPriceProduct([
+            ['qty' => '10.0000', 'cost' => '10.000000'],
+            ['qty' => '10.0000', 'cost' => '2.000000'],
+            ['qty' => '1.0000', 'cost' => '0'],
+        ]);
+        $this->assertSame('5.714285', $this->freshCost($product));
+
+        $note = $this->service()->confirm(
+            $this->draft([$this->lineData(
+                $product,
+                SupplierGoodsReturnLineKind::Bonus,
+                '1.0000',
+                unitCostCeiling: '2.000000',
+            )]),
+            null,
+        );
+
+        $this->assertSame('20.0000', $this->freshStock($product));
+
+        // Paid blend is 6.000000; the correction is fully suppressed and the WAC
+        // stays where the free unit left it. Conservative (never inflates) but
+        // the lane's whole purpose is disabled for this shape.
+        $this->assertSame('5.714285', $this->freshCost($product));
+
+        $line = $this->bonusLineOf($note);
+        $this->assertNull($line->cost_adjustment_movement_id);
+        $this->assertSame('0.000000', (string) $line->wac_undilution_applied);
+        $this->assertSame('5.714285', (string) $line->wac_undilution_forgone);
+    }
+
+    // -------------------------------------------------------------------------
     // 5. CRITICAL C-2 — batch-tracked products are refused, not silently desynced
     // -------------------------------------------------------------------------
 
@@ -567,6 +707,32 @@ final class SupplierGoodsReturnNoteTest extends TestCase
         $this->assertSame(SupplierGoodsReturnNoteStatus::Draft, $fresh->status);
         $this->assertNull($fresh->note_number);
         $this->assertSame('10.0000', $this->freshStock($product));
+        $this->assertSame(0, StockMovement::query()->where('reference_id', $note->id)->count());
+    }
+
+    /**
+     * The guard collects product ids from ALL lines with no kind filter, so it is
+     * kind-agnostic by construction — but the BONUS half is the one the gate
+     * called out as the pre-existing desync, and the ordinary half as the NEW
+     * one. Pin both rather than reason about it (gate re-review N-6).
+     */
+    public function test_a_batch_tracked_product_is_refused_on_a_bonus_line_too(): void
+    {
+        $product = $this->stockedProduct('4.761904', '21.0000', batchTracked: true);
+        $note = $this->draft([$this->lineData($product, SupplierGoodsReturnLineKind::Bonus, '1.0000')]);
+
+        try {
+            $this->service()->confirm($note, null);
+            $this->fail('A batch-tracked product must be refused on the bonus goods-return path too.');
+        } catch (BatchTrackedReturnUnsupportedException $e) {
+            $this->assertStringContainsString((string) $product->id, $e->getMessage());
+        }
+
+        /** @var SupplierGoodsReturnNote $fresh */
+        $fresh = $note->fresh();
+        $this->assertSame(SupplierGoodsReturnNoteStatus::Draft, $fresh->status);
+        $this->assertSame('21.0000', $this->freshStock($product));
+        $this->assertSame('4.761904', $this->freshCost($product));
         $this->assertSame(0, StockMovement::query()->where('reference_id', $note->id)->count());
     }
 
@@ -720,6 +886,47 @@ final class SupplierGoodsReturnNoteTest extends TestCase
 
         $this->draft(
             [$this->lineData($product, SupplierGoodsReturnLineKind::Ordinary, '3.0000', poLineId: $poLineId)],
+            $creditNoteId,
+        );
+    }
+
+    /**
+     * Gate re-review N-4. Two equal-quantity slices of the same PO line against
+     * DIFFERENT receipts carry different ceilings, so reusing the stale Draft
+     * would silently apply the wrong bound. Quantity alone cannot see that.
+     */
+    public function test_redrafting_against_a_different_receipt_or_ceiling_is_refused(): void
+    {
+        $product = $this->stockedProduct('4.761904', '21.0000');
+        $creditNoteId = Str::uuid()->toString();
+        $poLineId = Str::uuid()->toString();
+
+        $this->draft(
+            [$this->lineData(
+                $product,
+                SupplierGoodsReturnLineKind::Bonus,
+                '1.0000',
+                poLineId: $poLineId,
+                unitCostCeiling: '5.000000',
+                goodsReceiptLineId: '0199a1b2-0000-7000-8000-00000000aaaa',
+            )],
+            $creditNoteId,
+        );
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('does not match');
+
+        $this->draft(
+            [$this->lineData(
+                $product,
+                SupplierGoodsReturnLineKind::Bonus,
+                // Same quantity, same PO line, same product, same kind — only the
+                // receipt and its price differ.
+                '1.0000',
+                poLineId: $poLineId,
+                unitCostCeiling: '9.000000',
+                goodsReceiptLineId: '0199a1b2-0000-7000-8000-00000000bbbb',
+            )],
             $creditNoteId,
         );
     }

@@ -21,6 +21,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnLineKind;
@@ -1006,6 +1007,125 @@ final class SupplierCreditNoteGlTest extends TestCase
             'location_id' => $location->id,
             'quantity' => '17.0000',
         ]);
+    }
+
+    /**
+     * Gate re-review N-2. I-6's per-receipt slicing widened the GL-amount drift
+     * that round 0's C-6 described: it no longer takes two PO lines sharing a
+     * product — a SINGLE bonus PO line spanning two receipt lines is enough.
+     *
+     * Each slice is its own note line, `issueLine` runs per line, so slice 1's
+     * un-dilution raises the WAC that slice 2 stamps as its `unit_cost`, and
+     * `bonusInventoryValue()` sums the STAMPED costs into the credit note's
+     * Cr Inventory. Pin the number so the drift is visible rather than latent.
+     */
+    public function test_a_two_receipt_bonus_return_moves_the_gl_amount_off_the_flat_wac(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Two Receipt Bonus Product',
+            'cost_price' => '0.000000',
+        ]);
+
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main stock',
+            'code' => 'MAIN-2B',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+        ]);
+
+        // Real dilution: 20 paid @ 5.000000 + 2 free @ 0 -> 100/22 = 4.545454.
+        $wac = app(WeightedAverageCostService::class);
+        $wac->recordPurchase($product, $location, '20.0000', '5.000000');
+        $wac->recordPurchase($product, $location, '2.0000', '0');
+        $this->assertSame('4.545454', (string) ($product->fresh()?->cost_price));
+
+        $poLine->forceFill([
+            'product_id' => $product->id,
+            'quantity_received' => '20.0000',
+            'quantity_invoiced' => '20.0000',
+            'free_quantity' => '2.0000',
+            'free_quantity_received' => '2.0000',
+            'free_quantity_invoiced' => '2.0000',
+        ])->save();
+
+        // Two posted receipt lines, ONE free unit invoiced on each: returning both
+        // bonus units has to walk them, producing two slices of 1.
+        $this->receiptLineForPoLine($poLine, '10.0000', '10.0000', '1.0000', '1.0000');
+        $this->receiptLineForPoLine($poLine, '10.0000', '10.0000', '1.0000', '1.0000');
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierCreditNote,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SCN-2RB-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'source_document_id' => $invoice->id,
+            'subtotal' => '0.000',
+            'line_tax_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+            'supplier_credit_note_reason' => SupplierCreditNoteReason::GoodsReturn,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 1,
+            'description' => 'Returned bonus units across two receipts',
+            'quantity' => '2.0000',
+            'unit_price' => '5.000',
+            'line_total' => '0.000',
+            'allocated_costs' => '0.0000',
+            'tax_amount' => '0.000',
+            'recoverable_tax_amount' => '0.000',
+            'non_recoverable_tax_amount' => '0.000',
+            'source_line_id' => $poLine->id,
+            'is_bonus_line' => true,
+        ]);
+
+        $this->service()->post($creditNote->fresh(['lines']) ?? $creditNote);
+
+        /** @var SupplierGoodsReturnNote $note */
+        $note = SupplierGoodsReturnNote::query()
+            ->where('supplier_credit_note_id', $creditNote->id)
+            ->with('lines')
+            ->firstOrFail();
+
+        $this->assertCount(2, $note->lines, 'One note line per receipt slice.');
+
+        // Slice 1 leaves at 4.545454 and un-dilutes to 4.761904; slice 2 therefore
+        // leaves at 4.761904 and un-dilutes to 4.999999.
+        $stamped = $note->lines->pluck('unit_cost')->map(static fn ($c): string => (string) $c)->sort()->values()->all();
+        $this->assertSame(['4.545454', '4.761904'], $stamped);
+
+        /** @var Product $freshProduct */
+        $freshProduct = $product->fresh();
+        $this->assertSame('4.999999', (string) $freshProduct->cost_price);
+
+        // GL: sum of the STAMPED costs = 4.545454 + 4.761904 = 9.307358 -> 9.307.
+        // A flat-WAC (pre-slicing) calculation would have produced
+        // 2 x 4.545454 = 9.090908 -> 9.091. THAT is C-6's widened drift.
+        $entry = $this->creditEntry($creditNote);
+        $this->assertNull($this->legOn($entry, $this->payableAccount));
+        $drExpense = $this->legOn($entry, $this->purchaseExpensesAccount);
+        $this->assertNotNull($drExpense);
+        $this->assertSame('9.307', $drExpense->debit);
+        $crInventory = $this->legOn($entry, $this->inventoryAccount);
+        $this->assertNotNull($crInventory);
+        $this->assertSame('9.307', $crInventory->credit);
+        $this->assertNotSame('9.091', $crInventory->credit);
+        $this->assertBalanced($entry);
     }
 
     /**
