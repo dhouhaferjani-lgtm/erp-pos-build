@@ -130,3 +130,17 @@ Pre-existing; not introduced by F-7.
 `ExpiryStatus` type is uppercase and is therefore **wrong for the FEFO endpoint only**; this
 lane declared a separate `FEFOExpiryStatus` lowercase union rather than widen scope.
 Worth unifying when (c) is done.
+
+---
+
+## Merge record (appended by orchestrator, 2026-08-08)
+
+Merged LOCAL dev ff→`d338b5fa4` (rebased clean over DPA Wave-0 `984a020dd`; core precision
+tests re-run green post-rebase 25/91). Dual adversarial gate: inventory-costing
+APPROVE-WITH-FIXES + fiscal-pos APPROVE-WITH-FIXES, ZERO criticals; consolidated fix round
+applied (6 commits) and gate items verified. Orchestrator ratifies the implementer's FLOOR
+deviation on the availability-side boundary (rounding stock-on-hand HALF_UP could suggest
+a draw larger than the lot holds; FLOOR is strictly conservative; no-op today under
+decimal(15,4) inputs). Disclosures D-1 (validation tightening, pinned by DataProvider
+tests) and D-2 (spurious 0.0000 DN/invoice lines no longer produced) stand as the
+behavior-change record. Promotion to origin/dev pending the owner's batch go.
