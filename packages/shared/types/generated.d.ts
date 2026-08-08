@@ -300,7 +300,7 @@ export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_recei
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-export type GlResidualRefusal = 'negative_residual' | 'no_absorbing_account' | 'residual_exceeds_rounding_tolerance' | 'legs_do_not_balance';
+export type GlResidualRefusal = 'negative_residual' | 'no_absorbing_account' | 'residual_exceeds_rounding_tolerance' | 'legs_do_not_balance' | 'no_credit_note_stamp_account';
 export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'EF' | 'OD';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
@@ -739,6 +739,7 @@ additional_data: Array<any> | null;
 }
 declare namespace App.Modules.Document.Domain.Enums {
 export type AdditionalCostType = 'transport' | 'shipping' | 'insurance' | 'customs' | 'handling' | 'other';
+export type CancelBlockReason = 'NOT_AN_INVOICE' | 'DOCUMENT_HAS_PAYMENTS' | 'DOCUMENT_ALREADY_CANCELLED' | 'DOCUMENT_STATUS_NOT_CANCELLABLE';
 export type CostApplicationPath = 'landed_cost' | 'wac_adjustment' | 'profit_only';
 export type CreditNoteReason = 'return' | 'price_adjustment' | 'billing_error' | 'damaged_goods' | 'service_issue' | 'other';
 export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_delivered';
@@ -983,6 +984,57 @@ replayedDelta: string;
 onHandAtApply: string;
 expectedAtApply: string;
 };
+export type StockAdjustmentData = {
+id: string;
+tenant_id: string;
+company_id: string;
+adjustment_number: string | null;
+status: string;
+note: string | null;
+location_id: string;
+location_name: string | null;
+occurred_at: string;
+idempotency_key: string | null;
+created_by_user_id: string;
+created_by_name: string | null;
+posted_by_user_id: string | null;
+posted_by_name: string | null;
+cancelled_by_user_id: string | null;
+cancelled_by_name: string | null;
+posted_at: string | null;
+cancelled_at: string | null;
+cancellation_reason: string | null;
+stale_acknowledged_at: string | null;
+stale_acknowledged_by_user_id: string | null;
+reservations_ignored_at: string | null;
+reservations_ignored_by_user_id: string | null;
+corrects_adjustment_id: string | null;
+correction_id: string | null;
+lines: Array<App.Modules.Inventory.Application.DTOs.StockAdjustmentLineData>;
+lines_count: number;
+created_at: string;
+updated_at: string;
+};
+export type StockAdjustmentLineData = {
+id: string;
+adjustment_id: string;
+product_id: string;
+product_name: string | null;
+product_sku: string | null;
+variant_id: string | null;
+batch_uuid: string | null;
+batch_number: string | null;
+reason_code: string;
+delta_quantity: string;
+observed_before: string;
+quantity_before: string | null;
+quantity_after: string | null;
+movement_id: string | null;
+line_note: string | null;
+quantity_decimals: number;
+created_at: string;
+updated_at: string;
+};
 export type StockLevelData = {
 id: string;
 product_id: string;
@@ -998,6 +1050,8 @@ min_quantity: string | null;
 max_quantity: string | null;
 is_below_minimum: boolean;
 quantity_decimals: number;
+requires_batch_tracking: boolean;
+has_lots_at_location: boolean;
 };
 }
 declare namespace App.Modules.Inventory.Domain.Enums {
@@ -1014,6 +1068,7 @@ export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' 
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReplayPreviewMode = 'timestamp_replay' | 'legacy_delta';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
+export type StockAdjustmentStatus = 'draft' | 'posted' | 'cancelled';
 export type TerminalSyncHealthState = 'healthy' | 'pending' | 'stale' | 'unknown';
 export type TransferCostDistribution = 'pro_rata_value' | 'pro_rata_quantity' | 'equal_per_line';
 export type TransferStatus = 'draft' | 'in_transit' | 'completed' | 'cancelled';
@@ -2130,6 +2185,7 @@ declare namespace App.Modules.Taxation.Domain.Enums {
 export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';
 export type CompanyTaxStatus = 'REGISTERED' | 'NON_REGISTERED';
 export type PartnerTaxStatus = 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT';
+export type PeriodLockRefusalCode = 'DOCUMENT_PERIOD_CLOSED' | 'DOCUMENT_PERIOD_FILED';
 export type StackingBehavior = 'SUBTOTAL' | 'TOTAL_INCLUDING_PREVIOUS';
 export type TaxApplicationLevel = 'LINE_ITEMS' | 'DOCUMENT_TOTAL';
 export type TaxType = 'PERCENTAGE' | 'FIXED_AMOUNT';
@@ -2225,7 +2281,7 @@ export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
 export type CancellationShape = 'b2b' | 'pos_revenue';
-export type DepositReferenceRefusal = 'payment_method_not_found' | 'payment_repository_not_found' | 'payment_repository_missing_gl_account' | 'payment_repository_gl_account_inactive' | 'payment_repository_currency_mismatch';
+export type DepositReferenceRefusal = 'payment_method_not_found' | 'payment_repository_not_found' | 'payment_repository_missing_gl_account' | 'payment_repository_gl_account_inactive' | 'payment_repository_currency_mismatch' | 'payment_repository_frozen' | 'actor_not_active_company_member' | 'payment_repository_behind_checkpoint' | 'missing_instrument_portfolio_account' | 'instrument_currency_mismatches_company';
 export type DishonorRouting = 're_present' | 'receivable' | 'doubtful';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentAccountPurpose = 'checks_to_collect' | 'checks_to_pay' | 'effects_receivable' | 'effets_payable' | 'effects_in_collection' | 'effects_discounted' | 'instrument_bank_fees' | 'vat_recoverable_on_fees' | 'doubtful_receivables';
@@ -2794,6 +2850,7 @@ meta: Array<any>;
 }
 declare namespace App.Shared.Domain.Enums {
 export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
+export type StockMovementReferenceType = 'Document' | 'inventory_counting' | 'stock_adjustment';
 export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }

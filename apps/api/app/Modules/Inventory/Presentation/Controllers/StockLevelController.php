@@ -101,7 +101,11 @@ class StockLevelController extends Controller
             ->where('company_id', $company->id)
             ->where('product_id', $productId)
             ->where('location_id', $locationId)
-            ->with(['product', 'location'])
+            // unitOfMeasure is eager-loaded here too (DPA V7 / T19): this is the
+            // endpoint D15b uses for the FRESH `observed_before` read, so it must
+            // report the product unit's real precision rather than falling back
+            // to the canonical storage scale.
+            ->with(['product.unitOfMeasure', 'location'])
             ->firstOrFail();
 
         return response()->json([
