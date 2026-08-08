@@ -827,6 +827,188 @@ final class SupplierCreditNoteGlTest extends TestCase
     }
 
     /**
+     * Gate finding I-1. The GL plug is `total − recoverableVAT`, i.e. the INVOICE
+     * PRICE; the units relieve at WAC. When the two differ, an ordinary supplier
+     * goods return leaves a units-vs-GL residual of `q × (price − WAC)`. The
+     * original ordinary test hid this by choosing WAC == price. This test makes
+     * the residual VISIBLE and asserts its exact size, so c1-bis has a pinned
+     * number to work against and nobody mistakes the divergence for bonus-only.
+     */
+    public function test_ordinary_goods_return_residual_is_visible_when_wac_differs_from_invoice_price(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        // WAC drifted BELOW the invoice price (a later cheaper receipt, a bonus
+        // dilution, a write-down — all reachable).
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Drifted WAC Product',
+            'cost_price' => '4.000000',
+        ]);
+
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main stock',
+            'code' => 'MAIN-D',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '20.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $poLine->forceFill(['product_id' => $product->id])->save();
+
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '5.000', 'recoverable_vat' => '0.000'],
+            '10.000',
+            '10.000',
+        );
+
+        $this->service()->post($creditNote);
+
+        /** @var SupplierGoodsReturnNote $note */
+        $note = SupplierGoodsReturnNote::query()
+            ->where('supplier_credit_note_id', $creditNote->id)
+            ->firstOrFail();
+
+        /** @var StockMovement $movement */
+        $movement = StockMovement::query()
+            ->where('reference_id', $note->id)
+            ->where('movement_type', MovementType::Issue)
+            ->firstOrFail();
+
+        // UNITS relieve 2 x 4.000000 = 8.000000 of inventory value…
+        $this->assertSame('4.000000', (string) $movement->unit_cost);
+        $this->assertSame('8.000000', (string) $movement->total_cost);
+
+        // …while GL credits Inventory with the invoice price 2 x 5.000 = 10.000.
+        $entry = $this->creditEntry($creditNote);
+        $crInventory = $this->legOn($entry, $this->inventoryAccount);
+        $this->assertNotNull($crInventory);
+        $this->assertSame('10.000', $crInventory->credit);
+        $this->assertBalanced($entry);
+
+        // The residual c1-bis owes a purchase-price-variance leg for:
+        // q x (invoice price - WAC) = 2 x (5.000 - 4.000) = 2.000.
+        $this->assertSame(
+            '2.000',
+            bcsub($crInventory->credit, (string) $movement->total_cost, 3),
+            'Ordinary goods returns carry a units-vs-GL residual of q x (price - WAC); '
+            .'c1-bis owes a purchase-price-variance leg for it.',
+        );
+
+        // WAC untouched — paid units leave at WAC.
+        /** @var Product $freshProduct */
+        $freshProduct = $product->fresh();
+        $this->assertSame('4.000000', (string) $freshProduct->cost_price);
+    }
+
+    /**
+     * Gate finding I-6. `decrementReceiptLineInvoiced` consumes the invoiced
+     * counter across SEVERAL receipt lines; the note must link one line per
+     * receipt line consumed, not just the newest one, or requirement 1's "goods
+     * receipt(s)" linkage is a half-truth and the per-receipt cost ceiling cannot
+     * be applied.
+     */
+    public function test_a_return_spanning_two_receipt_lines_produces_one_note_line_per_receipt(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Two Receipt Product',
+            'cost_price' => '5.000000',
+        ]);
+
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main stock',
+            'code' => 'MAIN-2R',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '20.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $poLine->forceFill(['product_id' => $product->id])->save();
+
+        // Two posted receipt lines, 2 invoiced units each. Returning 3 units has
+        // to walk both (newest first: 2 from the second, 1 from the first).
+        $older = $this->receiptLineForPoLine($poLine, '2.0000', '2.0000');
+        $newer = $this->receiptLineForPoLine($poLine, '2.0000', '2.0000');
+
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '3.0000', 'unit_price' => '5.000', 'recoverable_vat' => '0.000'],
+            '15.000',
+            '15.000',
+        );
+
+        $this->service()->post($creditNote);
+
+        /** @var SupplierGoodsReturnNote $note */
+        $note = SupplierGoodsReturnNote::query()
+            ->where('supplier_credit_note_id', $creditNote->id)
+            ->with('lines')
+            ->firstOrFail();
+
+        $this->assertCount(2, $note->lines, 'One note line per receipt line consumed.');
+
+        $byReceiptLine = $note->lines->keyBy('goods_receipt_line_id');
+        $this->assertTrue($byReceiptLine->has($newer->id));
+        $this->assertTrue($byReceiptLine->has($older->id));
+
+        /** @var SupplierGoodsReturnNoteLine $newerLine */
+        $newerLine = $byReceiptLine->get($newer->id);
+        /** @var SupplierGoodsReturnNoteLine $olderLine */
+        $olderLine = $byReceiptLine->get($older->id);
+
+        $this->assertSame('2.0000', (string) $newerLine->quantity);
+        $this->assertSame('1.0000', (string) $olderLine->quantity);
+        $this->assertSame($newer->goods_receipt_id, $newerLine->goods_receipt_id);
+        $this->assertSame($older->goods_receipt_id, $olderLine->goods_receipt_id);
+
+        // Both slices moved units, and the total matches the credit note.
+        $this->assertSame(
+            2,
+            StockMovement::query()
+                ->where('reference_id', $note->id)
+                ->where('movement_type', MovementType::Issue)
+                ->count(),
+        );
+        $this->assertDatabaseHas('stock_levels', [
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '17.0000',
+        ]);
+    }
+
+    /**
      * V8 requirement 7 — idempotency. The credit note's own no-op guard already
      * short-circuits a re-post, so the goods-return note must not be minted twice
      * and the units must not leave twice.
