@@ -24,11 +24,13 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\ProductVariantLookup;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use App\Shared\Domain\Exceptions\VariantRequiredException;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 
 final class StockAdjustmentService
 {
@@ -79,6 +81,8 @@ final class StockAdjustmentService
      *                                         movement row so reversals can recover the original
      *                                         cost without recomputing from a changed WAC.
      * @param  int|null  $batchId  Optional batch ID for batch-tracked products
+     * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
+     * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
      */
     public function receive(
         string $productId,
@@ -91,10 +95,13 @@ final class StockAdjustmentService
         ?string $variantId = null,
         ?MovementReason $reason = null,
         ?string $unitCost = null,
+        ?StockMovementReferenceType $referenceType = null,
+        ?string $referenceId = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
+        $this->assertReferenceLinkagePaired($referenceType, $referenceId);
 
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost, $referenceType, $referenceId): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam: take the per-product advisory lock FIRST
@@ -102,7 +109,7 @@ final class StockAdjustmentService
             // key is product-grain ([$productId]) even when the row we touch is
             // variant-scoped — variant cost is advisory only; WAC stays
             // product-grain (§6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId, $reason, $unitCost): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $companyId, $variantId, $reason, $unitCost, $referenceType, $referenceId): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -125,6 +132,8 @@ final class StockAdjustmentService
                     variantId: $variantId,
                     reason: $reason,
                     unitCost: $unitCost,
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
                 );
 
                 // Record batch movement if batch ID provided
@@ -159,6 +168,8 @@ final class StockAdjustmentService
                         totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
                         newStockLevel: $quantityAfterSnapshot,
                         reference: $reference,
+                        referenceType: $movementSnapshot->reference_type,
+                        referenceId: $movementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
 
@@ -177,6 +188,8 @@ final class StockAdjustmentService
                         newStockLevel: $quantityAfterSnapshot,
                         variantId: $variantId,
                         reference: $reference,
+                        referenceType: $movementSnapshot->reference_type,
+                        referenceId: $movementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
                 });
@@ -195,6 +208,8 @@ final class StockAdjustmentService
      *                                         movement row so reversals can recover the original
      *                                         cost without recomputing from a changed WAC.
      * @param  int|null  $batchId  Optional batch ID for batch-tracked products
+     * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
+     * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
      *
      * @throws InsufficientStockException
      */
@@ -209,13 +224,16 @@ final class StockAdjustmentService
         ?string $variantId = null,
         ?MovementReason $reason = null,
         ?string $unitCost = null,
+        ?StockMovementReferenceType $referenceType = null,
+        ?string $referenceId = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
+        $this->assertReferenceLinkagePaired($referenceType, $referenceId);
 
         // Pure decrement: NO advisory seam (mustNotLock). It mutates an existing
         // variant-scoped row via lockStockLevel()'s row lock, which serializes it
         // against any in-flight recompute holding that row.
-        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $quantity, $reference, $userId, $batchId, $expectedCompanyId, $variantId, $reason, $unitCost, $referenceType, $referenceId): StockMovement {
             $stockLevel = $this->lockStockLevel($productId, $locationId, $expectedCompanyId ?? $this->resolveCompanyId($locationId), $variantId);
 
             /** @var numeric-string $available */
@@ -250,6 +268,8 @@ final class StockAdjustmentService
                 variantId: $variantId,
                 reason: $reason,
                 unitCost: $unitCost,
+                referenceType: $referenceType,
+                referenceId: $referenceId,
             );
 
             // Record batch movement if batch ID provided (negative quantity for issue)
@@ -282,6 +302,8 @@ final class StockAdjustmentService
                     totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
                     newStockLevel: $quantityAfterSnapshot,
                     reference: $reference,
+                    referenceType: $movementSnapshot->reference_type,
+                    referenceId: $movementSnapshot->reference_id,
                     occurredAt: now()->toIso8601String(),
                 ));
 
@@ -299,6 +321,8 @@ final class StockAdjustmentService
                     newStockLevel: $quantityAfterSnapshot,
                     variantId: $variantId,
                     reference: $reference,
+                    referenceType: $movementSnapshot->reference_type,
+                    referenceId: $movementSnapshot->reference_id,
                     occurredAt: now()->toIso8601String(),
                 ));
             });
@@ -311,6 +335,9 @@ final class StockAdjustmentService
      * Transfer stock between locations.
      *
      * @param  numeric-string  $quantity
+     * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass
+     *                                                          together with $referenceId. Stamped on BOTH transfer legs.
+     * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
      *
      * @throws InsufficientStockException
      */
@@ -323,16 +350,19 @@ final class StockAdjustmentService
         string $userId,
         ?string $expectedCompanyId = null,
         ?string $variantId = null,
+        ?StockMovementReferenceType $referenceType = null,
+        ?string $referenceId = null,
     ): void {
         $this->assertVariantConsistency($productId, $variantId);
+        $this->assertReferenceLinkagePaired($referenceType, $referenceId);
 
-        DB::transaction(function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId, $expectedCompanyId, $variantId): void {
+        DB::transaction(function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId, $expectedCompanyId, $variantId, $referenceType, $referenceId): void {
             $resolvedCompanyId = $expectedCompanyId ?? $this->resolveCompanyId($fromLocationId);
 
             // ONE product across two locations — acquire the single product key
             // once (product-grain advisory; variant rows share the product cost,
             // §6.7), then row-lock both location rows under it.
-            $this->costLock->acquire($this->resolveTenantId($productId, $resolvedCompanyId), $resolvedCompanyId, [$productId], function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId, $resolvedCompanyId, $variantId): void {
+            $this->costLock->acquire($this->resolveTenantId($productId, $resolvedCompanyId), $resolvedCompanyId, [$productId], function () use ($productId, $fromLocationId, $toLocationId, $quantity, $reference, $userId, $resolvedCompanyId, $variantId, $referenceType, $referenceId): void {
                 // Lock source stock
                 $sourceStock = $this->lockStockLevel($productId, $fromLocationId, $resolvedCompanyId, $variantId);
 
@@ -366,6 +396,8 @@ final class StockAdjustmentService
                     reference: $reference,
                     userId: $userId,
                     variantId: $variantId,
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
                 );
 
                 // Add to destination (lock the variant-scoped row — read-modify-write)
@@ -387,6 +419,8 @@ final class StockAdjustmentService
                     reference: $reference,
                     userId: $userId,
                     variantId: $variantId,
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
                 );
 
                 // Dispatch StockMovementRecorded events after transaction commits
@@ -416,6 +450,8 @@ final class StockAdjustmentService
                         totalCost: (string) ($sourceMovementSnapshot->total_cost ?? '0.00'),
                         newStockLevel: $sourceQuantityAfterSnapshot,
                         reference: $reference,
+                        referenceType: $sourceMovementSnapshot->reference_type,
+                        referenceId: $sourceMovementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
 
@@ -431,6 +467,8 @@ final class StockAdjustmentService
                         totalCost: (string) ($destMovementSnapshot->total_cost ?? '0.00'),
                         newStockLevel: $destQuantityAfterSnapshot,
                         reference: $reference,
+                        referenceType: $destMovementSnapshot->reference_type,
+                        referenceId: $destMovementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
 
@@ -448,6 +486,8 @@ final class StockAdjustmentService
                         newStockLevel: $sourceQuantityAfterSnapshot,
                         variantId: $variantId,
                         reference: $reference,
+                        referenceType: $sourceMovementSnapshot->reference_type,
+                        referenceId: $sourceMovementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
 
@@ -464,6 +504,8 @@ final class StockAdjustmentService
                         newStockLevel: $destQuantityAfterSnapshot,
                         variantId: $variantId,
                         reference: $reference,
+                        referenceType: $destMovementSnapshot->reference_type,
+                        referenceId: $destMovementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
                 });
@@ -614,6 +656,8 @@ final class StockAdjustmentService
      * Adjust stock to a specific quantity (for inventory counts).
      *
      * @param  numeric-string  $newQuantity
+     * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
+     * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
      */
     public function adjust(
         string $productId,
@@ -625,14 +669,17 @@ final class StockAdjustmentService
         ?string $variantId = null,
         ?MovementReason $reasonCode = null,
         ?CarbonInterface $occurredAt = null,
+        ?StockMovementReferenceType $referenceType = null,
+        ?string $referenceId = null,
     ): StockMovement {
         $this->assertVariantConsistency($productId, $variantId);
+        $this->assertReferenceLinkagePaired($referenceType, $referenceId);
 
-        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId, $reasonCode, $occurredAt): StockMovement {
+        return DB::transaction(function () use ($productId, $locationId, $newQuantity, $reason, $userId, $expectedCompanyId, $variantId, $reasonCode, $occurredAt, $referenceType, $referenceId): StockMovement {
             $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
 
             // WAC serialization seam (product-grain advisory key; §6.7).
-            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId, $reasonCode, $occurredAt): StockMovement {
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $newQuantity, $reason, $userId, $companyId, $variantId, $reasonCode, $occurredAt, $referenceType, $referenceId): StockMovement {
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
                 /** @var numeric-string $quantityBefore */
@@ -655,6 +702,8 @@ final class StockAdjustmentService
                     variantId: $variantId,
                     reason: $reasonCode,
                     occurredAt: $occurredAt,
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
                 );
 
                 if (bccomp($difference, '0', self::SCALE) > 0) {
@@ -679,6 +728,8 @@ final class StockAdjustmentService
                         totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
                         newStockLevel: $newQuantity,
                         reference: $reason,
+                        referenceType: $movementSnapshot->reference_type,
+                        referenceId: $movementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
 
@@ -696,6 +747,8 @@ final class StockAdjustmentService
                         newStockLevel: $newQuantity,
                         variantId: $variantId,
                         reference: $reason,
+                        referenceType: $movementSnapshot->reference_type,
+                        referenceId: $movementSnapshot->reference_id,
                         occurredAt: now()->toIso8601String(),
                     ));
                 });
@@ -725,6 +778,9 @@ final class StockAdjustmentService
      *
      * @param  numeric-string  $finalQty  Counted quantity as of $finalQtyAsOf (scale 4)
      * @param  numeric-string|null  $openingUnitCost  Opening cost at COST_SCALE=6; null leaves WAC untouched
+     * @param  StockMovementReferenceType|null  $referenceType  Counting-document morph type;
+     *                                                          pass together with $referenceId
+     * @param  string|null  $referenceId  Counting-document UUID; pass together with $referenceType
      */
     public function applyCountResult(
         string $productId,
@@ -735,18 +791,21 @@ final class StockAdjustmentService
         int $ambiguityWindowMinutes,
         bool $onboarding,
         ?string $openingUnitCost,
+        ?StockMovementReferenceType $referenceType = null,
+        ?string $referenceId = null,
     ): ?ReplayAuditDto {
         $this->assertVariantConsistency($productId, $variantId);
+        $this->assertReferenceLinkagePaired($referenceType, $referenceId);
         $scale = InventoryScale::QUANTITY_SCALE;
 
-        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale): ?ReplayAuditDto {
+        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale, $referenceType, $referenceId): ?ReplayAuditDto {
             $companyId = $this->resolveCompanyId($locationId);
             $tenantId = $this->resolveTenantId($productId, $companyId);
 
             // ProductCostLock FIRST (advisory, product-grain), then the
             // stock_level row FOR UPDATE inside the closure. Never invert this —
             // adjust()/recordPurchase/recordSale rely on advisory -> row order.
-            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale): ?ReplayAuditDto {
+            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale, $referenceType, $referenceId): ?ReplayAuditDto {
                 $now = now();
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
@@ -781,9 +840,9 @@ final class StockAdjustmentService
                     && $this->firstCountDetector->isFirstCount($productId, $locationId, $variantId);
 
                 if ($postOpening) {
-                    $this->postCountOpening($stockLevel, $productId, $locationId, $variantId, $tenantId, $companyId, $onHandNow, $expectedNow, $adjustment, $openingUnitCost, $now);
+                    $this->postCountOpening($stockLevel, $productId, $locationId, $variantId, $tenantId, $companyId, $onHandNow, $expectedNow, $adjustment, $openingUnitCost, $now, $referenceType, $referenceId);
                 } else {
-                    $this->postCountCorrection($stockLevel, $productId, $locationId, $variantId, $onHandNow, $expectedNow, $adjustment, $now);
+                    $this->postCountCorrection($stockLevel, $productId, $locationId, $variantId, $onHandNow, $expectedNow, $adjustment, $now, $referenceType, $referenceId);
                 }
 
                 return new ReplayAuditDto(
@@ -813,6 +872,12 @@ final class StockAdjustmentService
         string $expectedNow,
         string $adjustment,
         CarbonInterface $now,
+        // REQUIRED (no default): a private helper has no compatibility cost, and
+        // a defaulted pair would let a future call site drop the linkage
+        // silently — assertReferenceLinkagePaired catches a HALF pair, not a
+        // fully omitted one.
+        ?StockMovementReferenceType $referenceType,
+        ?string $referenceId,
     ): void {
         $stockLevel->update(['quantity' => $expectedNow]);
 
@@ -830,6 +895,8 @@ final class StockAdjustmentService
             variantId: $variantId,
             reason: MovementReason::CountCorrection,
             occurredAt: $now,
+            referenceType: $referenceType,
+            referenceId: $referenceId,
         );
 
         if (bccomp($adjustment, '0', self::SCALE) > 0) {
@@ -874,6 +941,9 @@ final class StockAdjustmentService
         string $adjustment,
         ?string $openingUnitCost,
         CarbonInterface $now,
+        // REQUIRED (no default) — see postCountCorrection.
+        ?StockMovementReferenceType $referenceType,
+        ?string $referenceId,
     ): void {
         $stockLevel->update(['quantity' => $expectedNow]);
 
@@ -892,6 +962,8 @@ final class StockAdjustmentService
             reason: MovementReason::OpeningBalance,
             unitCost: $openingUnitCost,
             occurredAt: $now,
+            referenceType: $referenceType,
+            referenceId: $referenceId,
         );
 
         if (bccomp($adjustment, '0', self::SCALE) > 0) {
@@ -996,6 +1068,8 @@ final class StockAdjustmentService
                 totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
                 newStockLevel: $newStockLevel,
                 reference: self::COUNT_REPLAY_REFERENCE,
+                referenceType: $movementSnapshot->reference_type,
+                referenceId: $movementSnapshot->reference_id,
                 occurredAt: now()->toIso8601String(),
             ));
 
@@ -1012,6 +1086,8 @@ final class StockAdjustmentService
                 newStockLevel: $newStockLevel,
                 variantId: $variantId,
                 reference: self::COUNT_REPLAY_REFERENCE,
+                referenceType: $movementSnapshot->reference_type,
+                referenceId: $movementSnapshot->reference_id,
                 occurredAt: now()->toIso8601String(),
             ));
         });
@@ -1157,6 +1233,13 @@ final class StockAdjustmentService
      *                                         from the row itself (not from a now-changed WAC).
      *                                         Mirrors the WeightedAverageCostService precision:
      *                                         total_cost = bcmul(unitCost, quantity, COST_SCALE).
+     * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type,
+     *                                                          persisted (as its backing
+     *                                                          string) into
+     *                                                          `stock_movements.reference_type`.
+     * @param  string|null  $referenceId  Source-document UUID persisted into
+     *                                    `stock_movements.reference_id`. MUST be supplied
+     *                                    together with $referenceType.
      */
     private function recordMovement(
         string $tenantId,
@@ -1173,7 +1256,11 @@ final class StockAdjustmentService
         ?MovementReason $reason = null,
         ?string $unitCost = null,
         ?CarbonInterface $occurredAt = null,
+        ?StockMovementReferenceType $referenceType = null,
+        ?string $referenceId = null,
     ): StockMovement {
+        $this->assertReferenceLinkagePaired($referenceType, $referenceId);
+
         // Scope the Location lookup to $companyId (derived from the upstream
         // trusted StockLevel). A forged locationId from another company would
         // fail the company_id predicate and throw ModelNotFoundException.
@@ -1206,12 +1293,49 @@ final class StockAdjustmentService
             'unit_cost' => $persistedUnitCost,
             'total_cost' => $persistedTotalCost,
             'reference' => $reference,
+            // Document linkage (morph). ADDITIVE to the free-text `reference`
+            // label — never a replacement: the label stays human-readable while
+            // these two columns carry the machine-resolvable FK.
+            'reference_type' => $referenceType?->value,
+            'reference_id' => $referenceId,
             'user_id' => $userId,
             // Event time (rule: device time for POS paths, now() otherwise).
             // adjust() threads a device/replay time here; other entry points
             // (receive/issue/transfer) default to now().
             'occurred_at' => $occurredAt ?? now(),
         ]);
+    }
+
+    /**
+     * Validate the document-linkage pair before it can reach the row.
+     *
+     * Two rules, both of them things this seam owes the lanes that adopt it:
+     *
+     * 1. BOTH halves or NEITHER. A half-specified pair persists a morph no
+     *    consumer can resolve and that the `idx_movements_reference` lookup
+     *    silently misses.
+     * 2. $referenceId MUST be a UUID. `stock_movements.reference_id` is a
+     *    PostgreSQL `uuid` column, but the test suite runs on SQLite
+     *    (phpunit.xml), which stores any TEXT there happily. Without this check
+     *    an adopting lane that links to an int-keyed entity (batches.id, for
+     *    one) would be green in CI and 500 in production — inside a queued
+     *    listener, where it would burn every retry. This is the house's
+     *    documented "UUID cols in PG" trap; catch it at the seam, in the layer
+     *    that has the type information.
+     */
+    private function assertReferenceLinkagePaired(?StockMovementReferenceType $referenceType, ?string $referenceId): void
+    {
+        if (($referenceType === null) !== ($referenceId === null)) {
+            throw new InvalidArgumentException(
+                'Stock movement document linkage requires both referenceType and referenceId, or neither.'
+            );
+        }
+
+        if ($referenceId !== null && ! Str::isUuid($referenceId)) {
+            throw new InvalidArgumentException(
+                'Stock movement referenceId must be a UUID; got: '.$referenceId
+            );
+        }
     }
 
     /**

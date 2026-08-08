@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\DB;
@@ -87,7 +88,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
             // delta so pre-existing behaviour (and its regression sentinels)
             // stays byte-for-byte identical.
             if ($item->final_qty_as_of === null) {
-                if ($this->applyLegacyDelta($item, $counting->company_id, $reference, $event->completedBy)) {
+                if ($this->applyLegacyDelta($item, $counting->company_id, $reference, $event->completedBy, $counting->id)) {
                     $adjustedCount++;
                 }
 
@@ -127,12 +128,19 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
     /**
      * Exact legacy behaviour: `delta = final − theoretical` applied on top of
      * current stock, preserving movements during the counting period.
+     *
+     * @param  string  $countingId  Counting-document UUID stamped as the movement's
+     *                              `reference_id` (with `reference_type` =
+     *                              StockMovementReferenceType::InventoryCounting).
+     *                              Additive to the free-text `COUNTING:{number}`
+     *                              label, which remains the legacy idempotency key.
      */
     private function applyLegacyDelta(
         InventoryCountingItem $item,
         string $companyId,
         string $reference,
         string $completedBy,
+        string $countingId,
     ): bool {
         $finalQty = $item->final_qty;
         $theoreticalQty = $item->theoretical_qty;
@@ -194,6 +202,8 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
             expectedCompanyId: $companyId,
             variantId: $item->variant_id,
             reasonCode: MovementReason::CountCorrection,
+            referenceType: StockMovementReferenceType::InventoryCounting,
+            referenceId: $countingId,
         );
 
         return true;
@@ -242,7 +252,9 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // movement with no marker — and the queue retry (idempotency guard keys on
         // replay_audit) would re-sum that movement in a fresh window and
         // double-apply. This is the fix for the finalize double-apply blocker.
-        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty): bool {
+        $countingId = $counting->id;
+
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId): bool {
             $audit = $this->stockAdjustmentService->applyCountResult(
                 productId: $item->product_id,
                 locationId: $item->location_id,
@@ -252,6 +264,10 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 ambiguityWindowMinutes: $window,
                 onboarding: $onboarding,
                 openingUnitCost: $openingUnitCost,
+                // Document linkage (DPA S0): the count movement points back at the
+                // counting row itself, not just the free-text COUNT_REPLAY label.
+                referenceType: StockMovementReferenceType::InventoryCounting,
+                referenceId: $countingId,
             );
 
             // Null return means the negative-at-apply guard tripped (basket window

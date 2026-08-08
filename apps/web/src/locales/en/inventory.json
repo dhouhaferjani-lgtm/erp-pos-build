@@ -402,7 +402,8 @@
       "goods_receipt": "Goods receipt",
       "delivery_note": "Delivery note",
       "stock_transfer": "Stock transfer",
-      "adjustment_batch": "Adjustment"
+      "adjustment_batch": "Adjustment",
+      "inventory_counting": "Inventory count"
     },
     "empty": {
       "title": "No entry/exit notes",

@@ -402,7 +402,8 @@
       "goods_receipt": "Bon de réception",
       "delivery_note": "Bon de livraison",
       "stock_transfer": "Transfert de stock",
-      "adjustment_batch": "Ajustement"
+      "adjustment_batch": "Ajustement",
+      "inventory_counting": "Inventaire"
     },
     "empty": {
       "title": "Aucun bon d'entrée/sortie",
