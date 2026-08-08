@@ -699,7 +699,7 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
      * asserts `$instrument->payment_id === $paymentId` BEFORE the status
      * check (identity has to hold before status is even meaningful).
      */
-    public function cancelForPaymentReversal(string $instrumentId, string $paymentId, string $tenantId, string $companyId, ?string $userId, string $reason): void
+    public function cancelForPaymentReversal(string $instrumentId, string $paymentId, string $tenantId, string $companyId, ?string $userId, string $reason): ?string
     {
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('cancelForPaymentReversal() must be called inside an open DB transaction (the caller\'s payment-reversal transaction) — it does not open its own, so the instrument cancellation and the caller\'s payment-status flip must commit or roll back together.');
@@ -745,7 +745,9 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
             ? CancellationShape::PosRevenue
             : CancellationShape::B2b;
 
-        $this->performCancellation($instrument, $payment, $userId, $reason, $shape);
+        // DPA V4 (D-5): surface the posted cancellation entry id so the caller's
+        // reversing DOCUMENT can link it rather than post a second AR restoration.
+        return $this->performCancellation($instrument, $payment, $userId, $reason, $shape);
     }
 
     /**
@@ -754,6 +756,10 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
      * transitions the instrument to `Cancelled`, and writes the audit
      * `InstrumentEvent` row. Callers are responsible for every precondition
      * check — this method performs none.
+     *
+     * DPA V4: returns the posted cancellation journal-entry id, or `null` when no
+     * entry was posted (the payment carried none — the instrument lane never
+     * reverses GL that was never posted).
      */
     private function performCancellation(
         PaymentInstrument $instrument,
@@ -761,7 +767,7 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
         ?string $userId,
         string $reason,
         CancellationShape $shape,
-    ): void {
+    ): ?string {
         $fromStatus = $instrument->status;
 
         $journalEntryId = null;
@@ -802,6 +808,8 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
             'occurred_at' => now(),
             'created_by' => $userId,
         ]);
+
+        return $journalEntryId;
     }
 
     /**

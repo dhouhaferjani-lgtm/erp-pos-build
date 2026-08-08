@@ -10,6 +10,8 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
@@ -308,6 +310,22 @@ final class InstrumentReversalCancellerHardeningTest extends TestCase
             'has_maturity' => false,
             'instrument_kind' => null,
         ]);
+        // DPA V4: the impostor payment MUST be allocated. `PaymentController::store()`
+        // types an UNALLOCATED payment as `PaymentType::Advance`
+        // (`PaymentController.php:889-891`), and V4's D-6 shape gate refuses
+        // `Advance` reversal outright — which would still 422, but for the wrong
+        // reason, silently retiring this test's coverage of the H1 identity guard.
+        // Allocating it keeps `payment_type = DocumentPayment` so the reversal
+        // reaches `resolveInstrumentForReversal()` and the H1 check is what refuses.
+        $impostorInvoice = Document::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'status' => DocumentStatus::Posted,
+            'currency' => 'TND',
+            'total' => '10.000',
+            'balance_due' => '10.000',
+        ]);
         $impostorResponse = $this->actingAs($this->user)->postJson('/api/v1/payments', [
             'partner_id' => $this->partner->id,
             'payment_method_id' => $immediateMethod->id,
@@ -316,6 +334,7 @@ final class InstrumentReversalCancellerHardeningTest extends TestCase
             'amount' => '10.000',
             'currency' => 'TND',
             'payment_date' => now()->toDateString(),
+            'allocations' => [['document_id' => $impostorInvoice->id, 'amount' => '10.000']],
         ])->assertCreated();
         $impostorPaymentId = (string) $impostorResponse->json('data.id');
 

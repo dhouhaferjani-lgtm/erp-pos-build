@@ -19,12 +19,14 @@ use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
+use App\Modules\Treasury\Domain\Enums\ReversalSupport;
 use App\Modules\Treasury\Domain\Events\PaymentRefunded;
 use App\Modules\Treasury\Domain\Events\PaymentReversed;
 use App\Modules\Treasury\Domain\Exceptions\OverRefundException;
 use App\Modules\Treasury\Domain\Exceptions\RefundIdempotencyException;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
@@ -548,6 +550,158 @@ class PaymentRefundService
     }
 
     /**
+     * DPA V4 / T7 — the CASH branch of a payment reversal: one `Dr AR / Cr cash`
+     * reversing entry plus one cash movement OUT, atomic with the caller's
+     * reversal transaction.
+     *
+     * Reached ONLY when the instrument branch did not handle the reversal (no
+     * instrument at all, per D-5 row 1). Structurally a sibling of
+     * `postRefundGlAndMovement()`, with four deliberate differences:
+     *
+     * 1. **D-17 symmetry rule — post GL if and only if the original posted GL.**
+     *    `performCancellation()` already applies exactly this rule on the
+     *    instrument side (it posts its cancellation entry only when the payment
+     *    carries a `journal_entry_id`). One rule, both branches:
+     *      - original posted NOTHING → post nothing, silently. The reversing
+     *        document and its allocation mirrors still exist. Debiting AR for a
+     *        receivable the original never credited would create a phantom
+     *        receivable with no offsetting history.
+     *      - original DID post but has NO repository → REFUSE. Reversing it
+     *        would otherwise leave real, unreversed GL drift standing. (Not
+     *        constructible through the API today — JE ⟹ repository at every
+     *        payment writer — which is exactly what makes this a safety net.)
+     *
+     * 2. **`ReversalSupport::NoCashLeg` suppresses the MOVEMENT only** (gate N3).
+     *    It does NOT exempt the type from D-17. Because there is no correct
+     *    credit-side reversing shape for a credit application, a `NoCashLeg`
+     *    original that CARRIES a journal entry refuses rather than posting the
+     *    AR shape or orphaning the entry — the same drift case (1) refuses for a
+     *    `DocumentPayment`. One exception-free statement of one rule.
+     *
+     * 3. **`$original->currency` governs** (gate N9). `postRefundGlAndMovement()`
+     *    posts with `$repository->currency` while deriving its scale from the
+     *    payment currency — a latent mismatch this method must not inherit. Here
+     *    a divergent repository currency REFUSES rather than silently posting a
+     *    cross-currency leg at the wrong scale. (The existing refund path is left
+     *    alone; ticketed separately.)
+     *
+     * 4. **`source_id` is the REVERSAL payment id** for the journal entry (D-9,
+     *    so multiple reversing entries can never collide on
+     *    `(source_type, source_id)`), while the MOVEMENT keeps
+     *    `sourceId = original->id` with `idempotencyLeg = "reversal:{id}"` (D-8),
+     *    yielding `refund:{orig}:reversal:{rev}` — distinct from every refund key
+     *    and stable within the transaction. No new `MovementSourceType` case is
+     *    introduced: the enum has no exhaustive match anywhere, but
+     *    `StatementSuggestionService` and `CashMovementsReportService` classify by
+     *    `in_array`/`===` whitelists, so a new case would be SILENTLY dropped from
+     *    bank-statement suggestion.
+     *
+     * Lock order is the caller's: Payment → Document(s) → GL company advisory
+     * (inside the GL post) → Repository (inside the movement port).
+     *
+     * @param  numeric-string  $netAmount  positive net unreversed amount at scale
+     */
+    private function postReversalGlAndMovement(
+        Payment $original,
+        string $reversalPaymentId,
+        string $netAmount,
+        int $scale,
+        ReversalSupport $support,
+        ?string $userId,
+    ): void {
+        // D-4: a zero-net reversal still writes its document, but posts no entry
+        // and moves no cash — there is nothing left to unwind.
+        if (bccomp($netAmount, '0', $scale) <= 0) {
+            return;
+        }
+
+        // D-17 case A — uniform across both support shapes.
+        if ($original->journal_entry_id === null) {
+            return;
+        }
+
+        // The original posted GL, so the reversal owes a reversing entry.
+        if ($support === ReversalSupport::NoCashLeg) {
+            throw new \DomainException(
+                "payment {$original->id} is a credit application carrying journal entry "
+                ."{$original->journal_entry_id}, and there is no correct credit-side reversing shape for it. "
+                .'Refusing rather than posting the accounts-receivable shape or leaving the entry unreversed.'
+            );
+        }
+
+        if ($original->repository_id === null) {
+            throw new \DomainException(
+                "payment {$original->id} posted journal entry {$original->journal_entry_id} but has no "
+                .'repository to reverse the cash leg against; reversing it would leave unreversed GL drift. '
+                .'Refusing.'
+            );
+        }
+
+        /** @var PaymentRepository|null $repository */
+        $repository = PaymentRepository::query()
+            ->where('tenant_id', $original->tenant_id)
+            ->where('company_id', $original->company_id)
+            ->find($original->repository_id);
+
+        if (! $repository instanceof PaymentRepository) {
+            throw new \DomainException(
+                "payment {$original->id} references repository {$original->repository_id}, which does not "
+                .'resolve in this tenant/company scope; refusing to reverse its posted GL blind.'
+            );
+        }
+
+        // Same principle Fix 2 applied to payments and the refund path applies
+        // here: a cash movement with no GL account to post against would freeze
+        // the repository at Wave-F reconcile.
+        if ($repository->gl_account_id === null) {
+            throw new \DomainException(
+                "a reversal cash movement requires a GL-linked repository; repository {$repository->id} "
+                .'has no gl_account_id'
+            );
+        }
+
+        // N9: never post a cross-currency leg at the payment's scale.
+        if ($repository->currency !== $original->currency) {
+            throw new \DomainException(
+                "repository {$repository->id} holds {$repository->currency} but payment {$original->id} is "
+                ."in {$original->currency}; refusing to post a cross-currency reversal leg."
+            );
+        }
+
+        $entry = $this->glService->createPaymentRefundJournalEntry(
+            companyId: $original->company_id,
+            partnerId: $original->partner_id,
+            refundPaymentId: $reversalPaymentId,
+            amount: $netAmount,
+            paymentMethodAccountId: $repository->gl_account_id,
+            date: now(),
+            description: "Reversal of payment {$original->reference}",
+            postedByUserId: $userId,
+            currencyCode: $original->currency,
+            mode: PostingMode::SynchronousInTransaction,
+        );
+
+        $this->movementService->record(new MovementIntent(
+            repositoryId: $repository->id,
+            tenantId: $original->tenant_id,
+            companyId: $original->company_id,
+            direction: MovementDirection::Out,
+            amount: $netAmount,
+            currency: $original->currency,
+            sourceType: MovementSourceType::Refund,
+            sourceId: $original->id,
+            idempotencyLeg: "reversal:{$reversalPaymentId}",
+            journalEntryId: $entry->id,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: $userId,
+            notes: null,
+            allowWhileFrozen: false,
+        ));
+    }
+
+    /**
      * Check if payment can be refunded.
      *
      * Re-verified against the 2026-08-02 adversarial-review remediation
@@ -610,10 +764,44 @@ class PaymentRefundService
     }
 
     /**
-     * Reverse a payment (for errors/corrections).
+     * Reverse a payment (for errors/corrections) by writing a linked REVERSING
+     * DOCUMENT — DPA V4.
      *
-     * This method is idempotent: calling it on an already-reversed payment
-     * will return without error.
+     * Before V4 this method DELETED the payment's whole allocation lineage and
+     * posted no GL at all: a mutation with no justifying document, violating the
+     * document-per-action principle and leaving the audit trail unable to answer
+     * "what was unwound, when, by whom, for how much". V4 replaces the deletion
+     * with a child `Payment` of type `PaymentType::Reversal`, linked by
+     * `original_payment_id`, carrying the NET unreversed amount as a negative
+     * value, plus negative `PaymentAllocation` mirrors of the per-document NET
+     * lineage. Nothing is ever deleted.
+     *
+     * The invariant that replaces the wipe: for every touched document,
+     * `SUM(payment_allocations.amount) == 0`, therefore `balance_due == total`.
+     *
+     * Two mutually exclusive money branches, in this order:
+     *  1. INSTRUMENT — a `Received` instrument is cancelled through the port and
+     *     ITS cancellation entry IS the reversal's GL effect. The reversing
+     *     document merely LINKS it (`journal_entry_id`); it creates no entry of
+     *     its own and moves no cash (the money never arrived). Posting the AR
+     *     shape on top would be review finding C2's double credit.
+     *  2. CASH — `postReversalGlAndMovement()` posts one `Dr AR / Cr cash` entry
+     *     and one movement OUT, subject to D-17's symmetry rule.
+     *
+     * Return value (D-13, three-valued):
+     *  - the reversing document, for a fresh reversal OR an idempotent replay;
+     *  - `null` when the payment is already `Reversed` with NO reversal row —
+     *     reachable via `refundPayment()` (which stamps `Reversed` itself), via
+     *     `InstrumentLifecycleService::performCancellation()`'s POS-revenue arm,
+     *     and via the POS void lane. Already unwound; nothing to reverse. This
+     *     preserves today's silent no-op byte for byte rather than turning a
+     *     legitimate, currently-successful caller path into a 422.
+     *  - `\RuntimeException` for any other status.
+     *
+     * The status branch deliberately runs BEFORE the `payment_type` gate, so an
+     * already-`Reversed` POS payment returns `null` rather than the
+     * `\DomainException` an unreversed one would get: idempotent replay must not
+     * depend on the shape gate.
      *
      * M1 ruling (2026-08-03 gate finding): only a `Completed` payment can be
      * reversed — a `Failed` payment never completed in the first place, so
@@ -630,119 +818,244 @@ class PaymentRefundService
         Payment $payment,
         string $reason,
         ?string $userId = null
-    ): void {
-        // Idempotent: if already reversed, just return
+    ): ?Payment {
+        // D-13: idempotent replay, or an already-unwound payment (null).
         if ($payment->status === PaymentStatus::Reversed) {
-            return;
+            return $this->findExistingReversal($payment);
         }
 
         if ($payment->status !== PaymentStatus::Completed) {
             throw new \RuntimeException('Only completed payments can be reversed');
         }
 
-        DB::transaction(function () use ($payment, $reason, $userId): void {
-            // I7 fix: lock the payment row for the duration of the
-            // reversal. Before this fix, reversePayment() only called
-            // $payment->refresh() (no lock) — unlike refundPayment()/
-            // partialRefund(), which both lockForUpdate() their original
-            // payment row — so two concurrent reversePayment() calls for
-            // the same payment could both pass the status check and both
-            // run the (non-idempotent) allocation-deletion + instrument-
-            // cancel body below.
-            /** @var Payment $original */
-            $original = Payment::query()
-                ->where('tenant_id', $payment->tenant_id)
-                ->where('company_id', $payment->company_id)
-                ->lockForUpdate()
-                ->findOrFail($payment->id);
+        try {
+            return DB::transaction(function () use ($payment, $reason, $userId): ?Payment {
+                // I7 fix: lock the payment row for the duration of the
+                // reversal. Before this fix, reversePayment() only called
+                // $payment->refresh() (no lock) — unlike refundPayment()/
+                // partialRefund(), which both lockForUpdate() their original
+                // payment row — so two concurrent reversePayment() calls for
+                // the same payment could both pass the status check and both
+                // run the (non-idempotent) body below.
+                /** @var Payment $original */
+                $original = Payment::query()
+                    ->where('tenant_id', $payment->tenant_id)
+                    ->where('company_id', $payment->company_id)
+                    ->lockForUpdate()
+                    ->findOrFail($payment->id);
 
-            if ($original->status === PaymentStatus::Reversed) {
-                return;
+                if ($original->status === PaymentStatus::Reversed) {
+                    return $this->findExistingReversal($original);
+                }
+
+                // D-6 gate, immediately after the lock and BEFORE any write.
+                // ONLY the payment_type gate lives here: the instrument-status
+                // gate belongs in resolveInstrumentForReversal() and D-17's
+                // no-repository case belongs in postReversalGlAndMovement(), so
+                // each rule has exactly one home.
+                $support = $original->payment_type->reversalSupport();
+                if ($support === ReversalSupport::Unsupported) {
+                    throw new \DomainException($this->unsupportedReversalMessage($original->payment_type));
+                }
+
+                $scale = $this->scaleResolver->getScale($original->currency);
+
+                // D-3: TWO independent net figures, computed separately. They
+                // legitimately differ when the original was partly unallocated
+                // (e.g. 1000 paid / 700 allocated / 300 sitting as an advance).
+                /** @var numeric-string $originalAmount */
+                $originalAmount = CurrencyScale::bcformat((string) $original->amount, $scale);
+                $alreadyRefunded = $this->alreadyRefundedForOriginal($original, $scale);
+                /** @var numeric-string $netUnreversed */
+                $netUnreversed = bcsub($originalAmount, $alreadyRefunded, $scale);
+                if (bccomp($netUnreversed, '0', $scale) < 0) {
+                    // Defensive floor. assertWithinRefundableBalance() keeps
+                    // `alreadyRefunded <= originalAmount` on every refund writer,
+                    // so this is unreachable through the API — but a negative net
+                    // would flip the sign of the reversal row (bcmul by -1) and
+                    // mint a POSITIVE reversal, which must never happen.
+                    /** @var numeric-string $netUnreversed */
+                    $netUnreversed = '0';
+                }
+
+                // D-3/D-3b: per-document NET of the whole lineage. The reversal
+                // has no in-flight sibling to exclude, hence null.
+                /** @var array<string, numeric-string> $netByDocument */
+                $netByDocument = $this->netLiveAllocationsByDocument($original, $scale, null);
+
+                // The reversing document. Modelled on refundPayment()'s negative
+                // child row, MINUS D-19's three deliberate exclusions:
+                //   instrument_id   — carrying it would recreate the "payment 2
+                //                     references payment 1's instrument" shape the
+                //                     H1 fix hardened against.
+                //   fiscal_event_id — DepositAllocationSummaryService does
+                //                     ->first() on that column; a second row
+                //                     carrying it would break D-10's ruling.
+                //   refund_request_id — reversal idempotency is index-based
+                //                     (D-7), and a NULL keeps this row outside
+                //                     the refund index's partial predicate.
+                $reversal = Payment::create([
+                    'id' => Str::uuid()->toString(),
+                    'tenant_id' => $original->tenant_id,
+                    'company_id' => $original->company_id,
+                    'partner_id' => $original->partner_id,
+                    'payment_method_id' => $original->payment_method_id,
+                    'repository_id' => $original->repository_id,
+                    'location_id' => $original->location_id,
+                    'amount' => CurrencyScale::bcformatStrict(bcmul($netUnreversed, '-1', $scale), $scale),
+                    'currency' => $original->currency,
+                    'payment_date' => now(),
+                    'status' => PaymentStatus::Completed,
+                    'payment_type' => PaymentType::Reversal,
+                    'origin' => $this->originForRefund($original),
+                    'original_payment_id' => $original->id,
+                    'reference' => "Reversal for payment {$original->reference}",
+                    'notes' => "Reversal: {$reason}",
+                    'created_by' => $userId,
+                ]);
+
+                // Negative mirrors. D-3b: EVERY non-zero net is mirrored,
+                // negatives included (a negative net yields a POSITIVE row), so
+                // each touched document's lineage sums to exactly zero by
+                // construction. netLiveAllocationsByDocument() already dropped
+                // the exact zeros.
+                foreach ($netByDocument as $documentId => $net) {
+                    PaymentAllocation::create([
+                        'payment_id' => $reversal->id,
+                        'document_id' => $documentId,
+                        'amount' => CurrencyScale::bcformatStrict(bcmul($net, '-1', $scale), $scale),
+                    ]);
+                }
+
+                // I2/I9 fix: recompute the affected documents' balance_due (and
+                // revert Paid -> Posted, mirroring
+                // OutboundInstrumentService::cancel()'s pattern exactly) BEFORE
+                // resolving the instrument below. Lock order: Document row locks
+                // here, THEN the instrument-cancellation / reversal GL post
+                // (which takes the company advisory lock) — the SAME order
+                // partialRefund()/unwindAllocationsProRata() already use, so the
+                // paths cannot deadlock over overlapping documents/company.
+                $this->recomputeDocumentBalances(
+                    array_keys($netByDocument),
+                    $original->tenant_id,
+                    $original->company_id,
+                    $scale,
+                );
+
+                // MTP-TRE-23 fix — reversePayment()-ONLY per the revised
+                // orchestrator ruling: resolve the instrument-settlement
+                // precondition atomically instead of asserting and throwing.
+                //
+                // I6 authorization ruling (review finding, ticket-approved):
+                // `payments.reverse` implicitly authorizes cancelling the
+                // payment's OWN linked instrument when it hasn't cleared — that
+                // is the entire point of the atomic reversal (it is what
+                // resolves the MTP-TRE-23 deadlock). It does NOT require the
+                // actor to separately hold `instruments.cancel`; that
+                // permission continues to gate the STANDALONE
+                // `POST /payment-instruments/{id}/cancel` endpoint only, which
+                // is unaffected and still fails closed for a non-reversed
+                // payment (see InstrumentLifecycleService::cancel()).
+                $cancellationJournalEntryId = $this->resolveInstrumentForReversal(
+                    $original,
+                    $userId,
+                    $reason,
+                    $netUnreversed,
+                    $scale,
+                );
+
+                if ($cancellationJournalEntryId !== null) {
+                    // INSTRUMENT BRANCH. The cancellation entry IS the reversal's
+                    // GL effect — exactly ONE AR restoration. Link it; create no
+                    // second entry and move no cash (review C2 / C1).
+                    $reversal->update(['journal_entry_id' => $cancellationJournalEntryId]);
+                } else {
+                    $this->postReversalGlAndMovement(
+                        $original,
+                        $reversal->id,
+                        $netUnreversed,
+                        $scale,
+                        $support,
+                        $userId,
+                    );
+                }
+
+                // Update payment status
+                $original->update([
+                    'status' => PaymentStatus::Reversed,
+                    'notes' => ($original->notes ?? '')."\n\nReversed: {$reason}",
+                ]);
+
+                DB::afterCommit(function () use ($original, $reversal, $netUnreversed): void {
+                    event(new PaymentReversed(
+                        paymentId: $original->id,
+                        tenantId: $original->tenant_id,
+                        companyId: $original->company_id,
+                        amount: $original->amount,
+                        currency: $original->currency,
+                        reversedAt: now()->toIso8601String(),
+                        reversalPaymentId: $reversal->id,
+                        reversedAmount: $netUnreversed,
+                    ));
+                });
+
+                return $reversal;
+            });
+        } catch (UniqueConstraintViolationException $e) {
+            // A concurrent reversal won the race and committed first;
+            // `payments_reversal_idempotency_uniq` rejected our insert. Read back
+            // the committed row (our transaction already rolled back) and return
+            // it — the same pattern refundPayment() uses for its request-id index.
+            $existing = $this->findExistingReversal($payment);
+            if ($existing instanceof Payment) {
+                return $existing;
             }
 
-            // C6 fix: neutralise EVERY PaymentAllocation row in this
-            // payment's full refund lineage — the ORIGINAL payment's own
-            // rows AND any negative rows written by prior partialRefund()
-            // calls against it. unwindAllocationsProRata() writes those
-            // negative rows against the REFUND payment's id, not the
-            // original's; reversePayment() used to only delete
-            // `payment_id = original.id`, leaving the refund children's
-            // rows behind. A surviving negative row plus a full allocation
-            // wipe of the original would let the Postgres balance_due-cache
-            // trigger compute MORE than the invoice total (review C6).
-            // Capture the affected document ids BEFORE deleting — they
-            // can't be read back off the rows afterward.
-            $refundPaymentIds = Payment::where('company_id', $original->company_id)
-                ->where('original_payment_id', $original->id)
-                ->where('payment_type', PaymentType::Refund->value)
-                ->pluck('id');
-            $lineagePaymentIds = $refundPaymentIds->push($original->id);
+            throw $e;
+        }
+    }
 
-            $affectedDocumentIds = PaymentAllocation::whereIn('payment_id', $lineagePaymentIds)
-                ->pluck('document_id')
-                ->unique()
-                ->values();
+    /**
+     * The single reversing document for an original payment, if one exists.
+     *
+     * `payments_reversal_idempotency_uniq` guarantees at most one row matches, so
+     * `first()` is exact rather than arbitrary. Returns `null` for D-13 case 2 —
+     * a payment stamped `Reversed` by some other lane (a full refund, the POS
+     * void lane, `performCancellation()`'s POS-revenue arm) that never had a
+     * reversing document.
+     */
+    private function findExistingReversal(Payment $original): ?Payment
+    {
+        return Payment::query()
+            ->where('company_id', $original->company_id)
+            ->where('original_payment_id', $original->id)
+            ->where('payment_type', PaymentType::Reversal->value)
+            ->first();
+    }
 
-            PaymentAllocation::whereIn('payment_id', $lineagePaymentIds)->delete();
-
-            // I2/I9 fix: recompute the affected documents' balance_due (and
-            // revert Paid -> Posted, mirroring
-            // OutboundInstrumentService::cancel()'s pattern exactly) BEFORE
-            // cancelling the instrument below. Lock order: Document row
-            // locks here, THEN the instrument-cancellation GL post (which
-            // takes the company advisory lock) — the SAME order
-            // partialRefund()/unwindAllocationsProRata() already use
-            // (Document lock -> GL company-advisory lock via
-            // postRefundGlAndMovement()), so the two paths cannot deadlock
-            // against each other over overlapping documents/company.
-            $this->recomputeDocumentBalances(
-                $affectedDocumentIds,
-                $original->tenant_id,
-                $original->company_id,
-                $this->scaleResolver->getScale($original->currency),
-            );
-
-            // MTP-TRE-23 fix — reversePayment()-ONLY per the revised
-            // orchestrator ruling: resolve the instrument-settlement
-            // precondition atomically instead of asserting and throwing.
-            // No cash movement and no bank-leg GL entry are posted here —
-            // reversePayment() never calls postRefundGlAndMovement(); the
-            // ONLY GL effect this path can produce is the instrument's own
-            // cancellation entry (Dr 411 / Cr portfolio) inside
-            // resolveInstrumentForReversal() below — exactly ONE AR
-            // restoration, never two (review C2's double-debit does not
-            // apply to this path). See resolveInstrumentForReversal()'s
-            // docblock.
-            //
-            // I6 authorization ruling (review finding, ticket-approved):
-            // `payments.reverse` implicitly authorizes cancelling the
-            // payment's OWN linked instrument when it hasn't cleared — that
-            // is the entire point of the atomic reversal (it is what
-            // resolves the MTP-TRE-23 deadlock). It does NOT require the
-            // actor to separately hold `instruments.cancel`; that
-            // permission continues to gate the STANDALONE
-            // `POST /payment-instruments/{id}/cancel` endpoint only, which
-            // is unaffected and still fails closed for a non-reversed
-            // payment (see InstrumentLifecycleService::cancel()).
-            $this->resolveInstrumentForReversal($original, $userId, $reason);
-
-            // Update payment status
-            $original->update([
-                'status' => PaymentStatus::Reversed,
-                'notes' => ($original->notes ?? '')."\n\nReversed: {$reason}",
-            ]);
-
-            DB::afterCommit(function () use ($original): void {
-                event(new PaymentReversed(
-                    paymentId: $original->id,
-                    tenantId: $original->tenant_id,
-                    companyId: $original->company_id,
-                    amount: $original->amount,
-                    currency: $original->currency,
-                    reversedAt: now()->toIso8601String(),
-                ));
-            });
-        });
+    /**
+     * D-6 refusal text. Each message names the lane that DOES own the operation —
+     * or, for customer advances, honestly states that no lane owns it yet.
+     *
+     * The `Advance` message must NEVER point at the refund lane: `refundPayment()`
+     * posts the same AR-shaped entry (`Dr CustomerReceivable`) against an advance
+     * that credited `CustomerAdvance`, so redirecting there would send the caller
+     * to an equally wrong path. Ticket `DPA-V4-ADV-1` owns the missing shape.
+     */
+    private function unsupportedReversalMessage(PaymentType $type): string
+    {
+        return match ($type) {
+            PaymentType::Advance => 'customer-advance reversal is not implemented (ticket DPA-V4-ADV-1): '
+                .'the original payment credits the customer-advance account, and no reversing entry '
+                .'exists for that shape yet. There is currently no supported path for this correction.',
+            PaymentType::SupplierPayment => 'a supplier payment cannot be reversed here — both the direction '
+                .'and the accounts differ; use the supplier refund lane (VendorRefundService).',
+            PaymentType::POS => 'a POS payment cannot be reversed here — POS posts direct to revenue with no '
+                .'accounts-receivable leg; use the POS void/return lane.',
+            PaymentType::Refund, PaymentType::Reversal => 'a refund or reversal row cannot itself be reversed; '
+                .'reverse or refund the original payment instead.',
+            default => "payment type {$type->value} has no supported reversal shape.",
+        };
     }
 
     private function assertInstrumentSettledForCashUndo(Payment $payment): void
@@ -814,30 +1127,148 @@ class PaymentRefundService
      * (`payment_instruments.payment_id === $payment->id`) before touching
      * anything — reversing a payment that merely REFERENCES someone else's
      * instrument must refuse, not cancel that other payment's instrument.
+     *
+     * DPA V4 (D-5): returns the id of the cancellation journal entry the
+     * instrument lane posted, or `null` when the instrument branch does not govern
+     * (no instrument at all) or posted nothing. A non-`null` return means "the
+     * reversal's GL effect is already recorded — link it, create nothing, move no
+     * cash"; `null` sends the caller to the cash branch, which applies D-17.
+     *
+     * @param  numeric-string  $netUnreversed  the reversing document's amount, for
+     *                                         the D-5b equality assertion
      */
-    private function resolveInstrumentForReversal(Payment $payment, ?string $userId, string $reason): void
-    {
+    private function resolveInstrumentForReversal(
+        Payment $payment,
+        ?string $userId,
+        string $reason,
+        string $netUnreversed,
+        int $scale,
+    ): ?string {
         $instrument = $payment->instrument()->lockForUpdate()->first();
         if ($instrument === null) {
-            return;
+            // D-5 row 1: no instrument at all. The CASH branch governs, subject
+            // to D-6's shape gate and D-17's symmetry rule. Preserved verbatim
+            // from the pre-V4 code — the exhaustive match below deliberately does
+            // NOT swallow this case.
+            return null;
         }
 
-        if ($instrument->status === InstrumentStatus::Received) {
-            $this->instrumentReversalCanceller->cancelForPaymentReversal(
-                $instrument->id,
-                $payment->id,
-                $payment->tenant_id,
-                $payment->company_id,
+        // D-5 / gate N1: an EXHAUSTIVE match with NO `default` arm. An allowlist
+        // (`in_array([Cleared, Cancelled])`) is explicitly rejected: `Clearing`,
+        // `InTransit`, `Expired` and `Collected` would fall through into the cash
+        // branch, and `Clearing` is legacy-reachable (`canClear()`/`canBounce()`
+        // both accept it) with cash that has NOT arrived — the C1 phantom
+        // cash-out, narrower. Every one of the nine `InstrumentStatus` cases is
+        // named, so a tenth case is a compile error rather than a silent
+        // fall-through into a money-moving branch.
+        return match ($instrument->status) {
+            InstrumentStatus::Received => $this->cancelReceivedInstrumentForReversal(
+                $payment,
+                $instrument,
                 $userId,
-                "Auto-cancelled while reversing payment {$payment->reference}: {$reason}",
+                $reason,
+                $netUnreversed,
+                $scale,
+            ),
+
+            // Unchanged, deliberately: there is no domain-safe "cancel a
+            // deposited/bounced instrument" lifecycle transition
+            // (`InstrumentLifecycleService::cancel()` only ever accepts
+            // `Received`), so these keep failing closed with the same message and
+            // the same exception class they always had.
+            InstrumentStatus::Deposited,
+            InstrumentStatus::Bounced => throw new \RuntimeException(
+                'Settle the payment instrument first (bounce or cancel) before using the cash refund/reverse path.'
+            ),
+
+            // C1 (gate Critical-1) + N1. Pre-V4 all six of these fell THROUGH the
+            // if-chain into the cash branch. For `Cleared` that is wrong three
+            // ways at once: clearing records its cash IN against the REMITTANCE's
+            // bank repository (not `payments.repository_id`, which for a deferred
+            // tender is the CUSTODY repository and is explicitly allowed a NULL
+            // `gl_account_id`), for `instrument->amount - fee - feeVat` rather
+            // than the payment nominal, and it never touches AR at all (AR was
+            // credited at payment time against the PORTFOLIO account). So the cash
+            // branch would either hard-fail on the missing `gl_account_id` or move
+            // the nominal out of a till that never held the money, crediting the
+            // wrong account. The other five are reserved-dormant statuses where
+            // the cash has likewise not arrived.
+            //
+            // Refusing is NOT a regression: today a `Cleared` reversal already
+            // restores AR with zero GL, and "silently zero" beats "silently
+            // wrong". A correct unwind needs a bank-repository-aware reversal plus
+            // a clearing fee/VAT ruling — out of scope, owner question OQ-A.
+            InstrumentStatus::Cleared,
+            InstrumentStatus::Cancelled,
+            InstrumentStatus::Clearing,
+            InstrumentStatus::InTransit,
+            InstrumentStatus::Expired,
+            InstrumentStatus::Collected => throw new \DomainException(
+                "this payment's instrument is {$instrument->status->value}: reversing it needs the instrument "
+                .'lane (a bank-repository-aware unwind), which this reversal path does not implement. '
+                .'Refusing rather than moving cash out of a repository that never held it.'
+            ),
+        };
+    }
+
+    /**
+     * D-5 `Received` arm: cancel the instrument atomically through the port and
+     * return the cancellation journal-entry id it posted (or `null` when the
+     * original payment carried no entry, so none was posted — D-17).
+     *
+     * D-5b (gate Important-9 + N10): the linked cancellation entry is sized on the
+     * INSTRUMENT NOMINAL (`createInstrumentCancellationEntry(amount:
+     * $instrument->amount)`), while the reversing document is sized on the NET
+     * unreversed amount. They coincide by construction today — instruments are
+     * created at the payment amount, and `assertInstrumentSettledForCashUndo()`
+     * blocks every partial refund while an instrument is `Received`, so no refund
+     * can precede this — but NOTHING enforced it. Assert it and fail closed: a
+     * divergence would mean the document and the GL entry it links disagree about
+     * how much was unwound.
+     *
+     * The comparison is `bccomp(..., $scale)`, never `!==` on the raw strings: the
+     * two values arrive through different decimal casts and `'40.00'` vs
+     * `'40.000'` would fire spuriously.
+     *
+     * @param  numeric-string  $netUnreversed
+     */
+    private function cancelReceivedInstrumentForReversal(
+        Payment $payment,
+        PaymentInstrument $instrument,
+        ?string $userId,
+        string $reason,
+        string $netUnreversed,
+        int $scale,
+    ): ?string {
+        /** @var numeric-string $instrumentAmount */
+        $instrumentAmount = CurrencyScale::bcformat((string) $instrument->amount, $scale);
+
+        // H1 ordering precedent (InstrumentLifecycleService: "identity BEFORE
+        // status — identity has to hold before status is even meaningful"): the
+        // same holds for the amount belt. `payments.instrument_id` is a separate,
+        // unvalidated FK that a DIFFERENT payment can point at, and comparing this
+        // reversal's net against a FOREIGN instrument's nominal is meaningless —
+        // it would also mask the exploit refusal behind an accounting-mismatch
+        // message. D-5b is therefore evaluated only for an instrument actually
+        // linked back to this payment; the port refuses every other case on
+        // identity.
+        if ($instrument->payment_id === $payment->id
+            && bccomp($instrumentAmount, $netUnreversed, $scale) !== 0) {
+            throw new \DomainException(
+                "instrument {$instrument->id} is for {$instrumentAmount} but the reversal unwinds "
+                ."{$netUnreversed}: the cancellation entry and the reversing document would disagree "
+                .'about how much was unwound. Refusing.'
             );
-
-            return;
         }
 
-        if (in_array($instrument->status, [InstrumentStatus::Deposited, InstrumentStatus::Bounced], true)) {
-            throw new \RuntimeException('Settle the payment instrument first (bounce or cancel) before using the cash refund/reverse path.');
-        }
+        return $this->instrumentReversalCanceller->cancelForPaymentReversal(
+            $instrument->id,
+            $payment->id,
+            $payment->tenant_id,
+            $payment->company_id,
+            $userId,
+            "Auto-cancelled while reversing payment {$payment->reference}: {$reason}",
+        );
     }
 
     /**

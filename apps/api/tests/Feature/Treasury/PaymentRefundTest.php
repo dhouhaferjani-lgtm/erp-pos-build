@@ -19,6 +19,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
+use App\Modules\Treasury\Domain\Enums\PaymentType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
@@ -39,7 +40,8 @@ use Tests\TestCase;
  * - Cannot refund more than original amount
  * - Cannot refund already reversed payment
  * - Get refund history for a payment
- * - Reverse payment deletes allocations
+ * - Reverse payment writes a reversing document and nets allocations to zero
+ *   (DPA V4 — it no longer deletes them)
  */
 class PaymentRefundTest extends TestCase
 {
@@ -289,19 +291,28 @@ class PaymentRefundTest extends TestCase
     }
 
     /**
-     * Review finding C6 (adversarial-review remediation, 2026-08-02):
-     * reversePayment() used to delete only the ORIGINAL payment's own
-     * PaymentAllocation rows. unwindAllocationsProRata() (MTP-TRE-10 fix)
-     * writes its negative rows against the REFUND payment's id, not the
-     * original's — so those rows survived a subsequent reversePayment()
-     * call. On Postgres, the balance_due-cache trigger would then compute
-     * total - SUM(allocations), and a surviving -400.00 row plus a wiped
-     * original allocation set computes balance_due ABOVE the invoice total
-     * (1000.00 - (-400.00) = 1400.00). reversePayment() must neutralise
-     * EVERY allocation row in the payment's refund lineage — the original's
-     * AND every refund child's.
+     * Review finding C6, as a NET-MIRROR invariant (DPA V4 / T11).
+     *
+     * The C6 defect: reversePayment() used to delete only the ORIGINAL payment's
+     * own PaymentAllocation rows, while unwindAllocationsProRata() writes its
+     * negative rows against the REFUND payment's id — so a surviving -400.00 row
+     * plus a wiped original allocation set made the Postgres balance_due-cache
+     * trigger compute `1000.00 - (-400.00) = 1400.00`, ABOVE the invoice total.
+     * The 2026-08-02 remediation fixed it by widening the DELETION to the whole
+     * lineage.
+     *
+     * V4 removes the deletion entirely: the reversal writes a reversing DOCUMENT
+     * whose negative mirror is sized on the NET of the lineage (600, not the
+     * gross 1000). Every row in the lineage SURVIVES — the original's +1000, the
+     * refund child's -400, and the reversal's -600 — and they sum to exactly 0.
+     *
+     * The C6 invariant is therefore STRENGTHENED rather than removed: the
+     * `balance_due == 1000.000` assertion is the same canary it always was, and a
+     * `SUM(payment_allocations) == 0` assertion is added beside it because
+     * `balance_due` alone cannot detect rounding dust on SQLite (Document.php
+     * evaluates the fallback arithmetic in floating point).
      */
-    public function test_reverse_after_partial_refund_neutralises_the_whole_allocation_lineage(): void
+    public function test_reverse_after_partial_refund_mirrors_the_net_lineage_and_keeps_every_row(): void
     {
         $invoice = $this->makeInvoice('1000.00', '0.00');
         $invoice->update(['status' => DocumentStatus::Paid]);
@@ -321,17 +332,47 @@ class PaymentRefundTest extends TestCase
         // reverse the ORIGINAL payment — partialRefund() never flips its
         // status, so it is still Completed and reversePayment() accepts it.
         $payment->refresh();
-        $this->refundService->reversePayment($payment, 'Reverse after partial refund', $this->user->id);
+        $reversal = $this->refundService->reversePayment($payment, 'Reverse after partial refund', $this->user->id);
 
+        $this->assertInstanceOf(Payment::class, $reversal);
         $this->assertSame(
-            0,
+            '-600.000',
+            $reversal->amount,
+            'the reversal is sized on the NET of the lineage (1000 - 400), never the gross'
+        );
+        $this->assertSame(
+            1,
             PaymentAllocation::where('payment_id', $payment->id)->count(),
-            'the original payment\'s own allocation rows are deleted'
+            'the original payment KEEPS its own allocation row — nothing is deleted'
+        );
+        $this->assertSame(
+            1,
+            PaymentAllocation::where('payment_id', $refund->id)->count(),
+            'the refund child KEEPS its negative allocation row'
+        );
+        $this->assertSame(
+            '-600.000',
+            PaymentAllocation::where('payment_id', $reversal->id)->sole()->amount,
+            'the reversal mirrors the NET, so the three rows sum to zero'
+        );
+        $this->assertSame(
+            3,
+            PaymentAllocation::where('document_id', $invoice->id)->count(),
+            'three rows survive: +1000 original, -400 refund, -600 reversal'
         );
         $this->assertSame(
             0,
-            PaymentAllocation::where('payment_id', $refund->id)->count(),
-            'C6: the refund child\'s negative allocation rows are ALSO deleted'
+            bccomp(
+                PaymentAllocation::where('document_id', $invoice->id)
+                    ->get('amount')
+                    ->reduce(
+                        static fn (string $carry, PaymentAllocation $row): string => bcadd($carry, (string) $row->amount, 3),
+                        '0'
+                    ),
+                '0',
+                3
+            ),
+            'the invariant that replaces the wipe: SUM(payment_allocations) is exactly 0'
         );
 
         $invoice->refresh();
@@ -546,7 +587,15 @@ class PaymentRefundTest extends TestCase
         $this->assertTrue($history['is_fully_refunded']);
     }
 
-    public function test_reverse_payment_deletes_allocations(): void
+    /**
+     * DPA V4 / T11 — was `test_reverse_payment_deletes_allocations()`.
+     *
+     * The deletion this test used to pin is exactly the document-per-action
+     * violation V4 removes: a stock/GL/cash mutation with no justifying document.
+     * The assertion it pinned is replaced, not dropped — the original row must
+     * SURVIVE, and the reversal's negative mirror must net the document to zero.
+     */
+    public function test_reverse_payment_writes_a_reversing_document_and_nets_allocations_to_zero(): void
     {
         $payment = $this->createPaymentWithAllocation('500.00');
 
@@ -554,15 +603,42 @@ class PaymentRefundTest extends TestCase
         $this->assertCount(1, $payment->allocations);
 
         // Reverse the payment
-        $this->refundService->reversePayment($payment, 'Data entry error', $this->user->id);
+        $reversal = $this->refundService->reversePayment($payment, 'Data entry error', $this->user->id);
 
         // Payment should be reversed
         $payment->refresh();
         $this->assertEquals(PaymentStatus::Reversed, $payment->status);
         $this->assertStringContainsString('Reversed: Data entry error', $payment->notes);
 
-        // Allocations should be deleted
-        $this->assertCount(0, PaymentAllocation::where('payment_id', $payment->id)->get());
+        // The original's allocation SURVIVES; the reversing document carries the
+        // offsetting negative mirror.
+        $this->assertInstanceOf(Payment::class, $reversal);
+        $this->assertCount(1, PaymentAllocation::where('payment_id', $payment->id)->get());
+        $this->assertSame(
+            '-500.000',
+            PaymentAllocation::where('payment_id', $reversal->id)->sole()->amount
+        );
+        $this->assertSame(
+            0,
+            bccomp(
+                PaymentAllocation::where('document_id', $this->invoice->id)
+                    ->get('amount')
+                    ->reduce(
+                        static fn (string $carry, PaymentAllocation $row): string => bcadd($carry, (string) $row->amount, 3),
+                        '0'
+                    ),
+                '0',
+                3
+            ),
+            'SUM(payment_allocations) over the document is exactly 0'
+        );
+
+        $this->invoice->refresh();
+        $this->assertEquals(
+            $this->invoice->total,
+            $this->invoice->balance_due,
+            'balance_due equals the document total once the lineage nets to zero'
+        );
     }
 
     public function test_reverse_payment_is_idempotent(): void
@@ -570,13 +646,25 @@ class PaymentRefundTest extends TestCase
         $payment = $this->createPaymentWithAllocation('500.00');
 
         // First reversal succeeds
-        $this->refundService->reversePayment($payment, 'First reversal', $this->user->id);
+        $first = $this->refundService->reversePayment($payment, 'First reversal', $this->user->id);
 
         $payment->refresh();
         $this->assertEquals(PaymentStatus::Reversed, $payment->status);
 
-        // Second attempt should be idempotent - just return without error
-        $this->refundService->reversePayment($payment, 'Second attempt', $this->user->id);
+        // Second attempt is idempotent — it returns the SAME reversing document
+        // and writes no second one (DPA V4 / D-7: at most one reversal per
+        // original payment, enforced by a partial unique index as well).
+        $second = $this->refundService->reversePayment($payment, 'Second attempt', $this->user->id);
+
+        $this->assertInstanceOf(Payment::class, $first);
+        $this->assertInstanceOf(Payment::class, $second);
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame(
+            1,
+            Payment::where('original_payment_id', $payment->id)
+                ->where('payment_type', PaymentType::Reversal->value)
+                ->count()
+        );
 
         // Payment should still be reversed (no change)
         $payment->refresh();
