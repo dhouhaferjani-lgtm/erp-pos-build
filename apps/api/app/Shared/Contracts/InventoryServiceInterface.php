@@ -9,21 +9,15 @@ namespace App\Shared\Contracts;
  *
  * Module boundaries are sacred: Cross-module communication ONLY via interfaces.
  */
+/**
+ * Read-only: `upsertStockLevel` was removed by owner ruling D4 (document-per-action
+ * remediation). It let any module set an absolute stock quantity with no stock
+ * movement and no justifying document, making the change invisible to every
+ * ledger-based detector. Do not reinstate a bare stock writer here — stock
+ * changes belong to a document-backed path.
+ */
 interface InventoryServiceInterface
 {
-    /**
-     * Create or update a stock level.
-     *
-     * @return string The stock level ID
-     */
-    public function upsertStockLevel(
-        string $tenantId,
-        string $companyId,
-        string $productId,
-        string $locationId,
-        int $quantity
-    ): string;
-
     /**
      * Return true iff a non-reversed Opening movement exists for the product
      * in the given company (tenant isolation via the per-tenant DB).

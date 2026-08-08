@@ -144,6 +144,14 @@ class MigrationWizardController extends Controller
             return response()->json(['error' => 'Invalid import type'], 400);
         }
 
+        // Retired types remain in the enum for historical reads only — handing
+        // out a template would invite an import the API now refuses (ruling D4).
+        if ($importType->isDeprecated()) {
+            return response()->json([
+                'error' => 'This import type is no longer supported.',
+            ], 422);
+        }
+
         $template = $this->wizardService->generateTemplate($importType);
 
         return response($template, 200, [

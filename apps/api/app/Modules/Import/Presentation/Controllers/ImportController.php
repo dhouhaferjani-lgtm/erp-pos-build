@@ -23,6 +23,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\Enum;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -107,6 +108,15 @@ class ImportController extends Controller
         $file = $request->file('file');
         $type = ImportType::from($request->input('type'));
 
+        // Deprecated types stay in the enum so historical `import_jobs` rows
+        // remain readable, but they can never start a NEW import (ruling D4).
+        // Refused as a validation error on `type` — never a 500, and never the
+        // silent success the old movement-less writer used to give.
+        $deprecation = $type->deprecationMessage();
+        if ($deprecation !== null) {
+            throw ValidationException::withMessages(['type' => [$deprecation]]);
+        }
+
         $columnMapping = $request->has('column_mapping')
             ? json_decode($request->input('column_mapping'), true)
             : null;
@@ -124,21 +134,6 @@ class ImportController extends Controller
         // surface's own imports.manage grant must not be a way around it.
         if ($type === ImportType::OpeningBalances && ! $user->can('accounts.manage')) {
             return $this->openingBalancesForbidden();
-        }
-
-        // CRITICAL: Prevent stock_levels import in ongoing imports (compliance issue)
-        // Stock can only be imported during opening balances setup
-        if ($type === ImportType::StockLevels) {
-            return response()->json([
-                'error' => [
-                    'code' => 'STOCK_IMPORT_NOT_ALLOWED',
-                    'message' => 'Stock levels cannot be imported after initial setup. Stock increases must be justified through Purchase Orders and Goods Receipt Notes.',
-                    'details' => [
-                        'allowed_for' => 'Opening balances setup only',
-                        'alternative' => 'Use Purchase Orders → Goods Receipt Notes to increase stock',
-                    ],
-                ],
-            ], 403);
         }
 
         // Store the file
@@ -470,6 +465,19 @@ class ImportController extends Controller
 
         if (! $job) {
             return response()->json(['error' => 'Import job not found'], 404);
+        }
+
+        // A job of a retired type can only be a leftover created before the
+        // deprecation. Refuse it here rather than letting it reach
+        // ImportService::importRow(), whose writer no longer exists.
+        $deprecation = $job->type->deprecationMessage();
+        if ($deprecation !== null) {
+            return response()->json([
+                'error' => [
+                    'code' => 'IMPORT_TYPE_RETIRED',
+                    'message' => $deprecation,
+                ],
+            ], 422);
         }
 
         // Posting is the act that consumes the one-shot opening slot — gate it here

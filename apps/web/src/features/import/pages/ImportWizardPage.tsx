@@ -23,7 +23,8 @@ import { toast } from 'sonner'
 import { importApi } from '../api/importApi'
 import { authenticatedDownload } from '@/lib/api'
 import { useImportProgressStore } from '../../../stores/importProgressStore'
-import type { ImportJobOptions, ImportType, LocationNodeType } from '../types'
+import { isDeprecatedImportType } from '../types'
+import type { ImportJobOptions, ImportType, LiveImportType, LocationNodeType } from '../types'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import { Select } from '@/components/atoms/Select/Select'
@@ -116,8 +117,13 @@ function defaultPlacementNodeType(depth: number): LocationNodeType {
   return DEFAULT_PLACEMENT_DEPTH_TYPES[depth] ?? 'section'
 }
 
-// Target columns per import type
-const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; description?: string }[]> = {
+// Target columns per import type.
+// Keyed by LiveImportType, NOT ImportType: retired types are excluded from the
+// key set (they can no longer be imported), while every type that IS live must
+// still have an entry or this fails to compile. Do not widen this to a Partial —
+// a live type with no entry would give `isMappingValid` an empty required-column
+// list, i.e. "valid" with zero mappings.
+const TARGET_COLUMNS: Record<LiveImportType, { name: string; required: boolean; description?: string }[]> = {
   parties: [
     { name: 'name', required: true },
     { name: 'type', required: true },
@@ -164,12 +170,6 @@ const TARGET_COLUMNS: Record<ImportType, { name: string; required: boolean; desc
     { name: 'tax_rate', required: false, description: 'Tax rate percentage' },
     { name: 'unit', required: false, description: 'Unit of measure' },
     { name: 'is_active', required: false, description: 'true/false, yes/no, 1/0' },
-  ],
-  stock_levels: [
-    { name: 'product_sku', required: true, description: 'Product SKU' },
-    { name: 'location_code', required: true, description: 'Location code' },
-    { name: 'quantity', required: true },
-    { name: 'notes', required: false },
   ],
   opening_balances: [
     { name: 'account_code', required: true, description: 'GL account code' },
@@ -570,8 +570,11 @@ export function ImportWizardPage() {
 
   // Check if mapping is valid
   const isMappingValid = useMemo(() => {
-    const targetCols = TARGET_COLUMNS[importType]
-    const requiredCols = targetCols.filter((c) => c.required).map((c) => c.name)
+    // A retired type can never be mapped — and must not fall through to
+    // `every()` over an empty required list, which would report "valid".
+    if (isDeprecatedImportType(importType)) return false
+
+    const requiredCols = TARGET_COLUMNS[importType].flatMap((c) => (c.required ? [c.name] : []))
     const mappedTargets = new Set(Object.values(columnMapping))
     return requiredCols.every((col) => mappedTargets.has(col))
   }, [importType, columnMapping])
@@ -665,7 +668,7 @@ export function ImportWizardPage() {
 
             <ColumnMapper
               sourceColumns={sourceColumns}
-              targetColumns={TARGET_COLUMNS[importType]}
+              targetColumns={isDeprecatedImportType(importType) ? [] : TARGET_COLUMNS[importType]}
               suggestions={suggestions}
               mapping={columnMapping}
               onMappingChange={setColumnMapping}
@@ -1100,6 +1103,40 @@ export function ImportWizardPage() {
       default:
         return null
     }
+  }
+
+  // Retired import types (owner ruling D4) are unreachable from the dashboard,
+  // but a bookmarked URL still lands here. Say why and point at the replacement
+  // rather than showing an upload form the API would refuse.
+  // Placed after every hook so the hook order stays stable.
+  if (isDeprecatedImportType(importType)) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center gap-4">
+          <Link
+            to="/settings/import"
+            className={`inline-flex items-center gap-2 text-sm ${colorTokens.text.muted} ${colorTokens.intent.neutral.textHoverStrongest}`}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t('common:actions.back')}
+          </Link>
+          <PageHeaderTitle className={`text-2xl font-bold ${colorTokens.text.primary}`}>
+            {t('wizard.retired.title')}
+          </PageHeaderTitle>
+        </div>
+
+        <div className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6`}>
+          <p className={colorTokens.text.secondary}>{t('wizard.retired.description')}</p>
+          <Link
+            to="/settings/import/products"
+            className={`mt-4 inline-flex items-center gap-1.5 rounded-lg ${colorTokens.intent.primary.bgStrong} px-3 py-2 text-sm font-medium ${colorTokens.text.inverse} ${colorTokens.intent.primary.bgStrongHover}`}
+          >
+            {t('wizard.retired.goToProducts')}
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (

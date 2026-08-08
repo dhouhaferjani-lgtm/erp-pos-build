@@ -60,8 +60,7 @@
       "description": "Importez votre catalogue de produits"
     },
     "stock_levels": {
-      "title": "Niveaux de stock",
-      "description": "Importez les quantités de stock d'ouverture"
+      "title": "Niveaux de stock"
     },
     "opening_balances": {
       "title": "Soldes d'ouverture",
@@ -163,7 +162,12 @@
     "proceedWithErrors": "Certaines lignes ont des erreurs de validation et seront ignorées. Voulez-vous continuer avec les lignes valides uniquement ?",
     "confirmPartialImport": "Import avec erreurs",
     "partialImportDescription": "{{valid}} lignes sont valides et seront importées. {{failed}} lignes ont des erreurs et seront ignorées. Vous pouvez télécharger les lignes échouées après l'import.",
-    "proceedWithValid": "Importer les lignes valides"
+    "proceedWithValid": "Importer les lignes valides",
+    "retired": {
+      "title": "Cet import n'est plus disponible",
+      "description": "L'import des niveaux de stock a été retiré : il fixait les quantités directement, sans mouvement de stock ni document justificatif. Importez votre stock d'ouverture avec l'import Produits — il accepte une quantité, un prix d'achat et un emplacement, et enregistre un véritable mouvement de stock d'ouverture.",
+      "goToProducts": "Aller à l'import Produits"
+    }
   },
   "options": {
     "placementTitle": "Planifier les emplacements de stockage",

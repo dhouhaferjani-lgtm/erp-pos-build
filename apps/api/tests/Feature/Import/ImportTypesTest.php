@@ -12,7 +12,6 @@ use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -313,101 +312,11 @@ class ImportTypesTest extends TestCase
     }
 
     // === Stock Level Import Tests ===
-
-    public function test_can_import_stock_levels(): void
-    {
-        // Create prerequisite data
-        $product = Product::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'name' => 'Test Product',
-            'sku' => 'TEST-001',
-            'type' => ProductType::Part,
-        ]);
-
-        $location = Location::create([
-            'company_id' => $this->company->id,
-            'name' => 'Main Warehouse',
-            'code' => 'WH-MAIN',
-            'type' => 'warehouse',
-            'is_default' => true,
-            'is_active' => true,
-        ]);
-
-        /** @var ImportService $importService */
-        $importService = app(ImportService::class);
-
-        $job = $importService->createJob(
-            tenantId: $this->tenant->id,
-            userId: $this->user->id,
-            type: ImportType::StockLevels,
-            filename: 'stock.csv',
-            filePath: 'imports/stock.csv',
-            totalRows: 1
-        );
-
-        $importService->addRow($job, 1, [
-            'product_sku' => 'TEST-001',
-            'location_code' => 'WH-MAIN',
-            'quantity' => '100',
-        ]);
-
-        $importService->validateJob($job);
-        $importService->executeImport($job);
-
-        $job->refresh();
-        $this->assertEquals(ImportStatus::Completed, $job->status);
-        $this->assertEquals(1, $job->successful_rows);
-
-        $this->assertDatabaseHas('stock_levels', [
-            'tenant_id' => $this->tenant->id,
-            'product_id' => $product->id,
-            'location_id' => $location->id,
-            'quantity' => '100.00',
-        ]);
-    }
-
-    public function test_stock_level_import_fails_for_missing_product(): void
-    {
-        Location::create([
-            'company_id' => $this->company->id,
-            'name' => 'Main Warehouse',
-            'code' => 'WH-MAIN',
-            'type' => 'warehouse',
-            'is_default' => true,
-            'is_active' => true,
-        ]);
-
-        /** @var ImportService $importService */
-        $importService = app(ImportService::class);
-
-        $job = $importService->createJob(
-            tenantId: $this->tenant->id,
-            userId: $this->user->id,
-            type: ImportType::StockLevels,
-            filename: 'stock.csv',
-            filePath: 'imports/stock.csv',
-            totalRows: 1
-        );
-
-        $importService->addRow($job, 1, [
-            'product_sku' => 'NONEXISTENT',
-            'location_code' => 'WH-MAIN',
-            'quantity' => '100',
-        ]);
-
-        $importService->validateJob($job);
-
-        // Validation passes but execution will fail
-        $job->refresh();
-        $this->assertEquals(ImportStatus::Validated, $job->status);
-
-        $importService->executeImport($job);
-
-        $job->refresh();
-        $this->assertEquals(ImportStatus::Failed, $job->status);
-        $this->assertEquals(1, $job->failed_rows);
-    }
+    //
+    // Removed by owner ruling D4 (document-per-action remediation, lane V6):
+    // the `stock_levels` import type is retired. Its refusal — and the fact
+    // that historical stock_levels jobs stay readable — is pinned by
+    // StockLevelsImportDeprecatedTest.
 
     // === Opening Balance Import Tests ===
 

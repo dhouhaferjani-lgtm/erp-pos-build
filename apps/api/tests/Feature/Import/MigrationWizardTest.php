@@ -102,9 +102,12 @@ class MigrationWizardTest extends TestCase
 
         $this->assertLessThan($productIndex, $partnerIndex);
 
-        // Products before stock levels
-        $stockIndex = array_search(ImportType::StockLevels, $order);
-        $this->assertLessThan($stockIndex, $productIndex);
+        // Products before opening balances
+        $balanceIndex = array_search(ImportType::OpeningBalances, $order);
+        $this->assertLessThan($balanceIndex, $productIndex);
+
+        // Retired by owner ruling D4 — never offered as a step again.
+        $this->assertNotContains(ImportType::StockLevels, $order);
     }
 
     public function test_check_dependencies_for_import_type(): void

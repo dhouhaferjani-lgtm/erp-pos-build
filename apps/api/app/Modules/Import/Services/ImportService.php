@@ -12,8 +12,6 @@ use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Shared\Contracts\CompositeItemServiceInterface;
-use App\Shared\Contracts\InventoryServiceInterface;
-use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
@@ -29,8 +27,6 @@ final class ImportService
         private readonly CompanyContext $companyContext,
         private readonly PartnerServiceInterface $partnerService,
         private readonly ProductServiceInterface $productService,
-        private readonly InventoryServiceInterface $inventoryService,
-        private readonly LocationServiceInterface $locationService,
         private readonly CompositeItemServiceInterface $compositeItemService,
         private readonly NumericFieldNormalizer $numericNormalizer,
         private readonly PartiesRowMapper $partiesRowMapper,
@@ -409,7 +405,15 @@ final class ImportService
             ImportType::Parties => $this->importParty($job, $row, $companyId),
             ImportType::Partners => $this->importPartner($job->tenant_id, $row->data, $companyId),
             ImportType::Products => $this->importProduct($job, $row, $companyId),
-            ImportType::StockLevels => $this->importStockLevel($job->tenant_id, $row->data, $companyId),
+            // Retired by owner ruling D4: the writer this used to call
+            // (InventoryService::upsertStockLevel) set an absolute quantity
+            // with no movement and no document. Opening stock now rides the
+            // Products import. The case survives only for historical reads —
+            // ImportController::execute() refuses these jobs before they get
+            // here, so this arm is the last line of defence.
+            ImportType::StockLevels => throw new RuntimeException(
+                'The stock levels import is no longer supported. Import opening stock with the Products import (quantity, purchase_price, location_code).'
+            ),
             ImportType::OpeningBalances => $this->stageOpeningBalance($row),
             ImportType::ProductImages => throw new RuntimeException('Product image import is not yet supported'),
             ImportType::CompositeItems => $this->importCompositeItem($job->tenant_id, $row->data, $companyId),
@@ -550,37 +554,6 @@ final class ImportService
         $company = Company::where('tenant_id', $tenantId)->findOrFail($companyId);
 
         return $company;
-    }
-
-    /**
-     * Import a stock level row via service interfaces.
-     *
-     * @param  array<string, mixed>  $data
-     * @param  string|null  $companyId  Company ID for async context (null uses CompanyContext)
-     */
-    private function importStockLevel(string $tenantId, array $data, ?string $companyId = null): string
-    {
-        $companyId ??= $this->companyContext->requireCompanyId();
-
-        // Find product by SKU
-        $productId = $this->productService->findIdBySku($tenantId, $companyId, $data['product_sku']);
-        if ($productId === null) {
-            throw new RuntimeException("Product with SKU '{$data['product_sku']}' not found");
-        }
-
-        // Find location by code
-        $locationId = $this->locationService->findIdByCode($companyId, $data['location_code']);
-        if ($locationId === null) {
-            throw new RuntimeException("Location with code '{$data['location_code']}' not found");
-        }
-
-        return $this->inventoryService->upsertStockLevel(
-            $tenantId,
-            $companyId,
-            $productId,
-            $locationId,
-            (int) $data['quantity']
-        );
     }
 
     /**
