@@ -11,6 +11,7 @@ use App\Modules\Inventory\Presentation\Controllers\GoodsReceiptController;
 use App\Modules\Inventory\Presentation\Controllers\InventoryCountingController;
 use App\Modules\Inventory\Presentation\Controllers\LocationNodeController;
 use App\Modules\Inventory\Presentation\Controllers\ProductPlacementController;
+use App\Modules\Inventory\Presentation\Controllers\StockAdjustmentController;
 use App\Modules\Inventory\Presentation\Controllers\StockLevelController;
 use App\Modules\Inventory\Presentation\Controllers\StockMatrixController;
 use App\Modules\Inventory\Presentation\Controllers\StockMovementController;
@@ -118,6 +119,42 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::post('/stock-movements/adjust', [StockMovementController::class, 'adjust'])
         ->middleware('can:inventory.adjust')
         ->name('stock-movements.adjust');
+
+    // Stock Adjustment documents (multi-line manual corrections, lifecycle-tracked).
+    // DPA V7: the replacement for the four raw POST /stock-movements/* writers.
+    // Tenancy, token-tenant claim and module gating are inherited from the group.
+    Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index'])
+        ->middleware('can:inventory.adjustments.view')
+        ->name('stock-adjustments.index');
+
+    Route::post('/stock-adjustments', [StockAdjustmentController::class, 'store'])
+        ->middleware('can:inventory.adjustments.create')
+        ->name('stock-adjustments.store');
+
+    Route::get('/stock-adjustments/{adjustment}', [StockAdjustmentController::class, 'show'])
+        ->whereUuid('adjustment')
+        ->middleware('can:inventory.adjustments.view')
+        ->name('stock-adjustments.show');
+
+    Route::patch('/stock-adjustments/{adjustment}', [StockAdjustmentController::class, 'update'])
+        ->whereUuid('adjustment')
+        ->middleware('can:inventory.adjustments.create')
+        ->name('stock-adjustments.update');
+
+    Route::post('/stock-adjustments/{adjustment}/post', [StockAdjustmentController::class, 'post'])
+        ->whereUuid('adjustment')
+        ->middleware('can:inventory.adjustments.post')
+        ->name('stock-adjustments.post');
+
+    Route::post('/stock-adjustments/{adjustment}/cancel', [StockAdjustmentController::class, 'cancel'])
+        ->whereUuid('adjustment')
+        ->middleware('can:inventory.adjustments.cancel')
+        ->name('stock-adjustments.cancel');
+
+    Route::post('/stock-adjustments/{adjustment}/correct', [StockAdjustmentController::class, 'correct'])
+        ->whereUuid('adjustment')
+        ->middleware('can:inventory.adjustments.create')
+        ->name('stock-adjustments.correct');
 
     // Goods Receipts
     Route::get('/goods-receipts', [GoodsReceiptController::class, 'index'])
