@@ -5,16 +5,12 @@ declare(strict_types=1);
 namespace Tests\Feature\Security;
 
 use App\Modules\Company\Domain\Company;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
-use App\Modules\POS\Application\Services\ReceiptVoidService;
-use App\Modules\POS\Domain\Receipt;
-use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -51,9 +47,10 @@ use Tests\TestCase;
  *     Laravel 12 (nested-transaction commit triggers them), so the afterCommit
  *     audit path needs no special test harness.
  *
- * The ReceiptVoidService case is included as a control: ReceiptVoided was
- * already wired, so its e2e test should be green from the start and confirms
- * the afterCommit→subscriber→persist chain for the receipt-void path.
+ * DPA V9 (owner ruling D3): a third case used `ReceiptVoidService` as a
+ * CONTROL for the afterCommit→subscriber→persist chain. That service was
+ * SUNSET and the control retired with it; the chain stays proven by the
+ * PaymentRefundService end-to-end cases, which are this suite's subject.
  */
 class PrivilegedAuditLogDispatchTest extends TestCase
 {
@@ -271,68 +268,14 @@ class PrivilegedAuditLogDispatchTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
-    // ReceiptVoided — control: already wired; proves the afterCommit chain
-    // works for the receipt-void path the plan called out by name.
+    // DPA V9 (owner ruling D3 — SUNSET):
+    // `test_receipt_void_service_persists_audit_event_end_to_end` was
+    // removed here together with `ReceiptVoidService`. It was only ever a
+    // CONTROL for the `DB::afterCommit -> DomainEventSubscriber -> persist`
+    // chain (its subject, ReceiptVoided, was already wired). That chain
+    // stays proven end-to-end by the two PaymentRefundService cases above,
+    // which are this suite's actual subject.
     // ---------------------------------------------------------------------
-
-    public function test_receipt_void_service_persists_audit_event_end_to_end(): void
-    {
-        $location = Location::factory()->create(['company_id' => $this->company->id]);
-        $terminal = Terminal::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'location_id' => $location->id,
-            'code' => 'POS01',
-            'name' => 'Audit Terminal',
-            'genesis_seed' => str_repeat('0', 64),
-            'current_sequence' => 0,
-            'current_year' => 2026,
-            'is_active' => true,
-            'max_discount_percent' => 20.00,
-            'allow_line_discounts' => true,
-            'allow_transaction_discounts' => true,
-        ]);
-
-        $receipt = Receipt::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'location_id' => $location->id,
-            'terminal_id' => $terminal->id,
-            'receipt_number' => 'POS01-2026-00000001',
-            'chain_sequence' => 1,
-            'receipt_year' => 2026,
-            'fiscal_hash' => hash('sha256', 'audit-void-receipt'),
-            'previous_hash' => null,
-            'vat_breakdown_hash' => hash('sha256', 'vat'),
-            'payment_methods_hash' => hash('sha256', 'payment'),
-            'posted_at' => now(),
-            'cashier_id' => $this->user->id,
-            'cashier_name' => 'Audit Actor',
-            'subtotal' => '100.000',
-            'tax_amount' => '19.000',
-            'discount_amount' => '0.000',
-            'total' => '119.000',
-            'currency' => 'TND',
-            'is_voided' => false,
-        ]);
-
-        app(ReceiptVoidService::class)->voidReceipt($receipt, $this->user, 'Audit void test');
-
-        $audit = AuditEvent::where('aggregate_id', $receipt->id)
-            ->where('event_type', 'receipt.voided')
-            ->first();
-
-        $this->assertNotNull(
-            $audit,
-            'ReceiptVoidService::voidReceipt must leave an audit_events row '
-            .'(DB::afterCommit dispatch must reach the subscriber under RefreshDatabase).',
-        );
-        $this->assertSame($this->company->id, $audit->company_id);
-        $this->assertSame($this->user->id, $audit->user_id);
-        $this->assertSame('Receipt', $audit->aggregate_type);
-        $this->assertSame('Audit void test', $audit->payload['void_reason']);
-        $this->assertSame($this->user->id, $audit->payload['voided_by']);
-    }
 
     private function createCompletedPayment(string $amount): Payment
     {
