@@ -399,9 +399,14 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
       reason: 'W2a MTP-TRE-11 reverse',
     })
     expect(reverse.ok, `reverse -> ${reverse.status} ${JSON.stringify(reverse.data)}`).toBeTruthy()
-    const reverseData = reverse.data.data as
-      | { payment?: { status?: string }; reversal?: { payment_type?: string; amount?: string } | null }
-      | undefined
+    // NO DOUBLE-UNWRAP (house rule 14): `asJsonResult()` in ./treasury-support.ts
+    // ALREADY unwraps the `data` envelope (`parsed.data ?? parsed.error ?? body`),
+    // so `reverse.data` IS the `{payment, reversal}` object — reading
+    // `reverse.data.data` here yields `undefined`.
+    const reverseData = reverse.data as {
+      payment?: { status?: string }
+      reversal?: { payment_type?: string; amount?: string } | null
+    }
     // eslint-disable-next-line no-console
     console.log(`[MTP-TRE-11] payment status after reverse: ${JSON.stringify(reverse.data)}`)
     // DPA V4 RESHAPE: PaymentRefundController used to return {data: payment};
@@ -809,7 +814,10 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
     })
     expect(reverse.ok, `reverse -> ${reverse.status} ${JSON.stringify(reverse.data)}`).toBeTruthy()
 
-    const reversalDocument = reverse.data.data?.reversal as { id?: string; amount?: string } | null | undefined
+    // NO DOUBLE-UNWRAP (house rule 14) — see MTP-TRE-11 above: `asJsonResult()`
+    // already unwrapped the envelope, so the reversing document hangs off
+    // `reverse.data.reversal`, not `reverse.data.data.reversal`.
+    const reversalDocument = reverse.data.reversal as { id?: string; amount?: string } | null | undefined
     expect(reversalDocument?.id, 'DPA V4: the reversal returns a linked reversing document').toBeTruthy()
     expect(
       reversalDocument?.amount,
