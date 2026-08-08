@@ -6,6 +6,12 @@ namespace Tests\Feature\Import;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -409,13 +415,24 @@ class ImportTypesTest extends TestCase
 
     public function test_can_import_opening_balances(): void
     {
-        // Create prerequisite account
+        // Create prerequisite accounts: the target account plus the OBE plug
+        // account the batch-documented path offsets one-sided rows against.
         $account = Account::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '1000',
             'name' => 'Cash',
             'type' => AccountType::Asset,
+        ]);
+
+        $obeAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '1080',
+            'name' => 'Opening Balance Equity',
+            'type' => AccountType::Equity,
+            'system_purpose' => SystemAccountPurpose::OpeningBalanceEquity->value,
+            'is_system' => true,
         ]);
 
         /** @var ImportService $importService */
@@ -443,13 +460,28 @@ class ImportTypesTest extends TestCase
         $job->refresh();
         $this->assertEquals(ImportStatus::Completed, $job->status);
 
-        $this->assertDatabaseHas('journal_lines', [
-            'account_id' => $account->id,
-            'debit' => '5000.00',
-        ]);
+        $batch = OpeningBalanceBatch::forCompany($this->company->id)
+            ->ofType(OpeningBatchType::Accounting)
+            ->firstOrFail();
+
+        $entry = JournalEntry::where('company_id', $this->company->id)->firstOrFail();
+        $this->assertSame('opening_balance', $entry->source_type);
+        $this->assertSame($batch->id, $entry->source_id);
+        $this->assertTrue($entry->is_historical);
+
+        $lines = $entry->lines()->get();
+        $this->assertCount(2, $lines);
+
+        $accountLine = $lines->firstWhere('account_id', $account->id);
+        $this->assertNotNull($accountLine);
+        $this->assertSame(0, bccomp($accountLine->debit, '5000', 3));
+
+        $obeLine = $lines->firstWhere('account_id', $obeAccount->id);
+        $this->assertNotNull($obeLine);
+        $this->assertSame(0, bccomp($obeLine->credit, '5000', 3));
     }
 
-    public function test_opening_balance_import_fails_for_missing_account(): void
+    public function test_opening_balance_import_marks_missing_account_row_invalid_without_failing_job(): void
     {
         /** @var ImportService $importService */
         $importService = app(ImportService::class);
@@ -473,7 +505,18 @@ class ImportTypesTest extends TestCase
         $importService->executeImport($job);
 
         $job->refresh();
-        $this->assertEquals(ImportStatus::Failed, $job->status);
+        $this->assertEquals(ImportStatus::Completed, $job->status);
+        $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
+
+        $row = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertSame('balance_not_posted', ($row->warnings ?? [])[0]['code'] ?? null);
+        $this->assertSame('error: validation_failed', $row->data['_results']['gl_balance'] ?? null);
+
+        $batch = OpeningBalanceBatch::forCompany($this->company->id)
+            ->ofType(OpeningBatchType::Accounting)
+            ->firstOrFail();
+        $this->assertSame(OpeningBatchStatus::Draft, $batch->status);
+        $this->assertSame(1, $batch->rows()->where('status', OpeningImportRowStatus::Skipped)->count());
     }
 
     // === API Error Handling Tests ===

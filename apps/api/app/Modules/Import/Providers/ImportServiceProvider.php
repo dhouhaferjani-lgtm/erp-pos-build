@@ -9,6 +9,7 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Import\Presentation\Controllers\ImportController;
 use App\Modules\Import\Presentation\Controllers\MigrationWizardController;
+use App\Modules\Import\Services\AccountingBalancesPhase;
 use App\Modules\Import\Services\ImportService;
 use App\Modules\Import\Services\MigrationWizardService;
 use App\Modules\Import\Services\NumericFieldNormalizer;
@@ -18,7 +19,6 @@ use App\Modules\Import\Services\ProductOpeningStockPhase;
 use App\Modules\Import\Services\ProductPlacementImportService;
 use App\Modules\Import\Services\ProductPriceResolver;
 use App\Modules\Import\Services\ValidationEngine;
-use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
@@ -44,11 +44,11 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(ProductServiceInterface::class),
                 $app->make(InventoryServiceInterface::class),
                 $app->make(LocationServiceInterface::class),
-                $app->make(AccountingServiceInterface::class),
                 $app->make(CompositeItemServiceInterface::class),
                 $app->make(NumericFieldNormalizer::class),
                 $app->make(PartiesRowMapper::class),
                 $app->make(PartiesBalancesPhase::class),
+                $app->make(AccountingBalancesPhase::class),
                 $app->make(ProductPriceResolver::class),
                 $app->make(TaxDefaultResolverInterface::class),
                 $app->make(ProductOpeningStockPhase::class),

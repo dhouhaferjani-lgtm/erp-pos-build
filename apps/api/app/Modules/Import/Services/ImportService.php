@@ -11,7 +11,6 @@ use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
 use App\Modules\Product\Domain\Enums\ProductType;
-use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
 use App\Shared\Contracts\InventoryServiceInterface;
 use App\Shared\Contracts\LocationServiceInterface;
@@ -32,11 +31,11 @@ final class ImportService
         private readonly ProductServiceInterface $productService,
         private readonly InventoryServiceInterface $inventoryService,
         private readonly LocationServiceInterface $locationService,
-        private readonly AccountingServiceInterface $accountingService,
         private readonly CompositeItemServiceInterface $compositeItemService,
         private readonly NumericFieldNormalizer $numericNormalizer,
         private readonly PartiesRowMapper $partiesRowMapper,
         private readonly PartiesBalancesPhase $partiesBalancesPhase,
+        private readonly AccountingBalancesPhase $accountingBalancesPhase,
         private readonly ProductPriceResolver $productPriceResolver,
         private readonly TaxDefaultResolverInterface $taxDefaultResolver,
         private readonly ProductOpeningStockPhase $productOpeningStockPhase,
@@ -414,7 +413,7 @@ final class ImportService
             ImportType::Partners => $this->importPartner($job->tenant_id, $row->data, $companyId),
             ImportType::Products => $this->importProduct($job, $row, $companyId),
             ImportType::StockLevels => $this->importStockLevel($job->tenant_id, $row->data, $companyId),
-            ImportType::OpeningBalances => $this->importOpeningBalance($job->tenant_id, $row->data, $companyId),
+            ImportType::OpeningBalances => $this->stageOpeningBalance($row),
             ImportType::ProductImages => throw new RuntimeException('Product image import is not yet supported'),
             ImportType::CompositeItems => $this->importCompositeItem($job->tenant_id, $row->data, $companyId),
         };
@@ -454,6 +453,7 @@ final class ImportService
         $results = match ($job->type) {
             ImportType::Parties => $this->partiesBalancesPhase->run($job->refresh(), $companyId),
             ImportType::Products => $this->productOpeningStockPhase->run($job->refresh(), $companyId),
+            ImportType::OpeningBalances => $this->accountingBalancesPhase->run($job->refresh(), $companyId),
             default => [],
         };
 
@@ -587,40 +587,18 @@ final class ImportService
     }
 
     /**
-     * Import an opening balance row via AccountingServiceInterface.
+     * Stage an opening-balance row.
      *
-     * @param  array<string, mixed>  $data
-     * @param  string|null  $companyId  Company ID for async context (null uses CompanyContext)
+     * GL opening balances create NO per-row entity: the whole file is posted as
+     * one batch-documented, historical journal entry in
+     * {@see AccountingBalancesPhase} during finalizeImport(). The row id is
+     * returned only so the execution loop can mark the row imported; the phase
+     * clears that placeholder and re-links imported_entity_id to the journal
+     * entry the row actually landed in.
      */
-    private function importOpeningBalance(string $tenantId, array $data, ?string $companyId = null): string
+    private function stageOpeningBalance(ImportRow $row): string
     {
-        $companyId ??= $this->companyContext->requireCompanyId();
-
-        // Find account by code
-        $accountId = $this->accountingService->findAccountIdByCode($tenantId, $companyId, $data['account_code']);
-        if ($accountId === null) {
-            throw new RuntimeException("Account with code '{$data['account_code']}' not found");
-        }
-
-        /** @var string $description */
-        $description = $data['description'] ?? 'Opening Balance';
-        /** @var string|null $reference */
-        $reference = isset($data['reference']) && $data['reference'] !== '' ? $data['reference'] : null;
-        /** @var string $debit */
-        $debit = $data['debit'] ?? '0.00';
-        /** @var string $credit */
-        $credit = $data['credit'] ?? '0.00';
-
-        return $this->accountingService->createOpeningBalanceEntry(
-            $tenantId,
-            $companyId,
-            $accountId,
-            $debit,
-            $credit,
-            $description,
-            $reference,
-            now()
-        );
+        return $row->id;
     }
 
     /**

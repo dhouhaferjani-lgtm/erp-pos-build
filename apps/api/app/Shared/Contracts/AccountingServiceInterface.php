@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Shared\Contracts;
 
 use App\Modules\Document\Domain\Document;
-use DateTimeInterface;
 
 /**
  * Interface for accounting operations used by other modules.
@@ -24,22 +23,6 @@ interface AccountingServiceInterface
         string $companyId,
         string $code
     ): ?string;
-
-    /**
-     * Create an opening balance journal entry.
-     *
-     * @return string The journal entry ID
-     */
-    public function createOpeningBalanceEntry(
-        string $tenantId,
-        string $companyId,
-        string $accountId,
-        string $debit,
-        string $credit,
-        string $description,
-        ?string $reference,
-        DateTimeInterface $date
-    ): string;
 
     /**
      * Create GL entries for a posted invoice.
