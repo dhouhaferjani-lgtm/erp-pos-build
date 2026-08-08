@@ -159,6 +159,46 @@ class FEFOSuggestionPrecisionTest extends TestCase
         $this->assertSame('99999999.1234', $result->suggestions[0]->quantity);
     }
 
+    /**
+     * A request carrying more than 4 decimal places must be ROUNDED to the
+     * canonical scale, not truncated.
+     *
+     * The route validator caps input at 4dp, but the in-process callers are not
+     * regex-gated — StockReservationService::reserveWithFEFO() forwards whatever
+     * numeric-string it is handed straight into this service. Truncating there
+     * would silently under-reserve.
+     */
+    public function test_over_scale_request_is_rounded_not_truncated(): void
+    {
+        $this->createBatchWithStock(expiryDays: 10, quantity: '5.0000');
+
+        // 1.00005 truncates to 1.0000 but rounds (HALF_UP) to 1.0001.
+        $result = $this->service->suggestBatchesForSale(
+            $this->product->id,
+            $this->location->id,
+            quantity: '1.00005',
+        );
+
+        $this->assertSame('1.0001', $result->suggestions[0]->quantity);
+        $this->assertSame('1.0001', $result->getSuggestedQuantity());
+        $this->assertTrue($result->fullyFulfilled);
+    }
+
+    /** Rounding down at the boundary is equally exact. */
+    public function test_over_scale_request_rounds_down_below_the_half(): void
+    {
+        $this->createBatchWithStock(expiryDays: 10, quantity: '5.0000');
+
+        $result = $this->service->suggestBatchesForSale(
+            $this->product->id,
+            $this->location->id,
+            quantity: '1.00004',
+        );
+
+        $this->assertSame('1.0000', $result->suggestions[0]->quantity);
+        $this->assertTrue($result->fullyFulfilled);
+    }
+
     // -------------------------------------------------------------------------
     // TYPE — no float ever leaves the pipeline
     // -------------------------------------------------------------------------

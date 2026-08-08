@@ -22,6 +22,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\TestResponse;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -132,6 +133,39 @@ class PosAvailableBatchesPrecisionTest extends TestCase
         $this->requestBatches('abc')
             ->assertStatus(422)
             ->assertJsonValidationErrors('quantity', 'error.errors');
+    }
+
+    /**
+     * Forms bare `numeric` used to accept and the regex ceiling now refuses.
+     *
+     * These are the behaviour-tightening cases disclosed in
+     * docs/superpowers/tickets/2026-08-08-f7-fefo-residuals.md (D-1) — pinned
+     * here so the disclosure is backed by tests, not by assertion.
+     */
+    #[DataProvider('previouslyAcceptedFormsProvider')]
+    public function test_rejects_forms_that_bare_numeric_used_to_accept(string $quantity): void
+    {
+        $this->requestBatches($quantity)
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('quantity', 'error.errors');
+    }
+
+    /** @return array<string, array{string}> */
+    public static function previouslyAcceptedFormsProvider(): array
+    {
+        return [
+            'bare decimal point' => ['.5'],
+            'explicit plus sign' => ['+1.5'],
+            'uppercase scientific' => ['1E2'],
+            'leading zeros padding past the domain' => ['123456789012'],
+            'trailing dot' => ['1.'],
+        ];
+    }
+
+    /** The 11-digit integer ceiling matches decimal(15,4) — 11 digits still passes. */
+    public function test_accepts_the_maximum_integer_width(): void
+    {
+        $this->requestBatches('12345678901.1234')->assertOk();
     }
 
     public function test_rejects_negative_quantity(): void

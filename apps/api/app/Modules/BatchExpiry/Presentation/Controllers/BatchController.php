@@ -299,8 +299,9 @@ class BatchController extends Controller
                 'numeric',
                 'min:0.0001',
                 // Positive, up to 4 decimal places — never more, and never
-                // scientific notation (precision contract, rule 19).
-                'regex:/^\d+(\.\d{1,4})?$/',
+                // scientific notation (precision contract, rule 19). The 11-digit
+                // integer ceiling matches the decimal(15,4) storage domain.
+                'regex:/^\d{1,11}(\.\d{1,4})?$/',
             ],
         ]);
 

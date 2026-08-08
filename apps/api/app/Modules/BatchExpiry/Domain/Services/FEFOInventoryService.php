@@ -46,6 +46,11 @@ class FEFOInventoryService
         ?string $variantId = null,
     ): BatchSuggestionResultDTO {
         $query = BatchStock::query()
+            // Explicit projection: the join means a bare `select *` lets
+            // product_batches columns clobber same-named batch-stock ones, and a
+            // future ->select() elsewhere could silently drop the GENERATED
+            // available_quantity column this method reads raw.
+            ->select('inventory_batch_stock.*')
             ->join('product_batches', 'inventory_batch_stock.batch_id', '=', 'product_batches.id')
             ->where('product_batches.product_id', $productId)
             ->where('inventory_batch_stock.location_id', $locationId)
@@ -72,8 +77,12 @@ class FEFOInventoryService
 
         // Normalize the request to the canonical quantity scale up front, so every
         // emitted quantity carries the same scale regardless of caller input.
+        // Round (HALF_UP) rather than bcadd-truncate: the route validator caps
+        // input at 4dp, but in-process callers such as
+        // StockReservationService::reserveWithFEFO() are not regex-gated, and
+        // silently truncating their request would under-fulfil it.
         /** @var numeric-string $remaining */
-        $remaining = bcadd($quantity, '0', QuantityScale::SCALE);
+        $remaining = QuantityScale::round($quantity, QuantityScale::SCALE, QuantityScale::HALF_UP);
 
         foreach ($batchStocks as $stock) {
             if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
@@ -85,14 +94,42 @@ class FEFOInventoryService
                 continue;
             }
 
-            // Read the GENERATED available_quantity column raw: the model's
-            // available_quantity accessor returns a float and would reintroduce
-            // representation error before any arithmetic happens.
-            /** @var numeric-string $rawAvailable */
-            $rawAvailable = (string) $stock->getRawOriginal('available_quantity');
+            // Read the GENERATED available_quantity column RAW, bypassing the
+            // model: BatchStock::getAvailableQuantityAttribute() returns a float
+            // (quantity - reserved_quantity), which would reintroduce exactly the
+            // representation error this method exists to remove. getRawOriginal()
+            // hands back the untouched DB value instead.
+            $rawAvailableValue = $stock->getRawOriginal('available_quantity');
+            $rawAvailable = is_scalar($rawAvailableValue) ? trim((string) $rawAvailableValue) : '';
 
+            // Fail loudly rather than silently. Two ways this can bite:
+            //  - bcmath coerces "" to 0, so a missing/blank column would make every
+            //    lot report zero availability and the endpoint would report a total
+            //    shortfall with no error at all;
+            //  - bcmath throws a bare ValueError on scientific notation, which
+            //    SQLite can produce for sub-1e-4 generated decimals (it returns them
+            //    as floats). Postgres never emits it for decimal(15,4), so this is a
+            //    test-environment guard — but a named error beats a raw ValueError.
+            // Defence in depth, deliberately UNTESTED: available_quantity is a
+            // GENERATED column (so it cannot be blanked by any UPDATE) and the
+            // explicit ->select() above guarantees it is projected. There is no
+            // reachable trigger today; this exists so a future ->select() change
+            // fails loudly instead of silently zeroing every lot's availability.
+            if (preg_match('/^-?\d+(\.\d+)?$/', $rawAvailable) !== 1) {
+                throw new \RuntimeException(sprintf(
+                    'inventory_batch_stock.available_quantity for batch %d is not a plain decimal ("%s") — '
+                    .'refusing to compute FEFO suggestions from an unknown availability.',
+                    $batch->id,
+                    $rawAvailable,
+                ));
+            }
+
+            // FLOOR, not HALF_UP, on the availability side: this is stock ON HAND,
+            // and rounding it up would suggest a draw larger than the lot holds.
+            // inventory_batch_stock.available_quantity is decimal(15,4), so today
+            // this is a no-op either way — FLOOR just states the safe intent.
             /** @var numeric-string $available */
-            $available = bcadd($rawAvailable, '0', QuantityScale::SCALE);
+            $available = QuantityScale::round($rawAvailable, QuantityScale::SCALE, QuantityScale::FLOOR);
 
             /** @var numeric-string $takeQuantity */
             $takeQuantity = bccomp($available, $remaining, QuantityScale::SCALE) < 0
