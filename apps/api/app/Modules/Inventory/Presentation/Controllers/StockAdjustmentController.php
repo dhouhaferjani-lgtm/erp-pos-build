@@ -84,11 +84,16 @@ class StockAdjustmentController extends Controller
             'data' => $adjustments->getCollection()
                 ->map(fn (StockAdjustment $adjustment): StockAdjustmentData => StockAdjustmentData::fromModel($adjustment, withLines: false))
                 ->all(),
+            // The canonical OffsetPaginationMeta shape (@/types/pagination), so
+            // the frontend's shared pagination component can consume it without
+            // a per-feature envelope.
             'meta' => [
                 'current_page' => $adjustments->currentPage(),
+                'last_page' => $adjustments->lastPage(),
                 'per_page' => $adjustments->perPage(),
                 'total' => $adjustments->total(),
-                'last_page' => $adjustments->lastPage(),
+                'from' => $adjustments->firstItem(),
+                'to' => $adjustments->lastItem(),
             ],
         ]);
     }

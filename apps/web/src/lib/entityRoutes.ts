@@ -50,6 +50,18 @@ export const entityRoutes = {
   product: (id: string, options: EntityRouteTabOption = {}): string =>
     withTab(`/inventory/products/${id}`, options.tab),
 
+  /**
+   * The product EDITOR, optionally anchored at one of its sections.
+   *
+   * Distinct from `product()` on purpose: the detail page has no
+   * opening-balance affordance at all, so pointing an "enter the opening
+   * balance here" hint at it is a dead end. The editor's inventory section
+   * (`EditorSectionCard id="section-inventory"`) is where `opening_qty` and
+   * `opening_unit_cost` live. Gated by `products.update` at the route.
+   */
+  productEdit: (id: string, options: { section?: string } = {}): string =>
+    `/inventory/products/${id}/edit${options.section ? `#${options.section}` : ''}`,
+
   variant: (_id: string, options: VariantRouteOptions): string | null =>
     options.productId ? entityRoutes.product(options.productId, { tab: options.tab }) : null,
 
@@ -97,6 +109,8 @@ export const entityRoutes = {
   expense: (id: string): string => `/expenses/${id}/view`,
 
   stockTransfer: (id: string): string => `/inventory/stock-transfers/${id}`,
+
+  stockAdjustment: (id: string): string => `/inventory/stock-adjustments/${id}`,
 
   goodsReceipt: (_id: string, options: GoodsReceiptRouteOptions): string | null =>
     options.purchaseOrderId ? `/purchases/orders/${options.purchaseOrderId}` : null,

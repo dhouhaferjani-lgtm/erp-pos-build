@@ -1,0 +1,148 @@
+import { useTranslation } from 'react-i18next'
+import { Button } from '@/components/atoms/Button'
+import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
+import { Modal } from '@/components/organisms/Modal'
+import { formatQuantity } from '@/lib/decimal'
+import { semanticColorTokens as tokens } from '@/lib/designTokens'
+import {
+  narrowAvailabilityDetails,
+  narrowStaleDetails,
+  refusalMessageKey,
+  type AcknowledgeableRefusalCode,
+  type ApiErrorEnvelope,
+  type StaleLine,
+} from '../api/refusals'
+
+/**
+ * Where the refusal happened, and therefore what recovery is possible.
+ *
+ * NOT keyed by which page raised it: the branch is a fact about PERSISTENCE.
+ * An immediate-post refusal rolls its draft back with the transaction, so there
+ * is nothing to PATCH and `line_id` is null; only a document that already exists
+ * can be re-anchored server-side.
+ */
+export type RefusalOrigin = 'persisted-draft' | 'unsaved-form'
+
+interface Props {
+  open: boolean
+  code: AcknowledgeableRefusalCode
+  refusal: ApiErrorEnvelope
+  origin: RefusalOrigin
+  /** Gated on `inventory.adjustments.post` — overriding a guard is a posting act. */
+  canOverride: boolean
+  busy?: boolean
+  onDismiss: () => void
+  /** Re-submit with `acknowledge_stale` / `ignore_reservations`. NEVER automatic. */
+  onApplyAnyway: () => void
+  /** persisted-draft: PATCH the draft. unsaved-form: recompute client-side. */
+  onReAnchor: () => void
+}
+
+/**
+ * ONE dialog for BOTH acknowledgeable refusals (DPA V7 / F6).
+ *
+ * Two explicit actions, no default, and NO auto-retry: a guard the operator did
+ * not knowingly override is a guard that silently does nothing.
+ *
+ * Every quantity is formatted with the product unit's precision taken from the
+ * REFUSAL PAYLOAD itself — the server sends `quantity_decimals` on every
+ * quantity-bearing code precisely so this component never needs a literal scale,
+ * which is what the quantity-display ratchet forbids. (The detail page cannot
+ * make the StockLevelData join the quick modal can, so the join is not an
+ * option here.)
+ */
+export function AcknowledgeableRefusalDialog({
+  open,
+  code,
+  refusal,
+  origin,
+  canOverride,
+  busy = false,
+  onDismiss,
+  onApplyAnyway,
+  onReAnchor,
+}: Props) {
+  const { t } = useTranslation('stock-adjustments')
+
+  const staleLines = code === 'STOCK_MOVED_SINCE_AUTHORING' ? narrowStaleDetails(refusal.details) : null
+
+  const staleColumns: DataTableColumn<StaleLine>[] = [
+    {
+      key: 'product',
+      header: t('refusal.table.product'),
+      render: (line) => line.product_id,
+    },
+    {
+      key: 'lot',
+      header: t('refusal.table.lot'),
+      render: (line) => line.batch_uuid ?? '—',
+    },
+    {
+      key: 'observed',
+      align: 'right',
+      header: t('refusal.table.observedBefore'),
+      render: (line) => formatQuantity(line.observed_before, line.quantity_decimals),
+    },
+    {
+      key: 'current',
+      align: 'right',
+      header: t('refusal.table.quantityBefore'),
+      render: (line) => formatQuantity(line.quantity_before, line.quantity_decimals),
+    },
+  ]
+  const availability =
+    code === 'ADJUSTMENT_EXCEEDS_AVAILABLE' ? narrowAvailabilityDetails(refusal.details) : null
+
+  return (
+    <Modal isOpen={open} onClose={onDismiss} size="lg">
+      <Modal.Header title={t('refusal.title')} onClose={onDismiss} />
+      <Modal.Content>
+        <p className={tokens.text.secondary}>{t(refusalMessageKey(code))}</p>
+
+        {staleLines !== null && (
+          <div className="mt-4">
+            <DataTable
+              columns={staleColumns}
+              data={staleLines}
+              // Keyed on (product, variant, lot) — NEVER on line_id, which is
+              // null whenever nothing was persisted (D15a).
+              keyExtractor={(line) =>
+                `${line.product_id}|${line.variant_id ?? ''}|${line.batch_uuid ?? ''}`
+              }
+            />
+          </div>
+        )}
+
+        {availability !== null && (
+          <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">
+            <dt className={tokens.text.muted}>{t('refusal.table.quantityBefore')}</dt>
+            <dd className="text-right tabular-nums">
+              {formatQuantity(availability.quantity_before, availability.quantity_decimals)}
+            </dd>
+            <dt className={tokens.text.muted}>{t('line.observedBefore')}</dt>
+            <dd className="text-right tabular-nums">
+              {formatQuantity(availability.available, availability.quantity_decimals)}
+            </dd>
+            <dt className={tokens.text.muted}>{t('refusal.table.delta')}</dt>
+            <dd className="text-right tabular-nums">
+              {formatQuantity(availability.delta_quantity, availability.quantity_decimals)}
+            </dd>
+          </dl>
+        )}
+      </Modal.Content>
+      <Modal.Footer>
+        <Button variant="ghost" onClick={onDismiss} disabled={busy}>
+          {t('refusal.dismiss')}
+        </Button>
+        <Button variant="secondary" onClick={onReAnchor} disabled={busy}>
+          {origin === 'persisted-draft' ? t('refusal.reAnchor') : t('refusal.recompute')}
+        </Button>
+        {canOverride && (
+          <Button variant="primary" onClick={onApplyAnyway} disabled={busy}>
+            {t('refusal.applyAnyway')}
+          </Button>
+        )}
+      </Modal.Footer>
+    </Modal>
+  )
+}

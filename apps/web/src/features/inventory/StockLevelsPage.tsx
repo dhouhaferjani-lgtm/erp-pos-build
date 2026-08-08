@@ -1,75 +1,45 @@
 import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../../lib/api'
 import { usePageTitle } from '../../hooks/usePageTitle'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
-import { Package, AlertTriangle, MapPin, Plus, Minus, RefreshCw, X, ArrowRightLeft } from 'lucide-react'
-import { api, apiPost } from '../../lib/api'
+import { Package, AlertTriangle, MapPin, Plus, RefreshCw, ArrowRightLeft } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { locationScopedKey } from '../../lib/locationScopedKey'
 import { useAuthStore } from '../../stores/authStore'
 import { useCompanyStore } from '../../stores/companyStore'
-import { bccomp, bcsub, formatQuantity } from '../../lib/decimal'
+import { bccomp, formatQuantity } from '../../lib/decimal'
 import { getQuantityDecimals } from '../../lib/quantityScale'
 import { tokens, textColors, borderColors, colors } from '../../lib/designTokens'
 import { SearchInput } from '../../components/molecules/SearchInput'
 import { FilterTabs } from '../../components/molecules/FilterTabs'
-import { getLocations } from '../locations/api/locations'
 import { Button } from '../../components/atoms/Button/Button'
-import { QuantityInput } from '../../components/atoms/QuantityInput/QuantityInput'
-import { Select } from '../../components/atoms/Select/Select'
 import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
 import { statusTone } from '../../components/atoms/StatusBadge/statusTone'
-import { Textarea } from '../../components/atoms/Textarea/Textarea'
 import { PageHeader } from '../../components/molecules/PageHeader'
 import { DataTable, type DataTableColumn } from '../../components/molecules/DataTable/DataTable'
 import { EmptyState } from '../../components/molecules/EmptyState/EmptyState'
 import type { StockLevel, StockLevelsResponse } from './types'
-import { stockLevelsInvalidationPredicate } from './_invalidation'
 import { useViewScope } from '../locations/hooks/useViewScope'
-
-interface StockMovement {
-  id: string
-  product_id: string
-  product_name: string
-  location_id: string
-  location_name: string
-  movement_type: string
-  quantity: string
-  quantity_before: string
-  quantity_after: string
-  reference: string
-  notes: string | null
-  user_name: string | null
-  created_at: string
-}
+import { RequirePermission } from '../auth/components/RequirePermission'
+import { QuickStockAdjustmentModal } from '../stock-adjustments/components/QuickStockAdjustmentModal'
 
 type StockFilter = 'all' | 'low' | 'out'
-type AdjustmentType = 'adjust' | 'receive' | 'issue' | 'transfer'
 type StockStatusKey = 'out' | 'low' | 'in_stock'
 
 export function StockLevelsPage() {
   const { t } = useTranslation(['common', 'inventory'])
   usePageTitle('stockLevels.title', 'inventory')
-  const queryClient = useQueryClient()
   const { scope, effectiveLocationIds } = useViewScope()
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
   const [searchQuery, setSearchQuery] = useState('')
   const [stockFilter, setStockFilter] = useState<StockFilter>('all')
-  const [selectedStock, setSelectedStock] = useState<StockLevel | null>(null)
-  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('adjust')
-  const [adjustmentQuantity, setAdjustmentQuantity] = useState('')
-  const [adjustmentReason, setAdjustmentReason] = useState('adjustment_negative')
-  const [adjustmentNotes, setAdjustmentNotes] = useState('')
-  const [transferLocationId, setTransferLocationId] = useState('')
-
-  // Fetch all locations for transfer
-  const { data: locationsData } = useQuery({
-    queryKey: locationScopedKey(['locations'], scope),
-    queryFn: getLocations,
-    enabled: !!tenantId && !!companyId,
-  })
+  // The quick-correction target. The four modal states this replaces are gone
+  // with the four raw mutations; `searchQuery` and `stockFilter` above SURVIVE —
+  // the filter/search UI depends on them.
+  const [adjustTarget, setAdjustTarget] = useState<StockLevel | null>(null)
 
   const { data, isLoading, error } = useQuery({
     queryKey: locationScopedKey(['stock-levels', searchQuery], scope),
@@ -82,54 +52,6 @@ export function StockLevelsPage() {
       return response.data
     },
     enabled: !!tenantId && !!companyId,
-  })
-
-  const adjustMutation = useMutation({
-    mutationFn: async (data: { product_id: string; location_id: string; new_quantity: string; reason_code: string; reason: string }) => {
-      return apiPost<StockMovement>('/stock-movements/adjust', data)
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
-      })
-      closeModal()
-    },
-  })
-
-  const receiveMutation = useMutation({
-    mutationFn: async (data: { product_id: string; location_id: string; quantity: string; reference: string; notes?: string }) => {
-      return apiPost<StockMovement>('/stock-movements/receive', data)
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
-      })
-      closeModal()
-    },
-  })
-
-  const issueMutation = useMutation({
-    mutationFn: async (data: { product_id: string; location_id: string; quantity: string; reference: string; notes?: string }) => {
-      return apiPost<StockMovement>('/stock-movements/issue', data)
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
-      })
-      closeModal()
-    },
-  })
-
-  const transferMutation = useMutation({
-    mutationFn: async (data: { product_id: string; from_location_id: string; to_location_id: string; quantity: string; reference: string }) => {
-      return apiPost<{ message: string }>('/stock-movements/transfer', data)
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        predicate: stockLevelsInvalidationPredicate(tenantId, companyId),
-      })
-      closeModal()
-    },
   })
 
   const stockLevels = useMemo(() => data?.data ?? [], [data?.data])
@@ -176,86 +98,6 @@ export function StockLevelsPage() {
     }
     return { label: t('inventory:stock.status.inStock'), key: 'in_stock' }
   }
-
-  const openAdjustModal = (stock: StockLevel, type: AdjustmentType) => {
-    setSelectedStock(stock)
-    setAdjustmentType(type)
-    setAdjustmentQuantity(type === 'adjust' ? stock.quantity : '')
-    setAdjustmentReason('adjustment_negative')
-    setAdjustmentNotes('')
-  }
-
-  const closeModal = () => {
-    setSelectedStock(null)
-    setAdjustmentQuantity('')
-    setAdjustmentReason('adjustment_negative')
-    setAdjustmentNotes('')
-    setTransferLocationId('')
-  }
-
-  const handleSubmit = () => {
-    if (!selectedStock) return
-
-    const reasonLabels: Record<string, string> = {
-      adjustment_positive: t('inventory:stock.reasons.adjustmentIncrease'),
-      adjustment_negative: t('inventory:stock.reasons.adjustmentDecrease'),
-      damage: t('inventory:stock.reasons.damage'),
-      write_off: t('inventory:stock.reasons.writeOff'),
-      opening_balance: t('inventory:stock.reasons.openingBalance'),
-    }
-    const reasonLabel = reasonLabels[adjustmentReason] ?? adjustmentReason
-    const reference = adjustmentNotes ? `${reasonLabel}: ${adjustmentNotes}` : reasonLabel
-
-    if (adjustmentType === 'adjust') {
-      adjustMutation.mutate({
-        product_id: selectedStock.product_id,
-        location_id: selectedStock.location_id,
-        new_quantity: adjustmentQuantity,
-        reason_code: adjustmentReason,
-        reason: reference,
-      })
-    } else if (adjustmentType === 'receive') {
-      const receiveData: { product_id: string; location_id: string; quantity: string; reference: string; notes?: string } = {
-        product_id: selectedStock.product_id,
-        location_id: selectedStock.location_id,
-        quantity: adjustmentQuantity,
-        reference: reference,
-      }
-      if (adjustmentNotes) {
-        receiveData.notes = adjustmentNotes
-      }
-      receiveMutation.mutate(receiveData)
-    } else if (adjustmentType === 'transfer') {
-      if (!transferLocationId) return
-      transferMutation.mutate({
-        product_id: selectedStock.product_id,
-        from_location_id: selectedStock.location_id,
-        to_location_id: transferLocationId,
-        quantity: adjustmentQuantity,
-        reference: adjustmentNotes || t('inventory:stock.reasons.stockTransfer'),
-      })
-    } else {
-      const issueData: { product_id: string; location_id: string; quantity: string; reference: string; notes?: string } = {
-        product_id: selectedStock.product_id,
-        location_id: selectedStock.location_id,
-        quantity: adjustmentQuantity,
-        reference: reference,
-      }
-      if (adjustmentNotes) {
-        issueData.notes = adjustmentNotes
-      }
-      issueMutation.mutate(issueData)
-    }
-  }
-
-  const isSubmitting = adjustMutation.isPending || receiveMutation.isPending || issueMutation.isPending || transferMutation.isPending
-  const mutationError = adjustMutation.error ?? receiveMutation.error ?? issueMutation.error ?? transferMutation.error
-
-  // Filter out the current location from transfer destinations
-  const transferLocations = useMemo(() => {
-    if (!selectedStock || !locationsData) return []
-    return locationsData.filter(loc => loc.id !== selectedStock.location_id)
-  }, [selectedStock, locationsData])
 
   const columns: DataTableColumn<StockLevel>[] = [
     {
@@ -339,46 +181,46 @@ export function StockLevelsPage() {
       header: <span className="sr-only">{t('common:actions.actions')}</span>,
       render: (stock) => (
         <div className="flex items-center justify-end gap-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1"
-            onClick={() => { openAdjustModal(stock, 'receive') }}
-            title={t('inventory:stock.receive')}
-          >
-            <Plus className="h-3.5 w-3.5" />
-            {t('inventory:stock.buttons.in')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1"
-            onClick={() => { openAdjustModal(stock, 'issue') }}
-            title={t('inventory:stock.issue')}
-          >
-            <Minus className="h-3.5 w-3.5" />
-            {t('inventory:stock.buttons.out')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1"
-            onClick={() => { openAdjustModal(stock, 'adjust') }}
-            title={t('inventory:stock.adjust')}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            {t('inventory:stock.adjust')}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1"
-            onClick={() => { openAdjustModal(stock, 'transfer') }}
-            title={t('inventory:stock.transfer')}
-          >
-            <ArrowRightLeft className="h-3.5 w-3.5" />
-            {t('inventory:stock.transfer')}
-          </Button>
+          {/* In / Out / Adjust all open the SAME document-backed modal — the
+              only difference is the reason preselected for the operator. There
+              is no longer a raw endpoint behind any of them. */}
+          <RequirePermission permission="inventory.adjustments.create" fallback={null}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              onClick={() => { setAdjustTarget(stock) }}
+              title={t('inventory:stock.adjust')}
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              {t('inventory:stock.adjust')}
+            </Button>
+          </RequirePermission>
+          {/* A priced, supplier-sourced entry is a goods receipt, not a
+              correction. Permission-gated on its DESTINATION's requirement, so
+              this link cannot re-create the hole it exists to close. */}
+          <RequirePermission permission="goods-receipt.create-standalone" fallback={null}>
+            <Link
+              to="/purchases/receipts/new"
+              className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm', textColors.secondary)}
+              title={t('stock-adjustments:quickModal.supplierReceiptHint')}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t('inventory:stock.buttons.in')}
+            </Link>
+          </RequirePermission>
+          {/* Transfer is its own shipped document; deep-link into it with the
+              source location and product prefilled. */}
+          <RequirePermission permission="inventory.transfers.create" fallback={null}>
+            <Link
+              to={`/inventory/stock-transfers/new?source_location_id=${stock.location_id}&product_id=${stock.product_id}`}
+              className={cn('inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm', textColors.secondary)}
+              title={t('inventory:stock.transfer')}
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              {t('inventory:stock.transfer')}
+            </Link>
+          </RequirePermission>
         </div>
       ),
     },
@@ -482,148 +324,14 @@ export function StockLevelsPage() {
         </div>
       )}
 
-      {/* Adjustment Modal */}
-      {selectedStock && (
-        <div className={tokens.modal.backdrop}>
-          <div className={tokens.modal.container}>
-            <div className={tokens.modal.header}>
-              <h2 className={tokens.modal.title}>
-                {adjustmentType === 'adjust' && t('inventory:stock.modal.adjustTitle')}
-                {adjustmentType === 'receive' && t('inventory:stock.modal.receiveTitle')}
-                {adjustmentType === 'issue' && t('inventory:stock.modal.issueTitle')}
-                {adjustmentType === 'transfer' && t('inventory:stock.modal.transferTitle')}
-              </h2>
-              <button
-                type="button"
-                onClick={closeModal}
-                className={tokens.modal.closeButton}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <span className={tokens.label.base}>{t('inventory:stock.modal.product')}</span>
-                <p className={cn('mt-1 text-sm', textColors.primary)}>{selectedStock.product_name}</p>
-              </div>
-
-              <div>
-                <span className={tokens.label.base}>
-                  {adjustmentType === 'transfer' ? t('inventory:stock.modal.fromLocation') : t('inventory:stock.modal.location')}
-                </span>
-                <p className={cn('mt-1 text-sm', textColors.primary)}>{selectedStock.location_name}</p>
-              </div>
-
-              {adjustmentType === 'transfer' && (
-                <div>
-                  <label htmlFor="transfer-location" className={tokens.label.base}>
-                    {t('inventory:stock.modal.toLocation')}
-                  </label>
-                  <Select
-                    id="transfer-location"
-                    value={transferLocationId}
-                    onChange={(e) => { setTransferLocationId(e.target.value) }}
-                  >
-                    <option value="">{t('inventory:stock.modal.selectDestination')}</option>
-                    {transferLocations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name} ({loc.code})
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-              )}
-
-              <div>
-                <span className={tokens.label.base}>{t('inventory:stock.modal.currentQuantity')}</span>
-                <p className={cn('mt-1 text-sm', textColors.primary)}>{formatQuantity(selectedStock.quantity, getQuantityDecimals(selectedStock))}</p>
-              </div>
-
-              <div>
-                <label htmlFor="quantity" className={tokens.label.base}>
-                  {adjustmentType === 'adjust' ? t('inventory:stock.modal.newQuantity') : t('inventory:stock.quantity')}
-                </label>
-                <QuantityInput
-                  id="quantity"
-                  value={adjustmentQuantity}
-                  onChange={setAdjustmentQuantity}
-                  decimalPlaces={getQuantityDecimals(selectedStock)}
-                  min="0"
-                  placeholder={adjustmentType === 'adjust' ? t('inventory:stock.modal.enterNewQuantity') : t('inventory:stock.modal.enterQuantity')}
-                />
-                {adjustmentType === 'adjust' && adjustmentQuantity && (() => {
-                  // safeBig in lib/decimal.ts treats unparseable input as 0,
-                  // so this runs safely even on programmatic paste of garbage.
-                  // Quantities are 4-decimal (decimal(15,4)); the delta must use
-                  // the quantity scale, not the currency scale, or it truncates.
-                  const delta = bcsub(adjustmentQuantity, selectedStock.quantity, 4)
-                  const sign = bccomp(delta, '0') >= 0 ? '+' : ''
-                  return (
-                    <p className={cn('mt-1 text-sm', textColors.tertiary)}>
-                      {t('inventory:stock.modal.change')}: {sign}{delta}
-                    </p>
-                  )
-                })()}
-              </div>
-
-              {adjustmentType !== 'transfer' && (
-                <div>
-                  <label htmlFor="reason" className={tokens.label.base}>
-                    {t('inventory:stock.modal.reason')}
-                  </label>
-                  <Select
-                    id="reason"
-                    value={adjustmentReason}
-                    onChange={(e) => { setAdjustmentReason(e.target.value) }}
-                  >
-                    <option value="adjustment_negative">{t('inventory:stock.reasons.adjustmentDecrease')}</option>
-                    <option value="adjustment_positive">{t('inventory:stock.reasons.adjustmentIncrease')}</option>
-                    <option value="damage">{t('inventory:stock.reasons.damage')}</option>
-                    <option value="write_off">{t('inventory:stock.reasons.writeOff')}</option>
-                    <option value="opening_balance">{t('inventory:stock.reasons.openingBalance')}</option>
-                  </Select>
-                </div>
-              )}
-
-              <div>
-                <label htmlFor="notes" className={tokens.label.base}>
-                  {adjustmentType === 'transfer' ? t('inventory:stock.modal.reference') : t('inventory:stock.modal.notes')}
-                </label>
-                <Textarea
-                  id="notes"
-                  value={adjustmentNotes}
-                  onChange={(e) => { setAdjustmentNotes(e.target.value) }}
-                  rows={2}
-                  placeholder={adjustmentType === 'transfer' ? t('inventory:stock.modal.enterReference') : t('inventory:stock.modal.addNotes')}
-                />
-              </div>
-
-              {mutationError != null && (
-                <div className={cn(tokens.alert.base, tokens.alert.error)}>
-                  {mutationError instanceof Error ? mutationError.message : t('common:errors.generic')}
-                </div>
-              )}
-
-              <div className={tokens.modal.footer}>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={closeModal}
-                >
-                  {t('common:actions.cancel')}
-                </Button>
-                <Button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || !adjustmentQuantity || (adjustmentType === 'transfer' && !transferLocationId)}
-                >
-                  {isSubmitting ? t('inventory:stock.modal.saving') : adjustmentType === 'transfer' ? t('inventory:stock.transfer') : t('inventory:stock.modal.save')}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {adjustTarget !== null && (
+        <QuickStockAdjustmentModal
+          open
+          productId={adjustTarget.product_id}
+          productName={adjustTarget.product_name ?? t('inventory:stock.unknownProduct')}
+          locationId={adjustTarget.location_id}
+          onClose={() => { setAdjustTarget(null) }}
+        />
       )}
     </div>
   )
