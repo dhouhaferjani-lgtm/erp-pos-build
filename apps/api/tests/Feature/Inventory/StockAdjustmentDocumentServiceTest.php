@@ -299,6 +299,8 @@ final class StockAdjustmentDocumentServiceTest extends TestCase
 
         $this->assertNotNull($posted->stale_acknowledged_at);
         $this->assertSame($this->user->id, $posted->stale_acknowledged_by_user_id);
+        // The reservation override was neither sent nor needed.
+        $this->assertNull($posted->reservations_ignored_at);
         // The DELTA is applied to the fresh baseline; the LINE keeps the permanent
         // evidence of what was actually posted.
         $this->assertSame('17.0000', (string) $this->level($this->productA)->quantity);
@@ -323,6 +325,57 @@ final class StockAdjustmentDocumentServiceTest extends TestCase
         $this->assertSame($this->user->id, $posted->reservations_ignored_by_user_id);
         $this->assertSame('1.0000', (string) $this->level($this->productA)->quantity);
         $this->assertSame('-2.0000', $this->level($this->productA)->getAvailableQuantity());
+        // The OTHER override must not be claimed.
+        $this->assertNull($posted->stale_acknowledged_at);
+    }
+
+    /**
+     * GATE M-5. The audit columns record an override that was RELIED ON, not a
+     * flag that was merely sent — a header claiming the operator overrode the
+     * reservation guard when they never met it is a false record.
+     */
+    public function test_an_override_flag_that_was_never_needed_is_not_stamped(): void
+    {
+        $this->seedStock($this->productA, '20.0000');
+
+        $adjustment = $this->draft([
+            $this->line($this->productA, MovementReason::AdjustmentNegative, '-2.0000', '20.0000'),
+        ]);
+
+        // Both flags sent, but nothing moved and nothing is reserved, so neither
+        // guard had anything to refuse.
+        $posted = $this->service->post(
+            $adjustment->id,
+            $this->user->id,
+            acknowledgeStale: true,
+            ignoreReservations: true,
+        );
+
+        $this->assertNull($posted->stale_acknowledged_at);
+        $this->assertNull($posted->stale_acknowledged_by_user_id);
+        $this->assertNull($posted->reservations_ignored_at);
+        $this->assertNull($posted->reservations_ignored_by_user_id);
+        $this->assertSame('18.0000', (string) $this->level($this->productA)->quantity);
+    }
+
+    /**
+     * And a multi-lot document must not stamp the staleness override just because
+     * its own arithmetic offset a later line's anchor — the rebase is compared
+     * against, not around.
+     */
+    public function test_a_multi_line_document_does_not_stamp_staleness_for_its_own_arithmetic(): void
+    {
+        $this->seedStock($this->productA, '20.0000');
+        $this->seedStock($this->productB, '20.0000');
+
+        $adjustment = $this->draft([
+            $this->line($this->productA, MovementReason::AdjustmentNegative, '-2.0000', '20.0000'),
+            $this->line($this->productB, MovementReason::AdjustmentPositive, '3.0000', '20.0000'),
+        ]);
+
+        $posted = $this->service->post($adjustment->id, $this->user->id, acknowledgeStale: true);
+
+        $this->assertNull($posted->stale_acknowledged_at);
     }
 
     public function test_line_tenant_mismatch_is_refused_before_any_lock_is_taken(): void

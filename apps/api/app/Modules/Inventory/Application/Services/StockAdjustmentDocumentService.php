@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Inventory\Application\DTOs\CreateStockAdjustmentData;
@@ -23,6 +24,7 @@ use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockAdjustment;
 use App\Modules\Inventory\Domain\StockAdjustmentLine;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Support\Facades\DB;
@@ -82,6 +84,14 @@ final class StockAdjustmentDocumentService
         }
 
         if ($data->idempotencyKey !== null) {
+            // Read-then-insert, not an upsert: on a genuine race the loser's
+            // INSERT is refused by `stock_adjustments_idempotency_unique`, which
+            // is the authoritative guard. The window here is narrow and the
+            // failure mode is benign-but-confusing rather than corrupting — a
+            // concurrent duplicate can return an already-POSTED document, and a
+            // `post_immediately` retry on it then refuses with
+            // INVALID_ADJUSTMENT_STATE instead of replaying 200 (gate M-6). The
+            // controller's own pre-check short-circuits the common case.
             $existing = StockAdjustment::query()
                 ->where('tenant_id', $data->tenantId)
                 ->where('company_id', $data->companyId)
@@ -191,10 +201,6 @@ final class StockAdjustmentDocumentService
                         'status' => StockAdjustmentStatus::Posted,
                         'posted_by_user_id' => $actorId,
                         'posted_at' => now(),
-                        'stale_acknowledged_at' => $acknowledgeStale ? now() : null,
-                        'stale_acknowledged_by_user_id' => $acknowledgeStale ? $actorId : null,
-                        'reservations_ignored_at' => $ignoreReservations ? now() : null,
-                        'reservations_ignored_by_user_id' => $ignoreReservations ? $actorId : null,
                     ])->save();
 
                     // Deltas already applied WITHIN THIS DOCUMENT, per
@@ -202,7 +208,29 @@ final class StockAdjustmentDocumentService
                     /** @var array<string, numeric-string> $appliedSoFar */
                     $appliedSoFar = [];
 
+                    // Whether each override was actually RELIED ON. The audit
+                    // columns exist to make an override visible; stamping them
+                    // because a flag was merely SENT dilutes them to noise (gate
+                    // code-review M-5), and a header that claims an operator
+                    // overrode the reservation guard when they never met it is a
+                    // false record, not a conservative one.
+                    $staleDiverged = false;
+                    $reservationsBreached = false;
+
                     foreach ($lines as $line) {
+                        // RE-ASSERT the lot predicates HERE, under the lock —
+                        // never trust the draft-time check (gate code-review I-1).
+                        // A draft persists indefinitely, so a lot minted between
+                        // authoring and posting (goods receipt, transfer in,
+                        // another adjustment) leaves a lot-less negative line
+                        // legal-at-draft and desyncing-at-post. The staleness
+                        // guard usually intercepts because the aggregate moved —
+                        // but `acknowledge_stale`, the "Apply anyway" affordance
+                        // the UI ships, bypasses exactly that. The
+                        // `requires_batch_tracking` flag is user-toggleable in the
+                        // same window, so USE_BATCH_WRITE_OFF is re-asserted too.
+                        $this->assertLinePredicatesAtPost($adjustment, $line);
+
                         /** @var numeric-string $delta */
                         $delta = (string) $line->delta_quantity;
                         $bucket = $line->product_id.'|'.($line->variant_id ?? '');
@@ -233,6 +261,35 @@ final class StockAdjustmentDocumentService
                             'movement_id' => $movement->id,
                             'quantity_before' => $movement->quantity_before,
                             'quantity_after' => $movement->quantity_after,
+                        ])->save();
+
+                        // Did the staleness guard actually have something to
+                        // refuse? Compared against the REBASED anchor, so this
+                        // document's own arithmetic never counts as divergence.
+                        if (bccomp($observedBefore, (string) $movement->quantity_before, self::SCALE) !== 0) {
+                            $staleDiverged = true;
+                        }
+
+                        // Did this line actually rely on the reservation
+                        // override? Only a NEGATIVE delta can, and only when the
+                        // resulting availability is below zero.
+                        if (bccomp($delta, '0', self::SCALE) < 0
+                            && $this->availabilityWentNegative($line, $adjustment->location_id)) {
+                            $reservationsBreached = true;
+                        }
+                    }
+
+                    if ($acknowledgeStale && $staleDiverged) {
+                        $adjustment->forceFill([
+                            'stale_acknowledged_at' => now(),
+                            'stale_acknowledged_by_user_id' => $actorId,
+                        ])->save();
+                    }
+
+                    if ($ignoreReservations && $reservationsBreached) {
+                        $adjustment->forceFill([
+                            'reservations_ignored_at' => now(),
+                            'reservations_ignored_by_user_id' => $actorId,
                         ])->save();
                     }
 
@@ -303,28 +360,69 @@ final class StockAdjustmentDocumentService
                 'corrects_adjustment_id' => $adjustment->id,
             ]);
 
+            // Contra lines go through the SAME resolution as authored lines
+            // (gate code-review C-1). Copying `batch_id` verbatim was the defect:
+            // for the door-1 onboarding case the original posts lot-LESS and the
+            // writer mints the DEFAULT lot, so a verbatim copy made the contra a
+            // NEGATIVE lot-less line that moved the aggregate and no lot at all —
+            // Sigma lots > aggregate, i.e. the exact FEFO corruption D1b exists to
+            // prevent, reachable from a first-class permissioned action.
+            $contraInputs = [];
+
             foreach ($adjustment->lines as $line) {
                 /** @var numeric-string $delta */
                 $delta = (string) $line->delta_quantity;
 
-                StockAdjustmentLine::create([
-                    'adjustment_id' => $contra->id,
-                    'tenant_id' => $contra->tenant_id,
-                    'company_id' => $contra->company_id,
-                    'product_id' => $line->product_id,
-                    'variant_id' => $line->variant_id,
-                    'batch_id' => $line->batch_id,
-                    'reason_code' => self::contraReason($line->reason_code),
-                    'delta_quantity' => bcmul($delta, '-1', self::SCALE),
+                $contraInputs[] = new StockAdjustmentLineInput(
+                    productId: $line->product_id,
+                    variantId: $line->variant_id,
+                    // Which lot the ORIGINAL actually moved, not which lot it
+                    // named: for a lot-less positive on a batch-tracked product
+                    // that is the DEFAULT lot the writer minted.
+                    batchUuid: $this->lotActuallyMovedBy($line),
+                    reasonCode: self::contraReason($line->reason_code),
+                    deltaQuantity: bcmul($delta, '-1', self::SCALE),
                     // The contra is authored against what the ORIGINAL actually
                     // posted, so its own authoring snapshot is that line's result.
-                    'observed_before' => (string) ($line->quantity_after ?? $line->observed_before),
-                    'line_note' => $line->line_note,
-                ]);
+                    observedBefore: (string) ($line->quantity_after ?? $line->observed_before),
+                    lineNote: $line->line_note,
+                );
             }
+
+            $this->writeLines($contra, $contraInputs);
 
             return $contra->refresh();
         }, attempts: 3);
+    }
+
+    /**
+     * The lot the ORIGINAL line actually moved, as its public uuid.
+     *
+     * `stock_adjustment_lines.batch_id` records what the operator NAMED, which is
+     * NULL for the door-1 onboarding case — but the writer still landed that
+     * stock in the DEFAULT lot it minted. The truth of what moved lives in the
+     * `inventory_batch_movements` row keyed on the posted movement, so the contra
+     * reads it from there rather than trusting the named column.
+     */
+    private function lotActuallyMovedBy(StockAdjustmentLine $line): ?string
+    {
+        $batchId = $line->batch_id;
+
+        if ($batchId === null && $line->movement_id !== null) {
+            $moved = BatchMovement::query()
+                ->where('movement_id', $line->movement_id)
+                ->value('batch_id');
+
+            $batchId = $moved !== null ? (int) $moved : null;
+        }
+
+        if ($batchId === null) {
+            return null;
+        }
+
+        $uuid = Batch::query()->whereKey($batchId)->value('uuid');
+
+        return $uuid !== null ? (string) $uuid : null;
     }
 
     /**
@@ -458,6 +556,83 @@ final class StockAdjustmentDocumentService
         }
 
         return null;
+    }
+
+    /**
+     * Whether this line's post left `available` (= quantity − reserved) below
+     * zero — i.e. whether the reserved-aware guard was actually overridden
+     * rather than merely waived in the request body (gate M-5).
+     */
+    private function availabilityWentNegative(StockAdjustmentLine $line, string $locationId): bool
+    {
+        $stockLevel = StockLevel::query()
+            ->where('product_id', $line->product_id)
+            ->where('location_id', $locationId)
+            ->when(
+                $line->variant_id === null,
+                static fn ($query) => $query->whereNull('variant_id'),
+                static fn ($query) => $query->where('variant_id', $line->variant_id),
+            )
+            ->first();
+
+        if ($stockLevel === null) {
+            return false;
+        }
+
+        return bccomp($stockLevel->getAvailableQuantity(), '0', self::SCALE) < 0;
+    }
+
+    /**
+     * The post-time re-assertion of the three lot predicates (gate I-1).
+     *
+     * Deliberately expressed against the PERSISTED line rather than an input DTO:
+     * at this point the operator's intent is already stored, and what has to be
+     * re-checked is whether the WORLD still agrees with it.
+     */
+    private function assertLinePredicatesAtPost(StockAdjustment $adjustment, StockAdjustmentLine $line): void
+    {
+        $product = $this->resolveProduct($adjustment, $line->product_id);
+
+        $destructive = in_array($line->reason_code, [MovementReason::Damage, MovementReason::WriteOff], true);
+        if ($destructive && $product->requires_batch_tracking) {
+            throw new UseBatchWriteOffException($product->id, $line->reason_code);
+        }
+
+        /** @var numeric-string $delta */
+        $delta = (string) $line->delta_quantity;
+        $isNegative = bccomp($delta, '0', self::SCALE) < 0;
+
+        if ($line->batch_id === null) {
+            // A positive line never requires a lot — the writer lands it in the
+            // DEFAULT lot by the delta, which is what keeps the pharmacy /
+            // parapharmacy onboarding case authorable (door 1).
+            if ($isNegative && $this->hasLotsWithStockAtLocation($product->id, $adjustment->location_id)) {
+                throw new BatchRequiredForLineException($product->id);
+            }
+
+            return;
+        }
+
+        // A named lot must STILL belong to this product and STILL hold a stock
+        // row at this location.
+        $batch = Batch::query()
+            ->where('tenant_id', $adjustment->tenant_id)
+            ->where('company_id', $adjustment->company_id)
+            ->where('product_id', $product->id)
+            ->whereKey($line->batch_id)
+            ->first();
+
+        $stillApplies = $batch !== null && BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $adjustment->location_id)
+            ->exists();
+
+        if (! $stillApplies) {
+            throw new BatchNotApplicableException(
+                $product->id,
+                $batch !== null ? (string) $batch->uuid : (string) $line->batch_id,
+            );
+        }
     }
 
     private function hasLotsWithStockAtLocation(string $productId, string $locationId): bool

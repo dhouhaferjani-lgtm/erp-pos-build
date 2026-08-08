@@ -86,6 +86,19 @@ non-seam `StockMovement::create` writers, where the morphMap ruling and the back
   `['required','numeric','min:0.0001']` with no regex, so `POST /stock-transfers` accepts a 5-dp
   quantity today — a rule-19 gap discovered while relocating `IngressPrecisionTest`. Pre-existing;
   deliberately not fixed in this lane, because silently tightening a shipped contract is out of scope.
+- **The counting lane still carries gate finding C2's ORIGINAL lot/aggregate corruption. Owner: the
+  counting lane.** V7 fixed it on the DOCUMENT path only. `StockAdjustmentService::adjust()` — the
+  absolute entry point, called solely by `ApplyStockAdjustmentsOnCountingCompleted` — deliberately
+  keeps the TARGET-based `ensureDefaultBatchForImplicitPositiveStock()`, per plan D1's "bit-for-bit
+  unchanged" and the ruling recorded as Collision C-1 in `task-v7-report.md`. Consequences that are
+  still live: for a batch-tracked product already holding real lots, a POSITIVE counting variance
+  inflates the DEFAULT lot to the whole aggregate (Σ lots > aggregate), and a NEGATIVE counting
+  variance decrements no lot at all. This is the largest of the three residuals — it fires on every
+  batch-tracked count, in the two verticals where every product defaults to batch tracking.
+  **Any fix must be reconciled with Collision C-1's ruling**, because
+  `InventoryCountingDefaultBatchTest` currently REQUIRES the target-based behaviour (aggregate 5 with
+  zero lots counted up to 7 must leave the DEFAULT lot at 7, which delta-based reconciliation would
+  make 2). The two cannot be changed independently.
 - **Two rule-19 float breaches on the batch path**, to be fixed together and NOT to collide with the
   lot rules this lane adopts: `BatchStock::getAvailableQuantityAttribute(): float` (two `decimal:4`
   casts subtracted as floats, then `(string)`-cast into `bccomp(...,4)` — at scale 4 with a large

@@ -108,11 +108,67 @@ final class InventoryCostLockCoverageTest extends TestCase
         return [
             ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete('],
             ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel('],
-            ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function receiveGoods('],
             ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post('],
             ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm('],
             ['app/Modules/Inventory/Application/Services/StockAdjustmentDocumentService.php', 'public function post('],
         ];
+    }
+
+    /**
+     * DELEGATING callers: a method that opens the transaction but hands the whole
+     * seam loop to another method in the same class. The up-front sorted acquire
+     * is held by the DELEGATE, so asserting `costLock->acquire(` in the caller's
+     * own body is the wrong assertion — it was failing here for that reason
+     * (gate code-review I-4), and a knowingly-red architecture test is how a
+     * guard stops being trusted.
+     *
+     * What must hold instead: the caller delegates to a method that IS itself
+     * pinned by multiProductSeamCallerProvider.
+     *
+     * @return array<int, array{string, string, string}>
+     */
+    public static function delegatingSeamCallerProvider(): array
+    {
+        return [
+            [
+                'app/Modules/Inventory/Application/Services/GoodsReceiptService.php',
+                'public function receiveGoods(',
+                'this->post(',
+            ],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('delegatingSeamCallerProvider')]
+    public function test_delegating_seam_callers_hand_off_to_a_pinned_locker(
+        string $path,
+        string $sig,
+        string $delegate,
+    ): void {
+        $body = $this->extractMethodBody(base_path($path), $sig);
+
+        $this->assertStringContainsString(
+            $delegate,
+            $body,
+            "{$sig} in {$path} takes NO advisory lock of its own, so it must delegate the seam loop to "
+            ."a method that does ({$delegate}). If this ever stops delegating, move the row back to "
+            .'multiProductSeamCallerProvider — it would then need its own up-front sorted acquire.'
+        );
+
+        $this->assertStringNotContainsString(
+            'costLock->acquire(',
+            $body,
+            "{$sig} in {$path} is registered as a DELEGATING caller but now acquires the seam itself. "
+            .'Move it to multiProductSeamCallerProvider so the acquire-before-the-loop ordering is pinned.'
+        );
+
+        // And the delegate it hands off to must itself be a pinned locker.
+        $post = $this->extractMethodBody(base_path($path), 'public function post(');
+        $this->assertStringContainsString(
+            'costLock->acquire(',
+            $post,
+            "The delegate of {$sig} must hold the up-front advisory lock."
+        );
     }
 
     #[Test]

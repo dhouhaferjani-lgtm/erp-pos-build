@@ -964,12 +964,23 @@ final class StockAdjustmentService
             $this->receiveIntoDefaultBatchByDelta($stockLevel, $productId, $difference, $movement->id);
         } elseif ($isPositive) {
             $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
+        } elseif ($deltaBasedDefaultLot) {
+            // $batchId === null && $difference < 0 on the DOCUMENT path.
+            //
+            // StockAdjustmentDocumentService refuses a negative line whenever a
+            // lot with stock exists at the location — at authoring AND again
+            // under the lock — so the only way here is a batch-tracked product
+            // whose lots are all empty. Draining the DEFAULT lot keeps
+            // Sigma BatchStock == stock_levels.quantity by construction rather
+            // than by an upstream promise, which is what makes the guarantee
+            // survive a future caller that forgets the predicate (gate C-1: the
+            // previous "unreachable" comment here was FALSE, because correct()
+            // reached it).
+            $this->issueFromDefaultBatchByDelta($stockLevel, $productId, $difference, $movement->id);
         }
-        // $batchId === null && $difference < 0 is unreachable from the document:
-        // StockAdjustmentDocumentService refuses a negative line whenever a lot
-        // with stock exists at the location, and when none exists there is
-        // nothing to decrement. The legacy absolute adjust() can still reach it;
-        // its behaviour is unchanged (no lot is touched).
+        // The LEGACY absolute adjust() can still reach a lot-less negative; its
+        // behaviour is deliberately unchanged (no lot is touched) — see
+        // $deltaBasedDefaultLot above.
 
         // Dispatch StockMovementRecorded event after transaction commits
         $movementSnapshot = $movement;
@@ -1061,6 +1072,69 @@ final class StockAdjustmentService
             batchId: $batch->id,
             locationId: $stockLevel->location_id,
             quantity: $delta,
+            movementId: $movementId,
+        );
+    }
+
+    /**
+     * Draw a lot-less negative down from the DEFAULT lot (gate code-review C-1).
+     *
+     * The mirror of receiveIntoDefaultBatchByDelta(). Deliberately TOLERANT of a
+     * missing or short DEFAULT lot: this arm exists as a structural guarantee
+     * behind the document's own predicates, not as a second refusal surface, and
+     * turning a correction into a hard failure here would strand the operator
+     * with an aggregate that already moved. When there is genuinely no lot to
+     * decrement there is also nothing to desync.
+     *
+     * @param  numeric-string  $delta  Negative delta being applied to the aggregate
+     */
+    private function issueFromDefaultBatchByDelta(
+        StockLevel $stockLevel,
+        string $productId,
+        string $delta,
+        string $movementId,
+    ): void {
+        $product = Product::query()
+            ->where('company_id', $stockLevel->company_id)
+            ->findOrFail($productId);
+
+        if (! $product->requires_batch_tracking) {
+            return;
+        }
+
+        $batch = Batch::query()
+            ->where('company_id', $stockLevel->company_id)
+            ->where('product_id', $productId)
+            ->where('batch_number', BatchStockService::DEFAULT_BATCH_NUMBER)
+            ->when(
+                $stockLevel->variant_id === null,
+                static fn ($query) => $query->whereNull('variant_id'),
+                static fn ($query) => $query->where('variant_id', $stockLevel->variant_id),
+            )
+            ->first();
+
+        if ($batch === null) {
+            return;
+        }
+
+        /** @var numeric-string $available */
+        $available = (string) (BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $stockLevel->location_id)
+            ->value('quantity') ?? '0');
+
+        /** @var numeric-string $magnitude */
+        $magnitude = bcmul($delta, '-1', self::SCALE);
+
+        if (bccomp($available, $magnitude, self::SCALE) < 0) {
+            return;
+        }
+
+        $this->batchStockService->issueBatchStock(
+            tenantId: $stockLevel->tenant_id,
+            batchId: $batch->id,
+            locationId: $stockLevel->location_id,
+            quantity: $magnitude,
             movementId: $movementId,
         );
     }

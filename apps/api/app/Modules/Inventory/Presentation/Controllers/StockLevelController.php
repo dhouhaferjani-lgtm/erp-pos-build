@@ -58,8 +58,15 @@ class StockLevelController extends Controller
 
         $stockLevels = $query->orderBy('created_at', 'desc')->paginate(20);
 
+        // ONE query for the whole page's lot presence, not one EXISTS per row
+        // (gate code-review M-3).
+        $lotPresence = StockLevelData::lotPresenceMapFor($stockLevels->getCollection());
+
         $data = $stockLevels->getCollection()
-            ->map(fn (StockLevel $level): StockLevelData => StockLevelData::fromModel($level));
+            ->map(fn (StockLevel $level): StockLevelData => StockLevelData::fromModel(
+                $level,
+                lotPresenceByKey: $lotPresence,
+            ));
 
         return response()->json([
             'data' => $data,

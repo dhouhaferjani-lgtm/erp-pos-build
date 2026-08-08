@@ -18,7 +18,9 @@ use App\Modules\Inventory\Application\Services\StockAdjustmentDocumentService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Exceptions\BatchNotApplicableException;
 use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
+use App\Modules\Inventory\Domain\Exceptions\StockMovedSinceAuthoringException;
 use App\Modules\Inventory\Domain\Exceptions\UseBatchWriteOffException;
+use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockAdjustment;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\ProductType;
@@ -338,6 +340,220 @@ final class StockAdjustmentBatchDispositionTest extends TestCase
             $this->line($product, MovementReason::AdjustmentPositive, '5.0000', '30.0000'),
             $this->line($product, MovementReason::AdjustmentPositive, '2.0000', '30.0000'),
         ]);
+    }
+
+    // ------------------- C-2: the staleness rebase must not mask a real move
+
+    /**
+     * GATE I-3 (code review). `post()` rebases each line's `observed_before` by
+     * what THIS DOCUMENT has already applied to the same (product, variant), so a
+     * multi-lot document does not refuse itself. That rebase is the one piece of
+     * new arithmetic that could silently disarm an integrity guard, so it is
+     * pinned rather than reasoned about.
+     *
+     * Here a genuine EXTERNAL movement lands between authoring and posting. The
+     * first line of the bucket carries the raw anchor, so it must still refuse.
+     */
+    public function test_the_rebase_does_not_mask_a_genuine_interleaved_movement(): void
+    {
+        $product = $this->product('LOT-REBASE-A', batchTracked: true);
+        $this->seedStock($product, '30.0000');
+        $lotA = $this->seedLot($product, 'LOT-RB-A', '20.0000');
+        $lotB = $this->seedLot($product, 'LOT-RB-B', '10.0000');
+
+        $draft = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '30.0000', $lotA->uuid),
+            $this->line($product, MovementReason::AdjustmentPositive, '2.0000', '30.0000', $lotB->uuid),
+        ]);
+
+        // Someone else receives 7 before the document is posted.
+        app(StockAdjustmentService::class)->receive(
+            productId: $product->id,
+            locationId: $this->warehouse->id,
+            quantity: '7.0000',
+            reference: 'INTERLEAVED',
+            userId: $this->user->id,
+        );
+
+        $this->expectException(StockMovedSinceAuthoringException::class);
+        try {
+            $this->service->post($draft->id, $this->user->id);
+        } finally {
+            // Whole-document refusal: nothing written, lots untouched.
+            $this->assertSame('37.0000', (string) $this->level($product)->quantity);
+            $this->assertSame('20.0000', $this->lotQuantity($lotA));
+            $this->assertSame('10.0000', $this->lotQuantity($lotB));
+        }
+    }
+
+    /**
+     * The other half: a LATER line of the same bucket carrying a genuinely stale
+     * anchor must still refuse. The rebase offsets each line by this document's
+     * own arithmetic ONLY, so masking would require the line's own anchor to
+     * equal the true starting quantity — which is exactly the correct condition.
+     */
+    public function test_the_rebase_still_refuses_a_later_line_with_its_own_stale_anchor(): void
+    {
+        $product = $this->product('LOT-REBASE-B', batchTracked: true);
+        $this->seedStock($product, '30.0000');
+        $lotA = $this->seedLot($product, 'LOT-RB2-A', '20.0000');
+        $lotB = $this->seedLot($product, 'LOT-RB2-B', '10.0000');
+
+        $draft = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '30.0000', $lotA->uuid),
+            // Authored against a quantity this line never actually saw.
+            $this->line($product, MovementReason::AdjustmentPositive, '2.0000', '28.0000', $lotB->uuid),
+        ]);
+
+        $this->expectException(StockMovedSinceAuthoringException::class);
+        try {
+            $this->service->post($draft->id, $this->user->id);
+        } finally {
+            $this->assertSame('30.0000', (string) $this->level($product)->quantity);
+            $this->assertSame('20.0000', $this->lotQuantity($lotA));
+            $this->assertSame('10.0000', $this->lotQuantity($lotB));
+        }
+    }
+
+    // ------------------------------- C-1 / I-1: the lot rules at POST time
+
+    /**
+     * GATE C-1 (code review), reproduced then inverted.
+     *
+     * The door-1 onboarding case is the flagship supported flow: a batch-tracked
+     * product with ZERO lots takes a positive lot-less line, and the writer mints
+     * the DEFAULT lot. `correct()` used to copy `batch_id` verbatim from the
+     * original — NULL — so the contra was a NEGATIVE lot-less line that fell
+     * through every arm of postAdjustmentWithinLock(): the aggregate dropped and
+     * no lot moved, leaving Sigma lots > aggregate. That is exactly the FEFO
+     * corruption D1b exists to prevent, reachable from a first-class permissioned
+     * action.
+     */
+    public function test_correcting_a_lot_less_positive_keeps_sigma_lots_equal_to_the_aggregate(): void
+    {
+        $product = $this->product('LOT-C1', batchTracked: true);
+        $this->seedStock($product, '0.0000');
+
+        $original = $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '12.0000', '0.0000')]);
+        $this->service->post($original->id, $this->user->id);
+
+        $this->assertSame('12.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('12.0000', $this->totalLotQuantity($product));
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+        $this->service->post($contra->id, $this->user->id);
+
+        $this->assertSame('0.0000', (string) $this->level($product)->quantity);
+        $this->assertSame(
+            (string) $this->level($product)->quantity,
+            $this->totalLotQuantity($product),
+            'A correction must move the lots it is correcting — Sigma BatchStock must still equal the aggregate.'
+        );
+    }
+
+    public function test_correcting_a_lot_named_line_returns_the_stock_to_that_same_lot(): void
+    {
+        $product = $this->product('LOT-C1B', batchTracked: true);
+        $this->seedStock($product, '30.0000');
+        $lot = $this->seedLot($product, 'LOT-C1B-A', '30.0000');
+
+        $original = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '30.0000', $lot->uuid),
+        ]);
+        $this->service->post($original->id, $this->user->id);
+
+        $this->assertSame('25.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('25.0000', $this->lotQuantity($lot));
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+        $this->service->post($contra->id, $this->user->id);
+
+        $this->assertSame('30.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('30.0000', $this->lotQuantity($lot));
+        $this->assertSame(
+            (string) $this->level($product)->quantity,
+            $this->totalLotQuantity($product),
+        );
+    }
+
+    /**
+     * GATE I-1. The lot predicates used to be enforced at DRAFT-AUTHORING time
+     * only. A draft persists indefinitely, so a lot minted between authoring and
+     * posting (goods receipt, transfer in, another adjustment) left a lot-less
+     * negative line legal-at-draft and desyncing-at-post. The staleness guard
+     * usually intercepts because the aggregate moved — but `acknowledge_stale`,
+     * the "Apply anyway" affordance the UI ships, bypasses exactly that.
+     */
+    public function test_a_lot_minted_between_authoring_and_posting_is_refused_at_post(): void
+    {
+        $product = $this->product('LOT-I1', batchTracked: false);
+        $this->seedStock($product, '40.0000');
+
+        // Authored while NO lot holds stock here, so the draft is legal.
+        $draft = $this->draft([$this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '40.0000')]);
+
+        // A goods receipt (or transfer in) mints a lot before the draft is posted.
+        $lot = $this->seedLot($product, 'LOT-I1-LATE', '10.0000');
+        $this->assertNotNull($lot->id);
+
+        try {
+            // acknowledge_stale would have bypassed the aggregate guard; the lot
+            // predicate must stand on its own.
+            $this->service->post($draft->id, $this->user->id, acknowledgeStale: true);
+            $this->fail('Expected BatchRequiredForLineException at post time.');
+        } catch (BatchRequiredForLineException $e) {
+            $this->assertSame($product->id, $e->productId);
+        }
+
+        $this->assertSame('40.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('10.0000', $this->totalLotQuantity($product));
+    }
+
+    /**
+     * The flag is user-toggleable, so `USE_BATCH_WRITE_OFF` must be re-asserted
+     * at post time too — a draft authored while the product was not lot-tracked
+     * must not post a `damage` line after the flag is turned on.
+     */
+    public function test_turning_on_batch_tracking_after_authoring_refuses_a_damage_line_at_post(): void
+    {
+        $product = $this->product('LOT-I1B', batchTracked: false);
+        $this->seedStock($product, '20.0000');
+
+        $draft = $this->draft([$this->line($product, MovementReason::Damage, '-3.0000', '20.0000')]);
+
+        $product->update(['requires_batch_tracking' => true]);
+
+        $this->expectException(UseBatchWriteOffException::class);
+        try {
+            $this->service->post($draft->id, $this->user->id, acknowledgeStale: true);
+        } finally {
+            $this->assertSame('20.0000', (string) $this->level($product)->quantity);
+        }
+    }
+
+    /**
+     * A lot deleted (or emptied) between authoring and posting must likewise be
+     * refused rather than silently posted against a lot that no longer applies.
+     */
+    public function test_a_lot_that_stops_applying_between_authoring_and_posting_is_refused_at_post(): void
+    {
+        $product = $this->product('LOT-I1C', batchTracked: true);
+        $this->seedStock($product, '30.0000');
+        $lot = $this->seedLot($product, 'LOT-I1C-A', '30.0000');
+
+        $draft = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '30.0000', $lot->uuid),
+        ]);
+
+        // The lot's stock row at this location goes away.
+        BatchStock::query()->where('batch_id', $lot->id)->delete();
+
+        $this->expectException(BatchNotApplicableException::class);
+        try {
+            $this->service->post($draft->id, $this->user->id, acknowledgeStale: true);
+        } finally {
+            $this->assertSame('30.0000', (string) $this->level($product)->quantity);
+        }
     }
 
     // ------------------------------------------------------------- fixtures

@@ -8,6 +8,7 @@ use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Product;
+use Illuminate\Support\Facades\DB;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -41,8 +42,17 @@ class StockLevelData extends Data
         public bool $has_lots_at_location,
     ) {}
 
-    public static function fromModel(StockLevel $stockLevel, string $incoming = '0.00'): self
-    {
+    /**
+     * @param  array<string, bool>|null  $lotPresenceByKey  Pre-resolved
+     *                                                      "(product|location) => has a lot with stock here" map. Pass it when
+     *                                                      rendering a LIST: without it every row issues its own EXISTS, so a page
+     *                                                      of 20 costs 20 extra round-trips (gate code-review M-3).
+     */
+    public static function fromModel(
+        StockLevel $stockLevel,
+        string $incoming = '0.00',
+        ?array $lotPresenceByKey = null,
+    ): self {
         /** @var numeric-string $available */
         $available = $stockLevel->getAvailableQuantity();
         /** @var numeric-string $incoming */
@@ -64,7 +74,9 @@ class StockLevelData extends Data
             is_below_minimum: $stockLevel->isBelowMinimum(),
             quantity_decimals: self::resolveQuantityDecimals($stockLevel),
             requires_batch_tracking: self::resolveRequiresBatchTracking($stockLevel),
-            has_lots_at_location: self::resolveHasLotsAtLocation($stockLevel),
+            has_lots_at_location: $lotPresenceByKey !== null
+                ? ($lotPresenceByKey[self::lotPresenceKey($stockLevel->product_id, $stockLevel->location_id)] ?? false)
+                : self::resolveHasLotsAtLocation($stockLevel),
         );
     }
 
@@ -79,6 +91,56 @@ class StockLevelData extends Data
         return $product instanceof Product && $product->requires_batch_tracking;
     }
 
+    /** The key shape used by {@see self::lotPresenceMapFor()}. */
+    public static function lotPresenceKey(string $productId, string $locationId): string
+    {
+        return $productId.'|'.$locationId;
+    }
+
+    /**
+     * Resolve lot presence for a whole page in ONE query (gate M-3).
+     *
+     * @param  iterable<StockLevel>  $stockLevels
+     * @return array<string, bool>
+     */
+    public static function lotPresenceMapFor(iterable $stockLevels): array
+    {
+        $productIds = [];
+        $locationIds = [];
+
+        foreach ($stockLevels as $stockLevel) {
+            $productIds[$stockLevel->product_id] = true;
+            $locationIds[$stockLevel->location_id] = true;
+        }
+
+        /** @var list<string> $productIdList */
+        $productIdList = array_keys($productIds);
+        /** @var list<string> $locationIdList */
+        $locationIdList = array_keys($locationIds);
+
+        if ($productIdList === [] || $locationIdList === []) {
+            return [];
+        }
+
+        /** @var list<object{product_id: string, location_id: string}> $rows */
+        $rows = DB::table('inventory_batch_stock')
+            ->join('product_batches', 'product_batches.id', '=', 'inventory_batch_stock.batch_id')
+            ->whereIn('product_batches.product_id', $productIdList)
+            ->whereIn('inventory_batch_stock.location_id', $locationIdList)
+            ->where('inventory_batch_stock.quantity', '>', 0)
+            ->select('product_batches.product_id', 'inventory_batch_stock.location_id')
+            ->distinct()
+            ->get()
+            ->all();
+
+        $map = [];
+        foreach ($rows as $row) {
+            $map[self::lotPresenceKey((string) $row->product_id, (string) $row->location_id)] = true;
+        }
+
+        return $map;
+    }
+
     /**
      * "This product has at least one lot holding stock at THIS location."
      *
@@ -86,6 +148,12 @@ class StockLevelData extends Data
      * nothing deletes BatchStock on the reverse flip, so a lot can hold stock
      * while the flag says otherwise. Naming the lot is required by what the lots
      * actually say, not by what the flag currently says.
+     *
+     * NOT variant-aware: it matches every lot of the product. That is consistent
+     * with today's product-level-only authoring surface, but it will report
+     * `true` for a variant-bearing line whose OWN variant holds no lot once
+     * variants are surfaced (gate code-review M-4) — the follow-up that adds
+     * `variant_id` to the authoring UI owns narrowing this too.
      */
     private static function resolveHasLotsAtLocation(StockLevel $stockLevel): bool
     {

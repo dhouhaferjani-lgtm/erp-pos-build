@@ -600,7 +600,12 @@ export async function adjustStockTo(
   const delta = subtractQuantity(opts.newQuantity, before)
 
   // Already at target: there is no correction to document.
-  if (Number(delta) === 0) {
+  //
+  // Compared as a STRING, not via Number(): subtractQuantity() always emits a
+  // canonical 4-dp decimal, so '0.0000' is the only zero it can produce, and a
+  // float round-trip on a quantity is the rule-19 breach this whole lane exists
+  // to remove (gate code-review M-1).
+  if (delta === '0.0000') {
     return level
   }
 
