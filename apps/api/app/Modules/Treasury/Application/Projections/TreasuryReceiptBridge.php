@@ -22,6 +22,7 @@ use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\Projections\Concerns\HandlesMaturityTenderLeg;
 use App\Modules\Treasury\Application\Projections\Concerns\ResolvesTerminalLocation;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\TenderRepositoryResolver;
 use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
@@ -161,6 +162,9 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
         // allowed to cache, and the only worker-safe way to reach it (explicit
         // company id, no CompanyContext, no no-arg getScale()).
         private readonly PosPaymentPolicyResolver $posPaymentPolicyResolver,
+        // DPA lane G3 requirement 4 — the shared tender→repository rule, so the
+        // shift-variance listener and this projection cannot drift apart.
+        private readonly TenderRepositoryResolver $tenderRepositoryResolver,
     ) {}
 
     public function name(): string
@@ -1440,35 +1444,22 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
      * belongs to the event tenant+company, is active, and remains GL-linked.
      * Otherwise preserve the historical deterministic fallback: the first
      * tenant+company GL-linked repository ordered by stable UUID.
+     *
+     * DPA lane G3 requirement 4: the rule itself now lives in
+     * {@see TenderRepositoryResolver} so the shift-close cash-variance listener
+     * resolves the SAME repository this projection does — by sharing the code,
+     * not by duplicating it. This method stays as the bridge's named seam (and
+     * the anti-drift test's second entry point); its behaviour is unchanged.
      */
     private function resolveRepositoryForTender(
         FiscalEvent $event,
         ?PaymentMethod $method,
     ): ?PaymentRepository {
-        try {
-            $mappedRepositoryId = $method?->default_repository_id;
-            if (is_string($mappedRepositoryId)) {
-                $mapped = PaymentRepository::query()
-                    ->where('tenant_id', $event->tenant_id)
-                    ->where('company_id', $event->company_id)
-                    ->where('is_active', true)
-                    ->whereNotNull('gl_account_id')
-                    ->find($mappedRepositoryId);
-
-                if ($mapped instanceof PaymentRepository) {
-                    return $mapped;
-                }
-            }
-
-            return PaymentRepository::query()
-                ->where('tenant_id', $event->tenant_id)
-                ->where('company_id', $event->company_id)
-                ->whereNotNull('gl_account_id')
-                ->orderBy('id')
-                ->first();
-        } catch (QueryException) {
-            return null;
-        }
+        return $this->tenderRepositoryResolver->resolve(
+            (string) $event->tenant_id,
+            (string) $event->company_id,
+            $method,
+        );
     }
 
     /**
