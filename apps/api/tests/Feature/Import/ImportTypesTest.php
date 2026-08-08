@@ -6,6 +6,10 @@ namespace Tests\Feature\Import;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -409,13 +413,24 @@ class ImportTypesTest extends TestCase
 
     public function test_can_import_opening_balances(): void
     {
-        // Create prerequisite account
+        // Create prerequisite accounts: the target account plus the OBE plug
+        // account the batch-documented path offsets one-sided rows against.
         $account = Account::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'code' => '1000',
             'name' => 'Cash',
             'type' => AccountType::Asset,
+        ]);
+
+        $obeAccount = Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '1080',
+            'name' => 'Opening Balance Equity',
+            'type' => AccountType::Equity,
+            'system_purpose' => SystemAccountPurpose::OpeningBalanceEquity->value,
+            'is_system' => true,
         ]);
 
         /** @var ImportService $importService */
@@ -443,13 +458,33 @@ class ImportTypesTest extends TestCase
         $job->refresh();
         $this->assertEquals(ImportStatus::Completed, $job->status);
 
-        $this->assertDatabaseHas('journal_lines', [
-            'account_id' => $account->id,
-            'debit' => '5000.00',
-        ]);
+        $batch = OpeningBalanceBatch::forCompany($this->company->id)
+            ->ofType(OpeningBatchType::Accounting)
+            ->firstOrFail();
+
+        $entry = JournalEntry::where('company_id', $this->company->id)->firstOrFail();
+        $this->assertSame('opening_balance', $entry->source_type);
+        $this->assertSame($batch->id, $entry->source_id);
+        $this->assertTrue($entry->is_historical);
+
+        $lines = $entry->lines()->get();
+        $this->assertCount(2, $lines);
+
+        $accountLine = $lines->firstWhere('account_id', $account->id);
+        $this->assertNotNull($accountLine);
+        $this->assertSame(0, bccomp($accountLine->debit, '5000', 3));
+
+        $obeLine = $lines->firstWhere('account_id', $obeAccount->id);
+        $this->assertNotNull($obeLine);
+        $this->assertSame(0, bccomp($obeLine->credit, '5000', 3));
     }
 
-    public function test_opening_balance_import_fails_for_missing_account(): void
+    /**
+     * Requirement 4/5: the unmappable account becomes actionable per-row feedback
+     * rather than an aborted run / opaque execution error. The job's terminal LABEL
+     * is Failed because nothing posted.
+     */
+    public function test_opening_balance_import_marks_missing_account_row_invalid_without_aborting(): void
     {
         /** @var ImportService $importService */
         $importService = app(ImportService::class);
@@ -470,10 +505,87 @@ class ImportTypesTest extends TestCase
         ]);
 
         $importService->validateJob($job);
-        $importService->executeImport($job);
+        // Must not throw — that is what requirement 4 forbids.
+        $result = $importService->executeImport($job);
+        $this->assertSame(0, $result['imported_count']);
 
         $job->refresh();
         $this->assertEquals(ImportStatus::Failed, $job->status);
+        $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
+
+        $row = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertSame('balance_not_posted', ($row->warnings ?? [])[0]['code'] ?? null);
+        $this->assertSame('error: validation_failed', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertFalse($row->is_imported);
+        $this->assertSame(0, $job->successful_rows);
+
+        // Nothing posted => no batch residue blocking the next import or the wizard.
+        $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
+    }
+
+    /**
+     * A GL opening-balance import posts a permanent, locked opening entry — the same
+     * act the opening-batch API gates behind accounts.manage. imports.manage alone
+     * must not be a way around that gate.
+     */
+    public function test_opening_balance_upload_requires_accounts_manage(): void
+    {
+        $importOnly = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Import Only',
+            'email' => 'import-only@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+        $importOnly->givePermissionTo('imports.manage');
+
+        UserCompanyMembership::create([
+            'user_id' => $importOnly->id,
+            'company_id' => $this->company->id,
+            'role' => 'viewer',
+        ]);
+
+        $this->assertFalse($importOnly->can('accounts.manage'));
+
+        $response = $this->actingAs($importOnly, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => UploadedFile::fake()->createWithContent(
+                    'balances.csv',
+                    "account_code,debit,credit\n1000,5000.00,0.00"
+                ),
+                'type' => 'opening_balances',
+            ]);
+
+        $response->assertForbidden();
+        $this->assertSame('OPENING_BALANCES_REQUIRE_ACCOUNTS_MANAGE', $response->json('error.code'));
+        $this->assertSame(0, ImportJob::where('tenant_id', $this->tenant->id)->count());
+    }
+
+    public function test_opening_balance_import_rejects_money_beyond_three_decimals(): void
+    {
+        /** @var ImportService $importService */
+        $importService = app(ImportService::class);
+
+        $job = $importService->createJob(
+            tenantId: $this->tenant->id,
+            userId: $this->user->id,
+            type: ImportType::OpeningBalances,
+            filename: 'balances.csv',
+            filePath: 'imports/balances.csv',
+            totalRows: 1
+        );
+
+        $importService->addRow($job, 1, [
+            'account_code' => '1000',
+            'debit' => '5000.1234',
+            'credit' => '0.00',
+        ]);
+
+        $importService->validateJob($job);
+
+        $row = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertFalse($row->is_valid, 'excess decimals must be rejected, not silently truncated');
+        $this->assertArrayHasKey('debit', $row->errors ?? []);
     }
 
     // === API Error Handling Tests ===
@@ -514,5 +626,7 @@ class ImportTypesTest extends TestCase
 
         $balanceRules = ImportType::OpeningBalances->getValidationRules();
         $this->assertArrayHasKey('account_code', $balanceRules);
+        $this->assertContains('regex:/^-?\d+(\.\d{1,3})?$/', $balanceRules['debit']);
+        $this->assertContains('regex:/^-?\d+(\.\d{1,3})?$/', $balanceRules['credit']);
     }
 }

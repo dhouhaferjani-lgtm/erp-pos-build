@@ -116,8 +116,13 @@ enum ImportType: string
             ],
             self::OpeningBalances => [
                 'account_code' => ['required', 'string'],
-                'debit' => ['required_without:credit', 'nullable', 'numeric', 'min:0'],
-                'credit' => ['required_without:debit', 'nullable', 'numeric', 'min:0'],
+                // The 3-decimal money ceiling (CLAUDE.md rule 19) matches the one the
+                // opening-batch API enforces on rows.*.debit / rows.*.credit. Without
+                // it, extra decimals are silently TRUNCATED by CurrencyScale::
+                // bcformatStrict when the row is staged, so the posted GL entry would
+                // quietly differ from the file the accountant supplied.
+                'debit' => ['required_without:credit', 'nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
+                'credit' => ['required_without:debit', 'nullable', 'numeric', 'min:0', 'regex:/^-?\d+(\.\d{1,3})?$/'],
             ],
             self::ProductImages => [], // ZIP-based import, validation during extraction
             self::CompositeItems => [

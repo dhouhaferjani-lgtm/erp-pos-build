@@ -23,7 +23,6 @@ use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use DateTimeInterface;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -372,44 +371,6 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
             ->first();
 
         return $account?->id;
-    }
-
-    /**
-     * Create an opening balance journal entry.
-     *
-     * @return string The journal entry ID
-     */
-    public function createOpeningBalanceEntry(
-        string $tenantId,
-        string $companyId,
-        string $accountId,
-        string $debit,
-        string $credit,
-        string $description,
-        ?string $reference,
-        DateTimeInterface $date
-    ): string {
-        $entryNumber = 'OB-'.$date->format('YmdHis').'-'.random_int(1000, 9999);
-        $fullDescription = $description.($reference !== null && $reference !== '' ? ' - '.$reference : '');
-
-        $entry = JournalEntry::create([
-            'tenant_id' => $tenantId,
-            'company_id' => $companyId,
-            'entry_number' => $entryNumber,
-            'entry_date' => $date,
-            'description' => $fullDescription,
-            'status' => JournalEntryStatus::Posted,
-        ]);
-
-        JournalLine::create([
-            'journal_entry_id' => $entry->id,
-            'account_id' => $accountId,
-            'debit' => $debit,
-            'credit' => $credit,
-            'description' => $description,
-        ]);
-
-        return $entry->id;
     }
 
     /**

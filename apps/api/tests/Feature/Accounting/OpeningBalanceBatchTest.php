@@ -280,8 +280,10 @@ class OpeningBalanceBatchTest extends TestCase
         $response->assertJsonPath('data.is_balanced', true);
         $response->assertJsonPath('data.valid_rows', 2);
         $response->assertJsonPath('data.invalid_rows', 0);
-        $response->assertJsonPath('data.total_debit', '10000.00');
-        $response->assertJsonPath('data.total_credit', '10000.00');
+        // Storage scale 3: validate/preview must report exactly what will be posted
+        // into journal_lines.debit/credit (decimal(15,3)), not a display-rounded value.
+        $response->assertJsonPath('data.total_debit', '10000.000');
+        $response->assertJsonPath('data.total_credit', '10000.000');
     }
 
     public function test_validate_unbalanced_batch_reports_errors(): void
@@ -335,8 +337,8 @@ class OpeningBalanceBatchTest extends TestCase
         $response->assertJsonPath('data.entry.is_historical', true);
         $response->assertJsonPath('data.entry.source_type', 'opening_balance');
         $response->assertJsonPath('data.totals.is_balanced', true);
-        $response->assertJsonPath('data.totals.debit', '10000.00');
-        $response->assertJsonPath('data.totals.credit', '10000.00');
+        $response->assertJsonPath('data.totals.debit', '10000.000');
+        $response->assertJsonPath('data.totals.credit', '10000.000');
         $this->assertCount(2, $response->json('data.lines'));
     }
 

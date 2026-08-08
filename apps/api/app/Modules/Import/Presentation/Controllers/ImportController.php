@@ -117,6 +117,15 @@ class ImportController extends Controller
             return $this->handleProductImagesUpload($file, $user, $tenantId);
         }
 
+        // A GL opening-balance import consumes the company's one-shot opening slot:
+        // it posts a historical journal entry and LOCKS an OpeningBalanceBatch that
+        // nobody can delete afterwards. Every equivalent action on the opening-batch
+        // API is gated behind accounts.manage (Accounting routes.php), so the import
+        // surface's own imports.manage grant must not be a way around it.
+        if ($type === ImportType::OpeningBalances && ! $user->can('accounts.manage')) {
+            return $this->openingBalancesForbidden();
+        }
+
         // CRITICAL: Prevent stock_levels import in ongoing imports (compliance issue)
         // Stock can only be imported during opening balances setup
         if ($type === ImportType::StockLevels) {
@@ -463,6 +472,13 @@ class ImportController extends Controller
             return response()->json(['error' => 'Import job not found'], 404);
         }
 
+        // Posting is the act that consumes the one-shot opening slot — gate it here
+        // too, not only at upload, so a job created before the grant was revoked
+        // cannot still be executed. See store().
+        if ($job->type === ImportType::OpeningBalances && $request->user()?->can('accounts.manage') !== true) {
+            return $this->openingBalancesForbidden();
+        }
+
         if (! $job->canStart()) {
             return response()->json([
                 'error' => 'Import cannot be started. No valid rows to import.',
@@ -678,6 +694,22 @@ class ImportController extends Controller
         }
 
         return $options;
+    }
+
+    /**
+     * GL opening balances are an accounting act, not merely a data load.
+     */
+    private function openingBalancesForbidden(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'OPENING_BALANCES_REQUIRE_ACCOUNTS_MANAGE',
+                'message' => 'Importing GL opening balances posts a locked, permanent opening journal entry and requires the accounts.manage permission.',
+                'details' => [
+                    'required_permission' => 'accounts.manage',
+                ],
+            ],
+        ], 403);
     }
 
     /**

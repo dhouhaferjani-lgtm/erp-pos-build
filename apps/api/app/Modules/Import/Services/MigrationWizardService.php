@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Import\Services;
 
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Catalog\Domain\Entities\CompositeItem;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
@@ -82,6 +83,14 @@ final class MigrationWizardService
             case ImportType::OpeningBalances:
                 if (Account::where('tenant_id', $tenantId)->count() === 0) {
                     $missing[] = 'accounts';
+                }
+                // The whole file is posted as ONE balanced historical entry; a
+                // one-sided file is offset against Opening Balance Equity, so
+                // without that account nothing can post at all.
+                if (Account::where('tenant_id', $tenantId)
+                    ->where('system_purpose', SystemAccountPurpose::OpeningBalanceEquity->value)
+                    ->doesntExist()) {
+                    $warnings[] = 'No account carries the Opening Balance Equity purpose. Assign it in Settings → Chart of Accounts, otherwise opening balances cannot be posted.';
                 }
                 break;
         }
@@ -463,7 +472,7 @@ final class MigrationWizardService
             ImportType::OpeningBalances => [
                 'type' => $type->value,
                 'label' => 'Opening Balances',
-                'description' => 'Import accounting opening balances. Requires chart of accounts to exist.',
+                'description' => 'Import accounting opening balances. The whole file is posted once, as a single balanced historical journal entry offset against Opening Balance Equity — if any row cannot be mapped, nothing is posted. Requires the chart of accounts and the accounts.manage permission.',
             ],
             ImportType::CompositeItems => [
                 'type' => $type->value,

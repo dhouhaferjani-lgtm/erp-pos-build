@@ -118,10 +118,9 @@ final class ProcessImportJob implements ShouldQueue
             'started_at' => now(),
         ]);
 
-        // Rows that failed validation are skipped at execution but still
-        // count as failed in the final tally (sync-path parity).
-        $validationSkippedCount = $job->rows()->where('is_valid', false)->count();
-
+        // Rows that failed validation are skipped at execution but still count as
+        // failed in the final tally (sync-path parity) — they never reach
+        // is_imported=true, so the row-state tally below already includes them.
         $validRows = $importService->getValidRows($job);
         $processedCount = 0;
         $successCount = 0;
@@ -160,19 +159,23 @@ final class ProcessImportJob implements ShouldQueue
 
         $importService->finalizeImport($job, $this->companyId);
 
-        // Final status update — mirrors ImportService::executeImport:
-        // the job only fails when nothing imported; partial success completes.
-        $totalFailedCount = $validationSkippedCount + $failCount;
-        $finalStatus = $successCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
+        // Final status update — mirrors ImportService::executeImport: status AND
+        // counts come from row state after finalize, because a finalize phase may
+        // demote rows it could not commit (GL opening balances post once, for the
+        // whole file, after the loop). Nothing imported => Failed; partial success
+        // completes.
+        $importedCount = $job->rows()->where('is_imported', true)->count();
+        $totalFailedCount = $job->rows()->where('is_imported', false)->count();
+        $finalStatus = $importedCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
         $job->update([
             'status' => $finalStatus,
-            'successful_rows' => $successCount,
+            'successful_rows' => $importedCount,
             'failed_rows' => $totalFailedCount,
             'completed_at' => now(),
         ]);
 
         // Broadcast completion
-        $this->broadcastCompleted($job, $company, $totalRows, $successCount, $totalFailedCount, null);
+        $this->broadcastCompleted($job, $company, $totalRows, $importedCount, $totalFailedCount, null);
     }
 
     /**
