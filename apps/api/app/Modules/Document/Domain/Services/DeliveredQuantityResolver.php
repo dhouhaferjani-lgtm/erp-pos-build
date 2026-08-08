@@ -143,6 +143,45 @@ final class DeliveredQuantityResolver
     }
 
     /**
+     * Products whose delivered units could NOT be attributed to a location.
+     *
+     * `resolve()` skips such lines — fail closed, so they never inflate a tuple —
+     * but skipping them silently would let the caller mistake "we cannot tell where
+     * these went" for "these were never delivered", and those need different
+     * refusals. This is how the caller tells CF-D11's three cases apart:
+     *
+     *   - no tuples, nothing unresolved      ⇒ `RETURN_NOTHING_DELIVERED`
+     *   - no tuples, something unresolved    ⇒ `RETURN_LOCATION_UNRESOLVED`
+     *   - some tuples AND something unresolved ⇒ `RETURN_LOCATION_AMBIGUOUS`
+     *     (the narrow case CF-D11 reserves it for: part of the quantity would
+     *     silently restock somewhere it never left, while its siblings resolve)
+     *
+     * Unreachable for a confirmed delivery note in practice —
+     * `DeliveryNoteService::confirm()` refuses to confirm one without a document
+     * location — which is exactly why the caller must never guess instead.
+     *
+     * @return list<string>
+     */
+    public function unresolvedLocationProductIds(Document $invoice): array
+    {
+        $productIds = [];
+
+        foreach ($this->confirmedDeliveryNotesFor($invoice) as $deliveryNote) {
+            foreach ($deliveryNote->lines as $line) {
+                if ($line->product_id === null) {
+                    continue;
+                }
+
+                if (($line->location_id ?? $deliveryNote->location_id) === null) {
+                    $productIds[] = (string) $line->product_id;
+                }
+            }
+        }
+
+        return array_values(array_unique($productIds));
+    }
+
+    /**
      * TRUE when any tuple still has units out — CF-D6's `goods_issued`.
      *
      * Deliberately "any tuple > 0" rather than "delivered > 0": an invoice whose

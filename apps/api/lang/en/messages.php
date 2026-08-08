@@ -84,6 +84,11 @@ return [
         'return_refused_period_locked' => 'Return note :document cannot be dated :date: the accounting period covering that date is closed or locked. Choose a date in an open period, or ask your accountant to reopen the period first.',
     ],
 
+    // Document — plan CF (guided cancel flow)
+    'document' => [
+        'return_decision_forbidden' => 'You can cancel this invoice, but not record the goods return it needs (missing permission: :ability). Ask a manager to complete the return, or cancel without a return.',
+    ],
+
     // Inventory
     'inventory' => [
         'adjustment_recorded' => 'Stock adjustment recorded successfully.',

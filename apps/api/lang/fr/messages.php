@@ -81,6 +81,11 @@ return [
         'return_refused_period_locked' => 'Le bon de retour :document ne peut pas être daté du :date : la période comptable couvrant cette date est clôturée ou verrouillée. Choisissez une date dans une période ouverte, ou demandez à votre comptable de rouvrir la période au préalable.',
     ],
 
+    // Document — plan CF (flux d'annulation guidé)
+    'document' => [
+        'return_decision_forbidden' => 'Vous pouvez annuler cette facture, mais pas enregistrer le retour de marchandises qu\'elle nécessite (permission manquante : :ability). Demandez à un responsable de finaliser le retour, ou annulez sans retour.',
+    ],
+
     // Inventory
     'inventory' => [
         'adjustment_recorded' => 'Ajustement de stock enregistré avec succès.',

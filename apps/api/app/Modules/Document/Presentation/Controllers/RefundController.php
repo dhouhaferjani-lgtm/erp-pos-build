@@ -7,13 +7,24 @@ namespace App\Modules\Document\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DTOs\ReturnDecisionData;
+use App\Modules\Document\Domain\Enums\ReturnDecisionMode;
+use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
+use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
+use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
+use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
+use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\RefundService;
 use App\Modules\Taxation\Domain\Exceptions\DocumentPeriodLockedException;
+use App\Shared\Exceptions\ReturnPeriodLockedException;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
 
 class RefundController extends Controller
 {
@@ -42,23 +53,49 @@ class RefundController extends Controller
      */
     public function cancelInvoice(Request $request, string $id): JsonResponse
     {
+        $invoice = $this->scopedQuery()->findOrFail($id);
+
         $request->validate([
             'reason' => 'required|string|max:500',
-        ]);
 
-        $invoice = $this->scopedQuery()->findOrFail($id);
+            // Plan CF §2. OPTIONAL — an absent `return_decision` keeps today's
+            // behaviour byte for byte, which is this lane's regression contract.
+            'return_decision' => ['nullable', 'array'],
+            'return_decision.mode' => ['required_with:return_decision', Rule::in(ReturnDecisionMode::values())],
+
+            // `returned_on` is meaningful ONLY for already_returned, and `prohibited_unless`
+            // rather than `nullable` on purpose: a date silently ignored on a
+            // will_return decision would read to the user as "I recorded that date"
+            // when nothing recorded it.
+            'return_decision.returned_on' => [
+                'required_if:return_decision.mode,'.ReturnDecisionMode::AlreadyReturned->value,
+                'prohibited_unless:return_decision.mode,'.ReturnDecisionMode::AlreadyReturned->value,
+                'date',
+                'before_or_equal:today',
+                'after_or_equal:'.$invoice->document_date->toDateString(),
+            ],
+
+            // CF-D7: no line selection in this lane. Rejected explicitly rather than
+            // ignored, so a stale client that still sends it learns that its partial
+            // return did NOT happen instead of silently getting a full one.
+            'return_decision.lines' => ['prohibited'],
+            'lines' => ['prohibited'],
+        ]);
 
         try {
             $user = $request->user();
+            $actorId = $user === null ? null : (string) $user->getAuthIdentifier();
 
             $cancelled = $this->refundService->cancelInvoice(
                 $invoice,
                 (string) $request->input('reason'),
-                $user === null ? null : (string) $user->getAuthIdentifier(),
+                $actorId,
+                $this->returnDecisionFrom($request, $actorId),
             );
 
             return response()->json([
                 'data' => $cancelled->load(['lines', 'partner']),
+                'return_decision' => $this->returnDecisionReadback($cancelled),
                 'message' => 'Invoice cancelled successfully',
             ]);
         } catch (DocumentPeriodLockedException $e) {
@@ -71,12 +108,110 @@ class RefundController extends Controller
             // The pre-existing envelope of the generic branch is left untouched
             // (out of this lane's scope; other consumers assert on it).
             throw $e;
+        } catch (ReturnPeriodLockedException|ReturnQuantityExceededException|ReturnNothingDeliveredException|ReturnLocationUnresolvedException|ReturnLocationAmbiguousException|ReturnDecisionConflictException $e) {
+            // Plan CF T6. Every one of these extends \DomainException, so WITHOUT this
+            // arm the generic catch below would flatten them into
+            // `{error: <message>, code: <message>}` — a STRING in `error`, against
+            // which the web app's `extractErrorCode` (which reads `error.code`) yields
+            // undefined and `getErrorMessage` yields axios' bare "Request failed with
+            // status code 422". The modal could then not tell "nothing was delivered"
+            // from "the period is closed" from "someone already decided", which are
+            // three different remedies rendered in three different places.
+            //
+            // `ReturnDecisionConflictException` in particular must pass through
+            // UNTOUCHED: RefundService has already appended the rejected decision and
+            // re-thrown it (CF-D5's commit-then-refuse), and swallowing or re-wrapping
+            // it here would lose that ordering.
+            throw $e;
+        } catch (\DomainException $e) {
+            // The refusal itself is not new — RefundService and DocumentPostingService
+            // have thrown `\DomainException('DOCUMENT_HAS_PAYMENTS')` all along — but
+            // it reached the client through the untyped envelope below. Re-throwing it
+            // typed hands it to the dedicated renderer (frontend gate I-1). Matching on
+            // the message is deliberate: it keeps both services untouched, and the
+            // string is already the de-facto contract three tests assert on.
+            if ($e->getMessage() === DocumentHasPaymentsException::CODE) {
+                throw new DocumentHasPaymentsException($invoice->id, (string) $invoice->document_number);
+            }
+
+            return response()->json([
+                'error' => $e->getMessage(),
+                'code' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),
                 'code' => $e->getMessage(),
             ], 422);
         }
+    }
+
+    /**
+     * Build the goods decision from the validated request, or NULL when the client
+     * sent none (today's behaviour).
+     */
+    private function returnDecisionFrom(Request $request, ?string $actorId): ?ReturnDecisionData
+    {
+        $raw = $request->input('return_decision');
+
+        if (! is_array($raw) || ! isset($raw['mode'])) {
+            return null;
+        }
+
+        $mode = ReturnDecisionMode::from((string) $raw['mode']);
+        $returnedOn = isset($raw['returned_on']) ? Carbon::parse((string) $raw['returned_on']) : null;
+
+        return new ReturnDecisionData($mode, $returnedOn, $actorId);
+    }
+
+    /**
+     * The recorded decision and its return note, for the 200 body.
+     *
+     * CF-D5's readability half — the owner's "the choice is recorded" has to be
+     * visible to the client, not only to the database. Read back from the payload
+     * rather than returned from the service so the identical-replay path (which
+     * creates nothing) reports the SAME shape as the first call.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function returnDecisionReadback(Document $invoice): ?array
+    {
+        $recorded = $invoice->payload['return_decisions'] ?? null;
+
+        if (! is_array($recorded)) {
+            return null;
+        }
+
+        $accepted = null;
+        foreach (array_reverse($recorded) as $entry) {
+            if (is_array($entry) && ($entry['accepted'] ?? false) === true) {
+                $accepted = $entry;
+                break;
+            }
+        }
+
+        if ($accepted === null) {
+            return null;
+        }
+
+        $returnNote = null;
+        $returnNoteId = $accepted['return_note_id'] ?? null;
+        if (is_string($returnNoteId)) {
+            $note = $this->scopedQuery()->find($returnNoteId);
+            if ($note !== null) {
+                $returnNote = [
+                    'id' => $note->id,
+                    'document_number' => $note->document_number,
+                    'status' => $note->status->value,
+                ];
+            }
+        }
+
+        return [
+            'mode' => $accepted['mode'] ?? null,
+            'returned_on' => $accepted['returned_on'] ?? null,
+            'return_note' => $returnNote,
+        ];
     }
 
     /**

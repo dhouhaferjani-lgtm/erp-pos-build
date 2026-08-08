@@ -38,6 +38,7 @@ use App\Services\ProductService as AppProductService;
 use App\Services\VerticalConfigService;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
 use App\Shared\Banking\Domain\BankAccountValidator;
+use App\Shared\Contracts\AbilityAuthorizerInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\Accounting\FiscalPeriodLockReaderInterface;
@@ -53,6 +54,7 @@ use App\Shared\Contracts\PlatformSubmissionInterface;
 use App\Shared\Contracts\ProductInventoryQueryInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
+use App\Shared\Infrastructure\GateAbilityAuthorizer;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -114,6 +116,12 @@ class AppServiceProvider extends ServiceProvider
         // (rule 6, and Taxation/Application → Accounting/Application is a deptrac
         // layer violation besides).
         $this->app->bind(FiscalPeriodLockReaderInterface::class, FiscalPeriodLockReader::class);
+
+        // Plan CF CF-D8. Domain services that must authorize a per-leg ability get it
+        // through this contract rather than a Gate facade call, so the dependency is
+        // explicit in the constructor (rule 13) and a test can substitute a denying
+        // authorizer without building a whole permission fixture.
+        $this->app->bind(AbilityAuthorizerInterface::class, GateAbilityAuthorizer::class);
     }
 
     /**
