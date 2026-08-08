@@ -25,6 +25,7 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   'document-ingestions': ['document-ingestions.view'],
   inventory: ['inventory.view'],
   'inventory.transfers.view': ['inventory.transfers.view'],
+  'inventory.adjustments.view': ['inventory.adjustments.view'],
   'replenishment.view': ['replenishment.view'],
   expenses: ['expenses.view'],
   'expense-categories': ['expense-categories.view'],

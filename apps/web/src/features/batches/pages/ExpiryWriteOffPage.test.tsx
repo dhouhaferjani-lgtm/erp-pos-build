@@ -181,6 +181,45 @@ describe('ExpiryWriteOffPage (B4b)', () => {
     })
   })
 
+  /**
+   * DPA V7 / F12. This page HARDCODED `reason: 'expiry'`, which mattered the
+   * moment D7a began redirecting `damage`/`write_off` on batch-tracked products
+   * here: a refused DAMAGE could only have been recorded as an EXPIRY. The API
+   * already accepted the full set on both write-off endpoints, so the gap was
+   * purely on this screen.
+   */
+  it('offers the three translated reasons and defaults to expiry', () => {
+    setup()
+
+    const select = screen.getByLabelText('expiryWriteOff.reasonLabel')
+    const options = Array.from(select.querySelectorAll('option')).map((option) => ({
+      value: option.getAttribute('value'),
+      label: option.textContent,
+    }))
+
+    expect(options).toEqual([
+      { value: 'expiry', label: 'expiryWriteOff.reasons.expiry' },
+      { value: 'damage', label: 'expiryWriteOff.reasons.damage' },
+      { value: 'other', label: 'expiryWriteOff.reasons.other' },
+    ])
+    // Unchanged default — the redirect must not silently re-label existing work.
+    expect(select).toHaveValue('expiry')
+  })
+
+  it('sends the CHOSEN reason, not the hardcoded one', async () => {
+    const { user } = setup()
+
+    await user.selectOptions(screen.getByLabelText('expiryWriteOff.reasonLabel'), 'damage')
+    await user.click(screen.getAllByRole('checkbox')[1])
+    await user.click(
+      screen.getByRole('button', { name: 'expiryWriteOff.actions.writeOffSelected' }),
+    )
+    await user.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    expect(mockMutate).toHaveBeenCalledTimes(1)
+    expect((mockMutate.mock.calls[0][0] as { reason: string }).reason).toBe('damage')
+  })
+
   it('reuses the same idempotency_key across retries of one submission', async () => {
     const { user } = setup()
     await user.click(screen.getAllByRole('checkbox')[1])

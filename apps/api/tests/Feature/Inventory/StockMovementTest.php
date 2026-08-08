@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -102,206 +103,6 @@ class StockMovementTest extends TestCase
             'name' => 'Test Product',
             'type' => ProductType::Part,
             'is_active' => true,
-        ]);
-    }
-
-    public function test_can_receive_stock_via_api(): void
-    {
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/receive', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '25.00',
-            'reference' => 'PO-2025-001',
-            'notes' => 'Purchase order receipt',
-        ]);
-
-        $response->assertStatus(201);
-        $response->assertJsonPath('data.movement_type', 'receipt');
-        $response->assertJsonPath('data.quantity', '25.0000');
-
-        $this->assertDatabaseHas('stock_levels', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '25.00',
-        ]);
-    }
-
-    public function test_can_issue_stock_via_api(): void
-    {
-        // First receive stock
-        $service = app(StockAdjustmentService::class);
-        $service->receive(
-            productId: $this->product->id,
-            locationId: $this->warehouse->id,
-            quantity: '50.00',
-            reference: 'PO-001',
-            userId: $this->user->id,
-        );
-
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/issue', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '15.00',
-            'reference' => 'SO-2025-001',
-            'notes' => 'Sales delivery',
-        ]);
-
-        $response->assertStatus(201);
-        $response->assertJsonPath('data.movement_type', 'issue');
-        $response->assertJsonPath('data.quantity', '15.0000');
-
-        $this->assertDatabaseHas('stock_levels', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '35.00',
-        ]);
-    }
-
-    public function test_issue_fails_with_insufficient_stock(): void
-    {
-        // Receive only 10 units
-        $service = app(StockAdjustmentService::class);
-        $service->receive(
-            productId: $this->product->id,
-            locationId: $this->warehouse->id,
-            quantity: '10.00',
-            reference: 'PO-001',
-            userId: $this->user->id,
-        );
-
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/issue', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '20.00',
-            'reference' => 'SO-001',
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonPath('error.code', 'INSUFFICIENT_STOCK');
-    }
-
-    public function test_can_transfer_stock_via_api(): void
-    {
-        $secondWarehouse = Location::create([
-            'company_id' => $this->company->id,
-            'code' => 'WH-02',
-            'name' => 'Secondary Warehouse',
-            'type' => 'warehouse',
-            'is_active' => true,
-        ]);
-
-        // Receive stock at first warehouse
-        $service = app(StockAdjustmentService::class);
-        $service->receive(
-            productId: $this->product->id,
-            locationId: $this->warehouse->id,
-            quantity: '100.00',
-            reference: 'PO-001',
-            userId: $this->user->id,
-        );
-
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/transfer', [
-            'product_id' => $this->product->id,
-            'from_location_id' => $this->warehouse->id,
-            'to_location_id' => $secondWarehouse->id,
-            'quantity' => '30.00',
-            'reference' => 'TR-2025-001',
-        ]);
-
-        $response->assertStatus(200);
-        $response->assertJsonPath('message', 'Transfer completed successfully');
-
-        $this->assertDatabaseHas('stock_levels', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '70.00',
-        ]);
-
-        $this->assertDatabaseHas('stock_levels', [
-            'product_id' => $this->product->id,
-            'location_id' => $secondWarehouse->id,
-            'quantity' => '30.00',
-        ]);
-    }
-
-    public function test_can_adjust_stock_via_api(): void
-    {
-        // Receive initial stock
-        $service = app(StockAdjustmentService::class);
-        $service->receive(
-            productId: $this->product->id,
-            locationId: $this->warehouse->id,
-            quantity: '50.00',
-            reference: 'PO-001',
-            userId: $this->user->id,
-        );
-
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'new_quantity' => '45.00',
-            'reason_code' => 'damage',
-            'reason' => 'Physical inventory count - 5 units damaged',
-        ]);
-
-        $response->assertStatus(201);
-        $response->assertJsonPath('data.movement_type', 'adjustment');
-
-        $this->assertDatabaseHas('stock_levels', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '45.00',
-        ]);
-    }
-
-    public function test_adjust_requires_a_reason_code(): void
-    {
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'new_quantity' => '45.00',
-            'reason' => 'free text only, no typed reason',
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors('reason_code', 'error.errors');
-    }
-
-    public function test_adjust_rejects_a_non_manual_reason_code(): void
-    {
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'new_quantity' => '45.00',
-            'reason_code' => 'pos_sale', // document/POS reason — not selectable in the manual screen
-        ]);
-
-        $response->assertStatus(422);
-        $response->assertJsonValidationErrors('reason_code', 'error.errors');
-    }
-
-    public function test_adjust_persists_the_typed_reason_code(): void
-    {
-        app(StockAdjustmentService::class)->receive(
-            productId: $this->product->id,
-            locationId: $this->warehouse->id,
-            quantity: '50.0000',
-            reference: 'PO-002',
-            userId: $this->user->id,
-        );
-
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'new_quantity' => '45.0000',
-            'reason_code' => 'damage', // no free-text note — reason_code alone is sufficient
-        ]);
-
-        $response->assertStatus(201);
-        $this->assertDatabaseHas('stock_movements', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'reason' => 'damage',
         ]);
     }
 
@@ -502,17 +303,98 @@ class StockMovementTest extends TestCase
         $response->assertJsonPath('data.1.movement_type', 'receipt');
     }
 
-    public function test_unauthorized_user_cannot_receive_stock(): void
+    /**
+     * DPA V7 / T11 — the four raw write endpoints are GONE.
+     *
+     * A 404 (no route) rather than a 403, because the routes themselves were
+     * deleted. Their coverage did not evaporate: the precision boundary moved to
+     * IngressPrecisionTest, the reserved-aware refusal below and in
+     * StockAdjustByDeltaTest, and the permission matrix to
+     * StockAdjustmentEndpointTest.
+     */
+    public function test_the_four_raw_stock_write_endpoints_no_longer_exist(): void
     {
-        $this->user->revokePermissionTo('inventory.receive');
+        foreach ([
+            '/api/v1/stock-movements/receive',
+            '/api/v1/stock-movements/issue',
+            '/api/v1/stock-movements/transfer',
+            '/api/v1/stock-movements/adjust',
+        ] as $route) {
+            $this->actingAs($this->user)->postJson($route, [])->assertNotFound();
+        }
 
-        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/receive', [
-            'product_id' => $this->product->id,
-            'location_id' => $this->warehouse->id,
-            'quantity' => '10.00',
-            'reference' => 'PO-001',
+        // The READ surface is untouched.
+        $this->actingAs($this->user)->getJson('/api/v1/stock-movements')->assertOk();
+    }
+
+    /**
+     * The replacement for test_issue_fails_with_insufficient_stock.
+     *
+     * It maps onto the RESERVED-AWARE boundary, not the on-hand one (D1a /
+     * gate I-1): `issue()` refused against `quantity - reserved`, so the
+     * replacement MUST exercise `reserved > 0` or the loosening would ship
+     * green — 10 on hand with 8 reserved leaves only 2 available.
+     */
+    public function test_a_negative_adjustment_is_refused_at_the_reserved_aware_boundary(): void
+    {
+        $this->user->givePermissionTo([
+            'inventory.adjustments.view',
+            'inventory.adjustments.create',
+            'inventory.adjustments.post',
         ]);
 
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $this->product->id,
+            'location_id' => $this->warehouse->id,
+            'quantity' => '10.0000',
+            'reserved' => '8.0000',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-adjustments', [
+            'location_id' => $this->warehouse->id,
+            'post_immediately' => true,
+            'lines' => [[
+                'product_id' => $this->product->id,
+                'reason_code' => 'adjustment_negative',
+                'delta_quantity' => '-5.0000',
+                'observed_before' => '10.0000',
+            ]],
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'ADJUSTMENT_EXCEEDS_AVAILABLE');
+        // On hand would have allowed −5; AVAILABLE does not.
+        $response->assertJsonPath('error.details.quantity_before', '10.0000');
+        $response->assertJsonPath('error.details.reserved', '8.0000');
+        $response->assertJsonPath('error.details.available', '2.0000');
+        $response->assertJsonPath('error.details.overridable', true);
+
+        $this->assertSame('10.0000', (string) StockLevel::query()
+            ->where('product_id', $this->product->id)
+            ->value('quantity'));
+    }
+
+    /**
+     * Retargeted by T11: the raw receive endpoint it guarded is deleted, so the
+     * authorization boundary it protected is now the ADJUSTMENT document's. The
+     * full matrix lives in StockAdjustmentEndpointTest; this keeps a direct
+     * assertion in the file that used to own it.
+     */
+    public function test_unauthorized_user_cannot_write_stock(): void
+    {
+        $response = $this->actingAs($this->user)->postJson('/api/v1/stock-adjustments', [
+            'location_id' => $this->warehouse->id,
+            'lines' => [[
+                'product_id' => $this->product->id,
+                'reason_code' => 'adjustment_positive',
+                'delta_quantity' => '10.0000',
+                'observed_before' => '0.0000',
+            ]],
+        ]);
+
+        // The user holds inventory.adjust but NOT inventory.adjustments.create.
         $response->assertStatus(403);
     }
 }

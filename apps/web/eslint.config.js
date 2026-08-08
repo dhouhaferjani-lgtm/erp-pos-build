@@ -228,9 +228,15 @@ export default tseslint.config(
       ],
     },
   },
-  // Stricter enforcement for new feature directories scaffolded under the
-  // AutoSpecs plan. These dirs will be created clean and must stay clean —
-  // the full strict-type-checked preset applies with no baselining.
+  // Stricter enforcement for the AutoSpecs plan's feature directories PLUS the
+  // DPA V7 `stock-adjustments` lane. These dirs were created clean and must stay
+  // clean — the full strict-type-checked preset applies with no baselining.
+  //
+  // Two riders on the V7 addition, recorded rather than assumed: this block does
+  // NOT catch `bg-white` / `bg-black` / arbitrary values (the selectors below
+  // require a numeric shade), so those stay review-only obligations; and the
+  // `no-unsafe-*` cost is budgeted into the feature's narrowing helpers
+  // (api/refusals.ts) rather than paid for with casts.
   //
   // NOTE: `marketing/` is NOT listed here — it has pre-existing design-token
   // violations. `vehicles/` was migrated to design tokens + type guards by
@@ -246,6 +252,7 @@ export default tseslint.config(
       'src/features/workshop-work-orders/**/*.{ts,tsx}',
       'src/features/document-ingestions/**/*.{ts,tsx}',
       'src/features/support-access/**/*.{ts,tsx}',
+      'src/features/stock-adjustments/**/*.{ts,tsx}',
     ],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',

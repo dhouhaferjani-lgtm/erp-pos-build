@@ -984,6 +984,57 @@ replayedDelta: string;
 onHandAtApply: string;
 expectedAtApply: string;
 };
+export type StockAdjustmentData = {
+id: string;
+tenant_id: string;
+company_id: string;
+adjustment_number: string | null;
+status: string;
+note: string | null;
+location_id: string;
+location_name: string | null;
+occurred_at: string;
+idempotency_key: string | null;
+created_by_user_id: string;
+created_by_name: string | null;
+posted_by_user_id: string | null;
+posted_by_name: string | null;
+cancelled_by_user_id: string | null;
+cancelled_by_name: string | null;
+posted_at: string | null;
+cancelled_at: string | null;
+cancellation_reason: string | null;
+stale_acknowledged_at: string | null;
+stale_acknowledged_by_user_id: string | null;
+reservations_ignored_at: string | null;
+reservations_ignored_by_user_id: string | null;
+corrects_adjustment_id: string | null;
+correction_id: string | null;
+lines: Array<App.Modules.Inventory.Application.DTOs.StockAdjustmentLineData>;
+lines_count: number;
+created_at: string;
+updated_at: string;
+};
+export type StockAdjustmentLineData = {
+id: string;
+adjustment_id: string;
+product_id: string;
+product_name: string | null;
+product_sku: string | null;
+variant_id: string | null;
+batch_uuid: string | null;
+batch_number: string | null;
+reason_code: string;
+delta_quantity: string;
+observed_before: string;
+quantity_before: string | null;
+quantity_after: string | null;
+movement_id: string | null;
+line_note: string | null;
+quantity_decimals: number;
+created_at: string;
+updated_at: string;
+};
 export type StockLevelData = {
 id: string;
 product_id: string;
@@ -999,6 +1050,8 @@ min_quantity: string | null;
 max_quantity: string | null;
 is_below_minimum: boolean;
 quantity_decimals: number;
+requires_batch_tracking: boolean;
+has_lots_at_location: boolean;
 };
 }
 declare namespace App.Modules.Inventory.Domain.Enums {
@@ -1015,6 +1068,7 @@ export type MovementType = 'receipt' | 'issue' | 'transfer_in' | 'transfer_out' 
 export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_release' | 'converted' | 'order_modified' | 'insufficient_stock';
 export type ReplayPreviewMode = 'timestamp_replay' | 'legacy_delta';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
+export type StockAdjustmentStatus = 'draft' | 'posted' | 'cancelled';
 export type TerminalSyncHealthState = 'healthy' | 'pending' | 'stale' | 'unknown';
 export type TransferCostDistribution = 'pro_rata_value' | 'pro_rata_quantity' | 'equal_per_line';
 export type TransferStatus = 'draft' | 'in_transit' | 'completed' | 'cancelled';
@@ -2797,7 +2851,7 @@ meta: Array<any>;
 }
 declare namespace App.Shared.Domain.Enums {
 export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
-export type StockMovementReferenceType = 'Document' | 'inventory_counting';
+export type StockMovementReferenceType = 'Document' | 'inventory_counting' | 'pos_receipt_return_scrap' | 'stock_adjustment';
 export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }

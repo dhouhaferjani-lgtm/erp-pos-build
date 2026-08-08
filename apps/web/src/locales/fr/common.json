@@ -253,7 +253,8 @@
     "compliance": "Export de Conformité",
     "ecommerce": "E-commerce",
     "customersAndMarketing": "Clients & Marketing",
-    "stockTransfers": "Transferts de stock"
+    "stockTransfers": "Transferts de stock",
+    "stockAdjustments": "Régularisations de stock"
   },
   "fields": {
     "totalReceivable": "Total à recevoir",

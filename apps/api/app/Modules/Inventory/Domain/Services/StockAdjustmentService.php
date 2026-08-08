@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Domain\Services;
 
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
 use App\Modules\BatchExpiry\Domain\Entities\BatchMovement;
 use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Location;
@@ -18,11 +19,14 @@ use App\Modules\Inventory\Domain\Events\ReservationReleased;
 use App\Modules\Inventory\Domain\Events\ReservationReleasedV2;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
 use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
+use App\Modules\Inventory\Domain\Exceptions\AdjustmentExceedsAvailableException;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
+use App\Modules\Inventory\Domain\Exceptions\StockMovedSinceAuthoringException;
 use App\Modules\Inventory\Domain\InventoryScale;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Contracts\ProductVariantLookup;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use App\Shared\Domain\Exceptions\VariantRequiredException;
@@ -659,6 +663,17 @@ final class StockAdjustmentService
     /**
      * Adjust stock to a specific quantity (for inventory counts).
      *
+     * ABSOLUTE entry point. Kept for the counting listener
+     * (ApplyStockAdjustmentsOnCountingCompleted::applyLegacyDelta), which
+     * legitimately holds an absolute. Manual corrections go through
+     * {@see self::adjustByDelta()} instead: writing a client-supplied absolute
+     * silently overwrites anything committed between the browser read and the
+     * POST (DPA V7 / D1).
+     *
+     * The `costLock->acquire` call stays TEXTUALLY in this body — it is pinned
+     * there by InventoryCostLockCoverageTest, which greps the balanced-brace
+     * body of this signature.
+     *
      * @param  numeric-string  $newQuantity
      * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
      * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
@@ -688,78 +703,515 @@ final class StockAdjustmentService
 
                 /** @var numeric-string $quantityBefore */
                 $quantityBefore = $stockLevel->quantity;
+                /** @var numeric-string $difference */
                 $difference = bcsub($newQuantity, $quantityBefore, self::SCALE);
 
-                $stockLevel->update(['quantity' => $newQuantity]);
-
-                $movement = $this->recordMovement(
-                    tenantId: $stockLevel->tenant_id,
-                    companyId: $stockLevel->company_id,
+                return $this->postAdjustmentWithinLock(
+                    stockLevel: $stockLevel,
                     productId: $productId,
                     locationId: $locationId,
-                    type: MovementType::Adjustment,
-                    quantity: $difference,
+                    difference: $difference,
                     quantityBefore: $quantityBefore,
-                    quantityAfter: $newQuantity,
+                    newQuantity: $newQuantity,
                     reference: $reason,
                     userId: $userId,
                     variantId: $variantId,
-                    reason: $reasonCode,
+                    reasonCode: $reasonCode,
                     occurredAt: $occurredAt,
                     referenceType: $referenceType,
                     referenceId: $referenceId,
+                    batchId: null,
+                    reversesMovementId: null,
+                    // The LEGACY absolute path keeps the TARGET-based default-lot
+                    // reconciliation. See postAdjustmentWithinLock()'s docblock:
+                    // the counting listener drives this method, and that lane's
+                    // invariant is "reconcile the lot UP TO the aggregate".
+                    deltaBasedDefaultLot: false,
                 );
-
-                if (bccomp($difference, '0', self::SCALE) > 0) {
-                    $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
-                }
-
-                // Dispatch StockMovementRecorded event after transaction commits
-                $movementSnapshot = $movement;
-                $tenantIdSnapshot = $stockLevel->tenant_id;
-                $companyIdSnapshot = $stockLevel->company_id;
-
-                DB::afterCommit(function () use ($movementSnapshot, $tenantIdSnapshot, $companyIdSnapshot, $productId, $locationId, $difference, $newQuantity, $reason, $variantId): void {
-                    event(new StockMovementRecorded(
-                        movementId: $movementSnapshot->id,
-                        tenantId: $tenantIdSnapshot,
-                        companyId: $companyIdSnapshot,
-                        productId: $productId,
-                        locationId: $locationId,
-                        movementType: 'adjustment',
-                        quantity: $difference,
-                        unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
-                        totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
-                        newStockLevel: $newQuantity,
-                        reference: $reason,
-                        referenceType: $movementSnapshot->reference_type,
-                        referenceId: $movementSnapshot->reference_id,
-                        occurredAt: now()->toIso8601String(),
-                    ));
-
-                    // V2 dual-dispatch (variant-aware).
-                    event(new StockMovementRecordedV2(
-                        movementId: $movementSnapshot->id,
-                        tenantId: $tenantIdSnapshot,
-                        companyId: $companyIdSnapshot,
-                        productId: $productId,
-                        locationId: $locationId,
-                        movementType: 'adjustment',
-                        quantity: $difference,
-                        unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
-                        totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
-                        newStockLevel: $newQuantity,
-                        variantId: $variantId,
-                        reference: $reason,
-                        referenceType: $movementSnapshot->reference_type,
-                        referenceId: $movementSnapshot->reference_id,
-                        occurredAt: now()->toIso8601String(),
-                    ));
-                });
-
-                return $movement;
             });
         }, attempts: 3);
+    }
+
+    /**
+     * Apply a SIGNED delta to a stock line — the delta-native entry point the
+     * `stock_adjustments` document posts through (DPA V7 / D1).
+     *
+     * Why a second public method rather than a flag on adjust(): the absolute
+     * form is unfixable. It reads `quantity_before` under the lock and then
+     * writes the CLIENT's absolute, so any concurrent movement is silently
+     * discarded. A delta is applied to whatever the row actually holds, and the
+     * operator's authoring snapshot becomes an explicit, overridable assertion
+     * (`$observedBefore`) instead of a hidden overwrite.
+     *
+     * Three guards, all INSIDE the advisory lock and after `lockStockLevel()` —
+     * the only point at which the row is authoritative:
+     *  1. non-zero delta (a zero delta is not a correction);
+     *  2. STALENESS — `$observedBefore` vs the locked `quantity_before`,
+     *     overridable via `$acknowledgeStale` (D15);
+     *  3. AVAILABILITY — reserved-aware, negative deltas only, overridable via
+     *     `$ignoreReservations` (D1a). This reproduces the boundary of the
+     *     `issue()` endpoint V7 deletes.
+     *
+     * The `costLock->acquire` call stays TEXTUALLY in this body for the same
+     * architecture-test reason as adjust().
+     *
+     * @param  numeric-string  $deltaQuantity  SIGNED; must not be zero
+     * @param  numeric-string|null  $observedBefore  The operator's authoring snapshot; null skips the staleness check
+     * @param  int|null  $batchId  Lot to move together with the aggregate (D1b)
+     * @param  string|null  $reversesMovementId  The movement this line contra-corrects (D8)
+     * @param  StockMovementReferenceType|null  $referenceType  Source-document morph type; pass together with $referenceId
+     * @param  string|null  $referenceId  Source-document UUID; pass together with $referenceType
+     *
+     * @throws StockMovedSinceAuthoringException
+     * @throws AdjustmentExceedsAvailableException
+     */
+    public function adjustByDelta(
+        string $productId,
+        string $locationId,
+        string $deltaQuantity,
+        string $reference,
+        string $userId,
+        ?string $expectedCompanyId = null,
+        ?string $variantId = null,
+        ?MovementReason $reasonCode = null,
+        ?CarbonInterface $occurredAt = null,
+        ?StockMovementReferenceType $referenceType = null,
+        ?string $referenceId = null,
+        ?string $observedBefore = null,
+        bool $acknowledgeStale = false,
+        bool $ignoreReservations = false,
+        ?int $batchId = null,
+        ?string $reversesMovementId = null,
+    ): StockMovement {
+        $this->assertVariantConsistency($productId, $variantId);
+        $this->assertReferenceLinkagePaired($referenceType, $referenceId);
+        $this->assertNonZeroDelta($deltaQuantity);
+
+        return DB::transaction(function () use ($productId, $locationId, $deltaQuantity, $reference, $userId, $expectedCompanyId, $variantId, $reasonCode, $occurredAt, $referenceType, $referenceId, $observedBefore, $acknowledgeStale, $ignoreReservations, $batchId, $reversesMovementId): StockMovement {
+            $companyId = $expectedCompanyId ?? $this->resolveCompanyId($locationId);
+
+            // WAC serialization seam (product-grain advisory key; §6.7). The key
+            // tuple MUST be resolved through resolveTenantId() — the same source
+            // StockAdjustmentDocumentService::post() uses for its up-front sorted
+            // acquire, or the two would hash different strings and the deadlock
+            // defence would evaporate silently (D14a).
+            return $this->costLock->acquire($this->resolveTenantId($productId, $companyId), $companyId, [$productId], function () use ($productId, $locationId, $deltaQuantity, $reference, $userId, $companyId, $variantId, $reasonCode, $occurredAt, $referenceType, $referenceId, $observedBefore, $acknowledgeStale, $ignoreReservations, $batchId, $reversesMovementId): StockMovement {
+                $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
+
+                /** @var numeric-string $quantityBefore */
+                $quantityBefore = $stockLevel->quantity;
+
+                // STALENESS — inside the lock, the only place $quantityBefore is
+                // authoritative (D15). Checking it in the application service
+                // before the writer would reproduce the race verbatim: no row
+                // lock is held there.
+                if ($observedBefore !== null
+                    && ! $acknowledgeStale
+                    && bccomp($observedBefore, $quantityBefore, self::SCALE) !== 0) {
+                    throw new StockMovedSinceAuthoringException(
+                        productId: $productId,
+                        locationId: $locationId,
+                        variantId: $variantId,
+                        batchUuid: $this->resolveBatchUuid($batchId),
+                        observedBefore: $observedBefore,
+                        quantityBefore: $quantityBefore,
+                        quantityDecimals: $this->resolveQuantityDecimals($productId, $companyId),
+                    );
+                }
+
+                // AVAILABILITY — reserved-aware, negative deltas ONLY (D1a).
+                if (bccomp($deltaQuantity, '0', self::SCALE) < 0 && ! $ignoreReservations) {
+                    /** @var numeric-string $available */
+                    $available = $stockLevel->getAvailableQuantity();
+
+                    if (bccomp(bcadd($available, $deltaQuantity, self::SCALE), '0', self::SCALE) < 0) {
+                        throw new AdjustmentExceedsAvailableException(
+                            productId: $productId,
+                            locationId: $locationId,
+                            quantityBefore: $quantityBefore,
+                            reserved: (string) $stockLevel->reserved,
+                            available: $available,
+                            deltaQuantity: $deltaQuantity,
+                            quantityDecimals: $this->resolveQuantityDecimals($productId, $companyId),
+                        );
+                    }
+                }
+
+                /** @var numeric-string $quantityAfter */
+                $quantityAfter = bcadd($quantityBefore, $deltaQuantity, self::SCALE);
+
+                return $this->postAdjustmentWithinLock(
+                    stockLevel: $stockLevel,
+                    productId: $productId,
+                    locationId: $locationId,
+                    difference: $deltaQuantity,
+                    quantityBefore: $quantityBefore,
+                    newQuantity: $quantityAfter,
+                    reference: $reference,
+                    userId: $userId,
+                    variantId: $variantId,
+                    reasonCode: $reasonCode,
+                    occurredAt: $occurredAt,
+                    referenceType: $referenceType,
+                    referenceId: $referenceId,
+                    batchId: $batchId,
+                    reversesMovementId: $reversesMovementId,
+                    deltaBasedDefaultLot: true,
+                );
+            });
+        }, attempts: 3);
+    }
+
+    /**
+     * The shared inside-the-lock body of adjust() / adjustByDelta().
+     *
+     * MUST be called with the ProductCostLock held and the stock_level row
+     * locked FOR UPDATE. It writes the aggregate, records the movement, moves
+     * the lot, and dispatches the V1+V2 events after commit.
+     *
+     * The lot branch is the ONE deliberate change from the pre-V7 adjust()
+     * body, which called `ensureDefaultBatchForImplicitPositiveStock()`
+     * unconditionally for a positive difference. That helper is TARGET-based —
+     * it tops the DEFAULT lot up to the post-update AGGREGATE — so on a product
+     * already holding real lots a `+5` inflated DEFAULT to the whole aggregate
+     * (Σ lots > aggregate), and a negative difference moved no lot at all
+     * (Σ lots > aggregate again). Both corrupt FEFO (D1b / gate C2).
+     *
+     * Lock order is `stock_levels` → `inventory_batch_stock`, matching every
+     * existing batch consumer (BatchWriteOffService), so no AB-BA cycle is
+     * introduced. Neither BatchStockService method touches aggregate stock
+     * levels, so pairing them with the `$stockLevel->update()` above does not
+     * double-count.
+     *
+     * ⚠ `$deltaBasedDefaultLot` resolves a CONTRADICTION inside plan V7 and is
+     * flagged for a gate ruling (task-v7-report.md, "Collision C-1"). D1 states
+     * that adjust() "passes batchId: null so its behaviour is bit-for-bit
+     * unchanged"; D1b part 3 states that this shared body replaces adjust()'s
+     * `ensureDefaultBatchForImplicitPositiveStock()` call with the four-way
+     * branch. Those cannot both hold. Reality settles it: adjust() is driven by
+     * ApplyStockAdjustmentsOnCountingCompleted, and the counting lane's shipped
+     * invariant (InventoryCountingDefaultBatchTest) is TARGET-based — count a
+     * batch-tracked line from an aggregate of 5 with zero lots up to 7 and the
+     * DEFAULT lot must hold 7, not 2. Delta-based reconciliation there would
+     * leave 5 units outside any lot. So the LEGACY absolute path keeps the
+     * target-based helper (D1's reading) and only the delta-native path — the
+     * one C2 is actually about, since it is "the only manual route" — gets the
+     * delta-based method. C2 is fully addressed for the document either way.
+     *
+     * @param  numeric-string  $difference  SIGNED delta
+     * @param  numeric-string  $quantityBefore
+     * @param  numeric-string  $newQuantity  Resulting absolute
+     */
+    private function postAdjustmentWithinLock(
+        StockLevel $stockLevel,
+        string $productId,
+        string $locationId,
+        string $difference,
+        string $quantityBefore,
+        string $newQuantity,
+        string $reference,
+        string $userId,
+        ?string $variantId,
+        ?MovementReason $reasonCode,
+        ?CarbonInterface $occurredAt,
+        ?StockMovementReferenceType $referenceType,
+        ?string $referenceId,
+        ?int $batchId,
+        ?string $reversesMovementId,
+        bool $deltaBasedDefaultLot,
+    ): StockMovement {
+        $stockLevel->update(['quantity' => $newQuantity]);
+
+        $movement = $this->recordMovement(
+            tenantId: $stockLevel->tenant_id,
+            companyId: $stockLevel->company_id,
+            productId: $productId,
+            locationId: $locationId,
+            type: MovementType::Adjustment,
+            quantity: $difference,
+            quantityBefore: $quantityBefore,
+            quantityAfter: $newQuantity,
+            reference: $reference,
+            userId: $userId,
+            variantId: $variantId,
+            reason: $reasonCode,
+            occurredAt: $occurredAt,
+            referenceType: $referenceType,
+            referenceId: $referenceId,
+            reversesMovementId: $reversesMovementId,
+        );
+
+        $isPositive = bccomp($difference, '0', self::SCALE) > 0;
+
+        if ($batchId !== null && $isPositive) {
+            $this->batchStockService->receiveBatchStock(
+                tenantId: $stockLevel->tenant_id,
+                batchId: $batchId,
+                locationId: $locationId,
+                quantity: $difference,
+                movementId: $movement->id,
+            );
+        } elseif ($batchId !== null) {
+            // Strict, lockForUpdate, InsufficientBatchStockException-with-shortfall.
+            // It also checks available_quantity, so lot-level reservations are
+            // honoured — consistent with the aggregate guard in D1a.
+            $this->batchStockService->issueBatchStock(
+                tenantId: $stockLevel->tenant_id,
+                batchId: $batchId,
+                locationId: $locationId,
+                quantity: bcmul($difference, '-1', self::SCALE),
+                movementId: $movement->id,
+            );
+        } elseif ($isPositive && $deltaBasedDefaultLot) {
+            // No lot named. For a batch-tracked product the found stock still has
+            // to land in a lot, by the DELTA (D1b part 4).
+            $this->receiveIntoDefaultBatchByDelta($stockLevel, $productId, $difference, $movement->id);
+        } elseif ($isPositive) {
+            $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
+        } elseif ($deltaBasedDefaultLot) {
+            // $batchId === null && $difference < 0 on the DOCUMENT path.
+            //
+            // REACHABLE, and the two ways matter (gate N-6 — a stale
+            // reachability claim here is what let C-1's arm rot, so this one
+            // states the truth rather than a hope):
+            //
+            //  1. a batch-tracked product whose lots are all empty — the document
+            //     refuses a lot-less negative only when a lot HOLDS STOCK here;
+            //  2. a CONTRA line, which is exempt from lot-required because it
+            //     inherits the disposition of an original that moved no lot
+            //     (StockAdjustmentDocumentService::resolveBatchId()).
+            //
+            // Draining the DEFAULT lot is therefore a real path, not a
+            // theoretical backstop. It cannot overshoot (see the method) and it
+            // strictly narrows any gap.
+            $this->issueFromDefaultBatchByDelta($stockLevel, $productId, $difference, $movement->id);
+        }
+        // The LEGACY absolute adjust() can still reach a lot-less negative; its
+        // behaviour is deliberately unchanged (no lot is touched) — see
+        // $deltaBasedDefaultLot above.
+
+        // Dispatch StockMovementRecorded event after transaction commits
+        $movementSnapshot = $movement;
+        $tenantIdSnapshot = $stockLevel->tenant_id;
+        $companyIdSnapshot = $stockLevel->company_id;
+
+        DB::afterCommit(function () use ($movementSnapshot, $tenantIdSnapshot, $companyIdSnapshot, $productId, $locationId, $difference, $newQuantity, $reference, $variantId): void {
+            event(new StockMovementRecorded(
+                movementId: $movementSnapshot->id,
+                tenantId: $tenantIdSnapshot,
+                companyId: $companyIdSnapshot,
+                productId: $productId,
+                locationId: $locationId,
+                movementType: 'adjustment',
+                quantity: $difference,
+                unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
+                totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
+                newStockLevel: $newQuantity,
+                reference: $reference,
+                referenceType: $movementSnapshot->reference_type,
+                referenceId: $movementSnapshot->reference_id,
+                occurredAt: now()->toIso8601String(),
+            ));
+
+            // V2 dual-dispatch (variant-aware).
+            event(new StockMovementRecordedV2(
+                movementId: $movementSnapshot->id,
+                tenantId: $tenantIdSnapshot,
+                companyId: $companyIdSnapshot,
+                productId: $productId,
+                locationId: $locationId,
+                movementType: 'adjustment',
+                quantity: $difference,
+                unitCost: (string) ($movementSnapshot->unit_cost ?? '0.00'),
+                totalCost: (string) ($movementSnapshot->total_cost ?? '0.00'),
+                newStockLevel: $newQuantity,
+                variantId: $variantId,
+                reference: $reference,
+                referenceType: $movementSnapshot->reference_type,
+                referenceId: $movementSnapshot->reference_id,
+                occurredAt: now()->toIso8601String(),
+            ));
+        });
+
+        return $movement;
+    }
+
+    /**
+     * DELTA-based twin of ensureDefaultBatchForImplicitPositiveStock (D1b part 4).
+     *
+     * Deliberately a NEW private method rather than a fix to the shared helper:
+     * the helper is also called by receive(), and ReverseWriteOffService calls
+     * `receive(batchId: null)` and THEN `receiveBatchStock` on the original lot —
+     * so making the shared helper delta-based would turn its current over-count
+     * into a DOUBLE-count on the write-off reversal path. That interaction is a
+     * pre-existing defect V7 discovered and does not own (plan §5).
+     *
+     * @param  numeric-string  $delta  Positive delta to land in the DEFAULT lot
+     */
+    private function receiveIntoDefaultBatchByDelta(
+        StockLevel $stockLevel,
+        string $productId,
+        string $delta,
+        string $movementId,
+    ): void {
+        $product = Product::query()
+            ->where('company_id', $stockLevel->company_id)
+            ->findOrFail($productId);
+
+        if (! $product->requires_batch_tracking) {
+            return;
+        }
+
+        $asOfDate = now()->toDateString();
+        $shelfLifeDays = $product->default_shelf_life_days ?? BatchStockService::DEFAULT_SHELF_LIFE_DAYS;
+
+        $batch = $this->batchStockService->findOrCreateBatch(
+            companyId: $stockLevel->company_id,
+            tenantId: $stockLevel->tenant_id,
+            productId: $productId,
+            batchNumber: BatchStockService::DEFAULT_BATCH_NUMBER,
+            expiryDate: Carbon::parse($asOfDate)->addDays($shelfLifeDays)->toDateString(),
+            manufacturingDate: $asOfDate,
+            variantId: $stockLevel->variant_id,
+        );
+
+        $this->batchStockService->receiveBatchStock(
+            tenantId: $stockLevel->tenant_id,
+            batchId: $batch->id,
+            locationId: $stockLevel->location_id,
+            quantity: $delta,
+            movementId: $movementId,
+        );
+    }
+
+    /**
+     * Draw a lot-less negative down from the DEFAULT lot (gate code-review C-1).
+     *
+     * The mirror of receiveIntoDefaultBatchByDelta(). Deliberately TOLERANT
+     * rather than a second refusal surface: turning a correction into a hard
+     * failure here would strand the operator with an aggregate that already
+     * moved.
+     *
+     * Tolerant does NOT mean silent. When the DEFAULT lot holds less than the
+     * magnitude, it drains what IS there instead of touching nothing (gate N-2):
+     * no-op'ing left Sigma lots ABOVE the aggregate — the very FEFO corruption
+     * this arm exists to prevent — for exactly the hypothetical caller the arm
+     * exists to protect against. Draining what exists cannot overshoot and
+     * strictly narrows the gap.
+     *
+     * Scope claim, stated precisely: under the document's own predicates this arm
+     * is unreachable while a stocked lot exists, so it is a BACKSTOP, not the
+     * mechanism that maintains the invariant. The invariant is maintained by
+     * resolveBatchId()/assertLinePredicatesAtPost(); this keeps a future caller
+     * that forgets them from corrupting FEFO outright.
+     *
+     * @param  numeric-string  $delta  Negative delta being applied to the aggregate
+     */
+    private function issueFromDefaultBatchByDelta(
+        StockLevel $stockLevel,
+        string $productId,
+        string $delta,
+        string $movementId,
+    ): void {
+        $product = Product::query()
+            ->where('company_id', $stockLevel->company_id)
+            ->findOrFail($productId);
+
+        if (! $product->requires_batch_tracking) {
+            return;
+        }
+
+        $batch = Batch::query()
+            ->where('company_id', $stockLevel->company_id)
+            ->where('product_id', $productId)
+            ->where('batch_number', BatchStockService::DEFAULT_BATCH_NUMBER)
+            ->when(
+                $stockLevel->variant_id === null,
+                static fn ($query) => $query->whereNull('variant_id'),
+                static fn ($query) => $query->where('variant_id', $stockLevel->variant_id),
+            )
+            ->first();
+
+        if ($batch === null) {
+            return;
+        }
+
+        /** @var numeric-string $available */
+        $available = (string) (BatchStock::query()
+            ->where('batch_id', $batch->id)
+            ->where('location_id', $stockLevel->location_id)
+            ->value('quantity') ?? '0');
+
+        /** @var numeric-string $magnitude */
+        $magnitude = bcmul($delta, '-1', self::SCALE);
+
+        // Drain what IS there when the lot is short. Returning early left the
+        // aggregate moved and the lot untouched (gate N-2).
+        /** @var numeric-string $drain */
+        $drain = bccomp($available, $magnitude, self::SCALE) < 0 ? $available : $magnitude;
+
+        if (bccomp($drain, '0', self::SCALE) <= 0) {
+            return;
+        }
+
+        $this->batchStockService->issueBatchStock(
+            tenantId: $stockLevel->tenant_id,
+            batchId: $batch->id,
+            locationId: $stockLevel->location_id,
+            quantity: $drain,
+            movementId: $movementId,
+        );
+    }
+
+    /**
+     * A zero delta is not a correction: it writes a movement that says nothing
+     * and, at document level, is refused twice over (`not_in:0` plus the
+     * `stock_adjustment_lines_delta_nonzero` CHECK).
+     */
+    private function assertNonZeroDelta(string $deltaQuantity): void
+    {
+        /** @var numeric-string $deltaQuantity */
+        if (bccomp($deltaQuantity, '0', self::SCALE) === 0) {
+            throw new InvalidArgumentException('A stock adjustment delta must not be zero.');
+        }
+    }
+
+    /**
+     * The product unit's display precision, carried on every quantity-bearing
+     * refusal so the frontend never has to fall back to a literal scale
+     * (plan §2 / re-review N-5).
+     */
+    private function resolveQuantityDecimals(string $productId, string $companyId): int
+    {
+        $product = Product::query()
+            ->with('unitOfMeasure')
+            ->where('company_id', $companyId)
+            ->find($productId);
+
+        if ($product === null || ! $product->relationLoaded('unitOfMeasure')) {
+            return self::SCALE;
+        }
+
+        // getRelation() (not the typed accessor) so the null case is visible to
+        // PHPStan: a product may carry no unit of measure.
+        $unit = $product->getRelation('unitOfMeasure');
+
+        return $unit instanceof Unit ? $unit->decimal_places : self::SCALE;
+    }
+
+    /**
+     * `product_batches` is int-keyed with a separate public `uuid` column; the
+     * HTTP contract speaks uuid, so a refusal must too (D1b part 1).
+     */
+    private function resolveBatchUuid(?int $batchId): ?string
+    {
+        if ($batchId === null) {
+            return null;
+        }
+
+        $uuid = Batch::query()->whereKey($batchId)->value('uuid');
+
+        return $uuid !== null ? (string) $uuid : null;
     }
 
     /**
@@ -1262,6 +1714,7 @@ final class StockAdjustmentService
         ?CarbonInterface $occurredAt = null,
         ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null,
+        ?string $reversesMovementId = null,
     ): StockMovement {
         $this->assertReferenceLinkagePaired($referenceType, $referenceId);
 
@@ -1302,6 +1755,11 @@ final class StockAdjustmentService
             // these two columns carry the machine-resolvable FK.
             'reference_type' => $referenceType?->value,
             'reference_id' => $referenceId,
+            // Movement-level reversal linkage (DPA V7 / D8): a contra line points
+            // at the movement it corrects. Threaded through the seam rather than
+            // set by a post-hoc UPDATE — the shape S0 finding I-5 condemns and
+            // that ReverseWriteOffService still ships.
+            'reverses_movement_id' => $reversesMovementId,
             'user_id' => $userId,
             // Event time (rule: device time for POS paths, now() otherwise).
             // adjust() threads a device/replay time here; other entry points

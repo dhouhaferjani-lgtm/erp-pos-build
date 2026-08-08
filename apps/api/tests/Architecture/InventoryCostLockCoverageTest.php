@@ -31,13 +31,14 @@ final class InventoryCostLockCoverageTest extends TestCase
     public static function mustLockProvider(): array
     {
         return [
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordPurchase'],
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordReturn'],
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordCostAdjustment'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function receive'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjust'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function transfer'],
-            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post'],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordPurchase('],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordReturn('],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordCostAdjustment('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function receive('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjust('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjustByDelta('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function transfer('],
+            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post('],
             // InventoryService::upsertStockLevel used to be pinned here. Owner
             // ruling D4 deleted it outright (it created stock_level rows with no
             // movement and no document), so there is no longer a method to police.
@@ -53,8 +54,8 @@ final class InventoryCostLockCoverageTest extends TestCase
     public static function mustNotLockProvider(): array
     {
         return [
-            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordSale'],
-            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function issue'],
+            ['app/Modules/Inventory/Application/Services/WeightedAverageCostService.php', 'public function recordSale('],
+            ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function issue('],
         ];
     }
 
@@ -107,12 +108,75 @@ final class InventoryCostLockCoverageTest extends TestCase
     public static function multiProductSeamCallerProvider(): array
     {
         return [
-            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete'],
-            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel'],
-            ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function receiveGoods'],
-            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post'],
-            ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm'],
+            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete('],
+            ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel('],
+            ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post('],
+            // The DELEGATE receiveGoods() hands off to. Pinned HERE, not just as a
+            // string match in the delegating test, so its acquire-BEFORE-the-seam-loop
+            // ordering — the actual deadlock defence — is asserted (gate N-3).
+            ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function post('],
+            ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm('],
+            ['app/Modules/Inventory/Application/Services/StockAdjustmentDocumentService.php', 'public function post('],
         ];
+    }
+
+    /**
+     * DELEGATING callers: a method that opens the transaction but hands the whole
+     * seam loop to another method in the same class. The up-front sorted acquire
+     * is held by the DELEGATE, so asserting `costLock->acquire(` in the caller's
+     * own body is the wrong assertion — it was failing here for that reason
+     * (gate code-review I-4), and a knowingly-red architecture test is how a
+     * guard stops being trusted.
+     *
+     * What must hold instead: the caller delegates to a method that IS itself
+     * pinned by multiProductSeamCallerProvider — GoodsReceiptService::post( is a
+     * row there, so the delegate's acquire-before-the-loop ordering is asserted
+     * rather than merely assumed.
+     *
+     * @return array<int, array{string, string, string}>
+     */
+    public static function delegatingSeamCallerProvider(): array
+    {
+        return [
+            [
+                'app/Modules/Inventory/Application/Services/GoodsReceiptService.php',
+                'public function receiveGoods(',
+                'this->post(',
+            ],
+        ];
+    }
+
+    #[Test]
+    #[DataProvider('delegatingSeamCallerProvider')]
+    public function test_delegating_seam_callers_hand_off_to_a_pinned_locker(
+        string $path,
+        string $sig,
+        string $delegate,
+    ): void {
+        $body = $this->extractMethodBody(base_path($path), $sig);
+
+        $this->assertStringContainsString(
+            $delegate,
+            $body,
+            "{$sig} in {$path} takes NO advisory lock of its own, so it must delegate the seam loop to "
+            ."a method that does ({$delegate}). If this ever stops delegating, move the row back to "
+            .'multiProductSeamCallerProvider — it would then need its own up-front sorted acquire.'
+        );
+
+        $this->assertStringNotContainsString(
+            'costLock->acquire(',
+            $body,
+            "{$sig} in {$path} is registered as a DELEGATING caller but now acquires the seam itself. "
+            .'Move it to multiProductSeamCallerProvider so the acquire-before-the-loop ordering is pinned.'
+        );
+
+        // And the delegate it hands off to must itself be a pinned locker.
+        $post = $this->extractMethodBody(base_path($path), 'public function post(');
+        $this->assertStringContainsString(
+            'costLock->acquire(',
+            $post,
+            "The delegate of {$sig} must hold the up-front advisory lock."
+        );
     }
 
     #[Test]
@@ -153,6 +217,44 @@ final class InventoryCostLockCoverageTest extends TestCase
                 .'deadlocks (see WAC foundation review r2/r3/r4).'
             );
         }
+    }
+
+    /**
+     * DPA V7 / T2 (inventory gate I-2) — close the PREFIX hole.
+     *
+     * extractMethodBody() locates a method with a bare `strpos($source,
+     * $signature)`, and `'public function adjust'` is a PREFIX of
+     * `'public function adjustByDelta'`. If the new method were ever declared
+     * ABOVE adjust(), the `adjust` row would extract the WRONG body, both bodies
+     * contain `costLock->acquire`, the assertion would pass — and the pin on
+     * adjust() would be silently gone.
+     *
+     * Every provider row now carries a trailing `(` so the paren disambiguates.
+     * This test is the belt to that braces: the two extracted bodies must not be
+     * the same string, which is only possible if one signature matched the other.
+     */
+    #[Test]
+    public function test_adjust_and_adjust_by_delta_extract_distinct_bodies(): void
+    {
+        $path = base_path('app/Modules/Inventory/Domain/Services/StockAdjustmentService.php');
+
+        $adjust = $this->extractMethodBody($path, 'public function adjust(');
+        $adjustByDelta = $this->extractMethodBody($path, 'public function adjustByDelta(');
+
+        $this->assertNotSame(
+            $adjust,
+            $adjustByDelta,
+            "'public function adjust' is a PREFIX of 'public function adjustByDelta': if the two "
+            .'extracted bodies are identical, one signature matched the other and the pin on the '
+            .'shorter name is silently gone. Keep the trailing "(" on every provider row.'
+        );
+
+        // Both must be real bodies, not one truncated by a bad match.
+        $this->assertStringContainsString('costLock->acquire(', $adjust);
+        $this->assertStringContainsString('costLock->acquire(', $adjustByDelta);
+        // Only the delta form carries the staleness / availability guards.
+        $this->assertStringContainsString('StockMovedSinceAuthoringException', $adjustByDelta);
+        $this->assertStringNotContainsString('StockMovedSinceAuthoringException', $adjust);
     }
 
     #[Test]

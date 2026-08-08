@@ -441,58 +441,97 @@ GET /api/v1/stock-levels/{product_id}/{location_id}
 GET /api/v1/stock-movements
 ```
 
-#### Receive Stock
+> **The four raw write endpoints were removed (DPA V7).**
+> `POST /api/v1/stock-movements/{receive,issue,transfer,adjust}` no longer exist.
+> They wrote unjustified signed stock deltas — no `reason`, no document — and
+> `adjust` took an ABSOLUTE `new_quantity` that silently overwrote anything
+> committed between the browser read and the POST. `GET /api/v1/stock-movements`
+> is unchanged. Replacements:
+>
+> | Removed | Use instead |
+> |---|---|
+> | `POST /stock-movements/receive` | `POST /goods-receipts/standalone` when supplier-sourced and priced; otherwise a positive `stock_adjustments` line |
+> | `POST /stock-movements/issue` | the delivery note when partner-bound, `POST /batches/{uuid}/write-off` when lot-identified; otherwise a negative `stock_adjustments` line |
+> | `POST /stock-movements/transfer` | `POST /stock-transfers` |
+> | `POST /stock-movements/adjust` | `POST /stock-adjustments` |
+
+### Stock Adjustments
+
+Manual stock corrections as a lifecycle-tracked, multi-line DOCUMENT.
+`location_id` is on the header; `reason_code` is on the LINE, so a
+mixed-direction reconciliation is representable in one document.
+
+Permissions are step-split: `inventory.adjustments.view` / `.create` / `.post` /
+`.cancel`. `post_immediately: true` is therefore a TWO-leg check (`create` AND
+`post`), and supplying `acknowledge_stale` or `ignore_reservations` without
+`.post` is a 403 rather than a silent ignore.
+
 ```http
-POST /api/v1/stock-movements/receive
+GET    /api/v1/stock-adjustments                       can:inventory.adjustments.view
+GET    /api/v1/stock-adjustments/{adjustment}          can:inventory.adjustments.view
+POST   /api/v1/stock-adjustments                       can:inventory.adjustments.create
+PATCH  /api/v1/stock-adjustments/{adjustment}          can:inventory.adjustments.create   (draft only)
+POST   /api/v1/stock-adjustments/{adjustment}/post     can:inventory.adjustments.post
+POST   /api/v1/stock-adjustments/{adjustment}/cancel   can:inventory.adjustments.cancel   (draft only)
+POST   /api/v1/stock-adjustments/{adjustment}/correct  can:inventory.adjustments.create   (posted only)
+```
+
+#### Create a stock adjustment
+```http
+POST /api/v1/stock-adjustments
 Content-Type: application/json
 
 {
-  "product_id": "uuid",
   "location_id": "uuid",
-  "quantity": 100,
-  "unit_cost": 50.00,
-  "reference": "PO-2025-001"
+  "note": "Quarterly reconciliation",
+  "idempotency_key": "optional-string",
+  "post_immediately": false,
+  "acknowledge_stale": false,
+  "ignore_reservations": false,
+  "lines": [
+    {
+      "product_id": "uuid",
+      "variant_id": null,
+      "batch_uuid": null,
+      "reason_code": "adjustment_positive|adjustment_negative|damage|write_off",
+      "delta_quantity": "-2.5000",
+      "observed_before": "12.0000",
+      "line_note": null
+    }
+  ]
 }
 ```
 
-#### Issue Stock
-```http
-POST /api/v1/stock-movements/issue
-Content-Type: application/json
+- `delta_quantity` is **signed**, non-zero, at most 4 dp, and its sign is bound
+  to `reason_code` (`adjustment_positive` is the only inbound reason).
+- `observed_before` is the operator's authoring snapshot, taken from a FRESH
+  `GET /stock-levels/{product}/{location}` read. It is compared against the row
+  under its lock; a mismatch is `STOCK_MOVED_SINCE_AUTHORING` (422).
+- `occurred_at` is **prohibited**: v1 forbids backdating and stamps it
+  server-side.
+- `batch_uuid` is the lot's PUBLIC uuid. A negative line MUST name a lot when the
+  product holds one with stock at that location; `damage` / `write_off` are
+  refused on batch-tracked products and routed to the batch write-off, which
+  posts the COGS entry this document does not.
 
-{
-  "product_id": "uuid",
-  "location_id": "uuid",
-  "quantity": 10,
-  "reference": "INV-2025-001"
-}
-```
+#### Refusal codes
 
-#### Transfer Stock
-```http
-POST /api/v1/stock-movements/transfer
-Content-Type: application/json
+| Code | HTTP | Notes |
+|---|---|---|
+| `STOCK_MOVED_SINCE_AUTHORING` | 422 | overridable via `acknowledge_stale`; `details.lines[].line_id` is `null` when nothing was persisted |
+| `ADJUSTMENT_EXCEEDS_AVAILABLE` | 422 | reserved-aware; `details.overridable = true`, override via `ignore_reservations` |
+| `INSUFFICIENT_BATCH_STOCK` | 422 | carries the shortfall |
+| `BATCH_REQUIRED_FOR_LINE` | 422 | |
+| `BATCH_NOT_APPLICABLE` | 422 | |
+| `USE_BATCH_WRITE_OFF` | 422 | |
+| `LINE_TENANT_MISMATCH` | 422 | |
+| `INVALID_ADJUSTMENT_STATE` | 422 | carries the legal transition set |
+| `ADJUSTMENT_ALREADY_CORRECTED` | 422 | |
+| `CANNOT_CORRECT_A_CORRECTION` | 422 | |
+| `LOCATION_ACCESS_DENIED` | 403 | |
 
-{
-  "product_id": "uuid",
-  "from_location_id": "uuid",
-  "to_location_id": "uuid",
-  "quantity": 25
-}
-```
-
-#### Adjust Stock
-```http
-POST /api/v1/stock-movements/adjust
-Content-Type: application/json
-
-{
-  "product_id": "uuid",
-  "location_id": "uuid",
-  "quantity": -5,
-  "reason": "Damaged goods"
-}
-```
+Every quantity-bearing refusal carries `quantity_decimals`, the product unit's
+display precision.
 
 ### Inventory Counting
 

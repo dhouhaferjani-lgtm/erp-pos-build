@@ -257,13 +257,18 @@ describe('inventory queryKey shapes', () => {
 
     await waitFor(() => {
       const keys = inventoryKeysFromCache(queryClient)
-      expect(keys.some((k) => k[0] === 'locations')).toBe(true)
       expect(keys.some((k) => k[0] === 'stock-levels')).toBe(true)
       expect(keys.some((k) => k[0] === 'stock-movements')).toBe(true)
     })
 
     const keys = inventoryKeysFromCache(queryClient)
-    expectScoped(keys.find((k) => k[0] === 'locations'), ['locations', { locScope: 'all' }])
+    // The `locations` assertion that used to live here is GONE, not relaxed:
+    // DPA V7 deleted the stock-levels page's locations query along with the raw
+    // transfer modal it fed (that modal's destination picker was its only
+    // consumer). Transfers are now a deep link to their own document, which
+    // fetches its own locations. Neither page on this screen fetches locations
+    // any more, so asserting the key would pin a query that must not exist.
+    expect(keys.some((k) => k[0] === 'locations')).toBe(false)
     expectScoped(keys.find((k) => k[0] === 'stock-levels'), ['stock-levels', '', { locScope: 'all' }])
     expectScoped(keys.find((k) => k[0] === 'stock-movements'), ['stock-movements', '', 'all', { locScope: 'all' }])
   })

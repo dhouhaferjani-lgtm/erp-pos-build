@@ -9,11 +9,22 @@ use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
+use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
+use App\Modules\Inventory\Domain\Exceptions\AdjustmentAlreadyCorrectedException;
+use App\Modules\Inventory\Domain\Exceptions\AdjustmentExceedsAvailableException;
+use App\Modules\Inventory\Domain\Exceptions\BatchNotApplicableException;
+use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
+use App\Modules\Inventory\Domain\Exceptions\CannotCorrectACorrectionException;
+use App\Modules\Inventory\Domain\Exceptions\ContraLinesImmutableException;
+use App\Modules\Inventory\Domain\Exceptions\LineTenantMismatchException;
+use App\Modules\Inventory\Domain\Exceptions\StockAdjustmentStateException;
+use App\Modules\Inventory\Domain\Exceptions\StockMovedSinceAuthoringException;
+use App\Modules\Inventory\Domain\Exceptions\UseBatchWriteOffException;
 use App\Modules\POS\Domain\Exceptions\DailyRefundCapExceededException;
 use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Exceptions\ManagerOverrideRequiredException;
@@ -479,6 +490,203 @@ return Application::configure(basePath: dirname(__DIR__))
                         'document_number' => $e->documentNumber,
                         'period_label' => $e->periodLabel,
                         'period_status' => $e->periodStatus->value,
+                    ],
+                ], 422);
+            }
+        });
+
+        // ---------------------------------------------------------------------
+        // DPA V7 — stock-adjustment document refusals.
+        //
+        // ALL of these extend \DomainException, and Laravel 11 matches render
+        // callbacks in REGISTRATION ORDER (first match wins), so every one of
+        // them MUST stay above the generic DomainException handler below or the
+        // frontend receives BUSINESS_ERROR and loses the code it routes on.
+        //
+        // Every quantity-bearing payload carries `quantity_decimals`: the two
+        // acknowledgeable refusals are rendered with the product unit's
+        // precision, and without it on the wire the only fallback is a literal
+        // scale — exactly what the quantity-display ratchet forbids.
+        // ---------------------------------------------------------------------
+        $exceptions->render(function (StockMovedSinceAuthoringException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'STOCK_MOVED_SINCE_AUTHORING',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            // Keyed on (product_id, variant_id, batch_uuid) — NEVER on a
+                            // line id: an immediate-post refusal rolls the draft back with
+                            // its transaction, so `line_id` would dangle (D15a).
+                            'lines' => [[
+                                'line_id' => null,
+                                'product_id' => $e->productId,
+                                'variant_id' => $e->variantId,
+                                'batch_uuid' => $e->batchUuid,
+                                'observed_before' => $e->observedBefore,
+                                'quantity_before' => $e->quantityBefore,
+                                'quantity_decimals' => $e->quantityDecimals,
+                            ]],
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (AdjustmentExceedsAvailableException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'ADJUSTMENT_EXCEEDS_AVAILABLE',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'product_id' => $e->productId,
+                            'location_id' => $e->locationId,
+                            'quantity_before' => $e->quantityBefore,
+                            'reserved' => $e->reserved,
+                            'available' => $e->available,
+                            'delta_quantity' => $e->deltaQuantity,
+                            'quantity_decimals' => $e->quantityDecimals,
+                            // The frontend renders this as an ACKNOWLEDGEABLE refusal
+                            // rather than a dead end (D1a).
+                            'overridable' => true,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (InsufficientBatchStockException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'INSUFFICIENT_BATCH_STOCK',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'shortfall' => $e->shortfall,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (BatchRequiredForLineException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'BATCH_REQUIRED_FOR_LINE',
+                        'message' => $e->getMessage(),
+                        'details' => ['product_id' => $e->productId],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (BatchNotApplicableException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'BATCH_NOT_APPLICABLE',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'product_id' => $e->productId,
+                            'batch_uuid' => $e->batchUuid,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (UseBatchWriteOffException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'USE_BATCH_WRITE_OFF',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'product_id' => $e->productId,
+                            'reason_code' => $e->reasonCode->value,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (LineTenantMismatchException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'LINE_TENANT_MISMATCH',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'product_id' => $e->productId,
+                            'expected_tenant_id' => $e->expectedTenantId,
+                            'found_tenant_id' => $e->foundTenantId,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (StockAdjustmentStateException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'INVALID_ADJUSTMENT_STATE',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'adjustment_id' => $e->adjustmentId,
+                            'current_status' => $e->currentStatus->value,
+                            'attempted' => $e->attemptedAction,
+                            // allowedTransitions() is TOTAL, so the legal set can be
+                            // reported rather than guessed at (D5).
+                            'allowed' => $e->allowedValues(),
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (AdjustmentAlreadyCorrectedException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'ADJUSTMENT_ALREADY_CORRECTED',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'adjustment_id' => $e->adjustmentId,
+                            'correction_id' => $e->correctionId,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (ContraLinesImmutableException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'CONTRA_LINES_IMMUTABLE',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'adjustment_id' => $e->adjustmentId,
+                            'corrects_adjustment_id' => $e->correctsAdjustmentId,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (CannotCorrectACorrectionException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'CANNOT_CORRECT_A_CORRECTION',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'adjustment_id' => $e->adjustmentId,
+                            'corrects_adjustment_id' => $e->correctsAdjustmentId,
+                        ],
                     ],
                 ], 422);
             }

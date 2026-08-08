@@ -48,8 +48,25 @@ const SCAN_ROOTS = [
 ];
 const BASELINE_PATH = path.join(__dirname, 'quantity-display-baseline.json');
 
-/** Terminal names flagged as bare identifier OR member expression. */
-const INCLUDE_EXACT = new Set(['requested_qty', 'suggested_qty', 'received_qty']);
+/**
+ * Terminal names flagged as bare identifier OR member expression.
+ *
+ * The four `*_quantity` / `quantity_*` / `observed_before` names are the
+ * stock-adjustment document's quantity surface (DPA V7 / T18). Without them the
+ * ratchet matched NOTHING this lane introduces — `delta_quantity`,
+ * `observed_before`, `quantity_before` and `quantity_after` are neither in the
+ * exact set nor the member-only `quantity`, so the only enforcement of the
+ * unit-precision rule on those renderers would have been reviewer attention.
+ */
+const INCLUDE_EXACT = new Set([
+  'requested_qty',
+  'suggested_qty',
+  'received_qty',
+  'delta_quantity',
+  'observed_before',
+  'quantity_before',
+  'quantity_after',
+]);
 /** Terminal name flagged ONLY as a member expression (line/item chain). */
 const INCLUDE_MEMBER_ONLY = new Set(['quantity']);
 /** Sanctioned quantity-input wrappers whose `value` prop is not display text. */

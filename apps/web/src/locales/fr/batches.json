@@ -3,7 +3,6 @@
   "batchCount": "{{count}} lot",
   "batchCount_other": "{{count}} lots",
   "daysRemaining": "jours",
-
   "expiryStatus": {
     "ok": "OK",
     "approaching": "Proche",
@@ -11,7 +10,6 @@
     "critical": "Critique",
     "expired": "Expiré"
   },
-
   "fields": {
     "batchNumber": "Numéro de Lot",
     "product": "Produit",
@@ -25,7 +23,6 @@
     "notes": "Notes",
     "recallReason": "Raison du Rappel"
   },
-
   "actions": {
     "addBatch": "Ajouter un Lot",
     "createBatch": "Créer un Lot",
@@ -35,29 +32,24 @@
     "viewDetails": "Voir les Détails",
     "selectBatch": "Sélectionner le Lot"
   },
-
   "status": {
     "active": "Actif",
     "inactive": "Inactif",
     "recalled": "Rappelé"
   },
-
   "search": {
     "placeholder": "Rechercher des numéros de lot…"
   },
-
   "empty": {
     "title": "Aucun lot trouvé",
     "description": "Commencez par créer votre premier lot."
   },
-
   "detail": {
     "title": "Détails du Lot",
     "stockByLocation": "Stock par Emplacement",
     "movementHistory": "Historique des Mouvements",
     "productInfo": "Informations sur le Produit"
   },
-
   "form": {
     "createTitle": "Créer un Nouveau Lot",
     "editTitle": "Modifier le Lot",
@@ -80,7 +72,6 @@
     "confirmRecall": "Êtes-vous sûr de vouloir rappeler ce lot ?",
     "confirmDelete": "Êtes-vous sûr de vouloir supprimer ce lot ?"
   },
-
   "validation": {
     "batchNumberRequired": "Le numéro de lot est requis",
     "productRequired": "Le produit est requis",
@@ -89,7 +80,6 @@
     "manufacturingDatePast": "La date de fabrication ne peut pas être dans le futur",
     "recallReasonRequired": "La raison du rappel est requise"
   },
-
   "messages": {
     "createSuccess": "Lot créé avec succès",
     "updateSuccess": "Lot mis à jour avec succès",
@@ -97,7 +87,6 @@
     "recallSuccess": "Lot rappelé avec succès",
     "loadError": "Échec du chargement des détails du lot"
   },
-
   "pos": {
     "selectBatchTitle": "Sélectionner un Lot",
     "fefoSuggestion": "Suggestion FEFO",
@@ -108,14 +97,12 @@
     "totalAllocated": "Total alloué",
     "remaining": "Restant"
   },
-
   "reports": {
     "expiringProducts": "Produits Expirant",
     "expiringDescription": "Produits avec des lots expirant bientôt",
     "daysThreshold": "Dans {{days}} jours",
     "noBatchesExpiring": "Aucun lot expirant dans la période sélectionnée"
   },
-
   "expiryWriteOff": {
     "title": "Mise au Rebut des Lots Expirés",
     "subtitle": "Sélectionnez les lots expirés, indiquez la quantité à retirer, puis confirmez une seule mise au rebut.",
@@ -143,6 +130,12 @@
       "success": "Lots expirés rebutés",
       "shortStock": "Un lot sélectionné n'a plus assez de stock. Actualisez puis réessayez.",
       "error": "Échec de la mise au rebut des lots expirés"
+    },
+    "reasonLabel": "Motif",
+    "reasons": {
+      "expiry": "Péremption",
+      "damage": "Dommage",
+      "other": "Autre"
     }
   }
 }

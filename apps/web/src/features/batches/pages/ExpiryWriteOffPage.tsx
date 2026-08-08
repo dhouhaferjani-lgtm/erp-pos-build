@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
+import { FormField } from '@/components/atoms/FormField'
+import { Select } from '@/components/atoms/Select/Select'
 import { toast } from 'sonner'
 import { isApiError } from '../../../lib/api'
 import { cn } from '../../../lib/utils'
@@ -62,6 +64,14 @@ export function ExpiryWriteOffPage() {
   // uuid → entered quantity string (presence ⇒ selected)
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [confirmOpen, setConfirmOpen] = useState(false)
+  /**
+   * DPA V7 / F12. This page used to HARDCODE `reason: 'expiry'`, which mattered
+   * the moment D7a started redirecting `damage` / `write_off` on batch-tracked
+   * products here: a refused DAMAGE could only have been recorded as an EXPIRY.
+   * The API already accepts the full set on both write-off endpoints, so this is
+   * a pure frontend gap. Defaults to `expiry` to preserve today's behaviour.
+   */
+  const [reason, setReason] = useState<GroupedWriteOffPayload['reason']>('expiry')
   // Generated once per confirmed submission; reused across retries of the SAME
   // submission so an idempotent replay hits the same server-side record.
   const [idempotencyKey, setIdempotencyKey] = useState<string | null>(null)
@@ -168,7 +178,7 @@ export function ExpiryWriteOffPage() {
         batch_id: b.uuid,
         quantity: quantities[b.uuid],
       })),
-      reason: 'expiry',
+      reason,
       idempotency_key: idempotencyKey,
     }
     writeOffMutation.mutate(payload)
@@ -278,6 +288,22 @@ export function ExpiryWriteOffPage() {
 
           {canWriteOff && (
             <div className="flex items-center justify-end gap-3">
+              <FormField label={t('expiryWriteOff.reasonLabel')} className="w-48">
+                <Select
+                  aria-label={t('expiryWriteOff.reasonLabel')}
+                  value={reason}
+                  onChange={(event) => {
+                    const raw = event.target.value
+                    if (raw === 'expiry' || raw === 'damage' || raw === 'other') {
+                      setReason(raw)
+                    }
+                  }}
+                >
+                  <option value="expiry">{t('expiryWriteOff.reasons.expiry')}</option>
+                  <option value="damage">{t('expiryWriteOff.reasons.damage')}</option>
+                  <option value="other">{t('expiryWriteOff.reasons.other')}</option>
+                </Select>
+              </FormField>
               <span className={cn('text-sm', textColors.tertiary)}>
                 {t('expiryWriteOff.selectedCount', { count: selectedBatches.length })}
               </span>

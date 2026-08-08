@@ -70,4 +70,16 @@ enum StockMovementReferenceType: string
      * existing reader has to be migrated.
      */
     case PosReceiptReturnScrap = 'pos_receipt_return_scrap';
+
+    /**
+     * A `stock_adjustments` row — the manual stock-correction document that
+     * replaced the four raw `POST /stock-movements/*` writers (DPA V7, D2).
+     *
+     * Load-bearing beyond display: `FirstCountDetector`'s supply-side baseline
+     * conjoins this value (D2a), which is what keeps the baseline extension
+     * forward-only — every legacy manual `adjustment_positive` row carries
+     * `reference_type IS NULL`, because today's `adjust()` passes no reference
+     * type and `recordMovement()` persists `$referenceType?->value`.
+     */
+    case StockAdjustment = 'stock_adjustment';
 }

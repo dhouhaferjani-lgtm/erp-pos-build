@@ -295,7 +295,8 @@
     "vouchers": "القسائم والأرصدة",
     "ecommerce": "التجارة الإلكترونية",
     "customersAndMarketing": "العملاء والتسويق",
-    "stockTransfers": "تحويلات المخزون"
+    "stockTransfers": "تحويلات المخزون",
+    "stockAdjustments": "تسويات المخزون"
   },
   "locations": {
     "title": "إدارة المواقع",

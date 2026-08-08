@@ -216,6 +216,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'placement', href: '/inventory/placement', icon: MapPinned, permission: 'inventory' },
         { key: 'stockMovements', href: '/inventory/movements', icon: ArrowLeftRight },
         { key: 'stockTransfers', href: '/inventory/stock-transfers', icon: Repeat, permission: 'inventory.transfers.view' },
+        { key: 'stockAdjustments', href: '/inventory/stock-adjustments', icon: ClipboardList, permission: 'inventory.adjustments.view' },
         { key: 'replenishment', labelKey: 'replenishment:title', href: '/inventory/replenishment', icon: PackagePlus, permission: 'replenishment.view' },
         { key: 'counting', href: '/inventory/counting', icon: ClipboardCheck },
         { key: 'batches', href: '/inventory/batches', icon: Pill, module: 'BatchExpiry' },

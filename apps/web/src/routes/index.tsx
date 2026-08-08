@@ -129,6 +129,11 @@ const DiscrepancyReportPage = lazy(() => import('../features/inventory-counting/
 const StockTransferListPage = lazy(() => import('../features/stock-transfers/pages/StockTransferListPage').then((m) => ({ default: m.StockTransferListPage })))
 const CreateStockTransferPage = lazy(() => import('../features/stock-transfers/pages/CreateStockTransferPage').then((m) => ({ default: m.CreateStockTransferPage })))
 const StockTransferDetailPage = lazy(() => import('../features/stock-transfers/pages/StockTransferDetailPage').then((m) => ({ default: m.StockTransferDetailPage })))
+
+// Stock Adjustments (DPA V7 — the document that replaced the raw stock writers)
+const StockAdjustmentListPage = lazy(() => import('../features/stock-adjustments/pages/StockAdjustmentListPage').then((m) => ({ default: m.StockAdjustmentListPage })))
+const CreateStockAdjustmentPage = lazy(() => import('../features/stock-adjustments/pages/CreateStockAdjustmentPage').then((m) => ({ default: m.CreateStockAdjustmentPage })))
+const StockAdjustmentDetailPage = lazy(() => import('../features/stock-adjustments/pages/StockAdjustmentDetailPage').then((m) => ({ default: m.StockAdjustmentDetailPage })))
 const ReplenishmentCapturePage = lazy(() => import('../features/replenishment/pages/ReplenishmentCapturePage').then((m) => ({ default: m.ReplenishmentCapturePage })))
 const ReplenishmentQueuePage = lazy(() => import('../features/replenishment/pages/ReplenishmentQueuePage').then((m) => ({ default: m.ReplenishmentQueuePage })))
 
@@ -1334,6 +1339,41 @@ export function AppRoutes() {
               <RequirePermission permission="inventory.transfers.view">
                 <SuspenseWrapper>
                   <StockTransferDetailPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+
+          {/* Stock Adjustments — PER-ACTION permissions, matching the transfer
+              routes above. Note the contrast with the `stock` route, which is
+              module-gated: a read permission must never be the only thing
+              standing in front of a write. */}
+          <Route
+            path="stock-adjustments"
+            element={
+              <RequirePermission permission="inventory.adjustments.view">
+                <SuspenseWrapper>
+                  <StockAdjustmentListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="stock-adjustments/new"
+            element={
+              <RequirePermission permission="inventory.adjustments.create">
+                <SuspenseWrapper>
+                  <CreateStockAdjustmentPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="stock-adjustments/:id"
+            element={
+              <RequirePermission permission="inventory.adjustments.view">
+                <SuspenseWrapper>
+                  <StockAdjustmentDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

@@ -326,12 +326,17 @@ POST   /api/v1/locations/{id}/set-default
 GET    /api/v1/stock-levels
 GET    /api/v1/stock-levels/{product}/{location}
 
-# Stock Movements
+# Stock Movements (READ-ONLY since DPA V7 — the four raw writers were removed)
 GET    /api/v1/stock-movements
-POST   /api/v1/stock-movements/receive
-POST   /api/v1/stock-movements/issue
-POST   /api/v1/stock-movements/transfer
-POST   /api/v1/stock-movements/adjust
+
+# Stock Adjustments (the document that replaced POST /stock-movements/adjust)
+GET    /api/v1/stock-adjustments
+POST   /api/v1/stock-adjustments
+GET    /api/v1/stock-adjustments/{id}
+PATCH  /api/v1/stock-adjustments/{id}
+POST   /api/v1/stock-adjustments/{id}/post
+POST   /api/v1/stock-adjustments/{id}/cancel
+POST   /api/v1/stock-adjustments/{id}/correct
 
 # Inventory Counting
 GET    /api/v1/inventory/countings

@@ -459,6 +459,98 @@ final class EntryExitNoteEndpointTest extends TestCase
         }
     }
 
+    /**
+     * DPA V7 / T3: `stock_adjustments` movements group per adjustment document
+     * and report the canonical, translatable `stock_adjustment` code.
+     *
+     * Also pins that the `documents` leftJoin does NOT fire for this reference
+     * type — the join is scoped to `[Document::class, 'Document']`, so
+     * `source_id` must be the adjustment's own uuid, not a document id.
+     */
+    public function test_entry_exit_notes_expose_stock_adjustment_sourced_movements(): void
+    {
+        $adjustmentId = (string) Str::uuid();
+
+        $this->movement([
+            'movement_type' => MovementType::Adjustment,
+            'reason' => MovementReason::AdjustmentNegative,
+            'quantity' => '-2.0000',
+            'quantity_before' => '5.0000',
+            'quantity_after' => '3.0000',
+            'reference' => 'ADJ-2026-0001',
+            'reference_type' => StockMovementReferenceType::StockAdjustment->value,
+            'reference_id' => $adjustmentId,
+        ]);
+        $this->movement([
+            'movement_type' => MovementType::Adjustment,
+            'reason' => MovementReason::AdjustmentPositive,
+            'quantity' => '4.0000',
+            'quantity_before' => '1.0000',
+            'quantity_after' => '5.0000',
+            'reference' => 'ADJ-2026-0001',
+            'reference_type' => StockMovementReferenceType::StockAdjustment->value,
+            'reference_id' => $adjustmentId,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/entry-exit-notes?per_page=10');
+
+        $response->assertOk();
+        // Two movements, but mixed direction — the grouping key is
+        // (reference_type, reference_id, location, direction), so an in-note and
+        // an out-note. Both must carry the canonical code.
+        $sourceTypes = collect($response->json('data'))->pluck('source_type')->unique()->values()->all();
+        $this->assertSame(['stock_adjustment'], $sourceTypes);
+        $this->assertSame(
+            [$adjustmentId],
+            collect($response->json('data'))->pluck('source_id')->unique()->values()->all(),
+            'source_id must be the adjustment uuid — the documents leftJoin must not fire.'
+        );
+
+        $filtered = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/entry-exit-notes?source_type=stock_adjustment&per_page=10');
+
+        $filtered->assertOk();
+        $this->assertGreaterThan(0, (int) $filtered->json('meta.total'));
+        $this->assertSame(
+            ['stock_adjustment'],
+            collect($filtered->json('data'))->pluck('source_type')->unique()->values()->all(),
+        );
+    }
+
+    /**
+     * DPA V7 / T3 (D16): S0's single-key i18n assertion becomes TOTAL over the
+     * enum. `sourceType()` now returns the canonical code for EVERY case except
+     * `Document`, so every one of those codes must have an en+fr key or a raw
+     * string reaches the user (rule 11).
+     */
+    public function test_every_canonical_source_type_has_an_en_and_fr_translation(): void
+    {
+        $codes = collect(StockMovementReferenceType::cases())
+            ->reject(fn (StockMovementReferenceType $case): bool => $case === StockMovementReferenceType::Document)
+            ->map(fn (StockMovementReferenceType $case): string => $case->value)
+            ->values();
+
+        $this->assertNotEmpty($codes, 'The enum must carry at least one non-Document case.');
+
+        foreach (['en', 'fr'] as $locale) {
+            $path = base_path("../web/src/locales/{$locale}/inventory.json");
+            $this->assertFileExists($path);
+            /** @var array<string, mixed> $messages */
+            $messages = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertIsArray($messages['entryExitNotes'] ?? null);
+            $this->assertIsArray($messages['entryExitNotes']['sourceTypes'] ?? null);
+
+            foreach ($codes as $code) {
+                $this->assertArrayHasKey(
+                    $code,
+                    $messages['entryExitNotes']['sourceTypes'],
+                    "Missing {$locale} translation for entryExitNotes.sourceTypes.{$code}",
+                );
+            }
+        }
+    }
+
     public function test_entry_exit_notes_require_inventory_view_permission(): void
     {
         $viewer = User::create([
