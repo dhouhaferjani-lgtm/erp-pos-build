@@ -99,6 +99,39 @@ final class RepositoryAdjustmentController extends Controller
             ], 422);
         }
 
+        // Gate C1 — ROUND ONCE, AT THE BOUNDARY (rule 19), then feed the ONE
+        // normalized value to all three artifacts: the document, the journal
+        // entry and the movement. Previously only the document was scaled while
+        // the JE and the movement stored the raw request string, so on any
+        // currency with scale < 3 (the FormRequest's regex ceiling, and the
+        // column's own decimal(15,3)) the justifying document stated a
+        // different amount than the fact it justifies — reproduced on Postgres
+        // as doc 25.000 vs movement/JE 25.005 for an EUR repository. Scale comes
+        // from the repository's OWN currency via the constructor-injected
+        // resolver (never a bare no-arg getScale()); bcformatStrict truncates,
+        // which is why this is the single rounding point and every downstream
+        // consumer receives the already-normalized string.
+        $scale = $this->scaleResolver->getScale($repository->currency);
+        /** @var numeric-string $amount */
+        $amount = CurrencyScale::bcformatStrict($amount, $scale);
+
+        // Gate C2 — an amount below the currency's smallest unit (EUR 0.005,
+        // or ANY sub-unit amount for a scale-0 currency such as XOF/JPY) passes
+        // `required|numeric|gt:0|regex:{1,3}` and then normalizes to zero. Left
+        // unchecked it reached the pgsql-only CHECK (amount > 0) as SQLSTATE
+        // 23514 → HTTP 500, rolling back the whole adjustment — a failure the
+        // sqlite suite structurally cannot see (CLAUDE.md rule 20). Refuse it
+        // here, BEFORE any insert, as a graceful translated 422.
+        if (bccomp($amount, '0', $scale) <= 0) {
+            return response()->json([
+                'error' => __('messages.treasury.adjustment_amount_below_currency_precision', [
+                    'amount' => (string) $validated['amount'],
+                    'currency' => $repository->currency,
+                    'decimals' => (string) $scale,
+                ]),
+            ], 422);
+        }
+
         $result = DB::transaction(function () use (
             $repository,
             $direction,
@@ -129,12 +162,10 @@ final class RepositoryAdjustmentController extends Controller
                     'company_id' => $companyId,
                     'payment_repository_id' => $repository->id,
                     'direction' => $direction,
-                    // Money at rest through the CurrencyScale contract, at the
-                    // repository's own currency scale (rule 19). Never a float.
-                    'amount' => CurrencyScale::bcformatStrict(
-                        $amount,
-                        $this->scaleResolver->getScale($repository->currency),
-                    ),
+                    // Already normalized once at the boundary above — stored
+                    // verbatim, so the document is byte-identical with the JE
+                    // and the movement BY CONSTRUCTION, not by coincidence.
+                    'amount' => $amount,
                     'currency' => $repository->currency,
                     'reason_code' => $reasonCode,
                     'reason_text' => $reasonText,
@@ -142,21 +173,34 @@ final class RepositoryAdjustmentController extends Controller
                 ],
             );
 
-            // GL post FIRST (postEntryNow takes the company advisory lock),
-            // then the movement port (which takes the repository row lock
-            // second) — global lock order (spine BLOCKER-1).
-            $entry = $this->generalLedger->createRepositoryAdjustmentJournalEntry(
-                companyId: $companyId,
-                tenantId: $tenantId,
-                adjustmentId: $adjustmentId,
-                repositoryGlAccountId: $glAccountId,
-                direction: $direction,
-                amount: $amount,
-                date: now(),
-                user: $user,
-                description: "Repository adjustment ({$reasonCode->value}): {$reasonText}",
-                currencyCode: $repository->currency,
-            );
+            // Gate I1 — on a REPLAY (the document already exists) reuse the
+            // journal entry this document already justifies instead of posting a
+            // second one. Previously the GL post ran unconditionally, ahead of
+            // record()'s idempotent short-circuit, so a replayed adjustment id
+            // minted an extra POSTED repository_adjustment entry with no
+            // compensating movement and nothing pointing at it. The partial
+            // unique index added by
+            // 2026_08_08_120100_unique_journal_entries_source_repository_adjustment.php
+            // is the database-level backstop for the same invariant.
+            $entry = $adjustment->wasRecentlyCreated ? null : $adjustment->journalEntry;
+
+            if ($entry === null) {
+                // GL post FIRST (postEntryNow takes the company advisory lock),
+                // then the movement port (which takes the repository row lock
+                // second) — global lock order (spine BLOCKER-1).
+                $entry = $this->generalLedger->createRepositoryAdjustmentJournalEntry(
+                    companyId: $companyId,
+                    tenantId: $tenantId,
+                    adjustmentId: $adjustmentId,
+                    repositoryGlAccountId: $glAccountId,
+                    direction: $direction,
+                    amount: $amount,
+                    date: now(),
+                    user: $user,
+                    description: "Repository adjustment ({$reasonCode->value}): {$reasonText}",
+                    currencyCode: $repository->currency,
+                );
+            }
 
             $result = $this->movementService->record(new MovementIntent(
                 repositoryId: $repository->id,

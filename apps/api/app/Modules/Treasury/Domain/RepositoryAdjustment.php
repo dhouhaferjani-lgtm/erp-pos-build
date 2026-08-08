@@ -47,6 +47,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string $reason_text
  * @property ?string $journal_entry_id
  * @property ?string $movement_id
+ * @property ?string $pos_shift_id
  * @property ?string $created_by
  * @property CarbonImmutable $created_at
  * @property CarbonImmutable $updated_at
@@ -70,6 +71,57 @@ final class RepositoryAdjustment extends Model
         'created_at' => 'immutable_datetime',
         'updated_at' => 'immutable_datetime',
     ];
+
+    /**
+     * The ONLY columns a saved document may ever change, and only null → value:
+     * the two linkage columns the authoring transaction backfills once the
+     * journal entry and the movement it justifies exist.
+     */
+    private const LINKAGE_COLUMNS = ['journal_entry_id', 'movement_id'];
+
+    /**
+     * Model-level immutability guard (gate finding I5).
+     *
+     * This row justifies a POSTED journal entry and a committed, append-only
+     * repository movement; letting any code path re-write its amount or delete
+     * it would reintroduce exactly the "fact with no justifying document" this
+     * lane exists to remove — and in a remediation program whose V1 lane was
+     * "delete the GL-deleting command", an unguarded fiscal document is not
+     * defensible. Mirrors {@see RepositoryMovement::booted()}, relaxed by the
+     * one transition the authoring flow genuinely needs: the linkage backfill,
+     * null → value, inside the same transaction that created the row.
+     *
+     * Driver-independent by design (the sibling's Postgres trigger gives no
+     * protection on the sqlite test driver).
+     */
+    protected static function booted(): void
+    {
+        self::updating(function (self $adjustment): void {
+            $dirty = array_keys($adjustment->getDirty());
+            $illegal = array_diff($dirty, self::LINKAGE_COLUMNS);
+
+            if ($illegal !== []) {
+                throw new \LogicException(
+                    'repository_adjustments are immutable once written; only '.
+                    implode('/', self::LINKAGE_COLUMNS).' may be backfilled. Refused: '.
+                    implode(', ', $illegal).'. Corrections are compensating adjustments.'
+                );
+            }
+
+            foreach ($dirty as $column) {
+                if ($adjustment->getOriginal($column) !== null) {
+                    throw new \LogicException(
+                        "repository_adjustments.{$column} is write-once (null → value); ".
+                        'repointing a document at a different journal entry or movement is refused.'
+                    );
+                }
+            }
+        });
+
+        self::deleting(function (): never {
+            throw new \LogicException('repository_adjustments are permanent; they justify a posted journal entry and an append-only movement. Corrections are compensating adjustments.');
+        });
+    }
 
     /**
      * @return BelongsTo<PaymentRepository, $this>

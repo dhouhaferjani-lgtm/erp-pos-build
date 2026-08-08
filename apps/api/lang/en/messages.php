@@ -69,6 +69,7 @@ return [
         'transfer_recorded' => 'Repository transfer recorded successfully.',
         'adjustment_tolerance_account_missing' => 'Cannot post this adjustment: the chart of accounts has no account assigned to the \':purpose\' purpose. Go to Settings → Chart of Accounts and assign an account to this purpose, then try again.',
         'insufficient_repository_balance' => 'This repository\'s balance (:available :currency) is insufficient to record an outflow of :requested :currency; this repository does not allow a negative balance.',
+        'adjustment_amount_below_currency_precision' => 'The amount :amount is smaller than the smallest unit of :currency, which is recorded with :decimals decimal place(s). Enter an amount of at least one unit.',
     ],
 
     // Taxation

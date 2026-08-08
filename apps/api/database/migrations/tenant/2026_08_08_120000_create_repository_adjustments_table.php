@@ -41,6 +41,14 @@ return new class extends Migration
         // batch re-run against a tenant must no-op rather than throw "relation
         // already exists". Same self-guard idiom as
         // 2026_07_31_950000_create_fiscal_refund_compensations_table.php.
+        //
+        // Gate M3, idiom note: this guard proves "a table by this name exists",
+        // NOT "a table of THIS shape exists" — it would silently accept a
+        // differently shaped pre-existing `repository_adjustments`. That is the
+        // accepted house trade-off for a brand-new table name that no tenant can
+        // already carry; any later SHAPE change must ship as its own additive
+        // migration with its own `Schema::hasColumn` guard, never by editing this
+        // file (which already-migrated tenants will never re-run).
         if (Schema::hasTable('repository_adjustments')) {
             return;
         }
@@ -62,13 +70,32 @@ return new class extends Migration
             // carries them.
             $table->uuid('journal_entry_id')->nullable();
             $table->uuid('movement_id')->nullable();
+            // Gate I2 — the G3 (shift-close cash variance) consumer's origin
+            // reference, shipped WITH the table rather than bolted on by a later
+            // ALTER against a frozen table. Nullable because the interactive
+            // adjustment endpoint has no shift; G3 will populate it so a
+            // shift-variance document states WHICH shift it justifies instead of
+            // burying it in `reason_text` — the exact anti-pattern this program
+            // is remediating. No FK to `pos_shifts` on purpose: a schema-level
+            // Treasury→POS coupling would invert the module boundary, and shift
+            // ids can be device-authored (CLAUDE.md rule 20) before the server
+            // row lands. Resolution is an application-layer lookup.
+            $table->uuid('pos_shift_id')->nullable();
             $table->uuid('created_by')->nullable();
             $table->timestampsTz();
 
             $table->index('tenant_id');
             $table->index(['tenant_id', 'company_id']);
             $table->index(['payment_repository_id', 'created_at']);
-            $table->index('movement_id');
+            $table->index('pos_shift_id');
+            // Gate M1/M2: the document is 1:1 with the movement it justifies, so
+            // the claim is UNIQUE, not merely indexed (multiple NULLs are legal
+            // in both Postgres and sqlite, which is what the pre-linkage window
+            // inside the transaction needs). `journal_entry_id` gets a plain
+            // index — Postgres does not auto-index FK columns, so the
+            // GL→document lookup would otherwise be a sequential scan.
+            $table->unique('movement_id');
+            $table->index('journal_entry_id');
 
             // Same-database referential integrity only — no cross-database FK
             // (tenant_id/company_id are plain UUIDs, per the T6 Phase 0b
@@ -78,10 +105,20 @@ return new class extends Migration
             $table->foreign('movement_id')->references('id')->on('repository_movements');
         });
 
+        // pgsql-only CHECKs, mirroring the sibling `repository_movements`
+        // (2026_07_08_100100:55-56) EXACTLY: `amount` and `direction` only.
+        //
+        // Gate I4: an earlier revision of this migration also CHECKed
+        // `reason_code` against the enum vocabulary. That was REMOVED — the
+        // sibling deliberately leaves `reason_code` unconstrained, and a
+        // hardcoded vocabulary means adding a `MovementReasonCode` case (very
+        // plausible for the G3 shift-variance lane) passes the whole sqlite
+        // suite and then fails on Postgres with 23514 in production. The enum is
+        // enforced where it can be kept in sync — the FormRequest's
+        // `Rule::enum(MovementReasonCode::class)` and the model's enum cast.
         if (DB::connection()->getDriverName() === 'pgsql') {
             DB::statement('ALTER TABLE repository_adjustments ADD CONSTRAINT repository_adjustments_amount_positive CHECK (amount > 0)');
             DB::statement("ALTER TABLE repository_adjustments ADD CONSTRAINT repository_adjustments_direction_valid CHECK (direction IN ('in','out'))");
-            DB::statement("ALTER TABLE repository_adjustments ADD CONSTRAINT repository_adjustments_reason_code_valid CHECK (reason_code IN ('count_variance','correction','theft_loss','other'))");
         }
     }
 
