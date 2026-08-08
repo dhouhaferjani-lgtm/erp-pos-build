@@ -403,7 +403,8 @@
       "delivery_note": "Bon de livraison",
       "stock_transfer": "Transfert de stock",
       "adjustment_batch": "Ajustement",
-      "inventory_counting": "Inventaire"
+      "inventory_counting": "Inventaire",
+      "stock_adjustment": "Bon de régularisation de stock"
     },
     "empty": {
       "title": "Aucun bon d'entrée/sortie",

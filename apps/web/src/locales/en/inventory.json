@@ -403,7 +403,8 @@
       "delivery_note": "Delivery note",
       "stock_transfer": "Stock transfer",
       "adjustment_batch": "Adjustment",
-      "inventory_counting": "Inventory count"
+      "inventory_counting": "Inventory count",
+      "stock_adjustment": "Stock adjustment"
     },
     "empty": {
       "title": "No entry/exit notes",
