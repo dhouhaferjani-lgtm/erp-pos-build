@@ -78,15 +78,43 @@ use Illuminate\Support\Facades\DB;
  *      A          = min(desired, headroom)        <- applied
  *      forgone    = desired - A                   <- recorded on the note line
  *
- * `A = headroom` lands the WAC exactly on C, which is the true cost of the
- * surviving paid units in every probe shape. `max(0, ...)` makes the correction
- * one-directional: a WAC already at or above C is never raised (conservative —
- * it can under-correct, never inflate). `forgone` is the figure c1-bis needs for
- * the P&L leg this lane must not post; it is never silently absorbed, including
- * the survivors == 0 case where the whole amount is forgone and no adjustment
- * movement exists at all.
+ * `max(0, ...)` makes the correction one-directional: a WAC already at or above C
+ * is never raised (conservative — it can under-correct, never inflate).
  *
- * Worked: 20 paid @ 5.000000 + 1 free blends to 100/21 = 4.761904.
+ * PRECONDITION: C IS THE PAID BLEND ONLY FOR A SINGLE-PRICE HISTORY
+ *
+ * C is ONE receipt's price standing in for the blended cost of the surviving PAID
+ * units. Those coincide exactly when every paid receipt of the product carried the
+ * same price — the common case, and the case every costing test in this lane
+ * except the two named below exercises. When the product has been bought at
+ * SEVERAL prices, C is only a proxy, and it misses in both directions
+ * (gate re-review N-1, both pinned in SupplierGoodsReturnNoteTest):
+ *
+ *   - C ABOVE the paid blend -> the cap does not bind and the pre-fix over-credit
+ *     survives. Probe: 100 @ 1.000000 then 1 @ 500.000000 (+10 free), sell 100,
+ *     return the 10 free against C = 500 -> WAC' = 59.459455 against a paid blend
+ *     of 5.940594 (10x). The blowup is BOUNDED — WAC' can never exceed C, i.e. the
+ *     price actually paid on the causing receipt — but that bound can sit
+ *     arbitrarily far above the blend.
+ *   - C BELOW the paid blend -> headroom is negative, the cap swallows the whole
+ *     correction and the un-dilution no-ops. Probe: 10 @ 10.000000 then
+ *     10 @ 2.000000 (+1 free), return the free unit against C = 2 -> WAC' stays
+ *     5.714285 against a paid blend of 6.000000.
+ *
+ * `forgone` is measured against C, NOT against the paid blend. On a single-price
+ * history that makes it exactly the figure c1-bis needs for the P&L leg this lane
+ * must not post — including the survivors == 0 case, where the whole amount is
+ * forgone and no adjustment movement exists at all. On a multi-price history it
+ * under-reports (the first probe records forgone 0.000000 while the cost at rest
+ * is 10x wrong), so c1-bis must NOT read a zero here as proof the correction was
+ * economically complete.
+ *
+ * Deriving C from the paid-cost basis instead of one receipt line is the real
+ * fix and is recorded at the program level; it needs a cost-basis the perpetual
+ * ledger does not currently keep, which is the periodic-vs-perpetual research
+ * lane's subject.
+ *
+ * Worked (single price): 20 paid @ 5.000000 + 1 free blends to 100/21 = 4.761904.
  *   - return the free unit with 20 survivors: desired 4.761904, headroom
  *     20*(5.000000-4.761904) = 4.761920 -> A = 4.761904 -> WAC' = 4.999999.
  *     One ulp under C: the missing 0.000016 was truncated away by the blend's
@@ -94,6 +122,23 @@ use Illuminate\Support\Facades\DB;
  *     exiting units carry. The round trip is value-neutral, not digit-exact.
  *   - same return with 1 survivor: headroom 0.238096 -> A = 0.238096 ->
  *     WAC' = 5.000000 exactly, forgone 4.523808.
+ *
+ * SLICE ORDER IS NOT NEUTRAL
+ *
+ * A bonus return spanning several receipt lines becomes several note lines, each
+ * with its OWN C, applied in the order `decrementReceiptLineInvoiced` consumes the
+ * invoiced counter — NEWEST RECEIPT FIRST. That order is inherited, not chosen for
+ * accounting reasons: it is the pre-V8 counter-consumption order, and deriving the
+ * note's slices from the same walk is what stops the note and the counters from
+ * ever disagreeing about which receipt they mean. Consequences to know:
+ *   - each slice's un-dilution raises the WAC the NEXT slice stamps as its
+ *     unit_cost, so the credit note's GL amount depends on the slicing;
+ *   - the cap that actually binds is the ceiling of the LAST slice with POSITIVE
+ *     headroom (a slice with none applies nothing and cannot cap anything), so
+ *     the same economics in a different receipt order can land on a different
+ *     cost at rest.
+ * Re-ordering the slices is an accounting decision, not a refactor — do not change
+ * it without the c1-bis/research ruling.
  *
  * The issue movement records `unit_cost = WAC` (NOT 0) deliberately: it keeps the
  * movement ledger's value delta agreeing with the implied `Q x WAC` delta, and
@@ -219,20 +264,25 @@ final class SupplierGoodsReturnNoteService
                 ));
             }
 
-            $requestedSignatures[] = $this->lineSignature(
-                $line->poLineId,
-                $line->productId,
-                $line->variantId,
-                $line->kind,
-                $line->quantity,
-            );
+            // Validate the ceiling for EVERY line that carries one, not just the
+            // bonus lines that consume it: a non-numeric ceiling would be persisted
+            // and could be misread by a later lane (or by a Draft promoted to a
+            // bonus line by the deferred AP-modal flow).
+            $ceiling = $line->unitCostCeiling;
+            if ($ceiling !== null && ! is_numeric($ceiling)) {
+                throw new \DomainException(sprintf(
+                    'Supplier goods-return note line for PO line [%s] has a non-numeric unit cost '
+                    .'ceiling (%s).',
+                    $line->poLineId,
+                    $ceiling,
+                ));
+            }
 
             // A bonus line's un-dilution MUST be bounded (see the class docblock).
             // Without the price actually paid there is no ceiling, and the only
             // alternative is the unbounded model the gate proved wrong — so refuse
             // rather than fall back to it.
-            if ($line->kind->requiresWacUndilution()
-                && ($line->unitCostCeiling === null || ! is_numeric($line->unitCostCeiling))) {
+            if ($line->kind->requiresWacUndilution() && $ceiling === null) {
                 throw new \DomainException(sprintf(
                     'Supplier goods-return note bonus line for PO line [%s] has no unit cost ceiling. '
                     .'The WAC un-dilution must be bounded by the price actually paid for the goods; '
@@ -240,6 +290,16 @@ final class SupplierGoodsReturnNoteService
                     $line->poLineId,
                 ));
             }
+
+            $requestedSignatures[] = $this->lineSignature(
+                $line->poLineId,
+                $line->productId,
+                $line->variantId,
+                $line->kind,
+                $line->quantity,
+                $line->goodsReceiptLineId,
+                $ceiling,
+            );
         }
 
         return DB::transaction(function () use (
@@ -549,12 +609,14 @@ final class SupplierGoodsReturnNoteService
      * How much of the value the exiting bonus units carry may be capitalized back
      * onto the survivors, and how much may not.
      *
-     * See the class docblock for the derivation and the gate probes this exists to
-     * satisfy. In short: `desired = q x WAC` is only fully restorable while nothing
-     * has left since the bonus receipt; beyond that it double-counts dilution that
-     * already went out through COGS. The bound is the headroom between the current
-     * WAC and the price actually PAID for these goods, so the cost at rest can
-     * never end up above what the company paid.
+     * See the class docblock for the derivation, the SINGLE-PRICE PRECONDITION on
+     * the ceiling, and the gate probes this exists to satisfy. In short:
+     * `desired = q x WAC` is only fully restorable while nothing has left since the
+     * bonus receipt; beyond that it double-counts dilution that already went out
+     * through COGS. The bound is the headroom between the current WAC and the price
+     * actually PAID on the causing receipt, so the cost at rest can never end up
+     * above that price — which equals the paid blend only when the product was
+     * bought at ONE price.
      *
      * Called AFTER the issue, so `companyOwnedQuantity` here is the survivor count —
      * the same denominator `recordCostAdjustment` will divide by, which is what
@@ -655,7 +717,22 @@ final class SupplierGoodsReturnNoteService
      * against a fresh request. Quantity is normalised through bcadd so '2' and
      * '2.0000' compare equal.
      *
+     * Includes the RECEIPT LINE and the CEILING, not just the quantity (gate
+     * re-review N-4). Two equal-quantity slices of the same PO line taken against
+     * different receipts are economically different lines: they carry different
+     * `unit_cost_ceiling`s, so reusing a stale Draft would silently apply the
+     * wrong bound to the un-dilution. Quantity alone cannot see that.
+     *
+     * This does NOT weaken idempotent replay. The only production path into
+     * `createDraft` is `SupplierCreditNotePostingService::post()`, whose
+     * journal-entry no-op returns before anything is minted, so a re-post never
+     * reaches here; and a genuine re-request builds its slices from the same
+     * `decrementReceiptLineInvoiced` walk, so identical facts still produce
+     * identical signatures. What it removes is the case where DIFFERENT facts
+     * compared equal — which is the whole point of the I-4 guard.
+     *
      * @param  numeric-string  $quantity
+     * @param  numeric-string|null  $unitCostCeiling
      */
     private function lineSignature(
         string $poLineId,
@@ -663,6 +740,8 @@ final class SupplierGoodsReturnNoteService
         ?string $variantId,
         SupplierGoodsReturnLineKind $kind,
         string $quantity,
+        ?string $goodsReceiptLineId,
+        ?string $unitCostCeiling,
     ): string {
         return implode('|', [
             $poLineId,
@@ -670,6 +749,9 @@ final class SupplierGoodsReturnNoteService
             $variantId ?? '-',
             $kind->value,
             bcadd($quantity, '0', self::QUANTITY_SCALE),
+            $goodsReceiptLineId ?? '-',
+            // Normalised so '5' and '5.000000' compare equal, like the quantity.
+            $unitCostCeiling !== null ? bcadd($unitCostCeiling, '0', self::COST_SCALE) : '-',
         ]);
     }
 
@@ -695,6 +777,8 @@ final class SupplierGoodsReturnNoteService
                 $line->variant_id,
                 $line->kind,
                 $line->quantity,
+                $line->goods_receipt_line_id,
+                $line->unit_cost_ceiling,
             ))
             ->sort()
             ->values()

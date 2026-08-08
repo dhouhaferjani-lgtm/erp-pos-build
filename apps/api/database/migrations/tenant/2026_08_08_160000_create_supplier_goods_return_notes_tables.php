@@ -75,6 +75,20 @@ return new class extends Migration
         // ship as its own additive migration with its own `Schema::hasColumn`
         // guard, never by editing this file (already-migrated tenants will
         // never re-run it).
+        //
+        // DEPLOY NOTE (gate re-review N-5) — this file WAS edited once, on this
+        // branch, to add `unit_cost_ceiling` / `wac_undilution_applied` /
+        // `wac_undilution_forgone` (gate round 1, C-1). That is legal ONLY because
+        // the branch is unmerged and undeployed: no tenant, staging or production
+        // DB has ever run the earlier version. Any DEV or SCRATCH database that
+        // ran commit 3fdbee6f5 WILL silently lack those three columns — the
+        // `hasTable` guard below skips the create and there is no column guard to
+        // catch it. Before migrating such a database:
+        //     DROP TABLE supplier_goods_return_note_lines;
+        //     DROP TABLE supplier_goods_return_notes;
+        // and re-run `tenants:migrate`. From the merge of this branch onward the
+        // rule above is absolute again: shape changes ship as their own additive
+        // migration.
         if (! Schema::hasTable('supplier_goods_return_notes')) {
             Schema::create('supplier_goods_return_notes', function (Blueprint $table): void {
                 $table->uuid('id')->primary();
