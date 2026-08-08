@@ -841,6 +841,77 @@ class PaymentRefundService
     }
 
     /**
+     * DPA V4 (T4, plan D-3): the per-document NET of a payment's whole refund
+     * lineage — the original payment's own `payment_allocations` rows PLUS every
+     * `payment_type = 'refund'` child's negative rows — summed SIGNED.
+     *
+     * This is the figure a reversing document must mirror. Mirroring the
+     * ORIGINAL's allocations GROSS resurrects review finding C6 in a new shape:
+     * invoice 1000, payment +1000 allocated 1000, `partialRefund('400')` writes
+     * a -400 row against the refund CHILD; a gross -1000 reversal mirror then
+     * gives `SUM(payment_allocations) = 1000 - 400 - 1000 = -400`, and
+     * `Document::OUTSTANDING_BALANCE_SQL` (plus the Postgres balance_due-cache
+     * trigger) computes `balance_due = 1000 - (-400) = 1400` — ABOVE the invoice
+     * total, with 1400 of cash going out against 1000 collected. The net figure
+     * (600) drives `SUM` to exactly 0 and `balance_due` to exactly 1000.
+     *
+     * `$excludePaymentId` is MANDATORY for the partial-refund caller, not
+     * polish (plan I8 / gate Important-8): `unwindAllocationsProRata()` has
+     * always excluded the IN-FLIGHT refund row from its prior-refund scan. A
+     * helper without the parameter would silently CHANGE that predicate — and
+     * would probably still pass the four pro-rata tests, because the in-flight
+     * refund carries no allocation rows yet at that point, which makes the
+     * change undetectable rather than harmless. `reversePayment()` passes `null`
+     * (it has no in-flight sibling to exclude).
+     *
+     * D-3b — every NON-ZERO net is returned, NEGATIVES INCLUDED; only exact
+     * zeros are skipped. A negative per-document net is reachable at dust scale
+     * (the last pro-rata slice was historically uncapped — fixed separately in
+     * T13), and dropping it would leave a residual negative allocation row that
+     * the balance formula turns into `total + dust`, i.e. a balance ABOVE the
+     * document total — precisely the C6 invariant this lane exists to protect.
+     * A negative net is mirrored as a POSITIVE row, so every touched document's
+     * lineage sums to exactly zero by construction.
+     *
+     * @param  int  $scale  currency scale of the ORIGINAL payment (rule 19: the
+     *                      caller resolves it from `$original->currency`, never
+     *                      from the no-arg `scale()` helper).
+     * @return array<string, numeric-string> document id => signed net
+     */
+    private function netLiveAllocationsByDocument(
+        Payment $original,
+        int $scale,
+        ?string $excludePaymentId = null,
+    ): array {
+        $lineageQuery = Payment::query()
+            ->where('company_id', $original->company_id)
+            ->where('original_payment_id', $original->id)
+            ->where('payment_type', PaymentType::Refund->value);
+
+        if ($excludePaymentId !== null) {
+            $lineageQuery->where('id', '!=', $excludePaymentId);
+        }
+
+        /** @var list<string> $lineagePaymentIds */
+        $lineagePaymentIds = $lineageQuery->pluck('id')->push($original->id)->all();
+
+        /** @var array<string, numeric-string> $netByDocument */
+        $netByDocument = [];
+        PaymentAllocation::whereIn('payment_id', $lineagePaymentIds)
+            ->get()
+            ->each(function (PaymentAllocation $row) use (&$netByDocument, $scale): void {
+                /** @var numeric-string $running */
+                $running = $netByDocument[$row->document_id] ?? '0';
+                $netByDocument[$row->document_id] = bcadd($running, (string) $row->amount, $scale);
+            });
+
+        return array_filter(
+            $netByDocument,
+            static fn (string $net): bool => bccomp($net, '0', $scale) !== 0,
+        );
+    }
+
+    /**
      * MTP-TRE-10 fix: unwind PaymentAllocation pro-rata for a partial-refund
      * amount, and reopen the affected document(s)' `balance_due` — the
      * partial-refund counterpart to refundPayment()'s full unwind (which
@@ -883,46 +954,30 @@ class PaymentRefundService
             return;
         }
 
-        // Sum, per document, of amounts already unwound by PRIOR partial
-        // refunds of this same original payment (full refunds short-circuit
-        // before reaching here — refundPayment() is idempotent/terminal).
-        /** @var array<string, numeric-string> $alreadyUnwoundByDocument */
-        $alreadyUnwoundByDocument = [];
-        $priorRefundPaymentIds = Payment::where('company_id', $original->company_id)
-            ->where('original_payment_id', $original->id)
-            ->where('payment_type', PaymentType::Refund->value)
-            ->where('id', '!=', $refundPaymentId)
-            ->pluck('id');
+        // Live remaining allocation per document = the NET of this payment's
+        // whole refund lineage, EXCLUDING the in-flight refund row (which has no
+        // allocation rows yet at this point, but excluding it is the predicate
+        // this method has always used — see netLiveAllocationsByDocument()'s
+        // `$excludePaymentId` note).
+        //
+        // DPA V4 (T4): the per-document net is computed by the shared helper so
+        // reversePayment() and this method cannot drift apart. What stays LOCAL
+        // to the unwind path is the NON-POSITIVE FILTER below: a partial refund
+        // must never target a document that is already over-unwound, whereas a
+        // reversal deliberately mirrors negative nets too (D-3b).
+        /** @var array<string, numeric-string> $netByDocument */
+        $netByDocument = $this->netLiveAllocationsByDocument($original, $scale, $refundPaymentId);
 
-        if ($priorRefundPaymentIds->isNotEmpty()) {
-            PaymentAllocation::whereIn('payment_id', $priorRefundPaymentIds)
-                ->get()
-                ->each(function (PaymentAllocation $row) use (&$alreadyUnwoundByDocument, $scale): void {
-                    /** @var numeric-string $abs */
-                    $abs = ltrim((string) $row->amount, '-');
-                    /** @var numeric-string $running */
-                    $running = $alreadyUnwoundByDocument[$row->document_id] ?? '0';
-                    $alreadyUnwoundByDocument[$row->document_id] = bcadd($running, $abs, $scale);
-                });
-        }
-
-        // Live remaining allocation per document (original minus already-unwound).
         /** @var array<string, numeric-string> $liveByDocument */
         $liveByDocument = [];
         /** @var numeric-string $liveTotal */
         $liveTotal = '0';
-        foreach ($originalAllocations as $allocation) {
-            /** @var numeric-string $already */
-            $already = $alreadyUnwoundByDocument[$allocation->document_id] ?? '0';
-            /** @var numeric-string $remaining */
-            $remaining = bcsub((string) $allocation->amount, $already, $scale);
-            if (bccomp($remaining, '0', $scale) <= 0) {
+        foreach ($netByDocument as $documentId => $net) {
+            if (bccomp($net, '0', $scale) <= 0) {
                 continue;
             }
-            /** @var numeric-string $running */
-            $running = $liveByDocument[$allocation->document_id] ?? '0';
-            $liveByDocument[$allocation->document_id] = bcadd($running, $remaining, $scale);
-            $liveTotal = bcadd($liveTotal, $remaining, $scale);
+            $liveByDocument[$documentId] = $net;
+            $liveTotal = bcadd($liveTotal, $net, $scale);
         }
 
         if (bccomp($liveTotal, '0', $scale) <= 0) {
