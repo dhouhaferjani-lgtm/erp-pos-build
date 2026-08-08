@@ -6,9 +6,7 @@ namespace Tests\Feature\Import;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
-use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
-use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
@@ -511,12 +509,76 @@ class ImportTypesTest extends TestCase
         $row = $job->rows()->where('row_number', 1)->firstOrFail();
         $this->assertSame('balance_not_posted', ($row->warnings ?? [])[0]['code'] ?? null);
         $this->assertSame('error: validation_failed', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertFalse($row->is_imported);
+        $this->assertSame(0, $job->successful_rows);
 
-        $batch = OpeningBalanceBatch::forCompany($this->company->id)
-            ->ofType(OpeningBatchType::Accounting)
-            ->firstOrFail();
-        $this->assertSame(OpeningBatchStatus::Draft, $batch->status);
-        $this->assertSame(1, $batch->rows()->where('status', OpeningImportRowStatus::Skipped)->count());
+        // Nothing posted => no batch residue blocking the next import or the wizard.
+        $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
+    }
+
+    /**
+     * A GL opening-balance import posts a permanent, locked opening entry — the same
+     * act the opening-batch API gates behind accounts.manage. imports.manage alone
+     * must not be a way around that gate.
+     */
+    public function test_opening_balance_upload_requires_accounts_manage(): void
+    {
+        $importOnly = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Import Only',
+            'email' => 'import-only@example.com',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+        ]);
+        $importOnly->givePermissionTo('imports.manage');
+
+        UserCompanyMembership::create([
+            'user_id' => $importOnly->id,
+            'company_id' => $this->company->id,
+            'role' => 'viewer',
+        ]);
+
+        $this->assertFalse($importOnly->can('accounts.manage'));
+
+        $response = $this->actingAs($importOnly, 'sanctum')
+            ->postJson('/api/v1/imports', [
+                'file' => UploadedFile::fake()->createWithContent(
+                    'balances.csv',
+                    "account_code,debit,credit\n1000,5000.00,0.00"
+                ),
+                'type' => 'opening_balances',
+            ]);
+
+        $response->assertForbidden();
+        $this->assertSame('OPENING_BALANCES_REQUIRE_ACCOUNTS_MANAGE', $response->json('error.code'));
+        $this->assertSame(0, ImportJob::where('tenant_id', $this->tenant->id)->count());
+    }
+
+    public function test_opening_balance_import_rejects_money_beyond_three_decimals(): void
+    {
+        /** @var ImportService $importService */
+        $importService = app(ImportService::class);
+
+        $job = $importService->createJob(
+            tenantId: $this->tenant->id,
+            userId: $this->user->id,
+            type: ImportType::OpeningBalances,
+            filename: 'balances.csv',
+            filePath: 'imports/balances.csv',
+            totalRows: 1
+        );
+
+        $importService->addRow($job, 1, [
+            'account_code' => '1000',
+            'debit' => '5000.1234',
+            'credit' => '0.00',
+        ]);
+
+        $importService->validateJob($job);
+
+        $row = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertFalse($row->is_valid, 'excess decimals must be rejected, not silently truncated');
+        $this->assertArrayHasKey('debit', $row->errors ?? []);
     }
 
     // === API Error Handling Tests ===
@@ -557,5 +619,7 @@ class ImportTypesTest extends TestCase
 
         $balanceRules = ImportType::OpeningBalances->getValidationRules();
         $this->assertArrayHasKey('account_code', $balanceRules);
+        $this->assertContains('regex:/^-?\d+(\.\d{1,3})?$/', $balanceRules['debit']);
+        $this->assertContains('regex:/^-?\d+(\.\d{1,3})?$/', $balanceRules['credit']);
     }
 }

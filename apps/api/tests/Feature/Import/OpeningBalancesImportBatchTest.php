@@ -8,7 +8,6 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchStatus;
 use App\Modules\Accounting\Domain\Enums\OpeningBatchType;
-use App\Modules\Accounting\Domain\Enums\OpeningImportRowStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\OpeningBalanceBatch;
@@ -18,6 +17,7 @@ use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Import\Application\Jobs\ProcessImportJob;
 use App\Modules\Import\Domain\Enums\ImportStatus;
 use App\Modules\Import\Domain\Enums\ImportType;
 use App\Modules\Import\Domain\ImportJob;
@@ -238,14 +238,21 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $this->assertStringContainsString('999999', $warnings[0]['detail']);
         $this->assertSame('error: validation_failed', $row->data['_results']['gl_balance'] ?? null);
         $this->assertNull($row->imported_entity_id);
+        $this->assertFalse($row->is_imported, 'a row that did not post must not count as imported');
 
-        $batch = $this->importBatch($job);
-        $this->assertNotNull($batch);
-        $this->assertSame(OpeningBatchStatus::Draft, $batch->status);
-        $this->assertSame(1, $batch->rows()->where('status', OpeningImportRowStatus::Skipped)->count());
+        // Nothing posted => no batch residue that would block the next import or
+        // the accountant's opening-balance wizard.
+        $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
+        $this->assertSame(0, $job->refresh()->successful_rows);
     }
 
-    public function test_valid_rows_post_while_the_unknown_account_row_is_skipped(): void
+    /**
+     * ALL-OR-NOTHING: an opening balance is entered once and locked forever, so a
+     * file that cannot be mapped in full must post NOTHING. Posting the mappable
+     * subset would lock an understated opening equity that neither the import nor
+     * the UI wizard can ever correct.
+     */
+    public function test_a_single_invalid_row_blocks_the_whole_file_from_posting(): void
     {
         $job = $this->makeValidatedJob([
             1 => ['account_code' => '512000', 'debit' => '5000.00', 'credit' => '0.00'],
@@ -257,17 +264,78 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $job->refresh();
         $this->assertSame(ImportStatus::Completed, $job->status);
 
+        $this->assertSame(
+            0,
+            JournalEntry::where('company_id', $this->company->id)->count(),
+            'no partial opening balance may be posted'
+        );
+        $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
+
+        $goodRow = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertSame('balance_not_posted', ($goodRow->warnings ?? [])[0]['code'] ?? null);
+        $this->assertSame('error: file_not_posted', $goodRow->data['_results']['gl_balance'] ?? null);
+        $this->assertNull($goodRow->imported_entity_id);
+        $this->assertFalse($goodRow->is_imported);
+
+        $badRow = $job->rows()->where('row_number', 2)->firstOrFail();
+        $this->assertSame('error: validation_failed', $badRow->data['_results']['gl_balance'] ?? null);
+        $this->assertStringContainsString('999999', ($badRow->warnings ?? [])[0]['detail'] ?? '');
+    }
+
+    public function test_the_corrected_file_can_be_re_imported_after_a_blocked_import(): void
+    {
+        $blocked = $this->makeValidatedJob([
+            1 => ['account_code' => '512000', 'debit' => '5000.00', 'credit' => '0.00'],
+            2 => ['account_code' => '999999', 'debit' => '100.00', 'credit' => '0.00'],
+        ]);
+        $this->importService->executeImport($blocked);
+        $this->assertSame(0, JournalEntry::where('company_id', $this->company->id)->count());
+
+        $corrected = $this->makeValidatedJob([
+            1 => ['account_code' => '512000', 'debit' => '5100.00', 'credit' => '0.00'],
+        ]);
+        $this->importService->executeImport($corrected);
+
         $entry = JournalEntry::where('company_id', $this->company->id)->firstOrFail();
+        $this->assertSame('opening_balance', $entry->source_type);
+
+        $cashLine = $entry->lines()->where('account_id', $this->cashAccount->id)->firstOrFail();
+        $this->assertSame(0, bccomp($cashLine->debit, '5100', 3));
+    }
+
+    /**
+     * CLAUDE.md rule 20: the queued worker binds TENANT context only — no
+     * CompanyContext — and imports of >= ImportController::ASYNC_THRESHOLD rows
+     * always take that path. Scale resolution must therefore never depend on a
+     * bound company.
+     */
+    public function test_queued_worker_posts_opening_balances_with_no_bound_company_context(): void
+    {
+        $job = $this->makeValidatedJob([
+            1 => ['account_code' => '512000', 'debit' => '5000.00', 'credit' => '0.00'],
+        ]);
+
+        app(CompanyContext::class)->clear();
+
+        (new ProcessImportJob($job->id, $this->company->id, $this->tenant->id))
+            ->handle(app(ImportService::class));
+
+        $job->refresh();
+        $this->assertSame(ImportStatus::Completed, $job->status);
+
+        $entry = JournalEntry::where('company_id', $this->company->id)->firstOrFail();
+        $this->assertSame('opening_balance', $entry->source_type);
+        $this->assertTrue($entry->is_historical);
+
         $lines = $entry->lines()->get();
         $this->assertCount(2, $lines);
-
         $cashLine = $lines->firstWhere('account_id', $this->cashAccount->id);
         $this->assertNotNull($cashLine);
         $this->assertSame(0, bccomp($cashLine->debit, '5000', 3));
 
-        $skipped = $job->rows()->where('row_number', 2)->firstOrFail();
-        $this->assertSame('balance_not_posted', ($skipped->warnings ?? [])[0]['code'] ?? null);
-        $this->assertNull($skipped->imported_entity_id);
+        $row = $job->rows()->where('row_number', 1)->firstOrFail();
+        $this->assertSame('ok', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame($entry->id, $row->imported_entity_id);
     }
 
     public function test_re_running_finalize_does_not_double_post_the_opening_entry(): void
@@ -303,6 +371,7 @@ final class OpeningBalancesImportBatchTest extends TestCase
         $row = $job->rows()->where('row_number', 1)->firstOrFail();
         $this->assertSame('balance_not_posted', ($row->warnings ?? [])[0]['code'] ?? null);
         $this->assertSame('error: post_failed', $row->data['_results']['gl_balance'] ?? null);
+        $this->assertSame(0, OpeningBalanceBatch::forCompany($this->company->id)->count());
     }
 
     /**

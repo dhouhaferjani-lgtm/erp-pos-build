@@ -13,9 +13,10 @@ use App\Modules\Accounting\Domain\OpeningBalanceBatch;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Import\Domain\ImportJob;
 use App\Modules\Import\Domain\ImportRow;
+use App\Shared\Exceptions\UnboundCompanyContextException;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Carbon;
-use Throwable;
+use RuntimeException;
 
 /**
  * Finalize phase for the GL opening-balance import type.
@@ -52,34 +53,78 @@ final class AccountingBalancesPhase
             ->where('id', $companyId)
             ->firstOrFail();
 
+        // The per-row execution phase creates no entity for GL opening balances —
+        // it only stages the row and parks its own id in imported_entity_id. Clear
+        // that placeholder for EVERY row of the job (before any early return, so a
+        // row we decline to collect cannot keep a row id masquerading as an entity
+        // id); only rows that reach the posted journal entry get a real linkage.
+        $job->rows()->update(['imported_entity_id' => null]);
+
         $balanceRows = $this->collectBalanceRows($job);
 
         if ($balanceRows === []) {
             return [];
         }
 
-        // The per-row execution phase creates no entity for GL opening balances —
-        // it only stages the row and parks its own id in imported_entity_id. Clear
-        // that placeholder now; only rows that actually reach the posted journal
-        // entry get a real linkage back (below).
-        ImportRow::whereIn('id', array_map(
-            static fn (array $entry): string => $entry['row']->id,
-            $balanceRows
-        ))->update(['imported_entity_id' => null]);
-
-        // Nothing the batch handshake can throw may become a job failure: a GL
-        // opening balance that cannot be posted is per-row import feedback, and
-        // the caller (finalizeImport) runs OUTSIDE the per-row try/catch that
-        // protects the execution loop.
+        // A domain refusal (unmappable account, locked/conflicting batch, missing
+        // OBE account) is per-row import feedback, never a job failure — and
+        // finalizeImport runs OUTSIDE the per-row try/catch that protects the
+        // execution loop. The catch is deliberately narrowed to RuntimeException
+        // (what the batch/opening services throw for refusals): a TypeError, a
+        // QueryException or any other infrastructure fault must stay LOUD rather
+        // than become a silent, green, empty import.
         try {
-            return $this->postBalances($job, $company, $balanceRows);
-        } catch (Throwable $e) {
-            return $this->rowResults(
+            $results = $this->postBalances($job, $company, $balanceRows);
+        } catch (UnboundCompanyContextException $e) {
+            // Never swallow this one: it is the exact shape of the async
+            // regression this phase was fixed for (rule 19 / rule 20).
+            throw $e;
+        } catch (RuntimeException $e) {
+            $this->discardOwnDraftBatch($job, $company->id);
+
+            $results = $this->rowResults(
                 $balanceRows,
                 self::WARNING_CODE,
                 $e->getMessage(),
                 [self::RESULT_KEY => 'error: batch_failed'],
             );
+        }
+
+        $this->syncRowImportState($results);
+
+        return $results;
+    }
+
+    /**
+     * A GL opening-balance row "imported" only if it reached the posted journal
+     * entry. The execution loop optimistically marked every staged row imported
+     * before this phase ran (posting happens once, for the whole file, afterwards),
+     * so demote the rows that did not make it — otherwise the job would report
+     * "N imported" for a file that posted nothing.
+     *
+     * @param  list<array{row_id: string, code: string, detail: string, results: array<string, string>}>  $results
+     */
+    private function syncRowImportState(array $results): void
+    {
+        $posted = [];
+        $notPosted = [];
+
+        foreach ($results as $result) {
+            if (($result['results'][self::RESULT_KEY] ?? null) === 'ok') {
+                $posted[] = $result['row_id'];
+
+                continue;
+            }
+
+            $notPosted[] = $result['row_id'];
+        }
+
+        if ($posted !== []) {
+            ImportRow::whereIn('id', $posted)->update(['is_imported' => true]);
+        }
+
+        if ($notPosted !== []) {
+            ImportRow::whereIn('id', $notPosted)->update(['is_imported' => false]);
         }
     }
 
@@ -89,10 +134,15 @@ final class AccountingBalancesPhase
      */
     private function postBalances(ImportJob $job, Company $company, array $balanceRows): array
     {
-        $batch = $this->findImportBatch($job);
+        $batch = $this->findImportBatch($job, $company->id);
 
-        // Already posted for this import job — re-running finalize must not double-post.
-        if ($batch !== null && in_array($batch->status, [OpeningBatchStatus::Validated, OpeningBatchStatus::Locked], true)) {
+        // Already posted for this import job — re-running finalize must not
+        // double-post. Only Locked is checked: postBatch marks Validated and locks
+        // inside the SAME transaction, so a Validated-but-unposted batch cannot
+        // exist; treating it as posted would return a false 'ok' if some future
+        // path ever created one. A stray Validated batch instead falls through to
+        // the unlocked-batch conflict below, which posts nothing.
+        if ($batch !== null && $batch->status === OpeningBatchStatus::Locked) {
             return $this->rowResults($balanceRows, '', '', [self::RESULT_KEY => 'ok']);
         }
 
@@ -138,36 +188,98 @@ final class AccountingBalancesPhase
 
         $this->accountingOpeningService->validateBatch($batch->refresh());
 
-        [$warnings, $skippedIndexes] = $this->validationWarnings($batch->refresh(), $balanceRows);
+        // ALL-OR-NOTHING. An opening balance is entered once and locked forever
+        // (postBatch locks inside its own transaction, and a Locked batch is not
+        // deletable), so posting only the mappable subset of a file would freeze an
+        // understated opening equity that neither a re-import nor the accountant's
+        // UI wizard could ever correct. The wizard enforces this through
+        // markBatchValidated ("N rows have validation errors"); the import must not
+        // route around that guard by pre-skipping bad rows.
+        $rejections = $this->rowRejections($batch->refresh(), $balanceRows);
 
-        $postingRows = array_values(array_filter(
-            $balanceRows,
-            static fn (array $entry, int $index): bool => ! in_array($index, $skippedIndexes, true),
-            ARRAY_FILTER_USE_BOTH
-        ));
+        if ($rejections !== []) {
+            $this->discardOwnDraftBatch($job, $company->id);
+
+            return array_merge($rejections, $this->blockedResults($balanceRows, $rejections));
+        }
 
         $validCount = $batch->rows()->where('status', OpeningImportRowStatus::Valid)->count();
-        if ($validCount === 0 || $postingRows === []) {
-            return $warnings;
+        if ($validCount !== count($balanceRows)) {
+            $this->discardOwnDraftBatch($job, $company->id);
+
+            return $this->rowResults(
+                $balanceRows,
+                self::WARNING_CODE,
+                'the file was not posted: not every row could be validated',
+                [self::RESULT_KEY => 'error: file_not_posted'],
+            );
         }
 
         try {
             $entry = $this->accountingOpeningService->postBatch($batch->refresh(), $job->user_id);
-        } catch (Throwable $e) {
-            return array_merge($warnings, $this->rowResults(
-                $postingRows,
+        } catch (RuntimeException $e) {
+            // postBatch is fully transactional, so a failure leaves the batch back in
+            // Draft — discard it so it blocks neither a corrected re-import nor the
+            // accountant's wizard.
+            $this->discardOwnDraftBatch($job, $company->id);
+
+            return $this->rowResults(
+                $balanceRows,
                 self::WARNING_CODE,
                 $e->getMessage(),
                 [self::RESULT_KEY => 'error: post_failed'],
-            ));
+            );
         }
 
         ImportRow::whereIn('id', array_map(
             static fn (array $item): string => $item['row']->id,
-            $postingRows
+            $balanceRows
         ))->update(['imported_entity_id' => $entry->id]);
 
-        return array_merge($warnings, $this->rowResults($postingRows, '', '', [self::RESULT_KEY => 'ok']));
+        return $this->rowResults($balanceRows, '', '', [self::RESULT_KEY => 'ok']);
+    }
+
+    /**
+     * Drop the Draft batch this import job created, so a file that posted nothing
+     * leaves no residue blocking the next import or the accountant's UI wizard.
+     * Only ever touches a batch keyed to THIS job — never accountant-created work.
+     */
+    private function discardOwnDraftBatch(ImportJob $job, string $companyId): void
+    {
+        $batch = $this->findImportBatch($job, $companyId);
+
+        if ($batch === null || ! $batch->isDeletable()) {
+            return;
+        }
+
+        $this->batchService->deleteBatch($batch);
+    }
+
+    /**
+     * Every row whose file did not post but which was itself mappable gets the
+     * "blocked by another row" result; rejected rows keep their own detail.
+     *
+     * @param  list<array{row: ImportRow, payload: array<string, string>}>  $balanceRows
+     * @param  list<array{row_id: string, code: string, detail: string, results: array<string, string>}>  $rejections
+     * @return list<array{row_id: string, code: string, detail: string, results: array<string, string>}>
+     */
+    private function blockedResults(array $balanceRows, array $rejections): array
+    {
+        $rejected = array_column($rejections, 'row_id');
+        $blocked = array_values(array_filter(
+            $balanceRows,
+            static fn (array $entry): bool => ! in_array($entry['row']->id, $rejected, true)
+        ));
+
+        return $this->rowResults(
+            $blocked,
+            self::WARNING_CODE,
+            sprintf(
+                'the file was not posted: %d row(s) failed validation - correct them and re-import the whole file',
+                count($rejections)
+            ),
+            [self::RESULT_KEY => 'error: file_not_posted'],
+        );
     }
 
     /**
@@ -237,10 +349,18 @@ final class AccountingBalancesPhase
         return $candidate->toDateString();
     }
 
-    private function findImportBatch(ImportJob $job): ?OpeningBalanceBatch
+    /**
+     * The batch this import job owns, if any.
+     *
+     * Scoped to the company and to ACCOUNTING batches, so the in-PHP key match runs
+     * over a handful of rows. (The JSONB predicate cannot be expressed as
+     * `where('import_file_reference->import_job_id', …)`: Eloquent's `where()` is
+     * typed to real model properties, which phpstan level 8 enforces.)
+     */
+    private function findImportBatch(ImportJob $job, string $companyId): ?OpeningBalanceBatch
     {
-        return OpeningBalanceBatch::query()
-            ->where('type', OpeningBatchType::Accounting)
+        return OpeningBalanceBatch::forCompany($companyId)
+            ->ofType(OpeningBatchType::Accounting)
             ->get()
             ->first(fn (OpeningBalanceBatch $batch): bool => ($batch->import_file_reference['import_job_id'] ?? null) === $job->id);
     }
@@ -262,17 +382,16 @@ final class AccountingBalancesPhase
     }
 
     /**
-     * Turn batch-level row validation failures into per-row import warnings and
-     * skip them, so a bad line never blocks the rest of the file (markBatchValidated
-     * refuses a batch that still holds Invalid rows).
+     * Per-row validation failures reported by the opening service, mapped back onto
+     * the source import rows. Deliberately does NOT skip them in the batch: skipping
+     * is what would let a partial file post (see the all-or-nothing note above).
      *
      * @param  list<array{row: ImportRow, payload: array<string, string>}>  $balanceRows
-     * @return array{0: list<array{row_id: string, code: string, detail: string, results: array<string, string>}>, 1: list<int>}
+     * @return list<array{row_id: string, code: string, detail: string, results: array<string, string>}>
      */
-    private function validationWarnings(OpeningBalanceBatch $batch, array $balanceRows): array
+    private function rowRejections(OpeningBalanceBatch $batch, array $balanceRows): array
     {
-        $warnings = [];
-        $skippedIndexes = [];
+        $rejections = [];
         $batchRows = $batch->rows()->orderBy('row_number')->get()->values();
 
         foreach ($batchRows as $index => $batchRow) {
@@ -284,18 +403,15 @@ final class AccountingBalancesPhase
                 continue;
             }
 
-            $sourceRow = $balanceRows[$index]['row'];
-            $warnings[] = [
-                'row_id' => $sourceRow->id,
+            $rejections[] = [
+                'row_id' => $balanceRows[$index]['row']->id,
                 'code' => self::WARNING_CODE,
                 'detail' => implode('; ', $batchRow->getErrorMessages()),
                 'results' => [self::RESULT_KEY => 'error: validation_failed'],
             ];
-            $skippedIndexes[] = $index;
-            $this->batchService->skipImportRow($batchRow);
         }
 
-        return [$warnings, $skippedIndexes];
+        return $rejections;
     }
 
     /**

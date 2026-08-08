@@ -118,10 +118,9 @@ final class ProcessImportJob implements ShouldQueue
             'started_at' => now(),
         ]);
 
-        // Rows that failed validation are skipped at execution but still
-        // count as failed in the final tally (sync-path parity).
-        $validationSkippedCount = $job->rows()->where('is_valid', false)->count();
-
+        // Rows that failed validation are skipped at execution but still count as
+        // failed in the final tally (sync-path parity) — they never reach
+        // is_imported=true, so the row-state tally below already includes them.
         $validRows = $importService->getValidRows($job);
         $processedCount = 0;
         $successCount = 0;
@@ -161,18 +160,22 @@ final class ProcessImportJob implements ShouldQueue
         $importService->finalizeImport($job, $this->companyId);
 
         // Final status update — mirrors ImportService::executeImport:
-        // the job only fails when nothing imported; partial success completes.
-        $totalFailedCount = $validationSkippedCount + $failCount;
+        // the job only fails when the ROW LOOP imported nothing; partial success
+        // completes. Counts come from row state, because a finalize phase may
+        // demote rows it could not commit (GL opening balances post once, for the
+        // whole file, after the loop).
         $finalStatus = $successCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
+        $importedCount = $job->rows()->where('is_imported', true)->count();
+        $totalFailedCount = $job->rows()->where('is_imported', false)->count();
         $job->update([
             'status' => $finalStatus,
-            'successful_rows' => $successCount,
+            'successful_rows' => $importedCount,
             'failed_rows' => $totalFailedCount,
             'completed_at' => now(),
         ]);
 
         // Broadcast completion
-        $this->broadcastCompleted($job, $company, $totalRows, $successCount, $totalFailedCount, null);
+        $this->broadcastCompleted($job, $company, $totalRows, $importedCount, $totalFailedCount, null);
     }
 
     /**

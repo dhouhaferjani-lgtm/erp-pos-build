@@ -365,25 +365,26 @@ final class ImportService
 
         $this->finalizeImport($job, $this->companyContext->requireCompanyId());
 
-        // Total failed = validation errors + execution errors
-        $totalFailedCount = $validationSkippedCount + $executionFailCount;
+        // Determine status from the ROW LOOP outcome: the loop is what can fail
+        // outright. Finalize phases never fail the job (they report per row).
+        $status = $successCount === 0 ? ImportStatus::Failed : ImportStatus::Completed;
 
-        // Determine status: CompletedWithErrors if there were any skipped/failed rows
-        $status = match (true) {
-            $successCount === 0 => ImportStatus::Failed,
-            $totalFailedCount > 0 => ImportStatus::Completed, // Partial success
-            default => ImportStatus::Completed,
-        };
+        // …but the COUNTS come from row state, because a finalize phase may demote
+        // rows that staged fine yet could not be committed. GL opening balances post
+        // once, for the whole file, AFTER the loop — so the loop's optimistic tally
+        // would otherwise report "N imported" for a file that posted nothing.
+        $importedCount = $job->rows()->where('is_imported', true)->count();
+        $totalFailedCount = $job->rows()->where('is_imported', false)->count();
 
         $job->update([
             'status' => $status,
-            'successful_rows' => $successCount,
+            'successful_rows' => $importedCount,
             'failed_rows' => $totalFailedCount,
             'completed_at' => now(),
         ]);
 
         return [
-            'imported_count' => $successCount,
+            'imported_count' => $importedCount,
             'skipped_count' => $validationSkippedCount,
             'execution_error_count' => $executionFailCount,
             'total_rows' => $job->total_rows,
