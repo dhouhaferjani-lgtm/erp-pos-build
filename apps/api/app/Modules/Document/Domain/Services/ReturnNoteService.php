@@ -22,6 +22,8 @@ use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
+use App\Shared\Exceptions\ReturnPeriodLockedException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 
@@ -56,6 +58,7 @@ final class ReturnNoteService
         private readonly ProductCostLock $costLock,
         private readonly DocumentNumberingService $numberingService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
     ) {}
 
     /**
@@ -309,6 +312,31 @@ final class ReturnNoteService
     }
 
     /**
+     * The line products whose cost locks a confirm has to hold, sorted-safe.
+     *
+     * Plan CF T4(e). Public because the composite cancel flow acquires the cost
+     * lock for the UNION of its own set and the return note's in ONE sorted call
+     * (CF-D4 step 6) — re-deriving that set at the call site is how the two would
+     * drift and reintroduce the AB-BA deadlock the up-front acquire exists to
+     * prevent.
+     *
+     * @return list<string>
+     */
+    public function lineProductIds(Document $returnNote): array
+    {
+        /** @var list<string> $productIds */
+        $productIds = $returnNote->lines
+            ->pluck('product_id')
+            ->filter()
+            ->unique()
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all();
+
+        return $productIds;
+    }
+
+    /**
      * Confirm a return note, adding it to the fiscal hash chain.
      *
      * This is the key moment when:
@@ -317,9 +345,53 @@ final class ReturnNoteService
      * - The RN is added to the company's RN hash chain
      * - WAC is updated based on returned goods
      *
+     * Plan CF T4(b): this method is now TRANSACTION AND COST-LOCK SCAFFOLDING ONLY.
+     * Everything that decides anything lives in {@see confirmWithin()}, so the
+     * composite cancel flow — which owns its own outer transaction and its own
+     * union cost-lock (CF-D4) — runs the SAME domain transitions rather than a
+     * side channel around them (the owner ruling's explicit constraint).
+     *
      * @throws \DomainException If return note cannot be confirmed
+     * @throws ReturnPeriodLockedException If `document_date` falls in a locked period
      */
-    public function confirm(Document $returnNote): Document
+    public function confirm(Document $returnNote, ?string $actorId = null): Document
+    {
+        // Multi-product deadlock defense: receiveStockBack() loops the return
+        // lines and calls wacService->recordReturn() per physical line, and
+        // recordReturn() acquires that product's advisory lock. Inside this one
+        // outer transaction those nested per-line acquires accumulate in line
+        // order (unsorted), so two concurrent confirms over overlapping products
+        // in different line orders AB-BA deadlock. Acquire ALL the line product
+        // advisory locks UP-FRONT in ONE sorted call (ProductCostLock sorts
+        // internally); the nested per-line acquires are then re-entrant on the
+        // already-held xact locks. Mirrors StockTransferService::complete and
+        // GoodsReceiptService::receiveGoods.
+        $productIds = $this->lineProductIds($returnNote);
+
+        return DB::transaction(function () use ($returnNote, $productIds, $actorId): Document {
+            return $this->costLock->acquire($returnNote->tenant_id, $returnNote->company_id, $productIds, function () use ($returnNote, $actorId): Document {
+                return $this->confirmWithin($returnNote, $actorId);
+            });
+        });
+    }
+
+    /**
+     * Confirm a return note INSIDE a transaction and cost lock the caller already
+     * holds.
+     *
+     * Plan CF T4(b) / fiscal gate I-6. The type and status assertions live HERE, not
+     * in {@see confirm()}: if they stayed in the wrapper, this method would be
+     * exactly the "side-channel writer" the owner ruling forbids — a way for the
+     * composite to seal a non-draft or non-return-note document with no domain
+     * check at all.
+     *
+     * PRECONDITIONS THE CALLER OWNS: an open transaction, and the cost lock for at
+     * least {@see lineProductIds()}.
+     *
+     * @throws \DomainException If return note cannot be confirmed
+     * @throws ReturnPeriodLockedException If `document_date` falls in a locked period
+     */
+    public function confirmWithin(Document $returnNote, ?string $actorId = null): Document
     {
         if ($returnNote->type !== DocumentType::ReturnNote) {
             throw new \DomainException(
@@ -333,41 +405,33 @@ final class ReturnNoteService
             );
         }
 
-        // Multi-product deadlock defense: receiveStockBack() loops the return
-        // lines and calls wacService->recordReturn() per physical line, and
-        // recordReturn() acquires that product's advisory lock. Inside this one
-        // outer transaction those nested per-line acquires accumulate in line
-        // order (unsorted), so two concurrent confirms over overlapping products
-        // in different line orders AB-BA deadlock. Acquire ALL the line product
-        // advisory locks UP-FRONT in ONE sorted call (ProductCostLock sorts
-        // internally); the nested per-line acquires are then re-entrant on the
-        // already-held xact locks. Mirrors StockTransferService::complete and
-        // GoodsReceiptService::receiveGoods.
-        /** @var list<string> $productIds */
-        $productIds = $returnNote->lines
-            ->pluck('product_id')
-            ->filter()
-            ->unique()
-            ->map(static fn (mixed $id): string => (string) $id)
-            ->values()
-            ->all();
+        // Plan CF T4(c) / CF-D3. The period guard runs FIRST — before
+        // receiveStockBack() and before the chain-head lockForUpdate() below —
+        // because a refusal raised after the chain read would hold the return-note
+        // chain head for the rest of the caller's transaction, serialising every
+        // other confirm behind a request that was always going to fail.
+        //
+        // Keyed on `document_date`, which for option 2 of the guided cancel flow IS
+        // the user's `returned_on`. A refusal is recoverable: PATCH the draft's
+        // `document_date` into an open period and confirm again.
+        $this->periodBackdatingGuard->assertBackdatingPeriodIsOpen(
+            $returnNote->company_id,
+            $returnNote->document_date,
+            (string) $returnNote->document_number,
+        );
 
-        return DB::transaction(function () use ($returnNote, $productIds): Document {
-            return $this->costLock->acquire($returnNote->tenant_id, $returnNote->company_id, $productIds, function () use ($returnNote): Document {
-                $this->confirmWithFiscalChain($returnNote);
+        $this->confirmWithFiscalChain($returnNote, $actorId);
 
-                $returnNote->refresh();
+        $returnNote->refresh();
 
-                /** @var Document */
-                return $returnNote->load(['lines']);
-            });
-        });
+        /** @var Document */
+        return $returnNote->load(['lines']);
     }
 
     /**
      * Confirm a return note with full fiscal hash chain compliance.
      */
-    private function confirmWithFiscalChain(Document $returnNote): void
+    private function confirmWithFiscalChain(Document $returnNote, ?string $actorId = null): void
     {
         // Acquire lock and get previous return note in chain
         $previousDoc = Document::where('company_id', $returnNote->company_id)
@@ -410,7 +474,26 @@ final class ReturnNoteService
 
         $fiscalHash = $this->hashService->calculateHash($input, $previousHash, $genesisSeed);
 
-        // Update return note with fiscal chain data and seal it
+        // Update return note with fiscal chain data and seal it.
+        //
+        // Plan CF T4(a) / fiscal gate C-1. `confirmed_at` and `confirmed_by` USED TO
+        // BE OMITTED here — unlike `DeliveryNoteService::confirmWithFiscalChain()`,
+        // which stamps both — even though the columns exist. That destroyed the
+        // hash's own date input at write time: the seal consumes
+        // `$confirmedAt->toDateString()` (above) and nothing persisted it, so
+        // `fiscal:verify-chains` had no way to recompute the input for a return note
+        // whose `document_date` differs from its confirm day. Backdating (option 2 of
+        // the guided cancel flow) makes exactly that the normal case.
+        //
+        // Persisting it is HASH-NEUTRAL — it is the very value the hash already
+        // consumed — and TRIGGER-SAFE: `enforce_document_immutability()` takes its
+        // `OLD.fiscal_status != 'SEALED'` early return, and at this update
+        // `OLD.fiscal_status` is still DRAFT.
+        //
+        // `$actorId` rather than a bare `auth()->id()`: this path is reachable from
+        // the composite cancel flow and from console/queued contexts where no guard
+        // is bound. `auth()->id()` is the fallback so the standalone route keeps its
+        // behaviour.
         $returnNote->update([
             'status' => DocumentStatus::Confirmed,
             'fiscal_category' => FiscalCategory::ReturnNote,
@@ -418,6 +501,8 @@ final class ReturnNoteService
             'fiscal_hash' => $fiscalHash,
             'previous_hash' => $previousHash,
             'chain_sequence' => $chainSequence,
+            'confirmed_at' => $confirmedAt,
+            'confirmed_by' => $actorId ?? auth()->id(),
         ]);
 
         // Dispatch the fiscal event for audit log

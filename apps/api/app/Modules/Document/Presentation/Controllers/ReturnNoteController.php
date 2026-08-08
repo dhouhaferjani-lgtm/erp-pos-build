@@ -19,6 +19,7 @@ use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Exceptions\ReturnPeriodLockedException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -408,7 +409,7 @@ class ReturnNoteController extends Controller
      * - Updates WAC based on returned goods
      * - Makes the document immutable
      */
-    public function confirm(string $id): JsonResponse
+    public function confirm(Request $request, string $id): JsonResponse
     {
         $returnNote = $this->baseQuery()
             ->where('type', DocumentType::ReturnNote)
@@ -420,10 +421,26 @@ class ReturnNoteController extends Controller
             return $this->documentResponse($returnNote, 200, $this->scale());
         }
 
+        $user = $request->user();
+
         try {
-            $confirmedReturnNote = $this->returnNoteService->confirm($returnNote);
+            $confirmedReturnNote = $this->returnNoteService->confirm(
+                $returnNote,
+                $user === null ? null : (string) $user->getAuthIdentifier(),
+            );
 
             return $this->documentResponse($confirmedReturnNote, 200, $this->scale());
+        } catch (ReturnPeriodLockedException $e) {
+            // Plan CF T4(c). `ReturnPeriodLockedException` extends `DomainException`,
+            // so WITHOUT this arm the generic catch below would flatten a typed
+            // period refusal into `RETURN_NOTE_CONFIRMATION_FAILED` — erasing the
+            // CLOSED / FILED / LOCKED distinction the front end needs to decide
+            // between "ask your accountant to reopen it" and "pick another date",
+            // and losing the period label. Re-throwing hands it to the dedicated
+            // renderer in bootstrap/app.php. Same pattern, same reason, as
+            // `RefundController::cancelInvoice()`'s `DocumentPeriodLockedException`
+            // arm.
+            throw $e;
         } catch (\DomainException $e) {
             return response()->json([
                 'error' => [
