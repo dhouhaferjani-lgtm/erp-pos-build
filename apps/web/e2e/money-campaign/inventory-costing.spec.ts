@@ -93,7 +93,9 @@ test.describe('INV — perpetual WAC / stock valuation', () => {
     // locations still count as company-owned, so the WAC basis would be unchanged); the
     // manual adjustment endpoint is the only web path that removes owned quantity.
     const toZero = await adjustStockTo(page, { productId, newQuantity: '0', reason: 'MTP-INV-04 drive owned qty to zero' })
-    expect(toZero.status, JSON.stringify(toZero.body)).toBe(201)
+    // 201 on a real correction; 200 on the skip-when-already-at-target branch,
+    // which the delta contract makes reachable (T12).
+    expect([200, 201], JSON.stringify(toZero.body)).toContain(toZero.status)
 
     const zeroLevels = await getStockLevels(page, productId)
     expect(zeroLevels.reduce((s, l) => s + Number(l.quantity), 0), 'company-owned quantity is exactly 0').toBe(0)
@@ -167,7 +169,7 @@ test.describe('INV — perpetual WAC / stock valuation', () => {
     const drained = await createW4Product(page, 'INV05-drained')
     expect((await poAndReceive(page, { supplierId, productId: drained.id, quantity: '3', unitPrice: '12.000' })).receiveStatus).toBe(200)
     expect(await costPrice(page, drained.id)).toBe('12.000000')
-    expect((await adjustStockTo(page, { productId: drained.id, newQuantity: '0', reason: 'MTP-INV-05 drain' })).status).toBe(201)
+    expect([200, 201]).toContain((await adjustStockTo(page, { productId: drained.id, newQuantity: '0', reason: 'MTP-INV-05 drain' })).status)
     expect(
       (await getStockLevels(page, drained.id)).reduce((s, l) => s + Number(l.quantity), 0),
       'owned quantity is exactly 0'

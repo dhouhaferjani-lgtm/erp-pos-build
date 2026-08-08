@@ -566,6 +566,85 @@ INDEX (counting_id, resolution_method)
 INDEX (product_id, location_id)
 ```
 
+#### stock_adjustments (DPA V7)
+
+The manual stock-correction DOCUMENT that replaced the four raw
+`POST /stock-movements/*` writers. Its own tables, deliberately NOT the unified
+`documents` table: an adjustment has no partner, no tax and no monetary total,
+and every consumer of `documents` would have to special-case it.
+
+```sql
+id UUID PRIMARY KEY
+tenant_id UUID (plain indexed uuid — `tenants` lives in the CENTRAL DB)
+company_id UUID FK → companies(id) CASCADE
+adjustment_number VARCHAR(30) NULLABLE   -- stamped at POST (ADJ-YYYY-NNNN)
+status VARCHAR(20) DEFAULT 'draft'       -- draft | posted | cancelled
+note TEXT NULLABLE
+location_id UUID FK → locations(id) RESTRICT   -- HEADER-level (one doc = one location)
+occurred_at TIMESTAMPTZ                  -- server now(); backdating forbidden in v1
+idempotency_key VARCHAR(128) NULLABLE
+created_by_user_id UUID FK → users(id) RESTRICT
+posted_by_user_id, cancelled_by_user_id UUID FK → users(id) NULL
+stale_acknowledged_by_user_id, reservations_ignored_by_user_id UUID FK → users(id) NULL
+posted_at, cancelled_at, stale_acknowledged_at, reservations_ignored_at TIMESTAMPTZ NULL
+cancellation_reason TEXT NULLABLE
+corrects_adjustment_id UUID FK → stock_adjustments(id) RESTRICT NULLABLE
+created_at, updated_at TIMESTAMPTZ
+
+INDEX (tenant_id, company_id, status)
+INDEX (tenant_id, company_id, occurred_at)
+INDEX (tenant_id, company_id, location_id)
+UNIQUE (tenant_id, company_id, adjustment_number) WHERE adjustment_number IS NOT NULL
+UNIQUE (tenant_id, company_id, idempotency_key)  WHERE idempotency_key IS NOT NULL
+UNIQUE (corrects_adjustment_id)                  WHERE corrects_adjustment_id IS NOT NULL
+```
+
+The four override-audit columns are not decoration: overriding an integrity
+guard (staleness, or the reserved-aware availability boundary) must never be
+invisible.
+
+#### stock_adjustment_lines (DPA V7)
+
+```sql
+id UUID PRIMARY KEY
+adjustment_id UUID FK → stock_adjustments(id) CASCADE
+tenant_id UUID (plain indexed uuid)
+company_id UUID FK → companies(id) CASCADE
+product_id UUID FK → products(id) RESTRICT
+variant_id UUID FK → product_variants(id) RESTRICT NOT VALID, NULLABLE
+batch_id BIGINT FK → product_batches(id) RESTRICT NULLABLE  -- int PK; HTTP speaks the uuid
+reason_code VARCHAR(50)          -- MovementReason, LINE-level (mixed direction per doc)
+delta_quantity DECIMAL(15,4)     -- SIGNED
+observed_before DECIMAL(15,4)    -- authoring snapshot (staleness guard)
+quantity_before DECIMAL(15,4) NULLABLE   -- as actually POSTED
+quantity_after  DECIMAL(15,4) NULLABLE   -- as actually POSTED
+movement_id UUID NULLABLE
+line_note VARCHAR(255) NULLABLE
+created_at, updated_at TIMESTAMPTZ
+
+-- FOUR partial uniques: both variant_id and batch_id are nullable and PG treats
+-- NULLs as distinct, so one index cannot express "one line per (SKU, lot)".
+UNIQUE (adjustment_id, product_id)                          WHERE variant_id IS NULL     AND batch_id IS NULL
+UNIQUE (adjustment_id, product_id, variant_id)              WHERE variant_id IS NOT NULL AND batch_id IS NULL
+UNIQUE (adjustment_id, product_id, batch_id)                WHERE variant_id IS NULL     AND batch_id IS NOT NULL
+UNIQUE (adjustment_id, product_id, variant_id, batch_id)    WHERE variant_id IS NOT NULL AND batch_id IS NOT NULL
+UNIQUE (movement_id) WHERE movement_id IS NOT NULL   -- posted at most once, survives a job retry
+INDEX (tenant_id, product_id)
+INDEX (tenant_id, adjustment_id)
+INDEX (batch_id)
+
+CHECK (delta_quantity <> 0)
+CHECK ((reason_code IN ('adjustment_positive') AND delta_quantity > 0)
+    OR (reason_code IN ('adjustment_negative','damage','write_off') AND delta_quantity < 0))
+```
+
+The CHECK lists are FROZEN LITERALS, not derived from
+`MovementReason::manualAdjustmentCases()`: `tenants:migrate` runs the migration
+at each tenant's provisioning time, so a derived predicate would emit a
+DIFFERENT constraint for tenants provisioned after a later enum change, with no
+migration recording the divergence. `AdjustmentReasonSignPartitionTest` asserts
+the enum and the frozen strings still agree, so a drift fails CI instead.
+
 ---
 
 ### 7. Treasury & Payments

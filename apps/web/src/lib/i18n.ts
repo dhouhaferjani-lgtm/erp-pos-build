@@ -49,6 +49,7 @@ import enDeposits from '../locales/en/deposits.json'
 import enCustomerHistoryAudit from '../locales/en/customer-history-audit.json'
 import enChannels from '../locales/en/channels.json'
 import enReports from '../locales/en/reports.json'
+import enStockAdjustments from '../locales/en/stock-adjustments.json'
 import enStockTransfers from '../locales/en/stock-transfers.json'
 import enReplenishment from '../locales/en/replenishment.json'
 import enAdmin from '../locales/en/admin.json'
@@ -104,6 +105,7 @@ import frDeposits from '../locales/fr/deposits.json'
 import frCustomerHistoryAudit from '../locales/fr/customer-history-audit.json'
 import frChannels from '../locales/fr/channels.json'
 import frReports from '../locales/fr/reports.json'
+import frStockAdjustments from '../locales/fr/stock-adjustments.json'
 import frStockTransfers from '../locales/fr/stock-transfers.json'
 import frReplenishment from '../locales/fr/replenishment.json'
 import frAdmin from '../locales/fr/admin.json'
@@ -211,6 +213,7 @@ const resources = {
     'customer-history-audit': enCustomerHistoryAudit,
     channels: enChannels,
     reports: enReports,
+    'stock-adjustments': enStockAdjustments,
     'stock-transfers': enStockTransfers,
     replenishment: enReplenishment,
     admin: enAdmin,
@@ -267,6 +270,7 @@ const resources = {
     'customer-history-audit': frCustomerHistoryAudit,
     channels: frChannels,
     reports: frReports,
+    'stock-adjustments': frStockAdjustments,
     'stock-transfers': frStockTransfers,
     replenishment: frReplenishment,
     admin: frAdmin,
@@ -414,6 +418,9 @@ const resources = {
     'customer-history-audit': enCustomerHistoryAudit,
     channels: arChannels,
     reports: arReports,
+    // ar has no stock-adjustments bundle: fall back to English for the whole
+    // namespace, the same treatment stock-transfers gets.
+    'stock-adjustments': enStockAdjustments,
     'stock-transfers': enStockTransfers,
     replenishment: arReplenishment,
     admin: arAdmin,
@@ -432,7 +439,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'replenishment', 'admin', 'purchases', 'documentIngestions', 'notifications', 'locations', 'support-access'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'stock-adjustments', 'replenishment', 'admin', 'purchases', 'documentIngestions', 'notifications', 'locations', 'support-access'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

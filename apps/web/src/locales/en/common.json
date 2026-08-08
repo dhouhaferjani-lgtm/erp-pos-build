@@ -312,7 +312,8 @@
     "compliance": "Compliance Export",
     "ecommerce": "E-commerce",
     "customersAndMarketing": "Customers & Marketing",
-    "stockTransfers": "Stock Transfers"
+    "stockTransfers": "Stock Transfers",
+    "stockAdjustments": "Stock adjustments"
   },
   "locations": {
     "title": "Location Management",

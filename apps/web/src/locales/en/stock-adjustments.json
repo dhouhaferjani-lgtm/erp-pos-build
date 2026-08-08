@@ -1,0 +1,127 @@
+{
+  "title": "Stock adjustments",
+  "subtitle": "Documented manual corrections to on-hand stock",
+  "create": {
+    "title": "New stock adjustment",
+    "subtitle": "Every correction is a document: what moved, by how much, and why",
+    "locationLabel": "Location",
+    "locationHelp": "One document covers one location. Correcting a second location means a second document.",
+    "noteLabel": "Note",
+    "notePlaceholder": "Why is this correction being made?",
+    "addLine": "Add line",
+    "removeLine": "Remove line",
+    "emptyLines": "Add at least one line to record a correction.",
+    "saveDraft": "Save draft",
+    "post": "Post",
+    "summary": {
+      "title": "Before posting",
+      "netDelta": "Net change",
+      "increases": "Increases",
+      "decreases": "Decreases",
+      "lineCount_one": "{{count}} line",
+      "lineCount_other": "{{count}} lines"
+    },
+    "openingBalanceHint": "Setting a product's opening balance? Use the product editor's opening quantity and cost — an adjustment records a correction, not an opening balance.",
+    "openingBalanceLink": "Open the product's inventory settings"
+  },
+  "line": {
+    "reason": "Reason",
+    "product": "Product",
+    "lot": "Lot",
+    "lotRequired": "Choose the lot this correction draws down.",
+    "lotEmpty": "No lots hold stock here yet.",
+    "quantity": "Quantity",
+    "observedBefore": "As observed",
+    "resultingQuantity": "After",
+    "note": "Line note",
+    "direction": {
+      "in": "Increase",
+      "out": "Decrease"
+    }
+  },
+  "status": {
+    "draft": "Draft",
+    "posted": "Posted",
+    "cancelled": "Cancelled"
+  },
+  "reason": {
+    "adjustment_positive": "Correction (increase)",
+    "adjustment_negative": "Correction (decrease)",
+    "damage": "Damage / loss",
+    "write_off": "Write-off"
+  },
+  "detail": {
+    "title": "Stock adjustment {{number}}",
+    "draftTitle": "Stock adjustment (draft)",
+    "location": "Location",
+    "occurredAt": "Recorded at",
+    "createdBy": "Created by",
+    "postedBy": "Posted by",
+    "cancelledBy": "Cancelled by",
+    "cancellationReason": "Cancellation reason",
+    "corrects": "Corrects",
+    "correctedBy": "Corrected by",
+    "overrideAudit": "Overrides",
+    "staleAcknowledged": "Staleness acknowledged",
+    "reservationsIgnored": "Reservations ignored",
+    "movement": "Movement",
+    "post": "Post",
+    "cancel": "Cancel",
+    "correct": "Correct",
+    "editLines": "Edit lines",
+    "postConfirmTitle": "Post this adjustment?",
+    "postConfirmBody": "Posting writes one stock movement per line and cannot be undone. A posted adjustment is corrected by a contra document, never edited.",
+    "cancelTitle": "Cancel this draft",
+    "cancelReasonLabel": "Reason (optional)",
+    "cancelConfirm": "Cancel draft",
+    "cancelDismiss": "Keep draft"
+  },
+  "list": {
+    "number": "Number",
+    "status": "Status",
+    "location": "Location",
+    "lines": "Lines",
+    "occurredAt": "Date",
+    "createdBy": "Created by",
+    "empty": "No stock adjustments yet.",
+    "filterStatus": "Status",
+    "all": "All"
+  },
+  "quickModal": {
+    "title": "Adjust stock",
+    "currentQuantity": "Current quantity",
+    "submit": "Apply",
+    "cancel": "Cancel",
+    "supplierReceiptHint": "Receiving from a supplier with a price? Record a goods receipt instead.",
+    "supplierReceiptLink": "New supplier receipt",
+    "transferHint": "Moving stock to another location?",
+    "transferLink": "New stock transfer"
+  },
+  "refusal": {
+    "title": "This correction was not applied",
+    "applyAnyway": "Apply anyway",
+    "reAnchor": "Re-anchor to current quantities",
+    "recompute": "Recompute from current quantities",
+    "dismiss": "Go back",
+    "table": {
+      "product": "Product",
+      "lot": "Lot",
+      "observedBefore": "As observed",
+      "quantityBefore": "Current",
+      "delta": "Your change",
+      "resulting": "If applied"
+    },
+    "STOCK_MOVED_SINCE_AUTHORING": "Stock moved after you started this correction. Re-anchor to the current quantities, or apply your change on top of them anyway.",
+    "ADJUSTMENT_EXCEEDS_AVAILABLE": "This decrease is larger than the unreserved stock. Applying it anyway records the stock as gone while the reservations stay promised.",
+    "INSUFFICIENT_BATCH_STOCK": "The selected lot does not hold enough stock for this decrease.",
+    "BATCH_REQUIRED_FOR_LINE": "This product holds stock in lots here, so a decrease must name the lot it draws down.",
+    "BATCH_NOT_APPLICABLE": "That lot does not belong to this product at this location.",
+    "USE_BATCH_WRITE_OFF": "This product is lot-tracked. Record damage and write-offs through the batch write-off, which also posts the accounting entry.",
+    "LINE_TENANT_MISMATCH": "One of these products belongs to a different tenant and cannot be adjusted here.",
+    "INVALID_ADJUSTMENT_STATE": "This adjustment is no longer in a state that allows this action.",
+    "ADJUSTMENT_ALREADY_CORRECTED": "This adjustment has already been corrected.",
+    "CANNOT_CORRECT_A_CORRECTION": "A correction cannot itself be corrected.",
+    "LOCATION_ACCESS_DENIED": "You do not have permission to act on this location.",
+    "generic": "The stock adjustment could not be completed."
+  }
+}

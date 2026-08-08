@@ -563,24 +563,84 @@ export async function stockMatrix(page: Page, query = ''): Promise<ApiResult> {
 }
 
 /**
- * Manual stock adjustment — the only web path that REMOVES company-owned quantity without
- * a document or a batch lot. `new_quantity` is the ABSOLUTE target (`min:0`, 4-dp regex),
- * and `reason_code` must come from `MovementReason::manualAdjustmentValues()`
- * (`adjustment_positive`, `adjustment_negative`, `damage`, `write_off`, `opening_balance`).
- * Used to drive a product to an owned quantity of exactly 0 so the WAC guard's boundary
- * is genuinely reached.
+ * Drive a product's on-hand at a location to an exact target, through the
+ * `stock_adjustments` DOCUMENT.
+ *
+ * Rewritten by DPA V7 / T12. The old premise — "the only web path that REMOVES
+ * company-owned quantity without a document or a batch lot" — is precisely what
+ * V7 abolishes: `POST /stock-movements/adjust` is deleted, and every manual stock
+ * mutation now carries its own justifying document.
+ *
+ * Three things this helper must get right, all of them consequences of the
+ * absolute -> DELTA change:
+ *
+ *  1. The delta is computed from a FRESH `GET /stock-levels/{product}/{location}`
+ *     read, not from a remembered value — that read is also what authors
+ *     `observed_before`, so the staleness guard is satisfied by construction.
+ *  2. `delta = target - fresh_before` is ZERO when the product is already at the
+ *     target, which the new contract refuses TWICE (`not_in:0` plus the
+ *     `stock_adjustment_lines_delta_nonzero` CHECK). The helper exists to drive a
+ *     product to exactly 0, so it returns early in that case rather than 422ing.
+ *  3. `reason_code` is DERIVED from the sign of the computed delta. A hardcoded
+ *     `adjustment_negative` passes only when the target happens to be below
+ *     current; the reason<->sign invariant 422s otherwise.
+ *
+ * `acknowledge_stale` is sent because the campaign runs concurrent flows against
+ * the same products; the fresh read above makes it a belt, not the braces.
  */
 export async function adjustStockTo(
   page: Page,
-  opts: { productId: string; locationId?: string; newQuantity: string; reasonCode?: string; reason?: string }
+  opts: { productId: string; locationId?: string; newQuantity: string; reason?: string }
 ): Promise<ApiResult> {
-  return apiRequest(page, 'POST', '/stock-movements/adjust', {
-    product_id: opts.productId,
-    location_id: opts.locationId ?? WAREHOUSE_LOCATION_ID,
-    new_quantity: opts.newQuantity,
-    reason_code: opts.reasonCode ?? 'adjustment_negative',
-    reason: opts.reason ?? 'W4 campaign adjustment',
+  const locationId = opts.locationId ?? WAREHOUSE_LOCATION_ID
+
+  const level = await apiRequest(page, 'GET', `/stock-levels/${opts.productId}/${locationId}`)
+  const before = String((level.body as { data?: { quantity?: string } })?.data?.quantity ?? '0')
+
+  const delta = subtractQuantity(opts.newQuantity, before)
+
+  // Already at target: there is no correction to document.
+  if (Number(delta) === 0) {
+    return level
+  }
+
+  return apiRequest(page, 'POST', '/stock-adjustments', {
+    location_id: locationId,
+    note: opts.reason ?? 'W4 campaign adjustment',
+    post_immediately: true,
+    acknowledge_stale: true,
+    lines: [
+      {
+        product_id: opts.productId,
+        reason_code: delta.startsWith('-') ? 'adjustment_negative' : 'adjustment_positive',
+        delta_quantity: delta,
+        observed_before: before,
+      },
+    ],
   })
+}
+
+/**
+ * `a - b` at the canonical quantity scale, as a STRING.
+ *
+ * Deliberately not `Number(a) - Number(b)`: quantities are `decimal(15,4)` and
+ * the payload must carry a decimal string, never a float round-trip (rule 19).
+ */
+function subtractQuantity(a: string, b: string): string {
+  const scale = 4
+  const toScaledInt = (value: string): bigint => {
+    const negative = value.trim().startsWith('-')
+    const [whole, fraction = ''] = value.trim().replace('-', '').split('.')
+    const padded = (fraction + '0'.repeat(scale)).slice(0, scale)
+    const magnitude = BigInt(whole || '0') * BigInt(10 ** scale) + BigInt(padded || '0')
+    return negative ? -magnitude : magnitude
+  }
+
+  const diff = toScaledInt(a) - toScaledInt(b)
+  const sign = diff < 0n ? '-' : ''
+  const magnitude = (diff < 0n ? -diff : diff).toString().padStart(scale + 1, '0')
+
+  return `${sign}${magnitude.slice(0, -scale)}.${magnitude.slice(-scale)}`
 }
 
 export async function stockMovements(page: Page, query = ''): Promise<ApiResult> {

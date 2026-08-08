@@ -1,0 +1,128 @@
+{
+  "title": "Régularisations de stock",
+  "subtitle": "Corrections manuelles documentées du stock disponible",
+  "create": {
+    "title": "Nouvelle régularisation de stock",
+    "subtitle": "Chaque correction est un document : ce qui a bougé, de combien, et pourquoi",
+    "locationLabel": "Emplacement",
+    "locationHelp": "Un document couvre un seul emplacement. Corriger un second emplacement nécessite un second document.",
+    "noteLabel": "Note",
+    "notePlaceholder": "Pourquoi cette correction est-elle effectuée ?",
+    "addLine": "Ajouter une ligne",
+    "removeLine": "Supprimer la ligne",
+    "emptyLines": "Ajoutez au moins une ligne pour enregistrer une correction.",
+    "saveDraft": "Enregistrer le brouillon",
+    "post": "Valider",
+    "summary": {
+      "title": "Avant validation",
+      "netDelta": "Variation nette",
+      "increases": "Augmentations",
+      "decreases": "Diminutions",
+      "lineCount_one": "{{count}} ligne",
+      "lineCount_many": "{{count}} lignes",
+      "lineCount_other": "{{count}} lignes"
+    },
+    "openingBalanceHint": "Vous saisissez un solde d'ouverture ? Utilisez la quantité et le coût d'ouverture dans la fiche produit — une régularisation enregistre une correction, pas un solde d'ouverture.",
+    "openingBalanceLink": "Ouvrir les paramètres d'inventaire du produit"
+  },
+  "line": {
+    "reason": "Motif",
+    "product": "Produit",
+    "lot": "Lot",
+    "lotRequired": "Choisissez le lot sur lequel cette correction est prélevée.",
+    "lotEmpty": "Aucun lot ne détient de stock ici pour l'instant.",
+    "quantity": "Quantité",
+    "observedBefore": "Constaté",
+    "resultingQuantity": "Après",
+    "note": "Note de ligne",
+    "direction": {
+      "in": "Augmentation",
+      "out": "Diminution"
+    }
+  },
+  "status": {
+    "draft": "Brouillon",
+    "posted": "Validée",
+    "cancelled": "Annulée"
+  },
+  "reason": {
+    "adjustment_positive": "Correction (augmentation)",
+    "adjustment_negative": "Correction (diminution)",
+    "damage": "Dommage / perte",
+    "write_off": "Mise au rebut"
+  },
+  "detail": {
+    "title": "Régularisation de stock {{number}}",
+    "draftTitle": "Régularisation de stock (brouillon)",
+    "location": "Emplacement",
+    "occurredAt": "Enregistrée le",
+    "createdBy": "Créée par",
+    "postedBy": "Validée par",
+    "cancelledBy": "Annulée par",
+    "cancellationReason": "Motif d'annulation",
+    "corrects": "Corrige",
+    "correctedBy": "Corrigée par",
+    "overrideAudit": "Dérogations",
+    "staleAcknowledged": "Écart de stock accepté",
+    "reservationsIgnored": "Réservations ignorées",
+    "movement": "Mouvement",
+    "post": "Valider",
+    "cancel": "Annuler",
+    "correct": "Corriger",
+    "editLines": "Modifier les lignes",
+    "postConfirmTitle": "Valider cette régularisation ?",
+    "postConfirmBody": "La validation écrit un mouvement de stock par ligne et est irréversible. Une régularisation validée se corrige par un document de contrepartie, jamais par modification.",
+    "cancelTitle": "Annuler ce brouillon",
+    "cancelReasonLabel": "Motif (facultatif)",
+    "cancelConfirm": "Annuler le brouillon",
+    "cancelDismiss": "Conserver le brouillon"
+  },
+  "list": {
+    "number": "Numéro",
+    "status": "Statut",
+    "location": "Emplacement",
+    "lines": "Lignes",
+    "occurredAt": "Date",
+    "createdBy": "Créée par",
+    "empty": "Aucune régularisation de stock pour l'instant.",
+    "filterStatus": "Statut",
+    "all": "Toutes"
+  },
+  "quickModal": {
+    "title": "Régulariser le stock",
+    "currentQuantity": "Quantité actuelle",
+    "submit": "Appliquer",
+    "cancel": "Annuler",
+    "supplierReceiptHint": "Réception fournisseur avec un prix ? Enregistrez plutôt un bon de réception.",
+    "supplierReceiptLink": "Nouveau bon de réception",
+    "transferHint": "Vous déplacez du stock vers un autre emplacement ?",
+    "transferLink": "Nouveau transfert de stock"
+  },
+  "refusal": {
+    "title": "Cette correction n'a pas été appliquée",
+    "applyAnyway": "Appliquer quand même",
+    "reAnchor": "Recaler sur les quantités actuelles",
+    "recompute": "Recalculer depuis les quantités actuelles",
+    "dismiss": "Retour",
+    "table": {
+      "product": "Produit",
+      "lot": "Lot",
+      "observedBefore": "Constaté",
+      "quantityBefore": "Actuel",
+      "delta": "Votre modification",
+      "resulting": "Si appliqué"
+    },
+    "STOCK_MOVED_SINCE_AUTHORING": "Le stock a bougé depuis le début de cette correction. Recalez sur les quantités actuelles, ou appliquez quand même votre modification par-dessus.",
+    "ADJUSTMENT_EXCEEDS_AVAILABLE": "Cette diminution dépasse le stock non réservé. L'appliquer quand même enregistre le stock comme perdu alors que les réservations restent promises.",
+    "INSUFFICIENT_BATCH_STOCK": "Le lot sélectionné ne détient pas assez de stock pour cette diminution.",
+    "BATCH_REQUIRED_FOR_LINE": "Ce produit détient du stock en lots ici : une diminution doit désigner le lot prélevé.",
+    "BATCH_NOT_APPLICABLE": "Ce lot n'appartient pas à ce produit à cet emplacement.",
+    "USE_BATCH_WRITE_OFF": "Ce produit est suivi par lot. Enregistrez les dommages et les mises au rebut via la mise au rebut de lot, qui passe aussi l'écriture comptable.",
+    "LINE_TENANT_MISMATCH": "L'un de ces produits appartient à un autre locataire et ne peut pas être régularisé ici.",
+    "INVALID_ADJUSTMENT_STATE": "Cette régularisation n'est plus dans un état permettant cette action.",
+    "ADJUSTMENT_ALREADY_CORRECTED": "Cette régularisation a déjà été corrigée.",
+    "CANNOT_CORRECT_A_CORRECTION": "Une correction ne peut pas être corrigée à son tour.",
+    "LOCATION_ACCESS_DENIED": "Vous n'avez pas la permission d'agir sur cet emplacement.",
+    "generic": "La régularisation de stock n'a pas pu être effectuée."
+  }
+}
