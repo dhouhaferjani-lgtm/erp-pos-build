@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Providers;
 
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
+use App\Modules\POS\Domain\Events\CashCountRecorded;
+use App\Modules\Treasury\Application\Listeners\PostShiftCashVarianceAdjustment;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountChargeBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
@@ -42,6 +44,7 @@ use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class TreasuryServiceProvider extends ServiceProvider
@@ -160,6 +163,20 @@ class TreasuryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+
+        // DPA lane G3 — book the shift-close cash-count variance to the GL.
+        // TREASURY-side deliberately: the POS module owns no treasury write-port
+        // usage (policed by tests/Architecture/TreasuryBalanceWritePortTest.php),
+        // so the consumer of this POS domain event lives here. Registered the
+        // same way Compliance registers its own CashCountRecorded consumer
+        // (OpenFraudAlertForShiftVariance) — synchronous, and internally
+        // log-never-block, because both trigger paths raise the event from a
+        // DB::afterCommit callback where a throw would surface as a 500 on a
+        // shift close that already succeeded.
+        Event::listen(
+            CashCountRecorded::class,
+            [PostShiftCashVarianceAdjustment::class, 'handle'],
+        );
 
         if ($this->app->runningInConsole()) {
             $this->commands([
