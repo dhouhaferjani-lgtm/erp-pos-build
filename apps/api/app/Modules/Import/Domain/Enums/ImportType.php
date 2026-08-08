@@ -9,10 +9,76 @@ enum ImportType: string
     case Parties = 'parties';
     case Partners = 'partners';
     case Products = 'products';
+
+    /**
+     * @deprecated Owner ruling D4 (document-per-action remediation, lane V6).
+     *
+     * The first import ever implemented. It set an ABSOLUTE stock quantity via
+     * `InventoryService::upsertStockLevel` — a bare `StockLevel::updateOrCreate`
+     * with no stock movement, no justifying document, no WAC/GL posting, and
+     * `reserved` silently reset to 0. It was therefore invisible to every
+     * ledger-based detector. Opening stock now flows through the Products
+     * import (quantity + purchase_price + location_code), which runs
+     * `ProductOpeningStockPhase` → `OpeningBalancePostingService` and posts a
+     * real Opening movement with the enter-once guard
+     * (`OpeningAlreadyExistsException`) and the reset affordance
+     * (`ResetOpeningBalanceService`).
+     *
+     * The CASE deliberately survives the deprecation: `import_jobs.type` is a
+     * plain `string(50)` column (see
+     * `2025_11_30_150000_create_import_tables.php`) cast to this enum by
+     * `ImportJob::casts()`. Eloquent's enum cast resolves it with
+     * `$enumClass::from($value)` (`HasAttributes::getEnumCaseFromValue`), which
+     * throws `ValueError` for an unknown backing value — so dropping the case
+     * would 500 every read of a tenant's import history that ever contained one
+     * of these jobs, not merely the job's own detail page. The type is instead
+     * made UNSELECTABLE: see `isDeprecated()` / `selectable()` and their
+     * enforcement in `ImportController::store()` / `::execute()`,
+     * `ImportService::importRow()` and `MigrationWizardService`.
+     */
     case StockLevels = 'stock_levels';
+
     case OpeningBalances = 'opening_balances';
     case ProductImages = 'product_images';
     case CompositeItems = 'composite_items';
+
+    /**
+     * Operator-facing explanation for a retired type — null while the type is
+     * still importable. Single source of truth for every refusal message so the
+     * upload gate and the execute gate cannot drift apart.
+     */
+    public function deprecationMessage(): ?string
+    {
+        return match ($this) {
+            self::StockLevels => 'The stock levels import is no longer supported. It set stock quantities directly, with no stock movement and no justifying document. Import your opening stock with the Products import instead: it accepts quantity, purchase_price and location_code, and posts a proper opening stock movement.',
+            default => null,
+        };
+    }
+
+    /**
+     * True for types that may no longer be chosen for a NEW import job.
+     *
+     * The case still exists so historical `import_jobs` rows stay readable
+     * (see the note on {@see self::StockLevels}); this flag is what makes it
+     * unselectable everywhere a new import can be started.
+     */
+    public function isDeprecated(): bool
+    {
+        return $this->deprecationMessage() !== null;
+    }
+
+    /**
+     * The import types a user may still start.
+     *
+     * @return list<self>
+     */
+    public static function selectable(): array
+    {
+        return array_values(array_filter(
+            self::cases(),
+            static fn (self $type): bool => ! $type->isDeprecated(),
+        ));
+    }
 
     /**
      * Get the required columns for this import type

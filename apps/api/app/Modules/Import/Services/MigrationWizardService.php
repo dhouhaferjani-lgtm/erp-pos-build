@@ -27,7 +27,9 @@ final class MigrationWizardService
             ImportType::Partners,
             ImportType::Products,
             ImportType::CompositeItems,
-            ImportType::StockLevels,
+            // ImportType::StockLevels retired by owner ruling D4 — opening stock
+            // now rides the Products import (quantity + purchase_price +
+            // location_code), which posts a real Opening movement.
             ImportType::OpeningBalances,
         ];
     }

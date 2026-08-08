@@ -20,8 +20,6 @@ use App\Modules\Import\Services\ProductPriceResolver;
 use App\Modules\Import\Services\ValidationEngine;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CompositeItemServiceInterface;
-use App\Shared\Contracts\InventoryServiceInterface;
-use App\Shared\Contracts\LocationServiceInterface;
 use App\Shared\Contracts\PartnerServiceInterface;
 use App\Shared\Contracts\ProductServiceInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
@@ -42,8 +40,6 @@ class ImportServiceProvider extends ServiceProvider
                 $app->make(CompanyContext::class),
                 $app->make(PartnerServiceInterface::class),
                 $app->make(ProductServiceInterface::class),
-                $app->make(InventoryServiceInterface::class),
-                $app->make(LocationServiceInterface::class),
                 $app->make(AccountingServiceInterface::class),
                 $app->make(CompositeItemServiceInterface::class),
                 $app->make(NumericFieldNormalizer::class),

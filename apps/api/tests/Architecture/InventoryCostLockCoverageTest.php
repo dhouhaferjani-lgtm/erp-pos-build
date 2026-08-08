@@ -38,7 +38,9 @@ final class InventoryCostLockCoverageTest extends TestCase
             ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function adjust'],
             ['app/Modules/Inventory/Domain/Services/StockAdjustmentService.php', 'public function transfer'],
             ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post'],
-            ['app/Modules/Inventory/Application/Services/InventoryService.php', 'public function upsertStockLevel'],
+            // InventoryService::upsertStockLevel used to be pinned here. Owner
+            // ruling D4 deleted it outright (it created stock_level rows with no
+            // movement and no document), so there is no longer a method to police.
         ];
     }
 
