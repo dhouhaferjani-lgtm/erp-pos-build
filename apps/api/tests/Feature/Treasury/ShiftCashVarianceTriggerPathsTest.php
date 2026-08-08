@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
@@ -137,6 +138,8 @@ final class ShiftCashVarianceTriggerPathsTest extends TestCase
         ]);
 
         $this->setFraudSettings();
+
+        config()->set('treasury.shift_variance_gl_enabled', true);
     }
 
     public function test_the_live_z_report_path_books_the_variance_to_the_ledger(): void
@@ -254,9 +257,111 @@ final class ShiftCashVarianceTriggerPathsTest extends TestCase
         );
     }
 
+    /**
+     * Gate finding M6 / fiscal C2 — the double-count guard proven by DRIVING the
+     * real server basis, not by asserting a hand-picked balanced pair.
+     *
+     * A receipt with a genuine tolerance write-off: total 100.000, TENDERED
+     * 99.950, 0.050 written off to 658 (Dr 658 / Cr ProductRevenue, no cash leg).
+     * `ReportGenerationService::buildExpectedPerMethod()` therefore computes
+     * expected = 99.950 — the cash actually in the drawer — so an honest count of
+     * 99.950 is BALANCED and the shift close books nothing. 658 must still carry
+     * the per-receipt 0.050 alone.
+     */
+    public function test_a_tolerance_bearing_receipt_leaves_an_honest_count_balanced_and_books_nothing(): void
+    {
+        $toleranceExpense = $this->accountFor(SystemAccountPurpose::PaymentToleranceExpense);
+        $this->seedFiscalizedCashReceipt('100.0000', tendered: '99.9500', toleranceWriteoff: '0.050');
+        $this->postPerReceiptTolerance('0.050');
+
+        app(ReportGenerationService::class)->generateZReport(
+            $this->terminal,
+            $this->cashier,
+            [new CashCountInputDTO(
+                paymentMethodId: $this->cashMethod->id,
+                currencyCode: 'TND',
+                actualAmount: '99.9500',
+            )],
+            null,
+            null,
+            false,
+        );
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(
+            '0.050',
+            $this->postedDebit($toleranceExpense),
+            '658 must carry the per-receipt tolerance ONLY — the shift close must not re-book it.',
+        );
+        $this->assertSame('400.000', $this->till->fresh()?->balance);
+    }
+
+    /**
+     * The companion: the SAME tolerance-bearing receipt plus a genuine 5.000
+     * shortfall. 658 ends at 5.050 — two distinct facts, correctly additive,
+     * each with its own justifying document. Not one fact counted twice.
+     */
+    public function test_a_real_shortfall_on_a_tolerance_bearing_shift_books_only_the_shortfall(): void
+    {
+        $toleranceExpense = $this->accountFor(SystemAccountPurpose::PaymentToleranceExpense);
+        $this->seedFiscalizedCashReceipt('100.0000', tendered: '99.9500', toleranceWriteoff: '0.050');
+        $this->postPerReceiptTolerance('0.050');
+
+        app(ReportGenerationService::class)->generateZReport(
+            $this->terminal,
+            $this->cashier,
+            [new CashCountInputDTO(
+                paymentMethodId: $this->cashMethod->id,
+                currencyCode: 'TND',
+                actualAmount: '94.9500',
+            )],
+            'Till short at close.',
+            null,
+            false,
+        );
+
+        $document = RepositoryAdjustment::query()->where('pos_shift_id', $this->shift->id)->firstOrFail();
+        $this->assertSame(0, bccomp((string) $document->amount, '5.000', 3));
+        $this->assertSame('5.050', $this->postedDebit($toleranceExpense));
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
+
+    private function postPerReceiptTolerance(string $amount): void
+    {
+        $gl = app(GeneralLedgerService::class);
+
+        $gl->postEntry(
+            DB::transaction(fn (): JournalEntry => $gl->createPOSPaymentToleranceEntry(
+                companyId: $this->company->id,
+                receiptId: (string) Str::uuid(),
+                amount: $amount,
+                date: now(),
+            )),
+            $this->cashier,
+        );
+    }
+
+    private function postedDebit(Account $account): string
+    {
+        $total = '0.000';
+
+        $rows = DB::table('journal_lines')
+            ->join('journal_entries', 'journal_lines.journal_entry_id', '=', 'journal_entries.id')
+            ->where('journal_lines.account_id', $account->id)
+            ->where('journal_entries.company_id', $this->company->id)
+            ->where('journal_entries.status', 'posted')
+            ->select('journal_lines.debit')
+            ->get();
+
+        foreach ($rows as $row) {
+            $total = bcadd($total, (string) $row->debit, 3);
+        }
+
+        return $total;
+    }
 
     /**
      * @return array<string, mixed>
@@ -298,8 +403,11 @@ final class ShiftCashVarianceTriggerPathsTest extends TestCase
         ];
     }
 
-    private function seedFiscalizedCashReceipt(string $amount): Receipt
-    {
+    private function seedFiscalizedCashReceipt(
+        string $amount,
+        ?string $tendered = null,
+        ?string $toleranceWriteoff = null,
+    ): Receipt {
         $receipt = Receipt::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -322,13 +430,17 @@ final class ShiftCashVarianceTriggerPathsTest extends TestCase
             'currency' => 'TND',
             'is_voided' => false,
             'is_training' => false,
+            'tolerance_writeoff' => $toleranceWriteoff,
         ]);
 
+        // `pos_receipt_payments.amount` stores the TENDERED amount (payment
+        // v1.1 contract) — which is exactly why a tolerance write-off is already
+        // netted out of the expected-cash basis.
         ReceiptPayment::create([
             'receipt_id' => $receipt->id,
             'payment_method_id' => $this->cashMethod->id,
             'payment_type' => 'Cash',
-            'amount' => $amount,
+            'amount' => $tendered ?? $amount,
         ]);
 
         return $receipt;

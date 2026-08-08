@@ -10,7 +10,6 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RepositoryAdjustmentIntent;
-use App\Modules\Treasury\Application\DTOs\RepositoryAdjustmentResult;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Exceptions\AdjustmentAmountBelowCurrencyPrecisionException;
@@ -18,6 +17,7 @@ use App\Modules\Treasury\Domain\Exceptions\AdjustmentToleranceAccountMissingExce
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryAdjustment;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Treasury\DTOs\RepositoryAdjustmentResult;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use App\Shared\Domain\CurrencyScale;

@@ -5,13 +5,7 @@ declare(strict_types=1);
 namespace App\Shared\Contracts\Treasury;
 
 use App\Modules\Treasury\Application\DTOs\RepositoryAdjustmentIntent;
-use App\Modules\Treasury\Application\DTOs\RepositoryAdjustmentResult;
-use App\Modules\Treasury\Domain\Exceptions\AdjustmentAmountBelowCurrencyPrecisionException;
-use App\Modules\Treasury\Domain\Exceptions\AdjustmentToleranceAccountMissingException;
-use App\Modules\Treasury\Domain\Exceptions\CurrencyMismatchException;
-use App\Modules\Treasury\Domain\Exceptions\InsufficientRepositoryBalanceException;
-use App\Modules\Treasury\Domain\Exceptions\RepositoryFrozenException;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
+use App\Shared\Contracts\Treasury\DTOs\RepositoryAdjustmentResult;
 
 /**
  * The single orchestration port for a repository (cash) adjustment —
@@ -54,13 +48,26 @@ interface RepositoryAdjustmentServiceInterface
      * Opens its own `DB::transaction` — callers must NOT pre-open one merely to
      * gain atomicity, though nesting is safe.
      *
-     * @throws AdjustmentToleranceAccountMissingException chart of accounts lacks the 658/758 purpose (nothing written)
-     * @throws AdjustmentAmountBelowCurrencyPrecisionException amount normalizes to zero at the repository's scale (nothing written)
-     * @throws \DomainException the repository has no linked GL account (nothing written)
-     * @throws ModelNotFoundException repository or acting user not found in scope
-     * @throws CurrencyMismatchException intent currency disagrees with the repository's
-     * @throws RepositoryFrozenException the repository is frozen (adjustments are always interactive)
-     * @throws InsufficientRepositoryBalanceException an OUT adjustment would take the repository below zero
+     * Refusals, every one of which writes NOTHING. They are DESCRIBED rather
+     * than `@throws`-typed on purpose: naming Treasury `Domain\Exceptions`
+     * classes from this Shared contract is a deptrac `SharedContracts on
+     * ModuleDomain` boundary violation, and a contract that leaks its
+     * implementation's internals is exactly what the rule-6 story here is meant
+     * to avoid. The concrete classes are on the implementation
+     * (`Treasury\Application\Services\RepositoryAdjustmentService`), and the
+     * HTTP adapter catches the two it renders as 422s.
+     *
+     *  - tolerance-account missing — the chart of accounts has no account for
+     *    the required 658/758 purpose;
+     *  - amount-below-currency-precision — the amount normalizes to zero at the
+     *    repository's currency scale;
+     *  - `\DomainException` — the repository has no linked GL account;
+     *  - model-not-found — the repository or the acting user is not in scope;
+     *  - currency-mismatch — the intent currency disagrees with the repository's;
+     *  - repository-frozen — adjustments are always interactive
+     *    (`allowWhileFrozen` is false);
+     *  - insufficient-balance — an OUT adjustment would take a repository that
+     *    forbids negative balances below zero.
      */
     public function post(RepositoryAdjustmentIntent $intent): RepositoryAdjustmentResult;
 }

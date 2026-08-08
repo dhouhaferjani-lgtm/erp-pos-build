@@ -30,6 +30,7 @@ use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\RepositoryAdjustment;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -206,6 +207,41 @@ final class RepositoryAdjustmentServiceTest extends TestCase
         $movement = DB::table('repository_movements')->where('source_id', $adjustmentId)->first();
         $this->assertNotNull($movement);
         $this->assertSame("adjustment:{$adjustmentId}:shift:{$shiftId}", $movement->idempotency_key);
+    }
+
+    /**
+     * Gate finding M5 — the extraction newly re-queries the acting user
+     * tenant-scoped, where the controller previously trusted the already
+     * authenticated `$request->user()`. Pin the behaviour so the narrowing is a
+     * decision rather than an accident: a user id outside the intent's tenant is
+     * a miss, not a cross-tenant write.
+     */
+    public function test_an_acting_user_outside_the_intent_tenant_is_refused_and_writes_nothing(): void
+    {
+        [$user, $company] = $this->makeUserAndCompany();
+        [$repo] = $this->makeRepository($user, $company, '500.000');
+        [$foreignUser] = $this->makeUserAndCompany();
+
+        app(CompanyContext::class)->clear();
+
+        $this->expectException(ModelNotFoundException::class);
+
+        try {
+            $this->service()->post(new RepositoryAdjustmentIntent(
+                repositoryId: $repo->id,
+                tenantId: (string) $user->tenant_id,
+                companyId: $company->id,
+                direction: MovementDirection::Out,
+                amount: '25.000',
+                reasonCode: MovementReasonCode::CountVariance,
+                reasonText: 'Cross-tenant acting user.',
+                userId: $foreignUser->id,
+                adjustmentId: (string) Str::uuid(),
+            ));
+        } finally {
+            $this->assertSame(0, RepositoryAdjustment::query()->count());
+            $this->assertSame(0, DB::table('repository_movements')->count());
+        }
     }
 
     // -------------------------------------------------------------------------

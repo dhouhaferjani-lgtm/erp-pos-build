@@ -170,9 +170,16 @@ class TreasuryServiceProvider extends ServiceProvider
         // so the consumer of this POS domain event lives here. Registered the
         // same way Compliance registers its own CashCountRecorded consumer
         // (OpenFraudAlertForShiftVariance) — synchronous, and internally
-        // log-never-block, because both trigger paths raise the event from a
-        // DB::afterCommit callback where a throw would surface as a 500 on a
-        // shift close that already succeeded.
+        // log-never-block: the live path raises the event from a DB::afterCommit
+        // callback and the offline path dispatches plainly after its transaction
+        // returns, so in BOTH cases the shift close has already succeeded by the
+        // time this runs and a throw here would surface as a spurious 500.
+        //
+        // The listener itself is gated on `treasury.shift_variance_gl_enabled`
+        // (default FALSE — gate finding I1, pending the owner ruling on POS
+        // count semantics). The gate is checked inside handle() rather than
+        // around this registration so the flag stays runtime-evaluable in tests
+        // and so a future per-company dimension has somewhere to live.
         Event::listen(
             CashCountRecorded::class,
             [PostShiftCashVarianceAdjustment::class, 'handle'],

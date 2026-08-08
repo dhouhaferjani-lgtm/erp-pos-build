@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Treasury\Application\DTOs;
+namespace App\Shared\Contracts\Treasury\DTOs;
 
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 

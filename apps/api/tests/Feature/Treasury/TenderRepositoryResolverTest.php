@@ -153,6 +153,129 @@ final class TenderRepositoryResolverTest extends TestCase
         $this->assertBridgeAgrees($method);
     }
 
+    /**
+     * Gate finding M4 — the bridge's REAL null-method input (a tender the
+     * canonical payload never named), which none of the cases above covered.
+     */
+    public function test_a_null_method_uses_the_fallback_and_both_paths_agree(): void
+    {
+        $expected = $this->makeRepository('AAA', glLinked: true);
+
+        $this->assertSame($expected->id, $this->resolver()->resolve($this->tenantId, $this->companyId, null)?->id);
+        $this->assertBridgeAgrees(null);
+    }
+
+    /**
+     * Gate finding M4 — the foreign-scope case varied the COMPANY but never the
+     * TENANT, so the tenant leg of the scope was unproven.
+     */
+    public function test_a_foreign_tenant_repository_is_never_resolved(): void
+    {
+        $otherTenant = Tenant::create([
+            'name' => 'Other Tenant',
+            'slug' => 'other-tenant-'.uniqid(),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Mechanic,
+        ]);
+
+        $foreign = PaymentRepository::factory()->create([
+            'tenant_id' => $otherTenant->id,
+            'company_id' => $this->companyId,
+            'currency' => 'TND',
+            'type' => RepositoryType::CashRegister,
+            'gl_account_id' => $this->makeAccount()->id,
+            'is_active' => true,
+        ]);
+        $method = $this->makeMethod($foreign->id);
+
+        $this->assertNull($this->resolver()->resolve($this->tenantId, $this->companyId, $method));
+        $this->assertBridgeAgrees($method);
+    }
+
+    // ── resolveByMethodId — the entry point the G3 listener actually uses ─────
+    // Gate finding I6: all six cases above drive resolve() with a hydrated
+    // method, but the listener enters by id. These cover that seam, including
+    // the divergence class the reviewer identified.
+
+    public function test_resolve_by_method_id_matches_resolve_for_a_mapped_method(): void
+    {
+        $this->makeRepository('AAA', glLinked: true);
+        $mapped = $this->makeRepository('ZZZ', glLinked: true);
+        $method = $this->makeMethod($mapped->id);
+
+        $this->assertSame(
+            $this->resolver()->resolve($this->tenantId, $this->companyId, $method)?->id,
+            $this->resolver()->resolveByMethodId($this->tenantId, $this->companyId, $method->id)?->id,
+        );
+        $this->assertBridgeAgrees($method);
+    }
+
+    /**
+     * Gate finding I6 — a method id that is PRESENT but does not load in scope.
+     *
+     * The bridge treats this as fatal ("payment_method_id … resolved but not
+     * loadable"); the resolver used to degrade to the null-method fallback,
+     * silently routing an unknown tender's money to whichever GL-linked
+     * repository sorts first by UUID. Both callers must now decline to invent a
+     * destination.
+     */
+    public function test_resolve_by_method_id_refuses_an_id_that_does_not_load(): void
+    {
+        $fallback = $this->makeRepository('AAA', glLinked: true);
+
+        $this->assertNull(
+            $this->resolver()->resolveByMethodId($this->tenantId, $this->companyId, (string) Str::uuid()),
+            'An unknown payment method must NOT fall back to an arbitrary repository.',
+        );
+        $this->assertNotNull($fallback->id);
+    }
+
+    public function test_resolve_by_method_id_refuses_a_method_from_another_company(): void
+    {
+        $this->makeRepository('AAA', glLinked: true);
+
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenantId,
+            'name' => 'Other Company',
+            'legal_name' => 'Other Company LLC',
+            'tax_id' => 'TAX777',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $foreignMethod = PaymentMethod::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $otherCompany->id,
+            'code' => 'CASH-'.Str::random(4),
+            'name' => 'Cash',
+            'is_physical' => true,
+            'is_cash_tender' => true,
+            'is_active' => true,
+            'default_repository_id' => null,
+        ]);
+
+        $this->assertNull($this->resolver()->resolveByMethodId($this->tenantId, $this->companyId, $foreignMethod->id));
+    }
+
+    /**
+     * A genuinely ABSENT id still uses the fallback — that is the bridge's own
+     * behaviour for an unnamed tender, and the case must not be conflated with
+     * "named but unknown".
+     */
+    public function test_resolve_by_method_id_with_no_id_uses_the_fallback(): void
+    {
+        $expected = $this->makeRepository('AAA', glLinked: true);
+
+        $this->assertSame(
+            $expected->id,
+            $this->resolver()->resolveByMethodId($this->tenantId, $this->companyId, null)?->id,
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------

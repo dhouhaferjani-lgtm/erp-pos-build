@@ -61,19 +61,41 @@ final readonly class TenderRepositoryResolver
     /**
      * Same rule, entered from a payment-method ID rather than a hydrated model —
      * what an event-driven caller has (the cash-count breakdown carries
-     * `payment_method_id`). A method id that does not resolve in scope degrades
-     * to the null-method fallback, exactly as the bridge does when its own
-     * method lookup misses.
+     * `payment_method_id`).
+     *
+     * Gate finding I6: a method id that is PRESENT but does not load in
+     * tenant+company scope now returns null — it does NOT degrade to the
+     * null-method fallback. The bridge treats that same input as fatal
+     * (`TreasuryReceiptBridge`: "payment_method_id … resolved but not loadable"),
+     * so falling back here would have been a real divergence between the two
+     * callers, and would have silently routed an unknown tender's money to
+     * whichever GL-linked repository sorts first by UUID. A caller that gets
+     * null refuses to write; the bridge throws. Neither invents a destination.
+     *
+     * A genuinely ABSENT id (null/empty) still uses the null-method fallback,
+     * which is the bridge's behaviour for a tender the canonical payload never
+     * named.
+     *
+     * The lookup itself sits inside the same `QueryException` guard `resolve()`
+     * and the bridge both carry.
      */
     public function resolveByMethodId(string $tenantId, string $companyId, ?string $methodId): ?PaymentRepository
     {
-        $method = null;
+        if (! is_string($methodId) || $methodId === '') {
+            return $this->resolve($tenantId, $companyId, null);
+        }
 
-        if (is_string($methodId) && $methodId !== '') {
+        try {
             $method = PaymentMethod::query()
                 ->where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
                 ->find($methodId);
+        } catch (QueryException) {
+            return null;
+        }
+
+        if (! $method instanceof PaymentMethod) {
+            return null;
         }
 
         return $this->resolve($tenantId, $companyId, $method);

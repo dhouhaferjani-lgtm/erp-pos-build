@@ -96,6 +96,11 @@ final class ShiftCashVarianceAdjustmentTest extends TestCase
             'is_active' => true,
             'default_repository_id' => $this->till->id,
         ]);
+
+        // The lane ships DISABLED (gate finding I1). Every test that expects a
+        // booking opts in explicitly; test_the_listener_ships_disabled below
+        // asserts the default.
+        config()->set('treasury.shift_variance_gl_enabled', true);
     }
 
     public function test_a_short_till_books_dr_658_cr_cash_with_document_entry_and_movement_cross_linked(): void
@@ -229,6 +234,199 @@ final class ShiftCashVarianceAdjustmentTest extends TestCase
             $this->postedDebit($toleranceExpense),
             '658 must carry the per-receipt tolerance ONLY — the shift close must not re-book it.',
         );
+    }
+
+    /**
+     * Gate finding I1 — the lane SHIPS DISABLED, pending the owner ruling on POS
+     * count semantics. Nothing runs, not even an audit row.
+     */
+    public function test_the_listener_ships_disabled_and_writes_nothing(): void
+    {
+        config()->set('treasury.shift_variance_gl_enabled', false);
+
+        $shiftId = (string) Str::uuid();
+        $this->dispatchCount($shiftId, expected: '120.0000', actual: '115.0000');
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, DB::table('repository_movements')->count());
+        $this->assertSame(0, JournalEntry::query()->where('source_type', 'repository_adjustment')->count());
+        $this->assertSame(0, DB::table('audit_events')->where('aggregate_id', $shiftId)->count());
+        $this->assertSame('400.000', $this->till->fresh()?->balance);
+    }
+
+    public function test_the_default_configuration_is_disabled(): void
+    {
+        // Read the config FILE, not the runtime value setUp() opts in to — the
+        // point is that a deployment which sets no env var gets the lane OFF.
+        /** @var array<string, mixed> $treasuryConfig */
+        $treasuryConfig = require base_path('config/treasury.php');
+
+        $this->assertFalse(
+            $treasuryConfig['shift_variance_gl_enabled'],
+            'config/treasury.php must default the shift-variance GL leg to OFF (gate finding I1).',
+        );
+    }
+
+    /**
+     * Gate finding C1/I2 — the booked amount is the event aggregate (the figure
+     * `pos_shifts.variance` carries and the fraud alert tests), never a
+     * re-derivation from the per-tender rows.
+     */
+    public function test_the_booked_amount_is_the_event_aggregate(): void
+    {
+        $shiftId = (string) Str::uuid();
+
+        $this->dispatchCount($shiftId, expected: '120.0000', actual: '115.0000');
+
+        $document = RepositoryAdjustment::query()->where('pos_shift_id', $shiftId)->firstOrFail();
+        $this->assertSame(0, bccomp((string) $document->amount, '5.000', 3));
+    }
+
+    /**
+     * Gate finding C1/I2 — when the declared aggregate and the per-tender sum
+     * disagree, the attribution set does not describe the amount, so nothing is
+     * booked and the omission is durable.
+     */
+    public function test_an_aggregate_that_disagrees_with_the_breakdown_is_refused_and_audited(): void
+    {
+        $shiftId = (string) Str::uuid();
+
+        $this->dispatchWithAggregate(
+            $shiftId,
+            [$this->breakdown($this->cashMethod->id, '120.0000', '115.0000')],
+            aggregate: '-9.0000',
+        );
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, DB::table('repository_movements')->count());
+        $this->assertRefusalAudited($shiftId, 'aggregate_breakdown_mismatch');
+    }
+
+    /**
+     * Gate finding I3 — the offline sync endpoint validates only `uuid|distinct`
+     * on `payment_method_id`, so a CARD tender's "variance" can reach the
+     * listener. The live path rejects it (`method_not_physical`); the offline one
+     * now cannot slip past either.
+     */
+    public function test_a_non_physical_tender_is_refused_and_audited(): void
+    {
+        $cardMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CARD',
+            'name' => 'Card',
+            'is_physical' => false,
+            'is_active' => true,
+            'default_repository_id' => $this->till->id,
+        ]);
+
+        $shiftId = (string) Str::uuid();
+        $this->dispatch($shiftId, [$this->breakdown($cardMethod->id, '120.0000', '115.0000')]);
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertRefusalAudited($shiftId, 'tender_not_physical_or_unknown');
+    }
+
+    /**
+     * Gate finding I6 — a `payment_method_id` that does not load in scope must
+     * refuse, NOT fall back to whichever GL-linked repository sorts first.
+     */
+    public function test_an_unknown_payment_method_id_is_refused_rather_than_falling_back(): void
+    {
+        $shiftId = (string) Str::uuid();
+        $this->dispatch($shiftId, [$this->breakdown((string) Str::uuid(), '120.0000', '115.0000')]);
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame('400.000', $this->till->fresh()?->balance);
+        $this->assertRefusalAudited($shiftId, 'tender_not_physical_or_unknown');
+    }
+
+    /**
+     * Gate finding I7 — a physical cash count belongs in a cash till. The shared
+     * fallback filters on `gl_account_id IS NOT NULL` only, so without this
+     * caller-side assertion a tenant with no `default_repository_id` mapping
+     * could have its cash variance booked against a BANK GL account.
+     */
+    public function test_a_resolved_bank_repository_is_refused_and_audited(): void
+    {
+        // No mapping anywhere, and the only GL-linked repository is a bank.
+        PaymentMethod::query()->whereKey($this->cashMethod->id)->update(['default_repository_id' => null]);
+        $this->till->forceFill(['gl_account_id' => null])->save();
+
+        PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'balance' => '0.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::BankAccount,
+            'gl_account_id' => $this->accountFor(SystemAccountPurpose::Bank)->id,
+            'is_active' => true,
+        ]);
+
+        $shiftId = (string) Str::uuid();
+        $this->dispatchCount($shiftId, expected: '120.0000', actual: '115.0000');
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(0, DB::table('repository_movements')->count());
+        $this->assertRefusalAudited($shiftId, 'resolved_repository_is_not_a_cash_till');
+    }
+
+    /**
+     * Gate finding I4 — a booking is also durably recorded, and gate finding M1
+     * — the scale-4 → scale-3 truncation residual is carried on that record
+     * instead of vanishing.
+     */
+    public function test_a_booking_is_audited_and_carries_the_truncated_residual(): void
+    {
+        $shiftId = (string) Str::uuid();
+
+        // TND is scale 3; a scale-4 variance of −5.0009 books 5.000 and leaves
+        // a 0.0009 residual that must not silently disappear.
+        $this->dispatchCount($shiftId, expected: '120.0000', actual: '114.9991');
+
+        $document = RepositoryAdjustment::query()->where('pos_shift_id', $shiftId)->firstOrFail();
+        $this->assertSame(0, bccomp((string) $document->amount, '5.000', 3));
+
+        $audit = DB::table('audit_events')
+            ->where('event_type', 'treasury.shift_variance_gl_booked')
+            ->where('aggregate_id', $shiftId)
+            ->first();
+        $this->assertNotNull($audit);
+        $payload = (string) $audit->payload;
+        $this->assertStringContainsString('truncated_residual', $payload);
+        $this->assertStringContainsString('0.0009', $payload);
+    }
+
+    public function test_an_ambiguous_count_is_audited(): void
+    {
+        $otherRepository = PaymentRepository::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'balance' => '0.000',
+            'currency' => 'TND',
+            'type' => RepositoryType::Safe,
+            'gl_account_id' => $this->accountFor(SystemAccountPurpose::Bank)->id,
+            'is_active' => true,
+        ]);
+
+        $chequeMethod = PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => 'CHEQUE2',
+            'name' => 'Cheque',
+            'is_physical' => true,
+            'is_active' => true,
+            'default_repository_id' => $otherRepository->id,
+        ]);
+
+        $shiftId = (string) Str::uuid();
+        $this->dispatch($shiftId, [
+            $this->breakdown($this->cashMethod->id, '120.0000', '115.0000'),
+            $this->breakdown($chequeMethod->id, '80.0000', '82.0000'),
+        ]);
+
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertRefusalAudited($shiftId, 'ambiguous_repositories');
     }
 
     /**
@@ -385,6 +583,18 @@ final class ShiftCashVarianceAdjustmentTest extends TestCase
             $aggregate = bcadd($aggregate, $b->varianceAmount, 4);
         }
 
+        $this->dispatchWithAggregate($shiftId, $breakdowns, $aggregate);
+    }
+
+    /**
+     * Dispatch with an aggregate that may deliberately disagree with the
+     * breakdown — the shape gate finding C1/I2 is about.
+     *
+     * @param  list<CashCountBreakdownDTO>  $breakdowns
+     */
+    private function dispatchWithAggregate(string $shiftId, array $breakdowns, string $aggregate): void
+    {
+
         // Queued/afterCommit reality: no company bound (CLAUDE.md rule 20).
         app(CompanyContext::class)->clear();
 
@@ -406,6 +616,17 @@ final class ShiftCashVarianceAdjustmentTest extends TestCase
             descriptionParams: [],
             recordedAt: now()->toIso8601String(),
         ));
+    }
+
+    private function assertRefusalAudited(string $shiftId, string $reason): void
+    {
+        $audit = DB::table('audit_events')
+            ->where('event_type', 'treasury.shift_variance_gl_skipped')
+            ->where('aggregate_id', $shiftId)
+            ->first();
+
+        $this->assertNotNull($audit, "Expected a durable refusal audit event for shift {$shiftId}.");
+        $this->assertStringContainsString($reason, (string) $audit->payload);
     }
 
     private function breakdown(string $methodId, string $expected, string $actual): CashCountBreakdownDTO
