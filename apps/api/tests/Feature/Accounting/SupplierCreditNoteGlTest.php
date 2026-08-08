@@ -14,6 +14,7 @@ use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -22,10 +23,14 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnLineKind;
+use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnNoteStatus;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\Inventory\Domain\SupplierGoodsReturnNote;
+use App\Modules\Inventory\Domain\SupplierGoodsReturnNoteLine;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Procurement\Application\SupplierCreditNotePostingService;
@@ -40,6 +45,7 @@ use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -460,6 +466,9 @@ final class SupplierCreditNoteGlTest extends TestCase
         // PriceAdjustment does NOT touch quantity_invoiced.
         $this->assertSame('5.0000', $this->freshLine($poLine)->quantity_invoiced);
 
+        // V8 — nothing physically moved, so no goods-return note is minted.
+        $this->assertSame(0, SupplierGoodsReturnNote::query()->count());
+
         $this->assertSame(DocumentStatus::Posted, $this->freshDoc($creditNote)->status);
     }
 
@@ -560,9 +569,14 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->assertSame('0.0000', GoodsReceiptLine::findOrFail($draftLine->id)->quantity_invoiced);
     }
 
-    public function test_bonus_goods_return_decrements_free_counter_issues_stock_at_wac_and_avoids_supplier_payable(): void
+    public function test_bonus_goods_return_exits_stock_through_a_confirmed_goods_return_note_and_raises_wac(): void
     {
         ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        // V8: the WAC un-dilution runs through WeightedAverageCostService, whose
+        // scale() resolves the currency from the bound company. The real flow runs
+        // behind CompanyContextMiddleware.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
 
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -637,16 +651,55 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->assertSame('20.0000', $freshPoLine->quantity_invoiced);
         $this->assertSame('0.0000', $freshPoLine->free_quantity_invoiced);
 
-        $movement = StockMovement::where('reference_id', $creditNote->id)->firstOrFail();
-        $this->assertSame(MovementType::Issue, $movement->movement_type);
+        // V8 — the stock exit now hangs off its OWN document, not off the money
+        // document's lifecycle. NOTHING references the credit note any more.
+        $this->assertSame(
+            0,
+            StockMovement::query()->where('reference_id', $creditNote->id)->count(),
+            'The credit note must no longer be the source of a stock movement.',
+        );
+
+        /** @var SupplierGoodsReturnNote $note */
+        $note = SupplierGoodsReturnNote::query()
+            ->where('supplier_credit_note_id', $creditNote->id)
+            ->firstOrFail();
+        $this->assertSame(SupplierGoodsReturnNoteStatus::Confirmed, $note->status);
+        $this->assertNotNull($note->note_number);
+        $this->assertSame($this->supplier->id, $note->partner_id);
+
+        /** @var SupplierGoodsReturnNoteLine $noteLine */
+        $noteLine = SupplierGoodsReturnNoteLine::query()
+            ->where('supplier_goods_return_note_id', $note->id)
+            ->firstOrFail();
+        $this->assertSame(SupplierGoodsReturnLineKind::Bonus, $noteLine->kind);
+        $this->assertSame($poLine->id, $noteLine->po_line_id);
+        $this->assertSame((string) $product->id, $noteLine->product_id);
+
+        /** @var StockMovement $movement */
+        $movement = StockMovement::query()
+            ->where('reference_id', $note->id)
+            ->where('movement_type', MovementType::Issue)
+            ->firstOrFail();
+        $this->assertSame(
+            StockMovementReferenceType::SupplierGoodsReturnNote->value,
+            $movement->reference_type,
+        );
         $this->assertSame('-1.0000', (string) $movement->quantity);
         $this->assertSame('4.761904', (string) $movement->unit_cost);
+        $this->assertSame($movement->id, $noteLine->movement_id);
 
         $this->assertDatabaseHas('stock_levels', [
             'product_id' => $product->id,
             'location_id' => $location->id,
             'quantity' => '20.0000',
         ]);
+
+        // The lane's headline correction: a ZERO-COST bonus unit handed back
+        // un-dilutes the WAC it diluted on entry. The old raw path asserted
+        // avg_cost_before == avg_cost_after == 4.761904 and left cost_price alone.
+        /** @var Product $freshProduct */
+        $freshProduct = $product->fresh();
+        $this->assertSame('4.999999', (string) $freshProduct->cost_price);
 
         $entry = $this->creditEntry($creditNote);
         $this->assertNull($this->legOn($entry, $this->payableAccount));
@@ -659,6 +712,209 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->assertSame('0.000', $crInventory->debit);
         $this->assertSame('4.762', $crInventory->credit);
         $this->assertBalanced($entry);
+    }
+
+    /**
+     * V8 requirement 5 — the "one CN reason, two lane behaviors" split ends:
+     * ORDINARY goods-return lines now move units too, through the SAME note.
+     * They leave at the current WAC, so the WAC itself is untouched (correct —
+     * those units were paid for).
+     */
+    public function test_ordinary_goods_return_with_a_stocked_product_exits_through_the_same_note(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Ordinary Return Product',
+            'cost_price' => '5.000000',
+        ]);
+
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main stock',
+            'code' => 'MAIN-O',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '20.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $poLine->forceFill(['product_id' => $product->id])->save();
+
+        $creditNote = $this->supplierCreditNote(
+            $invoice,
+            $poLine,
+            SupplierCreditNoteReason::GoodsReturn,
+            ['qty' => '2.0000', 'unit_price' => '5.000', 'recoverable_vat' => '0.000'],
+            '10.000',
+            '10.000',
+        );
+
+        $this->service()->post($creditNote);
+
+        $this->assertSame('18.0000', $this->freshLine($poLine)->quantity_invoiced);
+
+        /** @var SupplierGoodsReturnNote $note */
+        $note = SupplierGoodsReturnNote::query()
+            ->where('supplier_credit_note_id', $creditNote->id)
+            ->firstOrFail();
+        $this->assertSame(SupplierGoodsReturnNoteStatus::Confirmed, $note->status);
+
+        /** @var SupplierGoodsReturnNoteLine $noteLine */
+        $noteLine = SupplierGoodsReturnNoteLine::query()
+            ->where('supplier_goods_return_note_id', $note->id)
+            ->firstOrFail();
+        $this->assertSame(SupplierGoodsReturnLineKind::Ordinary, $noteLine->kind);
+        $this->assertSame('2.0000', (string) $noteLine->quantity);
+        $this->assertNull($noteLine->cost_adjustment_movement_id);
+
+        /** @var StockMovement $movement */
+        $movement = StockMovement::query()
+            ->where('reference_id', $note->id)
+            ->where('movement_type', MovementType::Issue)
+            ->firstOrFail();
+        $this->assertSame('-2.0000', (string) $movement->quantity);
+        $this->assertSame('5.000000', (string) $movement->unit_cost);
+
+        $this->assertDatabaseHas('stock_levels', [
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '18.0000',
+        ]);
+
+        // Paid units leave at WAC — no un-dilution, no adjustment movement.
+        /** @var Product $freshProduct */
+        $freshProduct = $product->fresh();
+        $this->assertSame('5.000000', (string) $freshProduct->cost_price);
+        $this->assertSame(
+            0,
+            StockMovement::query()
+                ->where('reference_id', $note->id)
+                ->where('movement_type', MovementType::Adjustment)
+                ->count(),
+        );
+
+        // GL model unchanged (c1-bis owns the GL half): Dr 401, Cr Inventory plug.
+        $entry = $this->creditEntry($creditNote);
+        $drPayable = $this->legOn($entry, $this->payableAccount);
+        $this->assertNotNull($drPayable);
+        $this->assertSame('10.000', $drPayable->debit);
+        $crInventory = $this->legOn($entry, $this->inventoryAccount);
+        $this->assertNotNull($crInventory);
+        $this->assertSame('10.000', $crInventory->credit);
+        $this->assertBalanced($entry);
+    }
+
+    /**
+     * V8 requirement 7 — idempotency. The credit note's own no-op guard already
+     * short-circuits a re-post, so the goods-return note must not be minted twice
+     * and the units must not leave twice.
+     */
+    public function test_reposting_a_bonus_credit_note_creates_no_second_goods_return_note(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Bonus Replay Product',
+            'cost_price' => '4.761904',
+        ]);
+
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Main stock',
+            'code' => 'MAIN-R',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+        ]);
+
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $location->id,
+            'quantity' => '21.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $poLine->forceFill([
+            'product_id' => $product->id,
+            'quantity_received' => '20.0000',
+            'quantity_invoiced' => '20.0000',
+            'free_quantity' => '1.0000',
+            'free_quantity_received' => '1.0000',
+            'free_quantity_invoiced' => '1.0000',
+        ])->save();
+
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierCreditNote,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SCN-RPL-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'source_document_id' => $invoice->id,
+            'subtotal' => '0.000',
+            'line_tax_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+            'supplier_credit_note_reason' => SupplierCreditNoteReason::GoodsReturn,
+        ]);
+
+        DocumentLine::create([
+            'document_id' => $creditNote->id,
+            'line_number' => 1,
+            'description' => 'Returned bonus unit',
+            'quantity' => '1.0000',
+            'unit_price' => '5.000',
+            'line_total' => '0.000',
+            'allocated_costs' => '0.0000',
+            'tax_amount' => '0.000',
+            'recoverable_tax_amount' => '0.000',
+            'non_recoverable_tax_amount' => '0.000',
+            'source_line_id' => $poLine->id,
+            'is_bonus_line' => true,
+        ]);
+
+        $loaded = $creditNote->fresh(['lines']) ?? $creditNote;
+        $this->service()->post($loaded);
+        $this->service()->post($loaded->fresh(['lines']) ?? $loaded);
+
+        $this->assertSame(1, SupplierGoodsReturnNote::query()->count());
+        $this->assertSame(1, SupplierGoodsReturnNoteLine::query()->count());
+        $this->assertSame(1, StockMovement::query()->where('movement_type', MovementType::Issue)->count());
+        $this->assertSame('20.0000', (string) StockLevel::query()
+            ->where('product_id', $product->id)
+            ->firstOrFail()
+            ->quantity);
+        /** @var Product $freshProduct */
+        $freshProduct = $product->fresh();
+        $this->assertSame('4.999999', (string) $freshProduct->cost_price);
+        $this->assertSame(
+            1,
+            JournalEntry::query()
+                ->where('source_type', 'supplier_credit_note')
+                ->where('source_id', $creditNote->id)
+                ->count(),
+        );
     }
 
     // =========================================================================
