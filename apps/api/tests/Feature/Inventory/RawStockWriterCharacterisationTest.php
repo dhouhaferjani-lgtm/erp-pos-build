@@ -235,13 +235,17 @@ final class RawStockWriterCharacterisationTest extends TestCase
         $response->assertJsonPath('data.reason', 'adjustment_positive');
     }
 
-    public function test_adjust_endpoint_accepts_opening_balance_reason_today(): void
+    /**
+     * `opening_balance` USED to be accepted here and is now refused (D7): the
+     * option produced a WRONG opening balance — MovementType::Adjustment with no
+     * WAC basis, no enter-once guard and no GL leg. The acceptance is pinned in
+     * this file's first commit; T5 narrows `manualAdjustmentCases()` and the
+     * whole endpoint goes away in T10.
+     */
+    public function test_adjust_endpoint_no_longer_accepts_the_opening_balance_reason(): void
     {
         $this->seedStock('0.0000');
 
-        // Pinned because V7 (D7) REMOVES `opening_balance` from the manual
-        // vocabulary: it writes MovementType::Adjustment with no WAC basis and
-        // no GL leg, i.e. a wrong opening balance.
         $response = $this->actingAs($this->user)->postJson('/api/v1/stock-movements/adjust', [
             'product_id' => $this->product->id,
             'location_id' => $this->warehouse->id,
@@ -249,9 +253,11 @@ final class RawStockWriterCharacterisationTest extends TestCase
             'reason_code' => 'opening_balance',
         ]);
 
-        $response->assertStatus(201);
-        $response->assertJsonPath('data.movement_type', 'adjustment');
-        $response->assertJsonPath('data.reason', 'opening_balance');
+        $response->assertStatus(422);
+        // Validation failures use the `{error: {code, errors}}` envelope here,
+        // not Laravel's bare `{errors}`.
+        $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
+        $this->assertArrayHasKey('reason_code', (array) $response->json('error.errors'));
     }
 
     // -------------------------------------------------------------- the race
