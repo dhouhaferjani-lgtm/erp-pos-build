@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Treasury\Providers;
 
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
+use App\Modules\POS\Domain\Events\CashCountRecorded;
+use App\Modules\Treasury\Application\Listeners\PostShiftCashVarianceAdjustment;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountChargeBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
 use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
@@ -20,6 +22,7 @@ use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
 use App\Modules\Treasury\Application\Services\InstrumentRemittanceService;
 use App\Modules\Treasury\Application\Services\OutboundInstrumentIssuer;
 use App\Modules\Treasury\Application\Services\PaymentToleranceService;
+use App\Modules\Treasury\Application\Services\RepositoryAdjustmentService;
 use App\Modules\Treasury\Application\Services\StatementActionRegistry;
 use App\Modules\Treasury\Application\Services\StatementParserRegistry;
 use App\Modules\Treasury\Application\Services\TreasuryMovementService;
@@ -38,8 +41,10 @@ use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentIssuerInterface;
 use App\Shared\Contracts\Treasury\OutboundInstrumentPaymentLinkResolver;
 use App\Shared\Contracts\Treasury\PaymentToleranceCheckerContract;
+use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class TreasuryServiceProvider extends ServiceProvider
@@ -81,6 +86,16 @@ class TreasuryServiceProvider extends ServiceProvider
         $this->app->bind(
             TreasuryMovementServiceInterface::class,
             TreasuryMovementService::class,
+        );
+
+        // DPA lane V3/G3 — the single repository-adjustment orchestration port
+        // (document + 658/758 journal entry + movement, one transaction). Bound
+        // to the Shared contract so the POS shift-close cash-variance listener
+        // consumes it without importing the Treasury `RepositoryAdjustment`
+        // domain model or re-implementing the ordering guarantees.
+        $this->app->bind(
+            RepositoryAdjustmentServiceInterface::class,
+            RepositoryAdjustmentService::class,
         );
 
         // Task 3 (treasury burn-down) — read port so the Expense listener
@@ -148,6 +163,27 @@ class TreasuryServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+
+        // DPA lane G3 — book the shift-close cash-count variance to the GL.
+        // TREASURY-side deliberately: the POS module owns no treasury write-port
+        // usage (policed by tests/Architecture/TreasuryBalanceWritePortTest.php),
+        // so the consumer of this POS domain event lives here. Registered the
+        // same way Compliance registers its own CashCountRecorded consumer
+        // (OpenFraudAlertForShiftVariance) — synchronous, and internally
+        // log-never-block: the live path raises the event from a DB::afterCommit
+        // callback and the offline path dispatches plainly after its transaction
+        // returns, so in BOTH cases the shift close has already succeeded by the
+        // time this runs and a throw here would surface as a spurious 500.
+        //
+        // The listener itself is gated on `treasury.shift_variance_gl_enabled`
+        // (default FALSE — gate finding I1, pending the owner ruling on POS
+        // count semantics). The gate is checked inside handle() rather than
+        // around this registration so the flag stays runtime-evaluable in tests
+        // and so a future per-company dimension has somewhere to live.
+        Event::listen(
+            CashCountRecorded::class,
+            [PostShiftCashVarianceAdjustment::class, 'handle'],
+        );
 
         if ($this->app->runningInConsole()) {
             $this->commands([

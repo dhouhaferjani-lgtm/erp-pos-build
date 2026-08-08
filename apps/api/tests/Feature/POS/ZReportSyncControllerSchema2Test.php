@@ -376,7 +376,25 @@ final class ZReportSyncControllerSchema2Test extends TestCase
         );
     }
 
-    public function test_cash_count_recorded_defaults_missing_variance_at_company_currency_scale(): void
+    /**
+     * A missing `shift_fields.variance_amount` no longer defaults to a hard zero
+     * at the company currency scale — it is DERIVED from
+     * `SUM(cash_counts[].variance_amount)` at scale 4 (DPA lane G3, gate finding
+     * C1/I2).
+     *
+     * The shipping device's `LocalZReportShiftFields` never carries
+     * `variance_amount`, so the old default silently made every real device
+     * shortfall look balanced: `pos_shifts.variance` stayed NULL and
+     * `OpenFraudAlertForShiftVariance` short-circuited on `isZero()`. Scale 4 is
+     * the live path's own aggregate scale (`CashCountValidationService`) and the
+     * scale of the `pos_shifts.variance` column, so the two paths now agree.
+     *
+     * This fixture's `cash_counts` sum to zero, so the VALUE is unchanged and
+     * still balanced — only the scale of the derived string moved from the
+     * company money scale to scale 4. See
+     * ShiftCashVarianceOfflineDevicePayloadTest for the non-zero case.
+     */
+    public function test_cash_count_recorded_derives_a_missing_variance_from_the_tender_breakdown(): void
     {
         Sanctum::actingAs($this->cashier);
         Event::fake();
@@ -388,9 +406,42 @@ final class ZReportSyncControllerSchema2Test extends TestCase
 
         Event::assertDispatched(CashCountRecorded::class, function (CashCountRecorded $event): bool {
             $this->assertSame('EUR', $event->currencyCode);
-            $this->assertSame('0.00', $event->aggregateVariance->amount);
+            $this->assertSame('0.0000', $event->aggregateVariance->amount);
+            $this->assertTrue($event->aggregateVariance->isZero());
             $this->assertSame('balanced', $event->varianceDirection->value);
-            $this->assertSame('0.00', $event->descriptionParams['aggregate_amount'] ?? null);
+            $this->assertSame('0.0000', $event->descriptionParams['aggregate_amount'] ?? null);
+
+            return true;
+        });
+    }
+
+    /**
+     * The non-zero counterpart: a device payload with a real per-tender variance
+     * and no `shift_fields.variance_amount` must surface that variance on the
+     * event AND on `pos_shifts.variance` (gate finding C1).
+     */
+    public function test_a_missing_variance_amount_is_derived_from_a_non_zero_tender_breakdown(): void
+    {
+        Sanctum::actingAs($this->cashier);
+        Event::fake();
+
+        $payload = $this->buildSchema2Payload();
+        unset($payload['shift_fields']['variance_amount']);
+        $payload['cash_counts'][0]['actual_amount'] = '95.000';
+        $payload['cash_counts'][0]['variance_amount'] = '-5.000';
+        $payload['cash_counts'][0]['variance_direction'] = 'under';
+
+        $this->postJson('/api/v1/pos/reports/z/sync', $payload)->assertCreated();
+
+        $shift = $this->shift->fresh();
+        $this->assertNotNull($shift);
+        $this->assertNotNull($shift->variance);
+        $this->assertSame(0, bccomp((string) $shift->variance, '-5.0000', 4));
+
+        Event::assertDispatched(CashCountRecorded::class, function (CashCountRecorded $event): bool {
+            $this->assertSame(0, bccomp($event->aggregateVariance->amount, '-5.0000', 4));
+            $this->assertFalse($event->aggregateVariance->isZero());
+            $this->assertSame('under', $event->varianceDirection->value);
 
             return true;
         });

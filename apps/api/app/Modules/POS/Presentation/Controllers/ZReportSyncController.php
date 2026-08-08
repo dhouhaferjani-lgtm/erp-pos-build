@@ -241,11 +241,23 @@ final class ZReportSyncController extends Controller
             }
 
             // ── Stamp shift_fields onto pos_shifts ───────────────────────────
-            if ($shiftFields !== null) {
+            // DPA lane G3 (gate finding C1/I2): `pos_shifts.variance`, the fraud
+            // alert and the shift-variance journal entry must all be ONE number.
+            // The real device payload carries no `shift_fields.variance_amount`
+            // (LocalZReportShiftFields is blind_count_used / variance_severity /
+            // variance_reason / manager_override_by only), which used to leave
+            // `pos_shifts.variance` NULL and the event aggregate 0.000 while a
+            // third figure — SUM(cash_counts[].variance_amount) — was the only
+            // real one on the wire. The aggregate is therefore resolved HERE,
+            // once, and handed to both consumers.
+            $syncedAggregate = $this->resolveSyncedAggregateVariance($rawCashCounts, $shiftFields);
+
+            if ($shiftFields !== null || $syncedAggregate !== null) {
                 $this->applyShiftFields(
                     (string) $validated['shift_id'],
-                    $shiftFields,
+                    $shiftFields ?? [],
                     $managerUserId,
+                    $syncedAggregate,
                 );
             }
 
@@ -254,7 +266,15 @@ final class ZReportSyncController extends Controller
 
         // ── Dispatch CashCountRecorded event (outside transaction) ────────────
         if ($rawCashCounts !== null && $rawCashCounts !== []) {
-            $this->dispatchCashCountRecorded($zReport, $terminal, $validated, $rawCashCounts, $shiftFields, $managerUserId);
+            $this->dispatchCashCountRecorded(
+                $zReport,
+                $terminal,
+                $validated,
+                $rawCashCounts,
+                $shiftFields,
+                $managerUserId,
+                $this->resolveSyncedAggregateVariance($rawCashCounts, $shiftFields),
+            );
         }
 
         return response()->json([
@@ -345,12 +365,64 @@ final class ZReportSyncController extends Controller
     }
 
     /**
+     * Resolve the ONE aggregate variance for a synced Z report — DPA lane G3,
+     * gate finding C1/I2.
+     *
+     * The offline payload can carry the aggregate in two places, and the real
+     * shipping device sends only one of them:
+     *   - `shift_fields.variance_amount` — authoritative when present, but
+     *     `LocalZReportShiftFields` on the device does NOT include it;
+     *   - `cash_counts[].variance_amount` — always present, per-row validated by
+     *     {@see validateCashCountBreakdownArithmetic()}.
+     *
+     * Returning the per-tender SUM when the device omits its own aggregate is
+     * what stops `pos_shifts.variance` staying NULL, the fraud alert
+     * short-circuiting on `isZero()`, and the Treasury shift-variance listener
+     * booking a journal entry from a figure neither of them ever saw.
+     *
+     * Scale 4 throughout — `pos_shifts.variance` is `decimal:4` and the
+     * per-tender rows are archived at scale 4.
+     *
+     * @param  array<int, array<string, mixed>>|null  $cashCounts
+     * @param  array<string, mixed>|null  $shiftFields
+     * @return numeric-string|null null when there is nothing to derive from
+     */
+    private function resolveSyncedAggregateVariance(?array $cashCounts, ?array $shiftFields): ?string
+    {
+        if ($shiftFields !== null && isset($shiftFields['variance_amount']) && is_string($shiftFields['variance_amount'])) {
+            /** @var numeric-string $declared */
+            $declared = $this->normaliseNumericString($shiftFields['variance_amount']);
+
+            return bcadd($declared, '0', 4);
+        }
+
+        if ($cashCounts === null || $cashCounts === []) {
+            return null;
+        }
+
+        // Seeded at bare '0' (not a scale-4 literal — ForbidFixedScaleQuantityLiteralRule
+        // polices those in Presentation); the first bcadd below lifts it to scale 4.
+        /** @var numeric-string $sum */
+        $sum = '0';
+
+        foreach ($cashCounts as $entry) {
+            $sum = bcadd($sum, $this->normaliseNumericString($entry['variance_amount'] ?? null), 4);
+        }
+
+        return $sum;
+    }
+
+    /**
      * Apply shift_fields (and optional manager_user_id) to the pos_shifts row.
      *
      * @param  array<string, mixed>  $shiftFields
      */
-    private function applyShiftFields(string $shiftId, array $shiftFields, ?string $managerUserId): void
-    {
+    private function applyShiftFields(
+        string $shiftId,
+        array $shiftFields,
+        ?string $managerUserId,
+        ?string $resolvedAggregate = null,
+    ): void {
         $shift = Shift::find($shiftId);
 
         if (! $shift instanceof Shift) {
@@ -364,8 +436,27 @@ final class ZReportSyncController extends Controller
             $updates['actual_cash'] = (string) $shiftFields['actual_cash'];
         }
 
-        if (array_key_exists('variance_amount', $shiftFields) && $shiftFields['variance_amount'] !== null) {
-            $updates['variance'] = (string) $shiftFields['variance_amount'];
+        // G3 C1: the ONE resolved aggregate — the device's own when it sent one,
+        // otherwise the per-tender sum it DID send. Never left NULL while a
+        // non-zero variance is on the wire, and the journal entry the Treasury
+        // listener posts is driven by the very same figure.
+        //
+        // Gate re-review N5: this consumes `resolveSyncedAggregateVariance()`'s
+        // return UNCONDITIONALLY rather than re-reading
+        // `$shiftFields['variance_amount']` itself. Two predicates over one
+        // field (`isset() && is_string()` there, `array_key_exists() && !== null`
+        // here) agreed only by accident of the `['sometimes','nullable','string']`
+        // validation rule; loosening that rule to `numeric` would have sent the
+        // declared value here and the breakdown sum to the event — the C1 defect
+        // reintroduced with no failing test. One source, one predicate.
+        //
+        // Gate re-review N3 (fiscal): it also fixes the scale. The resolver
+        // returns scale 4 on BOTH branches, so `pos_shifts.variance` (decimal:4)
+        // and `descriptionParams['aggregate_amount']` — which lands in
+        // `fraud_alerts.description_params`, a human-facing surface — no longer
+        // carry a payload-dependent scale.
+        if ($resolvedAggregate !== null) {
+            $updates['variance'] = $resolvedAggregate;
         }
 
         if (array_key_exists('variance_severity', $shiftFields) && $shiftFields['variance_severity'] !== null) {
@@ -420,15 +511,21 @@ final class ZReportSyncController extends Controller
         array $rawCashCounts,
         ?array $shiftFields,
         ?string $managerUserId,
+        ?string $resolvedAggregate = null,
     ): void {
         $company = Company::find($terminal->company_id);
         $currencyCode = ($company instanceof Company) ? $company->currency : 'XXX';
         $moneyScale = $this->scaleResolver->getScaleSafe($currencyCode, 3);
 
+        // G3 C1: EXACTLY the figure `applyShiftFields` just stamped on
+        // `pos_shifts.variance` — same resolver call, same value, same scale, no
+        // second predicate over the raw payload (gate re-review N5/N3). Falling
+        // back to a hard zero here (the old behaviour) meant
+        // OpenFraudAlertForShiftVariance short-circuited on `isZero()` for every
+        // real device shortfall. The zero fallback survives only for the
+        // impossible case of no resolvable aggregate at all.
         /** @var numeric-string $varianceRaw */
-        $varianceRaw = ($shiftFields !== null && isset($shiftFields['variance_amount']) && is_string($shiftFields['variance_amount']))
-            ? $shiftFields['variance_amount']
-            : CurrencyScale::bcformatStrict('0', $moneyScale);
+        $varianceRaw = $resolvedAggregate ?? CurrencyScale::bcformatStrict('0', $moneyScale);
 
         $severityRaw = ($shiftFields !== null && isset($shiftFields['variance_severity']) && is_string($shiftFields['variance_severity']))
             ? $this->normaliseVarianceSeverity($shiftFields['variance_severity'])
