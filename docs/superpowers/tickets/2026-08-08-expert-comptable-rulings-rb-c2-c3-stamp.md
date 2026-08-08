@@ -112,13 +112,35 @@ directive above.
 
 ---
 
+## c1-bis / D1 — inventory accounting model — ✅ ANSWERED 2026-08-08 (expert-comptable, via owner)
+
+**Recommandation Directe : Core Model en Inventaire Permanent, paramétrable par Société /
+Pays (Country Setting).**
+
+Verbatim:
+> Adopter l'Inventaire Permanent comme Standard Core Model :
+> * Obligatoire pour maximiser la valeur de votre ERP.
+> * Totalement conforme à la NCT 04 en Tunisie et aux normes IFRS.
+>
+> Conserver le paramètre au niveau de la Société (Company Code / Valuation Area) :
+> * Souplesse réglementaire : Permet de s'adapter si une filiale étrangère spécifique
+>   impose des schémas comptables locaux particuliers.
+> * Gestion des consommables : Permet de traiter certaines catégories secondaires
+>   (fournitures de bureau, pièces de faible valeur) en mode "Intermittent/Expense-based"
+>   sans impacter le stock principal.
+
+**Consequences:** core model = PERPETUAL (COGS recognized at stock exit — delivery-note
+confirm / POS receipt projection — consistent with ruling c1's lane model); valuation mode
+is a COMPANY-LEVEL SEEDED SETTING (country-defaulted, per the seeded-settings directive);
+secondary/consumable product categories may carry a per-category expense-based override
+that bypasses the stock lane. Return-note confirm re-debits inventory / credits COGS.
+Consumers: G1-family design in the DPA remediation track
+(`docs/handoff/HANDOVER-document-per-action-remediation-2026-08-08.md` §3 — research
+mandate re-scoped from "which model" to implementation validation + parameter/category
+design), plus D1/D2 of `2026-08-07-cogs-lane-mismatch.md`.
+
 ## Still OPEN after this batch
 
-- **c1-bis (expert, blocks F2's GL half):** où constater le coût des ventes — à la sortie
-  de stock (confirmation du BL, cohérent avec le modèle stock/argent séparés) ou à la
-  facturation (état actuel) ? Et quelle écriture à la confirmation d'un bon de retour
-  (re-débit stock / crédit 607) ? Determines whether COGS moves to the delivery-note leg
-  (accounting migration) or stays at invoice with cancel-extourne + return-entry.
-  See `2026-08-07-cogs-lane-mismatch.md` (D1 double-COGS, D2 return-note-no-GL).
+- (none — c1-bis answered above.)
 - Owner rows R-d, R-e, R-f, R-g, R-h (`fiscal:backfill`), R-i (`credit-notes.confirm`
   permission) — unchanged.

@@ -29,33 +29,48 @@ explicit-never-silent, one-go-completing UI intersections.
 
 ## 3. The research mandate (do this BEFORE dispatching Wave-3 code)
 
-**Centerpiece: perpetual vs periodic inventory accounting (c1-bis).** The codebase is an
-incoherent mix (COGS at B2B invoice posting only; POS sales relieve no GL inventory;
-counting/shrinkage posts no GL; returns post no GL). Dispatch research subagents on:
-- TN norms: NC 01/NC 04 inventory treatment, DGI practice for retail/pharmacy POS
-  (inventaire permanent vs intermittent), what certified TN ERPs do.
-- FR (coming soon): PCG stock-variation accounts (603x/713x), NF525 interplay.
-- The expert-comptable's c1-bis answer (owner is relaying the question — verbatim in the
-  rulings record §R-c). Research CHALLENGES or CONFIRMS it; disagreement goes back to the
-  owner, not silently resolved.
-- Recommendation shape: likely a SEEDED per-country/per-tenant accounting-mode setting
-  (perpetual|periodic) per the owner's settings directive — but only if research supports
-  operating both; a single well-chosen mode with country seeds is acceptable too.
-The answer decides G1/G2/G3-family/V8-GL/return-note-GL in one stroke: perpetual ⇒ one
-movement-driven GL listener collapses them; periodic ⇒ period-close variation entries and
-most of G2 evaporates.
+**D1 IS ANSWERED (expert-comptable via owner, 2026-08-08 — verbatim in
+`2026-08-08-expert-comptable-rulings-rb-c2-c3-stamp.md` §c1-bis): PERPETUAL inventory as
+the core model (NCT 04 + IFRS), parameterized at COMPANY level (Company Code / Valuation
+Area, country-defaulted seed), with a per-category "Intermittent/Expense-based" option for
+secondary consumables (office supplies, low-value parts) that bypasses the main stock lane.**
+
+The research mandate is therefore RE-SCOPED from "which model" to implementation
+validation + design. Dispatch research subagents on:
+- **COGS-at-stock-exit listener design:** trigger on stock-exit movements
+  (delivery-note confirm, POS receipt projection, write-off) so G1 + G2 + V10-GL + the
+  return-note re-debit collapse into ONE movement-driven GL seam. Validate against the
+  existing WAC/cost-lock machinery and the log-never-block posture (add a DETECTOR for
+  docs/receipts with physical lines and no COGS entry — COGS is already
+  non-deterministically missing today, see sizing).
+- **The valuation-mode parameter:** company-level seeded setting (perpetual default for TN
+  and FR seeds); decide whether periodic mode is BUILT now or merely not-blocked (schema/
+  enum reserved, refusal elsewhere). Recommendation: not-blocked only — no current tenant
+  needs periodic.
+- **Per-category expense-based override:** model shape (product-category flag), guard that
+  it never applies to fiscal/stock-tracked main catalog, TN/FR compliance check.
+- **D5 supplement (owner-requested):** short research pass on adjustment-document naming +
+  states — survey how major ERPs (SAP material documents, Odoo inventory adjustments,
+  Dynamics journals) model lightweight stock-correction documents and their state machines;
+  reconcile with the existing `StockAdjustmentService` (a WRITER service, not a document)
+  and the house `DocumentStatus` set before freezing the `stock_adjustments` schema.
+- **Migration/backfill question:** what happens to already-posted invoices' COGS entries
+  when the trigger moves to stock-exit (pre-launch: likely nothing to migrate for tenant
+  #1, but the D1 double-COGS window must close atomically with the relocation).
+Research CHALLENGES or CONFIRMS the expert's answer against code reality; disagreement
+goes back to the owner, not silently resolved.
 
 ## 4. Owner decision queue (get these rulings; recommendations attached)
 
-| # | Decision | Blocks | Recommendation |
+| # | Decision | Blocks | Status (owner responses 2026-08-08) |
 |---|---|---|---|
-| D1 | c1-bis / perpetual-vs-periodic (expert + research §3) | G1, G2, V8-GL, RN-GL | research first; lean perpetual-at-stock-exit (matches ruled lane model; POS covered for free) |
-| D2 | F4 manual-JE correction shape: (a) declare-target vs (b) privileged force | V5 | **(a)** — literal embodiment of "corrections are documents, linked" |
-| D3 | `voidReceipt` sunset? (already retired on v4-acknowledged terminals, zero FE callers) | V9 | **sunset** → V9 shrinks to endpoint retirement; else fix via server-authored VOID fiscal event |
-| D4 | V6 import: (c) deprecate stock_levels type vs (b) cost_price fallback vs (a) new column | V6 | **(c)** — products import already does it right |
-| D5 | V7 `adjust`: new lightweight `stock_adjustments` document (delta + observed-before) | V7 | yes — counting doc too heavy for one-shelf corrections |
-| D6 | Return-note state naming for the modal ("open"=Draft, "closed"=Confirmed — no Closed state exists) | cancel-flow FE strings | confirm mapping with owner |
-| D7 | V6 re-import semantics: refuse-on-second-run + reset affordance (enter-once guard) | V6 | accept; surface `ResetOpeningBalanceService` |
+| D1 | inventory accounting model | G1, G2, V8-GL, RN-GL | ✅ **ANSWERED**: perpetual core, company/country-parameterized, per-category expense-based consumables option (see §3) |
+| D2 | F4 manual-JE correction shape: (a) declare-target vs (b) privileged force | V5 | ✅ **RATIFIED (a)** — corrections are documents, linked |
+| D3 | `voidReceipt` sunset? (already retired on v4-acknowledged terminals, zero FE callers) | V9 | ✅ **RATIFIED: sunset** → V9 shrinks to endpoint retirement + guard; verify no residual consumer before removal |
+| D4 | V6 import: (c) deprecate stock_levels type vs (b) cost_price fallback vs (a) new column | V6 | **(c) provisionally** — the UI card literally advertises "Import opening stock quantities", i.e. the compliant path's exact purpose; owner briefed, final confirm owed |
+| D5 | V7 `adjust`: new lightweight `stock_adjustments` DOCUMENT (delta + observed-before) | V7 | ✅ **RATIFIED, with owner-requested research supplement** (§3, D5 bullet: document naming + state-machine best practices BEFORE schema freeze). Note: `StockAdjustmentService` is a writer SERVICE, not a document — the document is new |
+| D6 | Return-note state naming for the modal ("open"=Draft, "closed"=Confirmed — no Closed state exists) | cancel-flow FE strings | ✅ **RATIFIED** mapping |
+| D7 | V6 re-import semantics: refuse-on-second-run + reset affordance (enter-once guard) | V6 | ✅ **RATIFIED** |
 
 ## 5. Consolidated dispatch plan
 
@@ -77,8 +92,10 @@ Wave 2 (after V3 / S0 / rulings):
   V7  stock-writer containment (after D5)        L   inv-costing + frontend-conv
   V8  supplier goods-return note (units half)    M   inv-costing
   V5  manual-JE correction linkage (after D2)    M-L fiscal-pos
-Wave 3 (after D1/c1-bis + research):
-  G1 (+G2 + V8-GL + RN-GL as one design)         L   inv-costing + fiscal-pos
+Wave 3 (after the §3 research validation pass — D1 itself is ANSWERED):
+  G1 (+G2 + V8-GL + RN-GL as ONE movement-driven design, per perpetual ruling)
+                                                 L   inv-costing + fiscal-pos
+  + valuation-mode company setting (seeded, perpetual default) + consumables category flag
 Cement (last): architecture guard — forbid JournalEntry::create / StockMovement::create /
   raw StockLevel writes outside document-keyed services with non-self source linkage
   (PHPStan rule or deptrac layer + pinned test). Register §7.

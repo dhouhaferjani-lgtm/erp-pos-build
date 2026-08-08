@@ -82,8 +82,11 @@ mirror (reverseDocumentGl null for supplier docs today); F1's shipped refusal st
 c3 declaration reconciliation — ✅ ANSWERED 2026-08-08 (expert): NET aggregation on the
 declaration + DISTINCT correction lines via linked correcting document (never
 delete/overwrite). Verbatim: same ticket §Q4. Consumer F3 (composes with c4/F4).
-⏳ NEW OPEN: c1-bis (COGS at BL-confirm vs at invoicing; return-note GL entry) — blocks
-F2's GL half; relayed to expert. See same ticket §Still-OPEN.
+c1-bis — ✅ ANSWERED 2026-08-08 (expert): PERPETUAL core model, company/country-
+parameterized valuation setting, per-category expense-based option for consumables (NCT 04
++ IFRS). COGS at stock exit; return-note confirm re-debits inventory/credits COGS.
+Verbatim: `2026-08-08-expert-comptable-rulings-rb-c2-c3-stamp.md` §c1-bis. Consumer: DPA
+remediation track Wave 3 (G1-family) + F2's GL half.
 
 ### Gate-derived relay notes, 2026-08-07 (R2-F1 taxation gate — inputs for the expert, NOT rulings)
 
