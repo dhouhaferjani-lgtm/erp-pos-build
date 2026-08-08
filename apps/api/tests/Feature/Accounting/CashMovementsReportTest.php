@@ -233,6 +233,174 @@ final class CashMovementsReportTest extends TestCase
         );
     }
 
+    /**
+     * DPA V4 / T10 (plan D-12) — a CASH-branch reversal is one cash OUTFLOW.
+     *
+     * Tracing a `reversal` row through the four direction `CASE` arms before this
+     * fix: arms 1/2 need `source_type IN PAYMENT_BACKED_SOURCE_TYPES` and a
+     * reversal posts `customer_payment_refund`, which is NOT in that list → miss;
+     * arm 3 needs `pos_receipt_refund` → miss; arm 4 was a two-literal
+     * `payment_type IN (?, ?)` → miss. So every reversal fell to `ELSE => In` and
+     * was reported as a cash INFLOW of a negative amount.
+     *
+     * Gate Minor-7: the assertion is on the COUNT, not on mere presence. The union
+     * de-duplicates via `journalLinesQuery`'s `whereNotExists` over
+     * `PAYMENT_BACKED_SOURCE_TYPES`, and `customer_payment_refund` is absent from
+     * that list, so a DOUBLE COUNT is reachable and "appears with direction out"
+     * would pass anyway.
+     */
+    public function test_cash_movements_report_counts_a_cash_backed_reversal_once_as_an_outflow(): void
+    {
+        $reversal = $this->payment(
+            repository: $this->cashRepository,
+            amount: '-60.000',
+            paymentDate: '2026-07-01',
+            paymentType: PaymentType::Reversal,
+        );
+
+        // The posted cash leg that admits the row (D-12 part 2).
+        $entry = $this->journalEntry('2026-07-01', 'customer_payment_refund', $reversal->id);
+        $this->journalLine($entry, $this->cashAccount, '0.000', '60.000', 'Payment reversed');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-01&to=2026-07-01&repository_id={$this->cashRepository->id}");
+
+        $response->assertOk();
+
+        $rows = array_values(array_filter(
+            (array) $response->json('data'),
+            static fn (array $row): bool => $row['source_id'] === $reversal->id,
+        ));
+
+        self::assertCount(1, $rows, 'exactly one row — never double-counted through the GL twin');
+        self::assertSame('out', $rows[0]['direction'], 'a reversal returns money: OUT, never the ELSE=>In default');
+        self::assertSame('payment', $rows[0]['source_type']);
+    }
+
+    /**
+     * DPA V4 / T10, gate Important-2 — an INSTRUMENT-branch reversal contributes
+     * ZERO rows.
+     *
+     * The report is driven off `payments`, not `repository_movements`, and the
+     * reversal row copies `repository_id` from the original while being stamped
+     * `Completed` — so admitting `reversal` to `OUTGOING_PAYMENT_TYPES`
+     * unconditionally would emit a PHANTOM cash row for every instrument-branch
+     * reversal, which by design moved no cash and posted no
+     * `customer_payment_refund` entry. The admission `EXISTS` gate is what
+     * prevents it. (`DeferredTenderGuardsTest` asserts the same reality from the
+     * other side: zero movements, zero refund entries.)
+     */
+    public function test_cash_movements_report_omits_a_reversal_with_no_posted_cash_leg(): void
+    {
+        $reversal = $this->payment(
+            repository: $this->cashRepository,
+            amount: '-60.000',
+            paymentDate: '2026-07-01',
+            paymentType: PaymentType::Reversal,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-01&to=2026-07-01&repository_id={$this->cashRepository->id}");
+
+        $response->assertOk();
+
+        $rows = array_values(array_filter(
+            (array) $response->json('data'),
+            static fn (array $row): bool => $row['source_id'] === $reversal->id,
+        ));
+
+        self::assertCount(0, $rows, 'no posted cash leg => no cash row (no phantom outflow)');
+        self::assertSame(0, (int) $response->json('meta.total'));
+    }
+
+    /**
+     * A DRAFT cash leg does not admit the row either — the `EXISTS` gate requires a
+     * POSTED entry, matching every other arm of this report.
+     */
+    public function test_cash_movements_report_omits_a_reversal_whose_cash_leg_is_only_draft(): void
+    {
+        $reversal = $this->payment(
+            repository: $this->cashRepository,
+            amount: '-60.000',
+            paymentDate: '2026-07-01',
+            paymentType: PaymentType::Reversal,
+        );
+
+        $entry = $this->journalEntry(
+            '2026-07-01',
+            'customer_payment_refund',
+            $reversal->id,
+            JournalEntryStatus::Draft,
+        );
+        $this->journalLine($entry, $this->cashAccount, '0.000', '60.000', 'Draft reversal leg');
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-01&to=2026-07-01&repository_id={$this->cashRepository->id}");
+
+        $response->assertOk();
+        self::assertSame(0, (int) $response->json('meta.total'));
+    }
+
+    /** The admission gate must not touch NON-reversal rows. */
+    public function test_the_reversal_admission_gate_leaves_ordinary_payments_alone(): void
+    {
+        $payment = $this->payment(
+            repository: $this->cashRepository,
+            amount: '25.000',
+            paymentDate: '2026-07-01',
+            paymentType: PaymentType::DocumentPayment,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-01&to=2026-07-01&repository_id={$this->cashRepository->id}");
+
+        $response->assertOk();
+        $response->assertJsonPath('data.0.source_id', $payment->id);
+        $response->assertJsonPath('data.0.direction', 'in');
+        self::assertSame(1, (int) $response->json('meta.total'));
+    }
+
+    /**
+     * The direction `CASE` is driven by a HAND-COUNTED positional binding list. An
+     * off-by-one there silently mislabels EVERY row in the report, so the
+     * pre-existing arms are re-asserted alongside the new one.
+     */
+    public function test_the_direction_case_bindings_stay_aligned_across_all_arms(): void
+    {
+        $refund = $this->payment(
+            repository: $this->cashRepository,
+            amount: '-10.000',
+            paymentDate: '2026-07-01',
+            paymentType: PaymentType::Refund,
+        );
+        $supplier = $this->payment(
+            repository: $this->cashRepository,
+            amount: '-20.000',
+            paymentDate: '2026-07-01',
+            paymentType: PaymentType::SupplierPayment,
+        );
+        $incoming = $this->payment(
+            repository: $this->cashRepository,
+            amount: '30.000',
+            paymentDate: '2026-07-01',
+            paymentType: PaymentType::DocumentPayment,
+        );
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson("/api/v1/reports/cash-movements?from=2026-07-01&to=2026-07-01&repository_id={$this->cashRepository->id}");
+
+        $response->assertOk();
+
+        $byId = [];
+        foreach ((array) $response->json('data') as $row) {
+            $byId[$row['source_id']] = $row['direction'];
+        }
+
+        self::assertSame('out', $byId[$refund->id] ?? null);
+        self::assertSame('out', $byId[$supplier->id] ?? null);
+        self::assertSame('in', $byId[$incoming->id] ?? null);
+    }
+
     public function test_cash_movements_report_requires_authentication(): void
     {
         $response = $this->getJson('/api/v1/reports/cash-movements?from=2026-07-02&to=2026-07-02');

@@ -343,6 +343,70 @@ final class PaymentReversalDocumentTest extends TestCase
     }
 
     // ---------------------------------------------------------------------
+    // T10 — the two reference-heuristic refund readers (plan D-11)
+    // ---------------------------------------------------------------------
+
+    /**
+     * `getRefundHistory()` selects by `amount < 0 AND reference LIKE '%…%'` with NO
+     * type filter, and V4's reversal row is a negative payment whose reference
+     * contains the original's — so without the added type filter it would be
+     * counted into `total_refunded` and a reversed-not-refunded payment would
+     * report a refund that never happened.
+     */
+    public function test_the_refund_history_does_not_count_the_reversal_row(): void
+    {
+        $invoice = $this->paidInvoice('500.00');
+        $original = $this->paymentAllocatedTo([[$invoice, '500.00']], '500.00');
+
+        $this->refundService->reversePayment($original, 'reversed not refunded', $this->user->id);
+
+        $history = $this->refundService->getRefundHistory($original->fresh() ?? $original);
+
+        self::assertSame(0, bccomp('0', (string) $history['total_refunded'], 3), 'nothing was REFUNDED');
+        self::assertSame(0, $history['refund_count']);
+        self::assertFalse($history['is_fully_refunded']);
+    }
+
+    /** A real refund is still counted — the filter must not over-tighten. */
+    public function test_the_refund_history_still_counts_real_refunds_after_a_reversal_exists(): void
+    {
+        $invoice = $this->paidInvoice('1000.00');
+        $original = $this->paymentAllocatedTo([[$invoice, '1000.00']], '1000.00');
+
+        $this->refundService->partialRefund($original, '400.00', 'partial', $this->user->id);
+        $this->refundService->reversePayment($original->fresh() ?? $original, 'then reverse', $this->user->id);
+
+        $history = $this->refundService->getRefundHistory($original->fresh() ?? $original);
+
+        self::assertSame(
+            0,
+            bccomp('400', (string) $history['total_refunded'], 3),
+            'the 400 refund counts; the 600 reversal does not',
+        );
+        self::assertSame(1, $history['refund_count']);
+    }
+
+    /**
+     * `findExistingFullRefund()` uses the same untyped reference heuristic. Asked
+     * for the full refund of a REVERSED-not-refunded payment it would otherwise
+     * hand back the REVERSAL row. With the type filter it finds nothing and throws
+     * its existing "data integrity issue" error, which is now ACCURATE.
+     */
+    public function test_refunding_a_reversed_payment_never_returns_the_reversal_row(): void
+    {
+        $invoice = $this->paidInvoice('500.00');
+        $original = $this->paymentAllocatedTo([[$invoice, '500.00']], '500.00');
+
+        $reversal = $this->refundService->reversePayment($original, 'reverse first', $this->user->id);
+        self::assertInstanceOf(Payment::class, $reversal);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('no refund record found');
+
+        $this->refundService->refundPayment($original->fresh() ?? $original, 'now refund', $this->user->id);
+    }
+
+    // ---------------------------------------------------------------------
     // T7 — the CASH branch
     // ---------------------------------------------------------------------
 

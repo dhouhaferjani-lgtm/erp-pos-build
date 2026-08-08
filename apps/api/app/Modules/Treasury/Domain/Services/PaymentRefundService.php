@@ -737,9 +737,19 @@ class PaymentRefundService
      */
     public function getRefundHistory(Payment $payment): array
     {
-        // Find all refund payments (negative amounts) for this payment
+        // Find all refund payments (negative amounts) for this payment.
+        //
+        // DPA V4 (D-11): the `payment_type` filter is REQUIRED, not hygiene. This
+        // is a reference-string heuristic with no type predicate, and a reversal
+        // row is ALSO a negative payment whose `reference` contains the original's
+        // ("Reversal for payment {ref}"), so without the filter a
+        // reversed-not-refunded payment would report a refund that never happened
+        // and `total_refunded` would double-count a payment that was reversed after
+        // a partial refund. (Replacing the `reference LIKE` matching with
+        // `original_payment_id` is a separate cleanup — ticketed.)
         $refunds = Payment::where('tenant_id', $payment->tenant_id)
             ->where('partner_id', $payment->partner_id)
+            ->where('payment_type', PaymentType::Refund->value)
             ->where('amount', '<', '0')
             ->where('reference', 'like', '%'.$payment->reference.'%')
             ->get();
@@ -1973,6 +1983,15 @@ class PaymentRefundService
     /**
      * Find the existing full refund for a reversed payment.
      *
+     * DPA V4 (D-11): the `payment_type` filter is REQUIRED. This is the same
+     * untyped reference heuristic `getRefundHistory()` uses, and a reversal row
+     * matches it on every predicate — negative amount equal to the original's
+     * inverse, `Completed`, and a reference containing the original's. Without the
+     * filter, a caller asking for the full refund of a REVERSED-not-refunded
+     * payment would silently receive the REVERSAL document instead. With it, the
+     * lookup finds nothing and the existing "data integrity issue" exception below
+     * fires — which is now an ACCURATE description of the state.
+     *
      * @throws \RuntimeException If refund cannot be found
      */
     private function findExistingFullRefund(Payment $payment): Payment
@@ -1981,6 +2000,7 @@ class PaymentRefundService
         /** @var Payment|null $refund */
         $refund = Payment::where('tenant_id', $payment->tenant_id)
             ->where('partner_id', $payment->partner_id)
+            ->where('payment_type', PaymentType::Refund->value)
             ->where('amount', bcmul($payment->amount, '-1', $this->scale()))
             ->where('reference', 'like', '%'.$payment->reference.'%')
             ->where('status', PaymentStatus::Completed)
