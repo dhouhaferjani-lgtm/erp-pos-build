@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Inventory;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 use Tests\Traits\ProvesTenantMigrationRoundTrip;
@@ -70,6 +71,12 @@ final class SupplierGoodsReturnNotesSchemaTest extends TestCase
                         'kind',
                         'quantity',
                         'unit_cost',
+                        // The bounded-un-dilution trio (gate round 1, C-1/I-5):
+                        // the ceiling captured at draft time, and the audit pair
+                        // recording what was and was not capitalized back.
+                        'unit_cost_ceiling',
+                        'wac_undilution_applied',
+                        'wac_undilution_forgone',
                         'location_id',
                         'movement_id',
                         'cost_adjustment_movement_id',
@@ -106,5 +113,41 @@ final class SupplierGoodsReturnNotesSchemaTest extends TestCase
 
         $this->assertTrue(Schema::hasTable('supplier_goods_return_notes'));
         $this->assertTrue(Schema::hasTable('supplier_goods_return_note_lines'));
+    }
+
+    /**
+     * Gate round 1, M-4. The partial unique indexes are the stated hard backstop
+     * for `createDraft`'s one-note-per-credit-note idempotency. They are created
+     * OUTSIDE the `hasTable` guards with IF NOT EXISTS, so a run that died between
+     * `Schema::create` and the index statements self-heals on the next
+     * `tenants:migrate` instead of leaving the table permanently unguarded.
+     * Dropping them and re-running `up()` is exactly that partial-failure shape.
+     */
+    public function test_re_running_up_restores_a_dropped_partial_unique_index(): void
+    {
+        $this->assertTrue($this->indexExists('supplier_goods_return_notes_credit_note_unique'));
+
+        DB::statement('DROP INDEX IF EXISTS supplier_goods_return_notes_credit_note_unique');
+        $this->assertFalse($this->indexExists('supplier_goods_return_notes_credit_note_unique'));
+
+        [$migration] = $this->requireTenantMigrations(self::MIGRATION);
+        $migration->up();
+
+        $this->assertTrue(
+            $this->indexExists('supplier_goods_return_notes_credit_note_unique'),
+            'A re-run of tenants:migrate must re-assert the one-note-per-credit-note backstop.',
+        );
+    }
+
+    private function indexExists(string $name): bool
+    {
+        if (DB::connection()->getDriverName() === 'pgsql') {
+            return DB::table('pg_indexes')->where('indexname', $name)->exists();
+        }
+
+        return DB::table('sqlite_master')
+            ->where('type', 'index')
+            ->where('name', $name)
+            ->exists();
     }
 }

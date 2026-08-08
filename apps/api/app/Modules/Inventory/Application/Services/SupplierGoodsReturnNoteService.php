@@ -9,6 +9,7 @@ use App\Modules\Inventory\Application\DTOs\SupplierGoodsReturnLineData;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnLineKind;
 use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnNoteStatus;
+use App\Modules\Inventory\Domain\Exceptions\BatchTrackedReturnUnsupportedException;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
@@ -44,23 +45,59 @@ use Illuminate\Support\Facades\DB;
  *  ORDINARY (paid) units — value SHOULD fall by q x WAC. `issue(unitCost: WAC)`
  *  is the whole story; the WAC itself does not move. Correct by construction.
  *
- *  BONUS (free) units — value should NOT fall at all: you paid nothing for them,
- *  so giving them back costs nothing. The quantity decrement's implied
- *  value loss has to be handed back to the surviving units:
+ *  BONUS (free) units — you paid nothing for them, so giving them back should
+ *  cost nothing, and the quantity decrement's implied value loss has to be handed
+ *  back to the surviving units:
  *
  *      issue(q, unitCost: WAC)                     Q -> Q-q, implied value -q*WAC
- *      recordCostAdjustment(+q*WAC)                spread over the Q-q survivors
- *      => WAC' = WAC + q*WAC/(Q-q) = WAC*Q/(Q-q) = (original value)/(Q-q)
+ *      recordCostAdjustment(+A)                    spread over the Q-q survivors
+ *      => WAC' = WAC + A/(Q-q)
  *
- *  which is exactly "the same value, fewer units" — the WAC RISES to what the
- *  paid units actually cost. Worked example: 20 paid @ 5.000 + 1 free blends to
- *  100/21 = 4.761904; returning the free unit gives 4.761904 + 4.761904/20 =
- *  4.999999 over 20 units.
+ * THE UN-DILUTION IS BOUNDED — do not remove the cap (gate round 1, C-1)
  *
- *  The issue movement records `unit_cost = WAC` (NOT 0) deliberately: it keeps the
- *  movement ledger's value delta (-q*WAC then +q*WAC = 0) agreeing with the
- *  implied `Q x WAC` delta, and keeps every existing reader of `unit_cost`
- *  behaving as it did before V8.
+ * The naive A = q*WAC gives WAC' = WAC*Q/(Q-q) = (original value)/(Q-q), i.e.
+ * "the same value, fewer units". That is only right while NOTHING ELSE has left
+ * since the bonus receipt. Once units have gone, their share of the dilution left
+ * with them through COGS; pushing the whole q*WAC onto the survivors counts it
+ * twice, and the error grows without bound as the survivor count shrinks. The
+ * gate probed it: a mixed paid+bonus note produced 5.238094 against a true
+ * 5.000000 (+4.8%), and a return with one survivor produced 9.523808 (+90%).
+ *
+ * A perpetual WAC ledger cannot retroactively re-cost the units that already
+ * left — that residue is a prior-period COGS understatement and belongs to the
+ * GL half (c1-bis) and the periodic-vs-perpetual research lane. What this lane
+ * CAN do is refuse to let the at-rest cost exceed what the goods actually cost:
+ *
+ *      C          = the per-unit price paid on the receipt that brought the units
+ *                   in (the receipt line's landed_unit_cost, else the PO line's).
+ *                   REQUIRED on every bonus line; a line without it is refused.
+ *      survivors  = company owned quantity AFTER the exit
+ *      desired    = q * WAC                       the value the exiting units carry
+ *      headroom   = max(0, survivors * (C - WAC)) what the survivors can absorb
+ *                                                 without exceeding what was paid
+ *      A          = min(desired, headroom)        <- applied
+ *      forgone    = desired - A                   <- recorded on the note line
+ *
+ * `A = headroom` lands the WAC exactly on C, which is the true cost of the
+ * surviving paid units in every probe shape. `max(0, ...)` makes the correction
+ * one-directional: a WAC already at or above C is never raised (conservative —
+ * it can under-correct, never inflate). `forgone` is the figure c1-bis needs for
+ * the P&L leg this lane must not post; it is never silently absorbed, including
+ * the survivors == 0 case where the whole amount is forgone and no adjustment
+ * movement exists at all.
+ *
+ * Worked: 20 paid @ 5.000000 + 1 free blends to 100/21 = 4.761904.
+ *   - return the free unit with 20 survivors: desired 4.761904, headroom
+ *     20*(5.000000-4.761904) = 4.761920 -> A = 4.761904 -> WAC' = 4.999999.
+ *     One ulp under C: the missing 0.000016 was truncated away by the blend's
+ *     bcdiv at the free receipt, and the model never restores more value than the
+ *     exiting units carry. The round trip is value-neutral, not digit-exact.
+ *   - same return with 1 survivor: headroom 0.238096 -> A = 0.238096 ->
+ *     WAC' = 5.000000 exactly, forgone 4.523808.
+ *
+ * The issue movement records `unit_cost = WAC` (NOT 0) deliberately: it keeps the
+ * movement ledger's value delta agreeing with the implied `Q x WAC` delta, and
+ * keeps every existing reader of `unit_cost` behaving as it did before V8.
  *
  * WHY THESE TWO PRIMITIVES
  *
@@ -81,14 +118,25 @@ use Illuminate\Support\Facades\DB;
  * decrement); `recordCostAdjustment()` re-acquires the same transaction-scoped
  * advisory lock, which is re-entrant.
  *
+ * One row lock sits between the advisory acquire and the stock-level locks:
+ * `DocumentNumberingService` locks the note's `document_sequences` row FOR UPDATE
+ * while stamping the number. That is safe because `supplier_return` is a sequence
+ * key nothing else in the codebase touches, so the only contenders for that row
+ * are other confirms of this same document type — which are already serialized
+ * behind the same advisory locks when they share a product, and are independent
+ * when they do not. Do NOT add a second sequence key to this method without
+ * re-checking that argument.
+ *
  * NOT IN SCOPE (recorded, not silently dropped)
  *
- *  - GL. The credit note's journal entry is unchanged in this lane; the
- *    Dr PurchaseExpenses / Cr Inventory legs a bonus return still posts are now
- *    inconsistent with the units (which preserve value) and are c1-bis's to fix.
- *  - Batch/lot selection. The old raw path ignored `inventory_batch_stock`
- *    entirely and so does this one (`batchId: null`) — not a regression, but a
- *    batch-tracked product's lot ledger will not follow the return.
+ *  - GL. The credit note's journal entry is unchanged in this lane. Both kinds of
+ *    line now carry a units-vs-GL residual for c1-bis: bonus lines by `forgone`
+ *    (and by the whole `q x WAC` the GL still expenses), ordinary lines by
+ *    `q x (invoice price - WAC)` — the GL plug is priced at the INVOICE, the
+ *    units relieve at WAC.
+ *  - Batch/lot selection. Batch-tracked products are REFUSED on this path
+ *    ({@see BatchTrackedReturnUnsupportedException}) rather than silently
+ *    desynchronising `inventory_batch_stock` from `stock_levels`.
  *  - Cancelling a CONFIRMED note (needs its own reversing document).
  */
 final class SupplierGoodsReturnNoteService
@@ -128,15 +176,21 @@ final class SupplierGoodsReturnNoteService
     /**
      * Mint a Draft note. NOTHING moves here — a Draft states intent only.
      *
-     * Idempotent per supplier credit note: a second call for the same
-     * `$supplierCreditNoteId` returns the existing note untouched rather than
-     * minting a second document (the partial unique index on
-     * `supplier_credit_note_id` is the hard backstop).
+     * Idempotent per supplier credit note, but NOT forgiving: a second call for
+     * the same `$supplierCreditNoteId` returns the existing note only when its
+     * lines are IDENTICAL to the request. A differing line set is REFUSED rather
+     * than silently reusing the old one (gate round 1, I-4) — the caller has
+     * already decremented `quantity_invoiced` / `free_quantity_invoiced` for the
+     * NEW quantities by the time it reaches here, so confirming the OLD lines
+     * would drift the counters from the units with no error anywhere. The partial
+     * unique index on `supplier_credit_note_id` is the hard backstop.
      *
      * @param  list<SupplierGoodsReturnLineData>  $lines
      *
-     * @throws \DomainException when the note would carry no lines, or a line's
-     *                          quantity is not strictly positive.
+     * @throws \DomainException when the note would carry no lines, a line's
+     *                          quantity is not strictly positive, a BONUS line has
+     *                          no cost ceiling, or an existing note for this credit
+     *                          note carries a different line set.
      */
     public function createDraft(
         string $tenantId,
@@ -153,12 +207,37 @@ final class SupplierGoodsReturnNoteService
             );
         }
 
+        /** @var list<string> $requestedSignatures */
+        $requestedSignatures = [];
+
         foreach ($lines as $line) {
             if (! is_numeric($line->quantity) || bccomp($line->quantity, '0', self::QUANTITY_SCALE) <= 0) {
                 throw new \DomainException(sprintf(
                     'Supplier goods-return note line for PO line [%s] has a non-positive quantity (%s).',
                     $line->poLineId,
                     $line->quantity,
+                ));
+            }
+
+            $requestedSignatures[] = $this->lineSignature(
+                $line->poLineId,
+                $line->productId,
+                $line->variantId,
+                $line->kind,
+                $line->quantity,
+            );
+
+            // A bonus line's un-dilution MUST be bounded (see the class docblock).
+            // Without the price actually paid there is no ceiling, and the only
+            // alternative is the unbounded model the gate proved wrong — so refuse
+            // rather than fall back to it.
+            if ($line->kind->requiresWacUndilution()
+                && ($line->unitCostCeiling === null || ! is_numeric($line->unitCostCeiling))) {
+                throw new \DomainException(sprintf(
+                    'Supplier goods-return note bonus line for PO line [%s] has no unit cost ceiling. '
+                    .'The WAC un-dilution must be bounded by the price actually paid for the goods; '
+                    .'refusing to apply an unbounded correction to the cost at rest.',
+                    $line->poLineId,
                 ));
             }
         }
@@ -171,10 +250,13 @@ final class SupplierGoodsReturnNoteService
             $reference,
             $lines,
             $actorId,
+            $requestedSignatures,
         ): SupplierGoodsReturnNote {
             if ($supplierCreditNoteId !== null) {
                 $existing = $this->findForCreditNote($supplierCreditNoteId);
                 if ($existing !== null) {
+                    $this->assertExistingNoteMatches($existing, $requestedSignatures);
+
                     return $existing;
                 }
             }
@@ -207,11 +289,17 @@ final class SupplierGoodsReturnNoteService
                     'kind' => $line->kind,
                     'quantity' => $line->quantity,
                     'unit_cost' => null,
+                    // A fact about the PAST (what the receipt charged), so it is
+                    // captured now and frozen — unlike the exit WAC and location,
+                    // which are facts about the moment of confirm.
+                    'unit_cost_ceiling' => $line->unitCostCeiling,
                     // Resolved on confirm against live stock, not now: a Draft may
                     // sit for days and the hint can go stale.
                     'location_id' => $line->preferredLocationId,
                     'movement_id' => null,
                     'cost_adjustment_movement_id' => null,
+                    'wac_undilution_applied' => null,
+                    'wac_undilution_forgone' => null,
                 ]);
             }
 
@@ -228,6 +316,8 @@ final class SupplierGoodsReturnNoteService
      * Idempotent — a note that is already Confirmed is returned untouched (its
      * movements exist; re-issuing would double-decrement).
      *
+     * @throws BatchTrackedReturnUnsupportedException when any line's product is
+     *                                                batch-tracked (refused up-front, before anything moves).
      * @throws \DomainException when no stock-bearing location can be resolved for
      *                          a line, or a product's WAC is non-numeric.
      * @throws InsufficientStockException
@@ -266,6 +356,11 @@ final class SupplierGoodsReturnNoteService
                 ->unique()
                 ->values()
                 ->all();
+
+            // Refuse batch-tracked products BEFORE the advisory lock, the number
+            // stamp or any stock motion, so the refusal costs nothing and the note
+            // is left exactly as it was found.
+            $this->assertNoBatchTrackedProducts($locked, $productIds);
 
             return $this->costLock->acquire(
                 $locked->tenant_id,
@@ -410,32 +505,34 @@ final class SupplierGoodsReturnNoteService
         );
 
         $costAdjustmentMovementId = null;
+        $applied = null;
+        $forgone = null;
 
         if ($line->kind->requiresWacUndilution()) {
-            // Restore the implied value the quantity decrement destroyed, spread
-            // over the units that survive it. Run AFTER issue() so the
-            // denominator is the post-exit owned quantity — that is what makes
-            // WAC' = value/(Q-q) exact rather than approximate.
-            //
-            // Returns null when nothing is left to capitalize against (the note
-            // emptied the company's holding of this product): the WAC of an empty
-            // bucket is undefined, and the WAC engine documents that no-op. The
-            // next receipt re-establishes the cost basis.
-            /** @var numeric-string $undilutionValue */
-            $undilutionValue = bcmul((string) $line->quantity, $unitCost, self::COST_SCALE);
+            [$applied, $forgone] = $this->boundedUndilution($line, $unitCost);
 
-            $adjustment = $this->wacService->recordCostAdjustment(
-                product: $product,
-                additionalCost: $undilutionValue,
-                reason: sprintf('Bonus goods return %s — WAC un-dilution', $noteNumber),
-                tenantId: $note->tenant_id,
-                companyId: $note->company_id,
-                reference: $noteNumber,
-                referenceType: StockMovementReferenceType::SupplierGoodsReturnNote->value,
-                referenceId: $note->id,
-            );
+            // `applied` can legitimately be zero: no survivor to capitalize
+            // against (the note emptied the company's holding), or a WAC already
+            // at/above what was paid. Calling recordCostAdjustment with 0 would
+            // write a meaningless quantity-0 movement, so skip it — the
+            // wac_undilution_* pair is what records the decision.
+            if (bccomp($applied, '0', self::COST_SCALE) > 0) {
+                // Runs AFTER issue() so the denominator is the POST-exit owned
+                // quantity; that is what makes WAC' land exactly on the intended
+                // figure rather than approximately.
+                $adjustment = $this->wacService->recordCostAdjustment(
+                    product: $product,
+                    additionalCost: $applied,
+                    reason: sprintf('Bonus goods return %s — WAC un-dilution (bounded)', $noteNumber),
+                    tenantId: $note->tenant_id,
+                    companyId: $note->company_id,
+                    reference: $noteNumber,
+                    referenceType: StockMovementReferenceType::SupplierGoodsReturnNote->value,
+                    referenceId: $note->id,
+                );
 
-            $costAdjustmentMovementId = $adjustment?->id;
+                $costAdjustmentMovementId = $adjustment?->id;
+            }
         }
 
         $line->forceFill([
@@ -443,34 +540,242 @@ final class SupplierGoodsReturnNoteService
             'location_id' => $locationId,
             'movement_id' => $movement->id,
             'cost_adjustment_movement_id' => $costAdjustmentMovementId,
+            'wac_undilution_applied' => $applied,
+            'wac_undilution_forgone' => $forgone,
         ])->save();
+    }
+
+    /**
+     * How much of the value the exiting bonus units carry may be capitalized back
+     * onto the survivors, and how much may not.
+     *
+     * See the class docblock for the derivation and the gate probes this exists to
+     * satisfy. In short: `desired = q x WAC` is only fully restorable while nothing
+     * has left since the bonus receipt; beyond that it double-counts dilution that
+     * already went out through COGS. The bound is the headroom between the current
+     * WAC and the price actually PAID for these goods, so the cost at rest can
+     * never end up above what the company paid.
+     *
+     * Called AFTER the issue, so `companyOwnedQuantity` here is the survivor count —
+     * the same denominator `recordCostAdjustment` will divide by, which is what
+     * makes `applied == headroom` land the WAC exactly on the ceiling.
+     *
+     * @param  numeric-string  $unitCost  The WAC the units left at.
+     * @return array{numeric-string, numeric-string} [applied, forgone]
+     */
+    private function boundedUndilution(SupplierGoodsReturnNoteLine $line, string $unitCost): array
+    {
+        /** @var numeric-string $desired */
+        $desired = bcmul((string) $line->quantity, $unitCost, self::COST_SCALE);
+
+        /** @var numeric-string $ceiling */
+        $ceiling = (string) ($line->unit_cost_ceiling ?? '0');
+
+        // Survivors = what the company still owns AFTER this line's exit, summed
+        // across every location and variant row — the same basis
+        // WeightedAverageCostService uses, so the two agree by construction.
+        /** @var numeric-string $survivors */
+        $survivors = $this->ownedQuantityAfterExit($line);
+
+        /** @var numeric-string $headroomPerUnit */
+        $headroomPerUnit = bcsub($ceiling, $unitCost, self::COST_SCALE);
+
+        if (bccomp($survivors, '0', self::QUANTITY_SCALE) <= 0
+            || bccomp($headroomPerUnit, '0', self::COST_SCALE) <= 0) {
+            // Nothing to capitalize against, or the WAC is already at/above what
+            // was paid. One-directional by design: never inflate.
+            return ['0.'.str_repeat('0', self::COST_SCALE), $desired];
+        }
+
+        /** @var numeric-string $headroom */
+        $headroom = bcmul($survivors, $headroomPerUnit, self::COST_SCALE);
+
+        /** @var numeric-string $applied */
+        $applied = bccomp($desired, $headroom, self::COST_SCALE) <= 0 ? $desired : $headroom;
+        /** @var numeric-string $forgone */
+        $forgone = bcsub($desired, $applied, self::COST_SCALE);
+
+        return [$applied, $forgone];
+    }
+
+    /**
+     * Company-owned quantity for the line's product, read AFTER its exit.
+     *
+     * Mirrors `WeightedAverageCostService::companyOwnedQuantity`'s basis —
+     * on-hand across EVERY stock_level row of the product (all locations, all
+     * variant rows), because the WAC is company-wide and product-grain. In-transit
+     * quantity is deliberately NOT added here: it is part of the WAC denominator,
+     * so leaving it out only ever makes the bound TIGHTER (a smaller survivor
+     * count means less headroom), which is the safe direction for a cap.
+     *
+     * @return numeric-string
+     */
+    private function ownedQuantityAfterExit(SupplierGoodsReturnNoteLine $line): string
+    {
+        /** @var numeric-string $owned */
+        $owned = '0.0000';
+
+        $levels = StockLevel::query()
+            ->where('tenant_id', $line->tenant_id)
+            ->where('company_id', $line->company_id)
+            ->where('product_id', $line->product_id)
+            ->get();
+
+        foreach ($levels as $level) {
+            $owned = bcadd($owned, (string) $level->quantity, self::QUANTITY_SCALE);
+        }
+
+        return $owned;
+    }
+
+    /**
+     * Refuse a note whose products are batch-tracked (gate round 1, C-2).
+     *
+     * @param  list<string>  $productIds
+     *
+     * @throws BatchTrackedReturnUnsupportedException
+     */
+    private function assertNoBatchTrackedProducts(SupplierGoodsReturnNote $note, array $productIds): void
+    {
+        /** @var Product|null $batchTracked */
+        $batchTracked = Product::query()
+            ->where('tenant_id', $note->tenant_id)
+            ->where('company_id', $note->company_id)
+            ->whereIn('id', $productIds)
+            ->where('requires_batch_tracking', true)
+            ->first();
+
+        if ($batchTracked !== null) {
+            throw new BatchTrackedReturnUnsupportedException($note->id, (string) $batchTracked->id);
+        }
+    }
+
+    /**
+     * Identity of one requested/stored line, for comparing a lingering Draft
+     * against a fresh request. Quantity is normalised through bcadd so '2' and
+     * '2.0000' compare equal.
+     *
+     * @param  numeric-string  $quantity
+     */
+    private function lineSignature(
+        string $poLineId,
+        string $productId,
+        ?string $variantId,
+        SupplierGoodsReturnLineKind $kind,
+        string $quantity,
+    ): string {
+        return implode('|', [
+            $poLineId,
+            $productId,
+            $variantId ?? '-',
+            $kind->value,
+            bcadd($quantity, '0', self::QUANTITY_SCALE),
+        ]);
+    }
+
+    /**
+     * Refuse to reuse an existing note whose lines differ from the request.
+     *
+     * Takes the request as pre-computed signatures rather than the DTOs: they are
+     * built in `createDraft`'s validation loop, which is the one place the
+     * quantities have just been proven numeric.
+     *
+     * @param  list<string>  $requestedSignatures
+     *
+     * @throws \DomainException
+     */
+    private function assertExistingNoteMatches(SupplierGoodsReturnNote $existing, array $requestedSignatures): void
+    {
+        $existing->loadMissing('lines');
+
+        $current = $existing->lines
+            ->map(fn (SupplierGoodsReturnNoteLine $line): string => $this->lineSignature(
+                $line->po_line_id,
+                $line->product_id,
+                $line->variant_id,
+                $line->kind,
+                $line->quantity,
+            ))
+            ->sort()
+            ->values()
+            ->all();
+
+        $requested = $requestedSignatures;
+        sort($requested);
+
+        if ($current === $requested) {
+            return;
+        }
+
+        throw new \DomainException(sprintf(
+            'Supplier goods-return note [%s] already exists for credit note [%s] but its line set '
+            .'does not match this request. Refusing to confirm stale lines: the caller has already '
+            .'adjusted the invoiced counters for the requested quantities, so reusing the old lines '
+            .'would silently drift the counters from the units. Resolve the existing note first.',
+            $existing->id,
+            $existing->supplier_credit_note_id ?? 'null',
+        ));
     }
 
     /**
      * Where the units physically leave from.
      *
-     * 1. the line's hint (the goods receipt's destination), IF it still holds
-     *    stock — the honest answer when it is available;
-     * 2. otherwise the company's largest stock-bearing location for this
-     *    product/variant. This is byte-for-byte the pre-V8 raw path's choice
-     *    (`orderByDesc('quantity')->first()` over rows with `quantity > 0`), so
-     *    legacy data keeps behaving as it did;
-     * 3. otherwise REFUSE. The old path threw "no stock level is available" here
-     *    and so does this one — a return that cannot say where the goods left from
-     *    is not a return.
+     * Selection runs on AVAILABLE quantity (`quantity - reserved`), not raw
+     * quantity (gate round 1, I-2). `StockAdjustmentService::issue()` refuses
+     * against `getAvailableQuantity()`, so picking the largest RAW row could
+     * choose a fully reserved location and fail the whole return while another
+     * location could have covered it. Reserved units are promised to a customer
+     * order; a supplier return does not get to consume them.
+     *
+     * 1. the line's hint (the goods receipt's destination), IF it can cover the
+     *    line — the honest answer when it is available;
+     * 2. otherwise the location with the largest AVAILABLE quantity that can cover
+     *    the whole line;
+     * 3. otherwise the location with the largest AVAILABLE quantity, so
+     *    `issue()` raises the canonical InsufficientStockException with real
+     *    numbers instead of this method inventing its own error;
+     * 4. otherwise REFUSE. The pre-V8 path threw "no stock level is available"
+     *    here and so does this one — a return that cannot say where the goods left
+     *    from is not a return.
      */
     private function resolveExitLocation(SupplierGoodsReturnNote $note, SupplierGoodsReturnNoteLine $line): string
     {
-        $hint = $line->location_id;
-        if ($hint !== null && $this->locationHoldsStock($note, $line, $hint)) {
-            return $hint;
+        /** @var numeric-string $needed */
+        $needed = (string) $line->quantity;
+
+        /** @var list<StockLevel> $levels */
+        $levels = $this->stockLevelQuery($note, $line)->get()->all();
+
+        /** @var array<int, array{id: string, available: numeric-string}> $candidates */
+        $candidates = [];
+        foreach ($levels as $level) {
+            /** @var numeric-string $available */
+            $available = $level->getAvailableQuantity();
+            if (bccomp($available, '0', self::QUANTITY_SCALE) <= 0) {
+                continue;
+            }
+            $candidates[] = ['id' => (string) $level->location_id, 'available' => $available];
         }
 
-        /** @var StockLevel|null $fallback */
-        $fallback = $this->stockLevelQuery($note, $line)
-            ->where('quantity', '>', '0')
-            ->orderByDesc('quantity')
-            ->first();
+        usort(
+            $candidates,
+            static fn (array $a, array $b): int => bccomp($b['available'], $a['available'], self::QUANTITY_SCALE),
+        );
+
+        $hint = $line->location_id;
+        foreach ($candidates as $candidate) {
+            if ($candidate['id'] === $hint && bccomp($candidate['available'], $needed, self::QUANTITY_SCALE) >= 0) {
+                return $hint;
+            }
+        }
+
+        foreach ($candidates as $candidate) {
+            if (bccomp($candidate['available'], $needed, self::QUANTITY_SCALE) >= 0) {
+                return $candidate['id'];
+            }
+        }
+
+        $fallback = $candidates[0] ?? null;
 
         if ($fallback === null) {
             throw new \DomainException(sprintf(
@@ -482,18 +787,7 @@ final class SupplierGoodsReturnNoteService
             ));
         }
 
-        return (string) $fallback->location_id;
-    }
-
-    private function locationHoldsStock(
-        SupplierGoodsReturnNote $note,
-        SupplierGoodsReturnNoteLine $line,
-        string $locationId,
-    ): bool {
-        return $this->stockLevelQuery($note, $line)
-            ->where('location_id', $locationId)
-            ->where('quantity', '>', '0')
-            ->exists();
+        return $fallback['id'];
     }
 
     /**

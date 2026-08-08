@@ -19,6 +19,13 @@ use Illuminate\Support\Carbon;
  * line produced on confirm; `cost_adjustment_movement_id` is populated for BONUS
  * lines only and points at the quantity-neutral movement that un-dilutes the WAC.
  *
+ * `wac_undilution_applied` / `wac_undilution_forgone` are the BONUS lines' audit
+ * pair: how much of the value the exiting units carried was actually capitalized
+ * back onto the survivors, and how much could not be (because it had already left
+ * through COGS with units issued since the bonus receipt, or because no survivor
+ * remains). They always sum to `quantity x unit_cost`, and `forgone` is the exact
+ * figure the deferred GL half (c1-bis) needs for its P&L leg.
+ *
  * @property string $id
  * @property string $tenant_id
  * @property string $company_id
@@ -31,9 +38,12 @@ use Illuminate\Support\Carbon;
  * @property SupplierGoodsReturnLineKind $kind
  * @property numeric-string $quantity
  * @property numeric-string|null $unit_cost
+ * @property numeric-string|null $unit_cost_ceiling
  * @property string|null $location_id
  * @property string|null $movement_id
  * @property string|null $cost_adjustment_movement_id
+ * @property numeric-string|null $wac_undilution_applied
+ * @property numeric-string|null $wac_undilution_forgone
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read SupplierGoodsReturnNote $note
@@ -59,9 +69,12 @@ class SupplierGoodsReturnNoteLine extends Model
         'kind',
         'quantity',
         'unit_cost',
+        'unit_cost_ceiling',
         'location_id',
         'movement_id',
         'cost_adjustment_movement_id',
+        'wac_undilution_applied',
+        'wac_undilution_forgone',
     ];
 
     /**
@@ -75,6 +88,9 @@ class SupplierGoodsReturnNoteLine extends Model
             // COST_SCALE=6 the WAC engine persists at.
             'quantity' => 'decimal:4',
             'unit_cost' => 'decimal:6',
+            'unit_cost_ceiling' => 'decimal:6',
+            'wac_undilution_applied' => 'decimal:6',
+            'wac_undilution_forgone' => 'decimal:6',
         ];
     }
 

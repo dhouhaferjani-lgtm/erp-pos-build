@@ -500,8 +500,11 @@ final class SupplierCreditNotePostingService
             /** @var Collection<int, GoodsReceiptLine> $receiptLines */
             $receiptLines = $receiptLinesByPoLine->get($sourceLineId, new Collection);
 
+            /** @var list<array{line: GoodsReceiptLine, qty: numeric-string}> $allocation */
+            $allocation = [];
+
             if ($receiptLines->isNotEmpty()) {
-                $this->decrementReceiptLineInvoiced($creditNote, $sourceLineId, $qty, $receiptLines, false);
+                $allocation = $this->decrementReceiptLineInvoiced($creditNote, $sourceLineId, $qty, $receiptLines, false);
 
                 /** @var numeric-string $newInvoiced */
                 $newInvoiced = $this->receiptLedgerSum($sourceLineId, 'quantity_invoiced');
@@ -524,15 +527,14 @@ final class SupplierCreditNotePostingService
             $poLine->quantity_invoiced = $newInvoiced;
             $poLine->save();
 
-            $line = $this->returnNoteLine(
+            foreach ($this->returnNoteLines(
                 $creditNote,
                 $poLine,
                 $qty,
                 SupplierGoodsReturnLineKind::Ordinary,
-                $receiptLines,
+                $allocation,
                 requireProduct: false,
-            );
-            if ($line !== null) {
+            ) as $line) {
                 $returnLines[] = $line;
             }
         }
@@ -541,7 +543,19 @@ final class SupplierCreditNotePostingService
     }
 
     /**
+     * Walk the posted receipt lines newest-first, decrementing the invoiced
+     * counter, and RETURN the allocation it consumed.
+     *
+     * The return value is what makes requirement 1's "goods receipt(s)" linkage
+     * honest (gate round 1, I-6): a return can span several receipt lines, each
+     * with its OWN landed cost, so the goods-return note gets one line per slice
+     * rather than a single line pointing at whichever receipt happened to be
+     * newest. Deriving the allocation from the very loop that mutates the counters
+     * — instead of re-deriving it alongside — is what keeps the note and the
+     * counters from ever disagreeing about which receipt they mean.
+     *
      * @param  Collection<int, GoodsReceiptLine>  $receiptLines
+     * @return list<array{line: GoodsReceiptLine, qty: numeric-string}>
      */
     private function decrementReceiptLineInvoiced(
         Document $creditNote,
@@ -549,7 +563,10 @@ final class SupplierCreditNotePostingService
         string $qtyToReverse,
         Collection $receiptLines,
         bool $free,
-    ): void {
+    ): array {
+        /** @var list<array{line: GoodsReceiptLine, qty: numeric-string}> $allocation */
+        $allocation = [];
+
         /** @var numeric-string $remaining */
         $remaining = CurrencyScale::bcformatStrict($qtyToReverse, 4);
 
@@ -582,6 +599,8 @@ final class SupplierCreditNotePostingService
             }
             $line->save();
 
+            $allocation[] = ['line' => $line, 'qty' => $sliceQty];
+
             $remaining = bcsub($remaining, $sliceQty, 4);
         }
 
@@ -595,6 +614,8 @@ final class SupplierCreditNotePostingService
                 $free ? 'free invoiced' : 'invoiced',
             ));
         }
+
+        return $allocation;
     }
 
     /**
@@ -640,8 +661,11 @@ final class SupplierCreditNotePostingService
             /** @var Collection<int, GoodsReceiptLine> $receiptLines */
             $receiptLines = $receiptLinesByPoLine->get($sourceLineId, new Collection);
 
+            /** @var list<array{line: GoodsReceiptLine, qty: numeric-string}> $allocation */
+            $allocation = [];
+
             if ($receiptLines->isNotEmpty()) {
-                $this->decrementReceiptLineInvoiced($creditNote, $sourceLineId, $qty, $receiptLines, true);
+                $allocation = $this->decrementReceiptLineInvoiced($creditNote, $sourceLineId, $qty, $receiptLines, true);
 
                 /** @var numeric-string $newFreeInvoiced */
                 $newFreeInvoiced = $this->receiptLedgerSum($sourceLineId, 'free_quantity_invoiced');
@@ -666,17 +690,16 @@ final class SupplierCreditNotePostingService
             $poLine->free_quantity_invoiced = $newFreeInvoiced;
             $poLine->save();
 
-            $line = $this->returnNoteLine(
+            foreach ($this->returnNoteLines(
                 $creditNote,
                 $poLine,
                 $qty,
                 SupplierGoodsReturnLineKind::Bonus,
-                $receiptLines,
+                $allocation,
                 // A FREE unit of nothing is an inconsistency, and the pre-V8 path
                 // threw here ("no product_id is attached"). Preserved.
                 requireProduct: true,
-            );
-            if ($line !== null) {
+            ) as $line) {
                 $returnLines[] = $line;
             }
         }
@@ -685,8 +708,20 @@ final class SupplierCreditNotePostingService
     }
 
     /**
-     * Build the goods-return note line for a PO line, or null when nothing
-     * physical left the warehouse.
+     * Build the goods-return note lines for a PO line — ONE PER RECEIPT LINE the
+     * counter decrement actually consumed — or an empty list when nothing physical
+     * left the warehouse.
+     *
+     * Splitting per receipt line (gate round 1, I-6) does two things a single
+     * newest-receipt link could not: it makes requirement 1's "goods receipt(s)"
+     * linkage true for a return that spans several receipts, and it lets each
+     * slice carry the landed cost of the receipt IT came from — which is the
+     * ceiling the bonus un-dilution is bounded by (C-1). The allocation comes from
+     * `decrementReceiptLineInvoiced` itself, so the note and the counters can
+     * never disagree about which receipt they mean.
+     *
+     * With no posted receipt lines (the legacy PO-line path) there is one slice
+     * for the whole quantity, ceilinged on the PO line's own landed cost.
      *
      * Non-physical lines (no `product_id`, or a service product) are SKIPPED
      * rather than refused — that is the same choice GoodsReceiptService makes on
@@ -695,16 +730,17 @@ final class SupplierCreditNotePostingService
      * failure on the bonus path, where a missing product really is inconsistent.
      *
      * @param  numeric-string  $qty
-     * @param  Collection<int, GoodsReceiptLine>  $receiptLines
+     * @param  list<array{line: GoodsReceiptLine, qty: numeric-string}>  $allocation
+     * @return list<SupplierGoodsReturnLineData>
      */
-    private function returnNoteLine(
+    private function returnNoteLines(
         Document $creditNote,
         DocumentLine $poLine,
         string $qty,
         SupplierGoodsReturnLineKind $kind,
-        Collection $receiptLines,
+        array $allocation,
         bool $requireProduct,
-    ): ?SupplierGoodsReturnLineData {
+    ): array {
         $productId = $poLine->product_id;
 
         if ($productId === null) {
@@ -716,7 +752,7 @@ final class SupplierCreditNotePostingService
                 ));
             }
 
-            return null;
+            return [];
         }
 
         /** @var Product|null $product */
@@ -747,29 +783,111 @@ final class SupplierCreditNotePostingService
                 ));
             }
 
-            return null;
+            return [];
         }
 
-        // The receipt the units most plausibly came in on: newest posted receipt
-        // line for this PO line — the SAME ordering decrementReceiptLineInvoiced()
-        // consumes the ledger in, so the note's receipt linkage and the counter
-        // decrement agree on which receipt they are talking about.
-        /** @var GoodsReceiptLine|null $receiptLine */
-        $receiptLine = $receiptLines->sortBy([
-            ['created_at', 'desc'],
-            ['id', 'desc'],
-        ])->first();
+        if ($allocation === []) {
+            return [new SupplierGoodsReturnLineData(
+                poLineId: (string) $poLine->id,
+                productId: (string) $productId,
+                variantId: $poLine->variant_id,
+                kind: $kind,
+                quantity: $qty,
+                unitCostCeiling: $this->poLineCostCeiling($creditNote, $poLine, $kind),
+                goodsReceiptId: null,
+                goodsReceiptLineId: null,
+                preferredLocationId: $poLine->location_id,
+            )];
+        }
 
-        return new SupplierGoodsReturnLineData(
-            poLineId: (string) $poLine->id,
-            productId: (string) $productId,
-            variantId: $poLine->variant_id,
-            kind: $kind,
-            quantity: $qty,
-            goodsReceiptId: $receiptLine?->goods_receipt_id,
-            goodsReceiptLineId: $receiptLine?->id,
-            preferredLocationId: $receiptLine?->goodsReceipt->location_id ?? $poLine->location_id,
-        );
+        /** @var list<SupplierGoodsReturnLineData> $lines */
+        $lines = [];
+
+        foreach ($allocation as $slice) {
+            $receiptLine = $slice['line'];
+
+            $lines[] = new SupplierGoodsReturnLineData(
+                poLineId: (string) $poLine->id,
+                productId: (string) $productId,
+                variantId: $poLine->variant_id,
+                kind: $kind,
+                quantity: $slice['qty'],
+                unitCostCeiling: $this->receiptLineCostCeiling($creditNote, $poLine, $receiptLine, $kind),
+                goodsReceiptId: $receiptLine->goods_receipt_id,
+                goodsReceiptLineId: $receiptLine->id,
+                preferredLocationId: $receiptLine->goodsReceipt->location_id ?? $poLine->location_id,
+            );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * The price actually PAID per unit on the receipt these units came in on.
+     *
+     * This is the ceiling the bonus WAC un-dilution may never push
+     * `products.cost_price` above (gate round 1, C-1). `landed_unit_cost` is the
+     * receipt's own capitalized cost including allocated additional costs — the
+     * exact figure `GoodsReceiptService` fed into `recordPurchase` for the PAID
+     * units of this very receipt, which is what makes it the right bound for
+     * un-diluting that receipt's free units.
+     *
+     * NOTE it is the PAID unit cost, never `effective_unit_cost` (which is the
+     * landed cost already spread across paid + free, i.e. the diluted figure this
+     * lane exists to correct).
+     *
+     * @return numeric-string|null
+     */
+    private function receiptLineCostCeiling(
+        Document $creditNote,
+        DocumentLine $poLine,
+        GoodsReceiptLine $receiptLine,
+        SupplierGoodsReturnLineKind $kind,
+    ): ?string {
+        $raw = $receiptLine->landed_unit_cost ?? $receiptLine->received_unit_price;
+
+        if ($raw !== null && bccomp($raw, '0', 6) > 0) {
+            return bcadd($raw, '0', 6);
+        }
+
+        return $this->poLineCostCeiling($creditNote, $poLine, $kind);
+    }
+
+    /**
+     * Ceiling fallback from the PO line itself, for the legacy path where no
+     * posted receipt line exists (or carries no landed cost).
+     *
+     * A BONUS line with no resolvable ceiling is REFUSED here rather than passed
+     * on: the note service would refuse it anyway, and failing at the PO line says
+     * WHICH line is unpriceable.
+     *
+     * @return numeric-string|null
+     */
+    private function poLineCostCeiling(
+        Document $creditNote,
+        DocumentLine $poLine,
+        SupplierGoodsReturnLineKind $kind,
+    ): ?string {
+        // `unit_price` is non-nullable on a document line, so `$raw` is always a
+        // numeric string here; only its SIGN needs checking. A zero/negative
+        // landed cost or price means the receipt recorded no price to bound by.
+        $raw = $poLine->landed_unit_cost ?? $poLine->unit_price;
+
+        if (bccomp($raw, '0', 6) > 0) {
+            return bcadd($raw, '0', 6);
+        }
+
+        if ($kind->requiresWacUndilution()) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s] cannot return bonus stock for PO line [%s]: no positive '
+                .'landed cost or unit price is recorded, so the WAC un-dilution has no ceiling to be '
+                .'bounded by. Refusing to apply an unbounded correction to the cost at rest.',
+                $creditNote->id,
+                $poLine->id,
+            ));
+        }
+
+        return null;
     }
 
     /**
