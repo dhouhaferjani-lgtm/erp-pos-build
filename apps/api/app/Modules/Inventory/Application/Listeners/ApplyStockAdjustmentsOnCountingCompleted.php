@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\DB;
@@ -130,9 +131,9 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
      *
      * @param  string  $countingId  Counting-document UUID stamped as the movement's
      *                              `reference_id` (with `reference_type` =
-     *                              InventoryCounting::class). Additive to the
-     *                              free-text `COUNTING:{number}` label, which
-     *                              remains the legacy idempotency key.
+     *                              StockMovementReferenceType::InventoryCounting).
+     *                              Additive to the free-text `COUNTING:{number}`
+     *                              label, which remains the legacy idempotency key.
      */
     private function applyLegacyDelta(
         InventoryCountingItem $item,
@@ -201,7 +202,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
             expectedCompanyId: $companyId,
             variantId: $item->variant_id,
             reasonCode: MovementReason::CountCorrection,
-            referenceType: InventoryCounting::class,
+            referenceType: StockMovementReferenceType::InventoryCounting,
             referenceId: $countingId,
         );
 
@@ -265,7 +266,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 openingUnitCost: $openingUnitCost,
                 // Document linkage (DPA S0): the count movement points back at the
                 // counting row itself, not just the free-text COUNT_REPLAY label.
-                referenceType: InventoryCounting::class,
+                referenceType: StockMovementReferenceType::InventoryCounting,
                 referenceId: $countingId,
             );
 

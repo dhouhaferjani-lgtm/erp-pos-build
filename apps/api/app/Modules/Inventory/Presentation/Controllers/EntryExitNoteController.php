@@ -7,6 +7,7 @@ namespace App\Modules\Inventory\Presentation\Controllers;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -255,6 +256,15 @@ final class EntryExitNoteController extends Controller
     }
 
     /**
+     * Resolve the `source_type` the FE translates via
+     * `entryExitNotes.sourceTypes.<source_type>` (EntryExitNotesPage.tsx).
+     *
+     * Whatever this returns MUST have a key in en+fr `inventory.json` — an
+     * unmapped value is rendered raw to the user (rule 11). The final fallthrough
+     * still returns the column verbatim for the pre-DPA writers that bypass the
+     * StockAdjustmentService seam (POS snake codes, StockTransferService's FQCN);
+     * those are recorded at the program level and belong to their own lanes.
+     *
      * @param  array<string, string>  $documentSourceTypes
      */
     private function sourceType(StockMovement $movement, array $documentSourceTypes): string
@@ -265,6 +275,14 @@ final class EntryExitNoteController extends Controller
             }
 
             return $documentSourceTypes[$movement->reference_id] ?? 'document';
+        }
+
+        // Reference types written through the document-linkage seam carry a
+        // canonical, translatable code (DPA S0). Resolving through the enum keeps
+        // this list and the seam's vocabulary from drifting apart.
+        $canonical = StockMovementReferenceType::tryFrom($movement->reference_type ?? '');
+        if ($canonical === StockMovementReferenceType::InventoryCounting) {
+            return $canonical->value;
         }
 
         return $movement->reference_type ?? 'manual';

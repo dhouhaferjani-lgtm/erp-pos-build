@@ -31,9 +31,11 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Modules\Uom\Domain\Entities\UnitCategory;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -216,7 +218,7 @@ final class EntryExitNoteEndpointTest extends TestCase
             'quantity_after' => '1.0000',
             'reference' => 'VISIBLE',
             'reference_type' => 'adjustment_batch',
-            'reference_id' => 'batch-visible',
+            'reference_id' => (string) Str::uuid(),
         ]);
 
         $otherCompany = Company::create([
@@ -246,7 +248,7 @@ final class EntryExitNoteEndpointTest extends TestCase
             'quantity_after' => '1.0000',
             'reference' => 'HIDDEN',
             'reference_type' => 'adjustment_batch',
-            'reference_id' => 'batch-hidden',
+            'reference_id' => (string) Str::uuid(),
             'user_id' => $this->user->id,
         ]);
 
@@ -263,14 +265,14 @@ final class EntryExitNoteEndpointTest extends TestCase
         $this->movement([
             'reference' => 'RECENT',
             'reference_type' => 'adjustment_batch',
-            'reference_id' => 'batch-recent',
+            'reference_id' => (string) Str::uuid(),
             'created_at' => now()->subDays(2),
             'updated_at' => now()->subDays(2),
         ]);
         $this->movement([
             'reference' => 'OLD',
             'reference_type' => 'adjustment_batch',
-            'reference_id' => 'batch-old',
+            'reference_id' => (string) Str::uuid(),
             'created_at' => now()->subDays(45),
             'updated_at' => now()->subDays(45),
         ]);
@@ -294,6 +296,9 @@ final class EntryExitNoteEndpointTest extends TestCase
             'is_active' => true,
         ]);
 
+        // Both legs share ONE transfer id so the report groups them together.
+        $transferId = (string) Str::uuid();
+
         $this->movement([
             'movement_type' => MovementType::TransferOut,
             'quantity' => '2.0000',
@@ -301,7 +306,7 @@ final class EntryExitNoteEndpointTest extends TestCase
             'quantity_after' => '3.0000',
             'reference' => 'TRF-EE-001',
             'reference_type' => 'stock_transfer',
-            'reference_id' => 'transfer-1',
+            'reference_id' => $transferId,
         ]);
         $this->movement([
             'location_id' => $destination->id,
@@ -311,7 +316,7 @@ final class EntryExitNoteEndpointTest extends TestCase
             'quantity_after' => '2.0000',
             'reference' => 'TRF-EE-001',
             'reference_type' => 'stock_transfer',
-            'reference_id' => 'transfer-1',
+            'reference_id' => $transferId,
         ]);
         $deliveryNote = $this->document(DocumentType::DeliveryNote, 'DN-EE-OUT');
         $this->movement([
@@ -342,7 +347,7 @@ final class EntryExitNoteEndpointTest extends TestCase
             $this->movement([
                 'reference' => "ADJ-{$index}",
                 'reference_type' => 'adjustment_batch',
-                'reference_id' => "batch-{$index}",
+                'reference_id' => (string) Str::uuid(),
                 'created_at' => now()->subMinutes($index),
                 'updated_at' => now()->subMinutes($index),
             ]);
@@ -396,6 +401,62 @@ final class EntryExitNoteEndpointTest extends TestCase
             ->count();
 
         $this->assertLessThanOrEqual(1, $documentSelects);
+    }
+
+    /**
+     * DPA S0: movements posted by the counting finalize now carry document
+     * linkage, so they leave the catch-all `manual` bucket and group per
+     * counting. `source_type` MUST be the enum's canonical code — the FE renders
+     * it through `entryExitNotes.sourceTypes.<code>`, so a raw class name here
+     * would reach users untranslated (rule 11).
+     */
+    public function test_entry_exit_notes_expose_counting_sourced_movements_with_a_translatable_source_type(): void
+    {
+        $countingId = (string) Str::uuid();
+
+        $this->movement([
+            'movement_type' => MovementType::Adjustment,
+            'reason' => MovementReason::CountCorrection,
+            'quantity' => '2.0000',
+            'quantity_before' => '3.0000',
+            'quantity_after' => '5.0000',
+            'reference' => 'COUNTING:CNT-EE-001',
+            'reference_type' => StockMovementReferenceType::InventoryCounting->value,
+            'reference_id' => $countingId,
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/entry-exit-notes?per_page=10');
+
+        $response->assertOk();
+        $response->assertJsonPath('meta.total', 1);
+        $response->assertJsonPath('data.0.source_type', 'inventory_counting');
+        $response->assertJsonPath('data.0.source_id', $countingId);
+        $response->assertJsonPath('data.0.source_label', 'COUNTING:CNT-EE-001');
+
+        // The source_type filter must round-trip the same code.
+        $filtered = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/v1/entry-exit-notes?source_type=inventory_counting&per_page=10');
+
+        $filtered->assertOk();
+        $filtered->assertJsonPath('meta.total', 1);
+
+        // Guard the i18n contract: every source_type the API emits needs a key in
+        // BOTH locales, or the FE prints the raw code to the user.
+        $sourceType = (string) $response->json('data.0.source_type');
+        foreach (['en', 'fr'] as $locale) {
+            $path = base_path("../web/src/locales/{$locale}/inventory.json");
+            $this->assertFileExists($path);
+            /** @var array<string, mixed> $messages */
+            $messages = json_decode((string) file_get_contents($path), true, 512, JSON_THROW_ON_ERROR);
+            $this->assertIsArray($messages['entryExitNotes'] ?? null);
+            $this->assertIsArray($messages['entryExitNotes']['sourceTypes'] ?? null);
+            $this->assertArrayHasKey(
+                $sourceType,
+                $messages['entryExitNotes']['sourceTypes'],
+                "Missing {$locale} translation for entryExitNotes.sourceTypes.{$sourceType}",
+            );
+        }
     }
 
     public function test_entry_exit_notes_require_inventory_view_permission(): void

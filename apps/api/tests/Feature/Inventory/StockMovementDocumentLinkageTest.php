@@ -16,6 +16,8 @@ use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
+use App\Modules\Inventory\Domain\Events\StockMovementRecordedV2;
 use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
@@ -26,8 +28,10 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Tests\TestCase;
@@ -78,7 +82,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'name' => 'Linkage Company',
             'legal_name' => 'Linkage Company LLC',
-            'tax_id' => 'LNK-TAX-'.uniqid(),
+            'tax_id' => 'TX-'.uniqid(),
             'country_code' => 'TN',
             'currency' => 'TND',
             'locale' => 'fr_TN',
@@ -96,7 +100,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
 
         $this->location = Location::create([
             'company_id' => $this->company->id,
-            'code' => 'WH-LNK-'.uniqid(),
+            'code' => 'L1-'.uniqid(),
             'name' => 'Linkage Warehouse',
             'type' => 'warehouse',
             'is_active' => true,
@@ -106,7 +110,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
 
         $this->secondLocation = Location::create([
             'company_id' => $this->company->id,
-            'code' => 'WH-LNK2-'.uniqid(),
+            'code' => 'L2-'.uniqid(),
             'name' => 'Linkage Warehouse 2',
             'type' => 'warehouse',
             'is_active' => true,
@@ -117,7 +121,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
         $this->product = Product::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'sku' => 'LNK-'.uniqid(),
+            'sku' => 'S-'.uniqid(),
             'name' => 'Linkage Product',
             'type' => ProductType::Part,
             'is_active' => true,
@@ -148,7 +152,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
             'company_id' => $this->company->id,
             'scope_type' => CountingScopeType::Location,
             'scope_filters' => ['location_id' => $this->location->id],
-            'counting_number' => 'CNT-LNK-'.uniqid(),
+            'counting_number' => 'C-'.uniqid(),
             'status' => CountingStatus::Finalized,
             'ambiguity_window_minutes' => 15,
             'block_sales' => $blockSales,
@@ -201,12 +205,12 @@ final class StockMovementDocumentLinkageTest extends TestCase
             reference: 'GR-0001',
             userId: $this->user->id,
             expectedCompanyId: $this->company->id,
-            referenceType: 'Document',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: $documentId,
         );
 
         $movement->refresh();
-        $this->assertSame('Document', $movement->reference_type);
+        $this->assertSame(StockMovementReferenceType::Document->value, $movement->reference_type);
         $this->assertSame($documentId, $movement->reference_id);
         // The free-text label is preserved alongside the FK, not replaced.
         $this->assertSame('GR-0001', $movement->reference);
@@ -224,12 +228,12 @@ final class StockMovementDocumentLinkageTest extends TestCase
             reference: 'DN-0001',
             userId: $this->user->id,
             expectedCompanyId: $this->company->id,
-            referenceType: 'Document',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: $documentId,
         );
 
         $movement->refresh();
-        $this->assertSame('Document', $movement->reference_type);
+        $this->assertSame(StockMovementReferenceType::Document->value, $movement->reference_type);
         $this->assertSame($documentId, $movement->reference_id);
     }
 
@@ -247,7 +251,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
             reference: 'TRF-0001',
             userId: $this->user->id,
             expectedCompanyId: $this->company->id,
-            referenceType: 'StockTransfer',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: $documentId,
         );
 
@@ -257,7 +261,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
                 ->where('movement_type', $type->value)
                 ->firstOrFail();
 
-            $this->assertSame('StockTransfer', $movement->reference_type, $type->value.' leg lost the linkage');
+            $this->assertSame(StockMovementReferenceType::Document->value, $movement->reference_type, $type->value.' leg lost the linkage');
             $this->assertSame($documentId, $movement->reference_id, $type->value.' leg lost the linkage');
         }
     }
@@ -274,12 +278,12 @@ final class StockMovementDocumentLinkageTest extends TestCase
             reason: 'ADJ-0001',
             userId: $this->user->id,
             expectedCompanyId: $this->company->id,
-            referenceType: InventoryCounting::class,
+            referenceType: StockMovementReferenceType::InventoryCounting,
             referenceId: $documentId,
         );
 
         $movement->refresh();
-        $this->assertSame(InventoryCounting::class, $movement->reference_type);
+        $this->assertSame(StockMovementReferenceType::InventoryCounting->value, $movement->reference_type);
         $this->assertSame($documentId, $movement->reference_id);
     }
 
@@ -312,6 +316,69 @@ final class StockMovementDocumentLinkageTest extends TestCase
         }
     }
 
+    public function test_transfer_and_adjust_without_linkage_leave_both_reference_columns_null(): void
+    {
+        $this->setOnHand('10.0000');
+        $this->setOnHand('0.0000', $this->secondLocation);
+
+        $this->service->transfer(
+            productId: $this->product->id,
+            fromLocationId: $this->location->id,
+            toLocationId: $this->secondLocation->id,
+            quantity: '3.0000',
+            reference: 'NO-LINK-TRF',
+            userId: $this->user->id,
+            expectedCompanyId: $this->company->id,
+        );
+
+        $adjusted = $this->service->adjust(
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            newQuantity: '9.0000',
+            reason: 'NO-LINK-ADJ',
+            userId: $this->user->id,
+            expectedCompanyId: $this->company->id,
+        );
+
+        $movements = StockMovement::query()
+            ->where('product_id', $this->product->id)
+            ->get();
+
+        // Both transfer legs plus the adjustment.
+        $this->assertCount(3, $movements);
+        foreach ($movements as $movement) {
+            $this->assertNull($movement->reference_type);
+            $this->assertNull($movement->reference_id);
+        }
+
+        $this->assertNull($adjusted->refresh()->reference_type);
+    }
+
+    public function test_apply_count_result_without_linkage_leaves_both_reference_columns_null(): void
+    {
+        $t = CarbonImmutable::now()->subHours(3);
+        $this->setOnHand('10.0000');
+
+        $this->service->applyCountResult(
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            variantId: null,
+            finalQty: '20.0000',
+            finalQtyAsOf: $t,
+            ambiguityWindowMinutes: 15,
+            onboarding: false,
+            openingUnitCost: null,
+        );
+
+        $movement = StockMovement::query()
+            ->where('product_id', $this->product->id)
+            ->where('reason', MovementReason::CountCorrection->value)
+            ->firstOrFail();
+
+        $this->assertNull($movement->reference_type);
+        $this->assertNull($movement->reference_id);
+    }
+
     public function test_half_specified_linkage_is_rejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
@@ -323,8 +390,85 @@ final class StockMovementDocumentLinkageTest extends TestCase
             reference: 'HALF',
             userId: $this->user->id,
             expectedCompanyId: $this->company->id,
-            referenceType: 'Document',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: null,
+        );
+    }
+
+    /**
+     * `stock_movements.reference_id` is a PostgreSQL `uuid` column, but the suite
+     * runs on SQLite, which accepts any TEXT. Without this guard an adopting lane
+     * that links to an int-keyed entity would be green in CI and 500 in prod.
+     */
+    public function test_non_uuid_reference_id_is_rejected(): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        $this->service->receive(
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            quantity: '1.0000',
+            reference: 'NOT-A-UUID',
+            userId: $this->user->id,
+            expectedCompanyId: $this->company->id,
+            referenceType: StockMovementReferenceType::Document,
+            referenceId: '42',
+        );
+    }
+
+    // ------------------------------------------------- domain event stream
+
+    /**
+     * The audit trail (`getAuditData()`) and the channel integration read the
+     * event, not the row — so the event must carry the same linkage the row does,
+     * or a guard reading the event stream sees an unlinked movement.
+     */
+    public function test_dispatched_events_carry_the_same_linkage_as_the_row(): void
+    {
+        $documentId = (string) Str::uuid();
+
+        Event::fake([StockMovementRecorded::class, StockMovementRecordedV2::class]);
+
+        $this->service->receive(
+            productId: $this->product->id,
+            locationId: $this->location->id,
+            quantity: '5.0000',
+            reference: 'GR-EVT',
+            userId: $this->user->id,
+            expectedCompanyId: $this->company->id,
+            referenceType: StockMovementReferenceType::Document,
+            referenceId: $documentId,
+        );
+
+        Event::assertDispatched(
+            StockMovementRecorded::class,
+            fn (StockMovementRecorded $event): bool => $event->referenceType === StockMovementReferenceType::Document->value
+                && $event->referenceId === $documentId
+        );
+
+        Event::assertDispatched(
+            StockMovementRecordedV2::class,
+            fn (StockMovementRecordedV2 $event): bool => $event->referenceType === StockMovementReferenceType::Document->value
+                && $event->referenceId === $documentId
+        );
+    }
+
+    public function test_count_events_carry_the_counting_linkage(): void
+    {
+        $t = CarbonImmutable::now()->subHours(3);
+        $this->setOnHand('10.0000');
+
+        $counting = $this->counting();
+        $this->item($counting, '20.0000', $t);
+
+        Event::fake([StockMovementRecorded::class, StockMovementRecordedV2::class]);
+
+        $this->fire($counting);
+
+        Event::assertDispatched(
+            StockMovementRecorded::class,
+            fn (StockMovementRecorded $event): bool => $event->referenceType === StockMovementReferenceType::InventoryCounting->value
+                && $event->referenceId === $counting->id
         );
     }
 
@@ -345,7 +489,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
             ->where('reason', MovementReason::CountCorrection->value)
             ->firstOrFail();
 
-        $this->assertSame(InventoryCounting::class, $movement->reference_type);
+        $this->assertSame(StockMovementReferenceType::InventoryCounting->value, $movement->reference_type);
         $this->assertSame($counting->id, $movement->reference_id);
     }
 
@@ -363,7 +507,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
             ->where('reason', MovementReason::CountCorrection->value)
             ->firstOrFail();
 
-        $this->assertSame(InventoryCounting::class, $movement->reference_type);
+        $this->assertSame(StockMovementReferenceType::InventoryCounting->value, $movement->reference_type);
         $this->assertSame($counting->id, $movement->reference_id);
         // Free-text label unchanged — the FK is additive, not a replacement.
         $this->assertSame('COUNTING:'.$counting->counting_number, $movement->reference);
@@ -386,7 +530,7 @@ final class StockMovementDocumentLinkageTest extends TestCase
             ->where('movement_type', MovementType::Opening->value)
             ->firstOrFail();
 
-        $this->assertSame(InventoryCounting::class, $movement->reference_type);
+        $this->assertSame(StockMovementReferenceType::InventoryCounting->value, $movement->reference_type);
         $this->assertSame($counting->id, $movement->reference_id);
     }
 }
