@@ -281,18 +281,71 @@ final class ReturnNoteService
         // adds the mirror, because covering one direction only refuses the double return
         // in one order of operations and permits it in the other.
         $sourceIds = [$sourceDocumentId];
+        $backingInvoiceIds = [];
+
         if ($source->type === DocumentType::Invoice) {
             $sourceIds = array_merge(
                 $sourceIds,
                 $this->deliveredQuantityResolver->confirmedDeliveryNoteIdsFor($source),
             );
         } elseif ($source->type === DocumentType::DeliveryNote) {
-            $sourceIds = array_merge(
-                $sourceIds,
-                $this->deliveredQuantityResolver->invoiceIdsBackedByDeliveryNote($source),
-            );
+            $backingInvoiceIds = $this->deliveredQuantityResolver->invoiceIdsBackedByDeliveryNote($source);
+            $sourceIds = array_merge($sourceIds, $backingInvoiceIds);
         }
         $sourceIds = array_values(array_unique($sourceIds));
+
+        // ── THE DENOMINATOR MUST SPAN THE SAME UNION AS THE RETURNS (round 3, NB-1) ──
+        //
+        // Round 2 widened the RETURNS set for a delivery-note source without widening the
+        // INVOICED set, which is still this note's own lines. The two sides of
+        // `remaining = invoiced − alreadyReturned` then span DIFFERENT document sets, and
+        // legitimate returns of never-returned units were refused:
+        //
+        //  - CONSOLIDATED INVOICE over two delivery notes (a first-class flow —
+        //    `DeliveryNoteToInvoiceConverter` exists to build it): DN1 = 5, DN2 = 5,
+        //    invoice = 10. Return 5 through the invoice, and DN2's own five are refused
+        //    with "invoiced 5, already returned 5" — units that belonged to DN1.
+        //  - SALES-ORDER FAN-OUT: shape (b) of `invoiceIdsBackedByDeliveryNote()` matches
+        //    every invoice sharing the note's `source_document_id`, so a return against an
+        //    unrelated SIBLING invoice blocked this note's units.
+        //
+        // Narrowing the traversal is not the fix and may be unachievable: the SO shape
+        // keeps its delivery-note list at the ORDER level, so an order-mate invoice is
+        // indistinguishable from a backing one by traversal alone. Making the DENOMINATOR
+        // symmetric is what makes it correct — take, per product, the greater of this
+        // note's own quantity and the total invoiced across the backing invoices. The
+        // invoice is the superset in both shapes, and `invoiced` is what the refusal code
+        // (`CODE_INVOICED`) literally means.
+        //
+        // The mirror refusal this widening exists for is untouched: one DN of 5 backed by
+        // one invoice of 5 still nets 5 − 5 = 0.
+        if ($backingInvoiceIds !== []) {
+            $backingLines = DocumentLine::query()
+                ->whereHas('document', static function (Builder $query) use ($backingInvoiceIds, $companyId): void {
+                    /** @var Builder<Document> $query */
+                    $query->where('company_id', $companyId)
+                        ->whereIn('id', $backingInvoiceIds);
+                })
+                ->get();
+
+            /** @var array<string, numeric-string> $backingInvoiced */
+            $backingInvoiced = [];
+            foreach ($backingLines as $line) {
+                if ($line->product_id === null) {
+                    continue;
+                }
+                $backingInvoiced[$line->product_id] = bcadd(
+                    $backingInvoiced[$line->product_id] ?? '0',
+                    (string) $line->quantity,
+                    $qtyScale,
+                );
+            }
+
+            foreach ($backingInvoiced as $productId => $quantity) {
+                $own = $invoiced[$productId] ?? '0';
+                $invoiced[$productId] = bccomp($quantity, $own, $qtyScale) > 0 ? $quantity : $own;
+            }
+        }
 
         /** @var array<string, numeric-string> $alreadyReturned */
         $alreadyReturned = [];

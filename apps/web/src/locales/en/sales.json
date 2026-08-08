@@ -516,7 +516,8 @@
         "label": "No return — the goods are not coming back",
         "hint": {
           "goodsIssued": "The goods stay with the customer: no stock comes back and the cost stays charged. This choice is recorded on the invoice.",
-          "noGoodsIssued": "Nothing was ever delivered against this invoice, so there is nothing to return. This choice is recorded on the invoice."
+          "noGoodsIssued": "Nothing was ever delivered against this invoice, so there is nothing to return. This choice is recorded on the invoice.",
+          "unknown": "Records that no goods come back. We could not confirm this invoice's deliveries yet, so nothing is claimed about them here."
         }
       },
       "optionsDisabledReason": "No confirmed delivery note is linked to this invoice, so no goods have left your stock and none can come back.",

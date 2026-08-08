@@ -516,7 +516,8 @@
         "label": "Aucun retour — les marchandises ne reviennent pas",
         "hint": {
           "goodsIssued": "Les marchandises restent chez le client : aucun stock ne revient et le coût reste imputé. Ce choix est enregistré sur la facture.",
-          "noGoodsIssued": "Rien n'a jamais été livré au titre de cette facture, il n'y a donc rien à retourner. Ce choix est enregistré sur la facture."
+          "noGoodsIssued": "Rien n'a jamais été livré au titre de cette facture, il n'y a donc rien à retourner. Ce choix est enregistré sur la facture.",
+          "unknown": "Enregistre qu'aucune marchandise ne revient. Nous n'avons pas encore pu confirmer les livraisons de cette facture ; rien n'est donc affirmé à leur sujet ici."
         }
       },
       "optionsDisabledReason": "Aucun bon de livraison confirmé n'est lié à cette facture : aucune marchandise n'est sortie du stock et aucune ne peut donc revenir.",

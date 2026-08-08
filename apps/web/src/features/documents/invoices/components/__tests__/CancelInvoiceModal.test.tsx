@@ -13,6 +13,12 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
+/** Mirrors the component's `todayLocalIsoDate()` — see the note at its call site. */
+function todayLocalIso(): string {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+}
+
 const onSubmit = vi.fn()
 const onClose = vi.fn()
 
@@ -145,7 +151,10 @@ describe('CancelInvoiceModal', () => {
         expect(onSubmit).toHaveBeenCalledWith({
           reason: 'Already back',
           mode: 'already_returned',
-          returnedOn: new Date().toISOString().slice(0, 10),
+          // The LOCAL date, matching `todayLocalIsoDate()`. Asserting the UTC form here
+          // reintroduced the very off-by-one the helper exists to prevent — it passed only
+          // while the two happened to agree.
+          returnedOn: todayLocalIso(),
         })
       })
     })
@@ -315,6 +324,23 @@ describe('CancelInvoiceModal', () => {
       expect(screen.getByText('sales:invoices.cancelFlow.optionsUnknownReason')).toBeInTheDocument()
     })
 
+    /**
+     * Gate CF round 3, R1. NB1 moved the falsehood out of `optionsDisabledReason`, but the
+     * option-3 hint carried the same claim one element lower — "Nothing was ever delivered
+     * against this invoice", rendered as fact directly underneath a banner saying we could
+     * not check the invoice.
+     */
+    it('does not claim nothing was delivered in the option-3 hint either', () => {
+      renderModal({ canCancel: undefined, canCancelResolved: false, canCancelErrored: true })
+
+      expect(
+        screen.queryByText('sales:invoices.cancelFlow.option3.hint.noGoodsIssued'),
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getByText('sales:invoices.cancelFlow.option3.hint.unknown'),
+      ).toBeInTheDocument()
+    })
+
     it('states the no-delivery reason as fact only once the server has confirmed it', () => {
       renderModal({ canCancel: canCancel({ goods_issued: false }), canCancelResolved: true })
 
@@ -386,6 +412,130 @@ describe('CancelInvoiceModal', () => {
     // became a code-less 422 — which is also what fed B2's silent path.
     await waitFor(() => {
       expect(onSubmit).not.toHaveBeenCalled()
+    })
+  })
+
+  /**
+   * Gate CF round 3, NB-2 / R2. The round-2 preserve-on-resolve fix brought back the
+   * stale-state defect round-1 M1 removed — and carried it across invoices, because the
+   * route rendered the page without a `key`. `returned_on` drives the return note's
+   * `document_date` and therefore which fiscal period the restock lands in, so a value
+   * pre-filled from a previous attempt is not cosmetic.
+   */
+  describe('form state across open/close', () => {
+    it('clears what the user typed when the modal is closed and reopened', async () => {
+      const user = userEvent.setup()
+
+      const { rerender } = render(
+        <CancelInvoiceModal
+          isOpen
+          onClose={onClose}
+          invoiceNumber="INV-2026-0001"
+          canCancel={canCancel()}
+          canCancelResolved
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+
+      await user.type(screen.getByRole('textbox'), 'Duplicate invoice')
+      expect(screen.getByRole('textbox')).toHaveValue('Duplicate invoice')
+
+      const props = {
+        onClose,
+        invoiceNumber: 'INV-2026-0001',
+        canCancel: canCancel(),
+        canCancelResolved: true,
+        isSubmitting: false,
+        onSubmit,
+      }
+
+      rerender(<CancelInvoiceModal isOpen={false} {...props} />)
+      rerender(<CancelInvoiceModal isOpen {...props} />)
+
+      await waitFor(() => {
+        expect(screen.getByRole('textbox')).toHaveValue('')
+      })
+    })
+
+    it('still preserves the reason across a branch resolution within one open session', async () => {
+      const user = userEvent.setup()
+
+      const { rerender } = render(
+        <CancelInvoiceModal
+          isOpen
+          onClose={onClose}
+          invoiceNumber="INV-2026-0001"
+          canCancel={undefined}
+          canCancelResolved={false}
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+
+      await user.type(screen.getByRole('textbox'), 'Duplicate invoice')
+
+      // `/can-cancel` lands mid-typing — the round-2 NB2 case, which must still hold.
+      rerender(
+        <CancelInvoiceModal
+          isOpen
+          onClose={onClose}
+          invoiceNumber="INV-2026-0001"
+          canCancel={canCancel({ goods_issued: true })}
+          canCancelResolved
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+
+      await waitFor(() => {
+        expect(screen.getByRole('textbox')).toHaveValue('Duplicate invoice')
+      })
+    })
+
+    it('clears the form when the modal reopens for a DIFFERENT invoice', async () => {
+      const user = userEvent.setup()
+
+      const { rerender } = render(
+        <CancelInvoiceModal
+          isOpen
+          onClose={onClose}
+          invoiceNumber="INV-2026-0001"
+          canCancel={canCancel()}
+          canCancelResolved
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+
+      await user.type(screen.getByRole('textbox'), 'Invoice A reason')
+
+      rerender(
+        <CancelInvoiceModal
+          isOpen={false}
+          onClose={onClose}
+          invoiceNumber="INV-2026-0002"
+          canCancel={canCancel()}
+          canCancelResolved
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+      rerender(
+        <CancelInvoiceModal
+          isOpen
+          onClose={onClose}
+          invoiceNumber="INV-2026-0002"
+          canCancel={canCancel()}
+          canCancelResolved
+          isSubmitting={false}
+          onSubmit={onSubmit}
+        />,
+      )
+
+      await waitFor(() => {
+        expect(screen.getByRole('textbox')).toHaveValue('')
+      })
     })
   })
 

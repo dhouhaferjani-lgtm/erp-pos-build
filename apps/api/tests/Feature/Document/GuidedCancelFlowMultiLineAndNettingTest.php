@@ -498,6 +498,103 @@ final class GuidedCancelFlowMultiLineAndNettingTest extends TestCase
             ->assertCreated();
     }
 
+    // ── NB-1: the denominator must span the same document union as the returns ──
+
+    /**
+     * TRIGGER A — a consolidated invoice over two delivery notes.
+     *
+     * `DeliveryNoteToInvoiceConverter` exists precisely to consolidate several delivery
+     * notes into one invoice, so this is a first-class flow, not an exotic shape.
+     *
+     * Round 2 widened the RETURNS set (netting a DN's returns across its backing
+     * invoices) without widening the INVOICED set, which is still built from the delivery
+     * note's own lines. The two sides of `remaining = invoiced − alreadyReturned` then
+     * span different document sets: DN2 says "invoiced 5, already returned 5, remaining
+     * 0" for units that were never returned, because the 5 returned through the INVOICE
+     * belonged to DN1. Ten delivered, ten invoiced, five returned — and the sixth to
+     * tenth refused, with a payload asserting the invoice was for 5.
+     *
+     * Fail-closed, so no phantom inventory — but it is a regression authored by the
+     * round-2 remedy (201 before, 422 after), and the refusal states a falsehood.
+     */
+    public function test_a_consolidated_invoice_over_two_delivery_notes_still_allows_the_second_notes_return(): void
+    {
+        $dn1 = $this->dn('5.0000', $this->cfLocationA->id);
+        $dn2 = $this->dn('5.0000', $this->cfLocationA->id);
+
+        $invoice = $this->invoiceWithLines([
+            ['quantity' => '10.0000', 'unit_price' => '100.000'],
+        ]);
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$dn1, $dn2]);
+
+        // Five units come back through the INVOICE surface.
+        $this->confirmInvoiceSourcedReturn($invoice, '5.0000', '100.000');
+
+        // The OTHER five, through DN2's own surface. Never returned — must be allowed.
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dn2->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertCreated();
+    }
+
+    /**
+     * TRIGGER B — sales-order fan-out.
+     *
+     * `invoiceIdsBackedByDeliveryNote()` shape (b) matches EVERY invoice sharing the
+     * delivery note's `source_document_id`, not only the one this note backs — and it
+     * cannot do better, because the SO shape keeps its delivery-note list at the ORDER
+     * level, so an order-mate invoice is indistinguishable from a backing one by
+     * traversal alone. A return raised against an unrelated sibling invoice under the same
+     * order therefore blocked this note's own units.
+     *
+     * The symmetric denominator is what makes it correct without narrowing the traversal.
+     */
+    public function test_a_sibling_invoice_under_the_same_order_does_not_block_this_notes_return(): void
+    {
+        $dnA = $this->dn('5.0000', $this->cfLocationA->id);
+        $dnB = $this->dn('5.0000', $this->cfLocationB->id);
+
+        $invoiceA = $this->invoiceWithLines([['quantity' => '5.0000', 'unit_price' => '100.000']]);
+        $invoiceB = $this->invoiceWithLines([['quantity' => '5.0000', 'unit_price' => '100.000']]);
+
+        // Both invoices and both notes hang off ONE sales order.
+        $order = $this->cfLinkInvoiceViaSalesOrder($invoiceA, [$dnA, $dnB]);
+        $invoiceB->update(['source_document_id' => $order->id]);
+        $dnA->update(['source_document_id' => $order->id]);
+        $dnB->update(['source_document_id' => $order->id]);
+
+        // Five units come back against the SIBLING invoice B.
+        $this->confirmInvoiceSourcedReturn($invoiceB->refresh(), '5.0000', '100.000');
+
+        // DN-A's own five are untouched and must still be returnable.
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dnA->refresh()->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertCreated();
+    }
+
     // ── NEW-1: the capacity ledger must net prior returns ────────────────────
 
     /**

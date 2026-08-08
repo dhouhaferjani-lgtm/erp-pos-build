@@ -1,5 +1,5 @@
-import { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import React, { lazy, Suspense } from 'react'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { Layout } from '../components/layout/Layout'
 import { RequireAuth } from '../features/auth/AuthProvider'
 import { RequirePermission } from '../components/auth'
@@ -301,6 +301,26 @@ const TermsOfServicePage = lazy(() => import('../pages/legal/TermsOfServicePage'
 // Progression module
 const GrowthPage = lazy(() => import('../features/progression').then((m) => ({ default: m.GrowthPage })))
 const ProgressionModulesPage = lazy(() => import('../features/progression').then((m) => ({ default: m.ModulesPage })))
+
+/**
+ * Remount the wrapped page whenever the route's `:id` changes.
+ *
+ * Gate CF round 3, NB-2. React Router reuses the SAME component instance across
+ * `invoices/1` → `invoices/2`, so every piece of `useState` on the page — and every RHF
+ * form mounted beneath it — survives the navigation. For the guided cancel modal that
+ * meant a `reason` typed for one invoice, and a `returned_on` chosen for it, pre-filling
+ * the next invoice's cancellation record. `returned_on` drives the return note's
+ * `document_date` and therefore which fiscal period the restock lands in, so that is not
+ * a cosmetic carry-over.
+ *
+ * Keying on the id is the one-line structural fix: it makes "a different document" mean
+ * "a different component instance", so no page has to remember to clear itself.
+ */
+function KeyedByRouteId({ children }: { children: React.ReactNode }) {
+  const { id } = useParams()
+
+  return <React.Fragment key={id ?? 'none'}>{children}</React.Fragment>
+}
 
 function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return (
@@ -673,7 +693,9 @@ export function AppRoutes() {
             element={
               <RequirePermission moduleKey="sales">
                 <SuspenseWrapper>
-                  <InvoiceDetailPage />
+                  <KeyedByRouteId>
+                    <InvoiceDetailPage />
+                  </KeyedByRouteId>
                 </SuspenseWrapper>
               </RequirePermission>
             }

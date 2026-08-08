@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -186,7 +186,7 @@ export function CancelInvoiceModal({
     handleSubmit,
     watch,
     reset,
-    getValues,
+    setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema) as never,
@@ -201,32 +201,58 @@ export function CancelInvoiceModal({
   })
 
   /**
-   * Re-apply the branch defaults once `/can-cancel` resolves — and again whenever the
-   * modal reopens.
+   * Two DIFFERENT triggers, deliberately kept apart (gate CF round 3, NB-2 / R2).
    *
-   * Gate CF round 1, MAJOR M1 + fiscal IMPORTANT. RHF captures `defaultValues` ONCE at
-   * mount, and the modal is mounted on the page's first render (`Modal` itself returns
-   * null when closed), so `canCancel` is `undefined` at that moment. Nothing called
-   * `reset`, so plan T10's binding option→mode table row — "option 3 **pre-selected**"
-   * in the `!goods_issued` branch — never held in the running app, and stale form state
-   * (reason text, chosen option, date) survived close/reopen. The unit test passed only
-   * because it injected `canCancel` at mount: the one state the live app never starts in.
+   * `Modal` returns null when closed but the component stays MOUNTED, and RHF captures
+   * `defaultValues` only once — so without a reset, plan T10's binding option→mode row
+   * ("option 3 **pre-selected**" in the `!goods_issued` branch) never held in the running
+   * app, and stale state survived close→reopen. Round 1 fixed that with a blind reset;
+   * round 2 then discovered the blind reset WIPED the reason a user typed while
+   * `/can-cancel` was still in flight (B3's own fix makes that window visible), and made
+   * the reset preserve `reason`/`returnedOn` — which brought the stale-state defect back
+   * and, worse, carried it ACROSS INVOICES, because the route renders
+   * `<InvoiceDetailPage />` without a `key`, so navigating A → B reuses this form.
+   * `returned_on` drives the return note's `document_date` and therefore which fiscal
+   * period the restock lands in, so a value pre-filled from another invoice is not
+   * cosmetic.
+   *
+   * The two cases need opposite answers, so they get separate effects:
+   *
+   *  1. **OPEN transition (closed → open), or a different invoice.** Everything is
+   *     cleared. Nothing the user typed for a previous attempt — or a previous invoice —
+   *     may pre-fill this one.
+   *  2. **Branch resolution while already open.** `/can-cancel` landing must NOT touch
+   *     what the user has typed; only the branch-dependent `goodsOption` is re-derived.
    */
+  const wasOpen = useRef(false)
+
   useEffect(() => {
-    if (!isOpen) return
+    const justOpened = isOpen && !wasOpen.current
+    wasOpen.current = isOpen
+
+    if (!justOpened) return
 
     reset({
-      // PRESERVE what the user already typed (gate CF round 2, NB2). This effect fires
-      // whenever the branch resolves, and B3's own fix makes that window user-visible:
-      // the modal opens saying "Checking this invoice…", the user types their reason
-      // while waiting, `/can-cancel` lands, `goodsIssued` flips false→true — and a blind
-      // `reason: ''` wiped it. Silent input loss, in the lane whose ruling is "explicit,
-      // never silent". Only the BRANCH-DEPENDENT fields are re-derived.
-      reason: getValues('reason') ?? '',
+      reason: '',
       ...(requiresDecision && !goodsIssued ? { goodsOption: 'no_return' as const } : {}),
-      returnedOn: getValues('returnedOn') ?? todayLocalIsoDate(),
+      returnedOn: todayLocalIsoDate(),
     })
-  }, [isOpen, requiresDecision, goodsIssued, reset, getValues])
+    // Only the open transition may clear the form; the branch values are read at that
+    // moment and deliberately not tracked here (case 2 owns them).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, invoiceNumber])
+
+  useEffect(() => {
+    if (!isOpen || !wasOpen.current) return
+
+    // Case 2: re-derive ONLY the branch-dependent option. `reason` and `returnedOn` are
+    // whatever the user has in front of them.
+    setValue(
+      'goodsOption',
+      requiresDecision && !goodsIssued ? 'no_return' : undefined,
+      { shouldValidate: false, shouldDirty: false },
+    )
+  }, [isOpen, requiresDecision, goodsIssued, setValue])
 
   const selectedOption = watch('goodsOption')
 
@@ -473,9 +499,22 @@ export function CancelInvoiceModal({
                           * reality, recorded on a fiscal document.
                           */}
                         <span className={`block text-sm ${textColors.secondary}`}>
-                          {goodsIssued
-                            ? t('sales:invoices.cancelFlow.option3.hint.goodsIssued')
-                            : t('sales:invoices.cancelFlow.option3.hint.noGoodsIssued')}
+                          {/*
+                            * Gate CF round 3, R1. NB1 moved the falsehood out of
+                            * `optionsDisabledReason`, but this hint carries the same class
+                            * of claim one element lower: while `/can-cancel` is unresolved
+                            * or errored, `goodsIssued` defaults to false and this rendered
+                            * "Nothing was ever delivered against this invoice" as FACT —
+                            * directly underneath a banner saying we could not check the
+                            * invoice. Submit is blocked either way, so nothing wrong could
+                            * be posted; the defect is that the modal asserted something it
+                            * did not know.
+                            */}
+                          {!canCancelResolved
+                            ? t('sales:invoices.cancelFlow.option3.hint.unknown')
+                            : goodsIssued
+                              ? t('sales:invoices.cancelFlow.option3.hint.goodsIssued')
+                              : t('sales:invoices.cancelFlow.option3.hint.noGoodsIssued')}
                         </span>
                       </span>
                     </label>
