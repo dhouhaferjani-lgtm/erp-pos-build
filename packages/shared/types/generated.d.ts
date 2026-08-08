@@ -300,7 +300,7 @@ export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_recei
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-export type GlResidualRefusal = 'negative_residual' | 'no_absorbing_account' | 'residual_exceeds_rounding_tolerance' | 'legs_do_not_balance';
+export type GlResidualRefusal = 'negative_residual' | 'no_absorbing_account' | 'residual_exceeds_rounding_tolerance' | 'legs_do_not_balance' | 'no_credit_note_stamp_account';
 export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'EF' | 'OD';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
 export type OpeningBatchStatus = 'DRAFT' | 'VALIDATED' | 'LOCKED';
@@ -739,6 +739,7 @@ additional_data: Array<any> | null;
 }
 declare namespace App.Modules.Document.Domain.Enums {
 export type AdditionalCostType = 'transport' | 'shipping' | 'insurance' | 'customs' | 'handling' | 'other';
+export type CancelBlockReason = 'NOT_AN_INVOICE' | 'DOCUMENT_HAS_PAYMENTS' | 'DOCUMENT_ALREADY_CANCELLED' | 'DOCUMENT_STATUS_NOT_CANCELLABLE';
 export type CostApplicationPath = 'landed_cost' | 'wac_adjustment' | 'profit_only';
 export type CreditNoteReason = 'return' | 'price_adjustment' | 'billing_error' | 'damaged_goods' | 'service_issue' | 'other';
 export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_delivered';
@@ -2130,6 +2131,7 @@ declare namespace App.Modules.Taxation.Domain.Enums {
 export type CertificateStatus = 'draft' | 'issued' | 'submitted' | 'voided';
 export type CompanyTaxStatus = 'REGISTERED' | 'NON_REGISTERED';
 export type PartnerTaxStatus = 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT';
+export type PeriodLockRefusalCode = 'DOCUMENT_PERIOD_CLOSED' | 'DOCUMENT_PERIOD_FILED';
 export type StackingBehavior = 'SUBTOTAL' | 'TOTAL_INCLUDING_PREVIOUS';
 export type TaxApplicationLevel = 'LINE_ITEMS' | 'DOCUMENT_TOTAL';
 export type TaxType = 'PERCENTAGE' | 'FIXED_AMOUNT';
@@ -2225,7 +2227,7 @@ export type AllocationMethod = 'fifo' | 'due_date' | 'manual';
 export type AllocationType = 'invoice_payment' | 'credit_application' | 'credit_note_application' | 'tolerance_writeoff';
 export type BankStatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided';
 export type CancellationShape = 'b2b' | 'pos_revenue';
-export type DepositReferenceRefusal = 'payment_method_not_found' | 'payment_repository_not_found' | 'payment_repository_missing_gl_account' | 'payment_repository_gl_account_inactive' | 'payment_repository_currency_mismatch';
+export type DepositReferenceRefusal = 'payment_method_not_found' | 'payment_repository_not_found' | 'payment_repository_missing_gl_account' | 'payment_repository_gl_account_inactive' | 'payment_repository_currency_mismatch' | 'payment_repository_frozen' | 'actor_not_active_company_member' | 'payment_repository_behind_checkpoint' | 'missing_instrument_portfolio_account' | 'instrument_currency_mismatches_company';
 export type DishonorRouting = 're_present' | 'receivable' | 'doubtful';
 export type FeeType = 'none' | 'fixed' | 'percentage' | 'mixed';
 export type InstrumentAccountPurpose = 'checks_to_collect' | 'checks_to_pay' | 'effects_receivable' | 'effets_payable' | 'effects_in_collection' | 'effects_discounted' | 'instrument_bank_fees' | 'vat_recoverable_on_fees' | 'doubtful_receivables';
@@ -2240,13 +2242,14 @@ export type MovementReasonCode = 'count_variance' | 'correction' | 'theft_loss' 
 export type MovementSourceType = 'payment' | 'expense' | 'income' | 'refund' | 'fiscal_event' | 'transfer' | 'adjustment' | 'opening_balance' | 'instrument';
 export type PaymentOrigin = 'pos' | 'web_admin' | 'mobile' | 'api' | 'unknown_legacy' | 'back_office';
 export type PaymentStatus = 'pending' | 'completed' | 'failed' | 'reversed';
-export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos';
+export type PaymentType = 'document_payment' | 'advance' | 'refund' | 'credit_application' | 'supplier_payment' | 'pos' | 'reversal';
 export type ProrationStrategy = 'proportional' | 'largest_first' | 'cashier_choice';
 export type ReconciliationStatus = 'draft' | 'completed' | 'cancelled';
 export type RemittanceLineStatus = 'pending' | 'cleared' | 'bounced';
 export type RemittanceStatus = 'draft' | 'remitted' | 'closed';
 export type RemittanceType = 'collection' | 'discount';
 export type RepositoryType = 'cash_register' | 'safe' | 'bank_account' | 'virtual';
+export type ReversalSupport = 'cash_reversal' | 'no_cash_leg' | 'unsupported';
 export type StatementDirectionConvention = 'signed_amount' | 'debit_credit_columns';
 export type StatementLineIgnoreReason = 'duplicate' | 'informational' | 'bank_error' | 'out_of_scope' | 'other';
 export type StatementLineMatchStatus = 'unmatched' | 'partial' | 'matched' | 'resolved_by_creation' | 'ignored';
@@ -2794,6 +2797,7 @@ meta: Array<any>;
 }
 declare namespace App.Shared.Domain.Enums {
 export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
+export type StockMovementReferenceType = 'Document' | 'inventory_counting';
 export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }

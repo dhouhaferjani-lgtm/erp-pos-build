@@ -134,6 +134,20 @@ class PaymentRefundController extends Controller
 
     /**
      * Reverse a payment (for errors/corrections)
+     *
+     * DPA V4: the reversal now produces a linked REVERSING DOCUMENT, and returning
+     * it is the entire user-visible point of the lane.
+     *
+     * ⚠️ RESHAPE, not an addition: `data` used to BE the payment; it is now
+     * `{payment, reversal}`, so `data.status` is gone (read `data.payment.status`).
+     * Verified safe for the app — the sole production consumer
+     * (`PaymentDetailPage.tsx`) discards the response body and just invalidates its
+     * queries. `data.reversal` is NULLABLE: a payment already unwound by a full
+     * refund (or by the POS void lane) has nothing to reverse and returns 200 with
+     * `reversal: null`, not a 422.
+     *
+     * No new permission: `can:payments.reverse` still gates the route. Reversal is
+     * the same privileged act — only its record shape changed.
      */
     public function reversePayment(Request $request, string $id): JsonResponse
     {
@@ -145,15 +159,20 @@ class PaymentRefundController extends Controller
 
         try {
             $userId = $request->user()?->id !== null ? (string) $request->user()->id : null;
-            $this->refundService->reversePayment(
+            $reversal = $this->refundService->reversePayment(
                 $payment,
                 (string) $request->input('reason'),
                 $userId
             );
 
             return response()->json([
-                'data' => $payment->fresh(),
-                'message' => 'Payment reversed successfully',
+                'data' => [
+                    'payment' => $payment->fresh(),
+                    'reversal' => $reversal?->load(['partner', 'paymentMethod']),
+                ],
+                'message' => $reversal === null
+                    ? 'Payment was already unwound; nothing to reverse'
+                    : 'Payment reversed successfully',
             ]);
         } catch (\Exception $e) {
             return response()->json([

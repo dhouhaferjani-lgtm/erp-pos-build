@@ -399,14 +399,18 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
       reason: 'W2a MTP-TRE-11 reverse',
     })
     expect(reverse.ok, `reverse -> ${reverse.status} ${JSON.stringify(reverse.data)}`).toBeTruthy()
-    const reversedPayment = reverse.data.data as { status: string } | undefined
+    const reverseData = reverse.data.data as
+      | { payment?: { status?: string }; reversal?: { payment_type?: string; amount?: string } | null }
+      | undefined
     // eslint-disable-next-line no-console
     console.log(`[MTP-TRE-11] payment status after reverse: ${JSON.stringify(reverse.data)}`)
-    // The formatted response wraps in {data: payment}; PaymentRefundController
-    // returns {data: payment, message}. Assert the resulting status is the
-    // Treasury enum's terminal "reversed" value (distinct from refunded).
-    const statusValue = (reversedPayment?.status ?? (reverse.data as { status?: string }).status) as string
-    expect(statusValue, 'status is the distinct "reversed" terminal state').toBe('reversed')
+    // DPA V4 RESHAPE: PaymentRefundController used to return {data: payment};
+    // it now returns {data: {payment, reversal}, message} so the caller receives
+    // the linked reversing document. Assert the resulting status is the Treasury
+    // enum's terminal "reversed" value (distinct from refunded).
+    expect(reverseData?.payment?.status, 'status is the distinct "reversed" terminal state').toBe('reversed')
+    // DPA V4: the reversal is a DOCUMENT, not a silent mutation.
+    expect(reverseData?.reversal?.payment_type, 'the reversal returns its own reversing document').toBe('reversal')
 
     const invAfter = await get(request, owner, `/documents/${inv.id}`)
     // eslint-disable-next-line no-console
@@ -792,8 +796,9 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
     const invAfterPartial = await get(request, owner, `/documents/${inv.id}`)
     expect(invAfterPartial.data.balance_due, 'partial refund reopens 250.000').toBe('250.000')
 
-    // Capture the refund child's id BEFORE reversing (it cannot be read back
-    // off the deleted allocation rows afterward).
+    // Capture the refund child's id before reversing. (Pre-DPA-V4 this was
+    // mandatory because the reversal DELETED the allocation rows; V4 keeps every
+    // row, but reading it up front still keeps the assertions below explicit.)
     const historyBefore = await get(request, owner, `/payments/${paymentId}/refund-history`)
     const refundsBefore = historyBefore.data.refunds as unknown as Array<{ id: string }>
     expect(refundsBefore.length, 'exactly one refund child from the partial refund above').toBe(1)
@@ -804,10 +809,17 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
     })
     expect(reverse.ok, `reverse -> ${reverse.status} ${JSON.stringify(reverse.data)}`).toBeTruthy()
 
+    const reversalDocument = reverse.data.data?.reversal as { id?: string; amount?: string } | null | undefined
+    expect(reversalDocument?.id, 'DPA V4: the reversal returns a linked reversing document').toBeTruthy()
+    expect(
+      reversalDocument?.amount,
+      'DPA V4: the reversal is sized on the NET of the lineage (600 - 250 = 350), never the gross',
+    ).toBe('-350.000')
+
     const invAfterReverse = await get(request, owner, `/documents/${inv.id}`)
     expect(
       invAfterReverse.data.balance_due,
-      'reverse wipes the WHOLE lineage allocation (original + refund child), restoring the invoice to its pre-payment 600.000',
+      'the lineage nets to zero (original +600, refund -250, reversal -350), restoring the invoice to 600.000 — never above it',
     ).toBe('600.000')
     expect(invAfterReverse.data.status, 'reverse reverts Paid -> Posted (D9 recompute path)').toBe('posted')
 
@@ -820,10 +832,17 @@ test.describe('MTP-TRE — payments and allocations (W2a §E.1)', () => {
       refundChildAfter.data.status,
       'TRIPWIRE (N4): orphan refund child is NOT reversed/voided alongside the original',
     ).toBe('completed')
-    const refundChildAllocations = (refundChildAfter.data.allocations ?? []) as unknown[]
+    // TRIPWIRE INVERTED (DPA V4 / T11 fourth site): the pre-V4 behaviour was a
+    // lineage-wide WIPE, and this assertion pinned it at zero. V4 deletes nothing,
+    // so the refund child must RETAIN its own negative allocation — and the whole
+    // lineage nets to zero via the reversal's mirror instead of via deletion. The
+    // tripwire's premise is inverted, not removed: a regression back to the wipe
+    // now fails here.
+    const refundChildAllocations = (refundChildAfter.data.allocations ?? []) as Array<{ amount?: string }>
     expect(
       refundChildAllocations,
-      'TRIPWIRE (N4): orphan refund child carries zero allocations after the lineage-wide wipe',
-    ).toHaveLength(0)
+      'TRIPWIRE INVERTED (V4): the refund child RETAINS its negative allocation — nothing is deleted',
+    ).toHaveLength(1)
+    expect(refundChildAllocations[0]?.amount, 'the refund child keeps its own -250.000 row').toBe('-250.000')
   })
 })
