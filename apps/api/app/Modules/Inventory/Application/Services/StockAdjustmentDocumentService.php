@@ -350,8 +350,14 @@ final class StockAdjustmentDocumentService
                 throw new CannotCorrectACorrectionException($adjustment->id, $adjustment->corrects_adjustment_id);
             }
 
+            // A CANCELLED contra must not seal the original forever (gate N-8).
+            // Abandoning a correction is an ordinary action; without this filter
+            // it made the document permanently uncorrectable. The DB's partial
+            // unique carries the same predicate, or this check would only move
+            // the failure one layer down.
             $existingCorrection = StockAdjustment::query()
                 ->where('corrects_adjustment_id', $adjustment->id)
+                ->where('status', '!=', StockAdjustmentStatus::Cancelled->value)
                 ->first();
 
             if ($existingCorrection !== null) {
@@ -546,9 +552,6 @@ final class StockAdjustmentDocumentService
                 ->where('company_id', $adjustment->company_id)
                 ->where('product_id', $product->id)
                 ->where('uuid', $input->batchUuid)
-                // An INACTIVE lot is administratively closed; nothing may be
-                // corrected into or out of it (gate N-7).
-                ->where('is_active', true)
                 ->first();
 
             if ($batch === null) {
@@ -563,20 +566,15 @@ final class StockAdjustmentDocumentService
                 throw new BatchNotApplicableException($product->id, $input->batchUuid);
             }
 
-            // Dropping the row check for positive lines also dropped the only
-            // indirect constraint on WHICH lot a positive line may name, so the
-            // constraint is now explicit (gate N-7): stock may not be ADDED to a
-            // lot FEFO will never consume — it would count in the aggregate and be
-            // unsellable. Removing from such a lot is left legitimate: correcting
-            // or clearing expired stock is exactly what a correction is for.
-            if (! $isNegative && ($batch->is_expired || $batch->is_recalled)) {
+            if ($this->lotRefusesInboundStock($batch, $isNegative, $this->isContra($adjustment))) {
                 throw new BatchNotApplicableException($product->id, $input->batchUuid);
             }
 
             return (int) $batch->id;
         }
 
-        // A CONTRA line is exempt from lot-required (gate N-1).
+        // A CONTRA line is exempt from lot-required (gate N-1) — and, via
+        // lotRefusesInboundStock(), from the lot-plausibility flags too (N-8).
         //
         // It is not a new correction: it is the exact inverse of a specific prior
         // movement whose lot disposition is already settled, and it INHERITS that
@@ -602,6 +600,50 @@ final class StockAdjustmentDocumentService
         }
 
         return null;
+    }
+
+    /**
+     * May stock be ADDED to this lot?
+     *
+     * Three flags, ONE direction, and one exemption — the asymmetry is the whole
+     * point (gates N-7, N-8, N-9):
+     *
+     *  - **Positive lines** may not land stock in a lot FEFO will never consume.
+     *    An expired, recalled or administratively-closed lot would count in the
+     *    aggregate while being unsellable, which is a quieter version of the
+     *    Sigma-lots desync this lane exists to close.
+     *  - **Negative lines are always allowed**, on all three flags. Clearing
+     *    expired stock, correcting a recalled lot's count, or draining a closed
+     *    lot is exactly what a correction is FOR — and refusing it forced a
+     *    write-off document, with its COGS posting, for what may be a plain count
+     *    discrepancy. That is a document-per-action mismatch, not a safeguard.
+     *  - **Contra lines are exempt entirely.** A contra puts back stock the lot
+     *    demonstrably held; refusing it leaves the AGGREGATE wrong rather than
+     *    protecting FEFO. Without this, `is_expired` — which flips on a nightly
+     *    timer — silently made every posted negative adjustment uncorrectable the
+     *    moment its lot expired, and the resulting draft was unpostable
+     *    (BATCH_NOT_APPLICABLE is not acknowledgeable, and re-anchor is
+     *    deliberately unavailable on a contra). Same inheritance rationale as the
+     *    lot-required exemption, and contained the same way: `correct()` is the
+     *    only door onto a header carrying `corrects_adjustment_id`.
+     */
+    private function lotRefusesInboundStock(Batch $batch, bool $isNegative, bool $isContra): bool
+    {
+        if ($isNegative || $isContra) {
+            return false;
+        }
+
+        return $batch->is_expired || $batch->is_recalled || ! $batch->is_active;
+    }
+
+    /**
+     * A CORRECTION document. Safe to key per-header because `correct()` is the
+     * only writer of `corrects_adjustment_id` — no request field sets it, and
+     * `updateDraft()` refuses to replace a contra's lines.
+     */
+    private function isContra(StockAdjustment $adjustment): bool
+    {
+        return $adjustment->corrects_adjustment_id !== null;
     }
 
     private function lotHasStockRowAt(int $batchId, string $locationId): bool
@@ -677,15 +719,14 @@ final class StockAdjustmentDocumentService
             ->where('tenant_id', $adjustment->tenant_id)
             ->where('company_id', $adjustment->company_id)
             ->where('product_id', $product->id)
-            ->where('is_active', true)
             ->whereKey($line->batch_id)
             ->first();
 
         $stillApplies = $batch !== null
             && (! $isNegative || $this->lotHasStockRowAt($batch->id, $adjustment->location_id))
-            // A lot that expired or was recalled between authoring and posting
-            // must not receive stock (gate N-7).
-            && ($isNegative || (! $batch->is_expired && ! $batch->is_recalled));
+            // A lot that expired, was recalled or was deactivated between
+            // authoring and posting must not receive stock.
+            && ! $this->lotRefusesInboundStock($batch, $isNegative, $this->isContra($adjustment));
 
         if (! $stillApplies) {
             throw new BatchNotApplicableException(

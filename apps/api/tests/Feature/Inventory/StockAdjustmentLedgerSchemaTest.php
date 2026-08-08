@@ -127,7 +127,12 @@ final class StockAdjustmentLedgerSchemaTest extends TestCase
         // DISTINCT — which would make two DRAFTS (both number-less) collide.
         $this->assertIndexSqlContains('stock_adjustments_company_number_unique', 'WHERE adjustment_number IS NOT NULL');
         $this->assertIndexSqlContains('stock_adjustments_idempotency_unique', 'WHERE idempotency_key IS NOT NULL');
-        $this->assertIndexSqlContains('stock_adjustments_corrects_unique', 'WHERE corrects_adjustment_id IS NOT NULL');
+        // The cancelled arm is load-bearing: without it a cancelled contra seals
+        // the original as permanently uncorrectable.
+        $this->assertIndexSqlContains(
+            'stock_adjustments_corrects_unique',
+            "WHERE corrects_adjustment_id IS NOT NULL AND status <> 'cancelled'",
+        );
         $this->assertIndexSqlContains('stock_adjustment_lines_movement_id_unique', 'WHERE movement_id IS NOT NULL');
         $this->assertIndexSqlContains('stock_adjustment_lines_sku_unique_nv_nb', 'WHERE variant_id IS NULL AND batch_id IS NULL');
         $this->assertIndexSqlContains('stock_adjustment_lines_sku_unique_v_b', 'WHERE variant_id IS NOT NULL AND batch_id IS NOT NULL');
@@ -276,9 +281,16 @@ final class StockAdjustmentLedgerSchemaTest extends TestCase
         $this->assertSame($unique ? 1 : 0, (int) $index->unique, "Unexpected uniqueness for {$indexName}.");
     }
 
+    /**
+     * Normalise a driver's own rendering of an index predicate.
+     *
+     * PostgreSQL re-renders both the parenthesisation and the operand types
+     * ("status::text <> 'cancelled'::text"), so the assertion compares on the
+     * normalised form rather than pinning one driver's formatting.
+     */
     private function stripParens(string $sql): string
     {
-        return str_replace(['(', ')'], '', $sql);
+        return str_replace(['(', ')', '::text'], '', $sql);
     }
 
     private function assertIndexSqlContains(string $indexName, string $expectedSql): void

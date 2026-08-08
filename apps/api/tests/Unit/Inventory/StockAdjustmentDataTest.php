@@ -158,6 +158,26 @@ final class StockAdjustmentDataTest extends TestCase
     }
 
     #[Test]
+    public function a_cancelled_contra_is_not_reported_as_the_correction(): void
+    {
+        $product = $this->product('DTO-P2B', batchTracked: false);
+
+        $original = $this->minimalAdjustment($product, StockAdjustmentStatus::Posted);
+        $cancelled = $this->minimalAdjustment(
+            $product,
+            StockAdjustmentStatus::Cancelled,
+            correctsId: $original->id,
+        );
+
+        // The API allows re-correcting after a cancellation, so surfacing the
+        // abandoned document here would leave the UI's canCorrect false and
+        // dead-end the operator where the server would have said yes.
+        $array = StockAdjustmentData::fromModel($original->fresh() ?? $original)->toArray();
+        $this->assertNull($array['correction_id']);
+        $this->assertNotSame($cancelled->id, $array['correction_id']);
+    }
+
+    #[Test]
     public function lines_can_be_omitted_for_a_list_response(): void
     {
         $product = $this->product('DTO-P3', batchTracked: false);

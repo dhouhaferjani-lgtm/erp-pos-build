@@ -137,7 +137,13 @@ return new class extends Migration
         DB::statement('CREATE UNIQUE INDEX stock_adjustment_lines_movement_id_unique ON stock_adjustment_lines (movement_id) WHERE movement_id IS NOT NULL');
 
         DB::statement('CREATE UNIQUE INDEX stock_adjustments_company_number_unique ON stock_adjustments (tenant_id, company_id, adjustment_number) WHERE adjustment_number IS NOT NULL');
-        DB::statement('CREATE UNIQUE INDEX stock_adjustments_corrects_unique ON stock_adjustments (corrects_adjustment_id) WHERE corrects_adjustment_id IS NOT NULL');
+        // One LIVE correction per document. `status <> 'cancelled'` is part of the
+        // predicate, not an afterthought: abandoning a correction is an ordinary
+        // action, and without it a cancelled contra sealed the original as
+        // permanently uncorrectable. StockAdjustmentDocumentService::correct()
+        // carries the same filter — a service check alone would only move the
+        // failure down to this index.
+        DB::statement("CREATE UNIQUE INDEX stock_adjustments_corrects_unique ON stock_adjustments (corrects_adjustment_id) WHERE corrects_adjustment_id IS NOT NULL AND status <> 'cancelled'");
         // Partial, for consistency with every other nullable-column uniqueness in
         // this file: stock_transfers uses a plain unique, which relies on PG's
         // NULLS DISTINCT default and would change meaning under NULLS NOT

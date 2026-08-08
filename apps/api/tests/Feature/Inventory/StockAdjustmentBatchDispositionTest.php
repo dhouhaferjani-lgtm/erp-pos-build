@@ -17,6 +17,7 @@ use App\Modules\Inventory\Application\DTOs\StockAdjustmentLineInput;
 use App\Modules\Inventory\Application\DTOs\UpdateStockAdjustmentData;
 use App\Modules\Inventory\Application\Services\StockAdjustmentDocumentService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Modules\Inventory\Domain\Exceptions\AdjustmentAlreadyCorrectedException;
 use App\Modules\Inventory\Domain\Exceptions\BatchNotApplicableException;
 use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
 use App\Modules\Inventory\Domain\Exceptions\ContraLinesImmutableException;
@@ -786,6 +787,192 @@ final class StockAdjustmentBatchDispositionTest extends TestCase
 
         $this->assertSame('6.0000', (string) $this->level($product)->quantity);
         $this->assertSame('6.0000', $this->lotQuantity($expired));
+    }
+
+    // ------- N-8 / N-9: the lot-plausibility predicates must not dead-end work
+
+    /**
+     * GATE N-8, probe C. `is_expired` flips on a TIMER
+     * (`BatchExpiryDailyCheckCommand` nightly), so binding the expiry predicate to
+     * `correct()`'s DERIVED lines made every posted negative adjustment become
+     * uncorrectable the moment its lot expired — the N-1(a) dead-end class again,
+     * with the passage of time as the trigger.
+     *
+     * A contra puts back stock the lot demonstrably held. Refusing it leaves the
+     * aggregate WRONG rather than protecting FEFO, so contra lines inherit the
+     * original's lot disposition here exactly as they do for lot-required.
+     */
+    public function test_a_posted_negative_stays_correctable_after_its_lot_expires(): void
+    {
+        $product = $this->product('LOT-N8', batchTracked: true);
+        $this->seedStock($product, '10.0000');
+        $lot = $this->seedLot($product, 'LOT-N8-A', '10.0000');
+
+        $original = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-4.0000', '10.0000', $lot->uuid),
+        ]);
+        $this->service->post($original->id, $this->user->id);
+        $this->assertSame('6.0000', (string) $this->level($product)->quantity);
+
+        // The nightly job flips the flag.
+        $lot->update(['is_expired' => true]);
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+        $this->service->post($contra->id, $this->user->id);
+
+        $this->assertSame('10.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('10.0000', $this->lotQuantity($lot));
+    }
+
+    /**
+     * GATE N-8, probe C2. The same flag flip BETWEEN authoring the contra and
+     * posting it. The post-time re-assertion must be exempt too, or the contra is
+     * permanently unpostable: BATCH_NOT_APPLICABLE is not acknowledgeable, and
+     * re-anchor is (by round 3's design) unavailable on a contra.
+     */
+    public function test_a_contra_stays_postable_when_its_lot_expires_mid_draft(): void
+    {
+        $product = $this->product('LOT-N8B', batchTracked: true);
+        $this->seedStock($product, '10.0000');
+        $lot = $this->seedLot($product, 'LOT-N8B-A', '10.0000');
+
+        $original = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-4.0000', '10.0000', $lot->uuid),
+        ]);
+        $this->service->post($original->id, $this->user->id);
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+        $lot->update(['is_recalled' => true]);
+
+        $this->service->post($contra->id, $this->user->id);
+
+        $this->assertSame('10.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('10.0000', $this->lotQuantity($lot));
+    }
+
+    /**
+     * GATE N-8, probe F. A CANCELLED contra must not seal the original forever.
+     * The existing-correction probe had no status filter, so abandoning a
+     * correction made the document permanently uncorrectable — and the DB's
+     * partial unique has to agree, or the service check just moves the failure.
+     */
+    public function test_cancelling_a_contra_allows_the_original_to_be_corrected_again(): void
+    {
+        $product = $this->product('LOT-N8C', batchTracked: false);
+        $this->seedStock($product, '10.0000');
+
+        $original = $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '5.0000', '10.0000')]);
+        $this->service->post($original->id, $this->user->id);
+
+        $first = $this->service->correct($original->id, $this->user->id);
+        $this->service->cancel($first->id, $this->user->id, 'abandoned');
+
+        $second = $this->service->correct($original->id, $this->user->id);
+        $this->assertNotSame($first->id, $second->id);
+        $this->assertSame($original->id, $second->corrects_adjustment_id);
+
+        $this->service->post($second->id, $this->user->id);
+        $this->assertSame('10.0000', (string) $this->level($product)->quantity);
+    }
+
+    public function test_a_live_contra_still_blocks_a_second_correction(): void
+    {
+        $product = $this->product('LOT-N8D', batchTracked: false);
+        $this->seedStock($product, '10.0000');
+
+        $original = $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '5.0000', '10.0000')]);
+        $this->service->post($original->id, $this->user->id);
+        $this->service->correct($original->id, $this->user->id);
+
+        $this->expectException(AdjustmentAlreadyCorrectedException::class);
+        $this->service->correct($original->id, $this->user->id);
+    }
+
+    /**
+     * GATE N-9, probe D. `is_active` was bidirectional, so an inactive lot's stock
+     * could not be corrected OUT through any adjustment door — forcing a write-off
+     * document (and its COGS posting) for what may be a plain count discrepancy.
+     * Removal from an administratively closed lot is legitimate correction work,
+     * so the refusal is POSITIVE-only, matching the expiry asymmetry.
+     */
+    public function test_stock_can_be_corrected_out_of_an_inactive_lot(): void
+    {
+        $product = $this->product('LOT-N9', batchTracked: true);
+        $this->seedStock($product, '10.0000');
+        $lot = $this->seedLot($product, 'LOT-N9-A', '10.0000');
+        $lot->update(['is_active' => false]);
+
+        $adjustment = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-4.0000', '10.0000', $lot->uuid),
+        ]);
+        $this->service->post($adjustment->id, $this->user->id);
+
+        $this->assertSame('6.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('6.0000', $this->lotQuantity($lot));
+    }
+
+    public function test_stock_may_not_be_corrected_into_an_inactive_lot(): void
+    {
+        $product = $this->product('LOT-N9B', batchTracked: true);
+        $this->seedStock($product, '10.0000');
+        $lot = $this->seedLot($product, 'LOT-N9B-A', '10.0000');
+        $lot->update(['is_active' => false]);
+
+        $this->expectException(BatchNotApplicableException::class);
+        $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '5.0000', '10.0000', $lot->uuid)]);
+    }
+
+    /**
+     * GATE N-9, probe E. The same predicate dead-ended `correct()` in the negative
+     * direction: post a positive naming a lot, deactivate the lot, and the contra
+     * (which is negative) was refused.
+     */
+    public function test_a_posted_positive_stays_correctable_after_its_lot_is_deactivated(): void
+    {
+        $product = $this->product('LOT-N9C', batchTracked: true);
+        $this->seedStock($product, '0.0000');
+        $lot = $this->seedLot($product, 'LOT-N9C-A', '0.0000');
+
+        $original = $this->draft([
+            $this->line($product, MovementReason::AdjustmentPositive, '20.0000', '0.0000', $lot->uuid),
+        ]);
+        $this->service->post($original->id, $this->user->id);
+        $this->assertSame('20.0000', (string) $this->level($product)->quantity);
+
+        $lot->update(['is_active' => false]);
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+        $this->service->post($contra->id, $this->user->id);
+
+        $this->assertSame('0.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('0.0000', $this->lotQuantity($lot));
+    }
+
+    /**
+     * And the lot-less negative stays authorable-by-naming: the inactive lot still
+     * forces "name a lot" (it holds stock, which is what corrupts FEFO), and that
+     * instruction is now followable because naming it is permitted.
+     */
+    public function test_the_lot_required_instruction_is_followable_on_an_inactive_lot(): void
+    {
+        $product = $this->product('LOT-N9D', batchTracked: true);
+        $this->seedStock($product, '10.0000');
+        $lot = $this->seedLot($product, 'LOT-N9D-A', '10.0000');
+        $lot->update(['is_active' => false]);
+
+        try {
+            $this->draft([$this->line($product, MovementReason::AdjustmentNegative, '-3.0000', '10.0000')]);
+            $this->fail('Expected BatchRequiredForLineException for the lot-less negative.');
+        } catch (BatchRequiredForLineException) {
+            // expected — and now satisfiable:
+        }
+
+        $adjustment = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-3.0000', '10.0000', $lot->uuid),
+        ]);
+        $this->service->post($adjustment->id, $this->user->id);
+
+        $this->assertSame('7.0000', (string) $this->level($product)->quantity);
     }
 
     // ------------------------------------------------------------- fixtures

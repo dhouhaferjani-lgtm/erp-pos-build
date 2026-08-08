@@ -154,7 +154,12 @@ class StockAdjustment extends Model
      */
     public function correction(): HasOne
     {
-        return $this->hasOne(self::class, 'corrects_adjustment_id');
+        // The LIVE correction. A cancelled contra is not one: the API allows
+        // re-correcting after a cancellation, so surfacing the abandoned document
+        // as `correction_id` would leave the UI's `canCorrect` false and dead-end
+        // the operator where the server would have said yes.
+        return $this->hasOne(self::class, 'corrects_adjustment_id')
+            ->where('status', '!=', StockAdjustmentStatus::Cancelled->value);
     }
 
     /** @return HasMany<StockAdjustmentLine, $this> */
