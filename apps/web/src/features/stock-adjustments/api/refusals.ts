@@ -29,6 +29,10 @@ export const STOCK_ADJUSTMENT_REFUSAL_CODES = [
   // to post (or to override a guard) — reachable from every authoring surface,
   // so it needs a message like the rest.
   'POST_PERMISSION_REQUIRED',
+  // A correction's lines are DERIVED by the server, so replacing them is
+  // refused. The UI never offers it (re-anchor is hidden on a contra), but the
+  // code is reachable by any client and needs a message like the rest.
+  'CONTRA_LINES_IMMUTABLE',
 ] as const
 
 export type StockAdjustmentRefusalCode = (typeof STOCK_ADJUSTMENT_REFUSAL_CODES)[number]
@@ -55,6 +59,7 @@ export const REFUSAL_MESSAGE_KEYS: Record<StockAdjustmentRefusalCode, string> = 
   CANNOT_CORRECT_A_CORRECTION: 'refusal.CANNOT_CORRECT_A_CORRECTION',
   LOCATION_ACCESS_DENIED: 'refusal.LOCATION_ACCESS_DENIED',
   POST_PERMISSION_REQUIRED: 'refusal.POST_PERMISSION_REQUIRED',
+  CONTRA_LINES_IMMUTABLE: 'refusal.CONTRA_LINES_IMMUTABLE',
 }
 
 export const GENERIC_REFUSAL_MESSAGE_KEY = 'refusal.generic'

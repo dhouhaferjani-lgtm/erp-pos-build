@@ -434,8 +434,18 @@ export function StockAdjustmentDetailPage() {
           // Re-anchor only means something for a staleness refusal. Offering it
           // for ADJUSTMENT_EXCEEDS_AVAILABLE produced a no-op PATCH that cleared
           // the dialog and read as success (gate M-4).
+          // Re-anchor only means something for a staleness refusal on a document
+          // whose lines the operator OWNS. Hidden for
+          // ADJUSTMENT_EXCEEDS_AVAILABLE (a no-op PATCH that reads as success,
+          // gate M-4) and for a CONTRA, whose delta is fixed by D8 as the exact
+          // negation — rebasing it to hit a fresh target would make it not a
+          // contra, and the server refuses the PATCH outright
+          // (CONTRA_LINES_IMMUTABLE, gate N-5). "Apply anyway" is the
+          // correction's recovery, as the release note states.
           onReAnchor={
-            acknowledgeableCode === 'STOCK_MOVED_SINCE_AUTHORING' && staleLines !== null
+            acknowledgeableCode === 'STOCK_MOVED_SINCE_AUTHORING' &&
+            staleLines !== null &&
+            adjustment.corrects_adjustment_id === null
               ? () => {
                   void reAnchor(staleLines)
                 }

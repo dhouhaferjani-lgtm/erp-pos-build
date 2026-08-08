@@ -967,15 +967,19 @@ final class StockAdjustmentService
         } elseif ($deltaBasedDefaultLot) {
             // $batchId === null && $difference < 0 on the DOCUMENT path.
             //
-            // StockAdjustmentDocumentService refuses a negative line whenever a
-            // lot with stock exists at the location — at authoring AND again
-            // under the lock — so the only way here is a batch-tracked product
-            // whose lots are all empty. Draining the DEFAULT lot keeps
-            // Sigma BatchStock == stock_levels.quantity by construction rather
-            // than by an upstream promise, which is what makes the guarantee
-            // survive a future caller that forgets the predicate (gate C-1: the
-            // previous "unreachable" comment here was FALSE, because correct()
-            // reached it).
+            // REACHABLE, and the two ways matter (gate N-6 — a stale
+            // reachability claim here is what let C-1's arm rot, so this one
+            // states the truth rather than a hope):
+            //
+            //  1. a batch-tracked product whose lots are all empty — the document
+            //     refuses a lot-less negative only when a lot HOLDS STOCK here;
+            //  2. a CONTRA line, which is exempt from lot-required because it
+            //     inherits the disposition of an original that moved no lot
+            //     (StockAdjustmentDocumentService::resolveBatchId()).
+            //
+            // Draining the DEFAULT lot is therefore a real path, not a
+            // theoretical backstop. It cannot overshoot (see the method) and it
+            // strictly narrows any gap.
             $this->issueFromDefaultBatchByDelta($stockLevel, $productId, $difference, $movement->id);
         }
         // The LEGACY absolute adjust() can still reach a lot-less negative; its

@@ -129,7 +129,8 @@
     "CANNOT_CORRECT_A_CORRECTION": "A correction cannot itself be corrected.",
     "LOCATION_ACCESS_DENIED": "You do not have permission to act on this location.",
     "generic": "The stock adjustment could not be completed.",
-    "POST_PERMISSION_REQUIRED": "You can create this adjustment but not post it. Save it as a draft for someone with posting rights to review."
+    "POST_PERMISSION_REQUIRED": "You can create this adjustment but not post it. Save it as a draft for someone with posting rights to review.",
+    "CONTRA_LINES_IMMUTABLE": "A correction reverses its original exactly, so its lines cannot be edited. Cancel it and correct the original again, or apply it as it stands."
   },
   "validation": {
     "quantity": "Enter a quantity with at most 4 decimal places.",

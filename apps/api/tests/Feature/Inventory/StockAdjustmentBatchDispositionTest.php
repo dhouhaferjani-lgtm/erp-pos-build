@@ -14,10 +14,12 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\DTOs\CreateStockAdjustmentData;
 use App\Modules\Inventory\Application\DTOs\StockAdjustmentLineInput;
+use App\Modules\Inventory\Application\DTOs\UpdateStockAdjustmentData;
 use App\Modules\Inventory\Application\Services\StockAdjustmentDocumentService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Exceptions\BatchNotApplicableException;
 use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
+use App\Modules\Inventory\Domain\Exceptions\ContraLinesImmutableException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovedSinceAuthoringException;
 use App\Modules\Inventory\Domain\Exceptions\UseBatchWriteOffException;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
@@ -645,6 +647,145 @@ final class StockAdjustmentBatchDispositionTest extends TestCase
 
         $this->expectException(BatchRequiredForLineException::class);
         $this->draft([$this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '20.0000')]);
+    }
+
+    // ------------------- N-5: the contra exemption must not be reachable by PATCH
+
+    /**
+     * GATE N-5 (final pass), the reviewer's leak probe, committed.
+     *
+     * The lot-REQUIRED exemption is keyed on the HEADER's `corrects_adjustment_id`,
+     * and `correct()` leaves the contra in DRAFT — so `PATCH /stock-adjustments/{id}`
+     * was a second door onto an exempt header. A hand-authored lot-less negative
+     * REFUSED on a new document was ACCEPTED on a contra, and posting it produced
+     * Sigma lots > aggregate: the exact FEFO corruption C-1 was raised for,
+     * reachable from an ordinary permissioned action.
+     *
+     * A contra's line set is DERIVED, not authored, so replacing it is refused
+     * outright — which makes the header-keyed exemption airtight by construction,
+     * because `correct()` becomes the only door onto those lines.
+     */
+    public function test_a_contra_draft_refuses_line_replacement(): void
+    {
+        $product = $this->product('LOT-N5', batchTracked: true);
+        $this->seedStock($product, '0.0000');
+        $lot = $this->seedLot($product, 'LOT-N5-A', '0.0000');
+
+        $original = $this->draft([
+            $this->line($product, MovementReason::AdjustmentPositive, '100.0000', '0.0000', $lot->uuid),
+        ]);
+        $this->service->post($original->id, $this->user->id);
+        $this->assertSame('100.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('100.0000', $this->totalLotQuantity($product));
+
+        // CONTROL: the same lot-less -50 on a NEW document is refused.
+        try {
+            $this->draft([$this->line($product, MovementReason::AdjustmentNegative, '-50.0000', '100.0000')]);
+            $this->fail('Control failed: a hand-authored lot-less negative should be refused.');
+        } catch (BatchRequiredForLineException) {
+            // expected
+        }
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+
+        // THE LEAK: the same line PATCHed onto the contra draft.
+        try {
+            $this->service->updateDraft($contra->id, new UpdateStockAdjustmentData(
+                lines: [$this->line($product, MovementReason::AdjustmentNegative, '-50.0000', '100.0000')],
+            ));
+            $this->fail('Expected ContraLinesImmutableException.');
+        } catch (ContraLinesImmutableException $e) {
+            $this->assertSame($contra->id, $e->adjustmentId);
+            $this->assertSame($original->id, $e->correctsAdjustmentId);
+        }
+
+        // The contra still carries exactly what correct() derived, and posting it
+        // keeps the invariant.
+        $this->service->post($contra->id, $this->user->id);
+        $this->assertSame('0.0000', (string) $this->level($product)->quantity);
+        $this->assertSame(
+            (string) $this->level($product)->quantity,
+            $this->totalLotQuantity($product),
+        );
+    }
+
+    /**
+     * Only the LINES are immutable. The note stays editable, so the operator can
+     * still explain the correction.
+     */
+    public function test_a_contra_draft_still_accepts_a_note_edit(): void
+    {
+        $product = $this->product('LOT-N5B', batchTracked: false);
+        $this->seedStock($product, '10.0000');
+
+        $original = $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '5.0000', '10.0000')]);
+        $this->service->post($original->id, $this->user->id);
+        $contra = $this->service->correct($original->id, $this->user->id);
+
+        $updated = $this->service->updateDraft($contra->id, new UpdateStockAdjustmentData(
+            note: 'wrong count, reversing',
+            noteProvided: true,
+        ));
+
+        $this->assertSame('wrong count, reversing', $updated->note);
+        $this->assertCount(1, $updated->refresh()->lines);
+    }
+
+    /**
+     * A NON-contra draft is unaffected: line replacement is how F4's re-anchor
+     * works, and blocking it everywhere would break the staleness recovery.
+     */
+    public function test_a_normal_draft_still_accepts_line_replacement(): void
+    {
+        $product = $this->product('LOT-N5C', batchTracked: false);
+        $this->seedStock($product, '10.0000');
+
+        $draft = $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '2.0000', '10.0000')]);
+
+        $updated = $this->service->updateDraft($draft->id, new UpdateStockAdjustmentData(
+            lines: [$this->line($product, MovementReason::AdjustmentPositive, '7.0000', '10.0000')],
+        ));
+
+        $this->assertSame('7.0000', (string) $updated->refresh()->lines->first()?->delta_quantity);
+    }
+
+    // --------------------------------- N-7: which lot a positive line may name
+
+    public function test_a_positive_line_may_not_name_an_inactive_lot(): void
+    {
+        $product = $this->product('LOT-N7', batchTracked: true);
+        $this->seedStock($product, '10.0000');
+        $lot = $this->seedLot($product, 'LOT-N7-A', '10.0000');
+        $lot->update(['is_active' => false]);
+
+        $this->expectException(BatchNotApplicableException::class);
+        $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '5.0000', '10.0000', $lot->uuid)]);
+    }
+
+    public function test_a_positive_line_may_not_add_stock_to_an_expired_or_recalled_lot(): void
+    {
+        $product = $this->product('LOT-N7B', batchTracked: true);
+        $this->seedStock($product, '10.0000');
+
+        $expired = $this->seedLot($product, 'LOT-N7B-EXP', '10.0000');
+        $expired->update(['is_expired' => true]);
+
+        try {
+            $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '5.0000', '10.0000', $expired->uuid)]);
+            $this->fail('Expected BatchNotApplicableException for an expired lot.');
+        } catch (BatchNotApplicableException) {
+            // expected — FEFO excludes expired lots, so stock landed there counts
+            // in the aggregate and is unconsumable.
+        }
+
+        // But REMOVING from an expired lot is exactly what a correction is for.
+        $adjustment = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-4.0000', '10.0000', $expired->uuid),
+        ]);
+        $this->service->post($adjustment->id, $this->user->id);
+
+        $this->assertSame('6.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('6.0000', $this->lotQuantity($expired));
     }
 
     // ------------------------------------------------------------- fixtures

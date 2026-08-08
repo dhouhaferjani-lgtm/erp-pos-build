@@ -259,6 +259,23 @@ describe('StockAdjustmentDetailPage — the override flag and the PATCH re-ancho
     expect(options).not.toHaveProperty('ignore_reservations')
   })
 
+  it('hides re-anchor on a CONTRA, whose delta is fixed as the exact negation', async () => {
+    const user = userEvent.setup()
+    grantedPermissions.add('inventory.adjustments.post')
+    detailState.data = makeAdjustment({ corrects_adjustment_id: 'adj-0' })
+    refuseWithStaleness()
+
+    render(<StockAdjustmentDetailPage />)
+    await clickPostThenConfirm(user)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'refusal.applyAnyway' })).toBeInTheDocument()
+    })
+    // Rebasing a contra to hit a fresh target would make it not a contra, and the
+    // server refuses the PATCH outright (CONTRA_LINES_IMMUTABLE).
+    expect(screen.queryByRole('button', { name: 'refusal.reAnchor' })).not.toBeInTheDocument()
+  })
+
   it('REBASES the delta in the PATCH so the operator lands on the quantity they authored', async () => {
     const user = userEvent.setup()
     grantedPermissions.add('inventory.adjustments.post')

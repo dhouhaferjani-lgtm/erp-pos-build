@@ -17,6 +17,7 @@ use App\Modules\Inventory\Domain\Exceptions\AdjustmentAlreadyCorrectedException;
 use App\Modules\Inventory\Domain\Exceptions\BatchNotApplicableException;
 use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
 use App\Modules\Inventory\Domain\Exceptions\CannotCorrectACorrectionException;
+use App\Modules\Inventory\Domain\Exceptions\ContraLinesImmutableException;
 use App\Modules\Inventory\Domain\Exceptions\LineTenantMismatchException;
 use App\Modules\Inventory\Domain\Exceptions\StockAdjustmentStateException;
 use App\Modules\Inventory\Domain\Exceptions\UseBatchWriteOffException;
@@ -139,6 +140,17 @@ final class StockAdjustmentDocumentService
             }
 
             if ($data->lines !== null) {
+                // A contra's lines are DERIVED by correct(), not authored — and
+                // this refusal is also what CONTAINS the lot-required exemption
+                // below, by making correct() the only door onto an exempt header
+                // (gate N-5). The note stays editable.
+                if ($adjustment->corrects_adjustment_id !== null) {
+                    throw new ContraLinesImmutableException(
+                        $adjustment->id,
+                        $adjustment->corrects_adjustment_id,
+                    );
+                }
+
                 if ($data->lines === []) {
                     throw new InvalidArgumentException('A stock adjustment needs at least one line.');
                 }
@@ -534,6 +546,9 @@ final class StockAdjustmentDocumentService
                 ->where('company_id', $adjustment->company_id)
                 ->where('product_id', $product->id)
                 ->where('uuid', $input->batchUuid)
+                // An INACTIVE lot is administratively closed; nothing may be
+                // corrected into or out of it (gate N-7).
+                ->where('is_active', true)
                 ->first();
 
             if ($batch === null) {
@@ -545,6 +560,16 @@ final class StockAdjustmentDocumentService
             // to positive lines refused a contra that was putting stock back into
             // a lot whose now-empty row had been cleaned up (gate N-1).
             if ($isNegative && ! $this->lotHasStockRowAt($batch->id, $adjustment->location_id)) {
+                throw new BatchNotApplicableException($product->id, $input->batchUuid);
+            }
+
+            // Dropping the row check for positive lines also dropped the only
+            // indirect constraint on WHICH lot a positive line may name, so the
+            // constraint is now explicit (gate N-7): stock may not be ADDED to a
+            // lot FEFO will never consume — it would count in the aggregate and be
+            // unsellable. Removing from such a lot is left legitimate: correcting
+            // or clearing expired stock is exactly what a correction is for.
+            if (! $isNegative && ($batch->is_expired || $batch->is_recalled)) {
                 throw new BatchNotApplicableException($product->id, $input->batchUuid);
             }
 
@@ -562,9 +587,14 @@ final class StockAdjustmentDocumentService
         // document, behind an authoring-time refusal the correction UI cannot
         // satisfy: the contra's lot is machine-chosen and there is no picker.
         //
-        // The exemption is narrow by construction — it is keyed on the header's
-        // `corrects_adjustment_id`, so a hand-authored line on the same product in
-        // the same configuration is still refused.
+        // The exemption is contained by making `correct()` the ONLY door onto a
+        // header carrying `corrects_adjustment_id`: `updateDraft()` refuses to
+        // replace a contra's line set (ContraLinesImmutableException), and no
+        // request can set the column. Without that, a hand-authored lot-less
+        // negative refused on a new document was ACCEPTED via
+        // `PATCH /stock-adjustments/{id}` onto a contra draft, reproducing
+        // Sigma lots > aggregate (gate N-5). A hand-authored line on the same
+        // product in the same configuration is still refused — pinned.
         if ($isNegative
             && $adjustment->corrects_adjustment_id === null
             && $this->hasLotsWithStockAtLocation($product->id, $adjustment->location_id)) {
@@ -647,11 +677,15 @@ final class StockAdjustmentDocumentService
             ->where('tenant_id', $adjustment->tenant_id)
             ->where('company_id', $adjustment->company_id)
             ->where('product_id', $product->id)
+            ->where('is_active', true)
             ->whereKey($line->batch_id)
             ->first();
 
         $stillApplies = $batch !== null
-            && (! $isNegative || $this->lotHasStockRowAt($batch->id, $adjustment->location_id));
+            && (! $isNegative || $this->lotHasStockRowAt($batch->id, $adjustment->location_id))
+            // A lot that expired or was recalled between authoring and posting
+            // must not receive stock (gate N-7).
+            && ($isNegative || (! $batch->is_expired && ! $batch->is_recalled));
 
         if (! $stillApplies) {
             throw new BatchNotApplicableException(

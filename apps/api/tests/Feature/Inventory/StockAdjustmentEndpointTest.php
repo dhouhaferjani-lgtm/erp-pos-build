@@ -658,6 +658,30 @@ final class StockAdjustmentEndpointTest extends TestCase
         $second->assertJsonPath('error.details.attempted', 'post');
     }
 
+    public function test_patching_a_contra_draft_returns_contra_lines_immutable(): void
+    {
+        $id = $this->createDraft();
+        $this->actingAs($this->manager)->postJson("/api/v1/stock-adjustments/{$id}/post")->assertOk();
+
+        $contra = $this->actingAs($this->manager)->postJson("/api/v1/stock-adjustments/{$id}/correct");
+        $contra->assertStatus(201);
+        $contraId = (string) $contra->json('data.id');
+
+        // The HTTP door the exemption leaked through (gate N-5).
+        $patch = $this->actingAs($this->manager)->patchJson("/api/v1/stock-adjustments/{$contraId}", [
+            'lines' => [$this->line('adjustment_negative', '-50.0000', '22.0000')],
+        ]);
+
+        $patch->assertStatus(422);
+        $patch->assertJsonPath('error.code', 'CONTRA_LINES_IMMUTABLE');
+        $patch->assertJsonPath('error.details.corrects_adjustment_id', $id);
+
+        // The note is still editable.
+        $this->actingAs($this->manager)->patchJson("/api/v1/stock-adjustments/{$contraId}", [
+            'note' => 'reversing a miscount',
+        ])->assertOk();
+    }
+
     // ------------------------------------------------------------- fixtures
 
     /**

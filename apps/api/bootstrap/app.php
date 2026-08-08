@@ -20,6 +20,7 @@ use App\Modules\Inventory\Domain\Exceptions\AdjustmentExceedsAvailableException;
 use App\Modules\Inventory\Domain\Exceptions\BatchNotApplicableException;
 use App\Modules\Inventory\Domain\Exceptions\BatchRequiredForLineException;
 use App\Modules\Inventory\Domain\Exceptions\CannotCorrectACorrectionException;
+use App\Modules\Inventory\Domain\Exceptions\ContraLinesImmutableException;
 use App\Modules\Inventory\Domain\Exceptions\LineTenantMismatchException;
 use App\Modules\Inventory\Domain\Exceptions\StockAdjustmentStateException;
 use App\Modules\Inventory\Domain\Exceptions\StockMovedSinceAuthoringException;
@@ -655,6 +656,21 @@ return Application::configure(basePath: dirname(__DIR__))
                         'details' => [
                             'adjustment_id' => $e->adjustmentId,
                             'correction_id' => $e->correctionId,
+                        ],
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (ContraLinesImmutableException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => 'CONTRA_LINES_IMMUTABLE',
+                        'message' => $e->getMessage(),
+                        'details' => [
+                            'adjustment_id' => $e->adjustmentId,
+                            'corrects_adjustment_id' => $e->correctsAdjustmentId,
                         ],
                     ],
                 ], 422);

@@ -129,7 +129,8 @@
     "CANNOT_CORRECT_A_CORRECTION": "Une correction ne peut pas être corrigée à son tour.",
     "LOCATION_ACCESS_DENIED": "Vous n'avez pas la permission d'agir sur cet emplacement.",
     "generic": "La régularisation de stock n'a pas pu être effectuée.",
-    "POST_PERMISSION_REQUIRED": "Vous pouvez créer cette régularisation mais pas la valider. Enregistrez-la en brouillon pour qu'une personne habilitée la valide."
+    "POST_PERMISSION_REQUIRED": "Vous pouvez créer cette régularisation mais pas la valider. Enregistrez-la en brouillon pour qu'une personne habilitée la valide.",
+    "CONTRA_LINES_IMMUTABLE": "Une correction inverse exactement son document d'origine : ses lignes ne peuvent pas être modifiées. Annulez-la et corrigez à nouveau l'original, ou appliquez-la telle quelle."
   },
   "validation": {
     "quantity": "Saisissez une quantité avec au plus 4 décimales.",

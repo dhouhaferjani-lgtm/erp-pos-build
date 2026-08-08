@@ -30,8 +30,10 @@ describe('refusal message map', () => {
     // controller's two-leg check returns it from every authoring surface, and it
     // was missing from the map, so a create-only operator filled the whole form
     // and got the generic fallback.
-    expect(STOCK_ADJUSTMENT_REFUSAL_CODES).toHaveLength(12)
+    expect(STOCK_ADJUSTMENT_REFUSAL_CODES).toHaveLength(13)
     expect(STOCK_ADJUSTMENT_REFUSAL_CODES).toContain('POST_PERMISSION_REQUIRED')
+    // A correction's lines are server-derived; replacing them is refused.
+    expect(STOCK_ADJUSTMENT_REFUSAL_CODES).toContain('CONTRA_LINES_IMMUTABLE')
 
     for (const code of STOCK_ADJUSTMENT_REFUSAL_CODES) {
       const key = REFUSAL_MESSAGE_KEYS[code]
