@@ -352,6 +352,93 @@ final class StockAdjustmentDocumentServiceTest extends TestCase
         $this->assertSame(0, StockMovement::count());
     }
 
+    // --------------------------------------------- D14 / D14a: the lock tuple
+
+    /**
+     * D14a's `[PG]` assertion: exactly ONE advisory lock per product per post,
+     * with no SECOND key minted by the nested per-line acquires.
+     *
+     * The `pid = pg_backend_pid()` predicate is required — `pg_locks` is
+     * cluster-wide, so a parallel test process or another tenant's connection
+     * would otherwise make this flaky. The COUNT is the assertion, not the key:
+     * ProductCostLock hashes its pre-hash string through `hashtext()`, so the
+     * objid cannot be asserted by name.
+     *
+     * Advisory locks taken with `pg_advisory_xact_lock` are held to the end of
+     * the OUTERMOST transaction — which, under RefreshDatabase, is the test's own
+     * wrapper — so they are still observable after post() returns.
+     */
+    public function test_a_multi_product_post_takes_exactly_one_advisory_lock_per_product(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('ProductCostLock no-ops on non-pgsql drivers.');
+        }
+
+        $this->seedStock($this->productA, '10.0000');
+        $this->seedStock($this->productB, '20.0000');
+
+        $before = $this->advisoryLockCount();
+
+        $adjustment = $this->draft([
+            $this->line($this->productA, MovementReason::AdjustmentPositive, '2.0000', '10.0000'),
+            $this->line($this->productB, MovementReason::AdjustmentNegative, '-5.0000', '20.0000'),
+        ]);
+        $this->service->post($adjustment->id, $this->user->id);
+
+        $this->assertSame(
+            2,
+            $this->advisoryLockCount() - $before,
+            'One advisory lock per DISTINCT line product — a second key would mean post() and the '
+            .'writer built different pre-hash strings, silently disarming the deadlock defence.'
+        );
+    }
+
+    /**
+     * The nested per-line acquires must be RE-ENTRANT on the already-held xact
+     * locks, which is what makes the up-front sorted acquire a sufficient
+     * deadlock defence.
+     *
+     * Reduced fidelity, stated: a true AB-BA deadlock needs two connections, and
+     * RefreshDatabase's wrapper transaction makes a second connection unable to
+     * see this test's fixtures. What IS asserted is the property the defence
+     * rests on — posting [A,B] and then [B,A] inside one transaction mints no
+     * additional advisory keys, so no unsorted accumulation is possible.
+     */
+    public function test_overlapping_posts_in_opposite_orders_mint_no_additional_advisory_keys(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('ProductCostLock no-ops on non-pgsql drivers.');
+        }
+
+        $this->seedStock($this->productA, '50.0000');
+        $this->seedStock($this->productB, '50.0000');
+
+        $before = $this->advisoryLockCount();
+
+        $first = $this->draft([
+            $this->line($this->productA, MovementReason::AdjustmentPositive, '1.0000', '50.0000'),
+            $this->line($this->productB, MovementReason::AdjustmentPositive, '1.0000', '50.0000'),
+        ]);
+        $this->service->post($first->id, $this->user->id);
+
+        $second = $this->draft([
+            $this->line($this->productB, MovementReason::AdjustmentPositive, '1.0000', '51.0000'),
+            $this->line($this->productA, MovementReason::AdjustmentPositive, '1.0000', '51.0000'),
+        ]);
+        $this->service->post($second->id, $this->user->id);
+
+        $this->assertSame(2, $this->advisoryLockCount() - $before);
+        $this->assertSame('52.0000', (string) $this->level($this->productA)->quantity);
+        $this->assertSame('52.0000', (string) $this->level($this->productB)->quantity);
+    }
+
+    private function advisoryLockCount(): int
+    {
+        return (int) DB::scalar(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()"
+        );
+    }
+
     // ----------------------------------------------------------------- cancel
 
     public function test_cancelling_a_draft_writes_nothing_and_cancelling_a_posted_document_is_refused(): void
