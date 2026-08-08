@@ -10,6 +10,7 @@ import {
   isAcknowledgeableRefusalCode,
   narrowAvailabilityDetails,
   narrowStaleDetails,
+  overrideFlagFor,
   refusalMessageKey,
 } from '../api/refusals'
 
@@ -44,6 +45,19 @@ describe('refusal message map', () => {
     expect(refusalMessageKey(undefined)).toBe(GENERIC_REFUSAL_MESSAGE_KEY)
     expect(typeof resolve(enMessages, GENERIC_REFUSAL_MESSAGE_KEY)).toBe('string')
     expect(typeof resolve(frMessages, GENERIC_REFUSAL_MESSAGE_KEY)).toBe('string')
+  })
+
+  it('maps EACH acknowledgeable code to its OWN flag, and only that one', () => {
+    // Sending both flags disables a guard the operator never met AND writes a
+    // permanent header claim that they overrode it. Both arms are pinned: only
+    // the staleness arm had a test, so the reservations arm could have regressed
+    // to the forged pair unnoticed.
+    expect(overrideFlagFor('STOCK_MOVED_SINCE_AUTHORING')).toEqual({ acknowledge_stale: true })
+    expect(overrideFlagFor('ADJUSTMENT_EXCEEDS_AVAILABLE')).toEqual({ ignore_reservations: true })
+
+    for (const code of ACKNOWLEDGEABLE_REFUSAL_CODES) {
+      expect(Object.keys(overrideFlagFor(code))).toHaveLength(1)
+    }
   })
 
   it('marks exactly the two overridable codes as acknowledgeable', () => {

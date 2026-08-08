@@ -526,6 +526,8 @@ final class StockAdjustmentDocumentService
      */
     private function resolveBatchId(StockAdjustment $adjustment, Product $product, StockAdjustmentLineInput $input): ?int
     {
+        $isNegative = bccomp($input->deltaQuantity, '0', self::SCALE) < 0;
+
         if ($input->batchUuid !== null) {
             $batch = Batch::query()
                 ->where('tenant_id', $adjustment->tenant_id)
@@ -538,24 +540,46 @@ final class StockAdjustmentDocumentService
                 throw new BatchNotApplicableException($product->id, $input->batchUuid);
             }
 
-            $hasStockRow = BatchStock::query()
-                ->where('batch_id', $batch->id)
-                ->where('location_id', $adjustment->location_id)
-                ->exists();
-
-            if (! $hasStockRow) {
+            // "Holds a stock row HERE" is a requirement of DRAWING FROM a lot, not
+            // of adding to one: receiveBatchStock() creates the row. Applying it
+            // to positive lines refused a contra that was putting stock back into
+            // a lot whose now-empty row had been cleaned up (gate N-1).
+            if ($isNegative && ! $this->lotHasStockRowAt($batch->id, $adjustment->location_id)) {
                 throw new BatchNotApplicableException($product->id, $input->batchUuid);
             }
 
             return (int) $batch->id;
         }
 
-        if (bccomp($input->deltaQuantity, '0', self::SCALE) < 0
+        // A CONTRA line is exempt from lot-required (gate N-1).
+        //
+        // It is not a new correction: it is the exact inverse of a specific prior
+        // movement whose lot disposition is already settled, and it INHERITS that
+        // disposition from `lotActuallyMovedBy()`. When the original genuinely
+        // moved no lot — a lot-less positive on a product that was not lot-tracked
+        // at the time — the contra must be able to move no lot either. Demanding
+        // one dead-ends `correct()`, a first-class permissioned action on a POSTED
+        // document, behind an authoring-time refusal the correction UI cannot
+        // satisfy: the contra's lot is machine-chosen and there is no picker.
+        //
+        // The exemption is narrow by construction — it is keyed on the header's
+        // `corrects_adjustment_id`, so a hand-authored line on the same product in
+        // the same configuration is still refused.
+        if ($isNegative
+            && $adjustment->corrects_adjustment_id === null
             && $this->hasLotsWithStockAtLocation($product->id, $adjustment->location_id)) {
             throw new BatchRequiredForLineException($product->id);
         }
 
         return null;
+    }
+
+    private function lotHasStockRowAt(int $batchId, string $locationId): bool
+    {
+        return BatchStock::query()
+            ->where('batch_id', $batchId)
+            ->where('location_id', $locationId)
+            ->exists();
     }
 
     /**
@@ -605,16 +629,20 @@ final class StockAdjustmentDocumentService
         if ($line->batch_id === null) {
             // A positive line never requires a lot — the writer lands it in the
             // DEFAULT lot by the delta, which is what keeps the pharmacy /
-            // parapharmacy onboarding case authorable (door 1).
-            if ($isNegative && $this->hasLotsWithStockAtLocation($product->id, $adjustment->location_id)) {
+            // parapharmacy onboarding case authorable (door 1). A CONTRA line is
+            // exempt too; see resolveBatchId() for why.
+            if ($isNegative
+                && $adjustment->corrects_adjustment_id === null
+                && $this->hasLotsWithStockAtLocation($product->id, $adjustment->location_id)) {
                 throw new BatchRequiredForLineException($product->id);
             }
 
             return;
         }
 
-        // A named lot must STILL belong to this product and STILL hold a stock
-        // row at this location.
+        // A named lot must STILL belong to this product; and, for a NEGATIVE line,
+        // must STILL hold a stock row at this location (a positive line may create
+        // one — see resolveBatchId()).
         $batch = Batch::query()
             ->where('tenant_id', $adjustment->tenant_id)
             ->where('company_id', $adjustment->company_id)
@@ -622,10 +650,8 @@ final class StockAdjustmentDocumentService
             ->whereKey($line->batch_id)
             ->first();
 
-        $stillApplies = $batch !== null && BatchStock::query()
-            ->where('batch_id', $batch->id)
-            ->where('location_id', $adjustment->location_id)
-            ->exists();
+        $stillApplies = $batch !== null
+            && (! $isNegative || $this->lotHasStockRowAt($batch->id, $adjustment->location_id));
 
         if (! $stillApplies) {
             throw new BatchNotApplicableException(

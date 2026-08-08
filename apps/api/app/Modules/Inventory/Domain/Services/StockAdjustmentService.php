@@ -1079,12 +1079,23 @@ final class StockAdjustmentService
     /**
      * Draw a lot-less negative down from the DEFAULT lot (gate code-review C-1).
      *
-     * The mirror of receiveIntoDefaultBatchByDelta(). Deliberately TOLERANT of a
-     * missing or short DEFAULT lot: this arm exists as a structural guarantee
-     * behind the document's own predicates, not as a second refusal surface, and
-     * turning a correction into a hard failure here would strand the operator
-     * with an aggregate that already moved. When there is genuinely no lot to
-     * decrement there is also nothing to desync.
+     * The mirror of receiveIntoDefaultBatchByDelta(). Deliberately TOLERANT
+     * rather than a second refusal surface: turning a correction into a hard
+     * failure here would strand the operator with an aggregate that already
+     * moved.
+     *
+     * Tolerant does NOT mean silent. When the DEFAULT lot holds less than the
+     * magnitude, it drains what IS there instead of touching nothing (gate N-2):
+     * no-op'ing left Sigma lots ABOVE the aggregate — the very FEFO corruption
+     * this arm exists to prevent — for exactly the hypothetical caller the arm
+     * exists to protect against. Draining what exists cannot overshoot and
+     * strictly narrows the gap.
+     *
+     * Scope claim, stated precisely: under the document's own predicates this arm
+     * is unreachable while a stocked lot exists, so it is a BACKSTOP, not the
+     * mechanism that maintains the invariant. The invariant is maintained by
+     * resolveBatchId()/assertLinePredicatesAtPost(); this keeps a future caller
+     * that forgets them from corrupting FEFO outright.
      *
      * @param  numeric-string  $delta  Negative delta being applied to the aggregate
      */
@@ -1126,7 +1137,12 @@ final class StockAdjustmentService
         /** @var numeric-string $magnitude */
         $magnitude = bcmul($delta, '-1', self::SCALE);
 
-        if (bccomp($available, $magnitude, self::SCALE) < 0) {
+        // Drain what IS there when the lot is short. Returning early left the
+        // aggregate moved and the lot untouched (gate N-2).
+        /** @var numeric-string $drain */
+        $drain = bccomp($available, $magnitude, self::SCALE) < 0 ? $available : $magnitude;
+
+        if (bccomp($drain, '0', self::SCALE) <= 0) {
             return;
         }
 
@@ -1134,7 +1150,7 @@ final class StockAdjustmentService
             tenantId: $stockLevel->tenant_id,
             batchId: $batch->id,
             locationId: $stockLevel->location_id,
-            quantity: $magnitude,
+            quantity: $drain,
             movementId: $movementId,
         );
     }

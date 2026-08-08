@@ -112,9 +112,10 @@
       "observedBefore": "Constaté",
       "quantityBefore": "Actuel",
       "delta": "Votre modification",
-      "resulting": "Si appliqué",
       "reserved": "Réservé",
-      "available": "Disponible"
+      "available": "Disponible",
+      "resultingOnHand": "Stock si appliqué",
+      "resultingAvailable": "Disponible si appliqué"
     },
     "STOCK_MOVED_SINCE_AUTHORING": "Le stock a bougé depuis le début de cette correction. Recalez sur les quantités actuelles, ou appliquez quand même votre modification par-dessus.",
     "ADJUSTMENT_EXCEEDS_AVAILABLE": "Cette diminution dépasse le stock non réservé. L'appliquer quand même enregistre le stock comme perdu alors que les réservations restent promises.",

@@ -109,6 +109,10 @@ final class InventoryCostLockCoverageTest extends TestCase
             ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function complete('],
             ['app/Modules/Inventory/Application/Services/StockTransferService.php', 'public function cancel('],
             ['app/Modules/Inventory/Application/Services/OpeningBalancePostingService.php', 'public function post('],
+            // The DELEGATE receiveGoods() hands off to. Pinned HERE, not just as a
+            // string match in the delegating test, so its acquire-BEFORE-the-seam-loop
+            // ordering — the actual deadlock defence — is asserted (gate N-3).
+            ['app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 'public function post('],
             ['app/Modules/Document/Domain/Services/ReturnNoteService.php', 'public function confirm('],
             ['app/Modules/Inventory/Application/Services/StockAdjustmentDocumentService.php', 'public function post('],
         ];
@@ -123,7 +127,9 @@ final class InventoryCostLockCoverageTest extends TestCase
      * guard stops being trusted.
      *
      * What must hold instead: the caller delegates to a method that IS itself
-     * pinned by multiProductSeamCallerProvider.
+     * pinned by multiProductSeamCallerProvider — GoodsReceiptService::post( is a
+     * row there, so the delegate's acquire-before-the-loop ordering is asserted
+     * rather than merely assumed.
      *
      * @return array<int, array{string, string, string}>
      */

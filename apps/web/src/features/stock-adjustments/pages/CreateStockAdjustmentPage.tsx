@@ -14,6 +14,7 @@ import { Textarea } from '@/components/atoms/Textarea'
 import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
 import { PageHeader } from '@/components/molecules/PageHeader'
+import { ProductPicker, type ProductPickerValue } from '@/components/molecules/pickers/ProductPicker'
 import { StickyFormFooter } from '@/components/molecules/StickyFormFooter'
 import { api } from '@/lib/api'
 import { bcadd, bccomp, formatQuantity } from '@/lib/decimal'
@@ -105,14 +106,18 @@ export function CreateStockAdjustmentPage() {
   const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
   const companyId = useCompanyStore((s) => s.currentCompanyId)
 
-  const [pendingProductId, setPendingProductId] = useState('')
+  const [pendingProduct, setPendingProduct] = useState<ProductPickerValue | null>(null)
   const [refusal, setRefusal] = useState<ApiErrorEnvelope | null>(null)
   const [lineError, setLineError] = useState<string | null>(null)
 
   const schema = useMemo(
     () =>
       z.object({
-        locationId: z.string().min(1, t('validation.required', { defaultValue: t('create.locationLabel') })),
+        // Explicitly namespaced. The unprefixed form resolved only through the
+        // ns-array fallback into `common`, so if `common.validation.required`
+        // ever moved, the defaultValue would have rendered the FIELD LABEL as the
+        // error message.
+        locationId: z.string().min(1, t('common:validation.required')),
         note: z.string().max(2000),
         lines: z
           .array(
@@ -182,15 +187,6 @@ export function CreateStockAdjustmentPage() {
     enabled: !!tenantId && !!companyId,
   })
 
-  const productsQuery = useQuery({
-    queryKey: tenantScopedKey(['products', 'options']),
-    queryFn: async () => {
-      const response = await api.get<OptionResponse>('/products?per_page=100')
-      return response.data.data
-    },
-    enabled: !!tenantId && !!companyId,
-  })
-
   /**
    * Line-add authors `observed_before` from a FRESH read (D15b), not the list
    * cache — otherwise the staleness guard fires on cache age and operators learn
@@ -201,23 +197,21 @@ export function CreateStockAdjustmentPage() {
    * never appeared — no message, no spinner change.
    */
   const addLine = useCallback(async (): Promise<void> => {
-    if (pendingProductId === '' || locationId === '') {
+    if (pendingProduct === null || locationId === '') {
       return
     }
-    if (lines.some((line) => line.productId === pendingProductId && line.batchUuid === '')) {
+    const productId = pendingProduct.id
+    if (lines.some((line) => line.productId === productId && line.batchUuid === '')) {
       setLineError(t('create.duplicateLine'))
       return
     }
 
     try {
-      const level = await stockAdjustmentApi.stockLevel(pendingProductId, locationId)
-      const name =
-        (productsQuery.data ?? []).find((product) => product.id === pendingProductId)?.name ??
-        pendingProductId
+      const level = await stockAdjustmentApi.stockLevel(productId, locationId)
 
       append({
-        productId: pendingProductId,
-        productName: name,
+        productId,
+        productName: pendingProduct.name,
         reason: 'adjustment_positive',
         magnitude: '',
         observedBefore: level.quantity,
@@ -227,12 +221,12 @@ export function CreateStockAdjustmentPage() {
         batchUuid: '',
         note: '',
       })
-      setPendingProductId('')
+      setPendingProduct(null)
       setLineError(null)
     } catch {
       setLineError(t('create.loadFailed'))
     }
-  }, [pendingProductId, locationId, lines, append, productsQuery.data, t])
+  }, [pendingProduct, locationId, lines, append, t])
 
   const summary = useMemo(() => {
     let net = '0'
@@ -548,26 +542,24 @@ export function CreateStockAdjustmentPage() {
 
       <section className="space-y-3">
         <div className="flex items-end gap-2">
-          <FormField label={t('line.product')} className="flex-1">
-            <Select
-              aria-label={t('line.product')}
-              value={pendingProductId}
-              onChange={(event) => {
-                setPendingProductId(event.target.value)
-              }}
+          {/* The house picker, not a parallel one: a raw <Select> over
+              `/products?per_page=100` was both a duplicate implementation and a
+              hard dead end for any catalogue past 100 SKUs — on the only
+              multi-line authoring page. `all` because a correction can apply to
+              any stocked product, not just parts. */}
+          <div className="flex-1">
+            <ProductPicker
+              label={t('line.product')}
+              value={pendingProduct}
+              onChange={setPendingProduct}
               disabled={locationId === ''}
-            >
-              <option value="">—</option>
-              {(productsQuery.data ?? []).map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </Select>
-          </FormField>
+              productType="all"
+              testId="stock-adjustment-product-picker"
+            />
+          </div>
           <Button
             variant="secondary"
-            disabled={pendingProductId === '' || locationId === ''}
+            disabled={pendingProduct === null || locationId === ''}
             onClick={() => {
               void addLine()
             }}

@@ -33,13 +33,32 @@ vi.mock('../components/LotSelect', () => ({
 }))
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: (opts: { queryKey: unknown[] }) => {
-    const key = opts.queryKey
-    if (Array.isArray(key) && key.includes('locations')) {
-      return { data: [{ id: 'loc-1', name: 'Main' }] }
-    }
-    return { data: [{ id: 'prod-1', name: 'Widget' }] }
-  },
+  useQuery: () => ({ data: [{ id: 'loc-1', name: 'Main' }] }),
+}))
+
+/**
+ * The page now uses the HOUSE ProductPicker (a searchable combobox), not a
+ * parallel <Select> over a truncated product list. Stubbed to a one-click choice
+ * so these tests stay about the page's own logic; the picker has its own tests.
+ */
+vi.mock('@/components/molecules/pickers/ProductPicker', () => ({
+  ProductPicker: ({
+    onChange,
+    disabled,
+  }: {
+    onChange: (v: { id: string; sku: string; name: string } | null) => void
+    disabled?: boolean
+  }) => (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => {
+        onChange({ id: 'prod-1', sku: 'W-1', name: 'Widget' })
+      }}
+    >
+      line.product
+    </button>
+  ),
 }))
 
 const createMutate = vi.fn()
@@ -71,9 +90,13 @@ beforeEach(() => {
   grantedPermissions.add('inventory.adjustments.post')
 })
 
-async function addLine(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+async function pickProduct(user: ReturnType<typeof userEvent.setup>): Promise<void> {
   await user.selectOptions(screen.getByLabelText('create.locationLabel'), 'loc-1')
-  await user.selectOptions(screen.getByLabelText('line.product'), 'prod-1')
+  await user.click(screen.getByRole('button', { name: 'line.product' }))
+}
+
+async function addLine(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await pickProduct(user)
   await user.click(screen.getByRole('button', { name: /create.addLine/ }))
   await waitFor(() => {
     expect(screen.getByLabelText('line.quantity')).toBeInTheDocument()
@@ -96,8 +119,7 @@ describe('CreateStockAdjustmentPage — the fresh-read preflight', () => {
     stockLevel.mockRejectedValue(new Error('404'))
     render(<CreateStockAdjustmentPage />)
 
-    await user.selectOptions(screen.getByLabelText('create.locationLabel'), 'loc-1')
-    await user.selectOptions(screen.getByLabelText('line.product'), 'prod-1')
+    await pickProduct(user)
     await user.click(screen.getByRole('button', { name: /create.addLine/ }))
 
     // The endpoint firstOrFail()s, so a product with no stock row here 404s.
@@ -112,7 +134,7 @@ describe('CreateStockAdjustmentPage — the fresh-read preflight', () => {
     render(<CreateStockAdjustmentPage />)
     await addLine(user)
 
-    await user.selectOptions(screen.getByLabelText('line.product'), 'prod-1')
+    await user.click(screen.getByRole('button', { name: 'line.product' }))
     await user.click(screen.getByRole('button', { name: /create.addLine/ }))
 
     await waitFor(() => {

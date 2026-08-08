@@ -27,6 +27,7 @@ import {
 } from '../api/refusals'
 import type { AcknowledgeableRefusalCode, ApiErrorEnvelope, StaleLine } from '../api/refusals'
 import { AcknowledgeableRefusalDialog } from '../components/AcknowledgeableRefusalDialog'
+import { refusalLineKey } from '../lib/refusalLineKey'
 import { StockAdjustmentStatusBadge } from '../components/StockAdjustmentStatusBadge'
 import { narrowStaleDetails } from '../api/refusals'
 import { isAdjustmentReason, toStockAdjustmentStatus } from '../types'
@@ -130,7 +131,7 @@ export function StockAdjustmentDetailPage() {
 
     const freshByKey = new Map(
       staleLines.map((line) => [
-        lineKey(line.product_id, line.variant_id, line.batch_uuid),
+        refusalLineKey(line),
         line.quantity_before,
       ]),
     )
@@ -140,7 +141,7 @@ export function StockAdjustmentDetailPage() {
         id,
         input: {
           lines: adjustment.lines.map((line) => {
-            const key = lineKey(line.product_id, line.variant_id, line.batch_uuid)
+            const key = refusalLineKey(line)
             const freshBefore = freshByKey.get(key)
             // Guard, not cast: a reason this frontend cannot represent must not
             // be silently re-sent as if it were one it can.
@@ -348,7 +349,7 @@ export function StockAdjustmentDetailPage() {
       />
 
       {refusal !== null && acknowledgeableCode === null && (
-        <p className={tokens.text.muted}>{t(refusalMessageKey(refusal.code))}</p>
+        <p className={textColors.error}>{t(refusalMessageKey(refusal.code))}</p>
       )}
 
       <ConfirmDialog
@@ -444,11 +445,6 @@ export function StockAdjustmentDetailPage() {
       )}
     </div>
   )
-}
-
-/** The (product, variant, lot) identity the refusal payload and §2's PATCH share. */
-function lineKey(productId: string, variantId: string | null, batchUuid: string | null): string {
-  return `${productId}|${variantId ?? ''}|${batchUuid ?? ''}`
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {

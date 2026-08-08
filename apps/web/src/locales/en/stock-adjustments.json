@@ -112,9 +112,10 @@
       "observedBefore": "As observed",
       "quantityBefore": "Current",
       "delta": "Your change",
-      "resulting": "If applied",
       "reserved": "Reserved",
-      "available": "Available"
+      "available": "Available",
+      "resultingOnHand": "On hand if applied",
+      "resultingAvailable": "Available if applied"
     },
     "STOCK_MOVED_SINCE_AUTHORING": "Stock moved after you started this correction. Re-anchor to the current quantities, or apply your change on top of them anyway.",
     "ADJUSTMENT_EXCEEDS_AVAILABLE": "This decrease is larger than the unreserved stock. Applying it anyway records the stock as gone while the reservations stay promised.",

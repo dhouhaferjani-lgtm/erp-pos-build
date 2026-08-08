@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\BatchExpiry\Domain\Entities\Batch;
+use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Location;
@@ -362,20 +364,33 @@ final class StockAdjustmentDocumentServiceTest extends TestCase
      * And a multi-lot document must not stamp the staleness override just because
      * its own arithmetic offset a later line's anchor — the rebase is compared
      * against, not around.
+     *
+     * Both lines are on ONE product (gate N-4): the rebase buckets on
+     * `(product, variant)`, so two DIFFERENT products leave `appliedSoFar` at '0'
+     * for both lines and the assertion cannot fail for the reason its name gives.
+     * Two lot-LESS lines on one product are blocked by the
+     * `(adjustment_id, product_id)` partial unique, so the second line names a
+     * lot — which is the real multi-lot shape this exercises.
      */
     public function test_a_multi_line_document_does_not_stamp_staleness_for_its_own_arithmetic(): void
     {
-        $this->seedStock($this->productA, '20.0000');
-        $this->seedStock($this->productB, '20.0000');
+        $product = $this->batchTrackedProduct('DOC-REBASE');
+        $this->seedStock($product, '30.0000');
+        $lotA = $this->seedLot($product, 'DOC-RB-A', '20.0000');
+        $lotB = $this->seedLot($product, 'DOC-RB-B', '10.0000');
 
         $adjustment = $this->draft([
-            $this->line($this->productA, MovementReason::AdjustmentNegative, '-2.0000', '20.0000'),
-            $this->line($this->productB, MovementReason::AdjustmentPositive, '3.0000', '20.0000'),
+            // Line 1 moves the aggregate 30 -> 25, so line 2's raw anchor of 30 is
+            // stale by this DOCUMENT's own arithmetic and must be rebased, not
+            // treated as a concurrent movement.
+            $this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '30.0000', $lotA->uuid),
+            $this->line($product, MovementReason::AdjustmentPositive, '3.0000', '30.0000', $lotB->uuid),
         ]);
 
         $posted = $this->service->post($adjustment->id, $this->user->id, acknowledgeStale: true);
 
         $this->assertNull($posted->stale_acknowledged_at);
+        $this->assertSame('28.0000', (string) $this->level($product)->quantity);
     }
 
     public function test_line_tenant_mismatch_is_refused_before_any_lock_is_taken(): void
@@ -668,6 +683,42 @@ final class StockAdjustmentDocumentServiceTest extends TestCase
     }
 
     // ----------------------------------------------------------- fixtures
+
+    private function batchTrackedProduct(string $sku): Product
+    {
+        return Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => $sku,
+            'name' => "Product {$sku}",
+            'type' => ProductType::Part,
+            'is_active' => true,
+            'requires_batch_tracking' => true,
+            'default_shelf_life_days' => 180,
+        ]);
+    }
+
+    private function seedLot(Product $product, string $batchNumber, string $quantity): Batch
+    {
+        $batch = Batch::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'batch_number' => $batchNumber,
+            'expiry_date' => now()->addYear()->toDateString(),
+            'is_active' => true,
+        ]);
+
+        BatchStock::create([
+            'tenant_id' => $this->tenant->id,
+            'batch_id' => $batch->id,
+            'location_id' => $this->warehouse->id,
+            'quantity' => $quantity,
+            'reserved_quantity' => '0.0000',
+        ]);
+
+        return $batch;
+    }
 
     private function product(string $sku): Product
     {

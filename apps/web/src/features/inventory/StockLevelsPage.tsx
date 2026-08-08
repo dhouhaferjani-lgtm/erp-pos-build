@@ -187,16 +187,16 @@ export function StockLevelsPage() {
               operator fills the whole form and is refused at the end. */}
           <RequirePermission permission="inventory.adjustments.create" fallback={null}>
             <RequirePermission permission="inventory.adjustments.post" fallback={null}>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1"
-              onClick={() => { setAdjustTarget(stock) }}
-              title={t('inventory:stock.adjust')}
-            >
-              <RefreshCw className="h-3.5 w-3.5" />
-              {t('inventory:stock.adjust')}
-            </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                onClick={() => { setAdjustTarget(stock) }}
+                title={t('inventory:stock.adjust')}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                {t('inventory:stock.adjust')}
+              </Button>
             </RequirePermission>
           </RequirePermission>
           {/* A priced, supplier-sourced entry is a goods receipt, not a

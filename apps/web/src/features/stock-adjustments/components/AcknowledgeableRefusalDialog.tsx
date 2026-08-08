@@ -115,11 +115,13 @@ export function AcknowledgeableRefusalDialog({
       },
     },
     {
-      // "What you would end up with if you applied it anyway" — the number the
-      // operator is actually deciding about.
+      // The resulting ON-HAND. Distinct from the availability block's resulting
+      // AVAILABLE below: the two are different quantities and used to share one
+      // label, which made the number ambiguous on the one screen whose job is to
+      // explain a refusal.
       key: 'resulting',
       align: 'right',
-      header: t('refusal.table.resulting'),
+      header: t('refusal.table.resultingOnHand'),
       render: (line) => {
         const delta = deltaByKey?.[keyOf(line)]
         return delta === undefined
@@ -174,7 +176,7 @@ export function AcknowledgeableRefusalDialog({
             <dd className="text-right tabular-nums">
               {formatQuantity(availability.delta_quantity, availability.quantity_decimals)}
             </dd>
-            <dt className={tokens.text.muted}>{t('refusal.table.resulting')}</dt>
+            <dt className={tokens.text.muted}>{t('refusal.table.resultingAvailable')}</dt>
             <dd className="text-right tabular-nums">
               {formatQuantity(
                 bcadd(availability.available, availability.delta_quantity, availability.quantity_decimals),

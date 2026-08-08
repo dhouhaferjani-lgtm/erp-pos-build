@@ -556,6 +556,97 @@ final class StockAdjustmentBatchDispositionTest extends TestCase
         }
     }
 
+    // -------------------- N-1: correcting a posted document must never dead-end
+
+    /**
+     * GATE N-1 (re-review). Routing the contra through writeLines() also subjected
+     * it to the AUTHORING-time lot predicates, so `correct()` — a first-class
+     * permissioned action on a POSTED document — could hard-refuse.
+     *
+     * Door-2's own configuration reproduces it: `requires_batch_tracking = false`
+     * (the flag is toggleable and nothing deletes BatchStock), an original that
+     * posted lot-LESS, and a lot that holds stock by the time the correction is
+     * attempted. The lot-required rule then demanded a lot for the contra — one
+     * the correction UI cannot supply, because the contra's lot is machine-chosen
+     * and there is no picker.
+     *
+     * A contra is not a new correction: it is the exact inverse of a specific
+     * prior movement whose lot disposition is already settled. So it INHERITS
+     * that disposition and is exempt from the lot-REQUIRED rule (never from
+     * lot-VALID).
+     */
+    public function test_correcting_a_lot_less_original_is_not_blocked_by_a_lot_that_appeared_later(): void
+    {
+        $product = $this->product('LOT-N1', batchTracked: false);
+        $this->seedStock($product, '0.0000');
+
+        $original = $this->draft([$this->line($product, MovementReason::AdjustmentPositive, '12.0000', '0.0000')]);
+        $this->service->post($original->id, $this->user->id);
+        $this->assertSame('12.0000', (string) $this->level($product)->quantity);
+        // The original moved NO lot: the product was not lot-tracked.
+        $this->assertSame('0.0000', $this->totalLotQuantity($product));
+
+        // A goods receipt later brings a lot into this location — aggregate and
+        // lot both rise, as a real receipt would.
+        $lot = $this->seedLot($product, 'LOT-N1-LATE', '10.0000');
+        $this->assertNotNull($lot->id);
+        $this->level($product)->update(['quantity' => '22.0000']);
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+        // The receipt moved the aggregate, so the staleness guard fires on its own
+        // merits and the operator acknowledges it — which is precisely the path
+        // N-1 was blocking BEFORE that guard could even be reached.
+        $this->service->post($contra->id, $this->user->id, acknowledgeStale: true);
+
+        // The contra reverses exactly what the original did: 22 − 12. The lot that
+        // was never involved is untouched.
+        $this->assertSame('10.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('10.0000', $this->totalLotQuantity($product));
+    }
+
+    /**
+     * The other half of N-1: the originally-named lot's BatchStock row is gone by
+     * correction time. A POSITIVE contra putting stock BACK into that lot is
+     * legitimate — receiveBatchStock() creates the row — so lot-VALID's
+     * "has a stock row here" requirement applies to NEGATIVE lines only.
+     */
+    public function test_correcting_a_lot_named_original_works_when_the_lot_row_was_removed(): void
+    {
+        $product = $this->product('LOT-N1B', batchTracked: true);
+        $this->seedStock($product, '30.0000');
+        $lot = $this->seedLot($product, 'LOT-N1B-A', '30.0000');
+
+        $original = $this->draft([
+            $this->line($product, MovementReason::AdjustmentNegative, '-30.0000', '30.0000', $lot->uuid),
+        ]);
+        $this->service->post($original->id, $this->user->id);
+        $this->assertSame('0.0000', (string) $this->level($product)->quantity);
+
+        // The now-empty stock row is cleaned up by some other process.
+        BatchStock::query()->where('batch_id', $lot->id)->delete();
+
+        $contra = $this->service->correct($original->id, $this->user->id);
+        $this->service->post($contra->id, $this->user->id);
+
+        $this->assertSame('30.0000', (string) $this->level($product)->quantity);
+        $this->assertSame('30.0000', $this->totalLotQuantity($product));
+    }
+
+    /**
+     * The exemption is for CONTRA lines only. A hand-authored negative line on the
+     * same configuration must still be refused — otherwise N-1's fix would reopen
+     * the door-2 hole that BatchRequiredForLineException exists to close.
+     */
+    public function test_the_contra_exemption_does_not_leak_to_hand_authored_lines(): void
+    {
+        $product = $this->product('LOT-N1C', batchTracked: false);
+        $this->seedStock($product, '20.0000');
+        $this->seedLot($product, 'LOT-N1C-A', '10.0000');
+
+        $this->expectException(BatchRequiredForLineException::class);
+        $this->draft([$this->line($product, MovementReason::AdjustmentNegative, '-5.0000', '20.0000')]);
+    }
+
     // ------------------------------------------------------------- fixtures
 
     private function product(string $sku, bool $batchTracked): Product

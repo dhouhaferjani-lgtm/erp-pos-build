@@ -98,6 +98,36 @@ describe('AcknowledgeableRefusalDialog', () => {
     expect(screen.getByText('-4.00')).toBeInTheDocument()
   })
 
+  /**
+   * LABEL/VALUE PAIRING, not just values. Asserting on values alone is exactly
+   * why `available` shipped under the "As observed" label: every number was
+   * present and correct, and the sentence they formed was wrong.
+   */
+  it('pairs each availability number with the RIGHT label', () => {
+    renderDialog({ code: 'ADJUSTMENT_EXCEEDS_AVAILABLE', refusal: availabilityRefusal })
+
+    const pairFor = (label: string): string | null | undefined =>
+      screen.getByText(label).nextElementSibling?.textContent
+
+    expect(pairFor('refusal.table.quantityBefore')).toBe('5.00')
+    expect(pairFor('refusal.table.reserved')).toBe('3.00')
+    expect(pairFor('refusal.table.available')).toBe('2.00')
+    expect(pairFor('refusal.table.delta')).toBe('-4.00')
+    // available + delta = -2.00, and it is labelled as an AVAILABLE figure —
+    // distinct from the stale table's resulting ON-HAND.
+    expect(pairFor('refusal.table.resultingAvailable')).toBe('-2.00')
+    expect(screen.queryByText('refusal.table.resultingOnHand')).not.toBeInTheDocument()
+  })
+
+  it('labels the stale table s resulting figure as ON-HAND, not available', () => {
+    renderDialog({ deltaByKey: { 'prod-1||lot-abc': '-2.0000' } })
+
+    expect(screen.getByText('refusal.table.resultingOnHand')).toBeInTheDocument()
+    expect(screen.queryByText('refusal.table.resultingAvailable')).not.toBeInTheDocument()
+    // quantity_before 15.000 + (-2.0000) = 13.000, at the payload's precision.
+    expect(screen.getByText('13.000')).toBeInTheDocument()
+  })
+
   it('labels the recovery action by PERSISTENCE STATE, not by page', async () => {
     const user = userEvent.setup()
 

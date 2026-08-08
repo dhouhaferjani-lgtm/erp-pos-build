@@ -110,6 +110,27 @@ non-seam `StockMovement::create` writers, where the morphMap ruling and the back
   post-update aggregate and Σ lots is inflated. This is why V7 added a NEW delta-based private
   method rather than converting the shared helper — converting it would turn that over-count into a
   double-count.
+- **Frontend deviations from plan F3/F7, accepted at the gate and owed a follow-up.** All three are
+  chrome/scope, not correctness, and every capability remains reachable:
+  - **In / Out no longer preselect a reason** (plan F7). The stock-levels row now offers *Adjust*
+    (the document-backed modal, every reason reachable inside it), an *In* deep link to the supplier
+    goods receipt, and a *Transfer* deep link. There is no *Out* button: an outbound correction is
+    made by choosing a decrease reason inside Adjust. Restore the preselect-and-open behaviour, or
+    ratify the current shape.
+  - **The create page does not use `LineItemEntryBar` / `LineItemsTable`** (plan F3). It uses
+    `DataTable` with a per-cell `FormField`, so the hard house rule (no raw `<table>`) is met and
+    per-line errors are properly associated; molecule adoption is cosmetic.
+  - **`variant_id` is not authorable from any adjustment surface.** The schema, the DTO, the
+    uniqueness tuple and the refusal payload all carry it — only the UI does not. Already recorded in
+    plan §5 as out of V7 FE scope; surfacing it also needs `variant_id` on `StockLevelData` and a
+    variant-aware `has_lots_at_location` (see the variant-blindness note in `StockLevelData`).
+- **Correcting a posted adjustment can still require acknowledging a staleness refusal.** `correct()`
+  no longer hard-refuses on lot rules — a contra inherits the original's lot disposition and is exempt
+  from the lot-REQUIRED predicate — but its `observed_before` is what the ORIGINAL posted, so any
+  movement since then legitimately trips `STOCK_MOVED_SINCE_AUTHORING`. The operator's recovery is the
+  ordinary one: *Apply anyway* on the correction, which the detail page offers to anyone holding
+  `inventory.adjustments.post`. Worth knowing because corrections are often raised days after the
+  original.
 - **The PostgreSQL immutability trigger** for posted adjustments (deferred, D10).
 - **The orphan locale key** `entryExitNotes.sourceTypes.adjustment_batch` (zero `src/` references).
 - **GL legs for adjustments** are G1's, and the hand-off has four parts — see plan §5. In particular:
