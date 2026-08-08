@@ -93,14 +93,14 @@ class FEFOInventoryServiceVariantTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             productId: $this->product->id,
             locationId: $this->location->id,
-            quantity: 3,
+            quantity: '3.0000',
             variantId: $variantA->id,
         );
 
         $this->assertTrue($result->fullyFulfilled);
         $this->assertCount(1, $result->suggestions);
         $this->assertSame($batchA->id, $result->suggestions[0]->batch->id);
-        $this->assertEquals(3, $result->suggestions[0]->quantity);
+        $this->assertSame('3.0000', $result->suggestions[0]->quantity);
     }
 
     /**
@@ -133,7 +133,7 @@ class FEFOInventoryServiceVariantTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             productId: $this->product->id,
             locationId: $this->location->id,
-            quantity: 5,
+            quantity: '5.0000',
             variantId: null,
         );
 
@@ -170,7 +170,7 @@ class FEFOInventoryServiceVariantTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             productId: $this->product->id,
             locationId: $this->location->id,
-            quantity: 5,
+            quantity: '5.0000',
             variantId: $variant->id,
         );
 
@@ -201,12 +201,12 @@ class FEFOInventoryServiceVariantTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             productId: $this->product->id,
             locationId: $this->location->id,
-            quantity: 10,
+            quantity: '10.0000',
             variantId: $variant->id,
         );
 
         $this->assertFalse($result->fullyFulfilled);
-        $this->assertEquals(7, $result->shortfall);
+        $this->assertSame('7.0000', $result->shortfall);
         $this->assertCount(1, $result->suggestions);
     }
 

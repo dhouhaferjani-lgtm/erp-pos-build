@@ -13,6 +13,7 @@ use App\Modules\BatchExpiry\Domain\Entities\BatchStock;
 use App\Modules\BatchExpiry\Domain\Events\BatchStockConsumed;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Product\Domain\Product;
+use App\Shared\Domain\QuantityScale;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,6 +26,11 @@ class FEFOInventoryService
      * Get batches to fulfill a quantity, ordered by expiry (soonest first).
      * Implements FEFO (First-Expired-First-Out) logic.
      *
+     * Quantities stay in bcmath decimal strings end-to-end (precision contract):
+     * a native-float pass reported false shortfalls of ~1e-16 for requests the
+     * lots exactly covered (e.g. 1.1 against [0.7, 0.4]).
+     *
+     * @param  numeric-string  $quantity  Positive quantity to fulfil (decimal string, 4dp).
      * @param  ?string  $variantId  When set, only batches belonging to that variant
      *                              are considered (product_batches.variant_id = $variantId).
      *                              When null, only product-level batches are considered
@@ -35,7 +41,7 @@ class FEFOInventoryService
     public function suggestBatchesForSale(
         string $productId,
         string $locationId,
-        float $quantity,
+        string $quantity,
         bool $includeExpired = false,
         ?string $variantId = null,
     ): BatchSuggestionResultDTO {
@@ -61,19 +67,37 @@ class FEFOInventoryService
 
         $batchStocks = $query->with('batch')->get();
 
+        /** @var array<int, BatchSuggestionDTO> $suggestions */
         $suggestions = [];
-        $remaining = $quantity;
+
+        // Normalize the request to the canonical quantity scale up front, so every
+        // emitted quantity carries the same scale regardless of caller input.
+        /** @var numeric-string $remaining */
+        $remaining = bcadd($quantity, '0', QuantityScale::SCALE);
 
         foreach ($batchStocks as $stock) {
-            if ($remaining <= 0) {
+            if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
                 break;
             }
 
-            $takeQuantity = min($remaining, $stock->available_quantity);
             $batch = $stock->batch;
             if ($batch === null) {
                 continue;
             }
+
+            // Read the GENERATED available_quantity column raw: the model's
+            // available_quantity accessor returns a float and would reintroduce
+            // representation error before any arithmetic happens.
+            /** @var numeric-string $rawAvailable */
+            $rawAvailable = (string) $stock->getRawOriginal('available_quantity');
+
+            /** @var numeric-string $available */
+            $available = bcadd($rawAvailable, '0', QuantityScale::SCALE);
+
+            /** @var numeric-string $takeQuantity */
+            $takeQuantity = bccomp($available, $remaining, QuantityScale::SCALE) < 0
+                ? $available
+                : $remaining;
 
             $suggestions[] = new BatchSuggestionDTO(
                 batch: $batch,
@@ -82,13 +106,20 @@ class FEFOInventoryService
                 expiryStatus: $batch->expiryStatus()
             );
 
-            $remaining -= $takeQuantity;
+            $remaining = bcsub($remaining, $takeQuantity, QuantityScale::SCALE);
         }
+
+        // A take never exceeds the remainder, so $remaining cannot go negative;
+        // clamp defensively and emit a canonical scale-4 string either way.
+        /** @var numeric-string $shortfall */
+        $shortfall = bccomp($remaining, '0', QuantityScale::SCALE) > 0
+            ? $remaining
+            : bcadd('0', '0', QuantityScale::SCALE);
 
         return new BatchSuggestionResultDTO(
             suggestions: $suggestions,
-            fullyFulfilled: $remaining <= 0,
-            shortfall: max(0, $remaining)
+            fullyFulfilled: bccomp($shortfall, '0', QuantityScale::SCALE) <= 0,
+            shortfall: $shortfall,
         );
     }
 

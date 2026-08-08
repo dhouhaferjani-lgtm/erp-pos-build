@@ -472,6 +472,9 @@ class StockReservationService implements InventoryReservationServiceInterface, R
      * - Creates one reservation per batch
      * - Updates batch stock reserved quantities
      *
+     * @param  numeric-string  $quantity  Quantity to reserve (decimal string, 4dp).
+     *                                    Passed straight through to the FEFO service —
+     *                                    never cast to float (precision contract).
      * @return Collection<int, StockReservation> Collection of created reservations
      *
      * @throws \RuntimeException If insufficient stock available
@@ -516,7 +519,7 @@ class StockReservationService implements InventoryReservationServiceInterface, R
         $result = $this->fefoService->suggestBatchesForSale(
             productId: $product->id,
             locationId: $locationId,
-            quantity: (float) $quantity,
+            quantity: $quantity,
         );
 
         if (! $result->fullyFulfilled) {

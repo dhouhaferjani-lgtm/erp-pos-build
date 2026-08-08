@@ -10,9 +10,15 @@ use Carbon\Carbon;
 
 readonly class BatchSuggestionDTO
 {
+    /**
+     * @param  numeric-string  $quantity  Suggested draw from this lot, canonical
+     *                                    quantity scale (4dp). Never a float —
+     *                                    this value is serialized straight onto
+     *                                    the wire (precision contract, rule 19).
+     */
     public function __construct(
         public Batch $batch,
-        public float $quantity,
+        public string $quantity,
         public Carbon $expiryDate,
         public ExpiryStatus $expiryStatus,
     ) {}

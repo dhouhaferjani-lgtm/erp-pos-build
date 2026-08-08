@@ -548,7 +548,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 $result = $this->fefoService->suggestBatchesForSale(
                     (string) $line->product_id,
                     (string) $locationId,
-                    (float) $line->quantity,
+                    (string) $line->quantity,
                 );
 
                 if ($result->fullyFulfilled) {

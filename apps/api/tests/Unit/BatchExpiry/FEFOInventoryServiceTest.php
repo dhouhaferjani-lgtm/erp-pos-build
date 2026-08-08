@@ -51,13 +51,13 @@ class FEFOInventoryServiceTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             $this->product->id,
             $this->location->id,
-            quantity: 5
+            quantity: '5.0000'
         );
 
         $this->assertTrue($result->fullyFulfilled);
         $this->assertCount(1, $result->suggestions);
         $this->assertEquals($batch2->id, $result->suggestions[0]->batch->id); // Earliest expiry
-        $this->assertEquals(5, $result->suggestions[0]->quantity);
+        $this->assertSame('5.0000', $result->suggestions[0]->quantity);
     }
 
     public function test_fefo_skips_expired_batches(): void
@@ -69,7 +69,7 @@ class FEFOInventoryServiceTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             $this->product->id,
             $this->location->id,
-            quantity: 5,
+            quantity: '5.0000',
             includeExpired: false
         );
 
@@ -87,7 +87,7 @@ class FEFOInventoryServiceTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             $this->product->id,
             $this->location->id,
-            quantity: 5
+            quantity: '5.0000'
         );
 
         $this->assertTrue($result->fullyFulfilled);
@@ -104,14 +104,14 @@ class FEFOInventoryServiceTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             $this->product->id,
             $this->location->id,
-            quantity: 10  // Request more than available
+            quantity: '10.0000'  // Request more than available
         );
 
         $this->assertFalse($result->fullyFulfilled);
         $this->assertCount(2, $result->suggestions);
-        $this->assertEquals(3, $result->suggestions[0]->quantity); // First batch depleted
-        $this->assertEquals(5, $result->suggestions[1]->quantity); // Second batch fully used
-        $this->assertEquals(2, $result->shortfall); // 10 requested - 8 available = 2 shortfall
+        $this->assertSame('3.0000', $result->suggestions[0]->quantity); // First batch depleted
+        $this->assertSame('5.0000', $result->suggestions[1]->quantity); // Second batch fully used
+        $this->assertSame('2.0000', $result->shortfall); // 10 requested - 8 available = 2 shortfall
     }
 
     public function test_fefo_returns_shortfall_when_insufficient_stock(): void
@@ -122,13 +122,13 @@ class FEFOInventoryServiceTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             $this->product->id,
             $this->location->id,
-            quantity: 10
+            quantity: '10.0000'
         );
 
         $this->assertFalse($result->fullyFulfilled);
-        $this->assertEquals(5, $result->shortfall);
+        $this->assertSame('5.0000', $result->shortfall);
         $this->assertCount(1, $result->suggestions);
-        $this->assertEquals(5, $result->suggestions[0]->quantity);
+        $this->assertSame('5.0000', $result->suggestions[0]->quantity);
     }
 
     public function test_fefo_respects_reserved_quantities(): void
@@ -155,12 +155,12 @@ class FEFOInventoryServiceTest extends TestCase
         $result = $this->service->suggestBatchesForSale(
             $this->product->id,
             $this->location->id,
-            quantity: 5
+            quantity: '5.0000'
         );
 
         $this->assertFalse($result->fullyFulfilled);
-        $this->assertEquals(2, $result->shortfall);  // Only 3 available, need 5
-        $this->assertEquals(3, $result->suggestions[0]->quantity);
+        $this->assertSame('2.0000', $result->shortfall);  // Only 3 available, need 5
+        $this->assertSame('3.0000', $result->suggestions[0]->quantity);
     }
 
     public function test_get_expiring_products_returns_batches_within_threshold(): void

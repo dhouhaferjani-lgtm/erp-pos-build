@@ -294,11 +294,22 @@ class BatchController extends Controller
         $companyId = $this->companyContext->requireCompanyId();
         $request->validate([
             'location_id' => ['required', ScopedExists::company('locations', $companyId)],
-            'quantity' => ['required', 'numeric', 'min:0.0001'],
+            'quantity' => [
+                'required',
+                'numeric',
+                'min:0.0001',
+                // Positive, up to 4 decimal places — never more, and never
+                // scientific notation (precision contract, rule 19).
+                'regex:/^\d+(\.\d{1,4})?$/',
+            ],
         ]);
 
         $locationId = (string) $request->input('location_id');
-        $quantity = (float) $request->input('quantity');
+
+        // Quantity stays a decimal string all the way into the FEFO service —
+        // a (float) cast here reintroduced ~1e-16 false shortfalls downstream.
+        /** @var numeric-string $quantity */
+        $quantity = (string) $request->input('quantity');
 
         $result = $this->fefoService->suggestBatchesForSale(
             $productId,

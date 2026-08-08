@@ -277,7 +277,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                 $result = $this->fefoService->suggestBatchesForSale(
                     (string) $line->product_id,
                     (string) $destination->location_id,
-                    (float) $line->quantity,
+                    (string) $line->quantity,
                 );
 
                 if ($result->fullyFulfilled) {
@@ -408,7 +408,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
                 $result = $this->fefoService->suggestBatchesForSale(
                     (string) $line->product_id,
                     (string) $destination->location_id,
-                    (float) $qtyToDeliver,
+                    (string) $qtyToDeliver,
                 );
 
                 if ($result->fullyFulfilled) {
