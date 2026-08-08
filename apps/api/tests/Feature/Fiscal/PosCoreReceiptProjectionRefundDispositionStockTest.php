@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
@@ -181,6 +182,12 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
         self::assertSame('6.000', (string) $entry->lines->firstWhere('debit', '>', '0')->debit);
         self::assertSame('6.000', (string) $entry->lines->firstWhere('credit', '>', '0')->credit);
+
+        // Gate I6 — a Draft entry appears in no trial balance / P&L / balance
+        // sheet, so "the entry exists" is not the spec claim. It must be SEALED.
+        self::assertSame(JournalEntryStatus::Posted, $entry->status);
+        self::assertNotNull($entry->posted_at);
+        self::assertNotNull($entry->fiscal_hash);
     }
 
     /**
@@ -266,13 +273,17 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
     /**
      * A projector may never REJECT an already-signed event (Model 1 §4.1).
-     * When the scrap pair cannot complete — here: no `stock_levels` row exists
-     * at the terminal's location, so the restore leg no-ops and the write-off
-     * leg cannot issue — the SAVEPOINT rolls BOTH legs back. `apply()` must
-     * still succeed, the receipt must still project, and no half-applied
-     * phantom `+qty` restore may survive.
+     * When the scrap pair cannot complete the SAVEPOINT rolls BOTH legs back:
+     * `apply()` still succeeds, the receipt still projects, and no half-applied
+     * phantom `+qty` restore survives.
+     *
+     * Gate I2 (fiscal): this uses a GENUINE PARTIAL failure — the restore leg
+     * really does write (+2), and only then does the write-off leg throw
+     * `InsufficientStockException` on an over-reserved row. The earlier
+     * "no stock_levels row" variant proved nothing, because the restore leg
+     * returns early and writes nothing in that case.
      */
-    public function test_scrap_disposition_failure_rolls_back_both_legs_without_failing_the_projection(): void
+    public function test_scrap_disposition_failure_rolls_back_a_genuinely_applied_restore_leg(): void
     {
         $this->seedWriteOffAccounts();
 
@@ -281,26 +292,76 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             'company_id' => $this->companyId,
             'cost_price' => '3.000000',
         ]);
+        $stockLevel = $this->seedStockLevel($product->id, '10.0000');
 
-        // Deliberately NO stock_levels row for this product/location.
         $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
         $this->project($sale);
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity);
+
+        // Over-reserve so that AFTER the restore leg applies (+2 ⇒ 7) the
+        // available quantity (7 − 6 = 1) still cannot cover the 2-unit issue.
+        $stockLevel->reserved = '6.0000';
+        $stockLevel->save();
 
         $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
         $this->project($refund);
 
         // The refund receipt still projected (the projector did not reject it).
-        self::assertTrue(
-            Receipt::query()->where('fiscal_event_id', $refund->id)->exists(),
-        );
+        self::assertTrue(Receipt::query()->where('fiscal_event_id', $refund->id)->exists());
 
-        // Neither leg survived, and no zero-quantity stock row was left behind.
-        self::assertSame(0, StockMovement::query()->where('product_id', $product->id)->count());
-        self::assertSame(0, StockLevel::query()->where('product_id', $product->id)->count());
+        // The applied restore leg was rolled BACK — no phantom +2.
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity, 'the applied restore leg must not survive alone');
+        self::assertSame(0, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSReturn->value)
+            ->count());
+        self::assertSame(0, StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::WriteOff->value)
+            ->count());
         self::assertSame(0, JournalEntry::query()
             ->where('company_id', $this->companyId)
             ->where('source_type', 'batch_write_off')
             ->count());
+    }
+
+    /**
+     * Gate C1 (fiscal, reviewer-reproduced). `Product` uses SoftDeletes, so a
+     * product archived between the sale and the refund projection is
+     * unresolvable. Before the fix the write-off leg RETURNED NULL and the
+     * savepoint COMMITTED with only the restore leg applied — the projector
+     * itself authored a permanent `+qty` restock of goods the device said were
+     * destroyed (5 → 7). The pair is now atomic.
+     */
+    public function test_scrap_with_soft_deleted_product_writes_neither_leg(): void
+    {
+        $this->seedWriteOffAccounts();
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+        $stockLevel = $this->seedStockLevel($product->id, '10.0000');
+
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $this->project($sale);
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity);
+
+        // Archived between the sale and the refund projection.
+        $product->delete();
+
+        $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
+        $this->project($refund);
+
+        self::assertTrue(Receipt::query()->where('fiscal_event_id', $refund->id)->exists());
+
+        $stockLevel->refresh();
+        self::assertSame('5.0000', $stockLevel->quantity, 'NO phantom restock of destroyed goods');
+        self::assertSame(0, StockMovement::query()->where('product_id', $product->id)->count());
     }
 
     // =================================================================

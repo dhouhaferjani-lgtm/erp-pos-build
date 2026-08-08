@@ -6,12 +6,16 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
+use App\Modules\BatchExpiry\Domain\Services\ReverseWriteOffService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -190,7 +194,14 @@ final class PosReturnScrapWriteOffTest extends TestCase
     // WAC is NOT disturbed by the pair
     // =========================================================================
 
-    public function test_scrap_pair_leaves_weighted_average_cost_untouched(): void
+    /**
+     * WAC neutrality, pinned by CONSEQUENCE rather than by asserting a value
+     * nothing on the path can write (gate inv-M7): after the scrap pair, a
+     * subsequent receive must re-average against the on-hand the pair left
+     * behind. If the pair leaked quantity in either direction, the running
+     * average computed here would move off the gold value.
+     */
+    public function test_scrap_pair_leaves_the_running_average_cost_correct_for_a_later_receive(): void
     {
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -206,6 +217,175 @@ final class PosReturnScrapWriteOffTest extends TestCase
         // A write-off ISSUES at the current WAC — it never re-averages it.
         // (The restore leg is quantity-only, so it does not re-average either.)
         self::assertSame('2.500000', (string) $product->refresh()->cost_price);
+
+        // Now buy 10 more at 4.00. `recordPurchase` blends against the
+        // COMPANY-OWNED on-hand, so the resulting average is a direct function
+        // of the quantity the scrap pair left behind:
+        //   (10 × 2.50 + 10 × 4.00) / 20 = 3.25
+        // Had either leg leaked, the denominator would be 18 or 22 and the
+        // average would not be 3.25.
+        $this->app->make(WeightedAverageCostService::class)->recordPurchase(
+            product: $product->refresh(),
+            location: $this->location,
+            quantity: '10.0000',
+            landedUnitCost: '4.000000',
+            reference: 'post-scrap purchase',
+        );
+
+        self::assertSame('3.250000', (string) $product->refresh()->cost_price);
+    }
+
+    // =========================================================================
+    // Gate fix round 1 — C1: the two legs must be ATOMIC
+    // =========================================================================
+
+    /**
+     * Gate C1 (fiscal, reviewer-reproduced). `Product` uses SoftDeletes, so a
+     * product archived between the sale and the return is unresolvable. Before
+     * the fix the write-off leg RETURNED NULL and only the restore leg
+     * committed — a SCRAP return permanently ADDED destroyed goods back to
+     * sellable stock (10 → 12).
+     *
+     * The pair is now atomic: an unresolvable product fails BOTH legs, the
+     * quantity falls back to the pre-return figure, and the refund itself still
+     * completes (a customer's refund is never refused by an inventory-side
+     * fault).
+     */
+    public function test_scrap_with_soft_deleted_product_rolls_back_both_legs_and_still_refunds(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '2.500000',
+        ]);
+        $stock = $this->createStockLevel($product->id, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        // Archived after the sale, before the return.
+        $product->delete();
+
+        $return = $this->scrapReturn($sale, $line, '2.000');
+
+        self::assertNotNull($return->id, 'the refund must still complete');
+        self::assertSame('10.0000', (string) $stock->refresh()->quantity, 'NO phantom restock of destroyed goods');
+        self::assertSame(0, StockMovement::query()->where('product_id', $product->id)->count(),
+            'neither leg may survive alone');
+    }
+
+    /**
+     * Gate I3 (both halves). `issue()` enforces `quantity − reserved`, which is
+     * semantically irrelevant when DESTROYING goods you physically hold. An
+     * over-reserved row must not turn a customer refund into a 500 — the
+     * destruction leg is contained and both legs roll back.
+     */
+    public function test_scrap_with_over_reserved_stock_is_contained_and_the_refund_still_completes(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '2.500000',
+        ]);
+        $stock = $this->createStockLevel($product->id, '10.0000');
+        $stock->reserved = '11.0000';
+        $stock->save();
+
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        $return = $this->scrapReturn($sale, $line, '2.000');
+
+        self::assertNotNull($return->id, 'the refund must still complete');
+        self::assertSame('10.0000', (string) $stock->refresh()->quantity);
+        self::assertSame(0, StockMovement::query()->where('product_id', $product->id)->count());
+    }
+
+    // =========================================================================
+    // Gate fix round 1 — C3: a POS scrap must NOT be reversible
+    // =========================================================================
+
+    /**
+     * Gate C3 (inventory). Pinning `movement_type` to `Issue` made POS scrap
+     * movements pass `ReverseWriteOffService`'s type guard, and the web Reverse
+     * button is reason-gated only — so one click would have `receive()`d
+     * physically destroyed goods back into sellable stock AND (with no
+     * BatchMovement to restore) inflated the DEFAULT lot to the whole aggregate.
+     * A POS scrap is undone by correcting the return, never by a batch reversal.
+     */
+    public function test_pos_scrap_write_off_cannot_be_reversed(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '2.500000',
+        ]);
+        $stock = $this->createStockLevel($product->id, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        $this->scrapReturn($sale, $line, '2.000');
+
+        $writeOff = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::WriteOff->value)
+            ->sole();
+
+        try {
+            $this->app->make(ReverseWriteOffService::class)->reverse($writeOff, $this->cashier->id);
+            self::fail('reversing a POS return scrap must be refused');
+        } catch (\DomainException $e) {
+            self::assertStringContainsString('POS return scrap', $e->getMessage());
+        }
+
+        // Destroyed goods stayed destroyed; no inverse movement, no lot inflation.
+        self::assertSame('10.0000', (string) $stock->refresh()->quantity);
+        self::assertSame(0, StockMovement::query()
+            ->where('reverses_movement_id', $writeOff->id)
+            ->count());
+    }
+
+    // =========================================================================
+    // Gate I6 — the journal entry must actually REACH Posted
+    // =========================================================================
+
+    /**
+     * Every reporting surface (trial balance, P&L, balance sheet) filters on
+     * `Posted`. A Draft write-off entry leaves inventory value on the balance
+     * sheet — the exact defect V10 exists to fix — while every "the entry
+     * exists" assertion stays green. Pin the status AND the account balances.
+     */
+    public function test_scrap_write_off_journal_entry_reaches_posted_and_moves_both_accounts(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '2.500000',
+        ]);
+        $this->createStockLevel($product->id, '10.0000');
+        $sale = $this->createReceipt();
+        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+
+        $this->scrapReturn($sale, $line, '2.000');
+
+        $writeOff = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::WriteOff->value)
+            ->sole();
+
+        /** @var JournalEntry $entry */
+        $entry = JournalEntry::query()
+            ->where('source_type', 'batch_write_off')
+            ->where('source_id', $writeOff->id)
+            ->sole();
+
+        self::assertSame(JournalEntryStatus::Posted, $entry->status,
+            'a Draft entry appears in no trial balance, P&L or balance sheet');
+        self::assertNotNull($entry->posted_at);
+        self::assertNotNull($entry->fiscal_hash, 'the entry must be sealed into the GL chain');
+
+        // Balances actually moved: Dr COGS 5.000 / Cr Inventory 5.000.
+        self::assertSame('5.000', $this->postedSum($this->accountId(SystemAccountPurpose::CostOfGoodsSold), 'debit'));
+        self::assertSame('5.000', $this->postedSum($this->accountId(SystemAccountPurpose::Inventory), 'credit'));
     }
 
     public function test_non_scrap_restock_return_writes_no_write_off_and_no_journal_entry(): void
@@ -263,6 +443,25 @@ final class PosReturnScrapWriteOffTest extends TestCase
             cashier: $this->cashier,
             terminalId: $this->terminal->id,
         );
+    }
+
+    /**
+     * Sum of POSTED journal-line debits/credits on one account — i.e. what a
+     * trial balance would actually show.
+     */
+    private function postedSum(string $accountId, string $column): string
+    {
+        $total = '0.000';
+        $lines = JournalLine::query()
+            ->where('account_id', $accountId)
+            ->whereHas('journalEntry', fn ($q) => $q->where('status', JournalEntryStatus::Posted->value))
+            ->get();
+
+        foreach ($lines as $line) {
+            $total = bcadd($total, (string) $line->{$column}, 3);
+        }
+
+        return $total;
     }
 
     private function accountId(SystemAccountPurpose $purpose): string
