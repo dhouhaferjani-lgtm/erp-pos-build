@@ -93,34 +93,50 @@ export interface BatchMovement {
 }
 
 /**
- * FEFO batch suggestion.
+ * Expiry status as emitted by the FEFO suggestion endpoint.
+ *
+ * Deliberately NOT the `ExpiryStatus` type above: `BatchResource` uppercases
+ * the enum (`strtoupper($this->expiryStatus()->value)`) but
+ * `BatchSuggestionDTO::toArray()` does not, so this one endpoint emits the raw
+ * lowercase enum values. Tracked as a residual — see
+ * docs/superpowers/tickets/2026-08-08-f7-fefo-residuals.md.
+ */
+export type FEFOExpiryStatus = 'ok' | 'approaching' | 'warning' | 'critical' | 'expired'
+
+/**
+ * FEFO batch suggestion — mirrors `BatchSuggestionDTO::toArray()` exactly.
  *
  * NOTE (F-7): `quantity` is a canonical scale-4 numeric STRING — the backend
  * runs the FEFO pipeline on bcmath decimals and serialises them as strings
  * (precision contract, rule 19). Never `parseFloat` it.
  */
 export interface FEFOSuggestion {
-  batch: Batch
+  /** Bigint PK of the lot (NOT the uuid) */
+  batch_id: number
+  batch_number: string
   /** Suggested draw from this lot (4dp numeric string) */
   quantity: string
-  available_quantity: number
-  expiry_status: ExpiryStatus
+  /** ISO date string "YYYY-MM-DD" */
+  expiry_date: string
   days_until_expiry: number
+  expiry_status: FEFOExpiryStatus
+  expiry_status_label: string
+  expiry_status_color: string
+  can_sell: boolean
 }
 
 /**
- * FEFO result.
+ * FEFO result — mirrors `BatchSuggestionResultDTO::toArray()` exactly.
  *
- * `shortfall` and `total_allocated` are 4dp numeric strings (F-7).
+ * `shortfall` and `total_quantity_suggested` are 4dp numeric strings (F-7).
  */
 export interface FEFOResult {
   suggestions: FEFOSuggestion[]
   fully_fulfilled: boolean
-  /** Total suggested across all lots (4dp numeric string) */
-  total_allocated: string
-  requested_quantity: string
   /** Unfulfilled remainder, "0.0000" when fully covered (4dp numeric string) */
   shortfall: string
+  /** Total suggested across all lots (4dp numeric string) */
+  total_quantity_suggested: string
 }
 
 /**

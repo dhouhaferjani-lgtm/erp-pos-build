@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, type UseQueryResult } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { getErrorMessage } from '@/lib/api'
+import { bccomp } from '@/lib/decimal'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -134,7 +135,9 @@ export function useFEFOSuggestions(
   return useQuery({
     queryKey: tenantScopedKey(batchKeys.fefo(productId, locationId, quantity)),
     queryFn: () => getFEFOSuggestions(productId, locationId, quantity),
-    enabled: enabled && Boolean(productId) && Boolean(locationId) && Number(quantity) > 0 && tenantId !== null && companyId !== null,
+    // Compare as a decimal, never Number(quantity): a float coercion on a
+    // quantity is exactly what F-7 removed from this path (precision contract).
+    enabled: enabled && Boolean(productId) && Boolean(locationId) && bccomp(quantity, '0') > 0 && tenantId !== null && companyId !== null,
     staleTime: 10000, // 10 seconds for POS suggestions
   })
 }

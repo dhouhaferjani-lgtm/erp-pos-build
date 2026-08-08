@@ -189,21 +189,37 @@ function batchStockFixture(): BatchStockByLocation {
   }
 }
 
+/**
+ * Captured verbatim from a real controller response (the `data` envelope that
+ * apiGet unwraps), so this fixture cannot drift into a fabricated shape:
+ *
+ *   GET /api/v1/pos/products/{id}/batches?location_id=…&quantity=1.0000
+ *   {"data":{"suggestions":[{"batch_id":1,"batch_number":"FEFO-PRECISION-1",
+ *    "quantity":"1.0000","expiry_date":"2027-08-08","days_until_expiry":364,
+ *    "expiry_status":"ok","expiry_status_label":"OK","expiry_status_color":"green",
+ *    "can_sell":true}],"fully_fulfilled":true,"shortfall":"0.0000",
+ *    "total_quantity_suggested":"1.0000"}}
+ *
+ * Reproduce with tests/Feature/BatchExpiry/PosAvailableBatchesPrecisionTest.php.
+ */
 function fefoFixture(): FEFOResult {
   return {
     suggestions: [
       {
-        batch: batchFixture('batch-1'),
+        batch_id: 1,
+        batch_number: 'FEFO-PRECISION-1',
         quantity: '1.0000',
-        available_quantity: 10,
-        expiry_status: 'OK',
-        days_until_expiry: 365,
+        expiry_date: '2027-08-08',
+        days_until_expiry: 364,
+        expiry_status: 'ok',
+        expiry_status_label: 'OK',
+        expiry_status_color: 'green',
+        can_sell: true,
       },
     ],
     fully_fulfilled: true,
-    total_allocated: '1.0000',
-    requested_quantity: '1.0000',
     shortfall: '0.0000',
+    total_quantity_suggested: '1.0000',
   }
 }
 
