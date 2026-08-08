@@ -16,7 +16,10 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Modules\Treasury\Domain\RepositoryAdjustment;
 use App\Modules\Treasury\Presentation\Requests\AdjustRepositoryRequest;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -27,6 +30,12 @@ use Illuminate\Support\Str;
  * that moves the repository balance via the write port AND posts a balanced
  * GL entry (cash ↔ variance account), all inside one transaction so the
  * movement always carries a non-null journal_entry_id (recon-readiness).
+ *
+ * DPA lane V3: the adjustment UUID that the JE and the movement both carry as
+ * their `source_id` now addresses a real `repository_adjustments` document,
+ * minted first inside the same transaction. See
+ * {@see RepositoryAdjustment} for why no FK runs
+ * from movements back to that table.
  */
 final class RepositoryAdjustmentController extends Controller
 {
@@ -34,6 +43,7 @@ final class RepositoryAdjustmentController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly GeneralLedgerService $generalLedger,
         private readonly TreasuryMovementService $movementService,
+        private readonly CurrencyScaleResolverInterface $scaleResolver,
     ) {}
 
     public function store(AdjustRepositoryRequest $request, string $id): JsonResponse
@@ -104,6 +114,34 @@ final class RepositoryAdjustmentController extends Controller
             /** @var string $glAccountId */
             $glAccountId = $repository->gl_account_id;
 
+            // DOCUMENT FIRST (DPA lane V3): mint the justifying
+            // `repository_adjustments` row BEFORE the GL entry and the movement,
+            // so the `source_id` both of them carry addresses a row that already
+            // exists. `firstOrCreate` keyed on the id — the very discriminator
+            // the movement's idempotency key is built from
+            // (`adjustment:{id}:main`) — means a replay of the same adjustment
+            // id resolves to the existing document instead of inserting a
+            // second one, mirroring record()'s own replay contract.
+            $adjustment = RepositoryAdjustment::query()->firstOrCreate(
+                ['id' => $adjustmentId],
+                [
+                    'tenant_id' => $tenantId,
+                    'company_id' => $companyId,
+                    'payment_repository_id' => $repository->id,
+                    'direction' => $direction,
+                    // Money at rest through the CurrencyScale contract, at the
+                    // repository's own currency scale (rule 19). Never a float.
+                    'amount' => CurrencyScale::bcformatStrict(
+                        $amount,
+                        $this->scaleResolver->getScale($repository->currency),
+                    ),
+                    'currency' => $repository->currency,
+                    'reason_code' => $reasonCode,
+                    'reason_text' => $reasonText,
+                    'created_by' => $user->id,
+                ],
+            );
+
             // GL post FIRST (postEntryNow takes the company advisory lock),
             // then the movement port (which takes the repository row lock
             // second) — global lock order (spine BLOCKER-1).
@@ -120,7 +158,7 @@ final class RepositoryAdjustmentController extends Controller
                 currencyCode: $repository->currency,
             );
 
-            return $this->movementService->record(new MovementIntent(
+            $result = $this->movementService->record(new MovementIntent(
                 repositoryId: $repository->id,
                 tenantId: $tenantId,
                 companyId: $companyId,
@@ -138,6 +176,19 @@ final class RepositoryAdjustmentController extends Controller
                 notes: $reasonText,
                 allowWhileFrozen: false,
             ));
+
+            // Close the loop: the document links back to the JE and the movement
+            // it justifies. Only on the write that actually created it — a
+            // replay must leave the original linkage untouched rather than
+            // repoint the document at a re-derived journal entry.
+            if ($adjustment->wasRecentlyCreated) {
+                $adjustment->forceFill([
+                    'journal_entry_id' => $entry->id,
+                    'movement_id' => $result->movementId,
+                ])->save();
+            }
+
+            return $result;
         });
 
         return response()->json([
