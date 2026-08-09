@@ -17,6 +17,7 @@ use Database\Seeders\BanksSeeder;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryPaymentSettingsSeeder;
 use Database\Seeders\CountryTaxRatesSeeder;
+use Database\Seeders\ExpenseCategorySeeder;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\PaymentMethodSeeder;
@@ -78,6 +79,14 @@ class TenantInitializationService
 
         // 3. Seed country-specific chart of accounts
         $this->seedChartOfAccounts($company);
+
+        // 3.5. Seed the country's default expense categories.
+        // Register G-3: real tenants received NONE — the seeder was reachable
+        // only from the two parapharmacy demo seeders, so every expense a live
+        // tenant recorded fell back to the GeneralExpense account. Must run
+        // AFTER seedChartOfAccounts(): each category links to a class-6 account
+        // (or resolves the GeneralExpense purpose). Idempotent (firstOrCreate).
+        $this->seedExpenseCategories($company);
 
         // 4. Set country-specific default tax rate
         $this->setDefaultTaxRate($company);
@@ -225,6 +234,18 @@ class TenantInitializationService
     {
         $seeder = new PaymentMethodSeeder;
         $seeder->run($company);
+    }
+
+    /**
+     * Seed the company's default expense categories (register G-3).
+     *
+     * Country-aware and idempotent; skips silently when the chart of accounts
+     * has no matching account at all (the seeder inserts no NULL account_id).
+     */
+    private function seedExpenseCategories(Company $company): void
+    {
+        $seeder = new ExpenseCategorySeeder;
+        $seeder->seedForCompany($company);
     }
 
     private function seedBanks(Company $company): void

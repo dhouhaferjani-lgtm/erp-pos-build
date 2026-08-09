@@ -169,7 +169,13 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '4035', 'name' => 'Fournisseurs - Chèques à payer', 'type' => 'liability', 'parent_code' => '40', 'is_system' => true],
             ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
-            ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40'],
+            // R2 E-1 / register H-5 — the PCG counterpart of the TN chart's own
+            // 409 → SupplierAdvance mapping. `SupplierAdvance` is in
+            // SystemAccountPurpose::requiredPurposes(), so before this line a
+            // French chart FAILED ChartOfAccountsService::validateCompanyAccounts()
+            // and GeneralLedgerService::createSupplierAdvance* threw.
+            ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40',
+                'system_purpose' => SystemAccountPurpose::SupplierAdvance->value, 'is_system' => true],
 
             // Customers (Clients)
             ['code' => '41', 'name' => 'Clients et comptes rattachés', 'type' => 'asset', 'parent_code' => '4'],
@@ -178,8 +184,14 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '4111', 'name' => 'Clients - Ventes de biens ou de prestations de services', 'type' => 'asset', 'parent_code' => '411'],
             ['code' => '413', 'name' => 'Clients - Effets à recevoir', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
             ['code' => '416', 'name' => 'Clients douteux ou litigieux', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
-            ['code' => '418', 'name' => 'Clients - Produits non encore facturés', 'type' => 'asset', 'parent_code' => '41'],
-            ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41'],
+            // Register G-4 — UninvoicedDeliveryNoteService resolves this purpose
+            // (the delivery-note accrual, PCG 418 by name already).
+            ['code' => '418', 'name' => 'Clients - Produits non encore facturés', 'type' => 'asset', 'parent_code' => '41',
+                'system_purpose' => SystemAccountPurpose::UninvoicedRevenue->value, 'is_system' => true],
+            // R2 E-1 / register H-5 — PCG counterpart of the TN chart's 419 →
+            // CustomerAdvance mapping; also a requiredPurposes() member.
+            ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41',
+                'system_purpose' => SystemAccountPurpose::CustomerAdvance->value, 'is_system' => true],
 
             // Social security and personnel
             ['code' => '42', 'name' => 'Personnel et comptes rattachés', 'type' => 'liability', 'parent_code' => '4'],
@@ -236,6 +248,33 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '60', 'name' => 'Achats', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '601', 'name' => 'Achats stockés - Matières premières', 'type' => 'expense', 'parent_code' => '60'],
             ['code' => '602', 'name' => 'Achats stockés - Autres approvisionnements', 'type' => 'expense', 'parent_code' => '60'],
+            // R2 E-1 (register H-5) — France booked ZERO cost of goods sold: no
+            // account carried CostOfGoodsSold, and PostCOGSOnInvoice swallows the
+            // miss, so a French tenant's P&L showed revenue with no cost, forever.
+            //
+            // PCG 603 "Variation des stocks (approvisionnements et marchandises)"
+            // is the charge account of the perpetual-inventory (inventaire
+            // permanent) destocking entry — debit 603x / credit 37 — which is
+            // exactly what PostCOGSOnInvoice books (debit CostOfGoodsSold, credit
+            // Inventory=37). It mirrors the Tunisian chart's own 603 mapping and
+            // the generic chart's 6030.
+            // Deliberately NOT 607 "Achats de marchandises": 607 already carries
+            // PurchaseExpenses in this same chart, it is the PERIODIC-inventory
+            // cost account, and reusing it would double-count purchases (and
+            // collide with accounts_company_purpose_unique).
+            // The finer PCG grain is 6037 "Variation des stocks de marchandises";
+            // the purpose sits on the 603 family node because the purpose is not
+            // product-class aware. Resolution is purpose-first, so an operator (or
+            // the super-admin COA template) may move it to 6037 without code change.
+            ['code' => '603', 'name' => 'Variation des stocks (approvisionnements et marchandises)', 'type' => 'expense', 'parent_code' => '60',
+                'system_purpose' => SystemAccountPurpose::CostOfGoodsSold->value, 'is_system' => true],
+            // Register G-4 parity — the PCG homes for the four expense purposes
+            // that only the generic chart carried (6130/6170/6250/6256 there).
+            ['code' => '606', 'name' => 'Achats non stockés de matières et fournitures', 'type' => 'expense', 'parent_code' => '60'],
+            ['code' => '6061', 'name' => 'Fournitures non stockables (eau, énergie)', 'type' => 'expense', 'parent_code' => '606',
+                'system_purpose' => SystemAccountPurpose::UtilitiesExpense->value, 'is_system' => true],
+            ['code' => '6064', 'name' => 'Fournitures administratives', 'type' => 'expense', 'parent_code' => '606',
+                'system_purpose' => SystemAccountPurpose::OfficeExpense->value, 'is_system' => true],
             ['code' => '607', 'name' => 'Achats de marchandises', 'type' => 'expense', 'parent_code' => '60',
                 'system_purpose' => SystemAccountPurpose::PurchaseExpenses->value, 'is_system' => true],
             ['code' => '6071', 'name' => 'Achats de marchandises - Matières premières', 'type' => 'expense', 'parent_code' => '607'],
@@ -249,7 +288,24 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '622', 'name' => 'Rémunérations d\'intermédiaires et honoraires', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '623', 'name' => 'Publicité, publications, relations publiques', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '626', 'name' => 'Frais postaux et de télécommunications', 'type' => 'expense', 'parent_code' => '62'],
+            // Register G-3 — the default expense categories book transport here
+            // on both French-plan charts; the TN chart already carried 624.
+            ['code' => '624', 'name' => 'Transports de biens et transports collectifs du personnel', 'type' => 'expense', 'parent_code' => '62'],
+            ['code' => '625', 'name' => 'Déplacements, missions et réceptions', 'type' => 'expense', 'parent_code' => '62'],
+            ['code' => '6251', 'name' => 'Voyages et déplacements', 'type' => 'expense', 'parent_code' => '625',
+                'system_purpose' => SystemAccountPurpose::TravelExpense->value, 'is_system' => true],
+            ['code' => '6257', 'name' => 'Réceptions', 'type' => 'expense', 'parent_code' => '625',
+                'system_purpose' => SystemAccountPurpose::MealsExpense->value, 'is_system' => true],
             ['code' => '627', 'name' => 'Services bancaires et assimilés', 'type' => 'expense', 'parent_code' => '62', 'is_system' => true],
+            // R2 E-1 (register H-5) — France had no GeneralExpense either, so the
+            // expense-document lane (GeneralLedgerService::…, expense categories'
+            // fallback account) had nothing to resolve. PCG 628 "Divers" is the
+            // conventional catch-all for unclassified external charges and is the
+            // same code family as the generic chart's 6280 "General Expenses".
+            // Deliberately NOT 65 (the TN chart's choice): in the PCG chart 65 is
+            // a pure header parenting five system accounts (6580/6581/6585/6588/6590).
+            ['code' => '628', 'name' => 'Divers', 'type' => 'expense', 'parent_code' => '62',
+                'system_purpose' => SystemAccountPurpose::GeneralExpense->value, 'is_system' => true],
             ['code' => '63', 'name' => 'Impôts, taxes et versements assimilés', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '6354', 'name' => 'Droits d\'enregistrement et de timbre', 'type' => 'expense', 'parent_code' => '63',
                 'system_purpose' => SystemAccountPurpose::PurchaseStampDuty->value, 'is_system' => true],
@@ -278,6 +334,9 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
                 'system_purpose' => SystemAccountPurpose::SalesRoundingDifferenceExpense->value, 'is_system' => true],
             ['code' => '66', 'name' => 'Charges financières', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '661', 'name' => 'Charges d\'intérêts', 'type' => 'expense', 'parent_code' => '66'],
+            // Register G-4 parity — FX pair, generic-chart-only until now.
+            ['code' => '666', 'name' => 'Pertes de change', 'type' => 'expense', 'parent_code' => '66',
+                'system_purpose' => SystemAccountPurpose::RealizedFxLoss->value, 'is_system' => true],
             ['code' => '67', 'name' => 'Charges exceptionnelles', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '68', 'name' => 'Dotations aux amortissements et aux provisions', 'type' => 'expense', 'parent_code' => '6'],
             ['code' => '681', 'name' => 'Dotations aux amortissements', 'type' => 'expense', 'parent_code' => '68'],
@@ -304,6 +363,13 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             // SalesReturn in its Expense arm.
             ['code' => '709', 'name' => 'Rabais, remises et ristournes accordés', 'type' => 'expense', 'parent_code' => '70',
                 'system_purpose' => SystemAccountPurpose::SalesReturn->value, 'is_system' => true],
+            // Register G-4 parity — commercial discount granted on a sale
+            // (GeneralLedgerService::createPOSChargeEntry debits this purpose with
+            // the transaction discount). PCG 709 subdivides by revenue family;
+            // 7097 is the marchandises leg, and 709 itself already carries
+            // SalesReturn while 7091 carries the voucher clearing account.
+            ['code' => '7097', 'name' => 'Rabais, remises et ristournes accordés sur ventes de marchandises', 'type' => 'expense', 'parent_code' => '70',
+                'system_purpose' => SystemAccountPurpose::SalesDiscount->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Écart de règlement (produits)', 'type' => 'revenue', 'parent_code' => '75',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
             // W-6 D1a — see 6581 above. PCG 758 "Produits divers de gestion courante";
@@ -334,6 +400,9 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '74', 'name' => 'Subventions d\'exploitation', 'type' => 'revenue', 'parent_code' => '7'],
             ['code' => '75', 'name' => 'Autres produits de gestion courante', 'type' => 'revenue', 'parent_code' => '7'],
             ['code' => '76', 'name' => 'Produits financiers', 'type' => 'revenue', 'parent_code' => '7'],
+            // Register G-4 parity — see 666 above.
+            ['code' => '766', 'name' => 'Gains de change', 'type' => 'revenue', 'parent_code' => '76',
+                'system_purpose' => SystemAccountPurpose::RealizedFxGain->value, 'is_system' => true],
             ['code' => '77', 'name' => 'Produits exceptionnels', 'type' => 'revenue', 'parent_code' => '7'],
             ['code' => '78', 'name' => 'Reprises sur amortissements et provisions', 'type' => 'revenue', 'parent_code' => '7'],
         ];
