@@ -26,6 +26,7 @@ use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use Database\Seeders\ExpenseCategorySeeder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -46,6 +47,7 @@ class CompanyController extends Controller
         private readonly CompanyTaxStatusValidationService $taxStatusValidationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
+        private readonly ExpenseCategorySeeder $expenseCategorySeeder,
     ) {}
 
     /**
@@ -57,6 +59,7 @@ class CompanyController extends Controller
      * - Creates a UserCompanyMembership with 'owner' role for the creating user
      * - Initializes hash chains for all fiscal document types
      * - Seeds chart of accounts based on country
+     * - Seeds the country's default expense categories
      */
     public function store(CreateCompanyRequest $request): JsonResponse
     {
@@ -158,6 +161,15 @@ class CompanyController extends Controller
                 // Country might not have a seeder yet
                 Log::warning("Could not seed COA for company {$company->id}: ".$e->getMessage());
             }
+
+            // 5.5. Seed the country's default expense categories.
+            // Gate finding I-2 (register G-3): this second-company path seeded
+            // the chart but no expense categories, so every expense on a
+            // non-first company fell to the GeneralExpense catch-all. Must run
+            // AFTER step 5 (categories link to class-6 accounts) and is
+            // idempotent (firstOrCreate); it inserts nothing when the chart
+            // above could not be seeded.
+            $this->expenseCategorySeeder->seedForCompany($company);
 
             // 6. Provision country tax configurations and set company default tax
             $this->companyTaxProvisioning->provisionForCompany($company);
