@@ -126,6 +126,76 @@ class ChartOfAccountsServiceTest extends TestCase
         $this->assertTrue($result['valid'], 'Generic chart should satisfy all required system purposes');
     }
 
+    /**
+     * DPA `DPA-REV2-A` / task A2 — **every country seeder must satisfy
+     * `SystemAccountPurpose::requiredPurposes()`**, not just the two that
+     * happened to be covered.
+     *
+     * `validateCompanyAccounts()` was asserted for TN and for the generic
+     * fallback, but never for FR — and FR is the one that fails. The France
+     * chart carries `419 'Clients créditeurs'` and `409 'Fournisseurs
+     * débiteurs'` with the right ACCOUNT TYPES but **no `system_purpose` and no
+     * `is_system`** (`FranceChartOfAccountsSeeder.php:182`, `:172`), so a French
+     * company hard-fails `createCustomerAdvanceJournalEntry()` at
+     * `GeneralLedgerService.php:417` on any over-payment — it cannot post a
+     * customer advance at all.
+     *
+     * Both purposes are in `requiredPurposes()` (`:161-175`) and both seeded
+     * types already match `expectedAccountType()`, so A2 is a pure metadata add.
+     *
+     * @see plan-advance-reversal.md §1.6, A-D12
+     */
+    public function test_every_country_seeder_satisfies_all_required_system_purposes(): void
+    {
+        $failures = [];
+
+        // TN and FR have dedicated seeders; DE falls through to the generic one.
+        foreach (['TN', 'FR', 'DE'] as $countryCode) {
+            $company = $this->createCompany($countryCode);
+            $this->service->seedForCompany($company);
+
+            $result = $this->service->validateCompanyAccounts($company->id);
+
+            if (! $result['valid']) {
+                $failures[$countryCode] = $result['missing_purposes'];
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $failures,
+            'every country chart must map every required system purpose; missing: '
+            .json_encode($failures, JSON_THROW_ON_ERROR),
+        );
+    }
+
+    /**
+     * A2, the France half stated as its own fact so the fix is unambiguous:
+     * both advance purposes must resolve, and to the PCG codes.
+     */
+    public function test_france_chart_maps_both_advance_purposes(): void
+    {
+        $company = $this->createCompany('FR');
+        $this->service->seedForCompany($company);
+
+        $customerAdvance = Account::findByPurpose($company->id, SystemAccountPurpose::CustomerAdvance);
+        $supplierAdvance = Account::findByPurpose($company->id, SystemAccountPurpose::SupplierAdvance);
+
+        $this->assertNotNull(
+            $customerAdvance,
+            'FR 419 "Clients créditeurs" must carry SystemAccountPurpose::CustomerAdvance — '
+            .'without it no French company can post a customer advance (GLS:417)',
+        );
+        $this->assertNotNull(
+            $supplierAdvance,
+            'FR 409 "Fournisseurs débiteurs" must carry SystemAccountPurpose::SupplierAdvance',
+        );
+        $this->assertSame('419', $customerAdvance->code);
+        $this->assertSame('409', $supplierAdvance->code);
+        $this->assertTrue((bool) $customerAdvance->is_system, 'a purposed account must be system-protected');
+        $this->assertTrue((bool) $supplierAdvance->is_system, 'a purposed account must be system-protected');
+    }
+
     public function test_get_account_by_purpose_returns_correct_account(): void
     {
         $company = $this->createCompany('TN');
