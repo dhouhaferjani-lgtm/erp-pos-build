@@ -15,6 +15,7 @@ use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,8 +34,10 @@ use Illuminate\Support\Str;
  *
  * Runs ON TOP of {@see PaymentRepositorySeeder} — it assumes CASH-01 and
  * SAFE-01 already exist, funds them, and adds the bank/virtual repositories.
- * Idempotent: a repository that already exists is left alone, and each opening
- * balance is keyed on the repository id so re-running lays down no second leg.
+ * Idempotent: a repository that already exists is left alone, and a repository
+ * that already carries an `opening_balance` movement is never opened twice —
+ * the skip is keyed on that movement, not on the current balance, so a demo
+ * till spent back down to exactly zero is not re-funded on the next run.
  */
 class DemoPaymentRepositorySeeder extends Seeder
 {
@@ -77,7 +80,7 @@ class DemoPaymentRepositorySeeder extends Seeder
                 ->where('code', $code)
                 ->first();
 
-            if ($repository instanceof PaymentRepository && bccomp($repository->balance, '0', 3) === 0) {
+            if ($repository instanceof PaymentRepository) {
                 $this->recordOpeningBalance($repository, $company->currency, $amount);
             }
         }
@@ -133,7 +136,22 @@ class DemoPaymentRepositorySeeder extends Seeder
      */
     private function recordOpeningBalance(PaymentRepository $repository, string $currency, string $amount): void
     {
-        if (bccomp($amount, '0', 3) !== 1) {
+        // Gate finding M-6: the comparison scale is resolved from the currency,
+        // never a literal (rule 19).
+        if (bccomp($amount, '0', CurrencyScale::for($currency)) !== 1) {
+            return;
+        }
+
+        // Gate finding M-3: idempotency is keyed on the OPENING MOVEMENT, not on
+        // "the balance happens to be zero". A demo whose till has been spent back
+        // down to exactly 0.000 would otherwise be handed a second opening leg on
+        // the next re-run.
+        $alreadyOpened = DB::table('repository_movements')
+            ->where('payment_repository_id', $repository->id)
+            ->where('source_type', MovementSourceType::OpeningBalance->value)
+            ->exists();
+
+        if ($alreadyOpened) {
             return;
         }
 

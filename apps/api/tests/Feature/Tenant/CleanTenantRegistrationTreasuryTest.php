@@ -172,8 +172,12 @@ final class CleanTenantRegistrationTreasuryTest extends TestCase
         [$tenantEn, $companyEn, $userEn] = $this->createTenantCompanyUser('TN', 'TND', '-en', 'en_GB');
         $this->service->initializeForNewRegistration($tenantEn, $companyEn, $userEn);
 
+        [$tenantAr, $companyAr, $userAr] = $this->createTenantCompanyUser('TN', 'TND', '-ar', 'ar');
+        $this->service->initializeForNewRegistration($tenantAr, $companyAr, $userAr);
+
         $frNames = PaymentRepository::query()->where('company_id', $companyFr->id)->orderBy('code')->pluck('name')->all();
         $enNames = PaymentRepository::query()->where('company_id', $companyEn->id)->orderBy('code')->pluck('name')->all();
+        $arNames = PaymentRepository::query()->where('company_id', $companyAr->id)->orderBy('code')->pluck('name')->all();
 
         $this->assertSame(
             [trans('treasury.default_repositories.cash_register', [], 'fr'), trans('treasury.default_repositories.safe', [], 'fr')],
@@ -183,7 +187,16 @@ final class CleanTenantRegistrationTreasuryTest extends TestCase
             [trans('treasury.default_repositories.cash_register', [], 'en'), trans('treasury.default_repositories.safe', [], 'en')],
             $enNames,
         );
-        $this->assertNotSame($frNames, $enNames, 'The two locales must not resolve to the same labels.');
+        // Gate finding M-2: `ar` is a supported product locale (SetLocale
+        // middleware + the web app's ar bundle). An Arabic tenant must not have
+        // English labels PERSISTED at creation.
+        $this->assertSame(
+            [trans('treasury.default_repositories.cash_register', [], 'ar'), trans('treasury.default_repositories.safe', [], 'ar')],
+            $arNames,
+        );
+        $this->assertNotSame($frNames, $enNames, 'The three locales must not resolve to the same labels.');
+        $this->assertNotSame($enNames, $arNames, 'An Arabic tenant must not be handed the English defaults.');
+        $this->assertNotSame($frNames, $arNames);
     }
 
     /**

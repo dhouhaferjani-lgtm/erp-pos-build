@@ -9,8 +9,12 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\BanksSeeder;
 use Database\Seeders\DemoPaymentRepositorySeeder;
 use Database\Seeders\PaymentRepositorySeeder;
@@ -123,6 +127,59 @@ final class PaymentRepositorySeederTest extends TestCase
 
         $this->assertCount(5, $this->repositoriesFor($company));
         $this->assertSame(5, DB::table('repository_movements')->where('company_id', $company->id)->count());
+    }
+
+    /**
+     * Gate finding M-3: the re-run skip must be keyed on the existing
+     * `opening_balance` movement, NOT on the current balance. A demo till spent
+     * back down to exactly zero used to look "never opened" and would be handed
+     * a second opening leg.
+     */
+    public function test_demo_overlay_does_not_refund_a_repository_spent_back_to_zero(): void
+    {
+        $company = $this->seedCompany();
+        $this->runSeeder(new DemoPaymentRepositorySeeder, $company);
+
+        $till = PaymentRepository::query()
+            ->where('company_id', $company->id)
+            ->where('code', 'CASH-01')
+            ->firstOrFail();
+
+        // Spend the till back to exactly zero through the port, the way a demo
+        // expense story would.
+        $this->app->make(TreasuryMovementServiceInterface::class);
+        DB::transaction(function () use ($till, $company): void {
+            $this->app->make(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+                repositoryId: $till->id,
+                tenantId: $till->tenant_id,
+                companyId: $till->company_id,
+                direction: MovementDirection::Out,
+                amount: '500.000',
+                currency: $company->currency,
+                sourceType: MovementSourceType::Adjustment,
+                sourceId: $till->id,
+                idempotencyLeg: 'drain',
+                journalEntryId: null,
+                occurredAt: null,
+                reasonCode: null,
+                reversesMovementId: null,
+                createdBy: null,
+                notes: 'Test drain',
+                allowWhileFrozen: false,
+            ));
+        });
+
+        $this->assertSame(0, bccomp($till->fresh()?->balance ?? '0', '0', 3));
+
+        $movementsBefore = DB::table('repository_movements')->where('company_id', $company->id)->count();
+        $this->runSeeder(new DemoPaymentRepositorySeeder, $company);
+
+        $this->assertSame(
+            $movementsBefore,
+            DB::table('repository_movements')->where('company_id', $company->id)->count(),
+            'A repository already carrying an opening_balance movement must never be opened twice.',
+        );
+        $this->assertSame(0, bccomp($till->fresh()?->balance ?? '-1', '0', 3));
     }
 
     private function seedCompany(): Company

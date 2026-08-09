@@ -25,6 +25,8 @@ use Database\Seeders\CountriesSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -56,10 +58,19 @@ final class CleanRegistrationDownstreamAssumptionsTest extends TestCase
      * projection bridge (`TreasuryReceiptBridge`) and the G3 shift-close
      * variance listener. On a fresh tenant no payment method carries a
      * `default_repository_id`, so every tender lands on the fallback branch: it
-     * must return a GL-linked CASH-TYPE repository and never null (the bridge
-     * throws a RuntimeException on null).
+     * must return a GL-linked repository and never null (the bridge throws a
+     * RuntimeException on null).
+     *
+     * Gate ruling C-1 / finding I-1 — this asserts the CASH REGISTER by code,
+     * not merely "one of the two cash types". The weaker form passed whichever
+     * repository won and so could not fail on the regression it exists to
+     * prevent: before the resolver gained its type preference, landing on
+     * CASH-01 depended on `HasUuids` minting time-ordered uuid7 and the seeder
+     * inserting the till first. A framework bump to uuid4, or someone listing
+     * the safe first, would have silently rerouted every new tenant's POS cash
+     * into the safe with every test still green.
      */
-    public function test_tender_repository_resolver_still_resolves_a_cash_type_repository(): void
+    public function test_tender_repository_resolver_resolves_the_cash_register_specifically(): void
     {
         [$tenant, $company] = $this->registerTenant('TN', 'TND');
 
@@ -69,11 +80,51 @@ final class CleanRegistrationDownstreamAssumptionsTest extends TestCase
 
         $this->assertInstanceOf(PaymentRepository::class, $resolved);
         $this->assertNotNull($resolved->gl_account_id);
-        $this->assertContains(
-            $resolved->type,
-            [RepositoryType::CashRegister, RepositoryType::Safe],
-            'The fallback must land on a cash-type repository — never a bank or virtual one.',
+        $this->assertSame(
+            'CASH-01',
+            $resolved->code,
+            'An unmapped cash tender belongs in the till, not the safe.',
         );
+        $this->assertSame(RepositoryType::CashRegister, $resolved->type);
+    }
+
+    /**
+     * The preference must hold on the ORDERING, not on insertion luck: with the
+     * safe minted first (the id order the seeder never produces today), the
+     * resolver must still return the cash register.
+     */
+    public function test_the_cash_register_wins_even_when_the_safe_sorts_first(): void
+    {
+        [$tenant, $company] = $this->registerTenant('TN', 'TND');
+
+        $cashRegister = PaymentRepository::query()
+            ->where('company_id', $company->id)
+            ->where('type', RepositoryType::CashRegister)
+            ->firstOrFail();
+        $safe = PaymentRepository::query()
+            ->where('company_id', $company->id)
+            ->where('type', RepositoryType::Safe)
+            ->firstOrFail();
+
+        $this->assertLessThan(
+            0,
+            strcmp($cashRegister->id, $safe->id),
+            'Guard: today the till already sorts first, so invert the ids to make this test meaningful.',
+        );
+
+        // Swap the two ids so the SAFE now sorts first — the exact state a
+        // uuid4 regression or a reordered seeder array would produce.
+        $parked = (string) Str::uuid7();
+        DB::table('payment_repositories')->where('id', $cashRegister->id)->update(['id' => $parked]);
+        DB::table('payment_repositories')->where('id', $safe->id)->update(['id' => $cashRegister->id]);
+        DB::table('payment_repositories')->where('id', $parked)->update(['id' => $safe->id]);
+
+        /** @var TenderRepositoryResolver $resolver */
+        $resolver = app(TenderRepositoryResolver::class);
+        $resolved = $resolver->resolve($tenant->id, $company->id, null);
+
+        $this->assertInstanceOf(PaymentRepository::class, $resolved);
+        $this->assertSame('CASH-01', $resolved->code, 'Type preference must beat UUID ordering.');
     }
 
     /**
@@ -97,7 +148,7 @@ final class CleanRegistrationDownstreamAssumptionsTest extends TestCase
         $resolved = $resolver->resolveByMethodId($tenant->id, $company->id, $method->id);
 
         $this->assertInstanceOf(PaymentRepository::class, $resolved);
-        $this->assertContains($resolved->type, [RepositoryType::CashRegister, RepositoryType::Safe]);
+        $this->assertSame('CASH-01', $resolved->code);
     }
 
     /**

@@ -42,14 +42,24 @@ use Illuminate\Database\Seeder;
 class PaymentRepositorySeeder extends Seeder
 {
     /**
-     * Locales that ship a `lang/<locale>/treasury.php` file — the SetLocale
-     * middleware's supported list minus the locales with no translation
-     * directory, so an unknown company locale degrades to the application
-     * default rather than emitting a raw translation key as a repository name.
+     * Locales that ship a `lang/<locale>/treasury.php` file. Kept in step with
+     * the SetLocale middleware's supported list; an unknown company locale
+     * degrades to `FALLBACK_LOCALE` rather than persisting a raw translation key
+     * as a repository name.
      *
      * @var list<string>
      */
-    private const TRANSLATED_LOCALES = ['en', 'fr'];
+    private const TRANSLATED_LOCALES = ['en', 'fr', 'ar'];
+
+    /**
+     * Gate finding M-1: deliberately NOT `config('app.locale')`. That value is
+     * request-mutable — `Application::setLocale()` writes it and the SetLocale
+     * middleware calls it on every request — so reading it here would persist a
+     * repository name derived from whatever `Accept-Language` the registering
+     * HTTP request happened to carry. A provisioning default must not depend on
+     * the shape of one request.
+     */
+    private const FALLBACK_LOCALE = 'en';
 
     /**
      * Run the database seeds.
@@ -153,19 +163,15 @@ class PaymentRepositorySeeder extends Seeder
 
     /**
      * Reduce a company locale (`fr_TN`, `fr-FR`, `en`) to a translated language
-     * code, falling back to the application default when the tenant asked for a
-     * language this build has no `lang/` directory for.
+     * code, falling back to a FIXED default when the tenant asked for a language
+     * this build has no `lang/` directory for.
      */
     private function resolveLocale(Company $company): string
     {
         $language = strtolower(explode('-', str_replace('_', '-', $company->locale))[0]);
 
-        if (in_array($language, self::TRANSLATED_LOCALES, true)) {
-            return $language;
-        }
-
-        $fallback = strtolower((string) config('app.locale', 'en'));
-
-        return in_array($fallback, self::TRANSLATED_LOCALES, true) ? $fallback : 'en';
+        return in_array($language, self::TRANSLATED_LOCALES, true)
+            ? $language
+            : self::FALLBACK_LOCALE;
     }
 }
