@@ -59,9 +59,17 @@ use Tests\TestCase;
  * Every assertion in this file targets **posted journal LINES** — the account a
  * line hits (resolved by `SystemAccountPurpose`, never by `line_order`), the side
  * it hits it on, the amount, and the `partner_id` tag. Asserting that a call did
- * not throw proves nothing here: several of these defects are *silently* wrong
- * money, and one of them (A1c) is green-for-the-wrong-reason today because an
- * unrelated gate masks it.
+ * not throw proves nothing here: every one of these defects is *silently* wrong
+ * money.
+ *
+ * **On "green for the wrong reason".** The plan expects A1c/A1d/A1f to be GREEN
+ * today (masked by the D-6 `payment_type` gate) and to go red when A7 lifts it.
+ * Written that way they would be green only because NOTHING is posted at all —
+ * precisely the vacuum the plan warns about, and §12.1 rules that a test which
+ * cannot be made red is not evidence. Each therefore asserts the REQUIRED end
+ * state unconditionally and fails with a message naming which stage is blocking:
+ * the D-6 gate now, the GL shape after A7, green only once A9 + A7 are both in.
+ * Strictly stronger than the plan's construction; recorded in the task report.
  *
  * @see plan-advance-reversal.md §1.2 (C-2), §1.3 (shape X), §1.4 (shape Y),
  *      §1.5 (shape Z), A-D2 (the ledger partition is the sole shape selector)
@@ -236,6 +244,152 @@ final class AdvanceReversalGlShapeTest extends TestCase
             '1000.000',
             $this->postedCreditsByPurpose($reversal->id)[SystemAccountPurpose::Bank->value] ?? '0.000',
             'the cash side stays a single credit for the full net unreversed amount',
+        );
+    }
+
+    /**
+     * A1b — a PURE customer advance is refused today, and the refusal is a dead
+     * end rather than a redirect (`PaymentRefundService.php:1161-1163`).
+     *
+     * GREEN today. **A7 inverts this test**: once `PaymentType::Advance` maps to
+     * `ReversalSupport::CashReversal`, a pure advance must reverse successfully
+     * through `reverseCustomerAdvanceJournalEntry()`. Pinned here so the
+     * inversion is a deliberate, visible edit rather than a silent behaviour
+     * change discovered later.
+     */
+    public function test_a1b_a_pure_customer_advance_is_refused_today(): void
+    {
+        $payment = Payment::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '400.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::Advance,
+            'reference' => 'ADV-'.Str::random(8),
+            'created_by' => $this->user->id,
+        ]);
+
+        try {
+            $this->refundService->reversePayment($payment, 'A1b pure advance', $this->user->id);
+            self::fail('a pure advance must refuse reversal today');
+        } catch (\DomainException $exception) {
+            self::assertStringContainsString('DPA-V4-ADV-1', $exception->getMessage());
+            self::assertStringContainsString('not implemented', strtolower($exception->getMessage()));
+        }
+
+        self::assertSame(PaymentStatus::Completed, $payment->fresh()?->status);
+    }
+
+    /**
+     * A1c — **a DEFERRED pure advance posts the wrong cancellation shape**
+     * (A-D7). A cheque advance mints its instrument at the full payment amount
+     * BEFORE the payment is typed (`PaymentController.php:846` vs `:888-890`),
+     * the advance JE debits the PORTFOLIO (`:1163-1165`), and
+     * `payments.journal_entry_id` is set to it (`:1192-1196`) — so
+     * `performCancellation()`'s `journal_entry_id !== null` gate passes and it
+     * posts `Dr CustomerReceivable / Cr portfolio` for money that credited
+     * `CustomerAdvance`.
+     *
+     * The D-6 gate is the ONLY thing keeping this unreachable today, and this
+     * lane removes it (A7).
+     *
+     * DEVIATION FROM THE PLAN, deliberate and recorded: the plan expects A1c to
+     * be GREEN today and to go red when A7 lands. Written that way it would be
+     * green only because nothing is posted at all — the "green for the wrong
+     * reason" the plan itself warns about, and §12.1 says a test that cannot be
+     * made red is not evidence. It therefore asserts the REQUIRED end state
+     * unconditionally: red now for the gate, red after A7 for the shape, green
+     * only once A9 + A7 are both in. Strictly stronger, never green-by-vacuum.
+     */
+    public function test_a1c_a_deferred_pure_advance_cancels_against_customer_advance(): void
+    {
+        $chequeMethod = $this->chequeMethod();
+        $portfolioAccountId = $this->instrumentAccountId(InstrumentAccountPurpose::ChecksToCollect);
+
+        $instrument = app(InstrumentLifecycleService::class)->receive(new ReceiveInstrumentData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            paymentMethodId: $chequeMethod->id,
+            kind: InstrumentKind::Cheque,
+            direction: InstrumentDirection::Inbound,
+            origin: InstrumentOrigin::Web,
+            reference: 'ADV-CH-1',
+            amount: '500.000',
+            currency: 'TND',
+            repositoryId: $this->repository->id,
+            partnerId: $this->partner->id,
+            createdBy: $this->user->id,
+        ));
+
+        $payment = Payment::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $chequeMethod->id,
+            'instrument_id' => $instrument->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '500.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::Advance,
+            'origin' => PaymentOrigin::WebAdmin,
+            'reference' => 'ADV-CH-'.Str::random(6),
+            'created_by' => $this->user->id,
+        ]);
+
+        $entry = DB::transaction(fn () => app(GeneralLedgerService::class)->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: $payment->id,
+            amount: '500.000',
+            paymentMethodAccountId: $portfolioAccountId,
+            date: now(),
+            user: $this->user,
+            description: 'Deferred customer advance on cheque',
+            currencyCode: 'TND',
+            mode: PostingMode::SynchronousInTransaction,
+        ));
+
+        $payment->journal_entry_id = $entry->id;
+        $payment->save();
+        $instrument->payment_id = $payment->id;
+        $instrument->save();
+
+        self::assertSame(
+            '500.000',
+            $this->creditByPurpose($payment->id, 'advance', SystemAccountPurpose::CustomerAdvance),
+            'fixture: the deferred advance is advance-backed against the portfolio',
+        );
+
+        try {
+            $this->refundService->reversePayment($payment, 'A1c deferred advance', $this->user->id);
+        } catch (\DomainException $exception) {
+            self::fail(
+                'blocked by the D-6 gate, which A7 lifts; after A7 this must post the CustomerAdvance '
+                .'cancellation shape rather than the AR one. Gate said: '.$exception->getMessage(),
+            );
+        }
+
+        $debits = $this->postedDebitsByPurposeForSource($instrument->id, 'instrument');
+        $actual = json_encode($debits, JSON_THROW_ON_ERROR);
+
+        self::assertSame(
+            '500.000',
+            $debits[SystemAccountPurpose::CustomerAdvance->value] ?? '0.000',
+            "cancelling a deferred ADVANCE must unwind the advance liability. Posted debits: {$actual}",
+        );
+        self::assertArrayNotHasKey(
+            SystemAccountPurpose::CustomerReceivable->value,
+            $debits,
+            "no receivable was ever credited, so none may be restored. Posted debits: {$actual}",
         );
     }
 
