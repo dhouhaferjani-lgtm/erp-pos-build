@@ -1435,9 +1435,12 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
             return;
         }
 
-        // Large expenses are paid from the bank: CASH-01 opens at 500.000 and
-        // the movement port has no insufficient-funds guard, so routing
-        // everything through the till would leave it negative on the dashboard.
+        // Large expenses are paid from the bank: CASH-01 opens at 500.000 (funded
+        // by DemoPaymentRepositorySeeder — the live registration path leaves it
+        // at zero since DPA lane H-3) and `allow_negative` is false on a till, so
+        // TreasuryMovementService::assertOutflowAllowed() would REFUSE the
+        // 1250.000 rent if everything were routed through it. BANK-01 is a demo
+        // repository; it exists only because the demo overlay creates it.
         $bankRepository = PaymentRepository::query()
             ->where('company_id', $company->id)
             ->where('code', 'BANK-01')
