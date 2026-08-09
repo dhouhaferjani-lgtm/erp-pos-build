@@ -319,6 +319,12 @@ final class ReturnNoteService
         //
         // The mirror refusal this widening exists for is untouched: one DN of 5 backed by
         // one invoice of 5 still nets 5 − 5 = 0.
+        // The own-surface denominator, snapshotted BEFORE the widening below. This is the
+        // constraint the round-2 shape provided implicitly and the round-3 widening
+        // removed — see the `min` at the bottom of this method.
+        /** @var array<string, numeric-string> $ownInvoiced */
+        $ownInvoiced = $invoiced;
+
         if ($backingInvoiceIds !== []) {
             $backingLines = DocumentLine::query()
                 ->whereHas('document', static function (Builder $query) use ($backingInvoiceIds, $companyId): void {
@@ -347,8 +353,11 @@ final class ReturnNoteService
             }
         }
 
-        /** @var array<string, numeric-string> $alreadyReturned */
+        /** @var array<string, numeric-string> $alreadyReturned across the whole union */
         $alreadyReturned = [];
+        /** @var array<string, numeric-string> $ownReturned against THIS source document only */
+        $ownReturned = [];
+
         $priorReturnLines = DocumentLine::query()
             ->whereHas('document', static function (Builder $query) use ($sourceIds, $companyId): void {
                 /** @var Builder<Document> $query */
@@ -357,12 +366,22 @@ final class ReturnNoteService
                     ->whereIn('source_document_id', $sourceIds)
                     ->where('status', '!=', DocumentStatus::Cancelled->value);
             })
+            // Eager-loaded so attributing each line to its own source document is one
+            // query, not one per line.
+            ->with('document')
             ->get();
+
         foreach ($priorReturnLines as $line) {
             if ($line->product_id === null) {
                 continue;
             }
-            $alreadyReturned[$line->product_id] = bcadd($alreadyReturned[$line->product_id] ?? '0', (string) $line->quantity, $qtyScale);
+
+            $quantity = (string) $line->quantity;
+            $alreadyReturned[$line->product_id] = bcadd($alreadyReturned[$line->product_id] ?? '0', $quantity, $qtyScale);
+
+            if ($line->document->source_document_id === $sourceDocumentId) {
+                $ownReturned[$line->product_id] = bcadd($ownReturned[$line->product_id] ?? '0', $quantity, $qtyScale);
+            }
         }
 
         /** @var array<string, numeric-string> $requested */
@@ -375,8 +394,35 @@ final class ReturnNoteService
         }
 
         foreach ($requested as $productId => $qty) {
+            // ── TWO CAPS, TAKE THE SMALLER (gate CF round 4) ──
+            //
+            // Round 3 widened the denominator to `max(own, Σ backing invoiced)` to stop
+            // two false refusals (NB-1). It stopped them — and opened a strictly worse
+            // hole in the opposite direction, because the netting set for a delivery-note
+            // source still sees only that note's own returns plus the invoice's. With
+            // DN1 = 5, DN2 = 5 and a consolidated invoice of 10, DN1's denominator became
+            // 10 while only DN1's own five had been netted, so DN1 could be returned five
+            // and then FIVE AGAIN: ten units restocked from a note that issued five, on
+            // two SEALED return notes. Refused at the lane base and at round 2, accepted
+            // at round 3 — fail-OPEN, which is the worse trade, since NB-1 was
+            // fail-closed.
+            //
+            //   c_own   = this document's own quantity − returns raised against IT
+            //   c_union = max(own, Σ backing invoiced)  − returns across the whole union
+            //   remaining = min(c_own, c_union)
+            //
+            // `c_union` alone permits the over-return above; `c_own` alone is what
+            // produced NB-1's two false refusals. Both constraints are real and neither
+            // implies the other, so the bound is their minimum — the widening still lets a
+            // consolidated invoice's OTHER delivery note be returned, while no single
+            // surface can ever give back more than it moved.
+            /** @var numeric-string $ownCap */
+            $ownCap = bcsub($ownInvoiced[$productId] ?? '0', $ownReturned[$productId] ?? '0', $qtyScale);
+            /** @var numeric-string $unionCap */
+            $unionCap = bcsub($invoiced[$productId] ?? '0', $alreadyReturned[$productId] ?? '0', $qtyScale);
+
             /** @var numeric-string $remaining */
-            $remaining = bcsub($invoiced[$productId] ?? '0', $alreadyReturned[$productId] ?? '0', $qtyScale);
+            $remaining = bccomp($ownCap, $unionCap, $qtyScale) < 0 ? $ownCap : $unionCap;
 
             if (bccomp($qty, $remaining, $qtyScale) > 0) {
                 throw ReturnQuantityExceededException::exceedsInvoiced(

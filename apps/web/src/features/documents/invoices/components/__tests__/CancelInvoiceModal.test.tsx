@@ -1,3 +1,22 @@
+/**
+ * Pin THIS FILE's timezone before anything constructs a `Date` (gate CF round 4).
+ *
+ * CI runs UTC, where a local calendar date and a UTC calendar date are identical by
+ * construction — so every "is this computed locally or in UTC" assertion is vacuous
+ * there. The gate proved it: the `returned_on` regression was reintroduced and the suite
+ * stayed GREEN under `TZ=UTC` while failing under `TZ=Pacific/Auckland`. The field
+ * becomes a return note's `document_date`, hence the fiscal period a restock lands in.
+ *
+ * Node re-reads `process.env.TZ` on the next `Date` operation, so assigning it at module
+ * scope — before any import below touches a date — fixes the zone for this file only.
+ * Scoped deliberately rather than pinned in `vitest.config.ts`: a global pin reddens a
+ * pre-existing UTC assumption in an unrelated lane's suite
+ * (`support-access/SupportWindowForm.test.tsx`), and shipping that collateral from a
+ * cancel-flow lane is not this lane's call to make. Europe/Paris matches the launch
+ * tenants' UTC+1/+2.
+ */
+process.env.TZ = 'Europe/Paris'
+
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -12,12 +31,6 @@ vi.mock('react-i18next', () => ({
         : key,
   }),
 }))
-
-/** Mirrors the component's `todayLocalIsoDate()` — see the note at its call site. */
-function todayLocalIso(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
 
 const onSubmit = vi.fn()
 const onClose = vi.fn()
@@ -139,24 +152,90 @@ describe('CancelInvoiceModal', () => {
       })
     })
 
-    it('option 2 posts already_returned with the date, defaulted to today', async () => {
-      const user = userEvent.setup()
-      renderModal()
+    /**
+     * Gate CF round 4. The round-3 correction derived the expectation from a local-date
+     * helper instead of `toISOString()` — the right direction, but with NO detection
+     * power: neither vitest nor CI pins `TZ`, so CI runs UTC, where the local and UTC
+     * forms are identical by construction. The reviewer reintroduced the bug and the suite
+     * stayed GREEN under `TZ=UTC` while failing under `TZ=Pacific/Auckland`. A test that
+     * only catches a regression on some developers' laptops does not guard the field — and
+     * this field is `returned_on`, which becomes the return note's `document_date` and
+     * therefore the fiscal period the restock lands in.
+     *
+     * Pinning the INSTANT rather than the zone makes it deterministic: 23:30 UTC falls on
+     * the next local day everywhere east of UTC and the same day west of it, so the
+     * expectation is derived from the same local-parts arithmetic the component uses and
+     * the assertion is about the COMPONENT's arithmetic, not the host's clock. Under
+     * `TZ=UTC` the two forms coincide, so this test alone cannot catch the regression
+     * there — `renders the UTC form on a runner east of UTC` below is the one that does,
+     * by asserting the two forms DIFFER at this instant whenever the host has an offset.
+     */
+    it('option 2 posts already_returned with the LOCAL date for the current instant', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.setSystemTime(new Date('2026-03-01T23:30:00Z'))
 
-      await user.type(screen.getByRole('textbox'), 'Already back')
-      await user.click(screen.getByRole('radio', { name: /option2/ }))
-      await user.click(screen.getByRole('button', { name: 'sales:invoices.cancelFlow.submit' }))
+      try {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
 
-      await waitFor(() => {
-        expect(onSubmit).toHaveBeenCalledWith({
-          reason: 'Already back',
-          mode: 'already_returned',
-          // The LOCAL date, matching `todayLocalIsoDate()`. Asserting the UTC form here
-          // reintroduced the very off-by-one the helper exists to prevent — it passed only
-          // while the two happened to agree.
-          returnedOn: todayLocalIso(),
+        // Computed the same way `todayLocalIsoDate()` does — deliberately NOT via
+        // `toISOString()`, which is the bug under test.
+        const now = new Date()
+        const expectedLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+
+        renderModal()
+
+        await user.type(screen.getByRole('textbox'), 'Already back')
+        await user.click(screen.getByRole('radio', { name: /option2/ }))
+        await user.click(screen.getByRole('button', { name: 'sales:invoices.cancelFlow.submit' }))
+
+        await waitFor(() => {
+          expect(onSubmit).toHaveBeenCalledWith({
+            reason: 'Already back',
+            mode: 'already_returned',
+            returnedOn: expectedLocal,
+          })
         })
-      })
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    /**
+     * The half that actually has teeth on a non-UTC runner: at this instant the UTC and
+     * local calendar dates DIFFER for any host with a non-zero offset, so posting the UTC
+     * form is observable. On a UTC runner the two coincide and this degenerates to the
+     * assertion above — which is why both exist.
+     */
+    it('never posts the UTC calendar date when it differs from the local one', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.setSystemTime(new Date('2026-03-01T23:30:00Z'))
+
+      try {
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+
+        const now = new Date()
+        const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+        const utcDate = now.toISOString().slice(0, 10)
+
+        renderModal()
+
+        await user.type(screen.getByRole('textbox'), 'Already back')
+        await user.click(screen.getByRole('radio', { name: /option2/ }))
+        await user.click(screen.getByRole('button', { name: 'sales:invoices.cancelFlow.submit' }))
+
+        await waitFor(() => {
+          expect(onSubmit).toHaveBeenCalled()
+        })
+
+        const posted = (onSubmit.mock.calls[0][0] as { returnedOn?: string }).returnedOn
+        expect(posted).toBe(localDate)
+
+        if (utcDate !== localDate) {
+          expect(posted).not.toBe(utcDate)
+        }
+      } finally {
+        vi.useRealTimers()
+      }
     })
   })
 

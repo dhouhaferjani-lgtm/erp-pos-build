@@ -218,9 +218,16 @@ export function CancelInvoiceModal({
    *
    * The two cases need opposite answers, so they get separate effects:
    *
-   *  1. **OPEN transition (closed → open), or a different invoice.** Everything is
-   *     cleared. Nothing the user typed for a previous attempt — or a previous invoice —
-   *     may pre-fill this one.
+   *  1. **OPEN transition (closed → open).** Everything is cleared. Nothing the user typed
+   *     for a previous attempt may pre-fill this one.
+   *
+   *     Cross-INVOICE carry-over is closed structurally instead, by `KeyedByRouteId` in
+   *     `routes/index.tsx`: navigating `invoices/A → invoices/B` remounts the page and
+   *     every form under it. An earlier draft of this comment claimed the effect below
+   *     also fired "on a different invoice" — it does not, and cannot: by the time
+   *     `invoiceNumber` changes while the modal is open, `wasOpen.current` is already
+   *     true, so `justOpened` is false and the effect returns before the reset. The route
+   *     key is what makes the guarantee, so the guarantee is stated where it is true.
    *  2. **Branch resolution while already open.** `/can-cancel` landing must NOT touch
    *     what the user has typed; only the branch-dependent `goodsOption` is re-derived.
    */
@@ -238,9 +245,11 @@ export function CancelInvoiceModal({
       returnedOn: todayLocalIsoDate(),
     })
     // Only the open transition may clear the form; the branch values are read at that
-    // moment and deliberately not tracked here (case 2 owns them).
+    // moment and deliberately not tracked here (case 2 owns them). `invoiceNumber` is NOT
+    // a dependency: it would be inert behind the `justOpened` guard, and listing it would
+    // advertise a guarantee this effect does not provide — `KeyedByRouteId` does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, invoiceNumber])
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen || !wasOpen.current) return

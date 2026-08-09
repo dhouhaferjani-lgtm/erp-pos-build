@@ -595,6 +595,138 @@ final class GuidedCancelFlowMultiLineAndNettingTest extends TestCase
             ->assertCreated();
     }
 
+    // ── The per-surface cap (gate CF round 4, the reviewer's P-D / P-E) ──────
+
+    /**
+     * P-D — a delivery note must never be returnable for MORE THAN IT DELIVERED, however
+     * large the invoice behind it.
+     *
+     * Round 3 widened the denominator to `max(own, Σ backing invoiced)` to stop two false
+     * refusals. That closed them and opened a strictly worse hole in the other direction:
+     * with DN1 = 5, DN2 = 5 and a consolidated invoice of 10, DN1's denominator became 10
+     * while the netting set still saw only DN1's own returns — so DN1 could be returned
+     * FIVE, then FIVE AGAIN. Ten units restocked from a note that issued five, on two
+     * SEALED return notes.
+     *
+     * Refused at the lane base, refused at round 2, ACCEPTED at round 3. Fail-open, which
+     * is the worse trade: NB-1 was fail-closed. The correct bound is the MINIMUM of two
+     * caps — this note's own surface and the union — not a widened denominator.
+     */
+    public function test_a_delivery_note_cannot_be_returned_for_more_than_it_delivered(): void
+    {
+        $dn1 = $this->dn('5.0000', $this->cfLocationA->id);
+        $dn2 = $this->dn('5.0000', $this->cfLocationA->id);
+
+        $invoice = $this->invoiceWithLines([
+            ['quantity' => '10.0000', 'unit_price' => '100.000'],
+        ]);
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$dn1, $dn2]);
+
+        // DN1's own five, through DN1's own surface. Legitimate.
+        $this->confirmDeliveryNoteSourcedReturn($dn1, '5.0000');
+        self::assertSame('5.0000', $this->stockAt($this->cfLocationA->id));
+
+        // Five MORE through DN1 — which only ever delivered five.
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dn1->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnQuantityExceededException::CODE_INVOICED);
+
+        self::assertSame(
+            '5.0000',
+            $this->stockAt($this->cfLocationA->id),
+            'A delivery note that issued five units must never restock ten.',
+        );
+    }
+
+    /**
+     * P-E — the same over-return through the sales-order fan-out shape.
+     */
+    public function test_the_sales_order_shape_also_caps_at_the_notes_own_delivered_quantity(): void
+    {
+        $dnA = $this->dn('5.0000', $this->cfLocationA->id);
+        $invoiceA = $this->invoiceWithLines([['quantity' => '5.0000', 'unit_price' => '100.000']]);
+        $invoiceB = $this->invoiceWithLines([['quantity' => '5.0000', 'unit_price' => '100.000']]);
+
+        $order = $this->cfLinkInvoiceViaSalesOrder($invoiceA, [$dnA]);
+        $invoiceB->update(['source_document_id' => $order->id]);
+        $dnA->update(['source_document_id' => $order->id]);
+
+        $this->confirmDeliveryNoteSourcedReturn($dnA->refresh(), '5.0000');
+        self::assertSame('5.0000', $this->stockAt($this->cfLocationA->id));
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $dnA->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnQuantityExceededException::CODE_INVOICED);
+
+        self::assertSame('5.0000', $this->stockAt($this->cfLocationA->id));
+    }
+
+    /**
+     * P-F — the union cap still does its job: DN1's five and DN2's five both returned,
+     * then a third five through the INVOICE surface must be refused on the union total.
+     *
+     * This is the case that proves the `min` did not simply disable the widening.
+     */
+    public function test_the_union_cap_still_refuses_a_third_return_through_the_invoice(): void
+    {
+        $dn1 = $this->dn('5.0000', $this->cfLocationA->id);
+        $dn2 = $this->dn('5.0000', $this->cfLocationA->id);
+
+        $invoice = $this->invoiceWithLines([
+            ['quantity' => '10.0000', 'unit_price' => '100.000'],
+        ]);
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$dn1, $dn2]);
+
+        $this->confirmDeliveryNoteSourcedReturn($dn1, '5.0000');
+        $this->confirmDeliveryNoteSourcedReturn($dn2, '5.0000');
+        self::assertSame('10.0000', $this->stockAt($this->cfLocationA->id));
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson('/api/v1/return-notes', [
+                'partner_id' => $this->cfPartner->id,
+                'document_date' => Carbon::today()->toDateString(),
+                'currency' => 'TND',
+                'source_document_id' => $invoice->id,
+                'lines' => [[
+                    'product_id' => $this->cfProduct->id,
+                    'description' => 'CF Physical Product',
+                    'quantity' => '5.0000',
+                    'unit_price' => '100.000',
+                    'location_id' => $this->cfLocationA->id,
+                ]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', ReturnQuantityExceededException::CODE_INVOICED);
+
+        self::assertSame('10.0000', $this->stockAt($this->cfLocationA->id));
+    }
+
     // ── NEW-1: the capacity ledger must net prior returns ────────────────────
 
     /**

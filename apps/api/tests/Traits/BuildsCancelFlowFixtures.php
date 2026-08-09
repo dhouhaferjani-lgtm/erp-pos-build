@@ -192,7 +192,7 @@ trait BuildsCancelFlowFixtures
      */
     protected function cfPostedInvoice(array $lines, array $overrides = []): Document
     {
-        $invoice = Document::create(array_merge([
+        return $this->cfCreateSealableDocument(array_merge([
             'tenant_id' => $this->cfTenant->id,
             'company_id' => $this->cfCompany->id,
             'location_id' => null,
@@ -209,12 +209,7 @@ trait BuildsCancelFlowFixtures
             'total' => '0.000',
             'fiscal_hash' => hash('sha256', 'cf-inv-'.bin2hex(random_bytes(4))),
             'chain_sequence' => 1,
-        ], $overrides));
-
-        $this->cfAttachLines($invoice, $lines);
-        $this->cfRecomputeTotals($invoice);
-
-        return $invoice->refresh();
+        ], $overrides), $lines);
     }
 
     /**
@@ -226,7 +221,7 @@ trait BuildsCancelFlowFixtures
      */
     protected function cfConfirmedDeliveryNote(array $lines, array $overrides = []): Document
     {
-        $dn = Document::create(array_merge([
+        return $this->cfCreateSealableDocument(array_merge([
             'tenant_id' => $this->cfTenant->id,
             'company_id' => $this->cfCompany->id,
             'location_id' => $this->cfLocationA->id,
@@ -245,12 +240,69 @@ trait BuildsCancelFlowFixtures
             'total' => '0.000',
             'fiscal_hash' => hash('sha256', 'cf-dn-'.bin2hex(random_bytes(4))),
             'chain_sequence' => 1,
-        ], $overrides));
+        ], $overrides), $lines);
+    }
 
-        $this->cfAttachLines($dn, $lines);
-        $this->cfRecomputeTotals($dn);
+    /**
+     * Create a document DRAFT-FIRST, attach its lines, compute its totals, and only THEN
+     * seal it — if the caller actually wants it sealed.
+     *
+     * ── WHY THIS EXISTS (gate CF round 4, PG-surfaced CRITICAL) ──
+     * The previous shape INSERTed the row with `fiscal_status = SEALED` and zero totals,
+     * attached lines, then UPDATEd `subtotal` / `tax_amount` / `total`. All three are in
+     * the immutable-field list of `enforce_document_immutability()`
+     * (`2025_12_11_054716_add_document_immutability_trigger.php`), so on PostgreSQL every
+     * one of the lane's `[PG]`-registered classes died in `setUp()` with
+     * "Cannot modify sealed fiscal document" — **78 failed / 21 passed** on a scratch
+     * PG 16, against green on SQLite.
+     *
+     * Nobody saw it because that migration RETURNS EARLY on SQLite, so the trigger never
+     * exists on the default lane. The production code is NOT implicated — `payload` and
+     * `status` are not in the protected list, so the guided cancel's writes are legal —
+     * but every fiscal claim this lane made had only ever executed against a database
+     * where the trigger, `lockForUpdate()` and the advisory locks are all no-ops.
+     *
+     * The order below is the same one the real sealers use
+     * (`ReturnNoteService::confirmWithFiscalChain()` computes totals while the document is
+     * still a draft, precisely because the trigger rejects them afterwards), so the
+     * fixture now mirrors production instead of contradicting it.
+     *
+     * SEALING IS CONDITIONAL, which is the part a crude patch gets wrong: several tests
+     * deliberately pass `fiscal_status => Draft` overrides, and re-sealing those trips
+     * `chk_fiscal_mandatory_core` on a missing `fiscal_hash`. The target state is read
+     * from the MERGED attributes, so a caller asking for a draft gets a draft.
+     *
+     * @param  array<string, mixed>  $attributes  Already merged (defaults + overrides).
+     * @param  list<array<string, mixed>>  $lines
+     */
+    private function cfCreateSealableDocument(array $attributes, array $lines): Document
+    {
+        $sealedState = [
+            'fiscal_status' => $attributes['fiscal_status'] ?? FiscalStatus::Draft,
+            'fiscal_hash' => $attributes['fiscal_hash'] ?? null,
+            'chain_sequence' => $attributes['chain_sequence'] ?? null,
+        ];
 
-        return $dn->refresh();
+        $wantsSeal = $sealedState['fiscal_status'] === FiscalStatus::Sealed;
+
+        // Draft on the way in: `chk_fiscal_mandatory_core` only demands a hash and a chain
+        // sequence once a document is SEALED, so a draft may legally carry neither.
+        $document = Document::create(array_merge($attributes, [
+            'fiscal_status' => FiscalStatus::Draft,
+            'fiscal_hash' => null,
+            'chain_sequence' => null,
+        ]));
+
+        $this->cfAttachLines($document, $lines);
+        $this->cfRecomputeTotals($document);
+
+        if ($wantsSeal) {
+            // Legal: the trigger enforces only when `OLD.fiscal_status = 'SEALED'`, and at
+            // this update it is still DRAFT.
+            $document->update($sealedState);
+        }
+
+        return $document->refresh();
     }
 
     /**
