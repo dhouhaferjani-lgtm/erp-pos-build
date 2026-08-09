@@ -24,6 +24,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
+use App\Modules\Treasury\Domain\PaymentRepository;
 use Database\Seeders\DemoPharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -52,6 +53,47 @@ final class DemoPharmacySeederTest extends TestCase
             $this->assertTrue(Account::where('code', '411')->exists(), 'Account 411 (Clients) must exist');
             $this->assertTrue(Account::where('code', '401')->exists(), 'Account 401 (Fournisseurs) must exist');
             $this->assertTrue(Account::where('code', '419')->exists(), 'Account 419 (Clients créditeurs) must exist');
+        });
+    }
+
+    /**
+     * DPA lane H-3 regression pin. `PaymentRepositorySeeder` is the LIVE
+     * registration path and now creates two repositories at a ZERO balance with
+     * no bank account. The demo's expense story settles 2 246.850 "from the
+     * bank" and 273.150 from the till, and a till has `allow_negative = false`,
+     * so without `DemoPaymentRepositorySeeder` funding the treasury the very
+     * first expense (Loyer, 1250.000) would be refused by
+     * TreasuryMovementService::assertOutflowAllowed() and abort the seed.
+     */
+    public function test_demo_treasury_is_funded_and_the_expense_story_settles(): void
+    {
+        $this->seed(DemoPharmacySeeder::class);
+
+        $tenant = Tenant::where('slug', 'demo-pharmacy-tn')->firstOrFail();
+
+        $tenant->run(function (): void {
+            $company = Company::firstOrFail();
+
+            $bank = PaymentRepository::query()
+                ->where('company_id', $company->id)
+                ->where('code', 'BANK-01')
+                ->first();
+            $this->assertNotNull($bank, 'The demo overlay must create the demo bank account.');
+
+            $till = PaymentRepository::query()
+                ->where('company_id', $company->id)
+                ->where('code', 'CASH-01')
+                ->firstOrFail();
+            $this->assertSame(1, bccomp($till->balance, '0', 3), 'The demo till must be funded.');
+
+            $this->assertSame(
+                10,
+                Document::query()
+                    ->where('company_id', $company->id)
+                    ->where('type', DocumentType::Expense)
+                    ->count(),
+                'All ten demo expenses must settle.',
+            );
         });
     }
 

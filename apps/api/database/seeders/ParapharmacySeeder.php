@@ -641,9 +641,16 @@ class ParapharmacySeeder extends Seeder
         $this->call(PaymentMethodSeeder::class, false, ['company' => $company]);
         $this->command->info('✓ Payment Methods (6 methods)');
 
-        // Payment repositories
+        // Payment repositories — the real registration shape (one cash register
+        // + one safe, both at zero), then the DEMO-ONLY overlay that funds them
+        // and adds the demo bank/wallet accounts. DPA lane H-3 removed the
+        // fabricated banks and opening cash from PaymentRepositorySeeder because
+        // it is the live registration path; the demo stories below (expenses
+        // settled from a bank account, cash payments) need a funded treasury, so
+        // they get it from a seeder a real tenant can never reach.
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $company]);
-        $this->command->info('✓ Payment Repositories (6 repositories)');
+        $this->call(DemoPaymentRepositorySeeder::class, false, ['company' => $company]);
+        $this->command->info('✓ Payment Repositories (2 provisioned + demo bank accounts, funded)');
 
         // Expense categories linked to class-6 GL accounts (idempotent).
         app(ExpenseCategorySeeder::class)->seedForCompany($company);
