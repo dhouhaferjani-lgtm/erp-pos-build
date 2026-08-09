@@ -27,15 +27,21 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\DTOs\ApplyPaymentAllocationCommand;
+use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\ReceiveInstrumentData;
 use App\Modules\Treasury\Application\Services\InstrumentAccountResolver;
 use App\Modules\Treasury\Application\Services\InstrumentLifecycleService;
+use App\Modules\Treasury\Application\Services\PaymentAllocationService;
+use App\Modules\Treasury\Domain\Enums\AllocationMethod;
 use App\Modules\Treasury\Domain\Enums\CancellationShape;
 use App\Modules\Treasury\Domain\Enums\InstrumentAccountPurpose;
 use App\Modules\Treasury\Domain\Enums\InstrumentDirection;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentOrigin;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
+use App\Modules\Treasury\Domain\Enums\MovementDirection;
+use App\Modules\Treasury\Domain\Enums\MovementSourceType;
 use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\PaymentType;
@@ -45,6 +51,7 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
+use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -394,6 +401,276 @@ final class AdvanceReversalGlShapeTest extends TestCase
     }
 
     /**
+     * A1d — **counter-shape X** (§1.3): `payment_type = Advance` carrying
+     * **AR-backed** GL. `storeMultiple()` types a line purely on allocation
+     * exhaustion (`PaymentController.php:1487-1490`), then the manual excess arm
+     * posts `createPostedExcessAllocationJournalEntry()` (`:1696`) →
+     * `createPaymentReceivedJournalEntry` (`Cr CustomerReceivable`,
+     * `source_type='customer_payment'`) onto that same line.
+     *
+     * So `payment_type = Advance`, `arBacked > 0`, `advanceBacked = 0`. Under a
+     * `payment_type`-driven selector the advance builder would fire against an
+     * original that credited AR — the exact mirror of C-2, which is why A-D2
+     * makes the LEDGER the sole selector. This test is what would have caught it.
+     *
+     * Same construction note as A1c: asserts the required end state rather than
+     * relying on today's D-6 refusal to make it vacuously green.
+     */
+    public function test_a1d_shape_x_an_advance_typed_line_with_ar_backed_gl_reverses_to_ar(): void
+    {
+        $primary = $this->postedInvoice('1190.000');
+        $secondary = $this->postedInvoice('200.000');
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->partner->id,
+            'document_id' => $primary->id,
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'payments' => [
+                ['payment_method_id' => $this->cashMethod->id, 'repository_id' => $this->repository->id, 'amount' => '1190.000'],
+                ['payment_method_id' => $this->cashMethod->id, 'repository_id' => $this->repository->id, 'amount' => '200.000'],
+            ],
+            'excess_allocation_method' => 'manual',
+            'excess_allocations' => [
+                ['document_id' => $secondary->id, 'amount' => '200.000'],
+            ],
+        ]);
+        $response->assertCreated();
+
+        /** @var Payment $advanceTyped */
+        $advanceTyped = Payment::query()
+            ->where('company_id', $this->company->id)
+            ->where('payment_type', PaymentType::Advance->value)
+            ->firstOrFail();
+
+        // Fixture pins: this is the counter-shape, not an ordinary advance.
+        self::assertSame(
+            '200.000',
+            $this->creditByPurpose($advanceTyped->id, 'customer_payment', SystemAccountPurpose::CustomerReceivable),
+            'fixture: shape X is an Advance-typed line whose GL credits AR',
+        );
+        self::assertSame(
+            '0',
+            $this->creditByPurpose($advanceTyped->id, 'advance', SystemAccountPurpose::CustomerAdvance),
+            'fixture: shape X has NO advance-backed GL',
+        );
+
+        try {
+            $this->refundService->reversePayment($advanceTyped, 'A1d shape X', $this->user->id);
+        } catch (\DomainException $exception) {
+            self::fail(
+                'blocked by the D-6 gate, which A7 lifts; after A7 this must debit AR (the ledger, '
+                .'not payment_type, decides the shape). Gate said: '.$exception->getMessage(),
+            );
+        }
+
+        $reversal = Payment::query()
+            ->where('original_payment_id', $advanceTyped->id)
+            ->where('payment_type', PaymentType::Reversal->value)
+            ->firstOrFail();
+
+        $debits = $this->postedDebitsByPurpose($reversal->id);
+        $actual = json_encode($debits, JSON_THROW_ON_ERROR);
+
+        self::assertSame(
+            '200.000',
+            $debits[SystemAccountPurpose::CustomerReceivable->value] ?? '0.000',
+            "an Advance-TYPED line whose ledger credited AR must reverse to AR. Posted debits: {$actual}",
+        );
+        self::assertArrayNotHasKey(
+            SystemAccountPurpose::CustomerAdvance->value,
+            $debits,
+            'no CustomerAdvance liability was ever created, so none may be unwound — selecting the '
+            ."shape from payment_type would post exactly this wrong debit. Posted debits: {$actual}",
+        );
+    }
+
+    /**
+     * A1e — **counter-shape Y** (§1.4): `payment_type = DocumentPayment` carrying
+     * **advance-only** GL. **RED today for the real reason — C-2 at 100%.**
+     *
+     * `PaymentAllocationService` writes allocation rows for `SalesOrder`
+     * documents, books the order portion through
+     * `createCustomerAdvanceJournalEntry(advanceId: $payment->id, …)` (`:315-327`),
+     * and flips the type to `Advance` only when `$totalAllocated` is zero
+     * (`:381-384`) — which order allocations defeat. So `arBacked = 0`,
+     * `advanceBacked = full`, `payment_type = DocumentPayment` → today's cash
+     * branch hands the whole net to the AR builder.
+     *
+     * **No belt catches this** (A-D4b / gate finding N-2): the coverage assert
+     * sees `0 + full == full` and passes, and the non-emptiness assert never
+     * fires because the partition is non-empty. A-D2's selector is the entire
+     * defence, and it works by making Y CORRECT rather than by refusing it.
+     *
+     * The payment over-pays the order (1200 against 1000) so the type flip is
+     * DEFEATED rather than merely unreached: `$totalAllocated = 1000 ≠ 0`.
+     * `cashAccountOverrideId` is supplied to force `SynchronousInTransaction`
+     * posting (`:328-330`) — under `RefreshDatabase` an `AfterCommit` entry would
+     * still be Draft, and the partition counts POSTED only (A-D4).
+     */
+    public function test_a1e_shape_y_an_order_allocated_payment_reverses_to_customer_advance(): void
+    {
+        $order = Document::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'type' => DocumentType::SalesOrder,
+            'document_number' => 'SO-'.Str::random(8),
+            'document_date' => now()->toDateString(),
+            'status' => DocumentStatus::Confirmed,
+            'subtotal' => '1000.000',
+            'tax_amount' => '0.000',
+            'total' => '1000.000',
+            'balance_due' => '1000.000',
+            'currency' => 'TND',
+        ]);
+
+        $payment = Payment::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '1200.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            'payment_type' => PaymentType::DocumentPayment,
+            'reference' => 'SO-PAY-'.Str::random(6),
+            'created_by' => $this->user->id,
+        ]);
+
+        // The payment row is built directly (the allocation service is the unit
+        // under test, not `store()`), so no cash movement IN ever happened. Fund
+        // the till through the port so the reversal's movement OUT is legitimate
+        // — `balance` is port-managed and not fillable.
+        $this->fundRepository('1200.000');
+
+        app(PaymentAllocationService::class)->applyAllocationFromCommand(new ApplyPaymentAllocationCommand(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            paymentId: $payment->id,
+            allocationMethod: AllocationMethod::MANUAL,
+            actorUserId: $this->user->id,
+            source: 'test:dpa-advrev-shape-y',
+            manualAllocations: [['document_id' => $order->id, 'amount' => '1000.000']],
+            cashAccountOverrideId: $this->repository->gl_account_id,
+        ));
+
+        $payment->refresh();
+
+        // Fixture pins: the type flip really is defeated, and the GL really is
+        // advance-only. Without these the red below could be a broken fixture.
+        self::assertSame(
+            PaymentType::DocumentPayment,
+            $payment->payment_type,
+            'fixture: an order allocation defeats the flip to Advance (PAS:381-384)',
+        );
+        self::assertSame(
+            '1200.000',
+            $this->creditByPurpose($payment->id, 'advance', SystemAccountPurpose::CustomerAdvance),
+            'fixture: order portion + excess both credit CustomerAdvance',
+        );
+        self::assertSame(
+            '0',
+            $this->creditByPurpose($payment->id, 'customer_payment', SystemAccountPurpose::CustomerReceivable),
+            'fixture: shape Y has ZERO AR-backed GL',
+        );
+
+        $reversal = $this->refundService->reversePayment($payment, 'A1e shape Y', $this->user->id);
+        self::assertInstanceOf(Payment::class, $reversal);
+
+        $debits = $this->postedDebitsByPurpose($reversal->id);
+        $actual = json_encode($debits, JSON_THROW_ON_ERROR);
+
+        self::assertSame(
+            '1200.000',
+            $debits[SystemAccountPurpose::CustomerAdvance->value] ?? '0.000',
+            "the whole net is advance-backed, so the whole net unwinds the advance. Posted debits: {$actual}",
+        );
+        self::assertArrayNotHasKey(
+            SystemAccountPurpose::CustomerReceivable->value,
+            $debits,
+            'no receivable was ever credited — debiting AR here is C-2 at 100% rather than 30%. '
+            ."Posted debits: {$actual}",
+        );
+    }
+
+    /**
+     * A1f — **a MIXED deferred tender** (A-D7): one cheque, two GL shapes. The
+     * AR leg (`PaymentController.php:1082-1084`, `:1114-1124`) and the advance leg
+     * (`:1163-1165`, `:1170-1181`) both debit the SAME portfolio account, and
+     * `:1186-1189` keeps the type `DocumentPayment`. One instrument, minted at the
+     * FULL payment amount, carrying a footprint no single `CancellationShape`
+     * enum case could represent — which is why A-D7 makes the cancellation ENTRY
+     * partition-driven instead of adding a third case.
+     *
+     * The fixture shape is the one already pinned green by
+     * `DeferredTenderPaymentTest::test_cheque_excess_posts_both_payment_and_advance_debits_to_portfolio`.
+     *
+     * Same construction note as A1c/A1d.
+     */
+    public function test_a1f_a_mixed_deferred_tender_cancels_with_two_partition_driven_debits(): void
+    {
+        $invoice = $this->postedInvoice('100.000');
+        $chequeMethod = $this->chequeMethod();
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/payments', [
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $chequeMethod->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '110.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'allocations' => [['document_id' => $invoice->id, 'amount' => '100.000']],
+            'instrument' => ['reference' => 'CH-MIXED-110'],
+        ]);
+        $response->assertCreated();
+
+        /** @var string $paymentId */
+        $paymentId = $response->json('data.id');
+        $payment = Payment::query()->findOrFail($paymentId);
+
+        self::assertSame(PaymentType::DocumentPayment, $payment->payment_type, 'fixture: type stays DocumentPayment');
+        self::assertSame(
+            '100.000',
+            $this->creditByPurpose($payment->id, 'customer_payment', SystemAccountPurpose::CustomerReceivable),
+            'fixture: the allocated portion credits AR against the portfolio',
+        );
+        self::assertSame(
+            '10.000',
+            $this->creditByPurpose($payment->id, 'advance', SystemAccountPurpose::CustomerAdvance),
+            'fixture: the excess credits CustomerAdvance against the SAME portfolio',
+        );
+
+        /** @var string $instrumentId */
+        $instrumentId = $payment->instrument_id;
+        self::assertNotNull($instrumentId, 'fixture: the cheque minted an instrument');
+
+        $this->refundService->reversePayment($payment, 'A1f mixed deferred tender', $this->user->id);
+
+        $debits = $this->postedDebitsByPurposeForSource($instrumentId, 'instrument');
+        $actual = json_encode($debits, JSON_THROW_ON_ERROR);
+
+        self::assertSame(
+            '100.000',
+            $debits[SystemAccountPurpose::CustomerReceivable->value] ?? '0.000',
+            "the cancellation entry must restore only the AR-backed portion. Posted debits: {$actual}",
+        );
+        self::assertSame(
+            '10.000',
+            $debits[SystemAccountPurpose::CustomerAdvance->value] ?? '0.000',
+            "and unwind the advance-backed portion separately. Posted debits: {$actual}",
+        );
+        self::assertCount(
+            2,
+            $debits,
+            "exactly two debit lines, summing to the instrument nominal of 110.000. Posted debits: {$actual}",
+        );
+    }
+
+    /**
      * A1g — **counter-shape Z** (§1.5, gate finding N-1). **RED ON `dev` TODAY.**
      *
      * The POS *account-payment* bridge mints a payment that is simultaneously
@@ -726,6 +1003,10 @@ final class AdvanceReversalGlShapeTest extends TestCase
             ->where('journal_entries.company_id', $this->company->id)
             ->where('journal_entries.source_id', $paymentId)
             ->where('journal_entries.status', JournalEntryStatus::Posted->value)
+            // Only lines that actually USE this side — otherwise the opposite
+            // leg shows up as a `0.000` entry and an assertArrayNotHasKey()
+            // reads as a hit.
+            ->where("journal_lines.{$side}", '>', 0)
             ->whereNotNull('accounts.system_purpose')
             ->groupBy('accounts.system_purpose')
             ->selectRaw("accounts.system_purpose as purpose, CAST(SUM(journal_lines.{$side}) AS TEXT) as total")
@@ -757,6 +1038,37 @@ final class AdvanceReversalGlShapeTest extends TestCase
             ->first();
 
         return (string) ($row->total ?? '0');
+    }
+
+    /**
+     * Fund the till through the movement PORT (`balance` is port-managed and not
+     * fillable, and W-5b forbids taking a cash register below zero). Needed only
+     * by fixtures that build the Payment row directly and therefore never
+     * recorded the payment's own movement IN.
+     *
+     * @param  numeric-string  $amount
+     */
+    private function fundRepository(string $amount): void
+    {
+        DB::transaction(fn () => app(TreasuryMovementServiceInterface::class)->record(new MovementIntent(
+            repositoryId: $this->repository->id,
+            tenantId: $this->repository->tenant_id,
+            companyId: $this->repository->company_id,
+            direction: MovementDirection::In,
+            amount: $amount,
+            currency: $this->repository->currency,
+            sourceType: MovementSourceType::OpeningBalance,
+            sourceId: $this->repository->id,
+            idempotencyLeg: 'opening',
+            journalEntryId: null,
+            occurredAt: null,
+            reasonCode: null,
+            reversesMovementId: null,
+            createdBy: null,
+            notes: 'DPA-REV2-A fixture opening balance',
+            allowWhileFrozen: false,
+        )));
+        $this->repository->refresh();
     }
 
     private function chequeMethod(): PaymentMethod
