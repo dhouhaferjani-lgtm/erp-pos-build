@@ -654,7 +654,7 @@ class CreditNoteMoneyLaneTest extends TestCase
         TaxConfiguration::create([
             'country_code' => 'TN',
             'name' => 'Generic credit-note surcharge',
-            'code' => 'GENERIC_CREDIT_NOTE_TOTAL',
+            'code' => 'GENERIC_CN_TOTAL',
             'tax_type' => 'FIXED_AMOUNT',
             'percentage_rate' => null,
             'fixed_amount' => '7.000',

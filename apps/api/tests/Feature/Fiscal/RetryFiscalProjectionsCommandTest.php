@@ -288,7 +288,7 @@ final class RetryFiscalProjectionsCommandTest extends TestCase
             'server_received_at' => '2026-07-07 10:15:31',
             'reference_event_id' => null,
             'reference_document_id' => null,
-            'source_event_class' => 'retry_projection_test',
+            'source_event_class' => null,
             'source_event_id' => null,
             'partner_id' => null,
             'partner_identity_snapshot' => null,

@@ -887,11 +887,14 @@ final class TreasuryReceiptBridgeRoundingGlTest extends TestCase
 
     private function removePurposeMissingAuditFailureTrigger(): void
     {
-        DB::unprepared('DROP TRIGGER IF EXISTS cghi_fail_purpose_missing_audit');
-
         if (DB::getDriverName() === 'pgsql') {
+            DB::unprepared('DROP TRIGGER IF EXISTS cghi_fail_purpose_missing_audit ON audit_events');
             DB::unprepared('DROP FUNCTION IF EXISTS cghi_fail_purpose_missing_audit()');
+
+            return;
         }
+
+        DB::unprepared('DROP TRIGGER IF EXISTS cghi_fail_purpose_missing_audit');
     }
 
     /**

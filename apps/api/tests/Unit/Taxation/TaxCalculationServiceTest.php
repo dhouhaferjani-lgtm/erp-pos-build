@@ -655,7 +655,7 @@ class TaxCalculationServiceTest extends TestCase
         TaxConfiguration::create([
             'country_code' => 'TN',
             'name' => 'Generic document surcharge',
-            'code' => 'GENERIC_DOCUMENT_TOTAL_BYTES',
+            'code' => 'GEN_DOC_TOTAL_BYTES',
             'tax_type' => 'FIXED_AMOUNT',
             'fixed_amount' => '7.000',
             'applies_to' => 'DOCUMENT_TOTAL',
