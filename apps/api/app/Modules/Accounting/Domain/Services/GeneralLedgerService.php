@@ -578,6 +578,118 @@ final class GeneralLedgerService
     }
 
     /**
+     * DPA `DPA-REV2-A` (A-D1) — the GL reversal for a CUSTOMER ADVANCE, and the
+     * missing half of the customer-advance idiom.
+     *
+     * The exact algebraic inverse of {@see createCustomerAdvanceJournalEntry}
+     * (which posts Dr cash / Cr CustomerAdvance partner-tagged), and the customer
+     * twin of {@see reverseSupplierAdvanceJournalEntry} — with the legs on the
+     * sides a customer LIABILITY requires rather than a supplier asset:
+     *
+     *   Debit:  CustomerAdvance (partner-tagged) — the liability we owed is discharged
+     *   Credit: Bank/Cash                        — money goes back to the customer
+     *
+     * `source_type` is `'customer_advance_refund'` and `source_id` is the
+     * REVERSAL payment row id, never the original (D-9). That is what lets a
+     * MIXED reversal post two entries — one `'customer_payment_refund'`, one
+     * `'customer_advance_refund'` — against the same reversal payment without
+     * colliding on `(source_type, source_id)`.
+     *
+     * JOURNAL CODE: `'customer_advance_refund'` has no arm in
+     * {@see JournalCode::fromSourceType()} and therefore falls to `Misc`/OD,
+     * matching `'advance'` and `'supplier_advance_refund'`. This is DELIBERATE
+     * and must not be "fixed" to `Bank`/BQ: re-classifying the advance family
+     * would move EXISTING `'advance'` entries between FEC journals. It is open
+     * question OQ-4, pending an expert-comptable ruling. A consequence worth
+     * knowing (A-D11): a single mixed reversal therefore splits one economic act
+     * across two FEC journals, BQ + OD.
+     *
+     * @param  numeric-string  $amount
+     */
+    public function reverseCustomerAdvanceJournalEntry(
+        string $companyId,
+        string $partnerId,
+        string $reversalPaymentId,
+        string $amount,
+        string $paymentMethodAccountId,
+        \DateTimeInterface $date,
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
+    ): JournalEntry {
+        // Verbatim from the supplier sibling (:513-515): SynchronousInTransaction
+        // posts via postEntryNow so the GL post is atomic with — and its company
+        // advisory lock is taken BEFORE — the movement port's repository row lock
+        // (global lock order). Refuse to mint a Draft that postEntryNow would orphan.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('reverseCustomerAdvanceJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $reversalPaymentId, $amount, $paymentMethodAccountId,
+            $date, $description, $advanceAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $company = Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Customer advance reversal',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'customer_advance_refund',
+                'journal_code' => JournalCode::fromSourceType('customer_advance_refund')->value,
+                'source_id' => $reversalPaymentId,
+            ]);
+
+            // Debit: Customer Advances (discharge the liability - with partner for subledger)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $advanceAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Customer advance reversed',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Bank/Cash — money returned to the customer
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentMethodAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Advance returned to customer',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // postEntryNow tolerates a null actor (posted_by stays null); this is
+            // what guarantees the reversal is POSTED even for an unresolvable actor.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
      * Create the GL reversal for a REFUND of a customer payment received
      * (Treasury spine, Task 18). Mirrors {@see createPaymentReceivedJournalEntry}
      * with the legs flipped:
