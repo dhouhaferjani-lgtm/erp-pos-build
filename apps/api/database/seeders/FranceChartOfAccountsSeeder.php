@@ -169,7 +169,13 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '4035', 'name' => 'Fournisseurs - Chèques à payer', 'type' => 'liability', 'parent_code' => '40', 'is_system' => true],
             ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
-            ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40'],
+            // DPA-REV2-A / A2: 409 IS the PCG supplier-advance account ("avances et
+            // acomptes versés sur commandes"), and SupplierAdvance is a REQUIRED
+            // purpose (SystemAccountPurpose::requiredPurposes()). It was seeded with
+            // the correct type but no purpose, so it never resolved. Metadata only —
+            // `asset` already matches expectedAccountType().
+            ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40',
+                'system_purpose' => SystemAccountPurpose::SupplierAdvance->value, 'is_system' => true],
 
             // Customers (Clients)
             ['code' => '41', 'name' => 'Clients et comptes rattachés', 'type' => 'asset', 'parent_code' => '4'],
@@ -179,7 +185,14 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '413', 'name' => 'Clients - Effets à recevoir', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
             ['code' => '416', 'name' => 'Clients douteux ou litigieux', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
             ['code' => '418', 'name' => 'Clients - Produits non encore facturés', 'type' => 'asset', 'parent_code' => '41'],
-            ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41'],
+            // DPA-REV2-A / A2: 419 IS the PCG customer-advance account ("clients
+            // créditeurs, avances et acomptes reçus"), and CustomerAdvance is a
+            // REQUIRED purpose. Without this mapping a French company hard-fails
+            // createCustomerAdvanceJournalEntry() at GeneralLedgerService:417 on any
+            // over-payment. Metadata only — `liability` already matches
+            // expectedAccountType().
+            ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41',
+                'system_purpose' => SystemAccountPurpose::CustomerAdvance->value, 'is_system' => true],
 
             // Social security and personnel
             ['code' => '42', 'name' => 'Personnel et comptes rattachés', 'type' => 'liability', 'parent_code' => '4'],
