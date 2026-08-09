@@ -182,6 +182,10 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
                 'system_purpose' => SystemAccountPurpose::CustomerReceivable->value, 'is_system' => true],
             ['code' => '413', 'name' => 'Clients - Effets à recevoir', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
             ['code' => '416', 'name' => 'Clients douteux', 'type' => 'asset', 'parent_code' => '41', 'is_system' => true],
+            // Register G-4 parity — UninvoicedDeliveryNoteService resolves this
+            // purpose; only the generic chart carried it.
+            ['code' => '418', 'name' => 'Clients - Produits non encore facturés', 'type' => 'asset', 'parent_code' => '41',
+                'system_purpose' => SystemAccountPurpose::UninvoicedRevenue->value, 'is_system' => true],
             ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41',
                 'system_purpose' => SystemAccountPurpose::CustomerAdvance->value, 'is_system' => true],
             ['code' => '42', 'name' => 'Personnel et comptes rattachés', 'type' => 'liability', 'parent_code' => '4'],
@@ -193,7 +197,11 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '4455', 'name' => 'TVA à décaisser', 'type' => 'liability', 'parent_code' => '44'],
             ['code' => '4456', 'name' => 'TVA déductible', 'type' => 'asset', 'parent_code' => '44',
                 'system_purpose' => SystemAccountPurpose::VatDeductible->value, 'is_system' => true],
-            ['code' => '43666', 'name' => 'TVA récupérable sur frais bancaires', 'type' => 'asset', 'parent_code' => '43', 'is_system' => true],
+            // Register G-10 — parented to 44 "État et collectivités publiques"
+            // like every other VAT account (4455/4456/4457/4375). It previously
+            // hung off 43 "Organismes sociaux" (CNSS), which put recoverable VAT
+            // in the social-security branch of every reporting tree.
+            ['code' => '43666', 'name' => 'TVA récupérable sur frais bancaires', 'type' => 'asset', 'parent_code' => '44', 'is_system' => true],
             ['code' => '4457', 'name' => 'TVA collectée', 'type' => 'liability', 'parent_code' => '44',
                 'system_purpose' => SystemAccountPurpose::VatCollected->value, 'is_system' => true],
             ['code' => '4375', 'name' => 'État - Droit de timbre à reverser', 'type' => 'liability', 'parent_code' => '44',
@@ -225,6 +233,17 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '602', 'name' => 'Achats stockés - Autres approvisionnements', 'type' => 'expense', 'parent_code' => '60'],
             ['code' => '603', 'name' => 'Variation des stocks', 'type' => 'expense', 'parent_code' => '60',
                 'system_purpose' => SystemAccountPurpose::CostOfGoodsSold->value, 'is_system' => true],
+            // Register G-3 — ExpenseCategorySeeder's own docblock recorded that
+            // 606/6061 "do NOT exist in TunisiaChartOfAccountsSeeder", so those
+            // categories silently fell back to the GeneralExpense account. NC 01
+            // (nomenclature des comptes) carries 606 "Achats non stockés de
+            // matières et fournitures" in the PCN; seed it, with the two leaves
+            // the expense categories and the G-4 parity purposes need.
+            ['code' => '606', 'name' => 'Achats non stockés de matières et fournitures', 'type' => 'expense', 'parent_code' => '60'],
+            ['code' => '6061', 'name' => 'Fournitures non stockables (eau, électricité)', 'type' => 'expense', 'parent_code' => '606',
+                'system_purpose' => SystemAccountPurpose::UtilitiesExpense->value, 'is_system' => true],
+            ['code' => '6064', 'name' => 'Fournitures administratives', 'type' => 'expense', 'parent_code' => '606',
+                'system_purpose' => SystemAccountPurpose::OfficeExpense->value, 'is_system' => true],
             ['code' => '607', 'name' => 'Achats de marchandises', 'type' => 'expense', 'parent_code' => '60',
                 'system_purpose' => SystemAccountPurpose::PurchaseExpenses->value, 'is_system' => true],
             ['code' => '61', 'name' => 'Services extérieurs', 'type' => 'expense', 'parent_code' => '6'],
@@ -239,6 +258,11 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             ['code' => '623', 'name' => 'Publicité, publications, relations publiques', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '624', 'name' => 'Transport de biens et transport collectif', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '625', 'name' => 'Déplacements, missions et réceptions', 'type' => 'expense', 'parent_code' => '62'],
+            // Register G-4 parity — travel/meals were generic-chart-only.
+            ['code' => '6251', 'name' => 'Voyages et déplacements', 'type' => 'expense', 'parent_code' => '625',
+                'system_purpose' => SystemAccountPurpose::TravelExpense->value, 'is_system' => true],
+            ['code' => '6257', 'name' => 'Réceptions', 'type' => 'expense', 'parent_code' => '625',
+                'system_purpose' => SystemAccountPurpose::MealsExpense->value, 'is_system' => true],
             ['code' => '626', 'name' => 'Frais postaux et frais de télécommunications', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '627', 'name' => 'Services bancaires et assimilés', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '6275', 'name' => 'Frais sur effets et chèques', 'type' => 'expense', 'parent_code' => '627', 'is_system' => true],
@@ -289,6 +313,12 @@ final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccoun
             // SalesReturn in its Expense arm.
             ['code' => '709', 'name' => 'Rabais, remises et ristournes accordés', 'type' => 'expense', 'parent_code' => '70',
                 'system_purpose' => SystemAccountPurpose::SalesReturn->value, 'is_system' => true],
+            // Register G-4 parity — commercial discount granted on a sale
+            // (createPOSChargeEntry debits it). 709 already carries SalesReturn and
+            // 7091 the voucher clearing account, so the discount takes the
+            // marchandises leg 7097, mirroring the French chart.
+            ['code' => '7097', 'name' => 'Rabais, remises et ristournes accordés sur ventes de marchandises', 'type' => 'expense', 'parent_code' => '70',
+                'system_purpose' => SystemAccountPurpose::SalesDiscount->value, 'is_system' => true],
             ['code' => '7580', 'name' => 'Écart de règlement (produits)', 'type' => 'revenue', 'parent_code' => '75',
                 'system_purpose' => SystemAccountPurpose::PaymentToleranceIncome->value, 'is_system' => true],
 
