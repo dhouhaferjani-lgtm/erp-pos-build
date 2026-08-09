@@ -75,7 +75,7 @@ Business code resolves GL accounts via `SystemAccountPurpose` (`Account::findByP
 
 ## Suggested sequencing
 
-1. **C, D, E** (hard 500s on ordinary flows; TN is the launch country — C affects TN) — one backfill wave.
+1. **C, D, E** (ordinary-flow failures; TN is the launch country — C affects TN) — one backfill wave. Note the failure modes differ: **D and E are request-path HTTP 500s; C is a silently dead-lettered accounting projection** and carries its own recovery obligation — after the backfill, inventory dead-lettered account-charge events and replay them (`fiscal:retry-projections`, `app/Modules/Fiscal/Infrastructure/Commands/RetryFiscalProjectionsCommand.php`), then validate the replayed GL entries.
 2. **A, B, F** (FR-only; silent-books or fallback defects) — second wave, with accountant input on account numbers.
 3. **G + H** together (tax surface; fiscal-reviewer gated; precondition for the country-defaults certification claim).
 4. **I** (treasury hardening), **J** (cleanup) — opportunistic.
