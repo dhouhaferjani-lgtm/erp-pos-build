@@ -23,11 +23,13 @@ Business code resolves GL accounts via `SystemAccountPurpose` (`Account::findByP
 - **Mechanism:** expense posting falls back to the throwing `GeneralExpense` lookup whenever the expense's category has no `account_id` (`GLS:3913-3938`).
 - **Fix:** backfill (PCG 6288 or per accountant); trivial delta.
 
-## C. TN + FR: `SalesDiscount` missing — 500 on POS account-charge with a transaction discount
+## C. TN + FR: `SalesDiscount` missing — POS account-charge GL projection dead-letters on transaction discount
 
-- **Chart:** absent from BOTH TN and FR; Generic has it (`GenericChartOfAccountsSeeder.php:208-212`).
-- **Mechanism:** `GLS:3807-3827` performs an **unprechecked** throwing `SalesDiscount` lookup whenever a POS account-charge carries a positive transaction discount; the projection expects the resulting line (`app/Modules/Treasury/Application/Projections/TreasuryAccountChargeBridge.php:239-249`).
-- **Fix:** backfill TN (709-family PCN) + FR (709 PCG); optionally add a precheck that surfaces a domain error instead of a 500 (but the account should simply exist).
+*(Corrected per Codex round-10 fact-check — this is an async projection failure, NOT an HTTP 500.)*
+
+- **Chart:** absent from BOTH TN and FR; Generic has it (`GenericChartOfAccountsSeeder.php:203-212`).
+- **Mechanism:** device-authored POS events are committed by ingestion FIRST, with projection jobs queued after commit (`app/Modules/Fiscal/Application/Services/OutboxIngestor.php:228-241,960-977`). `TreasuryAccountChargeBridge` (`:59-101`) then performs the posting whose unprechecked throwing `SalesDiscount` lookup fires for any positive transaction discount (`GLS:3807-3827`). The throwing projector is **retried and eventually dead-lettered** (`app/Modules/Fiscal/Application/Jobs/ApplyFiscalEventProjectionJob.php:391-421,433-448`) — the receipt/printable event exists while its accounting projection is silently absent.
+- **Fix:** backfill TN (709-family PCN) + FR (709 PCG) **and** recover/replay the dead-lettered account-charge projections after the account exists — seeding alone does not repair already-dead-lettered events.
 
 ## D. FR: `CustomerAdvance` missing — 500 on ordinary payment allocation
 
@@ -38,13 +40,15 @@ Business code resolves GL accounts via `SystemAccountPurpose` (`Account::findByP
 ## E. FR: `SupplierAdvance` missing — 500 on supplier prepayment refund
 
 - **Chart:** absent from FR.
-- **Mechanism:** prepayment-refund route → `PaymentRefundController.php:212-230` → `app/Modules/Treasury/Domain/Services/VendorRefundService.php:153-175` → unprechecked throwing lookup `GLS:496-517`.
+- **Mechanism:** prepayment-refund route `app/Modules/Treasury/Presentation/routes.php:214-217` → `PaymentRefundController.php:231-262` (`refundPrepayment` action) → `app/Modules/Treasury/Domain/Services/VendorRefundService.php:145-186` → unprechecked throwing lookup `GLS:496-517`.
 - **Fix:** backfill FR `SupplierAdvance` (PCG 4091).
 
-## F. FR: literal code `624` absent — expense category silently collapses to GeneralExpense
+## F. FR: literal code `624` absent — expense categories silently OMITTED (couples with B)
 
-- **Mechanism:** `database/seeders/ExpenseCategorySeeder.php:37-69` maps categories to literal codes `613/615/616/624/626` and **silently falls back to the `GeneralExpense` purpose** when a code is missing. The France-default `ParapharmacySeeder` (`:141-162,630-650`) runs it; FR has `613/615/616/626` but no `624` (`FranceChartOfAccountsSeeder.php:243-252`) → the transport category silently posts as general expense.
-- **Fix:** add PCG `624` ("Transports de biens et transports collectifs du personnel") to FR; consider making the seeder's fallback loud (this is also specced in the country-defaults lane §5.2 — coordinate to avoid double work).
+*(Corrected per Codex round-10 fact-check — on the current FR chart the categories are skipped, not collapsed.)*
+
+- **Mechanism:** `database/seeders/ExpenseCategorySeeder.php:37-69` maps categories to literal codes `613/615/616/624/626`; when a code is missing it resolves a **nullable** `GeneralExpense` fallback and, if that is ALSO null, **skips the category row entirely** (`:54-69`). France lacks both literal `624` AND the `GeneralExpense` purpose (`FranceChartOfAccountsSeeder.php:124-339,243-252`), so on the France-default `ParapharmacySeeder` path (`:141-162,630-650`) the Transport category is silently **omitted** — as is the intentionally null-mapped "Fournitures & Divers" category.
+- **Fix (coordinate with B):** BOTH backfills are needed — PCG `624` ("Transports de biens et transports collectifs du personnel") repairs Transport; the `GeneralExpense` backfill (item B) repairs the null-mapped category. Tests: pin the current missing-category state first, then prove the combined backfills create all expected categories. The loud-failure seeder change is specced in the country-defaults lane §5.2 — coordinate to avoid double work.
 
 ## G. Tenant tax API: `is_stamp_duty` configurable for non-timbre countries — no capability check
 
