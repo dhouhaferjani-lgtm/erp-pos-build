@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Taxation;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -601,6 +602,83 @@ class TaxCalculationServiceTest extends TestCase
         // Gate probe: pre-fix delta was +0.001 (base=1.498 vs subtotal
         // 1.497). Post-fix the declared base ties to the subtotal exactly.
         $this->assertSame('1.497', $result->taxes[0]->base);
+    }
+
+    public function test_non_stamp_document_total_rows_cannot_change_tn_stamp_totals_or_hash_input_bytes(): void
+    {
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => PartnerType::Customer,
+            'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'Timbre fiscal',
+            'code' => 'STAMP_BYTES',
+            'tax_type' => 'FIXED_AMOUNT',
+            'fixed_amount' => '1.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'sequence_order' => 90,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_stamp_duty' => true,
+        ]);
+        $document = Document::factory()->create([
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-H-BYTES',
+            'currency' => 'TND',
+        ]);
+        DocumentLine::create([
+            'document_id' => $document->id,
+            'line_number' => 1,
+            'description' => 'Byte-stable item',
+            'quantity' => '1',
+            'unit_price' => '100.000',
+            'tax_rate' => '0',
+            'line_total' => '100.000',
+        ]);
+        $document->load('lines');
+
+        $baseline = $this->service->calculateDocumentTaxes($document);
+        $hashService = new FiscalHashService;
+        $baselineBytes = $hashService->serializeForHashing([
+            'document_number' => $document->document_number,
+            'posted_at' => '2026-08-10T00:00:00Z',
+            'total' => $baseline->total,
+            'currency' => $document->currency,
+        ]);
+
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'Generic document surcharge',
+            'code' => 'GENERIC_DOCUMENT_TOTAL_BYTES',
+            'tax_type' => 'FIXED_AMOUNT',
+            'fixed_amount' => '7.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'sequence_order' => 91,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_stamp_duty' => false,
+        ]);
+
+        $withInvalidBrownfieldRow = $this->service->calculateDocumentTaxes($document);
+        $withInvalidRowBytes = $hashService->serializeForHashing([
+            'document_number' => $document->document_number,
+            'posted_at' => '2026-08-10T00:00:00Z',
+            'total' => $withInvalidBrownfieldRow->total,
+            'currency' => $document->currency,
+        ]);
+
+        $this->assertSame('1.000', $baseline->documentTaxTotal);
+        $this->assertSame('101.000', $baseline->total);
+        $this->assertSame('INV-H-BYTES|2026-08-10T00:00:00Z|101.000|TND', $baselineBytes);
+        $this->assertSame($baseline->toArray(), $withInvalidBrownfieldRow->toArray());
+        $this->assertSame($baselineBytes, $withInvalidRowBytes);
     }
 
     /** @test */

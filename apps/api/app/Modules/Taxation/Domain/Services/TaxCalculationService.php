@@ -270,9 +270,13 @@ class TaxCalculationService
             $runningTaxTotal = bcadd($runningTaxTotal, $taxAmount, $scale);
         }
 
-        // STEP 2: Calculate document-level taxes (these can stack)
+        // STEP 2: Calculate stamp duty at the document level. The result's
+        // documentTaxTotal is persisted and posted as stamp_duty_amount, so a
+        // generic DOCUMENT_TOTAL row must never enter this named money lane.
         foreach ($applicableTaxes as $taxConfig) {
-            if ($taxConfig->applies_to === TaxApplicationLevel::DocumentTotal) {
+            if ($taxConfig->applies_to === TaxApplicationLevel::DocumentTotal
+                && $taxConfig->is_stamp_duty
+            ) {
                 $taxBase = $subtotal;
                 /** @var numeric-string $taxAmount */
                 $taxAmount = $taxConfig->calculateAmount($taxBase, $runningTaxTotal);
