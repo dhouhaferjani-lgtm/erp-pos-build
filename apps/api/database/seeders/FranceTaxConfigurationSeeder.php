@@ -65,13 +65,16 @@ class FranceTaxConfigurationSeeder extends Seeder
                     'is_active' => true,
                     'sequence_order' => $rate['sequence_order'],
                     'stacks_on' => 'SUBTOTAL',
+                    // Register G-8 — only real FiscalCategory tokens: the calc
+                    // keys on documents.fiscal_category, so non-category tokens
+                    // (previously 'PURCHASE_INVOICE' and 'QUOTATION' here) would
+                    // never match and only advertised coverage that cannot exist.
+                    // Kept identical to TunisiaTaxConfigurationSeeder's set.
                     'applicable_document_types' => [
                         'TAX_INVOICE',
                         'FISCAL_RECEIPT',
                         'CREDIT_NOTE',
-                        'PURCHASE_INVOICE',
                         'DELIVERY_NOTE',
-                        'QUOTATION',
                     ],
                     'is_stamp_duty' => false,
                     'is_recoverable' => true,

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Taxation;
 
+use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\FranceTaxConfigurationSeeder;
@@ -54,6 +55,33 @@ final class FranceTaxConfigurationSeederTest extends TestCase
             ->where('is_active', true)
             ->count();
         $this->assertSame(5, $allActive);
+    }
+
+    public function test_applicable_document_types_are_real_fiscal_category_tokens(): void
+    {
+        // Register G-8: the calculator keys on documents.fiscal_category, so a
+        // non-category token ('QUOTATION', 'PURCHASE_INVOICE') can never match —
+        // the TN seeder documents exactly this, the FR one advertised both.
+        (new CountriesSeeder)->run();
+        (new FranceTaxConfigurationSeeder)->run();
+
+        $valid = array_map(
+            static fn (FiscalCategory $category): string => $category->value,
+            FiscalCategory::cases(),
+        );
+
+        foreach (TaxConfiguration::where('country_code', 'FR')->get() as $config) {
+            $types = $config->applicable_document_types ?? [];
+            $this->assertNotEmpty($types, "Config {$config->code} advertises no document types");
+
+            foreach ($types as $type) {
+                $this->assertContains(
+                    $type,
+                    $valid,
+                    "Config {$config->code} advertises {$type}, which is not a FiscalCategory token",
+                );
+            }
+        }
     }
 
     public function test_exactly_one_default_rate(): void
