@@ -10,6 +10,7 @@ export const taxConfigurationKeys = {
   list: () => [...taxConfigurationKeys.all, 'list'] as const,
   detail: (id: string) => [...taxConfigurationKeys.all, 'detail', id] as const,
   documentTypes: () => [...taxConfigurationKeys.all, 'document-types'] as const,
+  capabilities: () => [...taxConfigurationKeys.all, 'capabilities'] as const,
 }
 
 function useTaxConfigurationTenantScope(): boolean {
@@ -47,6 +48,17 @@ export function useDocumentTypes() {
     queryFn: () => taxConfigurationApi.getDocumentTypes(),
     enabled: hasTenantScope,
     staleTime: Infinity, // Document types don't change often
+  })
+}
+
+export function useTaxConfigurationCapabilities() {
+  const hasTenantScope = useTaxConfigurationTenantScope()
+
+  return useQuery({
+    queryKey: tenantScopedKey([...taxConfigurationKeys.capabilities()]),
+    queryFn: () => taxConfigurationApi.getCapabilities(),
+    enabled: hasTenantScope,
+    staleTime: Infinity,
   })
 }
 

@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Taxation\Application\Registries\CountryTaxConfigurationRegistry;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Presentation\Resources\TaxConfigurationResource;
 use Illuminate\Http\JsonResponse;
@@ -13,11 +14,13 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class TaxConfigurationController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CountryTaxConfigurationRegistry $countryRegistry,
     ) {}
 
     /**
@@ -94,6 +97,12 @@ class TaxConfigurationController extends Controller
             'fixed_amount.regex' => 'The fixed amount must have at most 3 decimal places.',
         ]);
 
+        $this->validateDocumentTotalPolicy(
+            $company->country_code,
+            $validated['applies_to'],
+            (bool) ($validated['is_stamp_duty'] ?? false),
+        );
+
         // Auto-generate code if not provided
         if (empty($validated['code'])) {
             $validated['code'] = strtoupper(str_replace(' ', '_', $validated['name']));
@@ -132,10 +141,12 @@ class TaxConfigurationController extends Controller
             ->findOrFail($id);
 
         $validated = $request->validate([
+            'tax_type' => ['sometimes', 'string', 'in:PERCENTAGE,FIXED_AMOUNT'],
             'name' => ['sometimes', 'string', 'max:100'],
             'code' => ['nullable', 'string', 'max:50'],
             'percentage_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'fixed_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'applies_to' => ['sometimes', 'string', 'in:LINE_ITEMS,DOCUMENT_TOTAL'],
             'sequence_order' => ['nullable', 'integer', 'min:1'],
             'stacks_on' => ['nullable', 'string', 'in:SUBTOTAL,TOTAL_INCLUDING_PREVIOUS'],
             'applicable_document_types' => ['nullable', 'array'],
@@ -151,6 +162,12 @@ class TaxConfigurationController extends Controller
             'percentage_rate.regex' => 'The percentage rate must have at most 2 decimal places.',
             'fixed_amount.regex' => 'The fixed amount must have at most 3 decimal places.',
         ]);
+
+        $this->validateDocumentTotalPolicy(
+            $company->country_code,
+            $validated['applies_to'] ?? $configuration->applies_to->value,
+            (bool) ($validated['is_stamp_duty'] ?? $configuration->is_stamp_duty),
+        );
 
         $configuration->update($validated);
 
@@ -223,5 +240,34 @@ class TaxConfigurationController extends Controller
         );
 
         return response()->json(['data' => $documentTypes]);
+    }
+
+    public function capabilities(): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+
+        return response()->json([
+            'data' => [
+                'supports_stamp_duty' => $this->countryRegistry->supportsStampDuty($company->country_code),
+            ],
+        ]);
+    }
+
+    private function validateDocumentTotalPolicy(
+        string $countryCode,
+        string $appliesTo,
+        bool $isStampDuty,
+    ): void {
+        if ($isStampDuty && ! $this->countryRegistry->supportsStampDuty($countryCode)) {
+            throw ValidationException::withMessages([
+                'is_stamp_duty' => ['Stamp duty is not supported for this company country.'],
+            ]);
+        }
+
+        if ($appliesTo === 'DOCUMENT_TOTAL' && ! $isStampDuty) {
+            throw ValidationException::withMessages([
+                'applies_to' => ['DOCUMENT_TOTAL is reserved for supported stamp-duty configurations.'],
+            ]);
+        }
     }
 }

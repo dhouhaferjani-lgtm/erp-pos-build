@@ -14,8 +14,14 @@ use Database\Seeders\TunisiaTaxConfigurationSeeder;
 final class CountryTaxConfigurationRegistry
 {
     private const MAP = [
-        'TN' => TunisiaTaxConfigurationSeeder::class,
-        'FR' => FranceTaxConfigurationSeeder::class,
+        'TN' => [
+            'seeder' => TunisiaTaxConfigurationSeeder::class,
+            'supports_stamp_duty' => true,
+        ],
+        'FR' => [
+            'seeder' => FranceTaxConfigurationSeeder::class,
+            'supports_stamp_duty' => false,
+        ],
     ];
 
     /**
@@ -23,11 +29,16 @@ final class CountryTaxConfigurationRegistry
      */
     public function seederFor(string $countryCode): ?string
     {
-        return self::MAP[strtoupper($countryCode)] ?? null;
+        return self::MAP[strtoupper($countryCode)]['seeder'] ?? null;
     }
 
     public function supports(string $countryCode): bool
     {
         return $this->seederFor($countryCode) !== null;
+    }
+
+    public function supportsStampDuty(string $countryCode): bool
+    {
+        return self::MAP[strtoupper($countryCode)]['supports_stamp_duty'] ?? false;
     }
 }

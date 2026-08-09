@@ -20,5 +20,8 @@ final class CountryTaxConfigurationRegistryTest extends TestCase
         $this->assertNull($registry->seederFor('US'));
         $this->assertTrue($registry->supports('TN'));
         $this->assertFalse($registry->supports('US'));
+        $this->assertTrue($registry->supportsStampDuty('tn'));
+        $this->assertFalse($registry->supportsStampDuty('FR'));
+        $this->assertFalse($registry->supportsStampDuty('US'));
     }
 }

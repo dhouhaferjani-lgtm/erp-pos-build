@@ -6,6 +6,7 @@ import {
   useCreateTaxConfiguration,
   useUpdateTaxConfiguration,
   useDocumentTypes,
+  useTaxConfigurationCapabilities,
 } from '../../../hooks/useTaxConfigurations'
 import type { TaxConfiguration, TaxConfigurationFormData, TaxType, TaxApplicationLevel } from '../../../features/settings/types/tax'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -49,8 +50,10 @@ const defaultFormData: TaxConfigurationFormData = {
 export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: TaxConfigFormModalProps) {
   const { t } = useTranslation(['settings', 'common', 'sales'])
   const { data: documentTypes = [] } = useDocumentTypes()
+  const { data: capabilities, isLoading: isLoadingCapabilities } = useTaxConfigurationCapabilities()
   const createTax = useCreateTaxConfiguration()
   const updateTax = useUpdateTaxConfiguration()
+  const supportsStampDuty = capabilities?.supports_stamp_duty === true
 
   const initialFormData = useMemo((): TaxConfigurationFormData => {
     if (editingTax) {
@@ -175,7 +178,12 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
               className={`block w-full rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing} sm:text-sm`}
             >
               <option value="LINE_ITEMS">{t('settings:tax.configurations.form.appliesToLineItems')}</option>
-              <option value="DOCUMENT_TOTAL">{t('settings:tax.configurations.form.appliesToDocument')}</option>
+              <option
+                value="DOCUMENT_TOTAL"
+                disabled={!supportsStampDuty || !(taxFormData.is_stamp_duty ?? false)}
+              >
+                {t('settings:tax.configurations.form.appliesToDocument')}
+              </option>
             </select>
           </div>
           <div>
@@ -260,13 +268,25 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
               <input
                 type="checkbox"
                 checked={taxFormData.is_stamp_duty ?? false}
-                onChange={(e) => { handleTaxFormChange('is_stamp_duty', e.target.checked); }}
+                disabled={!supportsStampDuty}
+                onChange={(e) => {
+                  const isStampDuty = e.target.checked
+                  setTaxFormData(prev => ({
+                    ...prev,
+                    is_stamp_duty: isStampDuty,
+                    ...(!isStampDuty && prev.applies_to === 'DOCUMENT_TOTAL'
+                      ? { applies_to: 'LINE_ITEMS' as const }
+                      : {}),
+                  }))
+                }}
                 className={`h-4 w-4 ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing} ${colorTokens.border.default} rounded`}
               />
               <span className={`ms-2 text-sm ${colorTokens.text.secondary}`}>{t('settings:tax.configurations.form.stampDuty')}</span>
             </label>
             <p className={`text-xs ${colorTokens.text.subtle} mt-1 ms-6`}>
-              {t('settings:tax.configurations.form.stampDutyHelp')}
+              {!isLoadingCapabilities && !supportsStampDuty
+                ? t('settings:tax.configurations.form.stampDutyUnavailable')
+                : t('settings:tax.configurations.form.stampDutyHelp')}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4">

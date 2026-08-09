@@ -92,10 +92,10 @@ final class TaxConfigManageSeededRoleGrantHttpTest extends TestCase
     {
         return [
             'tax_type' => 'FIXED_AMOUNT',
-            'name' => 'Timbre Fiscal - Seeded Role',
+            'name' => 'Taxe fixe - Seeded Role',
             'code' => 'STAMP_SEEDED_ROLE',
             'fixed_amount' => '0.100',
-            'applies_to' => 'DOCUMENT_TOTAL',
+            'applies_to' => 'LINE_ITEMS',
             'applicable_document_types' => ['FISCAL_RECEIPT'],
             'is_active' => true,
         ];

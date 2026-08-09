@@ -49,6 +49,10 @@ export interface DocumentType {
   label: string
 }
 
+export interface TaxConfigurationCapabilities {
+  supports_stamp_duty: boolean
+}
+
 export interface TaxExemptionWarning {
   type: 'missing_certificate' | 'expired_certificate' | 'expiring_soon'
   message: string

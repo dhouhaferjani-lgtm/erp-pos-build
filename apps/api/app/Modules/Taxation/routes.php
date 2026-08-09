@@ -19,6 +19,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // manage permission so a cashier cannot alter tax rates.
     Route::prefix('taxation/configurations')->group(function (): void {
         Route::get('/', [TaxConfigurationController::class, 'index']);
+        Route::get('/capabilities', [TaxConfigurationController::class, 'capabilities']);
         Route::get('/document-types', [TaxConfigurationController::class, 'documentTypes']);
         Route::post('/reorder', [TaxConfigurationController::class, 'reorder'])
             ->middleware('can:taxation.tax_configurations.manage');
