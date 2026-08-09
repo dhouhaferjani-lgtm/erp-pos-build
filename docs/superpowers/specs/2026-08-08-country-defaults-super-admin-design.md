@@ -1,7 +1,7 @@
 # Country Defaults in the Super Admin Panel — Design Spec
 
 - **Date:** 2026-08-08
-- **Status:** Rev 9 — post Codex round 8 (REJECT: R8-01..R8-03; rounds 1-7 items ALL closed except the timbre lane). Timbre model completed: stamp-purpose negative rule extended to EVERY non-timbre scope (exact or wildcard); §5.1 resolver algorithm made authoritative (normalize → exact → capability check → typed timbre exception → wildcard), G2/§3.3 defer to it; `capability_registry_version` persisted at publish with a recertification-on-drift contract + capability-vs-tax-seeder drift CI test. Pending Codex round 9 + owner sign-off. Register: `reviews/2026-08-08-country-defaults-spec-review.md`.
+- **Status:** Rev 10 — post Codex round 9 (REJECT: R9-01 + R9-02). R9-01 closed: capability-version drift now blocks **provisioning** (resolver step 2b, typed `TemplateRecertificationRequiredException`; verify fails non-zero; registry bumps are runbook-gated clone→recertify→re-point). R9-02 (live tenant tax-surface defects, pre-existing): **owner ruling 2026-08-09 — handed to the main fixes lane** via `docs/handoff/HANDOVER-live-accounting-gaps-country-defaults-review-2026-08-09.md` (items G+H), recorded in N3 as a named precondition for the certification claim; N3 otherwise intact. Pending Codex round 10 + owner sign-off. Register: `reviews/2026-08-08-country-defaults-spec-review.md`.
 - **Owner decisions (locked):**
   - Scope = all country defaults via a generic framework, phased with chart of accounts (COA) first
   - Model = template library + country assignment
@@ -51,7 +51,7 @@ Consequences:
 
 - N1. No changes to accounts of existing companies. New required accounts for existing tenants remain idempotent tenant backfill migrations + `tenants:migrate-rolling`.
 - N2. Other domains are follow-up phases; the framework is domain-generic now, only the COA content table and editor ship.
-- N3. No tenant-facing changes. Tenants keep the existing account API (list/show/create/update — no account-delete route; purpose mappings have delete/unassign: `Accounting/Presentation/routes.php:25-75`).
+- N3. No tenant-facing changes. Tenants keep the existing account API (list/show/create/update — no account-delete route; purpose mappings have delete/unassign: `Accounting/Presentation/routes.php:25-75`). **R9-02 disposition (owner ruling 2026-08-09):** the tenant tax-surface defects found in round 9 (tax API permits `is_stamp_duty` for non-timbre countries; `TaxCalculationService` aggregates ALL `DOCUMENT_TOTAL` taxes into `stamp_duty_amount` unfiltered) are live defects independent of this feature, handed to the main fixes lane — `docs/handoff/HANDOVER-live-accounting-gaps-country-defaults-review-2026-08-09.md` items G+H. They remain a **named precondition for the per-country certification CLAIM**: until G+H ship, the timbre invariant is enforced at the template layer only, and tenant-authored tax data can still route amounts into stamp accounting. The template invariants in this spec ship regardless.
 - N4. No i18n of template content in v1.
 - N5. No four-eyes publish approval in v1.
 - N6. Purpose-based rewrite of `InstrumentAccountResolver` and the withholding document-literal lane (follow-ups, §13).
@@ -76,7 +76,7 @@ Consequences:
 | content_hash | string nullable | SHA-256 over the canonical serialization (§5.4); set at publish |
 | standard_ref | string nullable | referenced accounting standard + version; required at publish |
 | certified_country_codes | jsonb nullable | **immutable once published** (R2-08). Scope algebra (R3-02/R7-02): EITHER a non-empty set of exact ISO codes OR the single element `*` — **never mixed**, and an exact set may not mix timbre with non-timbre countries per `CountryAccountingCapabilities` (§4.2.1). Exact set ⇒ assignable only to exactly those countries; protected-code validation runs per listed country with that country's variant. `*` ⇒ certified as the generic **non-timbre** fallback: assignable ONLY to the `*` assignment row, must not contain a stamp-duty-purposed account, and is explicitly NOT jurisdiction-certified for any exact country (matches today's Generic seeder role). A non-timbre country with no exact assignment provisions via wildcard (generic, not-country-certified chart — by design); a **timbre-capable country never falls back to wildcard** — provisioning fails loudly without an exact assignment. |
-| capability_registry_version | string nullable | **set at publish, immutable** (R8-03): the `CountryAccountingCapabilities` version the certification was decided under; a published template is always interpreted under ITS stored version. When the current registry version differs, `country-defaults:verify` flags the template as needing **recertification before any NEW assignment** (existing assignments keep serving — provisioning correctness is guarded by the resolver + gate invariants, not silent reinterpretation) |
+| capability_registry_version | string nullable | **set at publish, immutable** (R8-03/R9-01): the `CountryAccountingCapabilities` version the certification was decided under. **Version drift blocks PROVISIONING, not just new assignments:** the resolver (§5.1 step 2b) refuses any assignment whose template's stored version differs from the current registry version, throwing a typed `TemplateRecertificationRequiredException`; `country-defaults:verify` FAILS (non-zero) on drift. Bumping the registry version is a runbook operation: clone → recertify → re-point every affected assignment BEFORE the new version becomes active. Existing companies are untouched (owner ruling) |
 | certified_by | FK super_admins nullable | who published/certified |
 | published_at | timestamp nullable | certification decision timestamp |
 | created_by | FK super_admins nullable | |
@@ -145,11 +145,12 @@ Editor shows protected rows locked with an explanation. Negative tests for every
 ### 5.1 Resolver
 
 `CountryTemplateResolver::resolve(TemplateDomain $domain, string $countryCode): TemplateData` — reads on the `central` connection. **Normalization invariant (R2-05):** the resolver `trim()`s and uppercases its input, and assignment writes normalize `country_code` route/body parameters. Note the additional-company path accepts any 2-char string and persists verbatim (`CreateCompanyRequest.php:19-27`), while only the legacy COA service uppercased before matching — lowercase `tn` must resolve to TN, covered by tests for both registration and additional-company creation.
-**Authoritative resolution algorithm (R8-02 — this section governs; G2/§3.3 defer to it):**
+**Authoritative resolution algorithm (R8-02/R9-01 — this section governs; G2/§3.3 defer to it):**
 1. normalize (trim + uppercase);
-2. exact assignment for `(countryCode, domain)` → use it;
-3. no exact assignment → consult `CountryAccountingCapabilities`: if the country is **timbre-capable, throw a typed provisioning exception** (`TimbreCountryRequiresExactAssignmentException` — never seed a non-timbre generic chart);
-4. otherwise resolve the pinned `*` assignment.
+2. exact assignment for `(countryCode, domain)` → **2b. version check:** the assigned template's `capability_registry_version` must equal the current `CountryAccountingCapabilities` version, else throw `TemplateRecertificationRequiredException` (a stale certification must never provision a new company — covers both non-timbre→timbre and timbre→non-timbre transitions); then use it;
+3. no exact assignment → consult `CountryAccountingCapabilities`: if the country is **timbre-capable, throw `TimbreCountryRequiresExactAssignmentException`** (never seed a non-timbre generic chart);
+4. otherwise resolve the pinned `*` assignment (same 2b version check applies).
+Tests: capability transitions in both directions through BOTH registration and additional-company paths (provisioning refused until re-pointed).
 
 **No caching for provisioning resolution (F-11).** Company creation is low-frequency; the documented forget-race (`CompanyConfigService.php:95-103`) would let a stale template serve for a full TTL after a re-point. Admin-UI list endpoints may cache; provisioning never does.
 
