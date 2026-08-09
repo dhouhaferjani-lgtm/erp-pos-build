@@ -266,6 +266,17 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             // the purpose sits on the 603 family node because the purpose is not
             // product-class aware. Resolution is purpose-first, so an operator (or
             // the super-admin COA template) may move it to 6037 without code change.
+            // EXPERT-COMPTABLE CONFIRMATION OWED (SEEDS gate finding I-3): because
+            // the ERP is perpetual and NEVER debits 607 on the normal purchase flow
+            // (purchases capitalise to Inventory via GR-IR,
+            // GeneralLedgerService::…GoodsReceivedNotInvoiced; the only 607
+            // resolution is the bonus-stock return path), the whole cost of sales
+            // lands in "variation des stocks" and the compte de résultat / liasse
+            // 2052 line "Achats de marchandises" stays structurally 0.00. The P&L
+            // TOTAL is correct; the FS/FT split is not the conventional PCG
+            // presentation. Not a regression (TN behaves the same) and not a
+            // blocker — but the expert must rule on the presentation before the
+            // first liasse, not at filing. Register H-5 carries the full list.
             ['code' => '603', 'name' => 'Variation des stocks (approvisionnements et marchandises)', 'type' => 'expense', 'parent_code' => '60',
                 'system_purpose' => SystemAccountPurpose::CostOfGoodsSold->value, 'is_system' => true],
             // Register G-4 parity — the PCG homes for the four expense purposes

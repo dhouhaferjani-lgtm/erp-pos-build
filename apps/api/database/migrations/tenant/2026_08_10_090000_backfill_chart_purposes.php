@@ -5,6 +5,7 @@ declare(strict_types=1);
 use App\Console\Commands\BackfillChartPurposesCommand;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -41,41 +42,100 @@ use Illuminate\Support\Facades\Schema;
  *    (or before the accounting tables exist) is a quiet no-op;
  *  - the command is idempotent: a chart that already resolves a purpose — on
  *    ANY code — is reported and left untouched;
- *  - it NEVER throws here. The command returns FAILURE (and its gate token)
- *    when a chart could not be placed, e.g. a chart missing the parent class
- *    header; that is an operator follow-up, not a reason to abort a tenant's
- *    whole migration run. The full command output, token included, is written
- *    to the log so the same evidence is available after an unattended deploy.
+ *  - it NEVER throws here, and the failure is CONTAINED IN A SAVEPOINT so the
+ *    enclosing migration transaction survives it (see up(); on PostgreSQL a
+ *    caught QueryException would otherwise leave the whole transaction aborted).
+ *    The command returns FAILURE (and its gate token) when a chart could not be
+ *    placed, e.g. a chart missing the parent class header; that is an operator
+ *    follow-up, not a reason to abort a tenant's whole migration run. The full
+ *    command output, token included, is written to the log so the same evidence
+ *    is available after an unattended deploy.
  */
 return new class extends Migration
 {
+    /**
+     * Deploy-gate token for the AUTOMATIC (`tenants:migrate`) path.
+     *
+     * Deliberately NOT the command's own `CHART-PURPOSE BACKFILL FAILURES:`
+     * token: that one belongs to the manual `tenants:run` channel, and reusing
+     * it would let either gate be satisfied by the other channel's output. One
+     * line per tenant, exactly once (a migration runs once per tenant database),
+     * carrying `status=ok` or `status=FAILED` so the checklist never has to
+     * parse a count out of a log line.
+     */
+    private const GATE_TOKEN = 'CHART-PURPOSE BACKFILL MIGRATION:';
+
     public function up(): void
     {
         if (! Schema::hasTable('companies') || ! Schema::hasTable('accounts')) {
             return;
         }
 
-        try {
-            $exitCode = Artisan::call(BackfillChartPurposesCommand::class);
-            $output = trim(Artisan::output());
+        // Under `tenants:migrate` all tenants share one laravel.log, so an
+        // unattributed line cannot be acted on (gate finding N-4).
+        $tenantKey = (string) (tenant()?->getTenantKey() ?? 'unknown');
 
+        try {
+            $exitCode = 1;
+            $output = '';
+
+            // SAVEPOINT, not a bare call. `migrate` wraps each migration in a
+            // transaction (Migrator::runMigration + PostgresGrammar::$transactions),
+            // and on PostgreSQL a failed statement aborts that WHOLE transaction
+            // (SQLSTATE 25P02) — catching the exception below would leave the
+            // connection unusable, so the migration repository's own bookkeeping
+            // INSERT would fail and the tenant's run would die anyway.
+            // DB::transaction() opens a SAVEPOINT when a transaction is already
+            // active and rolls back to it alone, which is what makes the catch
+            // below an honest guarantee. Proven by
+            // BackfillChartPurposesMigrationTest::test_a_failing_backfill_does_not_poison_the_enclosing_migration_transaction.
+            // Bound to the MIGRATION's own connection, not the default one: they
+            // are the same object under `tenants:migrate` (config/tenancy.php
+            // passes no `--database`), but a runner that did pass one would open a
+            // separate real transaction while the enclosing one stayed poisoned —
+            // silently lapsing the very guarantee this block exists for.
+            DB::connection($this->getConnection())->transaction(function () use (&$exitCode, &$output): void {
+                $exitCode = Artisan::call(BackfillChartPurposesCommand::class);
+                $output = trim(Artisan::output());
+            });
+
+            // Per-company detail (which chart, which reason) — info level, so it
+            // survives only where LOG_LEVEL admits it. Production does not; the
+            // remedy there is a manual `tenants:run` re-run, which prints all of it.
             Log::info(sprintf(
-                "Migration backfill_chart_purposes: command exited %d.\n%s",
+                "Migration backfill_chart_purposes [tenant %s]: command exited %d.\n%s",
+                $tenantKey,
                 $exitCode,
                 $output,
             ));
 
-            if ($exitCode !== 0) {
-                Log::warning(
-                    'Migration backfill_chart_purposes: at least one chart could not be placed '
-                    .'(see the CHART-PURPOSE BACKFILL FAILURES token above). Assign the purpose '
-                    .'manually in Settings -> Chart of Accounts, or add the missing parent account.',
-                );
-            }
+            // DEPLOY GATE LINE — WARNING, not info, because production runs
+            // LOG_LEVEL=warning (.env.production.example:33) and drops info
+            // entirely; an info-level gate line makes the checklist's automatic
+            // grep pass on an EMPTY log (gate finding N-2).
+            Log::warning(sprintf(
+                '%s tenant=%s status=%s exit=%d.%s',
+                self::GATE_TOKEN,
+                $tenantKey,
+                $exitCode === 0 ? 'ok' : 'FAILED',
+                $exitCode,
+                $exitCode === 0
+                    ? ''
+                    : ' At least one chart could not be placed. Re-run'
+                        .' `php artisan tenants:run accounting:backfill-chart-purposes` for the per-company'
+                        .' reasons, then assign the purpose in Settings -> Chart of Accounts or add the'
+                        .' missing parent account.',
+            ));
         } catch (Throwable $e) {
             // A tenant whose chart cannot be repaired must not brick the whole
-            // unattended migration run for every other tenant.
-            Log::error('Migration backfill_chart_purposes failed: '.$e->getMessage());
+            // unattended migration run for every other tenant. Same gate token at
+            // error level, so the checklist's failure grep catches this path too.
+            Log::error(sprintf(
+                '%s tenant=%s status=FAILED exit=exception. %s',
+                self::GATE_TOKEN,
+                $tenantKey,
+                $e->getMessage(),
+            ));
         }
     }
 

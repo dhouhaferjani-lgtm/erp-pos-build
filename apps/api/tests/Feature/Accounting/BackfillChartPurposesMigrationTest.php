@@ -13,6 +13,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 use Tests\Traits\ProvesTenantMigrationRoundTrip;
@@ -36,6 +37,14 @@ final class BackfillChartPurposesMigrationTest extends TestCase
     use RefreshDatabase;
 
     private const MIGRATION = '2026_08_10_090000_backfill_chart_purposes.php';
+
+    /**
+     * The token the deploy checklist greps for on the AUTOMATIC (tenants:migrate)
+     * path. Distinct from the COMMAND's own `CHART-PURPOSE BACKFILL FAILURES:`
+     * token, which the checklist greps on the manual `tenants:run` path — one
+     * token per channel, so neither gate can be satisfied by the other's output.
+     */
+    private const GATE_TOKEN = 'CHART-PURPOSE BACKFILL MIGRATION:';
 
     private Tenant $tenant;
 
@@ -136,6 +145,88 @@ final class BackfillChartPurposesMigrationTest extends TestCase
 
         $this->assertSame($afterFirst, DB::table('accounts')->where('company_id', $company->id)->count());
         $this->assertSame(0, DB::table('accounts')->where('company_id', $chartless->id)->count());
+    }
+
+    /**
+     * The deploy checklist's AUTOMATIC path greps the tenant log for evidence
+     * that every tenant ran and none failed. Production sets
+     * `LOG_LEVEL=warning` (`apps/api/.env.production.example:33`), which drops
+     * `Log::info` entirely — so a gate line emitted at info level makes the
+     * checklist pass on an EMPTY log (gate finding N-2). The gate line must
+     * therefore be emitted at warning-or-above, carry the tenant key (N-4), and
+     * state pass/fail without the reader having to parse a count.
+     */
+    public function test_it_emits_the_deploy_gate_line_at_warning_level_on_success(): void
+    {
+        $company = $this->frenchCompany();
+        (new FranceChartOfAccountsSeeder)->run($company->id, $this->tenant->id);
+        $this->stripLanePurposes($company->id);
+
+        Log::spy();
+
+        $this->runMigration();
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, self::GATE_TOKEN)
+                && str_contains($message, 'status=ok'))
+            ->once();
+    }
+
+    public function test_the_deploy_gate_line_reports_failure_when_a_chart_cannot_be_placed(): void
+    {
+        // A company with no chart at all: the command returns FAILURE, and the
+        // gate line must say so at a level production keeps.
+        $this->frenchCompany();
+
+        Log::spy();
+
+        $this->runMigration();
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, self::GATE_TOKEN)
+                && str_contains($message, 'status=FAILED'))
+            ->once();
+    }
+
+    /**
+     * The migration's `catch (Throwable)` promises that "a tenant whose chart
+     * cannot be repaired must not brick the whole unattended migration run".
+     * On PostgreSQL, catching a `QueryException` is NOT enough to keep that
+     * promise: the failed statement aborts the ENCLOSING transaction (the one
+     * `migrate` wraps every migration in), so every later statement — including
+     * the migration repository's own bookkeeping INSERT — fails with "current
+     * transaction is aborted". The repair must therefore run inside a SAVEPOINT
+     * that can be rolled back on its own.
+     *
+     * The throw is forced the way an unforeseen schema/state drift would cause
+     * one: the column the backfill writes is removed, so its INSERT raises.
+     */
+    public function test_a_failing_backfill_does_not_poison_the_enclosing_migration_transaction(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped(
+                'Only PostgreSQL aborts the enclosing transaction after a failed statement; '
+                .'this is the production driver and the hazard is PG-specific.',
+            );
+        }
+
+        $company = $this->frenchCompany();
+        (new FranceChartOfAccountsSeeder)->run($company->id, $this->tenant->id);
+        $this->stripLanePurposes($company->id);
+
+        DB::statement('ALTER TABLE accounts DROP COLUMN balance');
+
+        // Must not throw — that part the catch already guarantees.
+        $this->runMigration();
+
+        // THE POINT: the connection must still be usable afterwards, or
+        // `tenants:migrate` dies on the next statement for this tenant and,
+        // depending on the runner, for every tenant after it.
+        $this->assertSame(
+            1,
+            DB::table('companies')->where('id', $company->id)->count(),
+            'the enclosing transaction must survive a failed backfill',
+        );
     }
 
     /**

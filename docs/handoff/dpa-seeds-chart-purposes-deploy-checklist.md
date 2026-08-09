@@ -17,14 +17,30 @@ Branch: `fix/dpa-seeder-gaps-accounting` · Register entries: E-1/H-5, G-3, G-4,
 `database/migrations/tenant/2026_08_10_090000_backfill_chart_purposes.php` runs on `tenants:migrate`,
 which staging auto-runs on push to `origin/dev`. It delegates to
 `accounting:backfill-chart-purposes`, is idempotent, and **never throws** — a chart it cannot place is
-logged, not fatal, so one broken tenant cannot abort the run for the others.
+logged, not fatal. The repair runs inside a **savepoint on the migration's own connection**, which is
+what makes that promise true on PostgreSQL: a failed statement aborts the enclosing migration
+transaction (SQLSTATE 25P02), so a merely-caught exception would still kill this tenant's run at the
+next statement. One broken tenant cannot abort the run for the others.
 
-**Post-deploy log check** (the migration writes the command's full output, gate token included):
+**Post-deploy log check.** The gate line for this path uses its own token,
+`CHART-PURPOSE BACKFILL MIGRATION:`, emitted at **warning** level (`error` on the exception path) —
+NOT at `info`, because production runs `LOG_LEVEL=warning` (`apps/api/.env.production.example:33`) and
+would drop an info-level line, leaving both greps below to pass on an empty log. Exactly one line per
+tenant, written once (a migration runs once per tenant database):
 
 ```bash
-grep -c 'Migration backfill_chart_purposes' storage/logs/laravel.log     # one line per tenant
-! grep -qE 'CHART-PURPOSE BACKFILL FAILURES: [1-9]' storage/logs/laravel.log
+# (a) EVERY tenant reported — absence is a FAILURE, not a pass. Set TENANT_COUNT first
+#     (e.g. TENANT_COUNT=$(php artisan tenants:list | grep -c .) — verify against your runner).
+test "$(grep -c 'CHART-PURPOSE BACKFILL MIGRATION:' storage/logs/laravel.log)" -eq "$TENANT_COUNT"
+
+# (b) no tenant failed. Covers BOTH the command-failure path (warning) and the
+#     exception path (error) — they share the token and the status word.
+! grep -q 'CHART-PURPOSE BACKFILL MIGRATION:.*status=FAILED' storage/logs/laravel.log
 ```
+
+Each line carries `tenant=<key>`, so a failure is attributable in a shared `laravel.log`. The **per-company**
+reasons are logged at `info` level and are therefore visible only where `LOG_LEVEL` admits them; on
+production, get them by re-running the manual path below, which prints every reason to stdout.
 
 ## Manual re-run (or a pre-flight dry run)
 

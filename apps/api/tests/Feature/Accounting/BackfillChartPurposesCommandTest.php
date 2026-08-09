@@ -198,7 +198,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $this->seedAccount($company, '41', 'asset');
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 3')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 3')
             ->assertFailed();
 
         $this->assertSame(0, DB::table('accounts')->where('company_id', $company->id)->where('code', '603')->count());
@@ -212,7 +212,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $wrongType = $this->seedAccount($company, '603', 'revenue');
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
             ->assertFailed();
 
         $this->assertNull(DB::table('accounts')->where('id', $wrongType)->value('system_purpose'));
@@ -226,7 +226,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $inactive = $this->seedAccount($company, '628', 'expense', null, null, false);
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
             ->assertFailed();
 
         $this->assertNull(DB::table('accounts')->where('id', $inactive)->value('system_purpose'));
@@ -246,7 +246,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         );
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
             ->assertFailed();
 
         $this->assertSame(
@@ -270,7 +270,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         );
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
             ->assertFailed();
 
         // Neither repaired nor duplicated — reported for an operator.
@@ -301,7 +301,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $countAfterFirst = DB::table('accounts')->where('company_id', $company->id)->count();
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
             ->assertSuccessful();
 
         $this->assertSame($countAfterFirst, DB::table('accounts')->where('company_id', $company->id)->count());
@@ -314,7 +314,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $company->delete();
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
             ->assertSuccessful();
 
         $this->assertSame(0, DB::table('accounts')->where('company_id', $company->id)->where('code', '603')->count());

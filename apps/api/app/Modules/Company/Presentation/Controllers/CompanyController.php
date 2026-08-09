@@ -20,13 +20,13 @@ use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Company\Presentation\Requests\CreateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
+use App\Modules\Expense\Application\Services\ExpenseCategoryProvisioningService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
-use Database\Seeders\ExpenseCategorySeeder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -47,7 +47,7 @@ class CompanyController extends Controller
         private readonly CompanyTaxStatusValidationService $taxStatusValidationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
-        private readonly ExpenseCategorySeeder $expenseCategorySeeder,
+        private readonly ExpenseCategoryProvisioningService $expenseCategoryProvisioning,
     ) {}
 
     /**
@@ -169,7 +169,7 @@ class CompanyController extends Controller
             // AFTER step 5 (categories link to class-6 accounts) and is
             // idempotent (firstOrCreate); it inserts nothing when the chart
             // above could not be seeded.
-            $this->expenseCategorySeeder->seedForCompany($company);
+            $this->expenseCategoryProvisioning->provisionForCompany($company);
 
             // 6. Provision country tax configurations and set company default tax
             $this->companyTaxProvisioning->provisionForCompany($company);
