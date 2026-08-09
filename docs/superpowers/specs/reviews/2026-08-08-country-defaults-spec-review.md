@@ -976,3 +976,9 @@ Rev 13 (`21f92c0cd`) was checked only for the R12-01 correction.
 Required change: qualify the “full current publish-gate invariants” scan so it applies to every **currently assigned** template, while superseded unassigned published versions are non-blocking history (optionally integrity/hash-checked or validated under their stored capability-registry version). Keep the all-assignment drift scan and the no-archive transition test unchanged.
 
 FINAL VERDICT: CHANGES REQUIRED
+
+## Round 14
+
+Rev 14 (`e7f3a45d1`) was checked only for the Round-13 required change. **PASS.** §6 now re-executes the full current publish gate only for currently assigned templates, while superseded unassigned published versions receive only an integrity check of stored `content_hash` against their rows and remain non-blocking immutable history (`docs/superpowers/specs/2026-08-08-country-defaults-super-admin-design.md:202`). The same contract scans every current assignment, including every exact country and `*`; requires no archive step; and tests `TN`, `FR`, `*`, plus an unchanged exact assignment, remaining non-zero until the last re-point and then passing with superseded versions still published (`docs/superpowers/specs/2026-08-08-country-defaults-super-admin-design.md:202`). This is consistent with §3.1's global activation/re-point protocol and §5.1's identical scalar-version refusal for exact and wildcard assignments (`docs/superpowers/specs/2026-08-08-country-defaults-super-admin-design.md:79,148-153`).
+
+FINAL VERDICT: ACCEPT
