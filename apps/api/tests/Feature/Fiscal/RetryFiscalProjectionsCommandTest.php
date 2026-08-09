@@ -23,6 +23,7 @@ use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Console\Command;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
@@ -186,6 +187,67 @@ final class RetryFiscalProjectionsCommandTest extends TestCase
         );
     }
 
+    public function test_dry_run_can_inventory_only_account_charge_dead_letters(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $operator = User::factory()->create(['tenant_id' => $tenant->id]);
+        $accountCharge = $this->storeFiscalEvent(
+            $tenant->id,
+            $company->id,
+            $operator->id,
+            FiscalEventType::ACCOUNT_CHARGE,
+        );
+        $accountPayment = $this->storeFiscalEvent(
+            $tenant->id,
+            $company->id,
+            $operator->id,
+            FiscalEventType::ACCOUNT_PAYMENT,
+            18,
+        );
+        $accountChargeRow = $this->projectionRow(
+            $accountCharge,
+            'treasury_account_charge_bridge',
+            ProjectionStatus::DeadLettered,
+            5,
+        );
+        $accountPaymentRow = $this->projectionRow(
+            $accountPayment,
+            'treasury_account_payment_bridge',
+            ProjectionStatus::DeadLettered,
+            5,
+        );
+
+        $exitCode = Artisan::call('fiscal:retry-projections', [
+            '--tenant' => $tenant->id,
+            '--event-type' => FiscalEventType::ACCOUNT_CHARGE->value,
+            '--dry-run' => true,
+            '--min-age-minutes' => '0',
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(Command::SUCCESS, $exitCode);
+        $this->assertStringContainsString($accountCharge->id, $output);
+        $this->assertStringContainsString('treasury_account_charge_bridge', $output);
+        $this->assertStringContainsString(FiscalEventType::ACCOUNT_CHARGE->value, $output);
+        $this->assertStringContainsString('payment_repository_missing_account_id', $output);
+        $this->assertStringNotContainsString($accountPayment->id, $output);
+
+        $this->assertSame(ProjectionStatus::DeadLettered, $accountChargeRow->refresh()->projection_status);
+        $this->assertSame(ProjectionStatus::DeadLettered, $accountPaymentRow->refresh()->projection_status);
+    }
+
+    public function test_invalid_event_type_filter_fails_loudly(): void
+    {
+        Tenant::factory()->create();
+
+        $this->artisan('fiscal:retry-projections', [
+            '--event-type' => 'NOT_A_FISCAL_EVENT',
+        ])
+            ->expectsOutputToContain('--event-type must be a known fiscal event type')
+            ->assertExitCode(Command::INVALID);
+    }
+
     /**
      * @param  list<FiscalEventProjector>  $projectors
      */
@@ -201,8 +263,13 @@ final class RetryFiscalProjectionsCommandTest extends TestCase
         );
     }
 
-    private function storeFiscalEvent(string $tenantId, string $companyId, string $operatorId): FiscalEvent
-    {
+    private function storeFiscalEvent(
+        string $tenantId,
+        string $companyId,
+        string $operatorId,
+        FiscalEventType $eventType = FiscalEventType::ACCOUNT_PAYMENT,
+        int $sequenceNumber = 17,
+    ): FiscalEvent {
         $payload = ['test' => 'retry-projections'];
 
         return FiscalEvent::query()->create([
@@ -211,10 +278,10 @@ final class RetryFiscalProjectionsCommandTest extends TestCase
             'company_id' => $companyId,
             'terminal_id' => '33333333-3333-4333-8333-333333333333',
             'operator_id' => $operatorId,
-            'event_type' => FiscalEventType::ACCOUNT_PAYMENT,
+            'event_type' => $eventType,
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
-            'sequence_number' => 17,
+            'sequence_number' => $sequenceNumber,
             'event_time_device' => '2026-07-07 10:15:30',
             'business_date' => '2026-07-07',
             'last_server_time_seen' => null,

@@ -19,6 +19,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\OutboxIngestor;
@@ -28,6 +29,7 @@ use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\Fiscal\Domain\Models\FiscalEventProjectionRow;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
 use App\Modules\Partner\Domain\Partner;
@@ -37,11 +39,14 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
 use Tests\TestCase;
+use Throwable;
 
 /**
  * Phase 3 Task 10 closure matrix.
@@ -180,6 +185,112 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
             'projector_name' => 'treasury_account_charge_bridge',
             'projection_status' => ProjectionStatus::Applied->value,
         ]);
+    }
+
+    public function test_discounted_account_charge_dead_letter_recovers_after_chart_backfill_and_replay(): void
+    {
+        Queue::fake();
+        $this->bindModuleActivation(true);
+        Sanctum::actingAs($this->cashier);
+
+        Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::SalesDiscount)
+            ->delete();
+        Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '41',
+            'name' => 'Clients et comptes rattachés',
+            'type' => AccountType::Asset,
+            'system_purpose' => null,
+            'is_active' => true,
+        ]);
+        Account::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '70',
+            'name' => 'Ventes de produits fabriqués, prestations de services, marchandises',
+            'type' => AccountType::Revenue,
+            'system_purpose' => null,
+            'is_active' => true,
+        ]);
+
+        $eventId = Str::uuid()->toString();
+        $envelope = $this->sealedEnvelope(
+            eventId: $eventId,
+            sequence: 1,
+            previousHash: $this->genesisSeed,
+            accountChargeUuid: Str::uuid()->toString(),
+            payloadOverrides: [
+                'credit_decision' => ['credit_available_after' => '86.000'],
+                'local_balance_snapshot' => [
+                    'charge_amount' => '114.000',
+                    'projected_net_balance_after' => '414.000',
+                    'projected_receivable_balance_after' => '414.000',
+                ],
+                'totals' => [
+                    'amount_charged_to_account' => '114.000',
+                    'grand_total_before_charge' => '114.000',
+                    'total' => '114.000',
+                ],
+                'transaction_discount_amount' => '5.000',
+                'transaction_discount_reason' => 'loyalty_discount',
+            ],
+        );
+
+        $this->postJson('/api/v1/pos/sync/fiscal-events', ['envelopes' => [$envelope]])
+            ->assertOk()
+            ->assertJsonPath('results.0.stored', true);
+
+        $row = FiscalEventProjectionRow::query()
+            ->where('fiscal_event_id', $eventId)
+            ->where('projector_name', 'treasury_account_charge_bridge')
+            ->firstOrFail();
+        $job = new ApplyFiscalEventProjectionJob($row->id);
+
+        try {
+            $job->handle(DB::connection(), $this->app->make(FiscalEventProjectionRegistry::class));
+            $this->fail('The missing SalesDiscount purpose should fail the real projection.');
+        } catch (Throwable $exception) {
+            $job->failed($exception);
+        }
+
+        $this->assertSame(ProjectionStatus::DeadLettered, $row->refresh()->projection_status);
+        $this->assertStringContainsString('sales_discount', (string) $row->last_error);
+        $this->assertSame(0, JournalEntry::query()->where('source_id', $eventId)->count());
+
+        $this->assertSame(0, Artisan::call('accounting:backfill-chart-purposes'));
+        $this->assertDatabaseHas('accounts', [
+            'company_id' => $this->company->id,
+            'code' => '7097',
+            'system_purpose' => SystemAccountPurpose::SalesDiscount->value,
+        ]);
+        $this->assertSame(0, Artisan::call('accounting:backfill-chart-purposes'));
+        $this->assertSame(1, Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::SalesDiscount)
+            ->count());
+
+        $this->assertSame(0, Artisan::call('fiscal:retry-projections', [
+            '--tenant' => $this->tenant->id,
+            '--event-type' => FiscalEventType::ACCOUNT_CHARGE->value,
+            '--event-id' => $eventId,
+            '--projector' => 'treasury_account_charge_bridge',
+            '--min-age-minutes' => '0',
+            '--sync' => true,
+        ]));
+
+        $this->assertSame(ProjectionStatus::Applied, $row->refresh()->projection_status);
+        $entry = JournalEntry::query()
+            ->with('lines.account')
+            ->where('source_type', 'pos_account_charge')
+            ->where('source_id', $eventId)
+            ->firstOrFail();
+        $this->assertSame('114.000', $this->lineForPurpose($entry, SystemAccountPurpose::CustomerReceivable)->debit);
+        $this->assertSame('5.000', $this->lineForPurpose($entry, SystemAccountPurpose::SalesDiscount)->debit);
+        $this->assertSame('100.000', $this->lineForPurpose($entry, SystemAccountPurpose::ProductRevenue)->credit);
+        $this->assertSame('19.000', $this->lineForPurpose($entry, SystemAccountPurpose::VatCollected)->credit);
     }
 
     public function test_account_charge_pos_only_projects_printable_and_skips_bridges(): void

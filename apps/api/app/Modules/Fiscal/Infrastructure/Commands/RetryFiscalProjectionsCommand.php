@@ -8,6 +8,7 @@ use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEventProjectionRow;
 use App\Modules\Tenant\Domain\Tenant;
@@ -27,6 +28,7 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
     /** @var string */
     protected $signature = 'fiscal:retry-projections
         {--projector= : restrict to one fiscal_event_projections.projector_name}
+        {--event-type= : restrict to one fiscal_events.event_type, such as ACCOUNT_CHARGE}
         {--event-id= : restrict to one fiscal_events.id}
         {--tenant= : restrict tenant iteration to one tenant id}
         {--limit=100 : maximum rows to reset}
@@ -62,6 +64,14 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
         }
 
         $tenantFilter = $this->stringOption('tenant');
+        $eventTypeOption = $this->stringOption('event-type');
+        $eventType = $eventTypeOption === null ? null : FiscalEventType::tryFrom($eventTypeOption);
+        if ($eventTypeOption !== null && $eventType === null) {
+            $this->error('--event-type must be a known fiscal event type.');
+
+            return self::INVALID;
+        }
+
         $remaining = $limit;
         $matchedCount = 0;
 
@@ -72,6 +82,7 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
 
         $exit = $this->forEachTenant(function (Tenant $tenant) use (
             $tenantFilter,
+            $eventType,
             $minAgeMinutes,
             &$remaining,
             &$matchedCount,
@@ -88,20 +99,34 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
                 return self::SUCCESS;
             }
 
-            $rowIds = $this->candidateRowIds($tenant->id, $remaining, $minAgeMinutes);
-            if ($rowIds === []) {
+            $rows = $this->candidateRows($tenant->id, $remaining, $minAgeMinutes, $eventType);
+            if ($rows === []) {
                 return self::SUCCESS;
             }
 
-            $rowCount = count($rowIds);
+            $rowCount = count($rows);
             $matchedCount += $rowCount;
             $remaining -= $rowCount;
 
             if ($this->option('dry-run') === true) {
+                foreach ($rows as $row) {
+                    $this->line(sprintf(
+                        'tenant=%s event=%s event_type=%s projector=%s status=%s attempts=%d last_error=%s',
+                        $row['tenant_id'],
+                        $row['event_id'],
+                        $row['event_type'],
+                        $row['projector_name'],
+                        $row['projection_status'],
+                        $row['attempts'],
+                        $row['last_error'] ?? '',
+                    ));
+                }
+
                 return self::SUCCESS;
             }
 
-            foreach ($rowIds as $rowId) {
+            foreach ($rows as $candidate) {
+                $rowId = $candidate['id'];
                 $wasReset = $this->connection()->transaction(function () use ($rowId): bool {
                     $row = FiscalEventProjectionRow::query()
                         ->lockForUpdate()
@@ -178,10 +203,23 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
     }
 
     /**
-     * @return list<string>
+     * @return list<array{
+     *     id: string,
+     *     tenant_id: string,
+     *     event_id: string,
+     *     event_type: string,
+     *     projector_name: string,
+     *     projection_status: string,
+     *     attempts: int,
+     *     last_error: string|null
+     * }>
      */
-    private function candidateRowIds(string $tenantId, int $limit, int $minAgeMinutes): array
-    {
+    private function candidateRows(
+        string $tenantId,
+        int $limit,
+        int $minAgeMinutes,
+        ?FiscalEventType $eventType,
+    ): array {
         $cutoff = Carbon::now('UTC')->subMinutes($minAgeMinutes);
 
         $query = $this->connection()->table('fiscal_event_projections')
@@ -198,7 +236,12 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
             })
             ->where('fiscal_event_projections.updated_at', '<=', $cutoff->toDateTimeString())
             ->orderBy('fiscal_event_projections.updated_at')
+            ->orderBy('fiscal_event_projections.id')
             ->limit($limit);
+
+        if ($eventType !== null) {
+            $query->where('fiscal_events.event_type', $eventType->value);
+        }
 
         $projector = $this->stringOption('projector');
         if ($projector !== null) {
@@ -210,14 +253,31 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
             $query->where('fiscal_event_projections.fiscal_event_id', $eventId);
         }
 
-        $rowIds = [];
+        $rows = [];
         foreach ($query
-            ->pluck('fiscal_event_projections.id')
-            ->all() as $id) {
-            $rowIds[] = (string) $id;
+            ->get([
+                'fiscal_event_projections.id',
+                'fiscal_events.tenant_id',
+                'fiscal_events.id as event_id',
+                'fiscal_events.event_type',
+                'fiscal_event_projections.projector_name',
+                'fiscal_event_projections.projection_status',
+                'fiscal_event_projections.attempts',
+                'fiscal_event_projections.last_error',
+            ]) as $row) {
+            $rows[] = [
+                'id' => (string) $row->id,
+                'tenant_id' => (string) $row->tenant_id,
+                'event_id' => (string) $row->event_id,
+                'event_type' => (string) $row->event_type,
+                'projector_name' => (string) $row->projector_name,
+                'projection_status' => (string) $row->projection_status,
+                'attempts' => (int) $row->attempts,
+                'last_error' => $row->last_error === null ? null : (string) $row->last_error,
+            ];
         }
 
-        return $rowIds;
+        return $rows;
     }
 
     private function connection(): ConnectionInterface
