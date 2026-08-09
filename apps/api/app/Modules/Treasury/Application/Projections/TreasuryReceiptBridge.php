@@ -456,7 +456,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
 
         foreach ($requiredPurposes as $purpose) {
             if (! $this->generalLedgerService->hasAccountForPurpose($event->company_id, $purpose)) {
-                $this->recordTolerancePurposeMissingAlertSafely($event, $receipt, $purpose->value, $sourceType);
+                $this->recordTolerancePurposeMissingAlertOrFail($event, $receipt, $purpose->value, $sourceType);
 
                 return;
             }
@@ -532,7 +532,7 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
 
         foreach ($requiredPurposes as $purpose) {
             if (! $this->generalLedgerService->hasAccountForPurpose($event->company_id, $purpose)) {
-                $this->recordTolerancePurposeMissingAlertSafely(
+                $this->recordTolerancePurposeMissingAlertOrFail(
                     $event,
                     $receipt,
                     $purpose->value,
@@ -563,12 +563,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
     }
 
     /**
-     * Savepoint-contained wrapper — see {@see alertIfShortfallExceedsConfigSafely}
-     * for why the containment is load-bearing. Here the stakes are higher still:
-     * this alert fires on the path where NO entry was posted, so an uncontained
-     * throw would roll back the tender legs the precheck exists to protect.
+     * Savepoint-contained, fail-closed wrapper. The savepoint first restores a
+     * PostgreSQL transaction poisoned by a failed audit INSERT; rethrowing then
+     * rolls back the bridge's outer transaction so the projection job remains
+     * pending and retries. A purpose-missing projection must never be
+     * acknowledged when its only durable operator signal was not persisted.
      */
-    private function recordTolerancePurposeMissingAlertSafely(
+    private function recordTolerancePurposeMissingAlertOrFail(
         FiscalEvent $event,
         Receipt $receipt,
         string $purpose,
@@ -579,11 +580,13 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 $this->recordTolerancePurposeMissingAlert($event, $receipt, $purpose, $sourceType);
             });
         } catch (\Throwable $e) {
-            Log::warning('TreasuryReceiptBridge: purpose-missing alert failed (tender legs unaffected)', [
+            Log::error('TreasuryReceiptBridge: purpose-missing alert failed; rolling back projection for retry', [
                 'fiscal_event_id' => $event->id,
                 'missing_purpose' => $purpose,
                 'error' => $e->getMessage(),
             ]);
+
+            throw $e;
         }
     }
 

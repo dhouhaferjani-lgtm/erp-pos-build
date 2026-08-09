@@ -13,11 +13,15 @@ use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
+use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
+use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Modules\Fiscal\Domain\Models\FiscalEventProjectionRow;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
@@ -32,6 +36,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
+use Throwable;
 
 /**
  * Cash-rounding Phase 1 / Task 10 — the two NEW GL entries the bridge posts
@@ -575,6 +580,64 @@ final class TreasuryReceiptBridgeRoundingGlTest extends TestCase
             ->count());
     }
 
+    public function test_purpose_missing_alert_persistence_failure_keeps_projection_retryable_and_rolls_back_money(): void
+    {
+        DB::table('accounts')
+            ->where('company_id', $this->companyId)
+            ->where('code', '6580')
+            ->delete();
+
+        $event = $this->storeSaleReceiptFiscalEvent(
+            paymentLinesOverride: [['amount' => '9.950', 'method_code' => 'CASH']],
+            total: '9.950',
+            subtotal: '9.973',
+            cashRoundingAdjustment: '-0.023',
+            cashRoundingDenomination: '0.050',
+            eventVersion: 3,
+        );
+        $receipt = $this->seedPosReceiptRowFor($event);
+        $row = FiscalEventProjectionRow::query()->create([
+            'id' => Str::uuid()->toString(),
+            'fiscal_event_id' => $event->id,
+            'projector_name' => 'treasury_receipt_bridge',
+        ]);
+        $job = new ApplyFiscalEventProjectionJob($row->id);
+        $this->installPurposeMissingAuditFailureTrigger();
+
+        $thrown = null;
+        try {
+            $job->handle(DB::connection(), app(FiscalEventProjectionRegistry::class));
+        } catch (Throwable $exception) {
+            $thrown = $exception;
+        }
+
+        $this->assertNotNull($thrown, 'Audit persistence failure must escape so the projection job can retry.');
+        $this->assertStringContainsString('forced purpose alert failure', $thrown->getMessage());
+        $this->assertSame(ProjectionStatus::Pending, $row->refresh()->projection_status);
+        $this->assertSame(1, $row->attempts);
+        $this->assertNull($row->applied_at);
+        $this->assertSame(0, Payment::query()->where('fiscal_event_id', $event->id)->count());
+        $this->assertSame(0, JournalEntry::query()->where('source_id', $receipt->id)->count());
+        $this->assertDatabaseMissing('audit_events', [
+            'event_type' => 'pos.gl.tolerance_purpose_missing',
+            'aggregate_id' => $event->id,
+        ]);
+
+        $this->removePurposeMissingAuditFailureTrigger();
+        $job->handle(DB::connection(), app(FiscalEventProjectionRegistry::class));
+
+        $this->assertSame(ProjectionStatus::Applied, $row->refresh()->projection_status);
+        $this->assertSame(1, Payment::query()->where('fiscal_event_id', $event->id)->count());
+        $this->assertDatabaseHas('journal_entries', [
+            'source_type' => 'pos_receipt',
+            'source_id' => $receipt->id,
+        ]);
+        $this->assertDatabaseHas('audit_events', [
+            'event_type' => 'pos.gl.tolerance_purpose_missing',
+            'aggregate_id' => $event->id,
+        ]);
+    }
+
     // =================================================================
     // Beyond-config shortfall
     // =================================================================
@@ -787,6 +850,48 @@ final class TreasuryReceiptBridgeRoundingGlTest extends TestCase
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function installPurposeMissingAuditFailureTrigger(): void
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+                CREATE OR REPLACE FUNCTION cghi_fail_purpose_missing_audit()
+                RETURNS trigger AS $$
+                BEGIN
+                    IF NEW.event_type = 'pos.gl.tolerance_purpose_missing' THEN
+                        RAISE EXCEPTION 'forced purpose alert failure';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $$ LANGUAGE plpgsql
+            SQL);
+            DB::unprepared(<<<'SQL'
+                CREATE TRIGGER cghi_fail_purpose_missing_audit
+                BEFORE INSERT ON audit_events
+                FOR EACH ROW EXECUTE FUNCTION cghi_fail_purpose_missing_audit()
+            SQL);
+
+            return;
+        }
+
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER cghi_fail_purpose_missing_audit
+            BEFORE INSERT ON audit_events
+            WHEN NEW.event_type = 'pos.gl.tolerance_purpose_missing'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced purpose alert failure');
+            END
+        SQL);
+    }
+
+    private function removePurposeMissingAuditFailureTrigger(): void
+    {
+        DB::unprepared('DROP TRIGGER IF EXISTS cghi_fail_purpose_missing_audit');
+
+        if (DB::getDriverName() === 'pgsql') {
+            DB::unprepared('DROP FUNCTION IF EXISTS cghi_fail_purpose_missing_audit()');
+        }
     }
 
     /**
