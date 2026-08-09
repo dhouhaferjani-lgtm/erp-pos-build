@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Tenant;
 
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Expense\Domain\ExpenseCategory;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Application\Services\TenantInitializationService;
@@ -61,6 +63,29 @@ class TenantInitializationTest extends TestCase
 
         $company->refresh();
         $this->assertEquals('0.00', $company->default_tax_rate);
+    }
+
+    public function test_initialization_seeds_default_expense_categories(): void
+    {
+        // Register G-3: real tenants used to receive NONE — the expense-category
+        // seeder was reachable only from the two parapharmacy demo seeders.
+        [$tenant, $company, $user] = $this->createTenantCompanyUser('TN', 'TND');
+
+        $this->service->initializeForNewRegistration($tenant, $company, $user);
+
+        $categories = ExpenseCategory::query()->where('company_id', $company->id)->get();
+        $this->assertGreaterThanOrEqual(6, $categories->count());
+
+        foreach ($categories as $category) {
+            $this->assertNotNull($category->account_id, "Category '{$category->name}' has no GL account");
+        }
+
+        $utilities = $categories->firstWhere('name', 'Eau & Électricité');
+        $this->assertNotNull($utilities);
+        $this->assertSame(
+            '6061',
+            Account::query()->whereKey($utilities->account_id)->value('code'),
+        );
     }
 
     public function test_initialization_seeds_tunisia_tax_configurations(): void

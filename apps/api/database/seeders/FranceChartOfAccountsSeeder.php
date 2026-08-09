@@ -288,6 +288,9 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '622', 'name' => 'Rémunérations d\'intermédiaires et honoraires', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '623', 'name' => 'Publicité, publications, relations publiques', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '626', 'name' => 'Frais postaux et de télécommunications', 'type' => 'expense', 'parent_code' => '62'],
+            // Register G-3 — the default expense categories book transport here
+            // on both French-plan charts; the TN chart already carried 624.
+            ['code' => '624', 'name' => 'Transports de biens et transports collectifs du personnel', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '625', 'name' => 'Déplacements, missions et réceptions', 'type' => 'expense', 'parent_code' => '62'],
             ['code' => '6251', 'name' => 'Voyages et déplacements', 'type' => 'expense', 'parent_code' => '625',
                 'system_purpose' => SystemAccountPurpose::TravelExpense->value, 'is_system' => true],
