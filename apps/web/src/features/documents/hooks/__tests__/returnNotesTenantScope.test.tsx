@@ -81,11 +81,11 @@ function returnNoteFixture(id: string): ReturnNote {
     tax_amount: '0.000',
     total: '100.000',
     status: 'draft',
-    metadata: {
-      return_reason: 'defective',
-      source_delivery_note_id: 'delivery-note-1',
-      source_invoice_id: 'invoice-1',
-    },
+    // Plan CF T8: `metadata` never existed on any response — the endpoint returns
+    // `DocumentData::fromModel()`, which has no such key. One `source_document_id`
+    // replaces the two invented ones.
+    source_document_id: 'invoice-1',
+    payload: { return_reason: 'defective' },
     created_at: '2026-05-11T09:00:00Z',
   }
 }
@@ -177,7 +177,12 @@ describe('return note hooks tenant scope', () => {
     queryClient.setQueryData(['documents', 'tenant-B', 'company-1'], { marker: 'tenant-B-documents' })
 
     const { result: reads } = renderHook(() => ({
-      deliveryNote: useProbe(['delivery-note', 'delivery-note-1'], deliveryNoteQuery),
+      // Plan CF T8: a return note has ONE `source_document_id`, which is either an
+      // invoice or a delivery note. The hook invalidates BOTH prefixes with that single
+      // id, so the active-tenant probe keys on it — the old fixture carried two
+      // distinct ids only because the invented `metadata` shape pretended a return note
+      // had both at once.
+      deliveryNote: useProbe(['delivery-note', 'invoice-1'], deliveryNoteQuery),
       documents: useProbe(['documents'], documentsQuery),
       invoice: useProbe(['invoice', 'invoice-1'], invoiceQuery),
       list: useReturnNotes(returnNoteParams),
@@ -196,9 +201,21 @@ describe('return note hooks tenant scope', () => {
     const { result: mutation } = renderHook(() => useCreateReturnNote(), { wrapper })
 
     await act(async () => {
+      // The CANONICAL document-create shape (plan CF T8 / CF-D9) — the payload the
+      // server has always required and the client never sent.
       await mutation.current.mutateAsync({
+        partner_id: 'partner-1',
+        document_date: '2026-05-11',
+        currency: 'TND',
+        source_document_id: 'invoice-1',
         return_reason: 'defective',
-        source_invoice_id: 'invoice-1',
+        lines: [{
+          product_id: 'p1',
+          description: 'Product 1',
+          quantity: '1',
+          unit_price: '100.000',
+          tax_rate: '19.00',
+        }],
       })
     })
 

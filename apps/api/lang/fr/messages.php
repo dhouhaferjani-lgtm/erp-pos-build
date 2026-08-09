@@ -76,6 +76,15 @@ return [
     'taxation' => [
         'cancel_refused_period_closed' => 'Le document :document ne peut pas être annulé : sa période de TVA (:period) est clôturée, l\'annulation sortirait donc de la TVA d\'une période déjà arrêtée. Émettez un avoir, ou demandez à votre comptable de rouvrir :period au préalable.',
         'cancel_refused_period_filed' => 'Le document :document ne peut pas être annulé : sa période de TVA (:period) a déjà été déclarée auprès de l\'administration fiscale. Une période déclarée ne peut jamais être rouverte — émettez un avoir à la place.',
+        // Plan CF CF-D3 — voir la version anglaise pour le raisonnement.
+        'return_refused_period_closed' => 'Le bon de retour :document ne peut pas être daté du :date : la période de TVA couvrant cette date (:period) est clôturée, le retour sortirait donc de la TVA d\'une période déjà arrêtée. Choisissez une date dans une période ouverte, ou demandez à votre comptable de rouvrir :period au préalable.',
+        'return_refused_period_filed' => 'Le bon de retour :document ne peut pas être daté du :date : la période de TVA couvrant cette date (:period) a déjà été déclarée auprès de l\'administration fiscale et ne peut jamais être rouverte. Choisissez une date dans une période ouverte.',
+        'return_refused_period_locked' => 'Le bon de retour :document ne peut pas être daté du :date : la période comptable couvrant cette date est clôturée ou verrouillée. Choisissez une date dans une période ouverte, ou demandez à votre comptable de rouvrir la période au préalable.',
+    ],
+
+    // Document — plan CF (flux d'annulation guidé)
+    'document' => [
+        'return_decision_forbidden' => 'Vous pouvez annuler cette facture, mais pas enregistrer le retour de marchandises qu\'elle nécessite (permission manquante : :ability). Demandez à un responsable de finaliser le retour, ou annulez sans retour.',
     ],
 
     // Inventory

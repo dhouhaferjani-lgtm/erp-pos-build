@@ -10,6 +10,7 @@ use App\Modules\Taxation\Application\Services\TaxationPartnerReferenceSource;
 use App\Modules\Taxation\Application\Services\TaxConfigurationLookupService;
 use App\Modules\Taxation\Application\Services\TEJExportService;
 use App\Modules\Taxation\Application\Services\VatExportService;
+use App\Modules\Taxation\Application\Services\VatPeriodBackdatingGuard;
 use App\Modules\Taxation\Application\Services\VatPeriodCancellationGuard;
 use App\Modules\Taxation\Application\Services\VatPeriodManagementService;
 use App\Modules\Taxation\Application\Services\VatReportGenerationService;
@@ -36,6 +37,7 @@ use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingCertific
 use App\Modules\Taxation\Infrastructure\Repositories\EloquentWithholdingTaxRuleRepository;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
+use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
 use App\Shared\Contracts\TaxConfigurationLookupInterface;
 use App\Shared\Contracts\TaxDefaultResolverInterface;
 use Illuminate\Support\ServiceProvider;
@@ -96,6 +98,15 @@ class TaxationServiceProvider extends ServiceProvider
         // R2-F1 — Document asks Taxation whether a cancellation's period is still
         // OPEN through this Shared contract, never through the VatPeriod entity.
         $this->app->bind(DocumentPeriodLockInterface::class, VatPeriodCancellationGuard::class);
+
+        // Plan CF CF-D3 — Document asks Taxation whether a return note may be
+        // DATED into a period, through a SEPARATE Shared contract. Deliberately not
+        // a widening of `DocumentPeriodLockInterface`: that one answers "may this
+        // ledger-bearing document be withdrawn" and its `refusalAppliesTo()` seam
+        // excludes ReturnNote for documented reasons. Different question, different
+        // date, different refusal codes, different remedy (one PATCH of the draft's
+        // `document_date`, not a credit note).
+        $this->app->bind(PeriodBackdatingGuardInterface::class, VatPeriodBackdatingGuard::class);
 
         // Register VAT reporting services as singletons
         $this->app->singleton(VatCreditService::class);

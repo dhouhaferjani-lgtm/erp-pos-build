@@ -114,9 +114,6 @@ vi.mock('../components/ReturnConditionSelect', () => ({
   ReturnConditionSelect: () => <select aria-label="return-condition" defaultValue=""><option value="">none</option></select>,
 }))
 
-vi.mock('../components/RefundMethodSelect', () => ({
-  RefundMethodSelect: () => <select aria-label="refund-method" defaultValue=""><option value="">none</option></select>,
-}))
 
 function setTenant(tenantId: string, companyId: string) {
   useAuthStore.setState({
@@ -169,6 +166,10 @@ const documentDetail = {
   document_date: '2026-05-11',
   partner: { id: 'partner-1', name: 'Partner' },
   partner_id: 'partner-1',
+  // Plan CF T8 / CF-D9: the create payload carries the source document's currency, and
+  // `partner_id` is `required` on the server. Both were absent from the page's response
+  // type, which is why TypeScript could not catch the omission.
+  currency: 'TND',
   total: '10.000',
   lines: [
     {
@@ -177,7 +178,8 @@ const documentDetail = {
       product_code: 'P-1',
       product_name: 'Product 1',
       description: 'Product 1',
-      quantity: 1,
+      // A decimal STRING, matching DocumentLineData (rule 19).
+      quantity: '1',
       unit_price: '10.000',
       tax_rate: '0.000',
       total: '10.000',
@@ -301,13 +303,60 @@ describe('return and credit note page tenant scope', () => {
     await user.click(screen.getByRole('button', { name: 'sales:returnNotes.form.create' }))
 
     await waitFor(() => {
+      // Plan CF T8 / CF-D9: the CANONICAL document-create shape. `source_invoice_id`
+      // was never a create key — it is an index-endpoint query filter.
       expect(mockApiPost).toHaveBeenCalledWith('/return-notes', expect.objectContaining({
-        source_invoice_id: 'invoice-1',
+        partner_id: 'partner-1',
+        currency: 'TND',
+        source_document_id: 'invoice-1',
+        lines: [expect.objectContaining({
+          product_id: 'product-1',
+          description: 'Product 1',
+          quantity: '1',
+          unit_price: '10.000',
+        })],
       }))
       expect(queryClient.getQueryState(['return-notes', 'tenant-A', 'company-1'])?.isInvalidated).toBe(true)
       expect(mockNavigate).toHaveBeenCalledWith('/sales/return-notes/created-1')
     })
     expect(queryClient.getQueryState(['return-notes', 'tenant-B', 'company-2'])?.isInvalidated).toBe(false)
+  })
+
+  /**
+   * Gate CF round 2, NB6. `QuantityInput` emits `''` when the box is cleared and
+   * `buildCreatePayload` forwards the raw string, so an emptied line posted a quantity
+   * the server refuses with `gt:0` — a Laravel validation 422 that reaches the user as
+   * axios' bare "Request failed with status code 422". The sibling surface got this
+   * guard in the same commit; M5 mirrored it here, and this is the test it shipped
+   * without.
+   */
+  it('blocks submit when a selected line has an empty quantity (.144-.146)', async () => {
+    const user = userEvent.setup()
+    const queryClient = createClient()
+
+    renderWithProviders(<CreateReturnNotePage />, { queryClient })
+
+    // Switch the source type to invoice first, then pick one — the same sequence the
+    // sibling test uses (the toggle and the picker share a label).
+    await user.click(screen.getByRole('button', { name: 'sales:documents.types.invoice' }))
+    const invoiceButtons = screen.getAllByRole('button', { name: 'sales:documents.types.invoice' })
+    await user.click(invoiceButtons[invoiceButtons.length - 1])
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(['invoice', 'invoice-1', 'tenant-A', 'company-1'])).toEqual(documentDetail)
+    })
+
+    await user.click(await screen.findByRole('button', { name: 'sales:returnNotes.form.partialReturn' }))
+    await user.click(screen.getAllByRole('checkbox')[0])
+
+    const quantityInput = screen.getByRole('spinbutton')
+    await user.clear(quantityInput)
+
+    await user.click(screen.getByRole('button', { name: 'sales:returnNotes.form.create' }))
+
+    await waitFor(() => {
+      expect(mockApiPost).not.toHaveBeenCalled()
+    })
   })
 
   it('scopes return note detail reads and confirm invalidation (.155-.157)', async () => {

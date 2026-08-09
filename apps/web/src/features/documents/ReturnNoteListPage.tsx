@@ -198,7 +198,9 @@ export function ReturnNoteListPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     <span className={`inline-flex rounded-full ${colorClasses.bgGray100} px-2.5 py-0.5 text-xs font-medium ${colorClasses.textGray800}`}>
-                      {t(`sales:returnNotes.reason.${returnNote.metadata.return_reason}`)}
+                      {returnNote.payload?.return_reason
+                        ? t(`sales:returnNotes.reason.${returnNote.payload.return_reason}`)
+                        : '-'}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">

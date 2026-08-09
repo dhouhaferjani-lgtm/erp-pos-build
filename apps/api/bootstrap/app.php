@@ -11,6 +11,14 @@ use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionForbiddenException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsException;
+use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
+use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
+use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
+use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\ResolveTenancy;
@@ -45,6 +53,7 @@ use App\Modules\Voucher\Domain\Exceptions\VoucherInvalidStatusException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisCustomerException;
 use App\Modules\Voucher\Domain\Exceptions\VoucherNotForThisTerminalException;
 use App\Shared\Exceptions\PermissionDeniedException;
+use App\Shared\Exceptions\ReturnPeriodLockedException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -255,6 +264,27 @@ return Application::configure(basePath: dirname(__DIR__))
 
             $previous = $e->getPrevious();
             $ability = $previous instanceof PermissionDeniedException ? $previous->ability : null;
+
+            // Plan CF CF-D8. The guided cancel flow authorizes its GOODS leg
+            // separately from the cancel itself, and the two denials have different
+            // remedies: "you cannot cancel this invoice" is a dead end for the user,
+            // while "you cannot record the goods return" is "ask a manager". A
+            // dedicated code keeps the modal from having to guess. Recognised here
+            // rather than through its own render callback because Laravel's
+            // prepareException() converts every AuthorizationException into this
+            // Symfony type BEFORE render callbacks match (see the note above), so a
+            // callback typed on the domain exception would never fire.
+            if ($previous instanceof ReturnDecisionForbiddenException) {
+                return response()->json([
+                    'error' => [
+                        'code' => ReturnDecisionForbiddenException::CODE,
+                        'message' => __('messages.document.return_decision_forbidden', [
+                            'ability' => $previous->ability,
+                        ]),
+                        'ability' => $previous->ability,
+                    ],
+                ], 403);
+            }
 
             return response()->json([
                 'error' => [
@@ -687,6 +717,161 @@ return Application::configure(basePath: dirname(__DIR__))
                             'adjustment_id' => $e->adjustmentId,
                             'corrects_adjustment_id' => $e->correctsAdjustmentId,
                         ],
+                    ],
+                ], 422);
+            }
+        });
+
+
+        // Plan CF T6 — the guided cancel flow's typed refusals. All 422, all
+        // registered BEFORE the generic DomainException handler (Laravel 11 matches
+        // render callbacks in registration order), because every one of them extends
+        // \DomainException and would otherwise be flattened into BUSINESS_ERROR —
+        // leaving the modal unable to tell "nothing was delivered" from "the location
+        // is unknown" from "someone already decided", which are three different
+        // remedies.
+        $exceptions->render(function (ReturnNothingDeliveredException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => ReturnNothingDeliveredException::CODE,
+                        'message' => $e->getMessage(),
+                        'invoice_id' => $e->invoiceId,
+                        'invoice_number' => $e->invoiceNumber,
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (ReturnLocationUnresolvedException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => ReturnLocationUnresolvedException::CODE,
+                        'message' => $e->getMessage(),
+                        'invoice_id' => $e->invoiceId,
+                        'invoice_number' => $e->invoiceNumber,
+                    ],
+                ], 422);
+            }
+        });
+
+        // Gate CF round 1 / FE B3 — the boundary enforcement of "explicit, never
+        // silent": a decision that ASSERTS AN ABSENCE of goods, posted for an invoice
+        // that has them. The mirror of RETURN_NOTHING_DELIVERED.
+        $exceptions->render(function (ReturnDecisionMismatchesGoodsException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => ReturnDecisionMismatchesGoodsException::CODE,
+                        'message' => $e->getMessage(),
+                        'invoice_id' => $e->invoiceId,
+                        'invoice_number' => $e->invoiceNumber,
+                        'posted_mode' => $e->postedMode,
+                        'requires_return_decision' => $e->requiresReturnDecision,
+                        'goods_issued' => $e->goodsIssued,
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (ReturnLocationAmbiguousException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => ReturnLocationAmbiguousException::CODE,
+                        'message' => $e->getMessage(),
+                        'invoice_id' => $e->invoiceId,
+                        'invoice_number' => $e->invoiceNumber,
+                        'product_ids' => $e->productIds,
+                    ],
+                ], 422);
+            }
+        });
+
+        // Reaches this renderer RE-THROWN by RefundService after the
+        // commit-then-refuse append (CF-D5). This entry only RENDERS it — it must
+        // never swallow or re-wrap it, or the append/refuse ordering is lost.
+        $exceptions->render(function (ReturnDecisionConflictException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => ReturnDecisionConflictException::CODE,
+                        'message' => $e->getMessage(),
+                        'invoice_id' => $e->invoiceId,
+                        'invoice_number' => $e->invoiceNumber,
+                        'existing_decision' => $e->existingDecision,
+                        'return_note_id' => $e->existingReturnNoteId(),
+                    ],
+                ], 422);
+            }
+        });
+
+        // Plan CF T6 / frontend gate I-1. `RefundController::cancelInvoice()`'s
+        // generic catch flattens failures into `{error: <string>, code: <string>}`,
+        // against which the web app's `getErrorMessage` yields axios' bare "Request
+        // failed with status code 422" and `extractErrorCode` (which reads
+        // `error.code`) yields undefined — so the modal could not recognise this
+        // blocking, unfixable-by-retry condition at all.
+        //
+        // The TOP-LEVEL `code` here duplicates `error.code` DELIBERATELY. Plan CF
+        // names `DocumentCancelConsolidationTest` as part of this lane's regression
+        // contract ("stays green unmodified") and that class asserts
+        // `assertJsonPath('code', 'DOCUMENT_HAS_PAYMENTS')` against the old flat
+        // envelope in three tests, while the same plan requires the typed envelope.
+        // Emitting both keys is the only way to satisfy both requirements; see the CF
+        // report's contradiction note. Drop the duplicate only together with those
+        // assertions.
+        $exceptions->render(function (DocumentHasPaymentsException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => DocumentHasPaymentsException::CODE,
+                        'message' => $e->getMessage(),
+                        'document_id' => $e->documentId,
+                        'document_number' => $e->documentNumber,
+                    ],
+                    'code' => DocumentHasPaymentsException::CODE,
+                ], 422);
+            }
+        });
+
+        // Plan CF CF-D3 — a return note refused because the period covering the
+        // date the user typed is CLOSED / FILED / locked. Three distinct codes: the
+        // FE renders this INLINE ON THE DATE FIELD (the obstacle is the date, not
+        // the invoice) and only a non-FILED refusal may offer "ask your accountant
+        // to reopen it". `recoverable` is emitted rather than left for the client to
+        // re-derive from the code, so the two can never disagree.
+        $exceptions->render(function (ReturnPeriodLockedException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => $e->refusalCode->value,
+                        'message' => $e->getMessage(),
+                        'document_number' => $e->documentNumber,
+                        'return_date' => $e->returnDate,
+                        'period_label' => $e->periodLabel,
+                        'recoverable' => $e->refusalCode->isRecoverable(),
+                    ],
+                ], 422);
+            }
+        });
+
+        // Plan CF T2 — the return-note over-return cap, moved out of
+        // `ReturnNoteController` into `ReturnNoteService` so the guided cancel flow
+        // and the standalone `POST /return-notes` cannot drift apart (fiscal gate
+        // I-8). The guard used to throw a Presentation `HttpResponseException` with
+        // a hand-built body; this entry reproduces that body EXACTLY — same
+        // `error.code`, same five `details` keys — so nothing asserting on the old
+        // envelope regresses. Registered BEFORE the generic DomainException handler
+        // (Laravel 11 matches render callbacks in registration order).
+        $exceptions->render(function (ReturnQuantityExceededException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => $e->refusalCode,
+                        'message' => $e->getMessage(),
+                        'details' => $e->details(),
                     ],
                 ], 422);
             }

@@ -5,31 +5,117 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\DocumentVehicleContext;
+use App\Modules\Document\Domain\DTOs\CreateReturnNoteData;
+use App\Modules\Document\Domain\DTOs\CreateReturnNoteLineData;
+use App\Modules\Document\Domain\DTOs\DeliveredQuantityTuple;
+use App\Modules\Document\Domain\DTOs\ReturnDecisionData;
 use App\Modules\Document\Domain\Enums\CancelBlockReason;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\ReturnDecisionMode;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionForbiddenException;
+use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsException;
+use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
+use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
+use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
+use App\Shared\Contracts\AbilityAuthorizerInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class RefundService
 {
+    /**
+     * Quantities compare at the canonical quantity scale throughout.
+     */
+    private const QUANTITY_SCALE = 4;
+
     public function __construct(
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly DocumentPostingService $documentPostingService,
         private readonly DocumentPeriodLockInterface $periodLock,
+        private readonly ReturnNoteService $returnNoteService,
+        private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
+        private readonly ProductCostLock $costLock,
+        private readonly AbilityAuthorizerInterface $authorizer,
     ) {}
 
     /**
-     * Cancel an invoice (only if not posted or not paid)
+     * Cancel an invoice, optionally recording an explicit decision about the goods.
+     *
+     * Plan CF CF-D1. The guided cancel flow is ONE composite server call, not three
+     * front-end calls: a crash between a cancel, a return-note create and a
+     * return-note confirm would leave a cancelled invoice with no return note and no
+     * record of what the user chose — the silent outcome the owner ruling forbids,
+     * arrived at by accident.
+     *
+     * `$decision === null` KEEPS TODAY'S BEHAVIOUR EXACTLY. That is this lane's
+     * regression contract: `DocumentCancelConsolidationTest` and
+     * `CancelRefusedOnNonOpenVatPeriodTest` stay green unmodified, and every existing
+     * caller is untouched.
+     *
+     * @throws ReturnDecisionConflictException Re-thrown after the rejected decision is
+     *                                         appended (CF-D5's commit-then-refuse).
      */
-    public function cancelInvoice(Document $invoice, string $reason, ?string $actorId = null): Document
-    {
+    public function cancelInvoice(
+        Document $invoice,
+        string $reason,
+        ?string $actorId = null,
+        ?ReturnDecisionData $decision = null,
+    ): Document {
         if ($invoice->type !== DocumentType::Invoice) {
             throw new \InvalidArgumentException('Document must be an invoice');
         }
 
+        if ($decision === null) {
+            return $this->cancelInvoiceWithoutDecision($invoice, $reason, $actorId);
+        }
+
+        try {
+            return DB::transaction(fn (): Document => $this->cancelInvoiceWithDecision(
+                $invoice,
+                $reason,
+                $actorId,
+                $decision,
+            ));
+        } catch (ReturnDecisionConflictException $conflict) {
+            // CF-D5 COMMIT-THEN-REFUSE (fiscal gate N2-I1). The conflict was detected
+            // INSIDE the transaction above, under the step-0 lock, so the append could
+            // not have happened there: throwing rolls it back, landing in the very
+            // "nothing written, both decisions visible to support" state that is
+            // self-contradictory — visible to nobody.
+            //
+            // The rollback is correct in itself; nothing else on this path was
+            // written. The audit record is re-attempted here, in its own short
+            // transaction that RE-READS the payload (the rollback discarded the first
+            // read, and re-reading is what stops two concurrent conflicting replays
+            // from losing an append).
+            //
+            // `DB::afterCommit` is NOT usable — it does not fire on rollback.
+            $this->appendRejectedDecision($conflict);
+
+            // ALWAYS re-thrown, including when the append above failed. Letting a
+            // plumbing exception replace this would turn a typed
+            // RETURN_DECISION_ALREADY_RECORDED 422 into a 500 and leave the client
+            // unable to tell "your decision conflicts" from "the server broke" — the
+            // fallback-becomes-primary failure rule 20 warns about. The audit record
+            // is the nice-to-have; the correct refusal is the contract.
+            throw $conflict;
+        }
+    }
+
+    /**
+     * Today's behaviour, byte for byte. Do not "unify" this with the decision path:
+     * the two differ in their transaction shape and in which branches take a lock,
+     * and this one is pinned by tests that predate the lane.
+     */
+    private function cancelInvoiceWithoutDecision(Document $invoice, string $reason, ?string $actorId): Document
+    {
         if ($invoice->status === DocumentStatus::Posted) {
             return $this->documentPostingService->cancel($invoice, $reason, $actorId);
         }
@@ -49,6 +135,681 @@ class RefundService
 
             return $invoice;
         });
+    }
+
+    /**
+     * The composite: cancel + goods decision, as ONE atomic act.
+     *
+     * ── CF-D4 LOCK ORDER (do not reorder without redoing the deadlock analysis) ──
+     *   0. I — the invoice row FOR UPDATE, on EVERY branch, BEFORE reading
+     *      `payload.return_decisions`                                    (here)
+     *   1. I already held                       DocumentPostingService.php:162
+     *   2. VAT period guard — takes no lock      DocumentPostingService.php:193
+     *   3. J — the GL reversal — TAKES NO LOCK.  AccountingService.php:929-931
+     *   4. I already held — source-document lock (the over-return cap)
+     *   5. N — the `document_sequences` row FOR UPDATE
+     *          DocumentNumberingService::generateForKeyOnce():47-51
+     *   6. P — ALL product advisory locks, ONE sorted call    ProductCostLock:40-52
+     *   7. R — previous confirmed RN row FOR UPDATE  ReturnNoteService:chain read
+     *   8. `stock_levels` rows, nested inside P    WeightedAverageCostService
+     *
+     * STEP 0 IS MANDATORY ON EVERY BRANCH, including the already-cancelled replay.
+     * `DocumentPostingService::cancel()`'s own idempotent early return sits OUTSIDE
+     * its transaction and BEFORE its `lockForUpdate()`, and an already-cancelled
+     * invoice matches neither the Posted nor the Paid arm here — it falls to the
+     * plain-update branch, which historically took no lock at all. Without step 0,
+     * two concurrent composites against an already-cancelled invoice would both read
+     * "no decision", both create a return note and both restock.
+     *
+     * "J IS NOT A LOCK", and that premise is load-bearing: it is why J-before-P here
+     * does not cycle against the one P-before-J path
+     * (`OpeningBalancePostingService.php:75` → `:232`). IF ANY FUTURE LANE ADDS A LOCK
+     * TO THE GL CHAIN ALLOCATOR, THIS COMPOSITE MUST BE RE-CHECKED.
+     *
+     * N-before-P here versus P-before-N in `GoodsReceiptService::post()` (which
+     * acquires P and then generates a number inside it) is a textbook AB-BA SHAPE. It
+     * does not cycle ONLY because the two paths lock DIFFERENT `document_sequences`
+     * rows (`return_note` vs `goods_receipt`) — an accidental, undocumented safety
+     * property. Recorded here because nothing else records it.
+     */
+    private function cancelInvoiceWithDecision(
+        Document $invoice,
+        string $reason,
+        ?string $actorId,
+        ReturnDecisionData $decision,
+    ): Document {
+        // ── step 0 ────────────────────────────────────────────────────────────────
+        /** @var Document $locked */
+        $locked = Document::query()->whereKey($invoice->id)->lockForUpdate()->firstOrFail();
+
+        $existing = $this->acceptedDecisionOn($locked);
+
+        if ($existing !== null) {
+            if ($this->decisionMatches($existing, $decision)) {
+                // Identical replay — the network-timeout path, and a real one: the
+                // modal stays open on network error so the user WILL retry. It must
+                // not refuse, and it must not create a second return note or a second
+                // stock movement.
+                return $locked->load(['lines']);
+            }
+
+            throw new ReturnDecisionConflictException(
+                invoiceId: $locked->id,
+                invoiceNumber: (string) $locked->document_number,
+                rejectedDecision: $decision,
+                existingDecision: $existing,
+            );
+        }
+
+        // ── The goods decision must match what the invoice actually is ───────────
+        // Gate CF round 1 / FE B3. `not_applicable` and `no_goods_issued` are the
+        // SERVER's reading of the invoice, not user opinions — the modal only reports
+        // them. Enforcing that here is what makes "explicit, never silent" a property of
+        // the system rather than of the UI: a stale client, a direct API call, or a modal
+        // rendered before `/can-cancel` resolved could otherwise record a false statement
+        // about physical reality on a fiscal document.
+        //
+        // This is the mirror of `RETURN_NOTHING_DELIVERED` (which refuses a goods
+        // decision when there are no goods); together they close both directions.
+        $this->assertDecisionMatchesGoods($locked, $decision);
+
+        // ── CF-D8: authorize each leg the composite is about to perform ───────────
+        $this->authorizeDecisionLegs($decision);
+
+        // ── the cancel branch ─────────────────────────────────────────────────────
+        $cancelled = $this->performCancel($locked, $reason, $actorId);
+
+        // ── the goods leg ─────────────────────────────────────────────────────────
+        $returnNoteId = null;
+        if ($decision->mode->bearsGoods()) {
+            $returnNote = $this->createReturnNoteForDecision($cancelled, $decision, $actorId);
+            $returnNoteId = $returnNote->id;
+
+            if ($decision->mode->sealsTheReturnNote()) {
+                // Step 6: ONE sorted acquire over the whole product set, so the
+                // per-line re-acquires inside `receiveStockBack()` are re-entrant on
+                // locks already held and cannot AB-BA against a concurrent confirm.
+                $this->costLock->acquire(
+                    $cancelled->tenant_id,
+                    $cancelled->company_id,
+                    $this->returnNoteService->lineProductIds($returnNote),
+                    fn (): Document => $this->returnNoteService->confirmWithin($returnNote, $actorId),
+                );
+            }
+        }
+
+        $this->appendDecision($cancelled, $decision->toAuditRecord(true, $returnNoteId));
+
+        /** @var Document */
+        return $cancelled->refresh()->load(['lines']);
+    }
+
+    /**
+     * Run the right cancel for the invoice's current state, WITHOUT clobbering an
+     * existing cancellation record.
+     *
+     * The replay branch is the subtle one. An already-cancelled invoice matches
+     * neither Posted nor Paid, and the historical else-branch re-merged `payload` with
+     * a fresh `cancelled_at` + `cancellation_reason` — overwriting the ORIGINAL
+     * cancellation record with the replay's. That is an audit-trail loss on a path
+     * whose entire purpose is to be replay-safe.
+     */
+    private function performCancel(Document $invoice, string $reason, ?string $actorId): Document
+    {
+        if ($invoice->status === DocumentStatus::Cancelled) {
+            return $invoice;
+        }
+
+        if ($invoice->status === DocumentStatus::Posted) {
+            return $this->documentPostingService->cancel($invoice, $reason, $actorId);
+        }
+
+        if ($invoice->status === DocumentStatus::Paid) {
+            throw new \DomainException('DOCUMENT_HAS_PAYMENTS');
+        }
+
+        $invoice->update([
+            'status' => DocumentStatus::Cancelled,
+            'payload' => array_merge($invoice->payload ?? [], [
+                'cancelled_at' => now()->toDateTimeString(),
+                'cancellation_reason' => $reason,
+            ]),
+        ]);
+
+        return $invoice;
+    }
+
+    /**
+     * Refuse a "there are no goods" decision for an invoice that has them.
+     *
+     * `not_applicable` claims the invoice has no physical lines; `no_goods_issued` claims
+     * nothing was ever delivered. Both are checkable, and both are the server's to
+     * decide — so both are checked here rather than trusted from the request.
+     *
+     * The permissive direction is deliberate: a caller posting `no_return` (goods stayed
+     * out) for an invoice with nothing delivered is merely over-cautious, and
+     * `RETURN_NOTHING_DELIVERED` already governs the goods-bearing modes. Only the two
+     * claims that ASSERT AN ABSENCE are refused.
+     */
+    private function assertDecisionMatchesGoods(Document $invoice, ReturnDecisionData $decision): void
+    {
+        if ($decision->mode === ReturnDecisionMode::NotApplicable && $this->requiresReturnDecision($invoice)) {
+            throw new ReturnDecisionMismatchesGoodsException(
+                $invoice->id,
+                (string) $invoice->document_number,
+                $decision->mode->value,
+                true,
+                $this->hasGoodsIssued($invoice),
+            );
+        }
+
+        if ($decision->mode === ReturnDecisionMode::NoGoodsIssued && $this->hasGoodsIssued($invoice)) {
+            throw new ReturnDecisionMismatchesGoodsException(
+                $invoice->id,
+                (string) $invoice->document_number,
+                $decision->mode->value,
+                true,
+                true,
+            );
+        }
+    }
+
+    /**
+     * CF-D8. The route carries `can:invoices.cancel`; these are the abilities the
+     * STANDALONE routes require for the legs the composite is about to perform on the
+     * caller's behalf. Default roles make this a no-op, but roles are tenant-editable
+     * and a composite silently performing a leg the caller could not perform
+     * standalone is a privilege-escalation seam.
+     */
+    private function authorizeDecisionLegs(ReturnDecisionData $decision): void
+    {
+        if (! $decision->mode->bearsGoods()) {
+            return;
+        }
+
+        if (! $this->authorizer->allows('deliveries.create')) {
+            throw new ReturnDecisionForbiddenException('deliveries.create');
+        }
+
+        if ($decision->mode->sealsTheReturnNote() && ! $this->authorizer->allows('deliveries.confirm')) {
+            throw new ReturnDecisionForbiddenException('deliveries.confirm');
+        }
+    }
+
+    /**
+     * Build the return note for a goods-bearing decision.
+     *
+     * CF-D7 + CF-D11. The return note covers every physical invoice line at the
+     * DELIVERED-remaining quantity, one line per `(product, location)` tuple, with the
+     * location written EXPLICITLY onto the line so `getEffectiveLocationId()` never
+     * falls through to a possibly-null document location.
+     */
+    private function createReturnNoteForDecision(
+        Document $invoice,
+        ReturnDecisionData $decision,
+        ?string $actorId,
+    ): Document {
+        $tuples = $this->deliveredQuantityResolver->resolve($invoice);
+        $unresolved = $this->deliveredQuantityResolver->unresolvedLocationProductIds($invoice);
+
+        // CF-D7: drop tuples capped to zero BEFORE the note is built. The operative
+        // reason is not that they are pointless — it is that a zero line would still
+        // enter the SEALED `total`: `receiveStockBack()` skips it, but the totals pass
+        // does not.
+        $live = array_values(array_filter(
+            $tuples,
+            static fn (DeliveredQuantityTuple $tuple): bool => bccomp($tuple->remaining, '0', self::QUANTITY_SCALE) > 0,
+        ));
+
+        if ($live === []) {
+            // Nothing survives. Distinguish "nothing left the building" from "we
+            // cannot tell where it went" — different facts, different remedies.
+            if ($unresolved !== []) {
+                throw new ReturnLocationUnresolvedException($invoice->id, (string) $invoice->document_number);
+            }
+
+            // CF-D6's enforcement half: typed, and raised regardless of what the UI
+            // allowed. A disabled radio is affordance; a direct API call or a stale
+            // client bypasses it entirely.
+            throw new ReturnNothingDeliveredException($invoice->id, (string) $invoice->document_number);
+        }
+
+        if ($unresolved !== []) {
+            // Some tuples resolve and some do not: part of the quantity would restock
+            // somewhere it never left, and a location DOES resolve for the rest — the
+            // narrow case CF-D11 reserves this code for. NEVER used to break a tie
+            // between two locations; that is what the tuple split is for.
+            throw new ReturnLocationAmbiguousException(
+                $invoice->id,
+                (string) $invoice->document_number,
+                $unresolved,
+            );
+        }
+
+        $company = $invoice->company;
+
+        return $this->returnNoteService->createDraft(
+            new CreateReturnNoteData(
+                partnerId: (string) $invoice->partner_id,
+                documentDate: $decision->returnedOn ?? now(),
+                lines: $this->returnNoteLinesFor($invoice, $live, $tuples),
+                currency: $invoice->currency,
+                sourceDocumentId: $invoice->id,
+                // Deliberately NULL: every line carries its own location (CF-D11), and
+                // a document-level fallback is exactly the guess that would restock
+                // goods where they never left.
+                locationId: null,
+                notes: 'Goods return recorded when invoice '.$invoice->document_number.' was cancelled.',
+            ),
+            $company,
+        );
+    }
+
+    /**
+     * One return-note line per surviving `(SOURCE INVOICE LINE, location)` pair.
+     *
+     * ── WHY THE KEY IS THE INVOICE LINE, NOT THE PRODUCT (gate CF round 1, Critical 1) ──
+     * The first cut keyed pricing by PRODUCT: `$sourceLineByProduct[$productId] ??= $line`,
+     * first line wins. But `DeliveredQuantityResolver` aggregates delivered quantity
+     * across ALL of that product's invoice lines, so the whole delivered quantity was
+     * priced at the FIRST line's `unit_price`, carried the FIRST line's
+     * `discount_amount`, and was prorated against the FIRST line's `quantity`.
+     *
+     * Two invoice lines for one product is an ORDINARY invoice —
+     * `CreateDocumentRequest` places no `distinct` rule on `lines.*.product_id`, and
+     * CF-D11 point 2 leans on exactly that fact to make the tuple split expressible. So
+     * this was reachable in one click, with no refusal, and it produced wrong money on a
+     * SEALED document whose `total` is a hash input:
+     *   - 3 @ 100.000 (disc 3.000) + 2 @ 50.000, all 5 delivered ⇒ sale net 397.000 but
+     *     a sealed return net of 497.000 — the return overstating the sale by 25 %;
+     *   - 1 @ 100.000 (disc 5.000) + 4 @ 100.000 split 3 + 2 ⇒ `qtyRatio` above 1 and a
+     *     residue sink of **−5.000**: a negative flat discount, i.e. one that INCREASES
+     *     the line net, persisted on a sealed fiscal line.
+     * The sink was doing its job in both cases; its INPUT was wrong. CF-D11 forbids
+     * picking one location for a multi-location quantity and gives that a typed refusal —
+     * it never wrote the price analogue, and picking one price for a multi-line quantity
+     * is the same defect through a different door.
+     *
+     * ── THE ALLOCATION ──
+     * Each tuple's quantity is allocated across that product's invoice lines in
+     * `line_number` order, consuming each line's capacity before moving on, and one
+     * return-note line is emitted per allocation. NEVER divide by a quantity that is not
+     * the quantity being split.
+     *
+     * The capacity ledger is seeded from the invoiced quantity MINUS what prior returns
+     * already took (NEW-1) — without that, "each priced from its own source line" holds
+     * only until the first partial return, after which the surviving units get re-priced
+     * from lines that were already consumed.
+     *
+     * Order is deterministic — tuples arrive sorted by `(product_id, location_id)` and
+     * lines are consumed in `line_number` order — which matters because the draft total
+     * sums PER-LINE `bcmul` truncations and that total is a hash input.
+     *
+     * ── FIELD CLASSIFICATION (CF-D11; copying everything verbatim is WRONG) ──
+     *   verbatim   `product_id`, `description`, `unit_price`, `tax_rate`,
+     *              `discount_percent` — per-unit and scale-free, taken from THAT
+     *              allocation's own source line. Copying `unit_price`/`tax_rate`
+     *              verbatim is what keeps the return note mirroring the sale's VAT by
+     *              construction (CF-D2): line tax comes from the line's OWN stored rate,
+     *              not from the effective `TaxConfiguration`.
+     *   allocation's `quantity`; tuple's `location_id` — the point of the split.
+     *   PRORATED   `discount_amount` — a flat MONEY amount per line, not a rate.
+     *
+     * The proration is not a nicety. `DocumentLine::computeLineTotal()` subtracts a flat
+     * `discount_amount` WHOLE from `qty × unit_price` and then floors the line at zero,
+     * so a qty-5 line carrying `discount_amount = 5.000` split 3 + 2 would subtract
+     * 5.000 TWICE: the sealed net and its VAT base understated by the whole duplicated
+     * discount, silently clamped to zero on a small split line.
+     *
+     * `unit_price` here is B2B net/HT — the `documents` lane, not the POS
+     * `SALE_RECEIPT` lane where it is tax-inclusive (rule 19). Money and quantity are
+     * strings end to end.
+     *
+     * @param  list<DeliveredQuantityTuple>  $tuples  Live tuples, sorted by (product_id, location_id).
+     * @param  list<DeliveredQuantityTuple>  $allTuples  Including zero-remaining ones, whose
+     *                                                   `alreadyReturned` is what the capacity
+     *                                                   ledger has to consume.
+     * @return list<CreateReturnNoteLineData>
+     */
+    private function returnNoteLinesFor(Document $invoice, array $tuples, array $allTuples): array
+    {
+        $scale = $this->scaleResolver->getScale($invoice->currency);
+
+        /** @var array<string, list<DocumentLine>> $linesByProduct */
+        $linesByProduct = [];
+        foreach ($invoice->lines->sortBy('line_number') as $line) {
+            if ($line->product_id === null) {
+                continue;
+            }
+            $linesByProduct[(string) $line->product_id][] = $line;
+        }
+
+        /** @var array<string, numeric-string> $capacity remaining invoiced qty per source line id */
+        $capacity = [];
+        foreach ($linesByProduct as $productLines) {
+            foreach ($productLines as $line) {
+                $capacity[(string) $line->id] = (string) $line->quantity;
+            }
+        }
+
+        // ── NET PRIOR RETURNS OFF THE LEDGER FIRST (gate CF round 2, NEW-1) ──
+        //
+        // The ledger used to be seeded from the GROSS invoiced quantity and never reduced,
+        // so after a partial return the SURVIVING units were re-priced from lines that had
+        // already been consumed. Reproduced by the gate: `3 @ 100.000` + `2 @ 50.000`
+        // (sale net 400.000), 3 returned, then the guided cancel priced the remaining 2 at
+        // 100.000 — a returned value of 500.000 against a sale of 400.000, sealed, with no
+        // refusal. `assertWithinReturnableQuantities()` nets per PRODUCT (3 + 2 ≤ 5
+        // passes), so the cap cannot see WHICH LINE the units came from. C1's own defect
+        // class, surviving through this door.
+        //
+        // Prior returns are consumed in `line_number` order — the same order a prior
+        // guided return would have consumed them in — so the ledger reconstructs which
+        // lines are actually still outstanding.
+        foreach ($this->priorReturnedByProduct($allTuples) as $productId => $priorReturned) {
+            $outstanding = $priorReturned;
+
+            foreach ($linesByProduct[$productId] ?? [] as $line) {
+                if (bccomp($outstanding, '0', self::QUANTITY_SCALE) <= 0) {
+                    break;
+                }
+
+                $lineId = (string) $line->id;
+                $available = $capacity[$lineId];
+                $consumed = bccomp($outstanding, $available, self::QUANTITY_SCALE) > 0
+                    ? $available
+                    : $outstanding;
+
+                $capacity[$lineId] = bcsub($available, $consumed, self::QUANTITY_SCALE);
+                $outstanding = bcsub($outstanding, $consumed, self::QUANTITY_SCALE);
+            }
+        }
+
+        /** @var list<array{line: DocumentLine, tuple: DeliveredQuantityTuple, quantity: numeric-string}> $allocations */
+        $allocations = [];
+
+        foreach ($tuples as $tuple) {
+            $productLines = $linesByProduct[$tuple->productId] ?? [];
+
+            if ($productLines === []) {
+                // Delivered but never invoiced. The over-return cap in `createDraft()`
+                // owns that refusal; inventing a price here would pre-empt it.
+                continue;
+            }
+
+            /** @var numeric-string $outstanding */
+            $outstanding = $tuple->remaining;
+
+            foreach ($productLines as $index => $line) {
+                if (bccomp($outstanding, '0', self::QUANTITY_SCALE) <= 0) {
+                    break;
+                }
+
+                $lineId = (string) $line->id;
+                $available = $capacity[$lineId];
+                $isLastLine = $index === count($productLines) - 1;
+
+                // On the LAST line, take whatever is left even if it exceeds the line's
+                // remaining capacity. Silently dropping the excess would hide an
+                // over-return from `assertWithinReturnableQuantities()`, which compares
+                // requested-per-product against invoiced-per-product — the refusal has to
+                // still fire.
+                $take = $isLastLine
+                    ? $outstanding
+                    : (bccomp($outstanding, $available, self::QUANTITY_SCALE) > 0 ? $available : $outstanding);
+
+                if (bccomp($take, '0', self::QUANTITY_SCALE) <= 0) {
+                    continue;
+                }
+
+                $allocations[] = ['line' => $line, 'tuple' => $tuple, 'quantity' => $take];
+
+                $capacity[$lineId] = bcsub($available, $take, self::QUANTITY_SCALE);
+                $outstanding = bcsub($outstanding, $take, self::QUANTITY_SCALE);
+            }
+        }
+
+        $discounts = $this->prorateFlatDiscounts($allocations, $scale);
+
+        $lines = [];
+        foreach ($allocations as $index => $allocation) {
+            $sourceLine = $allocation['line'];
+            /** @var numeric-string $quantity */
+            $quantity = $allocation['quantity'];
+            /** @var numeric-string $unitPrice */
+            $unitPrice = (string) $sourceLine->unit_price;
+            /** @var numeric-string|null $taxRate */
+            $taxRate = $sourceLine->tax_rate === null ? null : (string) $sourceLine->tax_rate;
+            /** @var numeric-string|null $discountPercent */
+            $discountPercent = $sourceLine->discount_percent === null ? null : (string) $sourceLine->discount_percent;
+
+            $lines[] = new CreateReturnNoteLineData(
+                productId: (string) $sourceLine->product_id,
+                description: (string) $sourceLine->description,
+                quantity: $quantity,
+                unitPrice: $unitPrice,
+                taxRate: $taxRate,
+                discountPercent: $discountPercent,
+                discountAmount: $discounts[$index],
+                locationId: $allocation['tuple']->locationId,
+            );
+        }
+
+        return $lines;
+    }
+
+    /**
+     * Total already-returned quantity per product, across EVERY tuple.
+     *
+     * Read from the unfiltered tuple list on purpose: a fully-returned tuple has
+     * `remaining = 0` and is dropped before pricing, but its `alreadyReturned` is exactly
+     * the quantity the capacity ledger must consume. Taking this from the live tuples
+     * would miss the very lines a prior return exhausted.
+     *
+     * @param  list<DeliveredQuantityTuple>  $allTuples
+     * @return array<string, numeric-string>
+     */
+    private function priorReturnedByProduct(array $allTuples): array
+    {
+        /** @var array<string, numeric-string> $byProduct */
+        $byProduct = [];
+
+        foreach ($allTuples as $tuple) {
+            $byProduct[$tuple->productId] = bcadd(
+                $byProduct[$tuple->productId] ?? '0',
+                $tuple->alreadyReturned,
+                self::QUANTITY_SCALE,
+            );
+        }
+
+        return $byProduct;
+    }
+
+    /**
+     * Each source line's flat discount, split across ITS OWN allocations.
+     *
+     * Two properties, both load-bearing:
+     *
+     * 1. **Scaled to what is actually coming back.** The target for a source line is
+     *    `discount × (Σ allocated ÷ line quantity)`, so a partial return of a discounted
+     *    line carries a partial discount. Putting the whole line discount onto a smaller
+     *    quantity would understate the sealed net.
+     * 2. **Summing exactly, via a residue sink.** `bcdiv`/`bcmul` truncate, so every
+     *    allocation except the FIRST for that line is prorated and the first takes
+     *    `target − Σ(others)`. `Σ == target` then holds BY CONSTRUCTION at currency
+     *    scale, with one named sink, no largest-remainder pass and nothing left to
+     *    implementer choice. For a full return `Σ allocated == line quantity`, so the
+     *    target is the source discount exactly.
+     *
+     * Because every ratio is now `allocated ÷ that same line's quantity`, it can never
+     * exceed 1 and the sink can never go negative — the Critical-1 defect is structurally
+     * unreachable rather than merely untested.
+     *
+     * Prorated whenever `discount_amount` is non-null, even when `discount_percent`
+     * dominates `computeLineTotal()`'s precedence: harmless for the totals, and it keeps
+     * the stored line data honest rather than carrying a misleading flat amount.
+     *
+     * @param  list<array{line: DocumentLine, tuple: DeliveredQuantityTuple, quantity: numeric-string}>  $allocations
+     * @return array<int, numeric-string|null> Indexed to match $allocations.
+     */
+    private function prorateFlatDiscounts(array $allocations, int $scale): array
+    {
+        /** @var array<int, numeric-string|null> $discounts */
+        $discounts = array_fill(0, count($allocations), null);
+
+        /** @var array<string, list<int>> $indexesByLine */
+        $indexesByLine = [];
+        foreach ($allocations as $index => $allocation) {
+            $indexesByLine[(string) $allocation['line']->id][] = $index;
+        }
+
+        foreach ($indexesByLine as $indexes) {
+            $sourceLine = $allocations[$indexes[0]]['line'];
+
+            if ($sourceLine->discount_amount === null) {
+                continue;
+            }
+
+            /** @var numeric-string $sourceDiscount */
+            $sourceDiscount = (string) $sourceLine->discount_amount;
+            /** @var numeric-string $lineQuantity */
+            $lineQuantity = (string) $sourceLine->quantity;
+
+            if (bccomp($lineQuantity, '0', self::QUANTITY_SCALE) <= 0) {
+                continue;
+            }
+
+            $allocated = '0';
+            foreach ($indexes as $index) {
+                $allocated = bcadd($allocated, $allocations[$index]['quantity'], self::QUANTITY_SCALE);
+            }
+
+            // The share of the line discount that belongs to the returned quantity.
+            // precision-ok: a quantity RATIO, not a monetary value — 4 is the canonical
+            // quantity scale; the money truncation is the surrounding bcmul at $scale.
+            $returnedRatio = bcdiv($allocated, $lineQuantity, self::QUANTITY_SCALE);
+            /** @var numeric-string $target */
+            $target = bcmul($sourceDiscount, $returnedRatio, $scale);
+
+            $others = '0';
+            foreach ($indexes as $position => $index) {
+                if ($position === 0) {
+                    continue;
+                }
+
+                // precision-ok: a quantity RATIO, not a monetary value (see above).
+                $qtyRatio = bcdiv($allocations[$index]['quantity'], $lineQuantity, self::QUANTITY_SCALE);
+                /** @var numeric-string $prorated */
+                $prorated = bcmul($sourceDiscount, $qtyRatio, $scale);
+
+                $discounts[$index] = $prorated;
+                $others = bcadd($others, $prorated, $scale);
+            }
+
+            /** @var numeric-string $residue */
+            $residue = bcsub($target, $others, $scale);
+            $discounts[$indexes[0]] = $residue;
+        }
+
+        return $discounts;
+    }
+
+    /**
+     * The decision that TOOK EFFECT, if any. Rejected entries are skipped — they are
+     * an audit trail, not state.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function acceptedDecisionOn(Document $invoice): ?array
+    {
+        $recorded = $invoice->payload['return_decisions'] ?? null;
+
+        if (! is_array($recorded)) {
+            return null;
+        }
+
+        foreach (array_reverse($recorded) as $entry) {
+            if (is_array($entry) && ($entry['accepted'] ?? false) === true) {
+                /** @var array<string, mixed> $entry */
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $existing
+     */
+    private function decisionMatches(array $existing, ReturnDecisionData $decision): bool
+    {
+        return ($existing['mode'] ?? null) === $decision->mode->value
+            && ($existing['returned_on'] ?? null) === $decision->returnedOn?->toDateString();
+    }
+
+    /**
+     * @param  array<string, mixed>  $record
+     */
+    private function appendDecision(Document $invoice, array $record): void
+    {
+        $payload = $invoice->payload ?? [];
+        $recorded = is_array($payload['return_decisions'] ?? null) ? $payload['return_decisions'] : [];
+        $recorded[] = $record;
+        $payload['return_decisions'] = $recorded;
+
+        // Trigger-safe: `payload` is absent from the immutable column list, and after
+        // a cancel `fiscal_status` is VOIDED, so `enforce_document_immutability()`
+        // takes its `OLD.fiscal_status != 'SEALED'` early return either way.
+        $invoice->update(['payload' => $payload]);
+    }
+
+    /**
+     * CF-D5's best-effort audit append for a REFUSED decision, in its own short
+     * transaction (the caller's has already rolled back).
+     *
+     * The skip predicate is `mode` + `returned_on` + `decided_by` + `accepted: false`,
+     * matched ANYWHERE in the list — not merely against the last entry, and not
+     * without the actor. Both edges matter: a DIFFERENT user's identically-shaped
+     * rejection must append (support has to see that two people decided, which is the
+     * audit claim this record exists to make), while two clients retry-looping with
+     * different rejected modes would otherwise alternate A/B/A/B and grow `payload`
+     * without bound.
+     */
+    private function appendRejectedDecision(ReturnDecisionConflictException $conflict): void
+    {
+        try {
+            DB::transaction(function () use ($conflict): void {
+                /** @var Document $invoice */
+                $invoice = Document::query()->whereKey($conflict->invoiceId)->lockForUpdate()->firstOrFail();
+
+                $payload = $invoice->payload ?? [];
+                $recorded = is_array($payload['return_decisions'] ?? null) ? $payload['return_decisions'] : [];
+
+                $rejected = $conflict->rejectedDecision;
+                foreach ($recorded as $entry) {
+                    if (! is_array($entry)) {
+                        continue;
+                    }
+                    if (($entry['accepted'] ?? true) === false
+                        && ($entry['mode'] ?? null) === $rejected->mode->value
+                        && ($entry['returned_on'] ?? null) === $rejected->returnedOn?->toDateString()
+                        && ($entry['decided_by'] ?? null) === $rejected->decidedBy
+                    ) {
+                        return;
+                    }
+                }
+
+                $recorded[] = $rejected->toAuditRecord(false);
+                $payload['return_decisions'] = $recorded;
+                $invoice->update(['payload' => $payload]);
+            });
+        } catch (\Throwable $e) {
+            Log::error('Failed to append a rejected return decision; the 422 is still returned.', [
+                'invoice_id' => $conflict->invoiceId,
+                'rejected_decision' => $conflict->rejectedDecision->toAuditRecord(false),
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -323,6 +1084,90 @@ class RefundService
         }
 
         return null;
+    }
+
+    /**
+     * Does cancelling this invoice require an explicit decision about the goods?
+     *
+     * Plan CF T7 / CF-D6. TRUE when the invoice carries at least one PHYSICAL line.
+     *
+     * The predicate is `product_id !== null`, which is EXACTLY the live predicate
+     * `ReturnNoteService::receiveStockBack()` keys on. That is deliberate: the read
+     * model must not claim a return decision is needed for a line that would not
+     * restock, nor the reverse. (Its companion test there — `$line->product->is_service`
+     * — is dead: `Product` has no such column or accessor. A service line is one with
+     * `service_id`, and `CreateDocumentRequest` gives that `prohibits:lines.*.product_id`,
+     * so a NULL `product_id` IS the service case.)
+     *
+     * FALSE means the modal renders WITHOUT the option group and posts
+     * `not_applicable` — the modal itself always renders, because `reason` is
+     * `required|max:500` and has no other UI.
+     */
+    public function requiresReturnDecision(Document $invoice): bool
+    {
+        foreach ($invoice->lines as $line) {
+            if ($line->product_id !== null) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Have units actually left the building against this invoice? — CF-D6's
+     * `goods_issued`.
+     *
+     * FAIL CLOSED: no delivery-note linkage, an unconfirmed delivery note, or an
+     * unresolvable location all resolve to FALSE. That matters because posting an
+     * invoice moves NO stock — a catalogue-shaped predicate here would let one click
+     * restock goods that never shipped.
+     *
+     * This is affordance only. The server refuses independently in
+     * `cancelInvoice()` (typed `RETURN_NOTHING_DELIVERED`), because a disabled radio
+     * is not a safety property.
+     */
+    public function hasGoodsIssued(Document $invoice): bool
+    {
+        return $this->deliveredQuantityResolver->hasGoodsIssued($invoice);
+    }
+
+    /**
+     * Delivered quantities per `(product, location)` tuple, for the modal.
+     *
+     * Reported per product AND per location so the modal can EXPLAIN a split rather
+     * than present one opaque number — a user cancelling an invoice whose goods went
+     * out from two warehouses is about to restock into both.
+     *
+     * @return list<array{product_id: string, location_id: string, delivered: string, already_returned: string, remaining: string}>
+     */
+    public function deliveredQuantities(Document $invoice): array
+    {
+        return array_map(
+            static fn (DeliveredQuantityTuple $tuple): array => [
+                'product_id' => $tuple->productId,
+                'location_id' => $tuple->locationId,
+                'delivered' => $tuple->delivered,
+                'already_returned' => $tuple->alreadyReturned,
+                'remaining' => $tuple->remaining,
+            ],
+            $this->deliveredQuantityResolver->resolve($invoice),
+        );
+    }
+
+    /**
+     * The goods decision already recorded for this invoice, if any — CF-D5's
+     * readability half.
+     *
+     * Without this the owner's "the choice is recorded" exists only in the database:
+     * the modal could not tell the user that someone already decided, and would offer
+     * a choice that is going to 422.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function recordedReturnDecision(Document $invoice): ?array
+    {
+        return $this->acceptedDecisionOn($invoice);
     }
 
     /**

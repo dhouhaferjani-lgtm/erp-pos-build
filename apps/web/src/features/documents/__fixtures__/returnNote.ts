@@ -12,18 +12,27 @@ export interface SourceDocumentLine {
   product_code: string
   product_name: string
   description: string
-  quantity: number
+  /** A decimal STRING (plan CF T8 / rule 19), matching the backend's DocumentLineData. */
+  quantity: string
   quantity_decimals?: number | null
   unit_price: string
   tax_rate: string
   total: string
 }
 
+/**
+ * Widened in the SAME commit as `SourceDocumentForReturn` — that is the point of this
+ * factory. It is the advertised compile-time fence: if the form's required fields move
+ * and the fixture does not, this file fails to compile instead of the test passing
+ * against a shape the server rejects.
+ */
 export interface SourceDocument {
   id: string
   document_number: string
   document_date: string
   partner_name: string
+  partner_id: string | null
+  currency: string
   total: string
   lines?: SourceDocumentLine[]
 }
@@ -37,7 +46,7 @@ export function makeSourceDocumentLine(
     product_code: 'PROD-1',
     product_name: 'Product 1',
     description: 'Test product 1',
-    quantity: 10,
+    quantity: '10',
     unit_price: '100.00',
     tax_rate: '20.00',
     total: '1200.00',
@@ -60,6 +69,8 @@ export function makeSourceDocument(
     document_number: 'INV-001',
     document_date: '2024-01-15',
     partner_name: 'ACME Corp',
+    partner_id: 'partner-1',
+    currency: 'TND',
     total: '1500.00',
     lines: [
       makeSourceDocumentLine(),
@@ -69,7 +80,7 @@ export function makeSourceDocument(
         product_code: 'PROD-2',
         product_name: 'Product 2',
         description: 'Test product 2',
-        quantity: 5,
+        quantity: '5',
         unit_price: '60.00',
         tax_rate: '20.00',
         total: '360.00',

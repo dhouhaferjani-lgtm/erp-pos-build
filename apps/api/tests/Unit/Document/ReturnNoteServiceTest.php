@@ -8,7 +8,6 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -17,13 +16,10 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
-use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
-use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -57,12 +53,21 @@ class ReturnNoteServiceTest extends TestCase
         // Bind CompanyContext so CurrencyScaleResolver has context
         $this->app->make(CompanyContext::class)->setCompanyId($this->company->id);
 
-        // Create dependencies
-        $wacService = $this->app->make(WeightedAverageCostService::class);
-        $hashService = $this->app->make(FiscalHashService::class);
-        $taxCalculationService = $this->app->make(TaxCalculationService::class);
-        $costLock = $this->app->make(ProductCostLock::class);
-        $this->service = new ReturnNoteService($wacService, $hashService, $taxCalculationService, $costLock);
+        // Resolve through the container rather than hand-constructing.
+        //
+        // Gate CF round 2, NEW-2. This test built the service with `new
+        // ReturnNoteService($wac, $hash, $tax, $costLock)` — four positional arguments.
+        // Plan CF's T2/T3/T4 widened the constructor to seven (numbering, scale
+        // resolver, period guard) and the round-1 fix added an eighth
+        // (`DeliveredQuantityResolver`), so the class had been RED with
+        // `ArgumentCountError` since T2 — and stayed red through a whole gate round,
+        // because every run on both sides was scoped to `tests/Feature/Document`, which
+        // does not contain `tests/Unit/Document`.
+        //
+        // `make()` is the fix AND the prophylactic: a constructor widened again cannot
+        // break this file. `tests/Unit/Document` is now part of the lane's by-path run
+        // set so the gap cannot hide a second time.
+        $this->service = $this->app->make(ReturnNoteService::class);
 
         // Create location manually (no factory exists)
         $this->location = Location::create([

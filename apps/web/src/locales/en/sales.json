@@ -491,6 +491,74 @@
       "confirmAndPost": "Confirm & Post Invoice",
       "confirming": "Confirming…",
       "success": "Invoice posted successfully with confirmed delivery notes"
+    },
+    "cancelFlow": {
+      "title": "Cancel invoice {{number}}",
+      "reasonLabel": "Why is this invoice being cancelled?",
+      "reasonPlaceholder": "e.g. duplicate invoice, customer cancelled the order",
+      "submit": "Cancel invoice",
+      "keep": "Keep the invoice",
+      "submitting": "Cancelling…",
+      "goodsQuestion": "What is happening to the goods?",
+      "goodsIntro": "Cancelling the invoice does not move stock on its own. Tell us about the goods so the inventory stays true.",
+      "option1": {
+        "label": "The products will be returned",
+        "hint": "A {{status}} return note is created and linked to this invoice, ready for you to confirm when the goods physically arrive."
+      },
+      "option2": {
+        "label": "The products have already been returned",
+        "hint": "The return note is created and confirmed as of the date below, and the stock comes back immediately.",
+        "dateLabel": "Date the goods came back",
+        "scope": "This covers ALL delivered products on this invoice, and the return note is sealed as soon as you confirm — unlike option 1's {{status}}, it cannot be edited afterwards.",
+        "partialPointer": "Getting only part of the goods back? Create the return note from Sales → Return notes → New instead."
+      },
+      "option3": {
+        "label": "No return — the goods are not coming back",
+        "hint": {
+          "goodsIssued": "The goods stay with the customer: no stock comes back and the cost stays charged. This choice is recorded on the invoice.",
+          "noGoodsIssued": "Nothing was ever delivered against this invoice, so there is nothing to return. This choice is recorded on the invoice.",
+          "unknown": "Records that no goods come back. We could not confirm this invoice's deliveries yet, so nothing is claimed about them here."
+        }
+      },
+      "optionsDisabledReason": "No confirmed delivery note is linked to this invoice, so no goods have left your stock and none can come back.",
+      "chooseAnOption": "Choose what is happening to the goods before cancelling.",
+      "recorded": {
+        "title": "Goods decision recorded",
+        "will_return": "The products will be returned.",
+        "already_returned": "The products were returned on {{date}}.",
+        "no_return": "No return — the goods stay with the customer.",
+        "no_goods_issued": "Nothing was delivered against this invoice.",
+        "not_applicable": "This invoice has no physical products."
+      },
+      "success": {
+        "cancelled": "Invoice cancelled.",
+        "withReturnNote": "Invoice cancelled and return note {{number}} created.",
+        "viewReturnNote": "View return note"
+      },
+      "errors": {
+        "DOCUMENT_HAS_PAYMENTS": "This invoice cannot be cancelled because payments or credit notes have already been applied to it. Unallocate them first, or issue a credit note instead.",
+        "DOCUMENT_PERIOD_CLOSED": "This invoice sits in a closed VAT period. Ask your accountant to reopen it, or issue a credit note instead.",
+        "DOCUMENT_PERIOD_FILED": "This invoice sits in a VAT period that has already been filed, which can never be reopened. Issue a credit note instead.",
+        "RETURN_PERIOD_CLOSED": "That date falls in a closed VAT period. Pick a date in an open period, or ask your accountant to reopen it.",
+        "RETURN_PERIOD_FILED": "That date falls in a VAT period already filed with the tax authority, which can never be reopened. Pick a date in an open period.",
+        "RETURN_PERIOD_LOCKED": "That date falls in a closed or locked accounting period. Pick a date in an open period.",
+        "RETURN_NOTHING_DELIVERED": "Nothing has been delivered against this invoice that is still available to return. Choose \"no return\" instead.",
+        "RETURN_LOCATION_UNRESOLVED": "No confirmed delivery note says which location the goods left from, and guessing one would create stock where it never was. Create the return note manually from the delivery note.",
+        "RETURN_LOCATION_AMBIGUOUS": "Part of the delivered quantity cannot be matched to the location it left from. Create the return note manually from the delivery note.",
+        "RETURN_EXCEEDS_DELIVERED_QUANTITY": "The return would exceed what was delivered for {{product}} — only {{remaining}} is still available to return.",
+        "RETURN_EXCEEDS_INVOICED_QUANTITY": "The return would exceed what was invoiced for {{product}} — only {{remaining}} is still available to return.",
+        "RETURN_DECISION_ALREADY_RECORDED": "A decision about the goods has already been recorded for this cancellation and cannot be changed.",
+        "RETURN_DECISION_FORBIDDEN": "You can cancel this invoice, but not record the goods return it needs. Ask a manager to complete the return, or cancel without a return.",
+        "unknown": "The invoice could not be cancelled. Please try again, or contact support if it keeps happening.",
+        "RETURN_DECISION_MISMATCHES_GOODS": "This invoice has products on it, so it cannot be cancelled without saying what happens to the goods. Reload the page and choose an option.",
+        "futureReturnDate": "The return date cannot be in the future.",
+        "invalidReturnDate": "Enter the return date as a calendar date.",
+        "returnDateBeforeInvoice": "The return date cannot be earlier than the invoice date."
+      },
+      "loading": "Checking this invoice…",
+      "optionsUnknownReason": "We could not confirm what was delivered on this invoice yet, so a goods return cannot be recorded from here.",
+      "checkFailed": "We could not check this invoice. Retry, or reload the page.",
+      "retryCheck": "Retry"
     }
   },
   "deliveryNotes": {
@@ -714,9 +782,10 @@
       "returnDetails": "Return Details",
       "noLinesSelected": "Please select at least one line to return",
       "returningAllItems": "Returning all {{count}} items",
-      "autoCreateCreditNote": "Automatically create credit note",
-      "autoCreateCreditNoteHint": "A credit note will be created automatically when this return is confirmed",
-      "create": "Create Return Note"
+      "create": "Create Return Note",
+      "noSourceDocument": "Select the invoice or delivery note the goods came from before creating the return.",
+      "sourceHasNoPartner": "This document has no customer on it, so a return note cannot be created from it. Add a customer to the source document first.",
+      "invalidQuantity": "Enter a return quantity greater than zero for every selected line."
     },
     "summary": {
       "title": "Return Note Summary",

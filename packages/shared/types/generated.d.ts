@@ -701,6 +701,8 @@ goods_received: boolean;
 is_auto_generated: boolean;
 delivery_note_ids: Array<any>;
 invoice_ids: Array<any>;
+return_decision: App.Modules.Document.Application.DTOs.ReturnDecisionProjection | null;
+return_decision_count: number;
 lines: Array<App.Modules.Document.Application.DTOs.DocumentLineData>;
 payments: Array<any>;
 created_at: string;
@@ -729,6 +731,13 @@ designation_default_snapshot: string | null;
 quantity_decimals: number;
 requires_batch_tracking: boolean;
 };
+export type ReturnDecisionProjection = {
+mode: App.Modules.Document.Domain.Enums.ReturnDecisionMode;
+returned_on: string | null;
+return_note_id: string | null;
+decided_by: string | null;
+decided_at: string;
+};
 export type VehicleContextData = {
 vehicle_id: string;
 snapshot: Array<any> | null;
@@ -754,6 +763,7 @@ export type PaymentStatus = 'unpaid' | 'partially_paid' | 'in_payment' | 'paid' 
 export type PriceEntryMode = 'unit' | 'total';
 export type RefundMethod = 'original_payment' | 'store_credit' | 'exchange' | 'none';
 export type ReturnCondition = 'unopened' | 'used' | 'damaged' | 'unusable';
+export type ReturnDecisionMode = 'will_return' | 'already_returned' | 'no_return' | 'no_goods_issued' | 'not_applicable';
 export type ReturnReason = 'defective' | 'wrong_item' | 'customer_regret' | 'damaged_in_transit' | 'warranty' | 'exchange' | 'other';
 export type SupplierInvoiceMatchStatus = 'unmatched' | 'matched' | 'price_variance' | 'quantity_variance' | 'exception';
 }
@@ -2850,6 +2860,7 @@ meta: Array<any>;
 };
 }
 declare namespace App.Shared.Domain.Enums {
+export type ReturnPeriodRefusalCode = 'RETURN_PERIOD_CLOSED' | 'RETURN_PERIOD_FILED' | 'RETURN_PERIOD_LOCKED';
 export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
 export type StockMovementReferenceType = 'Document' | 'inventory_counting' | 'pos_receipt_return_scrap' | 'stock_adjustment';
 export type VarianceDirection = 'over' | 'under' | 'balanced';

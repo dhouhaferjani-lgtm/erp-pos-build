@@ -7,7 +7,7 @@ import { Calendar, Building2, FileText, Car, Lock } from 'lucide-react'
 import { AxiosError } from 'axios'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
-import { formatCurrency } from '../../../lib/format'
+import { formatCurrency, formatDate } from '../../../lib/format'
 import { formatQuantity } from '../../../lib/decimal'
 import { getQuantityDecimals } from '../../../lib/quantityScale'
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog'
@@ -26,6 +26,10 @@ import { useCreditNotes } from '../hooks/useCreditNotes'
 import { useSendDocumentEmail } from '../hooks/useDocumentEmail'
 import { useDownloadPdf, usePreviewPdf, usePrintPdf } from '../hooks/useDocumentPdf'
 import { DocumentActionBar } from '../components/DocumentActionBar'
+import { CancelInvoiceModal } from './components/CancelInvoiceModal'
+import { useCancelInvoice, useCanCancelInvoice } from './hooks/useCancelInvoice'
+import { entityRoutes } from '@/lib/entityRoutes'
+import { extractErrorCode } from '@/utils/errorHandling'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal/Modal'
 import { Button } from '../../../components/atoms/Button/Button'
@@ -33,7 +37,7 @@ import { Input } from '../../../components/atoms/Input/Input'
 import { StatusBadge } from '../../../components/atoms/StatusBadge/StatusBadge'
 import { Textarea } from '../../../components/atoms/Textarea/Textarea'
 import { EntityLink } from '../../../components/molecules/EntityLink'
-import { tokens } from '../../../lib/designTokens'
+import { tokens, textColors, borderColors, semanticColorTokens } from '../../../lib/designTokens'
 import { CloseWithWriteoffSection } from './components/CloseWithWriteoffSection'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
@@ -72,6 +76,16 @@ export function InvoiceDetailPage() {
   const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelError, setCancelError] = useState<
+    { code?: string | undefined; details?: Record<string, unknown> | undefined } | undefined
+  >(undefined)
+  /**
+   * A submit came back failed. Tracked SEPARATELY from `cancelError.code` because a 422
+   * can carry no readable code at all — and "no code" must still produce actionable
+   * feedback rather than a silently dead button (gate CF round 1, Blocker B2).
+   */
+  const [cancelSubmitFailed, setCancelSubmitFailed] = useState(false)
   const [showCreditNoteForm, setShowCreditNoteForm] = useState(false)
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showDeliveryConfirmationModal, setShowDeliveryConfirmationModal] = useState(false)
@@ -173,6 +187,63 @@ export function InvoiceDetailPage() {
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
+    },
+  })
+
+  /**
+   * Plan CF T9/T11. `can-cancel` drives BOTH the button's availability and the modal's
+   * content (CF-D5/CF-D6). The `enabled` predicate keeps it off the six non-invoice
+   * detail pages that share `DocumentActionBar`, and off a non-posted invoice.
+   */
+  const canCancelQuery = useCanCancelInvoice(
+    id,
+    invoice?.type === 'invoice' && invoice.status === 'posted',
+  )
+
+  const cancelMutation = useCancelInvoice({
+    invoiceId: id ?? '',
+    onSuccess: (response) => {
+      setShowCancelModal(false)
+      setCancelError(undefined)
+      setCancelSubmitFailed(false)
+
+      const returnNote = response.return_decision?.return_note ?? null
+      if (returnNote) {
+        // The ruling's "the user finds it under return notes" is NOT satisfied by a
+        // bare toast — the toast carries the link.
+        toast.success(
+          t('sales:invoices.cancelFlow.success.withReturnNote', { number: returnNote.document_number }),
+          {
+            action: {
+              label: t('sales:invoices.cancelFlow.success.viewReturnNote'),
+              onClick: () => {
+                void navigate(entityRoutes.document(returnNote.id, { documentType: 'return_note' }))
+              },
+            },
+          },
+        )
+      } else {
+        toast.success(t('sales:invoices.cancelFlow.success.cancelled'))
+      }
+    },
+    onError: (error) => {
+      // The modal STAYS OPEN so the user can fix the date or pick another option —
+      // and, on a network error, retry. That retry is why the server's
+      // identical-replay path has to return 200 with the existing return note.
+      setCancelSubmitFailed(true)
+
+      const body = error.response?.data
+      setCancelError({
+        code: extractErrorCode(error) ?? body?.error?.code,
+        // `error.DETAILS`, not the whole `error` object (gate CF round 1, MAJOR M2).
+        // The renderer nests the payload one level deeper, so `details.product_id` and
+        // `details.remaining_returnable` were both undefined and the product-named
+        // quantity refusal interpolated empty strings: "…exceed what was delivered for
+        //  — only  is still available to return." Plan §2 makes naming the product
+        // MANDATORY precisely because CF-D7 removed the line UI, so that banner is the
+        // one refusal that is unactionable without its details.
+        details: body?.error?.['details'] as Record<string, unknown> | undefined,
+      })
     },
   })
 
@@ -301,6 +372,9 @@ export function InvoiceDetailPage() {
               document={invoice}
               basePath="/sales/invoices"
               isActionPending={isActionPending}
+              onCancel={() => { setCancelError(undefined); setCancelSubmitFailed(false); setShowCancelModal(true); }}
+              canCancelInvoice={canCancelQuery.data?.can_cancel ?? true}
+              cancelReasonCode={canCancelQuery.data?.reason_code ?? null}
               onConfirm={() => { setConfirmAction('confirm'); }}
               onPost={() => { setConfirmAction('post'); }}
               onCreateCreditNote={() => { setShowCreditNoteForm(true); }}
@@ -338,6 +412,42 @@ export function InvoiceDetailPage() {
             </StatusBadge>
           )}
         </DocumentHeader>
+
+        {/*
+          * Plan CF T16 / CF-D5. Without this the owner's "the choice is recorded" would
+          * exist only in the database — a cancelled invoice would look identical whether
+          * the goods came back, stayed out, or never shipped.
+          */}
+        {invoice.return_decision && (
+          <div className={`rounded-lg border ${borderColors.light} ${semanticColorTokens.intent.neutral.bgSubtle} p-4`}>
+            <p className={`text-sm font-medium ${textColors.primary}`}>
+              {t('sales:invoices.cancelFlow.recorded.title')}
+            </p>
+            <p className={`mt-1 text-sm ${textColors.secondary}`}>
+              {t(`sales:invoices.cancelFlow.recorded.${invoice.return_decision.mode}`, {
+                // Locale-formatted, not the raw ISO string (gate CF round 1, m8).
+                // `formatDate`, not `new Date(...).toLocaleDateString()` (gate CF round 2,
+                // NB3). A date-only string parses as UTC MIDNIGHT and renders a calendar
+                // day early in any zone behind UTC, and a bare `toLocaleDateString()`
+                // ignores the active UI language. `lib/format.ts`'s helper documents both
+                // hazards — m8's fix had copied local precedent instead of the helper,
+                // reintroducing the very bug the round-1 UTC fix removed elsewhere.
+                date: invoice.return_decision.returned_on
+                  ? formatDate(invoice.return_decision.returned_on)
+                  : '',
+              })}
+            </p>
+            {invoice.return_decision.return_note_id && (
+              <EntityLink
+                type="document"
+                documentType="return_note"
+                id={invoice.return_decision.return_note_id}
+                label={t('sales:invoices.cancelFlow.success.viewReturnNote')}
+              />
+            )}
+          </div>
+        )}
+
         <CloseWithWriteoffSection
           invoiceId={invoice.id}
           invoiceTotal={invoice.total ?? '0'}
@@ -561,6 +671,36 @@ export function InvoiceDetailPage() {
           )}
         </div>
       </div>
+
+      {/*
+        * Plan CF T10/T11 — the guided cancel modal. This is the ONLY confirmation step
+        * for a cancel: no nested ConfirmDialog, because the modal already asks two
+        * deliberate questions and a dialog on top of a dialog is ceremony, not
+        * protection.
+        */}
+      <CancelInvoiceModal
+        isOpen={showCancelModal}
+        onClose={() => { setShowCancelModal(false); setCancelError(undefined); setCancelSubmitFailed(false) }}
+        invoiceNumber={invoice.document_number ?? ''}
+        invoiceDocumentDate={invoice.document_date}
+        canCancel={canCancelQuery.data}
+        canCancelResolved={canCancelQuery.isSuccess}
+        canCancelErrored={canCancelQuery.isError}
+        onRetryCanCancel={() => { void canCancelQuery.refetch() }}
+        isSubmitting={cancelMutation.isPending}
+        errorCode={cancelError?.code}
+        errorDetails={cancelError?.details}
+        submitFailed={cancelSubmitFailed}
+        onSubmit={({ reason, mode, returnedOn }) => {
+          cancelMutation.mutate({
+            reason,
+            return_decision: {
+              mode,
+              ...(returnedOn ? { returned_on: returnedOn } : {}),
+            },
+          })
+        }}
+      />
 
       {/* Confirmation Dialogs */}
       <ConfirmDialog

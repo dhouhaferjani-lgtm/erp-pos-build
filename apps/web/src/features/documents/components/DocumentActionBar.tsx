@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
+  Ban,
   Edit,
   Check,
   ArrowRight,
@@ -39,6 +40,20 @@ export interface DocumentActionBarProps {
   onCreateCreditNote?: (() => void) | undefined
   onCreateReturnNote?: (() => void) | undefined
   onRevert?: (() => void) | undefined
+  /**
+   * Plan CF T11. Opens the guided cancel modal. Optional and gated by the house
+   * `if (canX && onX)` convention — this bar is shared by SEVEN detail pages, and the
+   * six non-invoice ones must not grow a Cancel button.
+   */
+  onCancel?: (() => void) | undefined
+  /**
+   * Mirrors the server's `can-cancel` verdict. When `cancelReasonCode` is set the
+   * action renders DISABLED with the reason as its `title`, rather than live-and-then-
+   * 422 — a FILED VAT period can never be reopened, so that button would be a permanent
+   * dead end (the exact case the read model exists to pre-empt).
+   */
+  canCancelInvoice?: boolean | undefined
+  cancelReasonCode?: string | null | undefined
   onSendEmail?: (() => void) | undefined
   onDownloadPdf?: (() => void) | undefined
   onPreviewPdf?: (() => void) | undefined
@@ -74,6 +89,9 @@ export function DocumentActionBar({
   onCreateCreditNote,
   onCreateReturnNote,
   onRevert,
+  onCancel,
+  canCancelInvoice,
+  cancelReasonCode,
   onSendEmail,
   onDownloadPdf,
   onPreviewPdf,
@@ -154,7 +172,42 @@ export function DocumentActionBar({
   // Build the visible action list in workflow order. The FIRST action is the
   // single primary (filled) button; every other action renders as secondary.
   // One primary per screen — the rainbow of per-action colors is deliberate slop removal.
+  /**
+   * Plan CF T11. Deliberately narrow, and deliberately NOT reusing
+   * `DocumentActions.tsx` — that component is dead (its only reference is the barrel
+   * export) and its own `canCancel` is `draft || confirmed`, which CONTRADICTS the
+   * backend: only a POSTED invoice reaches the cancel path.
+   *
+   * Route-level module gating already holds (the invoice route is wrapped in
+   * `RequirePermission moduleKey="sales"`), so this is the per-action permission only.
+   */
+  const canCancel =
+    document.type === 'invoice' &&
+    document.status === 'posted' &&
+    hasPermission('invoices.cancel')
+
   const visibleActions: VisibleAction[] = []
+
+  if (canCancel && onCancel) {
+    visibleActions.push({
+      key: 'cancel',
+      icon: Ban,
+      label: t('documents.cancel'),
+      onClick: onCancel,
+      // Mirror the server: enabled only when it says yes.
+      disabled: isActionPending || canCancelInvoice === false,
+      // Gate CF round 1, m2: only three `CancelBlockReason` values have copy keys, and a
+      // missing key would render the RAW key as a tooltip. `defaultValue` keeps an
+      // unmapped code from leaking into the UI.
+      ...(cancelReasonCode
+        ? {
+          title: t(`sales:invoices.cancelFlow.errors.${cancelReasonCode}`, {
+            defaultValue: t('sales:invoices.cancelFlow.errors.unknown'),
+          }),
+        }
+        : {}),
+    })
+  }
 
   if (canConfirm && onConfirm) {
     visibleActions.push({

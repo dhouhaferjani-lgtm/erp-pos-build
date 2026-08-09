@@ -70,19 +70,6 @@ export interface PartnerInfo {
 }
 
 /**
- * Return note metadata
- */
-export interface ReturnNoteMetadata {
-  return_reason: ReturnReason
-  return_condition?: ReturnCondition | null
-  refund_method?: RefundMethod | null
-  source_delivery_note_id?: string | null
-  source_invoice_id?: string | null
-  linked_credit_note_id?: string | null
-  notes?: string | null
-}
-
-/**
  * Return note from API response
  */
 export interface ReturnNote {
@@ -95,25 +82,82 @@ export interface ReturnNote {
   tax_amount: string // Decimal string
   total: string // Decimal string
   status: DocumentStatus
-  metadata: ReturnNoteMetadata
+  /**
+   * The invoice or delivery note this return came from.
+   *
+   * Plan CF T8. Replaces the deleted `metadata` property, which was the reason the
+   * broken response read typechecked: `ReturnNoteMetadata` is instantiated NOWHERE in
+   * `apps/api/app` and the endpoint returns `DocumentData::fromModel()`, which has no
+   * `metadata` key at all. Every read of `returnNote.metadata.*` therefore threw at
+   * runtime the moment a create ever succeeded — which, before T8, it never did.
+   *
+   * Reason and condition live in `documents.payload`, not on the response.
+   */
+  source_document_id: string | null
+  /**
+   * Where the return reason and condition actually live.
+   *
+   * `ReturnNoteController::store()` writes them into `documents.payload`, and the index
+   * endpoint serialises raw `Document` models — so `payload` is what the list receives.
+   * Optional because the detail endpoint returns `DocumentData`, which projects payload
+   * rather than emitting it.
+   */
+  payload?: {
+    return_reason?: ReturnReason | null
+    return_condition?: ReturnCondition | null
+  } | null
   created_at: string // ISO 8601
 }
 
 /**
  * Request payload for creating return note
  */
+export interface CreateReturnNoteLine {
+  product_id?: string
+  description: string
+  /**
+   * A decimal STRING, never a number (rule 19). `number` silently truncated
+   * fractional returns for any unit with `decimal_places > 0`, and the backend type is
+   * `DocumentLineData.quantity: string`.
+   */
+  quantity: string
+  /** Net/HT, copied verbatim from the source line — never round-tripped through a number. */
+  unit_price: string
+  tax_rate?: string
+  location_id?: string
+}
+
+/**
+ * The canonical document-create shape the backend has always accepted.
+ *
+ * Plan CF T8 / CF-D9. The previous interface described a payload NO SERVER ROUTE HAS
+ * EVER ACCEPTED: `CreateDocumentRequest` requires `partner_id`, `document_date` and
+ * `lines` (min:1) with per-line `description` + `unit_price`, knows only
+ * `source_document_id`, and has no `prepareForValidation()` key mapping.
+ * `auto_create_credit_note` matches ZERO occurrences anywhere in `apps/api/app`;
+ * `source_invoice_id` exists only as an index-endpoint query FILTER; and
+ * `lines[].line_id` is consumed by a different endpoint entirely
+ * (`CreditNoteService`). Both the "full" and the "partial" mode 422'd, from both entry
+ * points.
+ *
+ * Repaired towards the BACKEND (CF-D9), not the reverse: this is the tested shape every
+ * document type shares, and teaching one controller a thin bespoke shape would fork
+ * document-create validation for a single type.
+ *
+ * `lines` is KEPT here — this is the standalone partial-return surface
+ * (`/sales/return-notes/new`). The guided cancel flow drops line selection entirely
+ * (CF-D7) and does not use this request at all.
+ */
 export interface CreateReturnNoteRequest {
-  source_delivery_note_id?: string
-  source_invoice_id?: string
-  return_reason: ReturnReason
-  return_condition?: ReturnCondition
-  refund_method?: RefundMethod
+  partner_id: string
+  document_date: string // YYYY-MM-DD
+  currency?: string
+  source_document_id?: string
+  location_id?: string
   notes?: string
-  auto_create_credit_note?: boolean
-  lines?: Array<{
-    line_id: string
-    quantity: number
-  }>
+  return_reason?: ReturnReason
+  return_condition?: ReturnCondition
+  lines: CreateReturnNoteLine[]
 }
 
 /**

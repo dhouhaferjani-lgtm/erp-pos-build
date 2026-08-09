@@ -376,7 +376,33 @@ export function DeliveryNoteDetailPage() {
           title={t('returnNotes.create')}
         >
           <CreateReturnNoteForm
-            sourceDocument={deliveryNote as unknown as Parameters<typeof CreateReturnNoteForm>[0]['sourceDocument']}
+            /*
+             * Plan CF T8 / CF-D9 (frontend gate C-2). The `as unknown as` double cast
+             * that used to be here is DELETED: it defeated the only compile-time check
+             * that the document actually carries what the form posts, and the missing
+             * `partner_id` reached runtime as a 422 instead.
+             */
+            sourceDocument={{
+              id: deliveryNote.id,
+              document_number: deliveryNote.document_number ?? '',
+              document_date: deliveryNote.document_date,
+              partner_name: deliveryNote.partner_name ?? '',
+              partner_id: deliveryNote.partner_id,
+              currency: deliveryNote.currency,
+              total: deliveryNote.total,
+              lines: (deliveryNote.lines ?? []).map((line) => ({
+                id: line.id,
+                product_id: line.product_id ?? '',
+                product_code: line.product_code ?? '',
+                product_name: line.product_name,
+                description: line.description,
+                quantity: line.quantity,
+                quantity_decimals: line.quantity_decimals ?? null,
+                unit_price: line.unit_price,
+                tax_rate: line.tax_rate ?? '0',
+                total: line.line_total,
+              })),
+            }}
             sourceType="delivery_note"
             onSuccess={() => {
               setShowReturnNoteForm(false)

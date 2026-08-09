@@ -14,14 +14,15 @@ import { useCurrency } from '@/hooks/useCurrency'
 import { useCreateReturnNote } from '../hooks/useReturnNotes'
 import { ReturnReasonSelect } from './ReturnReasonSelect'
 import { ReturnConditionSelect } from './ReturnConditionSelect'
-import { RefundMethodSelect } from './RefundMethodSelect'
 import type { ReturnReason } from './ReturnReasonSelect'
 import type { ReturnCondition } from './ReturnConditionSelect'
-import type { RefundMethod } from './RefundMethodSelect'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
-import { formatQuantity } from '@/lib/decimal'
+import { bccomp, formatQuantity } from '@/lib/decimal'
 import { getQuantityDecimals } from '@/lib/quantityScale'
+import { QuantityInput } from '@/components/atoms/QuantityInput/QuantityInput'
+import { toast } from 'sonner'
+import type { CreateReturnNoteRequest } from '@/types/returnNote'
 
 // Return mode enum
 type ReturnMode = 'full' | 'partial'
@@ -33,35 +34,35 @@ const createReturnNoteSchema = z.object({
 
 type ReturnNoteFormData = z.infer<typeof createReturnNoteSchema>
 
-interface CreateReturnNotePayload {
-  return_reason: ReturnReason
-  source_invoice_id?: string
-  source_delivery_note_id?: string
-  return_condition?: ReturnCondition
-  refund_method?: RefundMethod
-  notes?: string
-  auto_create_credit_note?: boolean
-  lines?: Array<{ line_id: string; quantity: number }>
-}
-
 interface SourceDocumentLine {
   id: string
   product_id: string
   product_code: string
   product_name: string
   description: string
-  quantity: number
+  /** A decimal STRING (rule 19) — see CreateReturnNoteLine. */
+  quantity: string
   quantity_decimals?: number | null
   unit_price: string
   tax_rate: string
   total: string
 }
 
+/**
+ * Plan CF T8 / CF-D9 (frontend gate C-2). This carried `partner_name` and NEITHER
+ * `partner_id` NOR `currency` — yet the server requires `partner_id`. Because
+ * `DeliveryNoteDetailPage` passed its document through an `as unknown as` double cast,
+ * TypeScript could not catch the omission either, and the failure reached runtime as a
+ * 422. The cast is deleted along with this widening, so the two shapes now have to
+ * agree at compile time.
+ */
 interface SourceDocumentForReturn {
   id: string
   document_number: string
   document_date: string
   partner_name: string
+  partner_id: string | null
+  currency: string
   total: string
   lines?: SourceDocumentLine[]
 }
@@ -98,9 +99,7 @@ export function CreateReturnNoteForm({
   const [returnMode, setReturnMode] = useState<ReturnMode>('full')
   const [returnReason, setReturnReason] = useState<ReturnReason | ''>('')
   const [returnCondition, setReturnCondition] = useState<ReturnCondition | ''>('')
-  const [refundMethod, setRefundMethod] = useState<RefundMethod | ''>('')
-  const [autoCreateCreditNote, setAutoCreateCreditNote] = useState(false)
-  const [selectedLines, setSelectedLines] = useState<Map<string, number>>(new Map())
+  const [selectedLines, setSelectedLines] = useState<Map<string, string>>(new Map())
 
   const {
     register,
@@ -121,10 +120,11 @@ export function CreateReturnNoteForm({
     let total = 0
     selectedLines.forEach((quantity, lineId) => {
       const line = sourceDocument.lines?.find(l => l.id === lineId)
-      if (line && quantity > 0) {
-        const unitPrice = parseFloat(line.unit_price)
-        const taxRate = parseFloat(line.tax_rate)
-        const subtotal = unitPrice * quantity
+      if (line && Number(quantity) > 0) {
+        // DISPLAY ONLY — never on the payload path (rule 19).
+        const unitPrice = Number(line.unit_price)
+        const taxRate = Number(line.tax_rate)
+        const subtotal = unitPrice * Number(quantity)
         const tax = subtotal * (taxRate / 100)
         total += subtotal + tax
       }
@@ -134,7 +134,7 @@ export function CreateReturnNoteForm({
   }, [sourceDocument.lines, selectedLines])
 
   // Toggle line selection
-  const handleToggleLine = (lineId: string, maxQuantity: number) => {
+  const handleToggleLine = (lineId: string, maxQuantity: string) => {
     setSelectedLines(prev => {
       const newMap = new Map(prev)
       if (newMap.has(lineId)) {
@@ -147,16 +147,21 @@ export function CreateReturnNoteForm({
   }
 
   // Update line quantity
-  const handleUpdateLineQuantity = (lineId: string, quantity: number, maxQuantity: number) => {
-    if (quantity < 0 || quantity > maxQuantity) return
+  /**
+   * Plan CF T8 / frontend gate I-4: quantities are decimal STRINGS. `parseInt(…) || 0`
+   * made fractional returns impossible for any unit with decimal_places > 0.
+   */
+  const handleUpdateLineQuantity = (lineId: string, quantity: string, maxQuantity: string) => {
+    const asNumber = Number(quantity)
+    if (asNumber < 0 || asNumber > Number(maxQuantity)) return
 
+    // An EMPTY field keeps the line selected. Deleting the selection the moment the
+    // user clears the box to retype unmounts the input mid-edit, so "select, clear,
+    // type 0.5" was impossible — you could never reach a fractional quantity at all.
+    // Submit is guarded separately (see canSubmit), so an empty box cannot be posted.
     setSelectedLines(prev => {
       const newMap = new Map(prev)
-      if (quantity === 0) {
-        newMap.delete(lineId)
-      } else {
-        newMap.set(lineId, quantity)
-      }
+      newMap.set(lineId, quantity)
       return newMap
     })
   }
@@ -164,7 +169,16 @@ export function CreateReturnNoteForm({
   // Validation
   const canSubmit = () => {
     if (!returnReason) return false
-    if (returnMode === 'partial' && selectedLines.size === 0) return false
+    if (returnMode === 'partial') {
+      if (selectedLines.size === 0) return false
+      // A selected line whose box is empty or zero is not a return — block here rather
+      // than posting a quantity the server refuses with `gt:0`.
+      for (const quantity of selectedLines.values()) {
+        // Decimal comparison, not `Number(...)` — see the sibling note in
+        // CreateReturnNotePage (gate CF round 2, m1 / NB6).
+        if (quantity === '' || bccomp(quantity, '0') <= 0) return false
+      }
+    }
     return true
   }
 
@@ -172,24 +186,36 @@ export function CreateReturnNoteForm({
   const onSubmit = (data: ReturnNoteFormData) => {
     if (!canSubmit()) return
 
-    const payload: CreateReturnNotePayload = {
-      return_reason: returnReason as ReturnReason,
-      ...(sourceType === 'invoice'
-        ? { source_invoice_id: sourceDocument.id }
-        : { source_delivery_note_id: sourceDocument.id }
-      ),
-      ...(returnCondition && { return_condition: returnCondition }),
-      ...(refundMethod && { refund_method: refundMethod }),
-      ...(data.notes && { notes: data.notes }),
-      auto_create_credit_note: autoCreateCreditNote,
+    // Plan CF T8 / CF-D9. The canonical document-create shape — the same one
+    // CreateReturnNotePage now posts. This used to send a THIRD, locally duplicated
+    // payload interface built from keys no server route accepts.
+    if (!sourceDocument.partner_id) {
+      toast.error(t('sales:returnNotes.form.sourceHasNoPartner'))
+      return
     }
 
-    // Add lines for partial return
-    if (returnMode === 'partial' && selectedLines.size > 0) {
-      payload.lines = Array.from(selectedLines.entries()).map(([lineId, quantity]) => ({
-        line_id: lineId,
-        quantity,
-      }))
+    const allLines = sourceDocument.lines ?? []
+    const selected = returnMode === 'partial'
+      ? allLines.filter((line) => selectedLines.has(line.id))
+      : allLines
+
+    const payload: CreateReturnNoteRequest = {
+      partner_id: sourceDocument.partner_id,
+      document_date: new Date().toISOString().slice(0, 10),
+      currency: sourceDocument.currency,
+      source_document_id: sourceDocument.id,
+      return_reason: returnReason as ReturnReason,
+      ...(returnCondition && { return_condition: returnCondition }),
+      ...(data.notes && { notes: data.notes }),
+      lines: selected.map((line) => ({
+        ...(line.product_id ? { product_id: line.product_id } : {}),
+        description: line.description,
+        quantity: returnMode === 'partial'
+          ? (selectedLines.get(line.id) ?? line.quantity)
+          : line.quantity,
+        unit_price: line.unit_price,
+        tax_rate: line.tax_rate,
+      })),
     }
 
     createReturnNote.mutate(payload, {
@@ -299,10 +325,11 @@ export function CreateReturnNoteForm({
               <tbody className={`divide-y ${colorClasses.divideGray200} bg-white`}>
                 {sourceDocument.lines.map((line) => {
                   const isSelected = selectedLines.has(line.id)
-                  const returnQty = selectedLines.get(line.id) || line.quantity
-                  const unitPrice = parseFloat(line.unit_price)
-                  const taxRate = parseFloat(line.tax_rate)
-                  const subtotal = unitPrice * returnQty
+                  const returnQty = selectedLines.get(line.id) ?? line.quantity
+                  // DISPLAY ONLY — never on the payload path (rule 19).
+                  const unitPrice = Number(line.unit_price)
+                  const taxRate = Number(line.tax_rate)
+                  const subtotal = unitPrice * Number(returnQty)
                   const tax = subtotal * (taxRate / 100)
                   const total = subtotal + tax
 
@@ -326,17 +353,13 @@ export function CreateReturnNoteForm({
                       </td>
                       <td className="px-3 py-2 text-end">
                         {isSelected ? (
-                          <input
-                            type="number"
-                            min="1"
-                            max={line.quantity}
+                          /* Plan CF T8 / frontend gate I-4 — see CreateReturnNotePage. */
+                          <QuantityInput
                             value={returnQty}
-                            onChange={(e) => { handleUpdateLineQuantity(
-                              line.id,
-                              parseInt(e.target.value) || 0,
-                              line.quantity
-                            ); }}
-                            className={`w-20 rounded ${colorClasses.borderGray300} px-2 py-1 text-sm text-end`}
+                            onChange={(value) => { handleUpdateLineQuantity(line.id, value, line.quantity) }}
+                            decimalPlaces={getQuantityDecimals(line)}
+                            max={line.quantity}
+                            className="w-24 text-end"
                             disabled={isSubmitting}
                           />
                         ) : (
@@ -390,35 +413,14 @@ export function CreateReturnNoteForm({
         disabled={isSubmitting}
       />
 
-      {/* Refund Method Field (Optional) */}
-      <RefundMethodSelect
-        value={refundMethod}
-        onChange={setRefundMethod}
-        disabled={isSubmitting}
-      />
-
-      {/* Auto-Create Credit Note Checkbox */}
-      {sourceType === 'invoice' && (
-        <div className={`rounded-lg border ${colorClasses.borderGray200} ${colorClasses.bgGray50} p-4`}>
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              checked={autoCreateCreditNote}
-              onChange={(e) => { setAutoCreateCreditNote(e.target.checked); }}
-              disabled={isSubmitting}
-              className={`mt-1 h-4 w-4 rounded ${colorClasses.borderGray300} ${colorClasses.textBlue600} ${colorClasses.focusRingBlue500}`}
-            />
-            <div className="flex-1">
-              <span className={`text-sm font-medium ${colorClasses.textGray900}`}>
-                {t('sales:returnNotes.form.autoCreateCreditNote', 'Automatically create credit note')}
-              </span>
-              <p className={`mt-1 text-sm ${colorClasses.textGray500}`}>
-                {t('sales:returnNotes.form.autoCreateCreditNoteHint', 'A credit note will be created automatically when this return is confirmed')}
-              </p>
-            </div>
-          </label>
-        </div>
-      )}
+      {/*
+        * Refund method and auto-create-credit-note are NOT RENDERED (gate CF round 1,
+        * MAJOR M3 / plan Q-D) — see the matching note in CreateReturnNotePage. Neither
+        * key is accepted by any server route, so T8 dropped both from the payload;
+        * before T8 the request 422'd so the control failed LOUDLY, and after T8 the
+        * create succeeds and the choice is discarded behind a success toast. A silent
+        * discard on a document flow is exactly what the governing ruling forbids.
+        */}
 
       {/* Notes Field */}
       <div>
