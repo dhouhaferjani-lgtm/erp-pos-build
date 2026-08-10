@@ -38,7 +38,7 @@ const defaultFormData: TaxConfigurationFormData = {
   tax_type: 'PERCENTAGE',
   percentage_rate: '',
   applies_to: 'LINE_ITEMS',
-  stacks_on: 'BASE_AMOUNT',
+  stacks_on: 'SUBTOTAL',
   applicable_document_types: [],
   is_active: true,
   is_recoverable: true,
@@ -50,7 +50,11 @@ const defaultFormData: TaxConfigurationFormData = {
 export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: TaxConfigFormModalProps) {
   const { t } = useTranslation(['settings', 'common', 'sales'])
   const { data: documentTypes = [] } = useDocumentTypes()
-  const { data: capabilities, isLoading: isLoadingCapabilities } = useTaxConfigurationCapabilities()
+  const {
+    data: capabilities,
+    isLoading: isLoadingCapabilities,
+    isError: capabilitiesUnavailable,
+  } = useTaxConfigurationCapabilities()
   const createTax = useCreateTaxConfiguration()
   const updateTax = useUpdateTaxConfiguration()
   const supportsStampDuty = capabilities?.supports_stamp_duty === true
@@ -284,9 +288,16 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
               <span className={`ms-2 text-sm ${colorTokens.text.secondary}`}>{t('settings:tax.configurations.form.stampDuty')}</span>
             </label>
             <p className={`text-xs ${colorTokens.text.subtle} mt-1 ms-6`}>
-              {!isLoadingCapabilities && !supportsStampDuty
-                ? t('settings:tax.configurations.form.stampDutyUnavailable')
-                : t('settings:tax.configurations.form.stampDutyHelp')}
+              {/* A failed capability fetch is NOT the same statement as
+                  "this country does not support stamp duty" — telling a TN
+                  admin their country is unsupported because a request failed
+                  is a wrong answer, not a cautious one (F-6). Both still fail
+                  closed: the controls stay disabled either way. */}
+              {capabilitiesUnavailable
+                ? t('settings:tax.configurations.form.stampDutyCapabilityUnavailable')
+                : !isLoadingCapabilities && !supportsStampDuty
+                  ? t('settings:tax.configurations.form.stampDutyUnavailable')
+                  : t('settings:tax.configurations.form.stampDutyHelp')}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4">

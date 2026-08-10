@@ -352,6 +352,7 @@
         "stampDuty": "Timbre fiscal",
         "stampDutyHelp": "Marquer comme timbre fiscal à montant fixe (ex. le timbre fiscal tunisien). Les timbres fiscaux ne sont jamais déductibles.",
         "stampDutyUnavailable": "Le timbre fiscal et les taxes sur le total du document ne sont pas disponibles pour le pays de cette entreprise.",
+        "stampDutyCapabilityUnavailable": "Impossible de vérifier la disponibilité du timbre fiscal pour le moment. Ces champs restent désactivés jusqu'au chargement.",
         "effectiveFrom": "En vigueur à partir du",
         "effectiveTo": "En vigueur jusqu'au",
         "sequenceOrder": "Ordre de séquence"

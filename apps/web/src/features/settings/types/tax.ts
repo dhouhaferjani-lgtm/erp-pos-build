@@ -1,6 +1,11 @@
 export type TaxType = 'PERCENTAGE' | 'FIXED_AMOUNT'
 export type TaxApplicationLevel = 'LINE_ITEMS' | 'DOCUMENT_TOTAL'
-export type StackingBehavior = 'BASE_AMOUNT' | 'SUBTOTAL_PLUS_PREVIOUS_TAXES'
+// Mirrors the backend StackingBehavior enum (App\Modules\Taxation\Domain\Enums)
+// and the `in:SUBTOTAL,TOTAL_INCLUDING_PREVIOUS` rule the controller validates.
+// The previous 'BASE_AMOUNT' | 'SUBTOTAL_PLUS_PREVIOUS_TAXES' pair matched
+// neither the enum, the seeders, nor the column default, so every create from
+// the UI 422'd (F-2, 2026-08-10 tenancy gate).
+export type StackingBehavior = 'SUBTOTAL' | 'TOTAL_INCLUDING_PREVIOUS'
 export type CompanyTaxStatus = 'REGISTERED' | 'NON_REGISTERED'
 export type PartnerTaxStatus = 'REGISTERED' | 'NON_REGISTERED' | 'EXEMPT'
 

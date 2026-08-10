@@ -18,7 +18,7 @@ const mockConfigs = [
     percentage_rate: '19.00', fixed_amount: null, applies_to: 'LINE_ITEMS' as const,
     applicable_document_types: [], is_active: true, is_default: true,
     country_code: 'TN', code: 'TVA19', sequence_order: 1,
-    stacks_on: 'BASE_AMOUNT' as const, is_stamp_duty: false, is_recoverable: true,
+    stacks_on: 'SUBTOTAL' as const, is_stamp_duty: false, is_recoverable: true,
     created_at: '', updated_at: '',
   },
   {
@@ -26,7 +26,7 @@ const mockConfigs = [
     percentage_rate: '7.00', fixed_amount: null, applies_to: 'LINE_ITEMS' as const,
     applicable_document_types: ['SALES_INVOICE'], is_active: true, is_default: false,
     country_code: 'TN', code: 'TVA7', sequence_order: 2,
-    stacks_on: 'BASE_AMOUNT' as const, is_stamp_duty: false, is_recoverable: true,
+    stacks_on: 'SUBTOTAL' as const, is_stamp_duty: false, is_recoverable: true,
     created_at: '', updated_at: '',
   },
   {
@@ -34,7 +34,7 @@ const mockConfigs = [
     percentage_rate: null, fixed_amount: '1.000', applies_to: 'DOCUMENT_TOTAL' as const,
     applicable_document_types: ['SALES_INVOICE'], is_active: true, is_default: false,
     country_code: 'TN', code: 'STAMP', sequence_order: 3,
-    stacks_on: 'BASE_AMOUNT' as const, is_stamp_duty: true, is_recoverable: false,
+    stacks_on: 'SUBTOTAL' as const, is_stamp_duty: true, is_recoverable: false,
     created_at: '', updated_at: '',
   },
 ]

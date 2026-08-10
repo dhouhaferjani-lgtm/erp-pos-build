@@ -99,7 +99,7 @@ function taxConfigurationFixture(id: string): TaxConfiguration {
     fixed_amount: null,
     applies_to: 'LINE_ITEMS',
     sequence_order: 1,
-    stacks_on: 'BASE_AMOUNT',
+    stacks_on: 'SUBTOTAL',
     applicable_document_types: ['invoice'],
     is_default: false,
     is_active: true,
@@ -121,7 +121,7 @@ const createPayload: TaxConfigurationFormData = {
   tax_type: 'PERCENTAGE',
   percentage_rate: '19.000',
   applies_to: 'LINE_ITEMS',
-  stacks_on: 'BASE_AMOUNT',
+  stacks_on: 'SUBTOTAL',
   applicable_document_types: ['invoice'],
   is_active: true,
 }

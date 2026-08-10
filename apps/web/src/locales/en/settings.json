@@ -352,6 +352,7 @@
         "stampDuty": "Stamp duty",
         "stampDutyHelp": "Mark this as a fixed fiscal stamp (e.g. the Tunisian timbre fiscal). Stamp duties are never recoverable.",
         "stampDutyUnavailable": "Stamp duty and document-total tax controls are unavailable for this company's country.",
+        "stampDutyCapabilityUnavailable": "Stamp duty availability could not be checked right now. These controls stay disabled until it loads.",
         "effectiveFrom": "Effective from",
         "effectiveTo": "Effective to",
         "sequenceOrder": "Sequence Order"
