@@ -720,14 +720,6 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             throw new \DomainException('No items to receive. Please specify quantities to receive.');
         }
 
-        // T5b — THE GL PHASE. Every row lock this receipt needs has been taken;
-        // only now is the per-company GL advisory acquired, so the advisory is
-        // strictly terminal for this writer and the ABBA pair with the Wave-3
-        // inventory writers cannot form. Insertion order is preserved so entry
-        // numbers, chain sequences and amounts are byte-identical to the
-        // pre-T5b behaviour.
-        $this->flushPendingGlPostings($pendingGlPostings);
-
         // Check if fully received
         $fullyReceived = $this->isFullyReceived($purchaseOrder);
 
@@ -740,6 +732,27 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 'goods_received_at' => $fullyReceived ? now()->toDateTimeString() : null,
             ]),
         ]);
+
+        // T5b — THE GL PHASE, and it is LAST. Every row lock this writer takes —
+        // the per-line `stock_levels` / `document_lines` / `goods_receipt_lines`
+        // writes AND the purchase-order header write immediately above — is
+        // already held; only now is the per-company GL advisory acquired. That
+        // makes the advisory terminal FOR THIS METHOD, so the ABBA pair with the
+        // Wave-3 inventory writers cannot form. Insertion order among the GR-IR
+        // entries is preserved, so entry numbers, chain sequences and amounts are
+        // byte-identical to the pre-T5b behaviour.
+        //
+        // ── THE HONEST LIMIT (fix round 1, inv F-2 / fiscal P2-2) ──
+        // "Terminal" is a property of `post()`, NOT of the enclosing transaction.
+        // `pg_advisory_xact_lock` releases at the OUTERMOST commit, so when
+        // `post()` is NESTED inside a caller's own transaction its DB::transaction
+        // is only a savepoint and the advisory outlives this method. The live
+        // nesting case is `Procurement\Application\StandaloneReceiptService::execute()`
+        // — `post()` is called at `:134` inside the `DB::transaction` opened at
+        // `:117`, and that caller then writes `procurement_idempotency_keys` at
+        // `:137-143` while still holding the advisory. Nothing in this method can
+        // fix that; it is 3C's N-3 and is recorded there.
+        $this->flushPendingGlPostings($pendingGlPostings);
 
         /** @var Document $freshOrder */
         $freshOrder = $purchaseOrder->fresh(['lines']);

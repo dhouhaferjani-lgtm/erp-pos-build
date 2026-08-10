@@ -23,9 +23,19 @@ use App\Modules\Inventory\Domain\Events\GoodsReceived;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Procurement\Application\DTOs\StandaloneReceiptInput;
+use App\Modules\Procurement\Application\DTOs\StandaloneReceiptLineInput;
+use App\Modules\Procurement\Application\StandaloneReceiptService;
+use App\Modules\Procurement\Domain\Enums\BillControlMode;
+use App\Modules\Procurement\Domain\Enums\MatchEnforcement;
+use App\Modules\Procurement\Domain\Enums\MatchMode;
+use App\Modules\Procurement\Domain\ProcurementPolicy;
 use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -228,6 +238,60 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
         );
     }
 
+    /**
+     * Fix round 1 · fiscal gate P3-6(b) — the fail-closed leg driven to an ACTUAL
+     * failure, not merely to its happy path.
+     *
+     * `postFailClosedGrirIfRequested` calls `createGoodsReceiptGrIrEntry` DIRECTLY
+     * rather than through `PostGrIrOnGoodsReceipt`, which is the entire point of
+     * the flag: the listener swallows GL failures (a warehouse may not un-receive
+     * goods because the ledger is down), the direct call does not. Buffering the
+     * call to after the loop moves WHEN it runs; this pins that it still takes the
+     * receipt down with it, and that the rollback is complete.
+     */
+    public function test_the_fail_closed_leg_takes_the_receipt_down_with_it(): void
+    {
+        // Same induced failure as the swallowing test above: the 408 purpose is
+        // unmapped, so `Account::findByPurposeOrFail` raises.
+        Account::query()
+            ->where('company_id', $this->company->id)
+            ->where('system_purpose', SystemAccountPurpose::GoodsReceivedNotInvoiced->value)
+            ->update(['system_purpose' => null]);
+
+        $purchaseOrder = $this->confirmedPurchaseOrder([
+            ['qty' => '2.0000', 'price' => '5.000'],
+            ['qty' => '3.0000', 'price' => '5.000'],
+        ]);
+
+        $raised = null;
+
+        try {
+            $this->receive($purchaseOrder, failClosedGrir: true);
+        } catch (\Throwable $exception) {
+            $raised = $exception;
+        }
+
+        self::assertNotNull($raised, 'the fail-closed GR-IR leg swallowed a GL failure — it must not');
+
+        self::assertSame(
+            0,
+            StockMovement::query()->where('company_id', $this->company->id)->count(),
+            'fail-closed means the goods are NOT received when the ledger refuses',
+        );
+        self::assertSame(
+            0,
+            JournalEntry::query()
+                ->where('company_id', $this->company->id)
+                ->where('source_type', 'goods_receipt')
+                ->count(),
+        );
+        self::assertSame(
+            DocumentStatus::Confirmed,
+            $purchaseOrder->refresh()->status,
+            'the purchase-order write that now precedes the GL phase must roll back too',
+        );
+    }
+
     public function test_the_listener_set_for_goods_received_is_still_exactly_one(): void
     {
         // T5b moves an event() call. The risk it carries is a changed listener
@@ -278,12 +342,60 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
         }
     }
 
-    public function test_the_standalone_receipt_path_also_defers_its_gl_posting(): void
+    /**
+     * Fix round 1 · fiscal gate P2-2 — the advisory is TERMINAL, and that is now
+     * an observed property rather than a docblock claim.
+     *
+     * The pre-fix comment at `GoodsReceiptService.php:723-729` asserted "every row
+     * lock this receipt needs has been taken" before the GL phase. It was FALSE:
+     * `$purchaseOrder->update()` — the `documents` row write — happened AFTER the
+     * flush. D-9's architecture, and the four 3C writers designed against it, rest
+     * on that invariant, so the fix moves the flush past the PO update and this
+     * test pins it: at the instant a GR-IR entry is created (advisory held), the
+     * receipt transaction must ALREADY hold the write lock on `documents`.
+     *
+     * The instrument is a WRITE-ORDER trace, not a `pg_locks` sample: under
+     * `RefreshDatabase` the whole test runs inside one wrapping transaction on one
+     * backend, so the fixture's own `documents` writes leave a relation-level
+     * `RowExclusiveLock` standing for the entire test and no lock sample can
+     * discriminate. The order in which the two writes are ISSUED is the property
+     * that decides the lock order anyway.
+     */
+    public function test_the_gl_phase_runs_after_every_row_lock_including_the_purchase_order(): void
     {
-        // The fail-closed site is LIVE: StandaloneReceiptService.php:134 passes
-        // `true` POSITIONALLY (plan §0q.5). It bypasses the event entirely and
-        // calls createGoodsReceiptGrIrEntry directly, so it is a SECOND in-loop
-        // advisory acquisition and must be buffered by the same edit.
+        $purchaseOrder = $this->confirmedPurchaseOrder([
+            ['qty' => '10.0000', 'price' => '5.000'],
+            ['qty' => '4.0000', 'price' => '2.500'],
+        ]);
+
+        $trace = $this->traceWriteOrderDuringReceipt($purchaseOrder);
+
+        self::assertContains('purchase_order_update', $trace, 'the PO header write never fired — the instrument is broken');
+        self::assertContains('gl_entry', $trace, 'no GR-IR entry was created — the instrument is broken');
+
+        self::assertLessThan(
+            array_search('gl_entry', $trace, true),
+            array_search('purchase_order_update', $trace, true),
+            'the GL phase ran BEFORE the purchase-order row write, so the per-company GL advisory '
+            .'is held while a further row lock is taken — the invariant D-9 rests on, and that '
+            .'3C designs four writers against, is false. Observed order: '.implode(' -> ', $trace),
+        );
+    }
+
+    /**
+     * The fail-closed GR-IR leg — `post($draft, $actor, null, true)` — is a SECOND
+     * in-loop advisory acquisition that bypasses the event entirely, and it is
+     * buffered by the same edit.
+     *
+     * HONEST NAME (fix round 1, inv F-3): this drives `GoodsReceiptService::post()`
+     * DIRECTLY with the positional 4th argument. That covers the fail-closed FLAG;
+     * it does NOT cover the standalone caller's outer transaction, which is what
+     * makes the advisory non-terminal. That case is
+     * `test_the_standalone_receipt_service_defers_its_gl_posting` /
+     * `..._keeps_the_advisory_after_post_returns` below.
+     */
+    public function test_the_fail_closed_grir_leg_is_deferred_when_post_is_called_directly(): void
+    {
         $this->requirePostgres();
 
         $purchaseOrder = $this->confirmedPurchaseOrder([
@@ -309,6 +421,103 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
                 ->where('company_id', $this->company->id)
                 ->where('source_type', 'goods_receipt')
                 ->count(),
+        );
+    }
+
+    /**
+     * …and the REAL standalone path, driven through the service that owns it
+     * (fix round 1, inv F-3).
+     *
+     * `StandaloneReceiptService::execute()` opens its own `DB::transaction` (`:117`)
+     * and calls `post($draft, $actor, null, true)` inside it (`:134`). That is the
+     * only production caller of the fail-closed leg and the only one that NESTS
+     * `post()`, so it is the shape the D-9 invariant has to survive.
+     */
+    public function test_the_standalone_receipt_service_defers_its_gl_posting(): void
+    {
+        $this->requirePostgres();
+        $this->allowReceiptFirst();
+
+        $product = $this->standaloneProduct();
+
+        $observations = $this->observeAdvisoryDuringStandaloneReceipt($product, 'w3ab-fix-standalone-1');
+
+        self::assertNotEmpty($observations, 'the probe never fired — the instrument is broken');
+        self::assertTrue($observations[0]['locks_visible']);
+
+        foreach ($observations as $index => $observation) {
+            self::assertFalse(
+                $observation['advisory_held'],
+                sprintf(
+                    'the standalone path held the per-company GL advisory while line %d took row locks',
+                    $index + 2,
+                ),
+            );
+        }
+
+        self::assertSame(
+            3,
+            JournalEntry::query()
+                ->where('company_id', $this->company->id)
+                ->where('source_type', 'goods_receipt')
+                ->count(),
+        );
+    }
+
+    /**
+     * CHARACTERISATION of the honest limit, pinned as a FACT rather than prose
+     * (fix round 1, inv F-2 / fiscal P2-2; 3C's N-3).
+     *
+     * Moving the flush past the purchase-order write makes the advisory terminal
+     * for `post()`. It cannot make it terminal for a CALLER that keeps working:
+     * `pg_advisory_xact_lock` releases at the OUTERMOST commit, so inside
+     * `StandaloneReceiptService::execute()`'s transaction the advisory is still
+     * held when that caller writes `procurement_idempotency_keys` at `:137-143`.
+     *
+     * This test asserts that it IS still held there. When 3C's N-3 changes that,
+     * this test must fail and be updated deliberately — which is the point.
+     */
+    public function test_the_standalone_caller_still_holds_the_advisory_after_post_returns(): void
+    {
+        $this->requirePostgres();
+        $this->allowReceiptFirst();
+
+        $product = $this->standaloneProduct();
+
+        $this->bootProbeConnection();
+
+        /** @var object{pid: int} $backend */
+        $backend = DB::selectOne('select pg_backend_pid() as pid');
+        $callerPid = $backend->pid;
+
+        $heldAtIdempotencyWrite = [];
+        $companyId = $this->company->id;
+
+        DB::listen(function (QueryExecuted $query) use (&$heldAtIdempotencyWrite, $callerPid, $companyId): void {
+            if (! str_contains($query->sql, 'procurement_idempotency_keys') || ! str_starts_with(strtolower(trim($query->sql)), 'update')) {
+                return;
+            }
+
+            $heldAtIdempotencyWrite[] = $this->advisoryHeldBy($callerPid, $companyId);
+        });
+
+        try {
+            app(StandaloneReceiptService::class)->execute(
+                $this->standaloneInput($product, 'w3ab-fix-standalone-2'),
+            );
+        } finally {
+            DB::purge(self::PROBE_CONNECTION);
+        }
+
+        self::assertNotEmpty($heldAtIdempotencyWrite, 'the idempotency-key write never fired — the instrument is broken');
+
+        // Only the LAST sample matters: `execute()` also stamps the key in its
+        // FIRST transaction, before any GL has posted, and that one is legitimately
+        // false. The last is the write at `:137-143`, after `post()` returned.
+        self::assertTrue(
+            end($heldAtIdempotencyWrite),
+            'the advisory was NOT held at the caller\'s post-post write — N-3 has changed and the '
+            .'GoodsReceiptService docblock caveat must be revisited',
         );
     }
 
@@ -364,6 +573,8 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
 
         $companyId = $this->company->id;
 
+        $restoreDispatcher = $this->isolateModelEventDispatcher();
+
         StockMovement::created(function () use (&$observations, &$seen, $receiptPid, $companyId): void {
             $seen++;
 
@@ -377,37 +588,156 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
             // bare `locktype = 'advisory'` count would be true under BOTH
             // implementations and prove nothing.
             //
-            // `pg_advisory_xact_lock(bigint)` stores the key split across
-            // pg_locks.classid (high 32 bits) and .objid (low 32 bits); the GL
-            // key is `hashtextextended(company_id, 0)`
-            // (`GeneralLedgerService.php:4610`, `:3257`).
-            /** @var object{advisory: int, total: int} $row */
-            $row = DB::connection(self::PROBE_CONNECTION)->selectOne(
-                'select
-                    count(*) filter (
-                        where locktype = \'advisory\'
-                          and classid::bigint = ((hashtextextended(?, 0) >> 32) & 4294967295)
-                          and objid::bigint = (hashtextextended(?, 0) & 4294967295)
-                    ) as advisory,
-                    count(*) as total
-                 from pg_locks where pid = ?',
-                [$companyId, $companyId, $receiptPid],
-            );
-
-            $observations[] = [
-                'advisory_held' => (int) $row->advisory > 0,
-                'locks_visible' => (int) $row->total > 0,
-            ];
+            $observations[] = $this->sampleAdvisory($receiptPid, $companyId);
         });
 
         try {
             $this->receive($purchaseOrder, $failClosedGrir);
         } finally {
-            StockMovement::flushEventListeners();
+            $restoreDispatcher();
             DB::purge(self::PROBE_CONNECTION);
         }
 
         return $observations;
+    }
+
+    /**
+     * The same probe, driven through `StandaloneReceiptService::execute()` — the
+     * only production caller that NESTS `post()` inside its own transaction.
+     *
+     * @return list<array{advisory_held: bool, locks_visible: bool}>
+     */
+    private function observeAdvisoryDuringStandaloneReceipt(Product $product, string $idempotencyKey): array
+    {
+        $this->bootProbeConnection();
+
+        /** @var object{pid: int} $backend */
+        $backend = DB::selectOne('select pg_backend_pid() as pid');
+        $receiptPid = $backend->pid;
+
+        $observations = [];
+        $seen = 0;
+        $companyId = $this->company->id;
+
+        $restoreDispatcher = $this->isolateModelEventDispatcher();
+
+        StockMovement::created(function () use (&$observations, &$seen, $receiptPid, $companyId): void {
+            $seen++;
+
+            if ($seen < 2) {
+                return; // line 1 cannot discriminate — see the docblock above
+            }
+
+            $observations[] = $this->sampleAdvisory($receiptPid, $companyId);
+        });
+
+        try {
+            app(StandaloneReceiptService::class)->execute(
+                $this->standaloneInput($product, $idempotencyKey),
+            );
+        } finally {
+            $restoreDispatcher();
+            DB::purge(self::PROBE_CONNECTION);
+        }
+
+        return $observations;
+    }
+
+    /**
+     * @return array{advisory_held: bool, locks_visible: bool}
+     */
+    private function sampleAdvisory(int $pid, string $companyId): array
+    {
+        // Match the COMPANY GL advisory specifically. The receipt already holds
+        // unrelated advisory locks for the whole loop — ProductCostLock takes one
+        // per product up front (`ProductCostLock.php:47`) — so a bare
+        // `locktype = 'advisory'` count would be true under BOTH implementations
+        // and prove nothing.
+        //
+        // `pg_advisory_xact_lock(bigint)` stores the key split across
+        // pg_locks.classid (high 32 bits) and .objid (low 32 bits); the GL key is
+        // `hashtextextended(company_id, 0)` (`GeneralLedgerService.php:4610`, `:3257`).
+        /** @var object{advisory: int, total: int} $row */
+        $row = DB::connection(self::PROBE_CONNECTION)->selectOne(
+            'select
+                count(*) filter (
+                    where locktype = \'advisory\'
+                      and classid::bigint = ((hashtextextended(?, 0) >> 32) & 4294967295)
+                      and objid::bigint = (hashtextextended(?, 0) & 4294967295)
+                ) as advisory,
+                count(*) as total
+             from pg_locks where pid = ?',
+            [$companyId, $companyId, $pid],
+        );
+
+        return [
+            'advisory_held' => (int) $row->advisory > 0,
+            'locks_visible' => (int) $row->total > 0,
+        ];
+    }
+
+    private function advisoryHeldBy(int $pid, string $companyId): bool
+    {
+        return $this->sampleAdvisory($pid, $companyId)['advisory_held'];
+    }
+
+    /**
+     * Trace the ORDER of the two writes that decide whether the GL advisory is
+     * transaction-terminal: the purchase-order header update and each GR-IR
+     * journal entry (fix round 1, P2-2).
+     *
+     * @return list<string>
+     */
+    private function traceWriteOrderDuringReceipt(Document $purchaseOrder): array
+    {
+        $trace = [];
+        $purchaseOrderId = (string) $purchaseOrder->id;
+
+        $restoreDispatcher = $this->isolateModelEventDispatcher();
+
+        Document::updated(function (Document $document) use (&$trace, $purchaseOrderId): void {
+            if ((string) $document->id === $purchaseOrderId) {
+                $trace[] = 'purchase_order_update';
+            }
+        });
+
+        JournalEntry::created(static function () use (&$trace): void {
+            $trace[] = 'gl_entry';
+        });
+
+        try {
+            $this->receive($purchaseOrder);
+        } finally {
+            $restoreDispatcher();
+        }
+
+        return $trace;
+    }
+
+    /**
+     * Swap the SHARED Eloquent event dispatcher for a clone for the duration of a
+     * probe, and return the restorer (fix round 1, inv F-9).
+     *
+     * The suite previously ended with `StockMovement::flushEventListeners()`,
+     * which is harmless only for as long as `StockMovement` has no observer: the
+     * moment one is registered, the probe silently deletes it for every later test
+     * in the process. Registering on a CLONE of the dispatcher leaves the real
+     * listener set untouched — arrays are values in PHP, so the clone's listener
+     * table is a separate array — and restoring the original drops the temporary
+     * listener and nothing else.
+     *
+     * @return \Closure(): void
+     */
+    private function isolateModelEventDispatcher(): \Closure
+    {
+        /** @var Dispatcher $original */
+        $original = Model::getEventDispatcher();
+
+        Model::setEventDispatcher(clone $original);
+
+        return static function () use ($original): void {
+            Model::setEventDispatcher($original);
+        };
     }
 
     private function bootProbeConnection(): void
@@ -447,6 +777,65 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
         // Positional 4th argument — exactly how StandaloneReceiptService:134
         // reaches the fail-closed GR-IR site.
         $service->post($draft, $this->user->id, null, $failClosedGrir);
+    }
+
+    private function allowReceiptFirst(): void
+    {
+        ProcurementPolicy::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'bill_control_mode' => BillControlMode::Received,
+            'match_mode' => MatchMode::ThreeWay,
+            'match_enforcement' => MatchEnforcement::Warn,
+            'variance_tolerance_percent' => '2.00',
+            'variance_tolerance_max_amount' => '1.000',
+            'allow_receipt_first' => true,
+            'allow_invoice_first' => false,
+            'invoice_first_requires_approval' => true,
+        ]);
+    }
+
+    private function standaloneProduct(): Product
+    {
+        return Product::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'sku' => 'T5B-SR-'.random_int(1000, 9999),
+            'name' => 'T5b Standalone Part',
+            'type' => ProductType::Part,
+            'cost_price' => '5.000',
+            'is_active' => true,
+            'is_physical' => true,
+        ]);
+    }
+
+    /**
+     * Three lines on ONE product-less-of-a-problem receipt: the probe skips line 1,
+     * so a single-line receipt cannot discriminate.
+     */
+    private function standaloneInput(Product $product, string $idempotencyKey): StandaloneReceiptInput
+    {
+        $line = static fn (Product $product): StandaloneReceiptLineInput => new StandaloneReceiptLineInput(
+            productId: $product->id,
+            variantId: null,
+            quantity: '10.0000',
+            freeQuantity: '0.0000',
+            unitPrice: '5.000',
+            batch: null,
+        );
+
+        return new StandaloneReceiptInput(
+            companyId: $this->company->id,
+            supplierId: $this->supplier->id,
+            locationId: $this->warehouse->id,
+            actorId: $this->user->id,
+            idempotencyKey: $idempotencyKey,
+            source: 'standalone_receipt',
+            externalReference: null,
+            externalDate: null,
+            postImmediately: true,
+            lines: [$line($product), $line($product), $line($product)],
+        );
     }
 
     /**
