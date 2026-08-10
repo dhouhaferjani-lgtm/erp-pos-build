@@ -18,6 +18,7 @@ use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Support\Facades\DB;
 
@@ -38,6 +39,13 @@ use Illuminate\Support\Facades\DB;
  */
 final class DeliveryNoteService
 {
+    /**
+     * Quantities cross the WAC seam at the canonical quantity scale, as numeric
+     * STRINGS. A `(float)` cast here silently dropped the 4th decimal on ordinary
+     * magnitudes (DPA Wave 3 T3, house rule 19).
+     */
+    private const QUANTITY_SCALE = 4;
+
     public function __construct(
         private readonly FiscalHashService $hashService,
         private readonly StockReservationService $stockReservationService,
@@ -255,7 +263,7 @@ final class DeliveryNoteService
             $movement = $this->wacService->recordSale(
                 product: $line->product,
                 location: $location,
-                quantity: (float) $line->quantity,
+                quantity: CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
                 reference: $deliveryNote->document_number,
                 referenceType: StockMovementReferenceType::Document,
                 referenceId: $deliveryNote->id

@@ -512,8 +512,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordReturn(
             product: $this->product,
             location: $warehouse,
-            quantity: 100.0,
-            originalCost: 11.0,
+            quantity: '100.0000',
+            originalCost: '11.000000',
         );
 
         $fresh = $this->product->fresh();
@@ -676,8 +676,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordReturn(
             product: $this->product,
             location: $warehouseA,
-            quantity: 100.0,
-            originalCost: 11.0,
+            quantity: '100.0000',
+            originalCost: '11.000000',
         );
 
         $fresh = $this->product->fresh();
@@ -708,7 +708,7 @@ class WeightedAverageCostServiceTest extends TestCase
         $movement = $this->service->recordSale(
             product: $this->product,
             location: $this->location,
-            quantity: 5.0,
+            quantity: '5.0000',
             reference: 'DN-2025-001',
             referenceType: StockMovementReferenceType::Document,
             referenceId: $documentId
@@ -772,7 +772,7 @@ class WeightedAverageCostServiceTest extends TestCase
         $this->service->recordSale(
             product: $this->product,
             location: $this->location,
-            quantity: 5.0
+            quantity: '5.0000'
         );
 
         $documentId = '019b481c-7eac-7045-8ba2-cfa7eedf2d10';
@@ -781,8 +781,8 @@ class WeightedAverageCostServiceTest extends TestCase
         $movement = $this->service->recordReturn(
             product: $this->product,
             location: $this->location,
-            quantity: 2.0,
-            originalCost: 50.0,
+            quantity: '2.0000',
+            originalCost: '50.000000',
             reference: 'RN-2025-001',
             referenceType: StockMovementReferenceType::Document,
             referenceId: $documentId
@@ -816,7 +816,7 @@ class WeightedAverageCostServiceTest extends TestCase
         $movement = $this->service->recordSale(
             product: $this->product,
             location: $this->location,
-            quantity: 5.0,
+            quantity: '5.0000',
             reference: 'DN-2025-002'
         );
 

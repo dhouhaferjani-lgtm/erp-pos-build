@@ -368,7 +368,12 @@ class WeightedAverageCostService
      *
      * @param  Product  $product  The product being sold
      * @param  Location  $location  The location issuing the stock
-     * @param  float  $quantity  Quantity being sold
+     * @param  numeric-string  $quantity  Quantity being sold, at the canonical
+     *                                    quantity scale. NEVER a float: the
+     *                                    column is decimal(15,4) and a float
+     *                                    carries ~15-16 significant digits, so a
+     *                                    cast loses the 4th decimal on ordinary
+     *                                    magnitudes (house rule 19).
      * @param  string|null  $reference  Human-readable reference (e.g., "DN-2025-001")
      * @param  StockMovementReferenceType|null  $referenceType  Morph type of the source document
      * @param  string|null  $referenceId  UUID of source document for audit trail
@@ -376,7 +381,7 @@ class WeightedAverageCostService
     public function recordSale(
         Product $product,
         Location $location,
-        float $quantity,
+        string $quantity,
         ?string $reference = null,
         ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null
@@ -479,8 +484,10 @@ class WeightedAverageCostService
      *
      * @param  Product  $product  The product being returned
      * @param  Location  $location  The location receiving the return
-     * @param  float  $quantity  Quantity being returned
-     * @param  float  $originalCost  Original cost of the returned items
+     * @param  numeric-string  $quantity  Quantity being returned (see recordSale)
+     * @param  numeric-string  $originalCost  Original unit cost of the returned
+     *                                        items. NEVER a float: the column is
+     *                                        decimal(19,6) (house rule 19).
      * @param  string|null  $reference  Human-readable reference (e.g., "RN-2025-001")
      * @param  StockMovementReferenceType|null  $referenceType  Morph type of the source document
      * @param  string|null  $referenceId  UUID of source document for audit trail
@@ -488,8 +495,8 @@ class WeightedAverageCostService
     public function recordReturn(
         Product $product,
         Location $location,
-        float $quantity,
-        float $originalCost,
+        string $quantity,
+        string $originalCost,
         ?string $reference = null,
         ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null
