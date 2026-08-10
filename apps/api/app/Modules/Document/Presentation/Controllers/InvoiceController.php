@@ -16,6 +16,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
@@ -666,6 +667,30 @@ class InvoiceController extends Controller
         // DN → invoice-converted invoices. It now asks the same gate the posting
         // service asks, so the guided modal and the refusal cannot disagree.
         $deliveryStatus = $this->deliveryComplianceGate->evaluate($documentModel);
+
+        // 🆕 T25b — the COMPLIANCE refusal gets its own machine code and its own
+        // payload. It is not "your delivery notes are in the wrong state"; it is
+        // "this jurisdiction does not permit this document to exist yet", and the
+        // guided flow it points at CREATES a delivery note rather than confirming
+        // one. Collapsing it into DELIVERY_NOT_COMPLETED would send the frontend
+        // to a modal that has nothing to confirm.
+        if ($deliveryStatus->code === DeliveryComplianceCode::DeliveryRequiredBeforeInvoice
+            && $deliveryStatus->resolvedPolicy !== null) {
+            return response()->json([
+                'error' => [
+                    'code' => DeliveryComplianceCode::DeliveryRequiredBeforeInvoice->value,
+                    'message' => $deliveryStatus->message,
+                    'details' => (new DeliveryRequiredBeforeInvoiceException(
+                        policy: $deliveryStatus->resolvedPolicy->policy->value,
+                        policySource: $deliveryStatus->resolvedPolicy->source,
+                        draftDeliveryNotes: $deliveryStatus->draftDeliveryNotes,
+                        canAutoConfirm: $deliveryStatus->canAutoConfirm,
+                        blockedReason: $deliveryStatus->blockedReason,
+                    ))->toPayload(),
+                ],
+            ], 422);
+        }
+
         if (! $deliveryStatus->isCompliant()) {
             // Return structured error with draft DN details for frontend modal
             return response()->json([

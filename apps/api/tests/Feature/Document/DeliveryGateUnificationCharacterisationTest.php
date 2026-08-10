@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Document;
 
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Document\Domain\Services\DeliveredQuantityResolver;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -32,7 +33,7 @@ use Tests\Traits\BuildsDeliveryPolicyFixtures;
  * | 3 | order-sourced, order has NO delivery notes   | refused|
  * | 4 | order-sourced, DN still DRAFT                | refused|
  * | 5 | converted (`payload.source_delivery_note_ids`)| posts  |
- * | 6 | standalone, physical lines                    | posts  |
+ * | 6 | standalone, physical lines                    | posts  |  ← T25b INVERTS THIS ROW
  * | 7 | service-only                                  | posts  |
  * | 8 | credit note with physical lines               | posts  |
  *
@@ -129,15 +130,24 @@ class DeliveryGateUnificationCharacterisationTest extends TestCase
         $this->assertSame(DocumentStatus::Posted, $posted->status);
     }
 
-    // ── Row 6 — the ONLY row T25b may flip ───────────────────────────────────
+    // ── Row 6 — 🔁 INVERTED BY T25b. The ONE behaviour change of sub-wave 3E ──
 
-    public function test_row6_standalone_physical_invoice_posts_before_t25b(): void
+    /**
+     * 🚨 **THE RELEASE NOTE'S BEHAVIOUR-CHANGE SECTION, IN ONE TEST.**
+     *
+     * At the fence commit (`8aa64215f`) this method asserted `Posted` and was
+     * GREEN — a standalone goods invoice posted, and that is the act the
+     * 2026-08-10 expert rulings retired. T25b inverts exactly this row and
+     * nothing else: every other row above is re-asserted unchanged, here and in
+     * {@see PreDeliveryInvoicingGateTest}.
+     */
+    public function test_row6_standalone_physical_invoice_is_now_refused_by_t25b(): void
     {
         $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
 
-        $posted = $this->postingService()->post($invoice);
+        $this->expectException(DeliveryRequiredBeforeInvoiceException::class);
 
-        $this->assertSame(DocumentStatus::Posted, $posted->status);
+        $this->postingService()->post($invoice);
     }
 
     // ── Row 7 ────────────────────────────────────────────────────────────────

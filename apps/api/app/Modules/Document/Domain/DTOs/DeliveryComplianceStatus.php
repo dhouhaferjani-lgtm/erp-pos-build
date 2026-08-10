@@ -20,12 +20,17 @@ final class DeliveryComplianceStatus
 {
     /**
      * @param  list<array{id: string, number: string, total: string, line_count: int}>  $draftDeliveryNotes
+     * @param  ResolvedPreDeliveryInvoicingPolicy|null  $resolvedPolicy  set only on the T25b
+     *                                                                   compliance refusal — the operational verdicts do not consult a policy
+     * @param  string|null  $blockedReason  why `canAutoConfirm` is false, when it is
      */
     public function __construct(
         public readonly DeliveryComplianceCode $code,
         public readonly string $message,
         public readonly array $draftDeliveryNotes = [],
         public readonly bool $canAutoConfirm = false,
+        public readonly ?ResolvedPreDeliveryInvoicingPolicy $resolvedPolicy = null,
+        public readonly ?string $blockedReason = null,
     ) {}
 
     public static function compliant(): self

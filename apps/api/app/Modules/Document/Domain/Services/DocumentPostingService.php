@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DeliveryComplianceCode;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -15,6 +16,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
+use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Treasury\Domain\PaymentAllocation;
@@ -604,8 +606,26 @@ final class DocumentPostingService
     {
         $status = $this->deliveryComplianceGate->evaluate($invoice);
 
-        if (! $status->isCompliant()) {
-            throw new \DomainException($status->message);
+        if ($status->isCompliant()) {
+            return;
         }
+
+        // 🚨 T25b — the compliance refusal is TYPED and carries the resolved
+        // policy. Flattening it into the generic `\DomainException` below would
+        // make the control depend on the entry point: every non-controller
+        // caller of post() would surface it as an opaque POSTING_FAILED with no
+        // policy, no source and no compliant alternative to offer.
+        if ($status->code === DeliveryComplianceCode::DeliveryRequiredBeforeInvoice
+            && $status->resolvedPolicy !== null) {
+            throw new DeliveryRequiredBeforeInvoiceException(
+                policy: $status->resolvedPolicy->policy->value,
+                policySource: $status->resolvedPolicy->source,
+                draftDeliveryNotes: $status->draftDeliveryNotes,
+                canAutoConfirm: $status->canAutoConfirm,
+                blockedReason: $status->blockedReason,
+            );
+        }
+
+        throw new \DomainException($status->message);
     }
 }
