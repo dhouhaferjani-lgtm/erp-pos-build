@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DeliveredQuantityResolver;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Domain\Services\ReturnNoteService;
@@ -165,15 +166,74 @@ trait BuildsWave3ExitFixtures
         ]);
     }
 
+    /**
+     * A POSTED invoice for `$product`, delivered-first when the product is
+     * physical.
+     *
+     * ── 3E INTERACTION (why this no longer posts a standalone invoice) ──
+     * Post-3E (T25b, `DeliveryComplianceGate` + `require_delivery_first` pinned
+     * for TN AND FR and as the system default), `DocumentPostingService::post()`
+     * REFUSES a physical invoice that has no prior confirmed delivery
+     * (`DeliveryRequiredBeforeInvoiceException`,
+     * `DocumentPostingService::validateDeliveryCompliance()`). The old no-DN path
+     * this fixture used to exercise can no longer exist for a goods invoice, so a
+     * physical invoice must be DELIVERED FIRST: a delivery note is confirmed
+     * through the real {@see DeliveryNoteService} (issuing stock and back-filling
+     * `quantity_delivered`), linked to the invoice via the converted shape
+     * (`payload.source_delivery_note_ids`, the linkage
+     * {@see DeliveredQuantityResolver::linkedDeliveryNoteIdsFor()}
+     * reads), and only then posted. Mirrors {@see BuildsDeliveryPolicyFixtures}.
+     *
+     * ── WHAT THIS DOES NOT CHANGE (pre-3C) ── COGS is still booked AT INVOICE
+     * POSTING: `PostCOGSOnInvoice` reads `product->cost_price` on `InvoicePosted`
+     * (`PostCOGSOnInvoice:145`), NOT the stock movement, so the confirmed delivery
+     * note moves stock but alters nothing the T1 characterisation pins — one COGS
+     * entry, keyed on the invoice, of `qty × cost_price`. Delivering first is pure
+     * SETUP here; the exit-keyed COGS relocation is 3C's job and has not landed.
+     *
+     * Service-only invoices carry no physical line, so the delivery gate treats
+     * them as compliant with no delivery at all
+     * ({@see DeliveryComplianceGate::hasPhysicalLines()}); they post directly, as
+     * before.
+     */
     protected function postedInvoiceFor(Product $product, string $quantity): Document
     {
         $invoice = $this->draftDocument(DocumentType::Invoice, $product, $quantity, 'INV');
-        $invoice->update(['status' => DocumentStatus::Confirmed]);
+
+        $confirmedAttributes = ['status' => DocumentStatus::Confirmed];
+
+        if ($product->isPhysical()) {
+            $deliveryNote = $this->deliverFirstFor($product, $quantity);
+
+            // The converted-shape linkage the delivery-compliance gate resolves
+            // through — same key `DeliveryNoteToInvoiceConverter` writes.
+            $confirmedAttributes['payload'] = array_merge($invoice->payload ?? [], [
+                'source_delivery_note_ids' => [$deliveryNote->id],
+            ]);
+        }
+
+        $invoice->update($confirmedAttributes);
 
         /** @var Document $confirmed */
         $confirmed = $invoice->fresh(['lines']);
 
         return $this->app->make(DocumentPostingService::class)->post($confirmed);
+    }
+
+    /**
+     * Confirm a delivery note for `$product`/`$quantity` through the real
+     * {@see DeliveryNoteService}, so the goods genuinely leave the warehouse
+     * before their invoice posts.
+     *
+     * The confirm ISSUES stock, so stock must exist first — seeded here to match
+     * the delivered quantity, mirroring the established (b)/3E pattern where
+     * {@see BuildsDeliveryPolicyFixtures} seeds before confirming.
+     */
+    protected function deliverFirstFor(Product $product, string $quantity): Document
+    {
+        $this->seedStock($product->id, $quantity);
+
+        return $this->confirmedDeliveryNoteFor($product, $quantity);
     }
 
     protected function confirmedDeliveryNoteFor(Product $product, string $quantity): Document
