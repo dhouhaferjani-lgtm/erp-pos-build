@@ -6,6 +6,7 @@ namespace App\Modules\Document\Domain\Services;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\Services\PreDeliveryInvoicingPolicyResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DTOs\DeliveryComplianceStatus;
@@ -58,6 +59,7 @@ final class DeliveryComplianceGate
     public function __construct(
         private readonly DeliveredQuantityResolver $resolver,
         private readonly PreDeliveryInvoicingPolicyResolver $policyResolver,
+        private readonly LocationContext $locationContext,
     ) {}
 
     /**
@@ -278,10 +280,29 @@ final class DeliveryComplianceGate
      * Can the guided "create & confirm a delivery note now" path actually run for
      * this invoice?
      *
-     * It can when every physical line names a product the company owns and a
-     * location can be resolved for it. When it cannot, saying so with a typed
-     * reason is the difference between a refusal the operator can act on and one
-     * they route around.
+     * It can when at least one line names a physical product the company owns and
+     * a delivery location resolves. When it cannot, saying so with a typed reason
+     * is the difference between a refusal the operator can act on and one they
+     * route around.
+     *
+     * ── ONE RESOLVER, BOTH SIDES (fix round 1, inv P2-3) ──
+     * This predicate and the endpoint that acts on it used to resolve the
+     * location DIFFERENTLY, and disagreed in BOTH directions:
+     *
+     *   A. this side demanded a location flagged `is_default`; the endpoint used
+     *      `LocationContext::getDefaultLocation()`, which falls back to the first
+     *      ACTIVE location. A tenant that never set the flag — nothing forces it
+     *      — therefore had every standalone goods invoice declared
+     *      un-generatable, with the endpoint that would have worked unreachable
+     *      behind the verdict, and no in-app remedy. That is D-30's named
+     *      failure mode and a launch risk.
+     *   B. this side stopped checking the moment a line or the document named ANY
+     *      location, without asking whether it resolves for this company; the
+     *      endpoint scoped its lookup and refused when it did not. So the gate
+     *      promised a path the endpoint then declined.
+     *
+     * Both now call {@see resolveDeliveryLocation()}. A predicate that disagrees
+     * with the act it predicts is worse than no predicate.
      *
      * @return array{0: bool, 1: string|null}
      */
@@ -304,27 +325,47 @@ final class DeliveryComplianceGate
             }
 
             $physicalLines++;
-
-            if (($line->location_id ?? $invoice->location_id) === null
-                && ! $this->hasDefaultLocation($invoice)) {
-                return [false, 'NO_RESOLVABLE_LOCATION'];
-            }
         }
 
         if ($physicalLines === 0) {
             return [false, 'NO_PHYSICAL_LINES'];
         }
 
+        // Asked ONCE for the document, not once per line, because the generator
+        // stamps ONE location on the delivery note it builds — per-line locations
+        // are dropped there today (ticketed for 3A/3C:
+        // `2026-08-10-dn-factory-drops-per-line-location-and-fefo-degrade.md`).
+        // Predicting a per-line resolution the act does not perform is the same
+        // class of disagreement this fix exists to remove.
+        if ($this->resolveDeliveryLocation($invoice) === null) {
+            return [false, 'NO_RESOLVABLE_LOCATION'];
+        }
+
         return [true, null];
     }
 
-    private function hasDefaultLocation(Document $invoice): bool
+    /**
+     * THE location a guided delivery note would be created at — the single answer
+     * both the feasibility predicate and the composite endpoint use.
+     *
+     * The document's own location wins when it resolves FOR THIS COMPANY; a stale
+     * or cross-company `location_id` falls back to the company's default rather
+     * than refusing, because the fallback is company-scoped and therefore safe,
+     * and refusing would strand the invoice with no in-app remedy.
+     */
+    public function resolveDeliveryLocation(Document $invoice): ?Location
     {
-        return Location::query()
-            ->where('company_id', $invoice->company_id)
-            ->where('is_active', true)
-            ->where('is_default', true)
-            ->exists();
+        if ($invoice->location_id !== null) {
+            $location = Location::query()
+                ->where('company_id', $invoice->company_id)
+                ->find($invoice->location_id);
+
+            if ($location !== null) {
+                return $location;
+            }
+        }
+
+        return $this->locationContext->getDefaultLocation((string) $invoice->company_id);
     }
 
     /**

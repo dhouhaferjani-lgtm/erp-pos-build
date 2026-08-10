@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
@@ -18,6 +17,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
+use App\Modules\Document\Domain\Exceptions\GuidedDeliveryNoLongerApplicableException;
 use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DeliveryNoteFromDocumentFactory;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
@@ -908,9 +908,12 @@ class InvoiceController extends Controller
             );
         }
 
-        $location = $documentModel->location_id !== null
-            ? Location::query()->where('company_id', $documentModel->company_id)->find($documentModel->location_id)
-            : $this->locationContext->getDefaultLocation($documentModel->company_id);
+        // 🔁 Fix round 1 / inv P2-3: the SAME resolver the feasibility predicate
+        // used to answer `canAutoConfirm`. Resolving it twice, two ways, is how
+        // the gate came to promise a guided path this endpoint then declined —
+        // and, in the other direction, to declare un-generatable an invoice this
+        // endpoint would have handled.
+        $location = $this->deliveryComplianceGate->resolveDeliveryLocation($documentModel);
 
         if ($location === null) {
             return $this->validationErrorResponse(
@@ -921,6 +924,36 @@ class InvoiceController extends Controller
 
         try {
             return DB::transaction(function () use ($documentModel, $partner, $location): JsonResponse {
+                // 0 — 🚨 THE LOCK, FIRST (fix round 1 / inv P1-2). Everything above
+                // ran OUTSIDE this transaction, so two concurrent submits can both
+                // reach here. Without the lock the loser applies a STALE payload —
+                // clobbering the linkage and the T25e stamp on a document the
+                // winner has already SEALED (`payload` is not covered by the
+                // immutability trigger) — confirms a FRESH draft delivery note, so
+                // the only-draft guard cannot fire, and issues the SAME goods from
+                // stock a second time; `post()` then early-returns and the operator
+                // gets a 200. `lockForUpdate()` re-reads the row and holds it, so
+                // the loser blocks here until the winner commits and then observes
+                // the moved document. Same idiom as
+                // `DocumentPostingService::cancel()`.
+                /** @var Document $documentModel */
+                $documentModel = Document::query()
+                    ->whereKey($documentModel->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $documentModel->load(['lines.product', 'sourceDocument', 'partner']);
+
+                // Re-decide on the LOCKED row, not on what we read before it. Both
+                // conditions matter: the status (the winner may have posted it) and
+                // the gate verdict (the winner may have delivered the goods, which
+                // makes this endpoint the wrong remedy).
+                if (! $documentModel->isConfirmed()
+                    || $this->deliveryComplianceGate->evaluate($documentModel)->code
+                        !== DeliveryComplianceCode::DeliveryRequiredBeforeInvoice) {
+                    throw GuidedDeliveryNoLongerApplicableException::becauseTheInvoiceMoved();
+                }
+
                 // 1 — generate
                 $deliveryNote = $this->deliveryNoteFactory->createDraftFrom(
                     source: $documentModel,
@@ -950,6 +983,23 @@ class InvoiceController extends Controller
                 // 4 — post; the gate now sees goods issued
                 $postedInvoice = $this->postingService->post($documentModel);
 
+                // 5 — 🚨 MARK THE NOTE INVOICED (fix round 1 / inv P1-1). Mirrors
+                // `SalesOrderToInvoiceConverter::markDeliveryNotesAsInvoiced()`,
+                // with its own `invoiced_via` so the two paths stay
+                // distinguishable. Without it this note reports itself, forever,
+                // as "delivered, never invoiced": `invoiced_at` had exactly two
+                // writers in `app/` and neither is on this path, while
+                // `UninvoicedDeliveryNoteService` lists precisely that shape.
+                // Under `require_delivery_first` this is THE path for every
+                // standalone goods invoice, so the 418 year-end accrual would
+                // accrue revenue ON TOP of revenue this same transaction
+                // recognised and sealed.
+                $notePayload = $confirmed->payload ?? [];
+                $notePayload['invoiced_at'] = now()->toDateTimeString();
+                $notePayload['invoice_id'] = $postedInvoice->id;
+                $notePayload['invoiced_via'] = 'pre_post_delivery';
+                $confirmed->update(['payload' => $notePayload]);
+
                 return response()->json([
                     'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),
                     'meta' => [
@@ -965,6 +1015,11 @@ class InvoiceController extends Controller
                     ],
                 ]);
             });
+        } catch (GuidedDeliveryNoLongerApplicableException $e) {
+            // Same machine code as the pre-transaction check: the client sees ONE
+            // refusal for "this invoice does not need a delivery note created for
+            // it", whichever side of the row lock detected it.
+            return $this->validationErrorResponse('DELIVERY_CREATION_NOT_APPLICABLE', $e->getMessage());
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
         }

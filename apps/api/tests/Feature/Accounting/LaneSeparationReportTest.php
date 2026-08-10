@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use Database\Seeders\CountryDocumentSettingsSeeder;
@@ -86,6 +88,45 @@ class LaneSeparationReportTest extends TestCase
 
         $response->assertStatus(200);
         $this->assertSame([], $response->json('data.invoiced_not_delivered'));
+    }
+
+    /**
+     * 🚨 FIX ROUND 1 / inventory P1-1 — the guided path's delivery note must NOT
+     * report itself as "delivered, never invoiced".
+     *
+     * `invoiced_at` had exactly two writers in `app/`, both converters, and
+     * neither is on the T25c composite. Under `require_delivery_first` that
+     * composite is THE path for every standalone goods invoice, so every one of
+     * them would have permanently populated the 418 accrual bucket — while its
+     * invoice was posted and sealed in the SAME transaction. `generateYearEnd
+     * Adjustment` would then accrue revenue ON TOP of revenue already recognised.
+     */
+    public function test_a_delivery_note_created_by_the_guided_path_is_not_in_the_uninvoiced_bucket(): void
+    {
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine('2.0000')]);
+
+        $this->actingAs($this->dpUser)
+            ->postJson("/api/v1/invoices/{$invoice->id}/create-delivery-and-post")
+            ->assertStatus(200);
+
+        $deliveryNote = Document::query()
+            ->where('type', DocumentType::DeliveryNote)
+            ->where('source_document_id', $invoice->id)
+            ->firstOrFail();
+
+        // The linkage is recorded on the note itself, the way the converters do it.
+        $this->assertNotEmpty($deliveryNote->payload['invoiced_at'] ?? null);
+        $this->assertSame($invoice->id, $deliveryNote->payload['invoice_id'] ?? null);
+        $this->assertSame('pre_post_delivery', $deliveryNote->payload['invoiced_via'] ?? null);
+
+        $response = $this->actingAs($this->dpUser)->getJson('/api/v1/reports/lane-separation');
+
+        $response->assertStatus(200);
+        $this->assertSame(
+            [],
+            array_column($response->json('data.uninvoiced_delivery_notes'), 'id'),
+            'A delivery note whose invoice was posted in the same transaction is not uninvoiced.',
+        );
     }
 
     public function test_it_reports_the_resolved_policy_in_force(): void
