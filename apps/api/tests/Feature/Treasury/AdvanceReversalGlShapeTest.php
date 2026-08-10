@@ -924,7 +924,245 @@ final class AdvanceReversalGlShapeTest extends TestCase
         );
     }
 
+    /**
+     * A9 / **ORCHESTRATOR RULING 2026-08-10, condition 3(a)** — an `origin = Pos`
+     * payment with an **EMPTY** partition must take `B2b`, not `PosRevenue`.
+     *
+     * This is the exact case the old selector mis-shaped: `cancelForPaymentReversal()`
+     * chose the shape from `$payment->origin`
+     * (`InstrumentLifecycleService.php:744-746`), so ANY `origin = Pos` payment
+     * that survived the D-6 gate got `Dr ProductRevenue`. Under the ruling
+     * `origin` is consulted NOWHERE in that method — the empty-partition arm
+     * selects `B2b` unconditionally, which preserves the legacy single
+     * partner-tagged AR debit at the nominal.
+     *
+     * Fail-closed relative to the plan's "origin as fallback" wording: it removes
+     * the last path by which a non-POS-void reversal could mint `PosRevenue`.
+     */
+    public function test_a9_ruling_an_origin_pos_payment_with_an_empty_partition_takes_b2b(): void
+    {
+        $chequeMethod = $this->chequeMethod();
+        $portfolioAccountId = $this->instrumentAccountId(InstrumentAccountPurpose::ChecksToCollect);
+
+        $instrument = app(InstrumentLifecycleService::class)->receive(new ReceiveInstrumentData(
+            tenantId: $this->tenant->id,
+            companyId: $this->company->id,
+            paymentMethodId: $chequeMethod->id,
+            kind: InstrumentKind::Cheque,
+            direction: InstrumentDirection::Inbound,
+            origin: InstrumentOrigin::Pos,
+            reference: 'POS-EMPTY-PARTITION-1',
+            amount: '90.000',
+            currency: 'TND',
+            repositoryId: $this->repository->id,
+            partnerId: $this->partner->id,
+            createdBy: $this->user->id,
+        ));
+
+        $payment = Payment::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->partner->id,
+            'payment_method_id' => $chequeMethod->id,
+            'instrument_id' => $instrument->id,
+            'repository_id' => $this->repository->id,
+            'amount' => '90.000',
+            'currency' => 'TND',
+            'payment_date' => now()->toDateString(),
+            'status' => PaymentStatus::Completed,
+            // Reversible type (so the D-6 gate lets it through) + POS origin.
+            'payment_type' => PaymentType::DocumentPayment,
+            'origin' => PaymentOrigin::Pos,
+            'reference' => 'POS-EMPTY-'.Str::random(6),
+            'created_by' => $this->user->id,
+        ]);
+
+        // A journal entry that is NOT ('customer_payment'|'advance', source_id =
+        // payment.id) — so D-17's gate passes but the partition reads EMPTY.
+        $entryId = $this->postRevenueBackedEntry($portfolioAccountId, '90.000');
+        $payment->journal_entry_id = $entryId;
+        $payment->save();
+        $instrument->payment_id = $payment->id;
+        $instrument->save();
+
+        self::assertSame(
+            '0',
+            $this->creditByPurpose($payment->id, 'customer_payment', SystemAccountPurpose::CustomerReceivable),
+            'fixture: the partition really is empty',
+        );
+
+        $this->refundService->reversePayment($payment, 'A9 ruling 3(a)', $this->user->id);
+
+        $debits = $this->postedDebitsByPurposeForSource($instrument->id, 'instrument');
+        $actual = json_encode($debits, JSON_THROW_ON_ERROR);
+
+        self::assertSame(
+            '90.000',
+            $debits[SystemAccountPurpose::CustomerReceivable->value] ?? '0.000',
+            'ruling 3(a): an empty partition selects B2b unconditionally — origin is consulted '
+            ."NOWHERE in cancelForPaymentReversal(). Posted debits: {$actual}",
+        );
+        self::assertArrayNotHasKey(
+            SystemAccountPurpose::ProductRevenue->value,
+            $debits,
+            "no reversal path may mint PosRevenue. Posted debits: {$actual}",
+        );
+    }
+
+    /**
+     * A9 / **ORCHESTRATOR RULING 2026-08-10, condition 3(b)** — the negative pin:
+     * `CancellationShape::PosRevenue` is producible **only** by an explicit
+     * caller-supplied shape through `cancel()`. No `reversePayment()` path can
+     * reach it.
+     *
+     * Structural, deliberately: the claim is about REACHABILITY, and no runtime
+     * fixture can prove the absence of a path. `cancelForPaymentReversal()` must
+     * not mention `PaymentOrigin` at all, and the only `PosRevenue` producer
+     * outside the enum and the `match` arms must be the POS void lane's explicit
+     * argument (`TreasuryReceiptBridge.php:1502-1509`).
+     */
+    public function test_a9_ruling_pos_revenue_is_producible_only_via_an_explicit_caller_shape(): void
+    {
+        $lifecycle = (string) file_get_contents(
+            app_path('Modules/Treasury/Application/Services/InstrumentLifecycleService.php')
+        );
+
+        // Comments are STRIPPED first: the method carries a long explanatory note
+        // about the selector that was removed, and the claim under test is about
+        // executable code, not prose.
+        $method = $this->stripComments(
+            $this->extractMethodBody($lifecycle, 'public function cancelForPaymentReversal(')
+        );
+
+        self::assertStringNotContainsString(
+            'PaymentOrigin',
+            $method,
+            'ruling 3(b): origin must be consulted NOWHERE in cancelForPaymentReversal() — '
+            .'its only possible traffic was the wrong case (shape Z)',
+        );
+        self::assertStringNotContainsString(
+            '->origin',
+            $method,
+            'ruling 3(b): no property read of the payment origin either',
+        );
+        self::assertStringNotContainsString(
+            'CancellationShape::PosRevenue',
+            $method,
+            'cancelForPaymentReversal() must never select PosRevenue',
+        );
+        self::assertStringContainsString(
+            'CancellationShape::B2b',
+            $method,
+            'it must select B2b unconditionally',
+        );
+
+        // The POS void lane keeps its explicit pass — plan §8 puts it out of scope.
+        $bridge = (string) file_get_contents(
+            app_path('Modules/Treasury/Application/Projections/TreasuryReceiptBridge.php')
+        );
+        self::assertStringContainsString(
+            'CancellationShape::PosRevenue',
+            $bridge,
+            'the POS void lane must keep producing PosRevenue through its explicit cancel() argument',
+        );
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    /**
+     * A posted entry keyed on something OTHER than this payment — the shape a POS
+     * sale receipt produces (`createPOSPaymentEntry` → `source_type='pos_receipt'`,
+     * `source_id` = the RECEIPT). Yields an EMPTY partition.
+     */
+    private function postRevenueBackedEntry(string $portfolioAccountId, string $amount): string
+    {
+        return DB::transaction(function () use ($portfolioAccountId, $amount): string {
+            $entry = JournalEntry::query()->create([
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'entry_number' => 'POS-'.Str::random(8),
+                'entry_date' => now(),
+                'description' => 'POS receipt settled by cheque',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'pos_receipt',
+                'journal_code' => JournalCode::fromSourceType('pos_receipt'),
+                'source_id' => Str::uuid()->toString(),
+            ]);
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $portfolioAccountId,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'POS payment via cheque portfolio',
+                'line_order' => 0,
+            ]);
+            JournalLine::query()->create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $this->accountId(SystemAccountPurpose::ProductRevenue),
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'POS sales revenue',
+                'line_order' => 1,
+            ]);
+            app(GeneralLedgerService::class)->postEntryNow($entry, $this->user, 'TND');
+
+            return $entry->id;
+        });
+    }
+
+    /**
+     * Remove `//`, `#` and block comments so a structural assertion tests CODE
+     * rather than the prose explaining it.
+     */
+    private function stripComments(string $php): string
+    {
+        $out = '';
+        foreach (token_get_all('<?php '.$php) as $token) {
+            if (is_array($token)) {
+                if (in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                    continue;
+                }
+                $out .= $token[1];
+
+                continue;
+            }
+            $out .= $token;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Crude but sufficient brace-matched extraction of one method body, so the
+     * structural assertions above cannot be satisfied by an unrelated part of the
+     * file.
+     */
+    private function extractMethodBody(string $source, string $signature): string
+    {
+        $start = strpos($source, $signature);
+        self::assertNotFalse($start, "method not found: {$signature}");
+
+        $open = strpos($source, '{', $start);
+        self::assertNotFalse($open);
+
+        $depth = 0;
+        $length = strlen($source);
+        for ($i = $open; $i < $length; $i++) {
+            if ($source[$i] === '{') {
+                $depth++;
+            } elseif ($source[$i] === '}') {
+                $depth--;
+                if ($depth === 0) {
+                    return substr($source, $start, $i - $start + 1);
+                }
+            }
+        }
+
+        self::fail("unbalanced braces while extracting {$signature}");
+    }
 
     private function accountId(SystemAccountPurpose $purpose): string
     {
