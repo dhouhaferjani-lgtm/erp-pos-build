@@ -48,9 +48,21 @@ use Illuminate\Support\Str;
  *    `accounts_company_code_unique`;
  *  - if the preferred code is taken by an incompatible or already-purposed
  *    account, the next free code in the series is used instead;
- *  - never throws — a company this cannot place logs a warning and stays
- *    unable to post advances until fixed manually in
- *    Settings -> Chart of Accounts, exactly as the modeled migration does.
+ *  - a company this cannot place logs a warning and stays unable to post
+ *    advances until fixed manually in Settings -> Chart of Accounts, exactly as
+ *    the modeled migration does.
+ *
+ * ⚠️ **SCOPE OF "never throws" (code-gate finding m-A).** This migration contains
+ * **no `try`/`catch`**. The "logs and keeps going" property covers exactly ONE
+ * modelled failure: `nextFreeCode()` returning `null`. Any DB-level error — an FK
+ * violation on `parent_id`, a constraint added later — PROPAGATES. On PostgreSQL
+ * Laravel wraps each migration in a transaction, so that fails favourably: the
+ * whole migration rolls back and no partial chart is left behind, but
+ * `tenants:migrate` then fails for that tenant and the auto-deploy fails with it.
+ * That is faithful to the modelled
+ * `2026_08_07_100000_backfill_purchase_stamp_duty_account.php`, which likewise has
+ * no try/catch — the precedent is established and the clone is honest. It is the
+ * CLAIM that was over-broad, not the code. **Check the deploy log per tenant.**
  */
 return new class extends Migration
 {
