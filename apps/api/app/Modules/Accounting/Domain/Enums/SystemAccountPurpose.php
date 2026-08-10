@@ -171,6 +171,13 @@ enum SystemAccountPurpose: string
             self::Bank,
             self::Cash,
             self::OpeningBalanceEquity,
+            // R2 E-1 (register H-5): both were absent from this list, so
+            // ChartOfAccountsService::validateCompanyAccounts() passed the French
+            // chart that could post NEITHER — France booked zero COGS silently
+            // (PostCOGSOnInvoice swallows the miss) and the expense-document lane
+            // had no fallback account. All three country charts now seed them.
+            self::CostOfGoodsSold,
+            self::GeneralExpense,
         ];
     }
 

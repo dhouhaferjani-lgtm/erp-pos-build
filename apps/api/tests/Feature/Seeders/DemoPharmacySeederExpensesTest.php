@@ -123,7 +123,11 @@ final class DemoPharmacySeederExpensesTest extends TestCase
         }
 
         (new ExpenseCategorySeeder)->seedForCompany($company);
-        $this->assertCount(6, ExpenseCategory::query()->where('company_id', $company->id)->get());
+        // 8 = the French-plan default set (register G-3 added 'Eau & Électricité'
+        // -> 6061 and 'Fournitures administratives' -> 6064 once the TN/FR charts
+        // seeded the 606 family). The two new codes are absent from this hand-made
+        // fixture chart, so they resolve the GeneralExpense fallback here.
+        $this->assertCount(8, ExpenseCategory::query()->where('company_id', $company->id)->get());
 
         PaymentMethod::factory()->create([
             'tenant_id' => $tenant->id,

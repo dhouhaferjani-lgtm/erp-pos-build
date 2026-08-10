@@ -115,6 +115,25 @@ class PaymentMethodSeeder extends Seeder
                 'position' => 2,
                 'is_active' => true,
             ],
+            // Bank Transfer - Virement Bancaire
+            // Register G-5: TN was the only country set without one, while
+            // virement is routine in Tunisia — every TN tenant had to create it
+            // by hand before it could receive a transfer.
+            [
+                'code' => 'TRANSFER',
+                'name' => 'Virement Bancaire',
+                'is_physical' => false,
+                'has_maturity' => false,
+                'requires_third_party' => false,
+                'is_push' => true,
+                'has_deducted_fees' => false,
+                'is_restricted' => false,
+                'fee_type' => FeeType::None,
+                'fee_fixed' => '0.00',
+                'fee_percent' => '0.00',
+                'position' => 3,
+                'is_active' => true,
+            ],
             // Bank Draft / Promissory Note - Traite
             [
                 'code' => 'TRAITE',
@@ -129,7 +148,7 @@ class PaymentMethodSeeder extends Seeder
                 'fee_type' => FeeType::None,
                 'fee_fixed' => '0.00',
                 'fee_percent' => '0.00',
-                'position' => 3,
+                'position' => 4,
                 'is_active' => true,
             ],
             // Credit/Debit Card - Carte Bancaire
@@ -145,7 +164,7 @@ class PaymentMethodSeeder extends Seeder
                 'fee_type' => FeeType::Percentage,
                 'fee_fixed' => '0.00',
                 'fee_percent' => '1.50',
-                'position' => 4,
+                'position' => 5,
                 'is_active' => true,
             ],
             // Digital Wallet - Portefeuille Digital (D17, Konnect, etc.)
@@ -161,7 +180,7 @@ class PaymentMethodSeeder extends Seeder
                 'fee_type' => FeeType::Mixed,
                 'fee_fixed' => '0.30',
                 'fee_percent' => '1.00',
-                'position' => 5,
+                'position' => 6,
                 'is_active' => true,
             ],
             // Loyalty Points - Points de Fidélité
@@ -177,7 +196,7 @@ class PaymentMethodSeeder extends Seeder
                 'fee_type' => FeeType::None,
                 'fee_fixed' => '0.00',
                 'fee_percent' => '0.00',
-                'position' => 6,
+                'position' => 7,
                 'is_active' => true,
             ],
         ];

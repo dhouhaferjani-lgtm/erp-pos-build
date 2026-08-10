@@ -20,6 +20,7 @@ use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Company\Presentation\Requests\CreateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
+use App\Modules\Expense\Application\Services\ExpenseCategoryProvisioningService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
@@ -46,6 +47,7 @@ class CompanyController extends Controller
         private readonly CompanyTaxStatusValidationService $taxStatusValidationService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
+        private readonly ExpenseCategoryProvisioningService $expenseCategoryProvisioning,
     ) {}
 
     /**
@@ -57,6 +59,7 @@ class CompanyController extends Controller
      * - Creates a UserCompanyMembership with 'owner' role for the creating user
      * - Initializes hash chains for all fiscal document types
      * - Seeds chart of accounts based on country
+     * - Seeds the country's default expense categories
      */
     public function store(CreateCompanyRequest $request): JsonResponse
     {
@@ -158,6 +161,15 @@ class CompanyController extends Controller
                 // Country might not have a seeder yet
                 Log::warning("Could not seed COA for company {$company->id}: ".$e->getMessage());
             }
+
+            // 5.5. Seed the country's default expense categories.
+            // Gate finding I-2 (register G-3): this second-company path seeded
+            // the chart but no expense categories, so every expense on a
+            // non-first company fell to the GeneralExpense catch-all. Must run
+            // AFTER step 5 (categories link to class-6 accounts) and is
+            // idempotent (firstOrCreate); it inserts nothing when the chart
+            // above could not be seeded.
+            $this->expenseCategoryProvisioning->provisionForCompany($company);
 
             // 6. Provision country tax configurations and set company default tax
             $this->companyTaxProvisioning->provisionForCompany($company);

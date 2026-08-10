@@ -11,36 +11,57 @@ use App\Modules\Expense\Domain\ExpenseCategory;
 use Illuminate\Database\Seeder;
 
 /**
- * Seeds TN parapharmacy expense categories, each linked to an existing
- * PCG-TN class-6 GL account (confirmed present in TunisiaChartOfAccountsSeeder).
+ * Seeds a company's default expense categories, each linked to an existing
+ * class-6 GL account of that company's country chart.
  *
- * Category → account code map (confirmed codes):
- *   Loyer                        → 613  (Locations)
- *   Entretien & Réparations      → 615  (Entretien et réparations)
- *   Assurances                   → 616  (Primes d'assurances)
- *   Transport                    → 624  (Transport de biens et transport collectif)
- *   Frais postaux & Télécom      → 626  (Frais postaux et frais de télécommunications)
- *   Fournitures & Divers         → null → GeneralExpense fallback (65)
+ * Register G-3: this used to be a TN-only, demo-only map — France and the
+ * generic chart had no expense-category default at all, and two of its
+ * intended categories (606 / 6061) pointed at accounts the Tunisian chart did
+ * not seed, so they silently fell back to the GeneralExpense account. Both
+ * halves are fixed: the 606 family is now seeded by the TN and FR charts, and
+ * the map below is country-aware.
  *
- * Codes 606 and 6061 referenced in the task brief do NOT exist in
- * TunisiaChartOfAccountsSeeder; those categories fall back to the
- * GeneralExpense account (65 — Autres charges de gestion courante).
+ * Country → map:
+ *   TN / FR (French-plan charts) → PCN/PCG codes 613/615/616/624/626/6061/6064
+ *   anything else (generic chart) → 6130/6170/6250/6256, English names
+ *
+ * A code that a chart does not carry, and the deliberate `null` catch-all,
+ * resolve through the GeneralExpense system purpose — which every chart now
+ * seeds (register E-1). Categories are per-company data an operator edits, so
+ * these are defaults, never enforcement.
  */
 class ExpenseCategorySeeder extends Seeder
 {
     /**
-     * name => PCG-TN class-6 account code (confirmed present in TunisiaChartOfAccountsSeeder).
-     * null resolves to the GeneralExpense system-purpose account.
+     * Categories for the French-plan charts (TN PCN and FR PCG share these codes).
+     *
+     * name => account code, or null to resolve the GeneralExpense purpose.
      *
      * @var array<string, string|null>
      */
-    private const CATEGORY_ACCOUNTS = [
+    private const FRENCH_PLAN_CATEGORIES = [
         'Loyer' => '613',
         'Entretien & Réparations' => '615',
         'Assurances' => '616',
         'Transport' => '624',
         'Frais postaux & Télécom' => '626',
+        'Eau & Électricité' => '6061',
+        'Fournitures administratives' => '6064',
         'Fournitures & Divers' => null,
+    ];
+
+    /**
+     * Categories for the generic international chart.
+     *
+     * @var array<string, string|null>
+     */
+    private const GENERIC_CATEGORIES = [
+        'Rent' => null,
+        'Utilities' => '6130',
+        'Office Supplies' => '6170',
+        'Travel' => '6250',
+        'Meals & Entertainment' => '6256',
+        'Other' => null,
     ];
 
     /**
@@ -54,7 +75,7 @@ class ExpenseCategorySeeder extends Seeder
         $fallback = Account::findByPurpose($company->id, SystemAccountPurpose::GeneralExpense);
 
         $sort = 0;
-        foreach (self::CATEGORY_ACCOUNTS as $name => $code) {
+        foreach ($this->categoriesForCountry($company->country_code) as $name => $code) {
             $account = $code !== null
                 ? Account::query()
                     ->where('company_id', $company->id)
@@ -84,12 +105,23 @@ class ExpenseCategorySeeder extends Seeder
     }
 
     /**
+     * @return array<string, string|null>
+     */
+    private function categoriesForCountry(?string $countryCode): array
+    {
+        return match (strtoupper((string) $countryCode)) {
+            'TN', 'FR' => self::FRENCH_PLAN_CATEGORIES,
+            default => self::GENERIC_CATEGORIES,
+        };
+    }
+
+    /**
      * No-op for the global runner — call seedForCompany() from tenant seeders.
      */
     public function run(): void
     {
         // Intentionally empty: this seeder is company-scoped.
-        // Called from TunisianParapharmacySeeder and ParapharmacySeeder
-        // via seedForCompany($company).
+        // Called from TenantInitializationService (live registration path),
+        // TunisianParapharmacySeeder and ParapharmacySeeder via seedForCompany().
     }
 }
