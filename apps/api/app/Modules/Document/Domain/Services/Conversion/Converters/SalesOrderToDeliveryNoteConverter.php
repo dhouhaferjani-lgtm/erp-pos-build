@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -253,7 +254,15 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
         $lineNumber = 0;
 
         foreach ($source->lines as $line) {
-            // Skip non-physical products
+            // Skip non-physical products.
+            //
+            // NOT adopted onto PhysicalLinePredicate, and the divergence is
+            // deliberate (fix round 1, inv gate F-4): this guard skips only a
+            // RESOLVED non-physical product, so a line whose scoped product lookup
+            // comes back NULL is still COPIED onto the delivery note. The predicate
+            // would exclude it. Which behaviour is correct for an unresolvable
+            // product on a full-delivery copy is a real question, not a tidy-up —
+            // it is recorded in the D-19 adopting-site register and left to 3C.
             if ($line->product_id !== null) {
                 // api.document.017: scope Product lookup by source tenant + company.
                 $product = Product::query()
@@ -550,20 +559,17 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
 
     /**
      * Check if the order has any physical products.
+     *
+     * Adopts {@see PhysicalLinePredicate} (fix round 1, inv gate F-4 / D-19). The
+     * hand-rolled loop this replaces was byte-for-byte the predicate's arithmetic,
+     * including the api.document.019 tenant + company scoping, which the predicate
+     * takes as its optional `(tenantId, companyId)` pair — so this is an adoption,
+     * not a behaviour change.
      */
     private function hasPhysicalProducts(Document $order): bool
     {
         foreach ($order->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-
-            // api.document.019: scope Product lookup by order tenant + company.
-            $product = Product::query()
-                ->where('tenant_id', $order->tenant_id)
-                ->where('company_id', $order->company_id)
-                ->find($line->product_id);
-            if ($product !== null && $product->isPhysical()) {
+            if (PhysicalLinePredicate::forLine($line, $order->tenant_id, $order->company_id)) {
                 return true;
             }
         }
