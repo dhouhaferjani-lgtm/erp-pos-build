@@ -33,9 +33,13 @@ use App\Modules\Accounting\Presentation\Requests\GetOwnerStockAlertsRequest;
 use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
 use App\Modules\Accounting\Presentation\Requests\GetUpcomingPaymentsRequest;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Compliance\Services\InvoicedBeforeDeliveryScanner;
+use App\Modules\Compliance\Services\UninvoicedDeliveryNoteService;
+use App\Modules\Document\Application\Services\PreDeliveryInvoicingPolicyResolver;
 use App\Modules\Identity\Domain\User;
 use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -101,7 +105,72 @@ class ReportsController extends Controller
         private readonly FinanceSummaryService $financeSummaryService,
         private readonly LocationScopeResolver $locationScopeResolver,
         private readonly LocationScopeBoundary $locationScopeBoundary,
+        private readonly UninvoicedDeliveryNoteService $uninvoicedDeliveryNoteService,
+        private readonly InvoicedBeforeDeliveryScanner $invoicedBeforeDeliveryScanner,
+        private readonly PreDeliveryInvoicingPolicyResolver $preDeliveryInvoicingPolicyResolver,
     ) {}
+
+    /**
+     * Lane-separation reconciliation: the two mirrored populations where goods
+     * and money parted company (DPA Wave 3 T24 / D-26).
+     *
+     * **LISTING ONLY. This endpoint creates no journal entry** — viewing it must
+     * never move the ledger. The 418 year-end accrual
+     * (`generateYearEndAdjustment`) and its reversal stay OPERATOR-DRIVEN, on
+     * their own explicit endpoints, and that separation is deliberate: an
+     * accrual posted because someone opened a report is an accrual nobody
+     * decided to make.
+     *
+     * Two buckets:
+     *
+     *  - `uninvoiced_delivery_notes` (**D-d**) — goods left, no invoice. This is
+     *    the 418 accrual's population.
+     *  - `invoiced_not_delivered` (**D-c**) — an invoice was issued with no goods
+     *    behind it. 🚨 **LEGACY / PRE-POLICY register, not a workflow.** Under
+     *    `require_delivery_first` no new invoice can join it, so a row here is
+     *    either a document that predates the policy (`policy_at_post_time =
+     *    pre_policy`) or evidence of an unguarded posting path. The doctrinally
+     *    correct entry for it would be Dr revenue / Cr 472 — a revenue-timing
+     *    change to the money lane, and a materially larger lane than this one.
+     *    So: listed, never posted.
+     *
+     * The resolved policy in force travels with the response so an operator can
+     * tell an exception from a permitted flow at a glance.
+     *
+     * GET /api/v1/reports/lane-separation
+     */
+    public function laneSeparation(Request $request): JsonResponse
+    {
+        $companyId = $this->companyContext->getCompanyId();
+
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($companyId);
+
+        $fromDate = $request->query('from_date') !== null
+            ? Carbon::parse((string) $request->query('from_date'))
+            : null;
+        $toDate = $request->query('to_date') !== null
+            ? Carbon::parse((string) $request->query('to_date'))
+            : null;
+
+        $report = $this->uninvoicedDeliveryNoteService->generateYearEndReport($companyId, $fromDate, $toDate);
+        $resolvedPolicy = $this->preDeliveryInvoicingPolicyResolver->resolveForCompany($company);
+
+        return response()->json([
+            'data' => [
+                'uninvoiced_delivery_notes' => $report['uninvoiced_delivery_notes'],
+                'uninvoiced_totals' => $report['totals'],
+                'uninvoiced_by_partner' => array_values($report['by_partner']),
+                'invoiced_not_delivered' => $this->invoicedBeforeDeliveryScanner->scan($companyId, $fromDate, $toDate),
+                'policy' => $resolvedPolicy->policy->value,
+                'policy_source' => $resolvedPolicy->source,
+            ],
+            'meta' => [
+                'generated_at' => $report['generated_at'],
+                'company_id' => $companyId,
+            ],
+        ]);
+    }
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
     {
