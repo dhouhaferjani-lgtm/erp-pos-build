@@ -21,6 +21,7 @@ use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsExceptio
 use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
 use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Shared\Contracts\AbilityAuthorizerInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -475,10 +476,18 @@ class RefundService
     {
         $scale = $this->scaleResolver->getScale($invoice->currency);
 
+        // Fix round 1 · inv gate F-1: the SAME predicate `requiresReturnDecision()`
+        // and `ReturnNoteService::receiveStockBack()` use. A line this builder
+        // priced but the restock skipped is a return-note line that moves no goods
+        // — the divergence the gate surfaced. In practice a non-physical product
+        // has no delivered tuple to price against either, so the exclusion changes
+        // no priced line today; it removes the disagreement.
+        $invoice->loadMissing('lines.product');
+
         /** @var array<string, list<DocumentLine>> $linesByProduct */
         $linesByProduct = [];
         foreach ($invoice->lines->sortBy('line_number') as $line) {
-            if ($line->product_id === null) {
+            if (! PhysicalLinePredicate::forLine($line)) {
                 continue;
             }
             $linesByProduct[(string) $line->product_id][] = $line;
@@ -1091,13 +1100,25 @@ class RefundService
      *
      * Plan CF T7 / CF-D6. TRUE when the invoice carries at least one PHYSICAL line.
      *
-     * The predicate is `product_id !== null`, which is EXACTLY the live predicate
-     * `ReturnNoteService::receiveStockBack()` keys on. That is deliberate: the read
-     * model must not claim a return decision is needed for a line that would not
-     * restock, nor the reverse. (Its companion test there — `$line->product->is_service`
-     * — is dead: `Product` has no such column or accessor. A service line is one with
-     * `service_id`, and `CreateDocumentRequest` gives that `prohibits:lines.*.product_id`,
-     * so a NULL `product_id` IS the service case.)
+     * The predicate is {@see PhysicalLinePredicate}, which is EXACTLY what
+     * `ReturnNoteService::receiveStockBack()` keys on. That identity is the whole
+     * point: the read model must not claim a return decision is needed for a line
+     * that would not restock, nor the reverse.
+     *
+     * ── WHY THIS IS NOT `product_id !== null` (fix round 1, inv gate F-1) ──
+     * It was, and the docblock claimed the two were identical. DPA Wave 3 T4 / D-19
+     * made that FALSE by moving `receiveStockBack()` onto the predicate, which also
+     * excludes a NON-PHYSICAL PRODUCT line (`product_id` set, `is_physical = false`)
+     * — a population the phantom `is_service` guard had been letting through. For an
+     * invoice whose lines are all such products the divergence was operator-facing:
+     * the modal demanded a goods disposition, `assertDecisionMatchesGoods()` refused
+     * `not_applicable`, and any goods-bearing mode built a return-note line that
+     * `receiveStockBack()` then silently skipped. One question, one answer.
+     *
+     * The relation form (no tenant/company arguments) is used deliberately, matching
+     * `ReturnNoteService` and `DeliveryNoteService`; scoping those three is a
+     * separate, deliberate change (D-4). `loadMissing` keeps the read model off the
+     * N+1 the predicate would otherwise introduce on this affordance path.
      *
      * FALSE means the modal renders WITHOUT the option group and posts
      * `not_applicable` — the modal itself always renders, because `reason` is
@@ -1105,8 +1126,10 @@ class RefundService
      */
     public function requiresReturnDecision(Document $invoice): bool
     {
+        $invoice->loadMissing('lines.product');
+
         foreach ($invoice->lines as $line) {
-            if ($line->product_id !== null) {
+            if (PhysicalLinePredicate::forLine($line)) {
                 return true;
             }
         }

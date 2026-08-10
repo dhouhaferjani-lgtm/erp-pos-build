@@ -10,6 +10,8 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\ReturnDecisionMode;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
@@ -226,6 +228,42 @@ final class CanCancelReturnDecisionReadModelTest extends TestCase
         );
     }
 
+    /**
+     * Fix round 1 · inv gate F-1 — the read model and the restock predicate must
+     * answer the SAME question.
+     *
+     * T4 replaced `receiveStockBack()`'s guard with `PhysicalLinePredicate`, which
+     * excludes a NON-PHYSICAL PRODUCT line (`product_id` set, `is_physical = false`).
+     * `requiresReturnDecision()` kept keying on `product_id !== null`, and its
+     * docblock still claimed the two were identical. They were not, and the gap is
+     * operator-facing, not cosmetic: for an invoice whose only lines are
+     * non-physical products the modal demands a goods disposition, `not_applicable`
+     * is REFUSED by `assertDecisionMatchesGoods()`, and any goods-bearing mode
+     * builds a return-note line that `receiveStockBack()` then silently skips.
+     */
+    public function test_a_non_physical_product_line_requires_no_return_decision(): void
+    {
+        $invoice = $this->nonPhysicalProductInvoice('2.0000');
+
+        $this->canCancel($invoice)
+            ->assertOk()
+            ->assertJsonPath('data.requires_return_decision', false)
+            ->assertJsonPath('data.goods_issued', false);
+    }
+
+    public function test_a_non_physical_product_invoice_can_be_cancelled_as_not_applicable(): void
+    {
+        $invoice = $this->nonPhysicalProductInvoice('2.0000');
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", [
+                'reason' => 'Duplicate billing',
+                'return_decision' => ['mode' => ReturnDecisionMode::NotApplicable->value],
+            ])->assertOk();
+
+        self::assertSame(DocumentStatus::Cancelled, $invoice->refresh()->status);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     /**
@@ -241,6 +279,31 @@ final class CanCancelReturnDecisionReadModelTest extends TestCase
     {
         return $this->cfPostedInvoice([[
             'product_id' => $this->cfProduct->id,
+            'quantity' => $quantity,
+            'unit_price' => '100.000',
+        ]], ['document_date' => $this->issuedOn]);
+    }
+
+    /**
+     * A posted invoice whose only line carries a PRODUCT that does not move stock
+     * (`is_physical = false`) — the population D-19 / T4 turned on.
+     */
+    private function nonPhysicalProductInvoice(string $quantity): Document
+    {
+        $nonPhysical = Product::create([
+            'tenant_id' => $this->cfTenant->id,
+            'company_id' => $this->cfCompany->id,
+            'name' => 'CF Non-Physical Product',
+            'sku' => 'CF-NONPHYS-'.bin2hex(random_bytes(3)),
+            'type' => ProductType::Service,
+            'unit' => 'hour',
+            'cost_price' => '10.000000',
+            'is_active' => true,
+            'is_physical' => false,
+        ]);
+
+        return $this->cfPostedInvoice([[
+            'product_id' => $nonPhysical->id,
             'quantity' => $quantity,
             'unit_price' => '100.000',
         ]], ['document_date' => $this->issuedOn]);
