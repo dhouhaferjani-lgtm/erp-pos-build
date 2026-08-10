@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Treasury;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
@@ -950,6 +951,123 @@ final class AdvanceReversalGlShapeTest extends TestCase
             $this->soleDebitLineForSource($instrument->id, 'instrument', SystemAccountPurpose::ProductRevenue)->partner_id,
             'the PosRevenue debit carries no partner tag (GLS:3151)',
         );
+    }
+
+    /**
+     * **C-A — the code gate's Critical (fix round 1).** The reversing GL must
+     * equal the amount ACTUALLY BEING UNWOUND, and the document, the cash
+     * movement and the GL entry must all carry THE SAME value (the V3
+     * one-value-three-artifacts lesson).
+     *
+     * The gate proved on real PostgreSQL, both directions, that fix round 0
+     * regressed this: the partition buckets are pinned to the GROSS original
+     * amount by belt 1 itself, so a reversal after a PARTIAL REFUND posted
+     * `Dr AR 1000` against a document of `-600` and a movement of `600`.
+     * A-D6 did not cover it — it keys on `advanceBacked > 0`, and the exposed
+     * window is the plain document-payment reversal (`advanceBacked == 0`).
+     *
+     * Consequences were all silent: AR over-stated by the refunded amount
+     * (1400 debited against 1000 credited), a permanent Treasury↔GL divergence
+     * surfacing at Wave-F reconcile, and a cash-movements report over-stating
+     * cash out.
+     *
+     * **The plan prescribed this** (A-D2 says `amount: $arBacked`; A-D6's "with
+     * no prior refunds" premise is stated but never enforced on the pure-AR
+     * arm), so an ERRATUM is recorded against A-D2/A-D6 in the plan.
+     */
+    public function test_ca_a_reversal_after_a_partial_refund_posts_the_net_everywhere(): void
+    {
+        $invoice = $this->postedInvoice('1000.000');
+        $payment = $this->payViaApi('1000.000', [
+            ['document_id' => $invoice->id, 'amount' => '1000.000'],
+        ]);
+
+        self::assertSame(
+            '1000.000',
+            $this->creditByPurpose($payment->id, 'customer_payment', SystemAccountPurpose::CustomerReceivable),
+            'fixture: the original credits AR for the full amount',
+        );
+
+        // The partial refund already debits AR 400 through postRefundGlAndMovement().
+        $this->refundService->partialRefund($payment, '400.000', 'partial refund', $this->user->id);
+
+        $reversal = $this->refundService->reversePayment($payment, 'C-A reversal after refund', $this->user->id);
+        self::assertInstanceOf(Payment::class, $reversal);
+
+        $debits = $this->postedDebitsByPurpose($reversal->id);
+        $actual = json_encode($debits, JSON_THROW_ON_ERROR);
+
+        // ARTIFACT 1 — the GL entry.
+        self::assertSame(
+            '600.000',
+            $debits[SystemAccountPurpose::CustomerReceivable->value] ?? '0.000',
+            'the reversing GL must unwind only what is LEFT (1000 paid - 400 already refunded). '
+            ."Posting the gross 1000 debits AR 1400 against 1000 credited. Posted debits: {$actual}",
+        );
+
+        // ARTIFACT 2 — the reversing document.
+        self::assertSame(
+            0,
+            bccomp('-600.000', (string) $reversal->amount, 3),
+            'the reversing document is sized on the net',
+        );
+
+        // ARTIFACT 3 — the cash movement.
+        $movement = DB::table('repository_movements')
+            ->where('idempotency_key', "refund:{$payment->id}:reversal:{$reversal->id}")
+            ->first();
+        self::assertNotNull($movement, 'exactly one reversal movement');
+        self::assertSame(
+            0,
+            bccomp('600.000', (string) $movement->amount, 3),
+            'the cash movement is sized on the net',
+        );
+
+        // And the three agree — the invariant the gate asked for by name.
+        self::assertSame(
+            0,
+            bccomp(
+                (string) $debits[SystemAccountPurpose::CustomerReceivable->value],
+                (string) $movement->amount,
+                3,
+            ),
+            'ONE VALUE, THREE ARTIFACTS: document, movement and GL must not disagree about how much '
+            .'was unwound',
+        );
+
+        // The whole AR lineage nets to zero: 1000 credited, 400 + 600 debited.
+        self::assertSame(
+            '0.000',
+            app(PartnerBalanceService::class)
+                ->getCustomerReceivableBalance($this->company->id, $this->partner->id),
+            'AR must not be over-restored — this is the arithmetic C-A broke',
+        );
+    }
+
+    /**
+     * C-A, the inverse direction the gate also proved: with NO prior refund the
+     * gross and the net coincide, so the pure-AR path is provably unchanged from
+     * base. Without this, a fix could satisfy the case above by always posting
+     * the net while silently breaking the ordinary reversal.
+     */
+    public function test_ca_a_reversal_with_no_prior_refund_still_posts_the_full_amount(): void
+    {
+        $invoice = $this->postedInvoice('1000.000');
+        $payment = $this->payViaApi('1000.000', [
+            ['document_id' => $invoice->id, 'amount' => '1000.000'],
+        ]);
+
+        $reversal = $this->refundService->reversePayment($payment, 'C-A no refund', $this->user->id);
+        self::assertInstanceOf(Payment::class, $reversal);
+
+        $debits = $this->postedDebitsByPurpose($reversal->id);
+
+        self::assertSame(
+            '1000.000',
+            $debits[SystemAccountPurpose::CustomerReceivable->value] ?? '0.000',
+            'with no refund lineage the net IS the gross',
+        );
+        self::assertSame(0, bccomp('-1000.000', (string) $reversal->amount, 3));
     }
 
     /**

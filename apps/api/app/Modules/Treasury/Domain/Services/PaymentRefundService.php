@@ -748,15 +748,22 @@ class PaymentRefundService
         /** @var numeric-string $originalAmount */
         $originalAmount = CurrencyScale::bcformat((string) $original->amount, $scale);
 
-        // A-D4b belt 1 — COVERAGE. The partition must account for the WHOLE
-        // original payment. This is the lane's only defence against a footprint
-        // nobody has modelled: an unknown `source_type`, a manual entry, or a
-        // DRAFT left by a failed AfterCommit post.
+        // A-D4b belt 1 — COVERAGE, a statement about the ORIGINAL's footprint.
+        // The partition must account for the WHOLE original payment. This is the
+        // lane's only defence against a footprint nobody has modelled: an unknown
+        // `source_type`, a manual entry, or a DRAFT left by a failed AfterCommit
+        // post.
         //
         // It does NOT catch shapes X/Y/Z — those are non-empty and sum correctly,
         // and A-D2's selector handles them by making them CORRECT rather than by
         // refusing them. Do not weaken this belt later on the reasoning that
         // "X/Y/Z are already handled": it was never what handled them.
+        //
+        // ⚠️ It also does NOT decide how much to EMIT. Reading it as an emission
+        // rule is exactly the code gate's Critical C-A: the partition is GROSS
+        // (it describes the original), while the reversing document and the cash
+        // movement are NET of the refund lineage. What is emitted is derived
+        // below and belted by its own invariant.
         if (bccomp($partition->total(), $originalAmount, $scale) !== 0) {
             throw new \DomainException(
                 "payment {$original->id} posted journal entry {$original->journal_entry_id}, but its "
@@ -831,21 +838,73 @@ class PaymentRefundService
             }
         }
 
-        // A-D2 — conditional emission. With no prior refunds,
-        // `netUnreversed == originalAmount == arBacked + advanceBacked` exactly
-        // (belt 1 proved the equality, A-D6 refused the only case that breaks it),
-        // so each portion is posted at its EXACT bucket value with no proration.
-        // Both entries take `source_id = the reversal payment id` with DIFFERENT
-        // `source_type`s, so they cannot collide (D-9).
+        // ============ C-A (code gate, fix round 1) — WHAT TO EMIT ============
+        // The partition is GROSS: it describes the ORIGINAL payment's footprint.
+        // The reversing document and the cash movement are NET of the refund
+        // lineage (`netUnreversed = originalAmount - alreadyRefunded`). Emitting
+        // the buckets verbatim therefore over-reverses by exactly the refunded
+        // amount whenever a prior refund exists — which belt 1, by pinning the
+        // buckets to `$originalAmount`, guarantees rather than prevents.
+        //
+        // Two cases, and they are exhaustive because A-D6 above already refused
+        // the third:
+        //
+        //  1. `advanceBacked == 0` (the plain document payment — the shape C-A
+        //     exposed). Prior refunds posted the AR-ONLY shape
+        //     (`postRefundGlAndMovement`), so they have already debited AR by
+        //     `alreadyRefunded`. The reversal owes the REMAINDER: `$netAmount`.
+        //     With no refund lineage `$netAmount == $arBacked`, so the ordinary
+        //     reversal is unchanged from base byte for byte.
+        //
+        //  2. `advanceBacked > 0`. A-D6 has already refused any prior refund on
+        //     this arm, so `alreadyRefunded == 0` and therefore
+        //     `netUnreversed == originalAmount == arBacked + advanceBacked`
+        //     exactly. The buckets ARE the net; each portion is posted at its
+        //     exact value with NO proration (proration is OQ-3's ticket, not
+        //     this lane's).
+        //
+        // Deriving proration for case 2-with-refunds would be a guess that
+        // silently mis-states two accounts, which is precisely why A-D6 refuses.
+        if (bccomp($advanceBacked, '0', $scale) === 0) {
+            /** @var numeric-string $arPortion */
+            $arPortion = $netAmount;
+            /** @var numeric-string $advancePortion */
+            $advancePortion = bcadd('0', '0', $scale);
+        } else {
+            /** @var numeric-string $arPortion */
+            $arPortion = $arBacked;
+            /** @var numeric-string $advancePortion */
+            $advancePortion = $advanceBacked;
+        }
+
+        // BELT 3 — the one-value-three-artifacts invariant, and the direct
+        // regression guard for C-A. Whatever we post to the GL must equal what
+        // the reversing DOCUMENT says and what the cash MOVEMENT moves. A9's
+        // instrument belt already checks this shape against the amount actually
+        // unwound (`GeneralLedgerService::b2bCancellationDebits()`); this is the
+        // cash branch stating the same invariant, so the two branches can no
+        // longer disagree about which figure is authoritative.
+        if (bccomp(bcadd($arPortion, $advancePortion, $scale), $netAmount, $scale) !== 0) {
+            throw new \DomainException(
+                "payment {$original->id}: the reversing entries would post "
+                .bcadd($arPortion, $advancePortion, $scale)
+                ." while the reversing document and cash movement carry {$netAmount}. "
+                .'Refusing to let the ledger and the document disagree about how much was unwound.'
+            );
+        }
+
+        // A-D2 — conditional emission, at the amounts derived above. Both entries
+        // take `source_id = the reversal payment id` with DIFFERENT `source_type`s,
+        // so they cannot collide (D-9).
         $arEntryId = null;
         $advanceEntryId = null;
 
-        if (bccomp($arBacked, '0', $scale) > 0) {
+        if (bccomp($arPortion, '0', $scale) > 0) {
             $arEntryId = $this->glService->createPaymentRefundJournalEntry(
                 companyId: $original->company_id,
                 partnerId: $original->partner_id,
                 refundPaymentId: $reversalPaymentId,
-                amount: $arBacked,
+                amount: $arPortion,
                 paymentMethodAccountId: $repository->gl_account_id,
                 date: now(),
                 description: "Reversal of payment {$original->reference}",
@@ -855,12 +914,12 @@ class PaymentRefundService
             )->id;
         }
 
-        if (bccomp($advanceBacked, '0', $scale) > 0) {
+        if (bccomp($advancePortion, '0', $scale) > 0) {
             $advanceEntryId = $this->glService->reverseCustomerAdvanceJournalEntry(
                 companyId: $original->company_id,
                 partnerId: $original->partner_id,
                 reversalPaymentId: $reversalPaymentId,
-                amount: $advanceBacked,
+                amount: $advancePortion,
                 paymentMethodAccountId: $repository->gl_account_id,
                 date: now(),
                 description: "Reversal of customer advance from payment {$original->reference}",
