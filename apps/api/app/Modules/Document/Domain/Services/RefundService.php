@@ -479,9 +479,18 @@ class RefundService
         // Fix round 1 · inv gate F-1: the SAME predicate `requiresReturnDecision()`
         // and `ReturnNoteService::receiveStockBack()` use. A line this builder
         // priced but the restock skipped is a return-note line that moves no goods
-        // — the divergence the gate surfaced. In practice a non-physical product
-        // has no delivered tuple to price against either, so the exclusion changes
-        // no priced line today; it removes the disagreement.
+        // — the divergence the gate surfaced.
+        //
+        // ── ERRATUM (fix round 2, fiscal gate NEW-1) ──
+        // Fix round 1 claimed here that "a non-physical product has no delivered
+        // tuple to price against either, so the exclusion changes no priced line
+        // today". That was FALSE, and it was the P1 this filter introduced:
+        // `DeliveredQuantityResolver::resolve()` still keyed `product_id !== null`,
+        // so a non-physical product line delivered on a confirmed DN DID produce a
+        // tuple. The tuple survived `createReturnNoteForDecision()`'s `$live` gate
+        // and then priced to nothing here (`$productLines === []` → continue),
+        // yielding a return note with ZERO lines and a 200. Fix round 2 adopts the
+        // predicate in the resolver too, which is what makes the claim true.
         $invoice->loadMissing('lines.product');
 
         /** @var array<string, list<DocumentLine>> $linesByProduct */
