@@ -660,11 +660,27 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
      * `$payment === null || $payment->journal_entry_id === null` skips the
      * GL/transaction assertions inside `createInstrumentCancellationEntry()`.
      *
-     * I4 fix: derives the `CancellationShape` from the linked payment's
-     * `origin` instead of hardcoding `B2b` — a POS-bridged instrument
-     * (`PaymentOrigin::Pos`) reversed through this generic admin path still
-     * reverses PRODUCT REVENUE, not the customer receivable account (which
-     * would be wrong for a POS sale that was never on account).
+     * I4 fix — **SUPERSEDED by DPA `DPA-REV2-A` (A-D7 + orchestrator ruling
+     * 2026-08-10); recorded, not deleted, so the history is legible.** I4 made
+     * this method derive the `CancellationShape` from the linked payment's
+     * `origin` instead of hardcoding `B2b`, reasoning that a POS-bridged
+     * instrument should reverse PRODUCT REVENUE rather than the customer
+     * receivable, "which would be wrong for a POS sale that was never on
+     * account".
+     *
+     * That reasoning is **false for everything that can actually reach this
+     * method**. A pure POS SALE RECEIPT is `PaymentType::POS`, which the D-6 gate
+     * refuses before any instrument is resolved — so it never arrives here at
+     * all. The only payments that reached I4's `PosRevenue` arm were
+     * `DocumentPayment` rows with `origin = Pos`: the POS ACCOUNT PAYMENT, which
+     * is BY DEFINITION on account and whose GL footprint is AR-/advance-backed.
+     * I4's arm could therefore only ever fire on the case it got wrong (shape Z,
+     * plan §1.5) — debiting revenue for money never booked to revenue.
+     *
+     * The selector is now `B2b` unconditionally and `origin` is consulted
+     * NOWHERE in this method; the LEDGER partition drives the debits.
+     * `PosRevenue` survives only where it is genuinely correct: an explicit
+     * caller-supplied shape from the POS void lane through `cancel()`.
      *
      * N2 fix (2026-08-02 minor-followups ticket): the `DB::transactionLevel()`
      * guard below only proves SOME transaction is open — it is inert under
