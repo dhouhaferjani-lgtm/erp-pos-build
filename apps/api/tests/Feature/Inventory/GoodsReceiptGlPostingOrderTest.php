@@ -87,6 +87,26 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
 
     private const PROBE_CONNECTION = 'w3ab_lock_probe';
 
+    /**
+     * The tables `GoodsReceiptService::post()` takes ROW LOCKS on. None of these may
+     * be written after the GL phase opens (fix round 2, NEW-2).
+     *
+     * @var list<string>
+     */
+    private const RECEIPT_ROW_LOCK_TABLES = [
+        'documents',
+        'document_lines',
+        'document_sequences',
+        'goods_receipts',
+        'goods_receipt_lines',
+        'stock_levels',
+        'stock_movements',
+        'products',
+    ];
+
+    /** @var list<string> */
+    private const GL_TABLES = ['journal_entries', 'journal_lines'];
+
     private Tenant $tenant;
 
     private Company $company;
@@ -358,8 +378,22 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
      * `RefreshDatabase` the whole test runs inside one wrapping transaction on one
      * backend, so the fixture's own `documents` writes leave a relation-level
      * `RowExclusiveLock` standing for the entire test and no lock sample can
-     * discriminate. The order in which the two writes are ISSUED is the property
-     * that decides the lock order anyway.
+     * discriminate. The order in which the writes are ISSUED is the property that
+     * decides the lock order anyway.
+     *
+     * ── TERMINAL, NOT MERELY ORDERED (fix round 2, fiscal gate NEW-2) ──
+     * Round 1 traced exactly two writes — the PO update and the GR-IR entry — and
+     * asserted the first preceded the second. That is an ALLOW-LIST: a third writer
+     * added after the flush would take a row lock under a held advisory and the test
+     * would not notice. This now watches the WHOLE statement stream via
+     * `DB::listen(QueryExecuted)` and asserts the real invariant: **no write to any
+     * table this receipt row-locks occurs after the GL phase opens.**
+     *
+     * `stored_events` / `audit_events` writes legitimately follow the first journal
+     * insert — they are the GL post's own append-only artefacts, not receipt row
+     * locks — which is why the assertion is "no ROW-LOCK write after the GL phase
+     * opens" rather than the literal "the last statement is a GL statement" (the
+     * last statement is in fact a `stored_events` update).
      */
     public function test_the_gl_phase_runs_after_every_row_lock_including_the_purchase_order(): void
     {
@@ -368,17 +402,32 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
             ['qty' => '4.0000', 'price' => '2.500'],
         ]);
 
-        $trace = $this->traceWriteOrderDuringReceipt($purchaseOrder);
+        $writes = $this->traceWriteOrderDuringReceipt($purchaseOrder);
 
-        self::assertContains('purchase_order_update', $trace, 'the PO header write never fired — the instrument is broken');
-        self::assertContains('gl_entry', $trace, 'no GR-IR entry was created — the instrument is broken');
+        $glOpensAt = $this->firstIndexTouching($writes, self::GL_TABLES);
+        self::assertNotNull($glOpensAt, 'no GR-IR entry was written — the instrument is broken');
+
+        $lastRowLockAt = $this->lastIndexTouching($writes, self::RECEIPT_ROW_LOCK_TABLES);
+        self::assertNotNull($lastRowLockAt, 'the receipt wrote no row-locked table at all — the instrument is broken');
+
+        // …and specifically the purchase-order header, the write P2-2 was about.
+        self::assertNotNull(
+            $this->lastIndexTouching($writes, ['documents']),
+            'the PO header write never fired — the instrument is broken',
+        );
 
         self::assertLessThan(
-            array_search('gl_entry', $trace, true),
-            array_search('purchase_order_update', $trace, true),
-            'the GL phase ran BEFORE the purchase-order row write, so the per-company GL advisory '
-            .'is held while a further row lock is taken — the invariant D-9 rests on, and that '
-            .'3C designs four writers against, is false. Observed order: '.implode(' -> ', $trace),
+            $glOpensAt,
+            $lastRowLockAt,
+            sprintf(
+                'a row lock was taken AFTER the GL phase opened, so the per-company GL advisory is '
+                .'held while further row locks are acquired — the invariant D-9 rests on, and that 3C '
+                ."designs four writers against, is false.\nGL opens at #%d: %s\nOffending write #%d: %s",
+                $glOpensAt,
+                $writes[$glOpensAt],
+                $lastRowLockAt,
+                $writes[$lastRowLockAt],
+            ),
         );
     }
 
@@ -682,36 +731,80 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
     }
 
     /**
-     * Trace the ORDER of the two writes that decide whether the GL advisory is
-     * transaction-terminal: the purchase-order header update and each GR-IR
-     * journal entry (fix round 1, P2-2).
+     * Every WRITE statement the receipt issues, in order (fix round 2, NEW-2).
+     *
+     * Whole stream, not an allow-list of two: the invariant is about what happens
+     * after the GL phase opens, so a writer nobody thought to name is exactly what
+     * this has to catch.
      *
      * @return list<string>
      */
     private function traceWriteOrderDuringReceipt(Document $purchaseOrder): array
     {
-        $trace = [];
-        $purchaseOrderId = (string) $purchaseOrder->id;
+        /** @var list<string> $writes */
+        $writes = [];
 
-        $restoreDispatcher = $this->isolateModelEventDispatcher();
+        DB::listen(static function (QueryExecuted $query) use (&$writes): void {
+            $sql = strtolower(trim($query->sql));
 
-        Document::updated(function (Document $document) use (&$trace, $purchaseOrderId): void {
-            if ((string) $document->id === $purchaseOrderId) {
-                $trace[] = 'purchase_order_update';
+            if (preg_match('/^(insert|update|delete)\b/', $sql) === 1) {
+                $writes[] = $sql;
             }
         });
 
-        JournalEntry::created(static function () use (&$trace): void {
-            $trace[] = 'gl_entry';
-        });
+        $this->receive($purchaseOrder);
 
-        try {
-            $this->receive($purchaseOrder);
-        } finally {
-            $restoreDispatcher();
+        return $writes;
+    }
+
+    /**
+     * @param  list<string>  $writes
+     * @param  list<string>  $tables
+     */
+    private function firstIndexTouching(array $writes, array $tables): ?int
+    {
+        foreach ($writes as $index => $sql) {
+            if ($this->touchesAnyTable($sql, $tables)) {
+                return $index;
+            }
         }
 
-        return $trace;
+        return null;
+    }
+
+    /**
+     * @param  list<string>  $writes
+     * @param  list<string>  $tables
+     */
+    private function lastIndexTouching(array $writes, array $tables): ?int
+    {
+        $found = null;
+
+        foreach ($writes as $index => $sql) {
+            if ($this->touchesAnyTable($sql, $tables)) {
+                $found = $index;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Match the QUOTED table identifier so `documents` cannot match
+     * `document_lines` / `document_sequences`, and `products` cannot match
+     * `goods_receipt_lines`'s columns.
+     *
+     * @param  list<string>  $tables
+     */
+    private function touchesAnyTable(string $sql, array $tables): bool
+    {
+        foreach ($tables as $table) {
+            if (preg_match('/^(insert into|update|delete from)\s+"'.preg_quote($table, '/').'"/', $sql) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
