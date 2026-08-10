@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\InventoryValuationModeResolver;
 use App\Modules\Tenant\Application\DTOs\CompanySettingsData;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Tenant\Presentation\Requests\UpdateCompanySettingsRequest;
@@ -39,6 +40,7 @@ class CompanySettingsController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly InventoryValuationModeResolver $valuationModeResolver,
     ) {}
 
     /**
@@ -72,7 +74,10 @@ class CompanySettingsController extends Controller
         }
 
         return response()->json([
-            'data' => CompanySettingsData::fromCompany($company),
+            'data' => CompanySettingsData::fromCompany(
+                $company,
+                $this->valuationModeResolver->resolve($company->id),
+            ),
             'meta' => $this->getMeta($request),
         ]);
     }
@@ -166,7 +171,10 @@ class CompanySettingsController extends Controller
         );
 
         return response()->json([
-            'data' => CompanySettingsData::fromCompany($company->refresh()),
+            'data' => CompanySettingsData::fromCompany(
+                $company->refresh(),
+                $this->valuationModeResolver->resolve($company->id),
+            ),
             'meta' => $this->getMeta($request),
         ]);
     }

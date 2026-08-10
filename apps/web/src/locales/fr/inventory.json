@@ -519,6 +519,22 @@
         "description": "L'inventaire le plus récent est vendu en premier. Rarement utilisé (non autorisé dans certains pays)."
       }
     },
+    "valuation": {
+      "title": "Système de valorisation des stocks",
+      "description": "Comment les sorties de stock sont valorisées. Défini par votre juridiction ; contactez le support pour le modifier.",
+      "modeLabel": "Système de valorisation",
+      "sourceLabel": "Défini par",
+      "mode": {
+        "perpetual": "Inventaire permanent",
+        "periodic": "Inventaire intermittent (comptage de fin de période)"
+      },
+      "source": {
+        "company": "Cette société",
+        "country": "Valeur par défaut de votre pays",
+        "system": "Valeur par défaut du système"
+      },
+      "perpetualHint": "Chaque sortie de stock déstocke et comptabilise le coût des marchandises vendues au moment où elle se produit."
+    },
     "margins": {
       "title": "Politiques de marge par défaut",
       "description": "Définir les marges par défaut à l'échelle de l'entreprise. Les produits individuels peuvent remplacer ces paramètres.",

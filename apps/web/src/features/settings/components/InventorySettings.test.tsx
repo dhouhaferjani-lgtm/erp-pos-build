@@ -64,23 +64,30 @@ const reservationFixture = {
   auto_reserve_on_sales_order: true,
 }
 
+const valuationFixture = {
+  inventory_valuation_mode: 'perpetual' as const,
+  inventory_valuation_mode_source: 'country' as const,
+}
+
 // ─── TanStack Query mock ────────────────────────────────────────────────────
-// First useQuery call → company-settings; second → reservation-settings.
+// Dispatch on the QUERY KEY, not on call order. The previous `call % 2` form
+// broke the moment a third query was added (DPA Wave 3 T10) and would have
+// silently fed the reservation fixture to the wrong hook.
 const mockMutateAsync = vi.hoisted(() => vi.fn(() => Promise.resolve(undefined)))
-vi.mock('@tanstack/react-query', () => {
-  let call = 0
-  return {
-    useQuery: () => {
-      call += 1
-      if (call % 2 === 1) {
-        return { data: { data: companyFixture }, isLoading: false }
-      }
-      return { data: reservationFixture, isLoading: false, isLoadingReservation: false }
-    },
-    useMutation: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
-    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
-  }
-})
+vi.mock('@tanstack/react-query', () => ({
+  useQuery: ({ queryKey }: { queryKey: unknown[] }) => {
+    const head = String(queryKey[0] ?? '')
+    if (head === 'reservation-settings') {
+      return { data: reservationFixture, isLoading: false }
+    }
+    if (head === 'company-valuation-settings') {
+      return { data: valuationFixture, isLoading: false }
+    }
+    return { data: { data: companyFixture }, isLoading: false }
+  },
+  useMutation: () => ({ mutateAsync: mockMutateAsync, isPending: false }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}))
 
 describe('InventorySettings', () => {
   beforeEach(() => {
@@ -154,6 +161,31 @@ describe('InventorySettings', () => {
   // M1/M2/M3 (gate review docs/superpowers/reviews/2026-08-02-fe-batch-gate.md): the F1
   // settings.update gate on this screen (aa3fc1cc4) had zero test coverage — mutation-testing
   // it (deleting `|| !canEdit`) left the whole suite green. This asserts the real behaviour.
+  // ── DPA Wave 3 T10 — the READ-ONLY valuation surface ──────────────────────
+  it('renders the resolved valuation mode and the source it came from', () => {
+    render(<InventorySettings />)
+
+    const panel = screen.getByTestId('inventory-valuation-settings')
+    expect(panel).toBeInTheDocument()
+    expect(
+      screen.getByText('inventory:settings.valuation.mode.perpetual')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('inventory:settings.valuation.source.country')
+    ).toBeInTheDocument()
+  })
+
+  it('offers NO editable control for the valuation mode', () => {
+    // `periodic` is admitted by the schema but refused by both the settings
+    // request (422) and the resolver, so an editable control whose only valid
+    // value is the current one would be a support trap. This asserts the panel
+    // contains no form control at all.
+    render(<InventorySettings />)
+
+    const panel = screen.getByTestId('inventory-valuation-settings')
+    expect(panel.querySelectorAll('input, select, textarea, button')).toHaveLength(0)
+  })
+
   it('disables Save and shows the read-only hint for a caller without settings.update; the mutation never fires on click', async () => {
     mockHasPermission.mockReturnValue(false)
     const user = userEvent.setup()

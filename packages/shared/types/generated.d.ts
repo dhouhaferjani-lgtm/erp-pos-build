@@ -1071,6 +1071,7 @@ export type CountingItemFlagReason = 'basket_window' | 'negative_at_apply' | 'cl
 export type CountingScopeType = 'product_location' | 'product' | 'location' | 'category' | 'full_inventory' | 'zone';
 export type CountingStatus = 'draft' | 'scheduled' | 'count_1_in_progress' | 'count_1_completed' | 'count_2_in_progress' | 'count_2_completed' | 'count_3_in_progress' | 'count_3_completed' | 'pending_review' | 'finalized' | 'cancelled';
 export type GoodsReceiptStatus = 'draft' | 'posted';
+export type InventoryValuationMode = 'perpetual' | 'periodic';
 export type ItemResolutionMethod = 'pending' | 'auto_all_match' | 'auto_counters_agree' | 'third_count_decisive' | 'manual_override';
 export type LocationNodeType = 'zone' | 'aisle' | 'rack' | 'shelf' | 'bin' | 'section';
 export type MovementReason = 'goods_receipt' | 'customer_return' | 'adjustment_positive' | 'transfer_in' | 'production_output' | 'opening_balance' | 'delivery' | 'supplier_return' | 'adjustment_negative' | 'count_correction' | 'transfer_out' | 'damage' | 'expiry' | 'write_off' | 'consumption' | 'pos_sale' | 'pos_return';
