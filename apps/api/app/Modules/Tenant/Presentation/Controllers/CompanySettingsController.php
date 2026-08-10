@@ -116,6 +116,9 @@ class CompanySettingsController extends Controller
             'date_format' => 'date_format',
             'locale' => 'locale',
             'line_designation_override_enabled' => 'line_designation_override_enabled',
+            // DPA Wave 3 T9. NULL clears the override; the resolver then falls
+            // back to the country row and, failing that, the system default.
+            'inventory_valuation_mode' => 'inventory_valuation_mode',
         ];
 
         $attributes = [];

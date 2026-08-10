@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Presentation\Requests;
 
+use App\Modules\Inventory\Domain\Enums\InventoryValuationMode;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
@@ -44,6 +45,20 @@ class UpdateCompanySettingsRequest extends FormRequest
             'date_format' => ['sometimes', 'nullable', 'string', 'max:20'],
             'locale' => ['sometimes', 'nullable', 'string', 'max:10'],
             'line_designation_override_enabled' => ['sometimes', 'boolean'],
+            // DPA Wave 3 T9 — layer 1 of D-14's three refusal layers.
+            // Deliberately NOT `Rule::enum(InventoryValuationMode::class)`: the
+            // enum admits `periodic` (and the CHECK constraint does too) so the
+            // mode can be enabled later without DDL, but nothing implements it,
+            // so the WRITE boundary must refuse it with a 422 rather than let a
+            // company be stamped into a mode whose every journal entry would be
+            // a mis-statement. `null` clears the override and re-inherits the
+            // country default.
+            'inventory_valuation_mode' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'in:'.InventoryValuationMode::Perpetual->value,
+            ],
         ];
     }
 
@@ -66,6 +81,8 @@ class UpdateCompanySettingsRequest extends FormRequest
             'currency_code.alpha' => 'Currency code must only contain letters.',
             'timezone.timezone' => 'Please provide a valid timezone.',
             'locale.max' => 'Locale cannot exceed 10 characters.',
+            'inventory_valuation_mode.in' => 'Only perpetual inventory valuation is supported. '
+                .'Periodic valuation is reserved and not yet implemented.',
         ];
     }
 }
