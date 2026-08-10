@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Tenant\Presentation\Controllers;
 
+use App\Modules\Company\Application\Services\CompanyFiscalIdentityService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
@@ -39,6 +40,7 @@ class CompanySettingsController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CompanyFiscalIdentityService $companyFiscalIdentityService,
     ) {}
 
     /**
@@ -100,6 +102,30 @@ class CompanySettingsController extends Controller
         $validated = $request->validated();
         $changes = [];
 
+        if (array_key_exists('country_code', $validated)) {
+            $this->companyFiscalIdentityService->assertImmutableFieldsUnchanged(
+                $company,
+                ['country_code' => $validated['country_code']],
+            );
+        }
+
+        if (array_key_exists('currency_code', $validated)) {
+            $this->companyFiscalIdentityService->assertImmutableFieldsUnchanged(
+                $company,
+                ['currency' => $validated['currency_code']],
+                ['currency' => 'currency_code'],
+            );
+        }
+
+        $submittedAddress = $validated['address'] ?? null;
+        if (is_array($submittedAddress) && array_key_exists('country', $submittedAddress)) {
+            $this->companyFiscalIdentityService->assertImmutableFieldsUnchanged(
+                $company,
+                ['country_code' => $submittedAddress['country']],
+                ['country_code' => 'address.country'],
+            );
+        }
+
         // Track changes for audit log
         $fieldsToUpdate = [
             'name' => 'name',
@@ -110,8 +136,6 @@ class CompanySettingsController extends Controller
             'email' => 'email',
             'website' => 'website',
             'primary_color' => 'primary_color',
-            'country_code' => 'country_code',
-            'currency_code' => 'currency',
             'timezone' => 'timezone',
             'date_format' => 'date_format',
             'locale' => 'locale',
@@ -146,9 +170,6 @@ class CompanySettingsController extends Controller
             $attributes['address_city'] = $address['city'] ?? null;
             $attributes['address_postal_code'] = $address['postal_code'] ?? null;
 
-            if (array_key_exists('country', $address)) {
-                $attributes['country_code'] = $address['country'];
-            }
         }
 
         $company->update($attributes);

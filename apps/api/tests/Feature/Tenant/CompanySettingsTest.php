@@ -205,22 +205,109 @@ class CompanySettingsTest extends TestCase
             ->withHeader('X-Company-Id', $this->company->id)
             ->patchJson('/api/v1/settings/company', [
                 'tax_id' => '7654321BM000',
-                'currency_code' => 'TND',
                 'address' => [
                     'street' => 'Rue de Marseille',
                     'city' => 'Sfax',
                     'postal_code' => '3000',
-                    'country' => 'TN',
                 ],
             ]);
 
         $response->assertOk();
         $company = $this->company->fresh();
         $this->assertSame('7654321BM000', $company->tax_id);
-        $this->assertSame('TND', $company->currency);
+        $this->assertSame('EUR', $company->currency);
+        $this->assertSame('FR', $company->country_code);
         $this->assertSame('Rue de Marseille', $company->address_street);
         $this->assertSame('Sfax', $company->address_city);
         $this->assertSame($tenantBefore, $this->tenant->fresh()->only(['tax_id', 'currency_code', 'name', 'address']));
+    }
+
+    public function test_country_code_is_immutable_after_provisioning(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Must Not Persist',
+                'country_code' => 'TN',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['country_code'])
+            ->assertJsonPath(
+                'error.errors.country_code.0',
+                'The company country cannot be changed after provisioning. Contact support if it was set incorrectly.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertSame('Test Company', $this->company->name);
+    }
+
+    public function test_address_country_alias_is_immutable_after_provisioning_in_french(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->withHeader('X-Language', 'fr')
+            ->patchJson('/api/v1/settings/company', [
+                'address' => [
+                    'street' => 'Must Not Persist',
+                    'country' => 'TN',
+                ],
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['address.country']);
+        $this->assertSame(
+            "Le pays de la société ne peut pas être modifié après le provisionnement. Contactez le support s'il a été configuré incorrectement.",
+            $response->json('error.errors')['address.country'][0],
+        );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertNull($this->company->address_street);
+    }
+
+    public function test_currency_is_immutable_after_provisioning(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'phone' => '+216 00 000 000',
+                'currency_code' => 'TND',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['currency_code'])
+            ->assertJsonPath(
+                'error.errors.currency_code.0',
+                'The company currency cannot be changed after provisioning. Contact support if it was set incorrectly.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame('EUR', $this->company->currency);
+        $this->assertNull($this->company->phone);
+    }
+
+    public function test_idempotent_identity_values_allow_cosmetic_settings_update(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Updated Safely',
+                'country_code' => 'FR',
+                'currency_code' => 'EUR',
+                'address' => [
+                    'street' => '1 Rue de la Paix',
+                    'country' => 'FR',
+                ],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'Updated Safely')
+            ->assertJsonPath('data.country_code', 'FR')
+            ->assertJsonPath('data.currency_code', 'EUR');
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertSame('EUR', $this->company->currency);
+        $this->assertSame('1 Rue de la Paix', $this->company->address_street);
     }
 
     public function test_update_persists_line_designation_override_setting(): void
