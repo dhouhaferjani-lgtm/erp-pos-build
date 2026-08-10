@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
-use App\Shared\Domain\CountryInventoryDefaults;
+use App\Modules\Inventory\Domain\CountryInventoryDefaults;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -38,13 +39,22 @@ class CountryInventorySettingsSeeder extends Seeder
 
         foreach (CountryInventoryDefaults::all() as $countryCode => $mode) {
             if (! DB::table('countries')->where('code', $countryCode)->exists()) {
-                // Same degrade-to-no-op as CountryPaymentSettingsSeeder, and the
-                // same operator signal: a tenant without this country seeded
-                // will have no country_inventory_settings row and will fall to
-                // the SYSTEM default at the resolver. `$this->command` is null
-                // when the seeder is instantiated directly (as
-                // TenantInitializationService does), hence the nullsafe call.
-                $this->command?->warn(sprintf(
+                // Same degrade-to-no-op as CountryPaymentSettingsSeeder: a
+                // tenant without this country seeded will have no
+                // country_inventory_settings row and will fall to the SYSTEM
+                // default at the resolver.
+                //
+                // The signal goes to the LOG, not to `$this->command->warn()`
+                // like the sibling seeder. Two reasons, and the first is the
+                // real one: the path that actually matters is
+                // TenantInitializationService, which instantiates this seeder
+                // DIRECTLY (`new CountryInventorySettingsSeeder`), so
+                // `$this->command` is unset there and a console warn is written
+                // to nobody. Second, `Seeder::$command` is docblocked
+                // non-nullable, so BOTH runtime-correct idioms — `?->` and
+                // `isset()` — are rejected by PHPStan level 8, and suppressing
+                // that is not allowed here.
+                Log::warning(sprintf(
                     'CountryInventorySettingsSeeder: skipping %s — no matching row in countries. '
                     .'That country will resolve to the system default instead of its own row.',
                     $countryCode,
