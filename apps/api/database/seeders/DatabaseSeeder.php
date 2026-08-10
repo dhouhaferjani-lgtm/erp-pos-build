@@ -64,6 +64,7 @@ class DatabaseSeeder extends Seeder
         // the tenant.
         $this->command->info('Seeding country payment settings...');
         $this->call(CountryPaymentSettingsSeeder::class);
+        $this->call(CountryDocumentSettingsSeeder::class);
 
         $this->command->info('Seeding country tax rates...');
         $this->call(CountryTaxRatesSeeder::class);
