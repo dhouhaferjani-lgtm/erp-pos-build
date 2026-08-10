@@ -15,6 +15,7 @@ use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -189,6 +190,100 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
 
     public function test_discounted_account_charge_dead_letter_recovers_after_chart_backfill_and_replay(): void
     {
+        ['event_id' => $eventId, 'row' => $row] = $this->recoverDiscountedAccountChargeAfterBackfill();
+
+        $this->assertSame(ProjectionStatus::Applied, $row->refresh()->projection_status);
+        $entry = JournalEntry::query()
+            ->with('lines.account')
+            ->where('source_type', 'pos_account_charge')
+            ->where('source_id', $eventId)
+            ->firstOrFail();
+        $this->assertSame('114.000', $this->lineForPurpose($entry, SystemAccountPurpose::CustomerReceivable)->debit);
+        $this->assertSame('5.000', $this->lineForPurpose($entry, SystemAccountPurpose::SalesDiscount)->debit);
+        $this->assertSame('100.000', $this->lineForPurpose($entry, SystemAccountPurpose::ProductRevenue)->credit);
+        $this->assertSame('19.000', $this->lineForPurpose($entry, SystemAccountPurpose::VatCollected)->credit);
+
+        // Pin the whole entry, not just the four legs we happen to name: an
+        // extra or missing leg would otherwise pass unnoticed, and "balanced"
+        // was implied rather than asserted.
+        $this->assertCount(4, $entry->lines);
+        $this->assertBalanced($entry);
+    }
+
+    /**
+     * Second replay of an already-Applied projection must be a no-op — no
+     * duplicate journal entry, no doubled legs. (`isRetryable()` excludes
+     * Applied, so the command should not even reset the row; the bridge's own
+     * short-circuit is the second line of defence.)
+     */
+    public function test_replaying_an_already_applied_account_charge_projection_is_idempotent(): void
+    {
+        ['event_id' => $eventId, 'row' => $row] = $this->recoverDiscountedAccountChargeAfterBackfill();
+
+        $entryId = JournalEntry::query()
+            ->where('source_type', 'pos_account_charge')
+            ->where('source_id', $eventId)
+            ->value('id');
+        $this->assertNotNull($entryId);
+
+        app(CompanyContext::class)->clear();
+
+        $this->assertSame(0, Artisan::call('fiscal:retry-projections', [
+            '--tenant' => $this->tenant->id,
+            '--event-type' => FiscalEventType::ACCOUNT_CHARGE->value,
+            '--event-id' => $eventId,
+            '--projector' => 'treasury_account_charge_bridge',
+            '--min-age-minutes' => '0',
+            '--sync' => true,
+        ]));
+
+        $this->assertSame(ProjectionStatus::Applied, $row->refresh()->projection_status);
+        $this->assertSame(1, JournalEntry::query()
+            ->where('source_type', 'pos_account_charge')
+            ->where('source_id', $eventId)
+            ->count());
+
+        $entry = JournalEntry::query()
+            ->with('lines.account')
+            ->findOrFail($entryId);
+        $this->assertCount(4, $entry->lines);
+        $this->assertSame('114.000', $this->lineForPurpose($entry, SystemAccountPurpose::CustomerReceivable)->debit);
+        $this->assertSame('5.000', $this->lineForPurpose($entry, SystemAccountPurpose::SalesDiscount)->debit);
+        $this->assertSame('100.000', $this->lineForPurpose($entry, SystemAccountPurpose::ProductRevenue)->credit);
+        $this->assertSame('19.000', $this->lineForPurpose($entry, SystemAccountPurpose::VatCollected)->credit);
+        $this->assertBalanced($entry);
+    }
+
+    /**
+     * Sum of debits must equal sum of credits, compared as decimal STRINGS —
+     * summing TND legs as floats can compare equal on rounding noise, or
+     * unequal on representation noise (rule 19). TND is a 3-decimal currency.
+     */
+    private function assertBalanced(JournalEntry $entry): void
+    {
+        $scale = 3;
+        $debits = '0.000';
+        $credits = '0.000';
+
+        foreach ($entry->lines as $line) {
+            $debits = bcadd($debits, $line->debit, $scale);
+            $credits = bcadd($credits, $line->credit, $scale);
+        }
+
+        $this->assertSame('119.000', $debits);
+        $this->assertSame($debits, $credits);
+    }
+
+    /**
+     * Arrange the full operator recovery: a discounted ACCOUNT_CHARGE whose
+     * `SalesDiscount` purpose is missing dead-letters, the chart backfill
+     * creates the purpose idempotently, and the targeted `--sync` replay
+     * applies the projection.
+     *
+     * @return array{event_id: string, row: FiscalEventProjectionRow}
+     */
+    private function recoverDiscountedAccountChargeAfterBackfill(): array
+    {
         Queue::fake();
         $this->bindModuleActivation(true);
         Sanctum::actingAs($this->cashier);
@@ -249,12 +344,25 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
             ->firstOrFail();
         $job = new ApplyFiscalEventProjectionJob($row->id);
 
+        // Rule 20: queued jobs and console replays run with NO CompanyContext.
+        // The `postJson()` above bound one via middleware; leaving it bound
+        // would let the projector read a company it will never have in a
+        // Horizon worker, masking exactly the failure mode this test exists to
+        // reproduce.
+        app(CompanyContext::class)->clear();
+
+        // `$this->fail()` must stay OUT of a try whose `catch (Throwable)`
+        // would swallow the AssertionFailedError it throws: a silently-passing
+        // projection would have been reported as a successful dead-letter.
+        $thrown = null;
         try {
             $job->handle(DB::connection(), $this->app->make(FiscalEventProjectionRegistry::class));
-            $this->fail('The missing SalesDiscount purpose should fail the real projection.');
         } catch (Throwable $exception) {
-            $job->failed($exception);
+            $thrown = $exception;
         }
+
+        $this->assertNotNull($thrown, 'The missing SalesDiscount purpose should fail the real projection.');
+        $job->failed($thrown);
 
         $this->assertSame(ProjectionStatus::DeadLettered, $row->refresh()->projection_status);
         $this->assertStringContainsString('sales_discount', (string) $row->last_error);
@@ -272,6 +380,12 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
             ->where('system_purpose', SystemAccountPurpose::SalesDiscount)
             ->count());
 
+        // The console replay is the other no-CompanyContext caller (rule 20):
+        // `Artisan::call()` inherits this process's container, so the context
+        // must be clear here too or the command is tested under conditions an
+        // operator's shell will never reproduce.
+        app(CompanyContext::class)->clear();
+
         $this->assertSame(0, Artisan::call('fiscal:retry-projections', [
             '--tenant' => $this->tenant->id,
             '--event-type' => FiscalEventType::ACCOUNT_CHARGE->value,
@@ -281,16 +395,7 @@ final class TaskPhase3AccountChargeFullFlowTest extends TestCase
             '--sync' => true,
         ]));
 
-        $this->assertSame(ProjectionStatus::Applied, $row->refresh()->projection_status);
-        $entry = JournalEntry::query()
-            ->with('lines.account')
-            ->where('source_type', 'pos_account_charge')
-            ->where('source_id', $eventId)
-            ->firstOrFail();
-        $this->assertSame('114.000', $this->lineForPurpose($entry, SystemAccountPurpose::CustomerReceivable)->debit);
-        $this->assertSame('5.000', $this->lineForPurpose($entry, SystemAccountPurpose::SalesDiscount)->debit);
-        $this->assertSame('100.000', $this->lineForPurpose($entry, SystemAccountPurpose::ProductRevenue)->credit);
-        $this->assertSame('19.000', $this->lineForPurpose($entry, SystemAccountPurpose::VatCollected)->credit);
+        return ['event_id' => $eventId, 'row' => $row];
     }
 
     public function test_account_charge_pos_only_projects_printable_and_skips_bridges(): void

@@ -27,6 +27,8 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 final class RetryFiscalProjectionsCommandTest extends TestCase
@@ -249,6 +251,108 @@ final class RetryFiscalProjectionsCommandTest extends TestCase
     }
 
     /**
+     * A `--projector` typo used to exit 0 as a silent no-op — and the
+     * DOCUMENTED recovery invocation passes `--projector`, so the operator's
+     * "nothing matched" is indistinguishable from "already repaired"
+     * (2026-08-10 fiscal gate, finding 2).
+     */
+    public function test_unknown_projector_filter_fails_loudly(): void
+    {
+        Tenant::factory()->create();
+
+        $this->artisan('fiscal:retry-projections', [
+            '--projector' => 'treasury_account_charge_bridg',
+        ])
+            ->expectsOutputToContain('--projector must be a registered fiscal projector')
+            ->assertExitCode(Command::INVALID);
+    }
+
+    public function test_malformed_event_id_filter_fails_loudly(): void
+    {
+        Tenant::factory()->create();
+
+        $this->artisan('fiscal:retry-projections', [
+            '--event-id' => 'not-a-uuid',
+        ])
+            ->expectsOutputToContain('--event-id must be a UUID')
+            ->assertExitCode(Command::INVALID);
+    }
+
+    /**
+     * An explicitly-passed EMPTY filter is a usage error, never a wildcard.
+     * `--tenant=$UNSET` from a shell script used to silently degrade a
+     * single-tenant repair into a fleet-wide one, and `--event-type=` bypassed
+     * the enum validation entirely (2026-08-10 fiscal gate, finding 3).
+     *
+     * @return list<array{0: string}>
+     */
+    public static function emptyFilterOptionProvider(): array
+    {
+        return [['tenant'], ['event-type'], ['projector'], ['event-id']];
+    }
+
+    #[DataProvider('emptyFilterOptionProvider')]
+    public function test_explicitly_empty_filter_value_is_a_usage_error(string $option): void
+    {
+        Tenant::factory()->create();
+
+        $this->artisan('fiscal:retry-projections', ['--'.$option => ''])
+            ->expectsOutputToContain('--'.$option.' was passed with an empty value')
+            ->assertExitCode(Command::INVALID);
+    }
+
+    /**
+     * P1 closure (2026-08-10 fiscal gate, finding 1). `--sync` runs the job
+     * OUTSIDE Horizon, so nothing calls `failed()` when the replay throws
+     * again. `resetProjectionRow()` had already cleared the row to
+     * `(Pending, attempts=0)` and the job's own `advanceFailureAccounting()`
+     * leaves it at `(Pending, attempts=1)` — matched by NEITHER
+     * `candidateRows()` (DeadLettered OR Pending>=5) NOR the scheduled sweep
+     * NOR any queued job. A second failure would permanently hide the row
+     * from every operator inventory.
+     */
+    public function test_sync_replay_failure_returns_the_row_to_the_dead_letter_inventory(): void
+    {
+        $projector = new RetryCommandFailingProjector;
+        $this->registerProjectors([$projector]);
+
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create(['tenant_id' => $tenant->id]);
+        $operator = User::factory()->create(['tenant_id' => $tenant->id]);
+        $event = $this->storeFiscalEvent($tenant->id, $company->id, $operator->id);
+        $row = $this->projectionRow($event, $projector->name(), ProjectionStatus::DeadLettered, 5);
+
+        $exitCode = Artisan::call('fiscal:retry-projections', [
+            '--event-id' => $event->id,
+            '--projector' => $projector->name(),
+            '--min-age-minutes' => '0',
+            '--sync' => true,
+        ]);
+
+        $this->assertSame(2, $exitCode);
+        $this->assertSame(1, $projector->applyCount);
+
+        $fresh = $row->refresh();
+        $this->assertSame(ProjectionStatus::DeadLettered, $fresh->projection_status);
+        $this->assertNotNull($fresh->dead_lettered_at);
+        $this->assertNull($fresh->applied_at);
+        $this->assertStringContainsString('replay still fails', (string) $fresh->last_error);
+
+        // The durable proof: the operator's own inventory can still see it.
+        $inventoryExit = Artisan::call('fiscal:retry-projections', [
+            '--tenant' => $tenant->id,
+            '--event-id' => $event->id,
+            '--dry-run' => true,
+            '--min-age-minutes' => '0',
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(Command::SUCCESS, $inventoryExit);
+        $this->assertStringContainsString($event->id, $output);
+        $this->assertStringContainsString(ProjectionStatus::DeadLettered->value, $output);
+    }
+
+    /**
      * @param  list<FiscalEventProjector>  $projectors
      */
     private function registerProjectors(array $projectors): void
@@ -359,6 +463,44 @@ final class RetryCommandNoopProjector implements FiscalEventProjector
     public function priority(): int
     {
         return 150;
+    }
+}
+
+/**
+ * Stands in for the real-world second failure: the operator backfilled one
+ * missing purpose, replayed, and the projector still cannot complete.
+ */
+final class RetryCommandFailingProjector implements FiscalEventProjector
+{
+    public int $applyCount = 0;
+
+    public function name(): string
+    {
+        return 'retry_command_failing_projector';
+    }
+
+    public function handlesEventType(FiscalEventType $type): bool
+    {
+        return $type === FiscalEventType::ACCOUNT_PAYMENT;
+    }
+
+    public function requiresModule(): ?string
+    {
+        return null;
+    }
+
+    public function apply(FiscalEvent $event): void
+    {
+        unset($event);
+
+        $this->applyCount++;
+
+        throw new RuntimeException('replay still fails: another system purpose is still missing');
+    }
+
+    public function priority(): int
+    {
+        return 160;
     }
 }
 
