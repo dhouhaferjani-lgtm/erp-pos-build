@@ -106,6 +106,16 @@ final class DocumentPostingService
                 // never re-fires: the document would be stranded with no GL at all.
                 // Refusing here is a clean 422 on an UNSEALED document, inside this
                 // transaction. The listener keeps its own assertion as defence in depth.
+                // T25e — record the pre-delivery invoicing policy in force and
+                // the delivery state that satisfied it, BEFORE the seal. The
+                // invoice fiscal hash covers only document_number / posted_at /
+                // total / currency, so this cannot move the sealed bytes; writing
+                // it pre-seal makes the stamp and the seal one atomic act, and
+                // keeps it clear of the SEALED-only immutability trigger.
+                if ($document->type === DocumentType::Invoice) {
+                    $this->deliveryComplianceGate->stampDeliveryPolicyDecision($document);
+                }
+
                 $this->glPreflight->assertDocumentGlIsPostable($document);
 
                 $this->postWithFiscalChain($document);

@@ -51,6 +51,9 @@ final class DeliveryComplianceGate
 {
     private const QUANTITY_SCALE = 4;
 
+    /** The invoice-payload key the T25e audit stamp lives under. */
+    public const STAMP_KEY = 'pre_delivery_invoicing';
+
     public function __construct(
         private readonly DeliveredQuantityResolver $resolver,
         private readonly PreDeliveryInvoicingPolicyResolver $policyResolver,
@@ -194,6 +197,57 @@ final class DeliveryComplianceGate
             $resolvedPolicy,
             $blockedReason,
         );
+    }
+
+    /**
+     * T25e — record, ON THE INVOICE, the policy that was in force when it was
+     * posted and the delivery state that satisfied it.
+     *
+     * ── WHY AN AUDIT STAMP AND NOT AN ACKNOWLEDGEMENT ── (inv R-8)
+     * There is no "I accept the risk" opt-out anywhere in 3E, and there must not
+     * be: such a design is only reachable under `allow`, which the resolver
+     * refuses. This writes no decision. It writes what was TRUE, so a later audit
+     * can tell three populations apart that otherwise look identical in the
+     * ledger: posted with goods issued / posted before this policy existed /
+     * posted under a policy that permitted it.
+     *
+     * ── WHY IT IS SAFE TO WRITE ON A FISCAL DOCUMENT ──
+     * The invoice fiscal hash covers exactly `document_number`, `posted_at`,
+     * `total` and `currency` (`DocumentPostingService::postWithFiscalChain()`);
+     * `payload` is NOT an input. And `enforce_document_immutability()` fires only
+     * when `OLD.fiscal_status = 'SEALED'` and does not list `payload` among its
+     * protected columns. The caller writes this BEFORE the seal anyway, so the
+     * stamp and the seal are one atomic act.
+     *
+     * Merged into the existing payload, never assigned over it — the same idiom
+     * as `RefundService::appendDecision()` — so a later append cannot clobber it
+     * and it cannot clobber a later append.
+     */
+    public function stampDeliveryPolicyDecision(Document $invoice): void
+    {
+        $company = Company::query()->find($invoice->company_id);
+
+        $resolvedPolicy = $company === null
+            ? ResolvedPreDeliveryInvoicingPolicy::fromSystemDefault()
+            : $this->policyResolver->resolveForCompany($company);
+
+        $invoice->update([
+            'payload' => array_merge($invoice->payload ?? [], [
+                self::STAMP_KEY => [
+                    'policy' => $resolvedPolicy->policy->value,
+                    'policy_source' => $resolvedPolicy->source,
+                    // BOTH predicates, deliberately. `has_ever_issued_goods` is
+                    // what the gate enforced on; `has_goods_issued` nets prior
+                    // returns. Recording only one would leave a later auditor
+                    // unable to tell "never delivered" from "delivered and
+                    // returned" — the exact distinction D-29 exists for.
+                    'has_ever_issued_goods' => $this->resolver->hasEverIssuedGoods($invoice),
+                    'has_goods_issued' => $this->resolver->hasGoodsIssued($invoice),
+                    'delivery_note_ids' => $this->resolver->confirmedDeliveryNoteIdsFor($invoice),
+                    'stamped_at' => now()->toIso8601String(),
+                ],
+            ]),
+        ]);
     }
 
     /**
