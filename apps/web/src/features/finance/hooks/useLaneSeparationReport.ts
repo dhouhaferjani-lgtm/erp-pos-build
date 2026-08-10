@@ -22,7 +22,10 @@ export interface InvoicedNotDeliveredRow {
   partner_name: string | null
   total: string
   currency: string
-  posted_at: string | null
+  // 📌 NO `posted_at`. The type used to declare one; the server never emits it,
+  // because `documents` has no such column — the posting instant is only
+  // recoverable from the T25e audit stamp's `stamped_at`, and only for documents
+  // posted after this wave. A phantom field reads as data that is merely missing.
   /** `pre_policy` when the document was posted before the policy existed. */
   policy_at_post_time: string
   policy_source_at_post_time: string

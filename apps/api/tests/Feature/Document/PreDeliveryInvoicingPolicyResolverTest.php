@@ -155,7 +155,15 @@ class PreDeliveryInvoicingPolicyResolverTest extends TestCase
         DB::table('country_document_settings')
             ->where('country_code', 'TN')
             ->update(['pre_delivery_invoicing_policy' => 'allow']);
-        $this->assertTrue(true, 'allow is admitted by the CHECK.');
+
+        // Read it BACK. `assertTrue(true)` asserted only that the line above did
+        // not throw, which a silently-ignored update would also satisfy.
+        $this->assertSame(
+            'allow',
+            DB::table('country_document_settings')->where('country_code', 'TN')
+                ->value('pre_delivery_invoicing_policy'),
+            'allow is admitted by the CHECK and actually stored.',
+        );
 
         $this->expectException(QueryException::class);
 

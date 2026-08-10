@@ -60,8 +60,8 @@ class InvoicedBeforeDeliveryScanner
      *     id: string,
      *     document_number: string,
      *     document_date: string,
-     *     partner_id: string|null,
-     *     partner_name: string|null,
+     *     partner_id: string,
+     *     partner_name: string,
      *     total: string,
      *     currency: string,
      *     policy_at_post_time: string,
@@ -117,6 +117,13 @@ class InvoicedBeforeDeliveryScanner
                     // (`stamped_at`), and only for documents posted after this
                     // wave. Emitting a silently-null `posted_at` here would look
                     // like data rather than an absent column.
+                    // NOT null-guarded, deliberately (fix round 1, P3-11 assessed
+                    // and REJECTED as a non-defect): `documents.partner_id` is
+                    // `NOT NULL` with an FK to `partners`
+                    // (`2025_11_30_080000_create_documents_table.php:16`), so the
+                    // eager-loaded relation cannot be absent. Both a `?->` and an
+                    // `=== null` guard are rejected by PHPStan as never-null /
+                    // always-false, which is the analyser telling the truth.
                     'partner_name' => $invoice->partner->name,
                     'total' => (string) $invoice->total,
                     'currency' => (string) $invoice->currency,

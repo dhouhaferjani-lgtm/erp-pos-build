@@ -6,6 +6,7 @@ import { StatusBadge } from '@/components/atoms'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable'
 import { EmptyState } from '@/components/molecules/EmptyState'
 import { PageHeader } from '@/components/molecules/PageHeader'
+import { useCurrency } from '@/hooks/useCurrency'
 import { borderColors, textColors, tokens } from '@/lib/designTokens'
 import {
   useLaneSeparationReport,
@@ -30,6 +31,7 @@ import {
  */
 export function LaneSeparationReportPage() {
   const { t } = useTranslation(['finance', 'common'])
+  const { format: formatMoney } = useCurrency()
   const reportQuery = useLaneSeparationReport()
 
   const report = reportQuery.data
@@ -44,14 +46,26 @@ export function LaneSeparationReportPage() {
     { key: 'document_number', header: t('finance:laneSeparation.columns.document') },
     { key: 'document_date', header: t('finance:laneSeparation.columns.date') },
     { key: 'partner_name', header: t('finance:laneSeparation.columns.partner') },
-    { key: 'total', header: t('finance:laneSeparation.columns.total'), numeric: true },
+    {
+      key: 'total',
+      header: t('finance:laneSeparation.columns.total'),
+      numeric: true,
+      // A raw decimal string is not a money render: it shows the storage scale
+      // (TND at 3 dp) with the wrong separators and no currency.
+      render: (row) => formatMoney(row.total),
+    },
   ]
 
   const legacyColumns: DataTableColumn<InvoicedNotDeliveredRow>[] = [
     { key: 'document_number', header: t('finance:laneSeparation.columns.document') },
     { key: 'document_date', header: t('finance:laneSeparation.columns.date') },
     { key: 'partner_name', header: t('finance:laneSeparation.columns.partner') },
-    { key: 'total', header: t('finance:laneSeparation.columns.total'), numeric: true },
+    {
+      key: 'total',
+      header: t('finance:laneSeparation.columns.total'),
+      numeric: true,
+      render: (row) => formatMoney(row.total),
+    },
     {
       key: 'policy_at_post_time',
       header: t('finance:laneSeparation.columns.policyAtPostTime'),

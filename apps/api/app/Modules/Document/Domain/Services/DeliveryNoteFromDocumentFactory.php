@@ -186,32 +186,6 @@ final class DeliveryNoteFromDocumentFactory
         return $delivery->refresh();
     }
 
-    /**
-     * Does this document have anything a delivery note could carry?
-     *
-     * Used by the guided flow to decide whether "create & confirm a delivery note
-     * now" is offerable before it promises the operator anything.
-     */
-    public function hasCopyablePhysicalLines(Document $source): bool
-    {
-        foreach ($source->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-
-            $product = Product::query()
-                ->where('tenant_id', $source->tenant_id)
-                ->where('company_id', $source->company_id)
-                ->find($line->product_id);
-
-            if ($product !== null && $product->isPhysical()) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private function copyLine(Document $delivery, DocumentLine $line, int $lineNumber): void
     {
         DocumentLine::create([

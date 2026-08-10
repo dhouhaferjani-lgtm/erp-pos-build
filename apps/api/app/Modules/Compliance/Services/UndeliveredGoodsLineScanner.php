@@ -12,7 +12,34 @@ use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Detector **D-f** — a goods line that moved NO stock.
+ * Detector **D-f (PARTIAL)** — a goods line that moved NO stock.
+ *
+ * ── 🚩 SCOPE AS SHIPPED: **CONFIRMED DELIVERY NOTES ONLY** (fix round 1, fiscal
+ * F-2 / inv P2-4) ──
+ * This class scans ONE arm. The plan requires three; the other two are ROUTED TO
+ * 3C, with the same reasoning that already defers D-a/D-b/D-e/D-g, and are NOT
+ * implemented here:
+ *
+ *   - **POS receipts.** `PosCoreReceiptProjection` writes its movements with
+ *     `reference_type = 'pos_receipt'`, while {@see scan()} pins
+ *     `reference_type = 'Document'`. Adding the arm is not a widened `whereIn`:
+ *     a POS receipt is not a `documents` row, so the candidate query, the
+ *     line-level product set and the finding shape are all different, and the
+ *     device/queue lane (rule 20) has its own cutover questions about which
+ *     historical receipts may legitimately have no movement.
+ *   - **Goods receipts (inbound).** Same shape problem in the other direction,
+ *     and the inbound side has no cutover watermark on this branch — exactly the
+ *     artefact whose absence defers D-a/D-b/D-e: without it the check's honest
+ *     answer for every historical receipt is "no movement recorded", so it would
+ *     fire across the whole ledger on its first scheduled run. A detector that
+ *     always fires is not a detector.
+ *
+ * An earlier version of this docblock claimed "confirmed delivery notes /
+ * **posted goods receipts**", which the code never did: the type filter is a
+ * single-arm `where`, wrapped in a vestigial `orWhere` closure that adds no
+ * second arm. Corrected here rather than papered over, because a detector that
+ * over-states its coverage is worse than a missing one — it retires the
+ * suspicion that would otherwise find the gap.
  *
  * ── WHY THIS CHECK EXISTS AND NO MOVEMENT-KEYED CHECK CAN REPLACE IT ──
  * Every other detector in the lane keys on a `stock_movements` row: "this
@@ -46,8 +73,9 @@ class UndeliveredGoodsLineScanner
     private const CHUNK = 200;
 
     /**
-     * Confirmed delivery notes / posted goods receipts carrying a physical
-     * product for which no stock movement exists.
+     * CONFIRMED DELIVERY NOTES carrying a physical product for which no stock
+     * movement exists. POS and goods-receipt arms are routed to 3C — see the
+     * class docblock.
      *
      * @return list<array{
      *     document_id: string,
@@ -68,12 +96,11 @@ class UndeliveredGoodsLineScanner
 
         Document::query()
             ->where('company_id', $companyId)
-            ->where(function (Builder $query): void {
-                $query->where(function (Builder $dn): void {
-                    $dn->where('type', DocumentType::DeliveryNote)
-                        ->where('status', DocumentStatus::Confirmed);
-                });
-            })
+            // ONE arm, stated as one arm. The nested closure that used to wrap
+            // this read as though a second arm were coming is gone: it made the
+            // query look like the docblock's claim rather than like the code.
+            ->where('type', DocumentType::DeliveryNote)
+            ->where('status', DocumentStatus::Confirmed)
             ->whereHas('lines', function (Builder $lineQuery) use ($physicalProductIds): void {
                 $lineQuery->whereNotNull('product_id')->whereIn('product_id', $physicalProductIds);
             })

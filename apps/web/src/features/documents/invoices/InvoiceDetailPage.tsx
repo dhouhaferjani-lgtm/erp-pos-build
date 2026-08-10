@@ -240,6 +240,19 @@ export function InvoiceDetailPage() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('delivery-notes', tenantId, companyId),
         }),
+        // This mutation ISSUES STOCK — it is the only invoice action on this page
+        // that does. Leaving the stock and product caches alone left every
+        // on-hand figure in the session showing pre-issue quantities until
+        // something else happened to refetch them.
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('stock', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('products', tenantId, companyId),
+        }),
       ])
       setShowDeliveryConfirmationModal(false)
       toast.success(t('sales:invoices.preDeliveryInvoicing.success'))

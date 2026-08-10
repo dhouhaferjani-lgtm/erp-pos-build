@@ -157,7 +157,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // than a widening of it: that endpoint CONFIRMS delivery notes an order
     // already has (and hard-refuses NO_SOURCE_ORDER); this one CREATES one from
     // the invoice's own physical lines, writes the linkage the resolver reads,
-    // confirms it and posts — in one transaction. Registered as D-28 composite C-3.
+    // confirms it and posts — in one transaction.
+    //
+    // 📌 D-28 REGISTRATION IS PENDING (3C) — candidate C-5. An earlier comment
+    // here claimed "Registered as D-28 composite C-3", which was false twice
+    // over: C-3 is TAKEN (DeliveryNoteController::confirm, the final-gate
+    // convergent Critical), and nothing was registered at all — the D-28
+    // register is deferred to 3C by ruling.
     Route::post('/invoices/{invoice}/create-delivery-and-post', [InvoiceController::class, 'createDeliveryAndPost'])
         ->middleware('can:invoices.post')
         ->name('invoices.createDeliveryAndPost');

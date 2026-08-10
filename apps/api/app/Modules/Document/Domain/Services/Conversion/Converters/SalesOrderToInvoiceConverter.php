@@ -486,12 +486,35 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             'order_number' => $order->document_number,
         ]);
 
-        $location = $order->location_id !== null
-            ? Location::query()->where('company_id', $order->company_id)->find($order->location_id)
-            : $this->locationContext->getDefaultLocation($order->company_id);
+        // 📌 DISCLOSED DEVIATION (T25c extraction, named in fix round 1 / fiscal
+        // F-9). Before the extraction this path took `$order->location_id`
+        // VERBATIM and only resolved a Location model on the null branch, so a
+        // stale or cross-company order location was carried onto the delivery
+        // note unchecked. The factory needs a real `Location`, so the id is now
+        // resolved AND company-scoped — a tightening, and one that can refuse
+        // where the old code proceeded. It is deliberate: a delivery note is a
+        // stock-issuing document and issuing from another company's warehouse is
+        // not a lesser evil than a refusal.
+        //
+        // Each branch gets its OWN message: "no default location" was emitted for
+        // both, which sent an operator hunting for a company default when the
+        // real fault was the order's own location_id.
+        if ($order->location_id !== null) {
+            $location = Location::query()
+                ->where('company_id', $order->company_id)
+                ->find($order->location_id);
 
-        if ($location === null) {
-            throw new \DomainException('No default location found for company');
+            if ($location === null) {
+                throw new \DomainException(
+                    "The order's location does not belong to this company, so a delivery note cannot be created for it"
+                );
+            }
+        } else {
+            $location = $this->locationContext->getDefaultLocation($order->company_id);
+
+            if ($location === null) {
+                throw new \DomainException('No default location found for company');
+            }
         }
 
         $delivery = $this->deliveryNoteFactory->createDraftFrom(

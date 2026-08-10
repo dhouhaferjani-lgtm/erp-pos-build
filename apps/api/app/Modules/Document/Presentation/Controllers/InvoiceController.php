@@ -846,13 +846,22 @@ class InvoiceController extends Controller
      * → re-post is refused AGAIN, and the compliance gate has no reachable
      * compliant path. That is the defect this endpoint exists to close.
      *
-     * The five steps, in one transaction (D-28 composite C-3):
+     * The steps, in one transaction. 📌 D-28 registration is PENDING (3C) —
+     * candidate C-5. This docblock previously claimed "D-28 composite C-3", which
+     * was false twice over: C-3 is TAKEN (`DeliveryNoteController::confirm`, the
+     * final-gate convergent Critical), and nothing was registered — the register
+     * itself is deferred to 3C by ruling.
+     *
+     *   0. 🔒 lock the invoice row and RE-DECIDE on it — everything checked above
+     *      this transaction was checked on an unlocked read (fix round 1, P1-2);
      *   1. generate a DRAFT delivery note from the invoice's PHYSICAL lines;
      *   2. 🚨 write the linkage on the invoice payload — the shape the resolver
      *      already reads — in the SAME transaction, never after;
      *   3. confirm the delivery note (issues stock, seals the DN chain);
      *   4. post the invoice — `hasEverIssuedGoods()` is now true, so T25b passes;
-     *   5. commit as one act: if the post fails, the delivery, the stock movement
+     *   5. mark the note invoiced, so it does not report itself to the 418
+     *      accrual as delivered-but-never-invoiced (fix round 1, P1-1);
+     *   6. commit as one act: if the post fails, the delivery, the stock movement
      *      and the linkage all roll back with it.
      *
      * POST /api/v1/invoices/{invoice}/create-delivery-and-post
