@@ -194,6 +194,17 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
                     $job = new ApplyFiscalEventProjectionJob($rowId);
 
                     try {
+                        // A projection that dead-letters via the
+                        // NonRetryableProjectionException branch never reaches
+                        // the catch below: the job calls deadLetterImmediately()
+                        // then InteractsWithQueue::fail(), which no-ops when
+                        // $this->job is null (never dispatched), and returns
+                        // normally. The ROW STATE is correct (DeadLettered,
+                        // visible to --dry-run and the scheduled sweep) but this
+                        // tally counts it as applied and the run exits 0. Do not
+                        // trust $syncAppliedCount alone for that branch — see
+                        // docs/superpowers/tickets/
+                        // 2026-08-10-retry-projections-sync-tally-exit-code-contract.md.
                         $job->handle($this->connection(), $this->registry);
                         $syncAppliedCount++;
                     } catch (Throwable $e) {

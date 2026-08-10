@@ -26,3 +26,10 @@ Do: pick the real limit and make all three agree. Widening the column to 50 and 
 ## F-11 — Capability query now mounts from every tax select (note only)
 
 `useTaxConfigurationCapabilities()` fires from `TaxConfigFormModal`, which is rendered by every form containing a tax select. TanStack dedupes by key and `staleTime: Infinity` means one fetch per session per company, so the practical cost is negligible. Recorded only so a future performance sweep does not rediscover it as a surprise.
+
+## Addendum — re-review round 1 residuals (tenancy-authz-reviewer + treasury-reviewer, non-blocking)
+
+- **N-1 (P3):** `stampDutyHintKey()` (`TaxConfigFormModal.tsx:44-51`) keys "unsupported country" on `!isLoading && !supportsStampDuty`; a **disabled** capabilities query (no tenant scope yet — `enabled: hasTenantScope`) yields `isLoading: false, isError: false`, so the user is told their country doesn't support stamp duty when the question was never asked. Controls stay disabled (fail-closed preserved); wording only. Fix: key on `isSuccess` (or `data !== undefined`).
+- **N-2 (P3):** `StackingBehavior` in `apps/web/src/features/settings/types/tax.ts:3` duplicates the backend-generated `packages/shared/types/generated.d.ts:2199` (currently agreeing, free to diverge). Re-export from the generated module, or add the `// replace with an import from packages/shared/types/` marker used in `apps/web/src/features/purchases/supplier-invoices/types.ts:8`.
+- **N-3 (P3):** no positive test that a TN `DOCUMENT_TOTAL`+stamp row survives a legitimate partial PATCH (e.g. `fixed_amount` — the timbre-adjustment operation). One extra assertion in `TaxConfigurationManagementTest.php`.
+- **(treasury re-review P3):** `TreasuryReceiptBridgeRoundingGlTest.php:669-680` repository-lookup helpers use unordered `firstOrFail()`; harden to `->sole()` on next touch of the file so a second fixture repository fails loudly instead of making money assertions non-deterministic.
