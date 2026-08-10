@@ -66,9 +66,9 @@ final class DocumentPostingService
      * will return the document without error.
      *
      * @param  PostingContext  $context  WHO is posting. Defaults to
-     *   {@see PostingContext::Standard}, so every existing caller keeps the full
-     *   gate; only a caller that names a different context can claim the narrow
-     *   pre-delivery exemption (fiscal F-1 — see {@see PostingContext}).
+     *                                   {@see PostingContext::Standard}, so every existing caller keeps the full
+     *                                   gate; only a caller that names a different context can claim the narrow
+     *                                   pre-delivery exemption (fiscal F-1 — see {@see PostingContext}).
      *
      * @throws \DomainException If document cannot be posted (wrong status)
      */

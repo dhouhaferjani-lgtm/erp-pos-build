@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DeliveryComplianceCode;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\PostingContext;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Product\Domain\Product;
 
 /**
@@ -236,8 +237,8 @@ final class DeliveryComplianceGate
      * refusal lives on the enforcement path and only there.
      *
      * @param  bool  $deliveryRequirementExempted  whether the caller's context
-     *   carried the narrow F-1 exemption past the pre-delivery refusal. Recorded
-     *   so the exempted population is findable, not inferred.
+     *                                             carried the narrow F-1 exemption past the pre-delivery refusal. Recorded
+     *                                             so the exempted population is findable, not inferred.
      */
     public function stampDeliveryPolicyDecision(
         Document $invoice,
@@ -303,6 +304,15 @@ final class DeliveryComplianceGate
      *
      * Both now call {@see resolveDeliveryLocation()}. A predicate that disagrees
      * with the act it predicts is worse than no predicate.
+     *
+     * 🎫 D-19 RESIDUAL — the physical-line test at `:314-325` below is the SECOND
+     * re-derivation of the predicate in this class (the gate-w3ab fiscal review
+     * named both). Only {@see hasPhysicalLines()} was rewritten onto
+     * `PhysicalLinePredicate` at the 3A/3B × 3E merge (P2-3 hard gate); this one
+     * is ASSIGNED TO 3C per the rider and is deliberately left alone here,
+     * because it COUNTS physical lines rather than answering yes/no and 3C
+     * reworks the counting into its movement-keyed reading. It is scoped
+     * identically (tenant + company, api.document.010), so the two agree today.
      *
      * @return array{0: bool, 1: string|null}
      */
@@ -377,24 +387,20 @@ final class DeliveryComplianceGate
      * scoped form means the enforcement point cannot be steered by a
      * cross-tenant `product_id`.
      *
-     * 📌 Wave 3 T4 (D-19) replaces this body with the shared
-     * `PhysicalLinePredicate`. T25f deliberately does not create that class —
-     * it belongs to sub-wave 3A — but it does collapse the two call sites T4
-     * has to adopt into this one.
+     * ✅ Wave 3 T4 (D-19) · gate-w3ab fiscal **P2-3 hard gate**, executed on the
+     * 3A/3B × 3E integration merge. T25f wrote this body as a verbatim re-inline
+     * of `DocumentPostingService`'s copy because `PhysicalLinePredicate` did not
+     * exist on the 3E branch; 3A/3B created it and adopted it at the two invoice
+     * -side sites T25f then deleted. Merging either branch second would have
+     * silently restored the two-authorities condition D-19 exists to remove — so
+     * the body is now the predicate, scoped exactly as before
+     * (`api.document.010`). `PhysicalLinePredicateTest` drives THIS method, not
+     * only the predicate, so the two cannot drift apart again unnoticed.
      */
     public function hasPhysicalLines(Document $document): bool
     {
         foreach ($document->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-
-            $product = Product::query()
-                ->where('tenant_id', $document->tenant_id)
-                ->where('company_id', $document->company_id)
-                ->find($line->product_id);
-
-            if ($product !== null && $product->is_physical) {
+            if (PhysicalLinePredicate::forLine($line, $document->tenant_id, $document->company_id)) {
                 return true;
             }
         }
