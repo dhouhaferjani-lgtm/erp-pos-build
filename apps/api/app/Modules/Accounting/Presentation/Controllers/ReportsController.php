@@ -127,9 +127,14 @@ class ReportsController extends Controller
      *    the 418 accrual's population.
      *  - `invoiced_not_delivered` (**D-c**) — an invoice was issued with no goods
      *    behind it. 🚨 **LEGACY / PRE-POLICY register, not a workflow.** Under
-     *    `require_delivery_first` no new invoice can join it, so a row here is
-     *    either a document that predates the policy (`policy_at_post_time =
-     *    pre_policy`) or evidence of an unguarded posting path. The doctrinally
+     *    `require_delivery_first` no new invoice joins it **except a recorded
+     *    exemption** (fix round 2 / inv N-1 — the earlier "no new invoice can
+     *    join it" stopped being true when the F-1 Workshop exemption landed). A
+     *    row here is therefore one of three things: a document that predates the
+     *    policy (`policy_at_post_time = pre_policy`); a deliberate, bounded
+     *    exemption (`delivery_requirement_exempted = true`, with
+     *    `posting_context` naming who claimed it); or evidence of an unguarded
+     *    posting path — the only one worth investigating. The doctrinally
      *    correct entry for it would be Dr revenue / Cr 472 — a revenue-timing
      *    change to the money lane, and a materially larger lane than this one.
      *    So: listed, never posted.
@@ -153,7 +158,14 @@ class ReportsController extends Controller
             : null;
 
         $report = $this->uninvoicedDeliveryNoteService->generateYearEndReport($companyId, $fromDate, $toDate);
-        $resolvedPolicy = $this->preDeliveryInvoicingPolicyResolver->resolveForCompany($company);
+
+        // 🔁 Fix round 2 / inv N-2 — the OBSERVATION accessor, for the same reason
+        // fix round 1 gave the T25e stamp one (F-3): a report states what is true,
+        // it does not enforce. Resolving through the throwing accessor meant the
+        // first company to carry `allow` lost the very report that would have
+        // shown them what that setting had done — a 500 where the answer should
+        // have been the word "allow".
+        $resolvedPolicy = $this->preDeliveryInvoicingPolicyResolver->resolveForAudit($company);
 
         return response()->json([
             'data' => [

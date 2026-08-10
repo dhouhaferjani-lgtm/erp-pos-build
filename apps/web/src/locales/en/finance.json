@@ -444,9 +444,9 @@
     "uninvoicedTitle": "Delivered, not invoiced",
     "uninvoicedHelp": "Confirmed delivery notes with no invoice against them. This is the population the year-end 418 accrual covers; posting it stays a separate, deliberate action.",
     "uninvoicedEmpty": "Every confirmed delivery note has been invoiced.",
-    "legacyTitle": "Invoiced, not delivered — legacy / pre-policy",
-    "legacyHelp": "Posted invoices for goods with no delivery behind them. New invoices can no longer be posted this way, so this list should only shrink. A row showing a live policy rather than \"pre-policy\" means an invoice reached posting without passing the delivery check — investigate it.",
-    "legacyEmpty": "No invoices were posted ahead of their goods.",
+    "legacyTitle": "Invoiced, not delivered — legacy, exemptions and exceptions",
+    "legacyHelp": "Posted invoices for goods with no delivery behind them. Under the current policy nothing new joins this list EXCEPT a recorded exemption, so it should only shrink. Three row states: \"Pre-policy\" is historical and needs an accountant's disposition; a blue exemption badge means the invoice was posted deliberately under a recorded rule; an orange \"Needs investigation\" means an invoice reached posting without passing the delivery check and without an exemption — that is the only one to chase.",
+    "legacyEmpty": "No invoices were posted ahead of their goods, and no exemptions were recorded.",
     "prePolicy": "Pre-policy",
     "columns": {
       "document": "Document",
@@ -454,6 +454,11 @@
       "partner": "Partner",
       "total": "Total",
       "policyAtPostTime": "Policy when posted"
+    },
+    "unexplained": "Needs investigation",
+    "exemption": {
+      "work_order_generated_invoice": "Exemption: work order",
+      "generic": "Recorded exemption"
     }
   }
 }

@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
+use App\Modules\Document\Domain\Exceptions\GuidedDeliveryCannotBeGeneratedException;
 use App\Modules\Document\Domain\Exceptions\GuidedDeliveryNoLongerApplicableException;
 use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DeliveryNoteFromDocumentFactory;
@@ -904,35 +905,8 @@ class InvoiceController extends Controller
             );
         }
 
-        // The delivery note copies the partner's name and address onto itself,
-        // so a partnerless invoice cannot produce one.
-        $partner = Partner::query()
-            ->where('company_id', $documentModel->company_id)
-            ->find($documentModel->partner_id);
-
-        if ($partner === null) {
-            return $this->validationErrorResponse(
-                'DELIVERY_CANNOT_BE_GENERATED',
-                'NO_PARTNER'
-            );
-        }
-
-        // 🔁 Fix round 1 / inv P2-3: the SAME resolver the feasibility predicate
-        // used to answer `canAutoConfirm`. Resolving it twice, two ways, is how
-        // the gate came to promise a guided path this endpoint then declined —
-        // and, in the other direction, to declare un-generatable an invoice this
-        // endpoint would have handled.
-        $location = $this->deliveryComplianceGate->resolveDeliveryLocation($documentModel);
-
-        if ($location === null) {
-            return $this->validationErrorResponse(
-                'DELIVERY_CANNOT_BE_GENERATED',
-                'NO_RESOLVABLE_LOCATION'
-            );
-        }
-
         try {
-            return DB::transaction(function () use ($documentModel, $partner, $location): JsonResponse {
+            return DB::transaction(function () use ($documentModel): JsonResponse {
                 // 0 — 🚨 THE LOCK, FIRST (fix round 1 / inv P1-2). Everything above
                 // ran OUTSIDE this transaction, so two concurrent submits can both
                 // reach here. Without the lock the loser applies a STALE payload —
@@ -961,6 +935,37 @@ class InvoiceController extends Controller
                     || $this->deliveryComplianceGate->evaluate($documentModel)->code
                         !== DeliveryComplianceCode::DeliveryRequiredBeforeInvoice) {
                     throw GuidedDeliveryNoLongerApplicableException::becauseTheInvoiceMoved();
+                }
+
+                // 0b — the generator's two inputs, resolved UNDER THE LOCK (fix
+                // round 2 / inv N-3). They used to be read before the lock and
+                // carried in, which is the same stale-read shape P1-2 closed one
+                // level up: between that read and the lock another request can
+                // deactivate the location, move it to another company or delete
+                // the partner, and this transaction would then issue stock at a
+                // location it had already stopped being allowed to use. Two
+                // queries to remove the window.
+                //
+                // The delivery note copies the partner's name and address onto
+                // itself, so a partnerless invoice cannot produce one.
+                $partner = Partner::query()
+                    ->where('company_id', $documentModel->company_id)
+                    ->find($documentModel->partner_id);
+
+                if ($partner === null) {
+                    throw GuidedDeliveryCannotBeGeneratedException::noPartner();
+                }
+
+                // 🔁 Fix round 1 / inv P2-3: the SAME resolver the feasibility
+                // predicate used to answer `canAutoConfirm`. Resolving it twice,
+                // two ways, is how the gate came to promise a guided path this
+                // endpoint then declined — and, in the other direction, to
+                // declare un-generatable an invoice this endpoint would have
+                // handled.
+                $location = $this->deliveryComplianceGate->resolveDeliveryLocation($documentModel);
+
+                if ($location === null) {
+                    throw GuidedDeliveryCannotBeGeneratedException::noResolvableLocation();
                 }
 
                 // 1 — generate
@@ -1024,6 +1029,10 @@ class InvoiceController extends Controller
                     ],
                 ]);
             });
+        } catch (GuidedDeliveryCannotBeGeneratedException $e) {
+            // Same code and same machine reason the pre-lock checks used to
+            // return, so moving the lookups under the lock changed no contract.
+            return $this->validationErrorResponse('DELIVERY_CANNOT_BE_GENERATED', $e->reason);
         } catch (GuidedDeliveryNoLongerApplicableException $e) {
             // Same machine code as the pre-transaction check: the client sees ONE
             // refusal for "this invoice does not need a delivery note created for

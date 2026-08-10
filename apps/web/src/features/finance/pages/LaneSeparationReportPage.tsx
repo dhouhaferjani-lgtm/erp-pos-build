@@ -69,13 +69,29 @@ export function LaneSeparationReportPage() {
     {
       key: 'policy_at_post_time',
       header: t('finance:laneSeparation.columns.policyAtPostTime'),
-      render: (row) => (
-        <StatusBadge tone={row.policy_at_post_time === 'pre_policy' ? 'neutral' : 'warning'}>
-          {row.policy_at_post_time === 'pre_policy'
-            ? t('finance:laneSeparation.prePolicy')
-            : row.policy_at_post_time}
-        </StatusBadge>
-      ),
+      // 🚨 THREE populations, three visibly different row states (fix round 2 /
+      // inv N-1). Before this, a recorded exemption rendered as `warning` with a
+      // raw policy string — identical to the one state that actually warrants an
+      // investigation. A register that cries wolf stops being read.
+      render: (row) => {
+        if (row.delivery_requirement_exempted) {
+          return (
+            <StatusBadge tone="info">
+              {t('finance:laneSeparation.exemption.' + row.posting_context, {
+                defaultValue: t('finance:laneSeparation.exemption.generic'),
+              })}
+            </StatusBadge>
+          )
+        }
+
+        if (row.policy_at_post_time === 'pre_policy') {
+          return <StatusBadge tone="neutral">{t('finance:laneSeparation.prePolicy')}</StatusBadge>
+        }
+
+        return (
+          <StatusBadge tone="warning">{t('finance:laneSeparation.unexplained')}</StatusBadge>
+        )
+      },
     },
   ]
 

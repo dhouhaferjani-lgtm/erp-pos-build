@@ -9,9 +9,12 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Enums\PostingContext;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
 use Database\Seeders\CountryDocumentSettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
@@ -127,6 +130,94 @@ class LaneSeparationReportTest extends TestCase
             array_column($response->json('data.uninvoiced_delivery_notes'), 'id'),
             'A delivery note whose invoice was posted in the same transaction is not uninvoiced.',
         );
+    }
+
+    /**
+     * 🚨 FIX ROUND 2 / inventory N-1 — a RECORDED EXEMPTION IS NOT A HOLE.
+     *
+     * The D-c register's whole claim is "under require_delivery_first no new
+     * invoice can join this population, so a row carrying a LIVE policy is
+     * evidence of an unguarded posting path — investigate it". Fix round 1's F-1
+     * exemption created a third population that lands in the same bucket looking
+     * exactly like that: a WO-generated invoice, posted deliberately, under a
+     * ruling, with the fact recorded on its own stamp — and the register threw
+     * that fact away. An operator chasing it finds a legitimate repair job; an
+     * operator who learns the register cries wolf stops reading it, which is how
+     * the real hole gets missed.
+     *
+     * So the exemption travels with the row, and it is separable from a
+     * pre-policy row on both axes.
+     */
+    public function test_a_work_order_exempt_invoice_is_listed_as_exempt_and_not_as_a_hole(): void
+    {
+        // (1) the exempt row — posted through the F-1 exemption, deliberately.
+        $workOrder = WorkOrder::factory()->create([
+            'tenant_id' => $this->dpTenant->id,
+            'company_id' => $this->dpCompany->id,
+            'customer_partner_id' => $this->dpPartner->id,
+        ]);
+        $exempt = $this->dpConfirmedInvoice(
+            [$this->dpPhysicalLine()],
+            ['work_order_id' => $workOrder->id],
+        );
+        app(DocumentPostingService::class)->post($exempt, PostingContext::WorkOrderGeneratedInvoice);
+
+        // (2) the legacy row — posted before the policy existed, no stamp at all.
+        $legacy = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+        $legacy->update([
+            'status' => DocumentStatus::Posted,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'fiscal_hash' => hash('sha256', 'legacy-exempt-separation'),
+            'chain_sequence' => 99,
+        ]);
+
+        $response = $this->actingAs($this->dpUser)->getJson('/api/v1/reports/lane-separation');
+
+        $response->assertStatus(200);
+
+        /** @var array<int, array<string, mixed>> $rows */
+        $rows = $response->json('data.invoiced_not_delivered');
+        $byId = array_column($rows, null, 'id');
+
+        $this->assertArrayHasKey($exempt->id, $byId);
+        $this->assertArrayHasKey($legacy->id, $byId);
+
+        // The exempt row SAYS SO.
+        $this->assertTrue($byId[$exempt->id]['delivery_requirement_exempted']);
+        $this->assertSame(
+            PostingContext::WorkOrderGeneratedInvoice->value,
+            $byId[$exempt->id]['posting_context'],
+        );
+
+        // The legacy row is separable on BOTH axes — the exemption flag AND the
+        // policy-at-post-time. Neither alone would do it: a future exemption
+        // could be granted under a live policy, and a pre-policy document could
+        // be anything.
+        $this->assertFalse($byId[$legacy->id]['delivery_requirement_exempted']);
+        $this->assertSame('pre_policy', $byId[$legacy->id]['posting_context']);
+        $this->assertSame('pre_policy', $byId[$legacy->id]['policy_at_post_time']);
+        $this->assertSame('require_delivery_first', $byId[$exempt->id]['policy_at_post_time']);
+    }
+
+    /**
+     * 🚨 FIX ROUND 2 / inventory N-2 — the report must not 500 under `allow`.
+     *
+     * Same argument as fix round 1's F-3, one layer up: the report RESOLVED the
+     * policy through the throwing accessor, so the first company to carry `allow`
+     * lost the very report that would show them what that setting did. A report
+     * observes; it does not enforce.
+     */
+    public function test_the_report_renders_for_a_company_whose_policy_is_allow(): void
+    {
+        DB::table('companies')
+            ->where('id', $this->dpCompany->id)
+            ->update(['pre_delivery_invoicing_policy' => 'allow']);
+
+        $response = $this->actingAs($this->dpUser)->getJson('/api/v1/reports/lane-separation');
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('data.policy', 'allow');
+        $response->assertJsonPath('data.policy_source', 'company');
     }
 
     public function test_it_reports_the_resolved_policy_in_force(): void

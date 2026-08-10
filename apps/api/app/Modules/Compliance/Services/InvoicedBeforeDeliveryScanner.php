@@ -22,13 +22,26 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * ── WHAT THIS IS, AFTER T25b ── (Wave 3 D-18′ / D-26)
  * A **legacy / exception register**, not a control for a permitted flow. Under
- * `require_delivery_first` no NEW invoice can join this population — that is the
- * regression assertion of the whole sub-wave. What remains here is documents
- * posted BEFORE the policy existed, plus anything that slipped through a path
- * not yet routed through `DocumentPostingService::post()`. Each row therefore
- * carries `policy_at_post_time`, read from the T25e audit stamp, so an operator
- * can tell "pre-policy legacy" from "posted under a policy that permitted it"
- * from "we have a hole".
+ * `require_delivery_first` no new invoice joins this population **EXCEPT A
+ * RECORDED EXEMPTION** — the precise claim, restated in fix round 2 (inv N-1)
+ * after fix round 1 created the first exemption and the earlier wording ("no NEW
+ * invoice can join this population") became false.
+ *
+ * THREE populations land here, and telling them apart is the entire job:
+ *
+ *   1. **pre-policy legacy** — no T25e stamp at all (`policy_at_post_time =
+ *      pre_policy`). Historical, needs accountant disposition, not investigation.
+ *   2. **recorded exemption** — `delivery_requirement_exempted = true` with
+ *      `posting_context` naming the caller that claimed it (today: the Workshop
+ *      WO→invoice adapter, per the F-1 ruling; ticket
+ *      `2026-08-10-workshop-parts-goods-lane-gap.md`). Deliberate, bounded,
+ *      expected to disappear when the WO goods lane lands.
+ *   3. **a hole** — a live policy, no exemption, no stamp explanation. THIS is
+ *      the row worth an operator's evening.
+ *
+ * Emitting (2) as though it were (3) is not a cosmetic problem: a register that
+ * cries wolf stops being read, and then (3) is missed. That is why the exemption
+ * fields travel with every row rather than being inferred at the UI.
  *
  * ── THE PREDICATE IS `hasEverIssuedGoods()`, NOT `hasGoodsIssued()` ── (D-29)
  * The latter nets prior returns. Using it here would list every invoice that was
@@ -65,7 +78,9 @@ class InvoicedBeforeDeliveryScanner
      *     total: string,
      *     currency: string,
      *     policy_at_post_time: string,
-     *     policy_source_at_post_time: string
+     *     policy_source_at_post_time: string,
+     *     posting_context: string,
+     *     delivery_requirement_exempted: bool
      * }>
      */
     public function scan(string $companyId, ?Carbon $fromDate = null, ?Carbon $toDate = null): array
@@ -132,6 +147,23 @@ class InvoicedBeforeDeliveryScanner
                     // reason the stamp exists.
                     'policy_at_post_time' => is_array($stamp) ? (string) ($stamp['policy'] ?? 'unknown') : 'pre_policy',
                     'policy_source_at_post_time' => is_array($stamp) ? (string) ($stamp['policy_source'] ?? 'unknown') : 'pre_policy',
+                    // 🚨 THE THIRD POPULATION (fix round 2 / inv N-1). Fix round
+                    // 1's F-1 exemption lets a work-order invoice post with no
+                    // goods issued — deliberately, under a ruling, with the fact
+                    // recorded on its own stamp. Those rows land in THIS bucket,
+                    // and without these two keys they are indistinguishable from
+                    // the thing this register exists to find: an invoice that
+                    // reached posting without passing the delivery check.
+                    //
+                    // Both keys, not one: the exemption flag says "this was
+                    // allowed", the context says BY WHOM. A future second exempt
+                    // caller must be separable from this one without a schema
+                    // change, and an exemption granted under a live policy must
+                    // be separable from a pre-policy document — which the policy
+                    // column alone cannot do.
+                    'posting_context' => is_array($stamp) ? (string) ($stamp['posting_context'] ?? 'unknown') : 'pre_policy',
+                    'delivery_requirement_exempted' => is_array($stamp)
+                        && ($stamp['delivery_requirement_exempted'] ?? false) === true,
                 ];
             }
         });

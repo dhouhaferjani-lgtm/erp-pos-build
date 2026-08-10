@@ -29,6 +29,17 @@ export interface InvoicedNotDeliveredRow {
   /** `pre_policy` when the document was posted before the policy existed. */
   policy_at_post_time: string
   policy_source_at_post_time: string
+  /**
+   * Who posted it — `pre_policy` when there is no audit stamp to ask.
+   * Today the only non-standard value is `work_order_generated_invoice`.
+   */
+  posting_context: string
+  /**
+   * TRUE when the invoice posted under a recorded, bounded exemption rather than
+   * escaping the delivery check. Rows carrying it are NOT the thing this register
+   * exists to find, and must not read like they are.
+   */
+  delivery_requirement_exempted: boolean
 }
 
 export interface LaneSeparationReport {
