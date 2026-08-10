@@ -9,6 +9,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\DTOs\DeliveredQuantityTuple;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
@@ -42,6 +43,18 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * FAIL CLOSED throughout: no linkage, an unconfirmed delivery note, or an
  * unresolvable location all yield less delivered quantity, never more.
+ *
+ * ## Which lines count — {@see PhysicalLinePredicate}, D-19 site 9
+ *
+ * "Delivered" means "the writer moved stock for it", so the two goods-facing
+ * loops (`resolve()`, `unresolvedLocationProductIds()`) ask exactly what
+ * `DeliveryNoteService::issueStock()` asks. There are THREE participants in this
+ * one question and they must agree or the guided cancel is incoherent:
+ * this resolver (`goods_issued`), `RefundService::requiresReturnDecision()`
+ * (whether the modal asks), and `RefundService::returnNoteLinesFor()` /
+ * `ReturnNoteService::receiveStockBack()` (what is priced and restocked).
+ *
+ * `priorReturnsPerTuple()` is NOT a participant — see its own note.
  */
 final class DeliveredQuantityResolver
 {
@@ -76,7 +89,19 @@ final class DeliveredQuantityResolver
 
         foreach ($deliveryNotes as $deliveryNote) {
             foreach ($deliveryNote->lines as $line) {
-                if ($line->product_id === null) {
+                // THE physical-line predicate — the same one
+                // `DeliveryNoteService::issueStock()` keys on, so this resolver
+                // reports exactly what that writer moved (fix round 2, fiscal gate
+                // NEW-1 / D-19 site 9).
+                //
+                // It used to be `product_id === null`, which counted a NON-PHYSICAL
+                // PRODUCT line as delivered even though T4 stopped `issueStock()`
+                // moving stock for it. That made `hasGoodsIssued()` TRUE while
+                // `requiresReturnDecision()` (fix round 1, F-1) said FALSE, and the
+                // guided cancel then priced the phantom tuple to nothing — a return
+                // note with ZERO lines, 200 OK, nothing credited, nothing restocked.
+                // Three participants, one question.
+                if (! PhysicalLinePredicate::forLine($line)) {
                     continue;
                 }
 
@@ -168,7 +193,12 @@ final class DeliveredQuantityResolver
 
         foreach ($this->confirmedDeliveryNotesFor($invoice) as $deliveryNote) {
             foreach ($deliveryNote->lines as $line) {
-                if ($line->product_id === null) {
+                // Must skip exactly what `resolve()` skips for a non-location reason,
+                // or the two disagree (fix round 2, NEW-1). A non-physical product
+                // line with no resolvable location would otherwise raise
+                // `RETURN_LOCATION_UNRESOLVED` / `RETURN_LOCATION_AMBIGUOUS` for a
+                // line that moves no goods at all — a refusal for a non-event.
+                if (! PhysicalLinePredicate::forLine($line)) {
                     continue;
                 }
 
@@ -325,7 +355,10 @@ final class DeliveredQuantityResolver
             ->where('type', DocumentType::DeliveryNote)
             ->where('status', DocumentStatus::Confirmed)
             ->whereIn('id', $ids)
-            ->with('lines')
+            // `lines.product`, not `lines`: both consumers now ask
+            // `PhysicalLinePredicate::forLine()` per line, and the relation form
+            // reads `$line->product` (fix round 2, NEW-1).
+            ->with('lines.product')
             ->get()
             ->all();
 
@@ -397,6 +430,24 @@ final class DeliveredQuantityResolver
         $unattributed = [];
 
         foreach ($priorLines as $line) {
+            // DELIBERATELY NOT `PhysicalLinePredicate` (fix round 2, NEW-1 sweep).
+            // This is a different question from `resolve()`'s: not "does this line
+            // move stock?" but "how much has already come back?" — a capacity ledger
+            // over HISTORICAL rows.
+            //
+            // Two reasons it must stay catalogue-blind:
+            //  1. `products.is_physical` is MUTABLE. Keying a ledger of past returns
+            //     on today's flag would silently un-net a historical return the day
+            //     someone flips it, and the same units could then be restocked twice.
+            //  2. The direction of error is opposite. Netting MORE prior returns
+            //     shrinks `remaining`, which offers LESS restock — fail closed.
+            //     Adopting the predicate here could only ever net LESS.
+            //
+            // It is inert either way today: `$returned` is consumed per
+            // `productId|locationId` key against `$delivered`, whose keys now contain
+            // only physical products, and the unattributed drain loop iterates
+            // `array_keys($delivered)`. A non-physical product simply has no tuple to
+            // net against.
             if ($line->product_id === null) {
                 continue;
             }

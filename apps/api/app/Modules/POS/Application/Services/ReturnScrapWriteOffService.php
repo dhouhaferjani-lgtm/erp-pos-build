@@ -131,7 +131,7 @@ final class ReturnScrapWriteOffService
             // recover the ORIGINAL cost instead of recomputing from a since-changed
             // average.
             /** @var numeric-string $unitCost */
-            $unitCost = $product->resolveWriteOffUnitCost();
+            $unitCost = $product->resolveMovementUnitCost();
 
             $scale = $this->scaleResolver->getScale($currencyCode);
 

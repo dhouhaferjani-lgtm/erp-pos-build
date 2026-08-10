@@ -176,7 +176,7 @@ final class BatchWriteOffService
      * (writeOff), so a Phase C reversing journal entry — which reads unit_cost
      * from the stored movement row — exactly reconstructs the original entry.
      *
-     * The chain itself lives on `Product::resolveWriteOffUnitCost()` so that
+     * The chain itself lives on `Product::resolveMovementUnitCost()` so that
      * EVERY write-off flavour (this one and POS return scrap, DPA V10) reads one
      * definition; gate V10-I5 caught the two having independently drifted.
      */
@@ -186,6 +186,6 @@ final class BatchWriteOffService
             return '0.00';
         }
 
-        return $product->resolveWriteOffUnitCost();
+        return $product->resolveMovementUnitCost();
     }
 }

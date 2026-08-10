@@ -39,6 +39,12 @@ class ProductionSeeder extends Seeder
         $this->call(CountryPaymentSettingsSeeder::class);
         $this->command->info('     Country payment settings seeded successfully.');
 
+        // 1c. Country Inventory Settings (valuation mode). Same FK ordering
+        //     constraint as 1b (DPA Wave 3 T8).
+        $this->command->info('[1c/6] Seeding country inventory settings...');
+        $this->call(CountryInventorySettingsSeeder::class);
+        $this->command->info('     Country inventory settings seeded successfully.');
+
         // 2. Country Tax Rates (lookup table)
         $this->command->info('[2/6] Seeding country tax rates...');
         $this->call(CountryTaxRatesSeeder::class);

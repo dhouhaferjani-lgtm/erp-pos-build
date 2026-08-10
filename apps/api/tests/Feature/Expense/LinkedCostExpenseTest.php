@@ -133,9 +133,9 @@ final class LinkedCostExpenseTest extends TestCase
         $wac->recordSale(
             product: $product,
             location: $this->warehouse,
-            quantity: 6.0000,
+            quantity: '6.0000',
             reference: 'SALE-AFTER-RECEIPT',
-            referenceType: 'test',
+            referenceType: null,
             referenceId: 'sale-after-receipt',
         );
 
@@ -243,7 +243,7 @@ final class LinkedCostExpenseTest extends TestCase
 
         /** @var WeightedAverageCostService $wac */
         $wac = app(WeightedAverageCostService::class);
-        $wac->recordSale($product, $this->warehouse, 6.0, 'SALE-AFTER-RECEIPT', 'test', 'sale-after-receipt');
+        $wac->recordSale($product, $this->warehouse, '6.0000', 'SALE-AFTER-RECEIPT', null, 'sale-after-receipt');
 
         $repo = PaymentRepository::factory()->create([
             'tenant_id' => $this->tenant->id,

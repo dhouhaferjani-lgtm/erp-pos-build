@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Enums\TransferStatus;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
@@ -18,6 +19,7 @@ use App\Modules\Product\Domain\Events\ProductCostPriceUpdated;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -358,19 +360,30 @@ class WeightedAverageCostService
      * Uses pessimistic locking to prevent race conditions when multiple
      * sales happen concurrently for the same product.
      *
+     * The movement is classified `MovementReason::Delivery` (DPA Wave 3 T2). The
+     * exit seam keys on `MovementReason::affectsCOGS()`, so an unclassified exit
+     * is unreachable by it. The single caller is
+     * `DeliveryNoteService::issueStock()`; a second caller with a different
+     * economic meaning must take a reason parameter rather than inherit this one.
+     *
      * @param  Product  $product  The product being sold
      * @param  Location  $location  The location issuing the stock
-     * @param  float  $quantity  Quantity being sold
+     * @param  numeric-string  $quantity  Quantity being sold, at the canonical
+     *                                    quantity scale. NEVER a float: the
+     *                                    column is decimal(15,4) and a float
+     *                                    carries ~15-16 significant digits, so a
+     *                                    cast loses the 4th decimal on ordinary
+     *                                    magnitudes (house rule 19).
      * @param  string|null  $reference  Human-readable reference (e.g., "DN-2025-001")
-     * @param  string|null  $referenceType  Type of source document (e.g., "Document")
+     * @param  StockMovementReferenceType|null  $referenceType  Morph type of the source document
      * @param  string|null  $referenceId  UUID of source document for audit trail
      */
     public function recordSale(
         Product $product,
         Location $location,
-        float $quantity,
+        string $quantity,
         ?string $reference = null,
-        ?string $referenceType = null,
+        ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $reference, $referenceType, $referenceId): StockMovement {
@@ -416,6 +429,7 @@ class WeightedAverageCostService
                 'location_id' => $location->id,
                 'company_id' => $location->company_id,
                 'movement_type' => MovementType::Issue,
+                'reason' => MovementReason::Delivery,
                 'quantity' => bcmul($quantityStr, '-1', 4),
                 'quantity_before' => $currentQty,
                 'quantity_after' => $newQty,
@@ -424,7 +438,7 @@ class WeightedAverageCostService
                 'avg_cost_before' => $costPriceAtRest,
                 'avg_cost_after' => $costPriceAtRest, // WAC doesn't change on sale
                 'reference' => $reference,
-                'reference_type' => $referenceType,
+                'reference_type' => $referenceType?->value,
                 'reference_id' => $referenceId,
                 'occurred_at' => now(),
             ]);
@@ -464,21 +478,27 @@ class WeightedAverageCostService
      *
      * Uses pessimistic locking to prevent race conditions.
      *
+     * The movement is classified `MovementReason::CustomerReturn` (DPA Wave 3 T2)
+     * — the sales-return counterpart of `recordSale`'s `Delivery`, and likewise
+     * COGS-bearing. The single caller is `ReturnNoteService::receiveStockBack()`.
+     *
      * @param  Product  $product  The product being returned
      * @param  Location  $location  The location receiving the return
-     * @param  float  $quantity  Quantity being returned
-     * @param  float  $originalCost  Original cost of the returned items
+     * @param  numeric-string  $quantity  Quantity being returned (see recordSale)
+     * @param  numeric-string  $originalCost  Original unit cost of the returned
+     *                                        items. NEVER a float: the column is
+     *                                        decimal(19,6) (house rule 19).
      * @param  string|null  $reference  Human-readable reference (e.g., "RN-2025-001")
-     * @param  string|null  $referenceType  Type of source document (e.g., "Document")
+     * @param  StockMovementReferenceType|null  $referenceType  Morph type of the source document
      * @param  string|null  $referenceId  UUID of source document for audit trail
      */
     public function recordReturn(
         Product $product,
         Location $location,
-        float $quantity,
-        float $originalCost,
+        string $quantity,
+        string $originalCost,
         ?string $reference = null,
-        ?string $referenceType = null,
+        ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null
     ): StockMovement {
         return DB::transaction(function () use ($product, $location, $quantity, $originalCost, $reference, $referenceType, $referenceId): StockMovement {
@@ -562,6 +582,7 @@ class WeightedAverageCostService
                     'location_id' => $location->id,
                     'company_id' => $location->company_id,
                     'movement_type' => MovementType::Receipt,
+                    'reason' => MovementReason::CustomerReturn,
                     'quantity' => $quantityStr,
                     'quantity_before' => $currentQty,
                     'quantity_after' => $newQty,
@@ -570,7 +591,7 @@ class WeightedAverageCostService
                     'avg_cost_before' => CurrencyScale::bcformat($currentCostPrice, $costScale),
                     'avg_cost_after' => $newAvgCost,
                     'reference' => $reference,
-                    'reference_type' => $referenceType,
+                    'reference_type' => $referenceType?->value,
                     'reference_id' => $referenceId,
                     'occurred_at' => now(),
                 ]);

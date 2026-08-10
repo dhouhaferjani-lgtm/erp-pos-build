@@ -23,6 +23,7 @@ use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Inventory\ReceiptLineGuardInterface;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -386,28 +387,33 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
     }
 
     /**
-     * @param  numeric-string  $receivedQty
-     * @param  numeric-string  $unitCost
+     * Dispatch every buffered `GoodsReceived` (and its fail-closed GR-IR twin)
+     * AFTER the receipt loop — DPA Wave 3 T5b.
+     *
+     * Still inside `post()`'s `DB::transaction` and inside the up-front sorted
+     * `costLock->acquire(...)` closure, so nothing about atomicity or the
+     * product-advisory order changes; only the moment the COMPANY GL advisory is
+     * first taken moves, from "line 1" to "after the last row lock".
+     *
+     * @param  list<array{event: GoodsReceived, failClosed: array{companyId: string, movementId: string, receivedQty: numeric-string, unitCost: numeric-string, currency: string}|null}>  $pendingGlPostings
      */
-    private function postFailClosedGrirIfRequested(
-        bool $failClosedGrir,
-        string $companyId,
-        string $movementId,
-        string $receivedQty,
-        string $unitCost,
-        string $currency,
-    ): void {
-        if (! $failClosedGrir) {
-            return;
-        }
+    private function flushPendingGlPostings(array $pendingGlPostings): void
+    {
+        foreach ($pendingGlPostings as $pending) {
+            event($pending['event']);
 
-        $this->generalLedgerService->createGoodsReceiptGrIrEntry(
-            $companyId,
-            $movementId,
-            $receivedQty,
-            $unitCost,
-            $currency,
-        );
+            if ($pending['failClosed'] === null) {
+                continue;
+            }
+
+            $this->generalLedgerService->createGoodsReceiptGrIrEntry(
+                $pending['failClosed']['companyId'],
+                $pending['failClosed']['movementId'],
+                $pending['failClosed']['receivedQty'],
+                $pending['failClosed']['unitCost'],
+                $pending['failClosed']['currency'],
+            );
+        }
     }
 
     /**
@@ -438,6 +444,39 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
         bool $failClosedGrir = false,
     ): GoodsReceiptResult {
         $hasReceivedItems = false;
+
+        /**
+         * DPA Wave 3 T5b — the GL POSTING BUFFER.
+         *
+         * `GoodsReceived`'s only listener (`PostGrIrOnGoodsReceipt`,
+         * `EventServiceProvider.php:145-147`) is NOT `ShouldQueue`, so a
+         * synchronous `event()` inside this loop posts GR-IR immediately, which
+         * takes the per-company GL advisory
+         * (`GeneralLedgerService::generateEntryNumber` ->
+         * `pg_advisory_xact_lock`). The lock is `_xact_`, i.e. held to the
+         * OUTERMOST commit — so from receipt line 2 onward this service held the
+         * company GL advisory while still requesting `stock_levels` / `products`
+         * row locks for later lines.
+         *
+         * That is harmless only while NO other inventory writer takes the
+         * advisory. Wave 3 creates four such writers, at which point it is a live
+         * ABBA pair under BOTH candidate orderings — so no choice on the Wave-3
+         * side can fix it, and it must be normalised here.
+         *
+         * Both in-loop posting sites are buffered: the event AND the
+         * `failClosedGrir` direct call, which is a SECOND live acquisition (it is
+         * reached from `StandaloneReceiptService.php:134`, which passes `true`
+         * POSITIONALLY — an identifier grep cannot see it, which is why earlier
+         * registers called it dead; corrected in plan §0q.5 / D-9.2').
+         *
+         * Replayed in insertion order after the last row lock, so the GR-IR
+         * entries keep byte-identical amounts, source ids AND relative order
+         * (entry numbers and chain sequences are allocated in that order).
+         *
+         * @var list<array{event: GoodsReceived, failClosed: array{companyId: string, movementId: string, receivedQty: numeric-string, unitCost: numeric-string, currency: string}|null}> $pendingGlPostings
+         */
+        $pendingGlPostings = [];
+
         $priceScale = $this->scaleResolver->getScale((string) ($purchaseOrder->currency ?? 'TND'));
         $hasBatchFreightPool = $this->hasPositiveFreightPool($batchFreightShares);
         $receipt->loadMissing('lines');
@@ -539,25 +578,27 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                     variantId: $variantId,
                 );
 
-                event(new GoodsReceived(
-                    tenantId: $purchaseOrder->tenant_id,
-                    companyId: $purchaseOrder->company_id,
-                    productId: (string) $product->id,
-                    locationId: (string) $location->id,
-                    poLineId: (string) $line->id,
-                    movementId: (string) $freeMovement->id,
-                    receivedQty: $freeQtyToReceive,
-                    unitCost: '0',
-                    currency: (string) ($purchaseOrder->currency ?? 'TND'),
-                ));
-                $this->postFailClosedGrirIfRequested(
-                    $failClosedGrir,
-                    $purchaseOrder->company_id,
-                    (string) $freeMovement->id,
-                    $freeQtyToReceive,
-                    '0',
-                    (string) ($purchaseOrder->currency ?? 'TND'),
-                );
+                // T5b: BUFFERED, not dispatched here — see $pendingGlPostings.
+                $pendingGlPostings[] = [
+                    'event' => new GoodsReceived(
+                        tenantId: $purchaseOrder->tenant_id,
+                        companyId: $purchaseOrder->company_id,
+                        productId: (string) $product->id,
+                        locationId: (string) $location->id,
+                        poLineId: (string) $line->id,
+                        movementId: (string) $freeMovement->id,
+                        receivedQty: $freeQtyToReceive,
+                        unitCost: '0',
+                        currency: (string) ($purchaseOrder->currency ?? 'TND'),
+                    ),
+                    'failClosed' => $failClosedGrir ? [
+                        'companyId' => $purchaseOrder->company_id,
+                        'movementId' => (string) $freeMovement->id,
+                        'receivedQty' => $freeQtyToReceive,
+                        'unitCost' => '0',
+                        'currency' => (string) ($purchaseOrder->currency ?? 'TND'),
+                    ] : null,
+                ];
                 $freeMovementId = (string) $freeMovement->id;
 
                 if ($batch !== null) {
@@ -586,25 +627,27 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                     variantId: $variantId,
                 );
 
-                event(new GoodsReceived(
-                    tenantId: $purchaseOrder->tenant_id,
-                    companyId: $purchaseOrder->company_id,
-                    productId: (string) $product->id,
-                    locationId: (string) $location->id,
-                    poLineId: (string) $line->id,
-                    movementId: (string) $movement->id,
-                    receivedQty: $qtyToReceive,
-                    unitCost: $landedUnitCost,
-                    currency: (string) ($purchaseOrder->currency ?? 'TND'),
-                ));
-                $this->postFailClosedGrirIfRequested(
-                    $failClosedGrir,
-                    $purchaseOrder->company_id,
-                    (string) $movement->id,
-                    $qtyToReceive,
-                    $landedUnitCost,
-                    (string) ($purchaseOrder->currency ?? 'TND'),
-                );
+                // T5b: BUFFERED, not dispatched here — see $pendingGlPostings.
+                $pendingGlPostings[] = [
+                    'event' => new GoodsReceived(
+                        tenantId: $purchaseOrder->tenant_id,
+                        companyId: $purchaseOrder->company_id,
+                        productId: (string) $product->id,
+                        locationId: (string) $location->id,
+                        poLineId: (string) $line->id,
+                        movementId: (string) $movement->id,
+                        receivedQty: $qtyToReceive,
+                        unitCost: $landedUnitCost,
+                        currency: (string) ($purchaseOrder->currency ?? 'TND'),
+                    ),
+                    'failClosed' => $failClosedGrir ? [
+                        'companyId' => $purchaseOrder->company_id,
+                        'movementId' => (string) $movement->id,
+                        'receivedQty' => $qtyToReceive,
+                        'unitCost' => $landedUnitCost,
+                        'currency' => (string) ($purchaseOrder->currency ?? 'TND'),
+                    ] : null,
+                ];
                 $movementId = (string) $movement->id;
 
                 if ($batch !== null) {
@@ -689,6 +732,27 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
                 'goods_received_at' => $fullyReceived ? now()->toDateTimeString() : null,
             ]),
         ]);
+
+        // T5b — THE GL PHASE, and it is LAST. Every row lock this writer takes —
+        // the per-line `stock_levels` / `document_lines` / `goods_receipt_lines`
+        // writes AND the purchase-order header write immediately above — is
+        // already held; only now is the per-company GL advisory acquired. That
+        // makes the advisory terminal FOR THIS METHOD, so the ABBA pair with the
+        // Wave-3 inventory writers cannot form. Insertion order among the GR-IR
+        // entries is preserved, so entry numbers, chain sequences and amounts are
+        // byte-identical to the pre-T5b behaviour.
+        //
+        // ── THE HONEST LIMIT (fix round 1, inv F-2 / fiscal P2-2) ──
+        // "Terminal" is a property of `post()`, NOT of the enclosing transaction.
+        // `pg_advisory_xact_lock` releases at the OUTERMOST commit, so when
+        // `post()` is NESTED inside a caller's own transaction its DB::transaction
+        // is only a savepoint and the advisory outlives this method. The live
+        // nesting case is `Procurement\Application\StandaloneReceiptService::execute()`
+        // — `post()` is called at `:134` inside the `DB::transaction` opened at
+        // `:117`, and that caller then writes `procurement_idempotency_keys` at
+        // `:137-143` while still holding the advisory. Nothing in this method can
+        // fix that; it is 3C's N-3 and is recorded there.
+        $this->flushPendingGlPostings($pendingGlPostings);
 
         /** @var Document $freshOrder */
         $freshOrder = $purchaseOrder->fresh(['lines']);
@@ -925,7 +989,7 @@ final class GoodsReceiptService implements ReceiptLineGuardInterface
             // even when a caller supplies an arbitrary UUID.
             $location = Location::query()
                 ->where('company_id', $purchaseOrder->company_id)
-                ->whereExists(static function (\Illuminate\Database\Query\Builder $query) use ($purchaseOrder): void {
+                ->whereExists(static function (Builder $query) use ($purchaseOrder): void {
                     $query->selectRaw('1')
                         ->from('companies')
                         ->whereColumn('companies.id', 'locations.company_id')

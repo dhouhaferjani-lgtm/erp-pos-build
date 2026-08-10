@@ -15,6 +15,7 @@ use App\Modules\Company\Domain\Events\CompanyCreated;
 use App\Modules\Company\Domain\Events\CompanyUpdated;
 use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Inventory\Domain\Enums\InventoryValuationMode;
 use App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -102,7 +103,12 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property string|null $default_tax_configuration_id FK to the company's default TaxConfiguration
  * @property CompanyStatus $status Company status
  * @property Carbon|null $closed_at When company was closed
- * @property string $inventory_costing_method Inventory costing method (weighted_average)
+ * @property string $inventory_costing_method DEAD (DPA Wave 3, D-14): the cost-FLOW assumption
+ *                                            (weighted_average), read by nothing. The valuation SYSTEM — which decides whether stock
+ *                                            exits book COGS at all — is `inventory_valuation_mode` below.
+ * @property InventoryValuationMode|null $inventory_valuation_mode Company override for the
+ *                                                                 inventory valuation system. NULL = inherit the country default; resolve through
+ *                                                                 `InventoryValuationModeResolver`, never by reading this column directly.
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
  * @property bool $allow_below_cost_sales Whether below-cost sales are allowed
@@ -265,6 +271,7 @@ class Company extends Model
         'status',
         'closed_at',
         'inventory_costing_method',
+        'inventory_valuation_mode',
         'default_target_margin',
         'default_minimum_margin',
         'allow_below_cost_sales',
@@ -314,6 +321,7 @@ class Company extends Model
             'first_transaction_posted_at' => 'datetime',
             'status' => CompanyStatus::class,
             'tax_status' => CompanyTaxStatus::class,
+            'inventory_valuation_mode' => InventoryValuationMode::class,
             'allow_below_cost_sales' => 'boolean',
             'default_max_discount_percent' => 'decimal:2',
             'discount_floor_mode' => DiscountFloorMode::class,

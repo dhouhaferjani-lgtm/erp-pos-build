@@ -8,8 +8,11 @@ use App\Modules\Company\Domain\Enums\PeriodStatus;
 use App\Modules\Company\Domain\FiscalPeriod;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Enums\ReturnDecisionMode;
+use App\Modules\Product\Domain\Enums\ProductType;
+use App\Modules\Product\Domain\Product;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
@@ -226,6 +229,192 @@ final class CanCancelReturnDecisionReadModelTest extends TestCase
         );
     }
 
+    /**
+     * Fix round 1 · inv gate F-1 — the read model and the restock predicate must
+     * answer the SAME question.
+     *
+     * T4 replaced `receiveStockBack()`'s guard with `PhysicalLinePredicate`, which
+     * excludes a NON-PHYSICAL PRODUCT line (`product_id` set, `is_physical = false`).
+     * `requiresReturnDecision()` kept keying on `product_id !== null`, and its
+     * docblock still claimed the two were identical. They were not, and the gap is
+     * operator-facing, not cosmetic: for an invoice whose only lines are
+     * non-physical products the modal demands a goods disposition, `not_applicable`
+     * is REFUSED by `assertDecisionMatchesGoods()`, and any goods-bearing mode
+     * builds a return-note line that `receiveStockBack()` then silently skips.
+     */
+    public function test_a_non_physical_product_line_requires_no_return_decision(): void
+    {
+        $invoice = $this->nonPhysicalProductInvoice('2.0000');
+
+        $this->canCancel($invoice)
+            ->assertOk()
+            ->assertJsonPath('data.requires_return_decision', false)
+            ->assertJsonPath('data.goods_issued', false);
+    }
+
+    public function test_a_non_physical_product_invoice_can_be_cancelled_as_not_applicable(): void
+    {
+        $invoice = $this->nonPhysicalProductInvoice('2.0000');
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", [
+                'reason' => 'Duplicate billing',
+                'return_decision' => ['mode' => ReturnDecisionMode::NotApplicable->value],
+            ])->assertOk();
+
+        self::assertSame(DocumentStatus::Cancelled, $invoice->refresh()->status);
+    }
+
+    /**
+     * Fix round 2 · fiscal gate NEW-1 (P1, introduced by fix round 1's F-1).
+     *
+     * F-1 moved `requiresReturnDecision()` and the RN-line builder onto
+     * `PhysicalLinePredicate` but left the THIRD participant —
+     * `DeliveredQuantityResolver::resolve()` (`:79-82`) — keying `product_id !== null`.
+     * A non-physical PRODUCT line delivered on a confirmed delivery note therefore
+     * produced a tuple, so `hasGoodsIssued()` said TRUE while
+     * `requiresReturnDecision()` said FALSE: the modal reports goods are out AND
+     * omits the option group, and the guided cancel accepts `not_applicable` for an
+     * invoice the read model has just said carries goods.
+     *
+     * The delivery note moves no stock for that line either (T4 made
+     * `DeliveryNoteService::issueStock()` skip it), so there is nothing out there.
+     * The resolver has to agree.
+     */
+    public function test_a_delivered_non_physical_product_line_reports_no_goods_issued(): void
+    {
+        $product = $this->nonPhysicalProduct();
+        $invoice = $this->invoiceFor($product, '2.0000');
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$this->dnFor($product, '2.0000', $this->cfLocationA->id)]);
+
+        $this->canCancel($invoice)
+            ->assertOk()
+            ->assertJsonPath('data.requires_return_decision', false)
+            ->assertJsonPath('data.goods_issued', false)
+            ->assertJsonPath('data.delivered_quantities', []);
+    }
+
+    /**
+     * …and the consequence the incoherence carried: a goods-bearing decision
+     * completed with an EMPTY return note.
+     *
+     * `createReturnNoteForDecision()` gates on the resolver's tuples (`$live`), then
+     * prices them through `returnNoteLinesFor()`, which since F-1 filters on the
+     * predicate. A phantom tuple survives the gate and prices to nothing —
+     * `if ($productLines === []) continue` — so `createDraft(lines: [])` builds a
+     * return note with no lines and the cancel returns 200. Nothing is credited,
+     * nothing is restocked, and no exception is raised.
+     *
+     * Once the resolver agrees there is nothing out there, the typed
+     * `RETURN_NOTHING_DELIVERED` refusal fires instead, which is CF-D6's enforcement
+     * half doing its job.
+     */
+    public function test_a_delivered_non_physical_product_line_cannot_produce_an_empty_return_note(): void
+    {
+        $product = $this->nonPhysicalProduct();
+        $invoice = $this->invoiceFor($product, '2.0000');
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$this->dnFor($product, '2.0000', $this->cfLocationA->id)]);
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", [
+                'reason' => 'Customer cancelled',
+                'return_decision' => ['mode' => ReturnDecisionMode::WillReturn->value],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'RETURN_NOTHING_DELIVERED');
+
+        self::assertSame(
+            0,
+            Document::query()
+                ->where('company_id', $this->cfCompany->id)
+                ->where('type', DocumentType::ReturnNote)
+                ->count(),
+            'an empty return note must never be created — it credits nothing and restocks nothing',
+        );
+    }
+
+    /**
+     * The MIXED invoice, which is where the money actually goes wrong: one physical
+     * line and one non-physical line, both on the same delivery note.
+     *
+     * The read model must offer exactly the physical tuple, and the return note must
+     * carry exactly the physical line — priced, so the customer IS credited for it.
+     * Before the fix the resolver reported two tuples and the modal offered a
+     * disposition for goods that never moved.
+     */
+    public function test_a_mixed_invoice_offers_only_the_physical_tuple(): void
+    {
+        $nonPhysical = $this->nonPhysicalProduct();
+
+        $invoice = $this->cfPostedInvoice([
+            [
+                'product_id' => $this->cfProduct->id,
+                'quantity' => '3.0000',
+                'unit_price' => '100.000',
+            ],
+            [
+                'product_id' => $nonPhysical->id,
+                'quantity' => '2.0000',
+                'unit_price' => '100.000',
+            ],
+        ], ['document_date' => $this->issuedOn]);
+
+        $deliveryNote = $this->cfConfirmedDeliveryNote([
+            [
+                'product_id' => $this->cfProduct->id,
+                'quantity' => '3.0000',
+                'unit_price' => '100.000',
+            ],
+            [
+                'product_id' => $nonPhysical->id,
+                'quantity' => '2.0000',
+                'unit_price' => '100.000',
+            ],
+        ], [
+            'location_id' => $this->cfLocationA->id,
+            'document_date' => $this->issuedOn,
+            'fiscal_status' => FiscalStatus::Sealed,
+        ]);
+        $this->cfLinkInvoiceToDeliveryNotes($invoice, [$deliveryNote]);
+
+        $quantities = $this->canCancel($invoice)
+            ->assertOk()
+            ->assertJsonPath('data.requires_return_decision', true)
+            ->assertJsonPath('data.goods_issued', true)
+            ->json('data.delivered_quantities');
+
+        self::assertCount(1, $quantities, 'only the physical product left the building');
+        self::assertSame($this->cfProduct->id, $quantities[0]['product_id']);
+        self::assertSame('3.0000', $quantities[0]['remaining']);
+
+        // …and `not_applicable` is refused, because this invoice DOES carry goods.
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", [
+                'reason' => 'Customer cancelled',
+                'return_decision' => ['mode' => ReturnDecisionMode::NotApplicable->value],
+            ])->assertStatus(422);
+
+        $this->actingAs($this->cfUser, 'sanctum')
+            ->postJson("/api/v1/invoices/{$invoice->id}/cancel", [
+                'reason' => 'Customer cancelled',
+                'return_decision' => ['mode' => ReturnDecisionMode::WillReturn->value],
+            ])->assertOk();
+
+        /** @var Document $returnNote */
+        $returnNote = Document::query()
+            ->where('company_id', $this->cfCompany->id)
+            ->where('type', DocumentType::ReturnNote)
+            ->with('lines')
+            ->sole();
+
+        self::assertCount(1, $returnNote->lines, 'exactly the physical line, priced');
+
+        $returnLine = $returnNote->lines->first();
+        self::assertNotNull($returnLine);
+        self::assertSame($this->cfProduct->id, $returnLine->product_id);
+        self::assertSame('3.0000', (string) $returnLine->quantity);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────
 
     /**
@@ -244,6 +433,52 @@ final class CanCancelReturnDecisionReadModelTest extends TestCase
             'quantity' => $quantity,
             'unit_price' => '100.000',
         ]], ['document_date' => $this->issuedOn]);
+    }
+
+    /**
+     * A PRODUCT that does not move stock (`is_physical = false`) — the population
+     * D-19 / T4 turned on.
+     */
+    private function nonPhysicalProduct(): Product
+    {
+        return Product::create([
+            'tenant_id' => $this->cfTenant->id,
+            'company_id' => $this->cfCompany->id,
+            'name' => 'CF Non-Physical Product',
+            'sku' => 'CF-NONPHYS-'.bin2hex(random_bytes(3)),
+            'type' => ProductType::Service,
+            'unit' => 'hour',
+            'cost_price' => '10.000000',
+            'is_active' => true,
+            'is_physical' => false,
+        ]);
+    }
+
+    private function nonPhysicalProductInvoice(string $quantity): Document
+    {
+        return $this->invoiceFor($this->nonPhysicalProduct(), $quantity);
+    }
+
+    private function invoiceFor(Product $product, string $quantity): Document
+    {
+        return $this->cfPostedInvoice([[
+            'product_id' => $product->id,
+            'quantity' => $quantity,
+            'unit_price' => '100.000',
+        ]], ['document_date' => $this->issuedOn]);
+    }
+
+    private function dnFor(Product $product, string $quantity, string $locationId): Document
+    {
+        return $this->cfConfirmedDeliveryNote([[
+            'product_id' => $product->id,
+            'quantity' => $quantity,
+            'unit_price' => '100.000',
+        ]], [
+            'location_id' => $locationId,
+            'document_date' => $this->issuedOn,
+            'fiscal_status' => FiscalStatus::Sealed,
+        ]);
     }
 
     private function dn(string $quantity, string $locationId): Document

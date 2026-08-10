@@ -292,28 +292,36 @@ class Product extends Model implements SellableContract
     }
 
     /**
-     * The per-unit cost a WRITE-OFF must be valued at — the SINGLE source of
-     * truth shared by every write-off flavour (batch/lot expiry+damage, POS
-     * return scrap, …).
+     * The per-unit cost ANY cost-bearing stock movement must be valued at — the
+     * SINGLE source of truth shared by every flavour (batch/lot expiry+damage,
+     * POS return scrap, and — since DPA Wave 3 T5 — the two live POS stock
+     * writers).
      *
-     * It lives on the model, not in each write-off service, because BOTH the
-     * persisted movement `unit_cost` and the GL debit must read from one place:
-     * a reversal reconstructs the original amount from the stored movement row,
-     * so a divergence between the two call sites would post an unbalanced
-     * correction. Gate V10-I5 caught exactly that drift — two services had
-     * independently inlined DIFFERENT fallback chains.
+     * It lives on the model, not in each service, because BOTH the persisted
+     * movement `unit_cost` and the GL debit must read from one place: a reversal
+     * reconstructs the original amount from the stored movement row, so a
+     * divergence between the two call sites would post an unbalanced correction.
+     * Gate V10-I5 caught exactly that drift — two services had independently
+     * inlined DIFFERENT fallback chains.
+     *
+     * RENAMED in Wave 3 T5 (inv M-5) from `resolveWriteOffUnitCost()`: three
+     * lanes now adopt it as THE cost definition and the old name understated its
+     * reach. The `weighted_average_cost` fallback arm was deleted in the same
+     * change — §0b.7: `grep weighted_average_cost database/migrations` returns
+     * zero, there is no accessor, and the arm's own docblock called it a
+     * "virtual accessor hook, if ever added". It was permanently null, so its
+     * removal changes no resolved value for any caller.
      *
      * Fallback chain (callers narrow to numeric-string via @var):
-     *   weighted_average_cost (virtual accessor hook, if ever added)
-     *     ?? cost_price (the DB-persisted perpetual WAC, decimal(19,6))
-     *     ?? '0.00'
+     *   cost_price (the DB-persisted perpetual WAC, decimal(19,6)) ?? '0.00'
      *
-     * Always numeric; PHPStan cannot statically prove that from the accessor
-     * hook, hence the caller-side narrowing.
+     * Resolver-INDEPENDENT by construction: it reads a column stored at the
+     * constant COST_SCALE = 6 and never consults CurrencyScaleResolver, so it is
+     * safe in a queue worker with no CompanyContext (house rule 20).
      */
-    public function resolveWriteOffUnitCost(): string
+    public function resolveMovementUnitCost(): string
     {
-        return (string) ($this->weighted_average_cost ?? $this->cost_price ?? '0.00');
+        return (string) ($this->cost_price ?? '0.00');
     }
 
     /**

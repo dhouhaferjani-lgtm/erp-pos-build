@@ -1430,7 +1430,7 @@ final class InventoryTenantIsolationTest extends TestCase
         $wac->recordSale(
             product: $this->productA,
             location: $this->locationA,
-            quantity: 1.0,
+            quantity: '1.0000',
         );
 
         $log = DB::getQueryLog();

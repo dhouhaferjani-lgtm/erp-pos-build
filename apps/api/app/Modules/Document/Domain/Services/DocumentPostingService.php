@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
@@ -593,16 +594,10 @@ final class DocumentPostingService
         // Check if invoice has any physical products
         $hasPhysicalProducts = false;
         foreach ($invoice->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-
-            // api.document.010: scope by invoice's tenant + company.
-            $product = Product::query()
-                ->where('tenant_id', $invoice->tenant_id)
-                ->where('company_id', $invoice->company_id)
-                ->find($line->product_id);
-            if ($product !== null && $product->is_physical) {
+            // D-19 / T4: ONE physical predicate, carrying the api.document.010
+            // scope (a forged cross-tenant line.product_id must not resolve to a
+            // foreign product) rather than restating it here.
+            if (PhysicalLinePredicate::forLine($line, $invoice->tenant_id, $invoice->company_id)) {
                 $hasPhysicalProducts = true;
                 break;
             }

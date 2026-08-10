@@ -15,6 +15,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\BanksSeeder;
 use Database\Seeders\CountriesSeeder;
+use Database\Seeders\CountryInventorySettingsSeeder;
 use Database\Seeders\CountryPaymentSettingsSeeder;
 use Database\Seeders\CountryTaxRatesSeeder;
 use Database\Seeders\ExpenseCategorySeeder;
@@ -203,6 +204,10 @@ class TenantInitializationService
         // migration's own upsert is skipped on a fresh tenant because
         // `countries` is still empty when tenants:migrate runs.
         (new CountryPaymentSettingsSeeder)->run();
+        // Same ordering constraint, same reason (DPA Wave 3 T8): the
+        // country_code FK needs the lookup rows, and this table's migration
+        // deliberately seeds nothing.
+        (new CountryInventorySettingsSeeder)->run();
     }
 
     private function seedChartOfAccounts(Company $company): void

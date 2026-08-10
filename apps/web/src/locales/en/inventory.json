@@ -519,6 +519,22 @@
         "description": "Newest inventory is sold first. Rarely used (not allowed in some countries)."
       }
     },
+    "valuation": {
+      "title": "Inventory Valuation System",
+      "description": "How stock exits are valued. Set by your jurisdiction; contact support to change it.",
+      "modeLabel": "Valuation system",
+      "sourceLabel": "Set by",
+      "mode": {
+        "perpetual": "Perpetual (continuous)",
+        "periodic": "Periodic (period-end count)"
+      },
+      "source": {
+        "company": "This company",
+        "country": "Your country's default",
+        "system": "System default"
+      },
+      "perpetualHint": "Every stock exit relieves inventory and records cost of goods sold as it happens."
+    },
     "margins": {
       "title": "Default Margin Policies",
       "description": "Set company-wide default margins. Individual products can override these settings.",

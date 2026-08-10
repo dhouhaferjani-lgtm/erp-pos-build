@@ -22,6 +22,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
@@ -885,11 +886,10 @@ class InvoiceController extends Controller
     private function invoiceHasPhysicalProducts(Document $invoice): bool
     {
         foreach ($invoice->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-
-            if ($line->product !== null && $line->product->is_physical) {
+            // D-19 / T4: ONE physical predicate — this gate and
+            // DocumentPostingService::validateDeliveryCompliance() must never be
+            // able to disagree about what "physical" means.
+            if (PhysicalLinePredicate::forLine($line, $invoice->tenant_id, $invoice->company_id)) {
                 return true;
             }
         }

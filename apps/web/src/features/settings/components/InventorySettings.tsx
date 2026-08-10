@@ -29,6 +29,28 @@ interface CompanyResponse {
   data: Company
 }
 
+/**
+ * DPA Wave 3 T10 — the READ-ONLY inventory valuation surface.
+ *
+ * `GET /settings/company` resolves the mode through the chain
+ * company override -> country row -> system default and reports which link
+ * won, so an operator can tell "perpetual" the setting from "perpetual" the
+ * fallback.
+ *
+ * There is deliberately NO editable control: `periodic` is admitted by the
+ * schema (so it can be enabled later without DDL) but refused by both the
+ * settings request and the resolver, and a control whose only valid value is
+ * the current one is a support trap.
+ */
+interface CompanySettingsValuation {
+  inventory_valuation_mode: 'perpetual' | 'periodic'
+  inventory_valuation_mode_source: 'company' | 'country' | 'system'
+}
+
+interface CompanySettingsResponse {
+  data: CompanySettingsValuation
+}
+
 interface ReservationSettings {
   sales_order_expiry_days: number
   ecommerce_cart_expiry_minutes: number
@@ -118,6 +140,17 @@ export function InventorySettings() {
       return response.data.data
     },
     enabled: !!currentCompany?.id && tenantId !== null && companyId !== null,
+  })
+
+  // Read-only valuation surface (T10). Its own query against
+  // `/settings/company`, which is the endpoint that actually resolves the mode.
+  const { data: valuationData } = useQuery({
+    queryKey: tenantScopedKey(['company-valuation-settings']),
+    queryFn: async () => {
+      const response = await api.get<CompanySettingsResponse>('/settings/company')
+      return response.data.data
+    },
+    enabled: tenantId !== null && companyId !== null,
   })
 
   const company = companyData?.data
@@ -234,6 +267,42 @@ export function InventorySettings() {
           {t('inventory:settings.description')}
         </p>
       </div>
+
+      {/* Inventory valuation system — READ ONLY (T10) */}
+      {valuationData ? (
+        <div className={tokens.card.base} data-testid="inventory-valuation-settings">
+          <h3 className={cn(tokens.heading.section)}>{t('inventory:settings.valuation.title')}</h3>
+          <p className={cn('mt-1 text-xs', textColors.tertiary)}>
+            {t('inventory:settings.valuation.description')}
+          </p>
+
+          <dl className="mt-4 grid grid-cols-2 gap-4">
+            <div>
+              <dt className={cn('text-xs', textColors.tertiary)}>
+                {t('inventory:settings.valuation.modeLabel')}
+              </dt>
+              <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
+                {t(`inventory:settings.valuation.mode.${valuationData.inventory_valuation_mode}`)}
+              </dd>
+            </div>
+            <div>
+              <dt className={cn('text-xs', textColors.tertiary)}>
+                {t('inventory:settings.valuation.sourceLabel')}
+              </dt>
+              <dd className={cn('mt-1 text-sm font-medium', textColors.primary)}>
+                {t(`inventory:settings.valuation.source.${valuationData.inventory_valuation_mode_source}`)}
+              </dd>
+            </div>
+          </dl>
+
+          {valuationData.inventory_valuation_mode === 'perpetual' ? (
+            <p className={cn('mt-3 flex items-start gap-2 text-xs', textColors.tertiary)}>
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span>{t('inventory:settings.valuation.perpetualHint')}</span>
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Margin Policies */}
       <div className={tokens.card.base}>

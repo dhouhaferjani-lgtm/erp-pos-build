@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Tenant\Application\DTOs;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Inventory\Application\DTOs\EffectiveValuationMode;
+use App\Modules\Inventory\Application\Services\InventoryValuationModeResolver;
 use App\Modules\Tenant\Domain\Tenant;
 
 class CompanySettingsData
@@ -29,12 +31,20 @@ class CompanySettingsData
         public readonly ?string $dateFormat,
         public readonly ?string $locale,
         public readonly bool $lineDesignationOverrideEnabled,
+        /**
+         * DPA Wave 3 T10 — the RESOLVED inventory valuation mode and where it
+         * came from. Read-only on the wire: the settings surface renders it,
+         * never edits it (an editable control whose only valid value is the
+         * default is a support trap).
+         */
+        public readonly string $inventoryValuationMode,
+        public readonly string $inventoryValuationModeSource,
     ) {}
 
     /**
      * Create from a Tenant model.
      *
-     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null, line_designation_override_enabled: bool}
+     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null, line_designation_override_enabled: bool, inventory_valuation_mode: string, inventory_valuation_mode_source: string}
      */
     public static function fromTenant(Tenant $tenant): array
     {
@@ -62,15 +72,20 @@ class CompanySettingsData
             'date_format' => $tenant->date_format,
             'locale' => $tenant->locale,
             'line_designation_override_enabled' => false,
+            // A tenant-level view has no company, so no resolvable mode: report
+            // the system default and say the source is the system, rather than
+            // omit the keys and give the UI a shape that changes per endpoint.
+            'inventory_valuation_mode' => InventoryValuationModeResolver::SYSTEM_DEFAULT->value,
+            'inventory_valuation_mode_source' => EffectiveValuationMode::SOURCE_SYSTEM,
         ];
     }
 
     /**
      * Create from a Company model.
      *
-     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null, line_designation_override_enabled: bool}
+     * @return array{name: string, legal_name: string|null, tax_id: string|null, registration_number: string|null, address: array{street: string|null, city: string|null, postal_code: string|null, country: string|null}, phone: string|null, email: string|null, website: string|null, logo_url: string|null, primary_color: string|null, country_code: string|null, currency_code: string|null, timezone: string|null, date_format: string|null, locale: string|null, line_designation_override_enabled: bool, inventory_valuation_mode: string, inventory_valuation_mode_source: string}
      */
-    public static function fromCompany(Company $company): array
+    public static function fromCompany(Company $company, EffectiveValuationMode $valuation): array
     {
         return [
             'name' => $company->name,
@@ -94,6 +109,8 @@ class CompanySettingsData
             'date_format' => $company->date_format,
             'locale' => $company->locale,
             'line_designation_override_enabled' => (bool) $company->line_designation_override_enabled,
+            'inventory_valuation_mode' => $valuation->mode->value,
+            'inventory_valuation_mode_source' => $valuation->source,
         ];
     }
 }
