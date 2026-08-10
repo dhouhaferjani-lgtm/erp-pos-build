@@ -31,6 +31,7 @@ import { Select } from '../../components/atoms/Select'
 import { StatusBadge } from '../../components/atoms/StatusBadge/StatusBadge'
 import { Toggle } from '../../components/atoms/Toggle'
 import { PageHeader } from '../../components/molecules/PageHeader'
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { ReceiptSettingsTab } from './components/ReceiptSettingsTab'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
@@ -113,8 +114,10 @@ export function CompanyPage() {
   const { currentCompany } = useCompany()
   const { hasPermission } = usePermissions()
   const canEdit = hasPermission('settings.update')
+  const canEditFiscalIdentity = hasPermission('settings.fiscal.update')
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [activeTab, setActiveTab] = useState<CompanyTab>('general')
+  const [isFiscalIdentityConfirmationOpen, setIsFiscalIdentityConfirmationOpen] = useState(false)
   const [notification, setNotification] = useState<{
     type: 'success' | 'error'
     message: string
@@ -288,6 +291,20 @@ export function CompanyPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    const hasFiscalIdentityChanges = (['legal_name', 'tax_id', 'registration_number'] as const)
+      .some((field) => (formData[field] ?? null) !== (settings?.[field] ?? null))
+
+    if (hasFiscalIdentityChanges) {
+      setIsFiscalIdentityConfirmationOpen(true)
+      return
+    }
+
+    updateMutation.mutate(formData)
+  }
+
+  const handleConfirmFiscalIdentityUpdate = () => {
+    setIsFiscalIdentityConfirmationOpen(false)
     updateMutation.mutate(formData)
   }
 
@@ -677,6 +694,8 @@ export function CompanyPage() {
                   id="legal_name"
                   value={formData.legal_name ?? ''}
                   onChange={(e) => { handleInputChange('legal_name', e.target.value || null) }}
+                  disabled={!canEditFiscalIdentity}
+                  title={canEditFiscalIdentity ? undefined : t('settings:company.identity.fiscalPermissionHint')}
                 />
               </FormField>
               <FormField label={countryProfile?.taxIdLabel ?? t('settings:company.fields.taxId')} htmlFor="tax_id">
@@ -686,6 +705,8 @@ export function CompanyPage() {
                   value={formData.tax_id ?? ''}
                   onChange={(e) => { handleInputChange('tax_id', e.target.value || null) }}
                   placeholder={placeholders.taxId}
+                  disabled={!canEditFiscalIdentity}
+                  title={canEditFiscalIdentity ? undefined : t('settings:company.identity.fiscalPermissionHint')}
                 />
               </FormField>
               <FormField label={t('settings:company.fields.registrationNumber')} htmlFor="registration_number">
@@ -695,8 +716,15 @@ export function CompanyPage() {
                   value={formData.registration_number ?? ''}
                   onChange={(e) => { handleInputChange('registration_number', e.target.value || null) }}
                   placeholder={placeholders.registrationNumber}
+                  disabled={!canEditFiscalIdentity}
+                  title={canEditFiscalIdentity ? undefined : t('settings:company.identity.fiscalPermissionHint')}
                 />
               </FormField>
+              {!canEditFiscalIdentity && (
+                <p className={cn('text-xs', textColors.warning)}>
+                  {t('settings:company.identity.fiscalPermissionHint')}
+                </p>
+              )}
             </div>
           </div>
 
@@ -739,8 +767,9 @@ export function CompanyPage() {
               <FormField label={t('settings:company.fields.country')} htmlFor="country">
                 <Select
                   id="country"
-                  value={formData.address?.country ?? ''}
-                  onChange={(e) => { handleAddressChange('country', e.target.value) }}
+                  value={formData.address?.country ?? formData.country_code ?? ''}
+                  disabled
+                  aria-describedby="company-identity-immutable-hint"
                 >
                   <option value="">{t('common:selectCountry')}</option>
                   {countries.map((country) => (
@@ -750,6 +779,9 @@ export function CompanyPage() {
                   ))}
                 </Select>
               </FormField>
+              <p id="company-identity-immutable-hint" className={cn('text-xs', textColors.tertiary)}>
+                {t('settings:company.identity.immutableHint')}
+              </p>
               <div className="grid grid-cols-2 gap-4">
                 <FormField label={t('settings:company.fields.phone')} htmlFor="phone">
                   <Input
@@ -894,7 +926,8 @@ export function CompanyPage() {
                 <Select
                   id="currency_code"
                   value={formData.currency_code ?? 'TND'}
-                  onChange={(e) => { handleInputChange('currency_code', e.target.value) }}
+                  disabled
+                  aria-describedby="company-identity-immutable-hint"
                 >
                   <option value="EUR">{t('settings:company.currencies.EUR')}</option>
                   <option value="USD">{t('settings:company.currencies.USD')}</option>
@@ -1002,6 +1035,16 @@ export function CompanyPage() {
         </div>
       </form>
       )}
+      <ConfirmDialog
+        isOpen={isFiscalIdentityConfirmationOpen}
+        onClose={() => { setIsFiscalIdentityConfirmationOpen(false) }}
+        onConfirm={handleConfirmFiscalIdentityUpdate}
+        title={t('settings:company.identity.confirmation.title')}
+        message={t('settings:company.identity.confirmation.message')}
+        confirmText={t('settings:company.identity.confirmation.confirm')}
+        variant="warning"
+        isLoading={updateMutation.isPending}
+      />
     </div>
   )
 }

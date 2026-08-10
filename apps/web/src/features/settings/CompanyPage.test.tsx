@@ -82,7 +82,7 @@ function procurementPolicy(preset: 'complet' | 'standard' | 'leger' | null = 'st
   }
 }
 
-function setTenant(roles: string[] = ['admin']) {
+function setTenant(roles: string[] = ['admin'], permissions?: string[]) {
   useAuthStore.setState({
     user: {
       id: 'user-1',
@@ -94,6 +94,7 @@ function setTenant(roles: string[] = ['admin']) {
       // page requires it. Callers exercising the deny path pass a role
       // without it (e.g. []).
       roles,
+      ...(permissions === undefined ? {} : { permissions }),
       email_verified_at: null,
     },
     token: 'token',
@@ -308,5 +309,55 @@ describe('CompanyPage settings.update gating', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'settings:company.tabs.procurement' }))
     expect(await screen.findByRole('button', { name: 'settings:company.procurement.actions.saveAdvanced' })).not.toBeDisabled()
+  })
+})
+
+describe('CompanyPage fiscal identity guards', () => {
+  it('keeps country and currency immutable for an admin', async () => {
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    expect(await screen.findByLabelText('settings:company.fields.country')).toBeDisabled()
+    expect(screen.getByLabelText('settings:company.fields.currency')).toBeDisabled()
+    expect(screen.getByText('settings:company.identity.immutableHint')).toBeInTheDocument()
+  })
+
+  it('locks fiscal identity fields for an editor who only has cosmetic settings permission', async () => {
+    setTenant([], ['settings.update'])
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    expect(await screen.findByLabelText('settings:company.fields.name')).not.toBeDisabled()
+    expect(screen.getByLabelText('settings:company.fields.legalName')).toBeDisabled()
+    expect(screen.getByLabelText('settings:company.fields.taxId')).toBeDisabled()
+    expect(screen.getByLabelText('settings:company.fields.registrationNumber')).toBeDisabled()
+    expect(screen.getByText('settings:company.identity.fiscalPermissionHint')).toBeInTheDocument()
+  })
+
+  it('enables mutable fiscal identity fields for an admin', async () => {
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    expect(await screen.findByLabelText('settings:company.fields.legalName')).not.toBeDisabled()
+    expect(screen.getByLabelText('settings:company.fields.taxId')).not.toBeDisabled()
+    expect(screen.getByLabelText('settings:company.fields.registrationNumber')).not.toBeDisabled()
+  })
+
+  it('requires confirmation before submitting a fiscal identity change', async () => {
+    const user = userEvent.setup()
+    render(<CompanyPage />, { wrapper: wrapper() })
+
+    const legalName = await screen.findByLabelText('settings:company.fields.legalName')
+    await user.type(legalName, 'Company A SARL')
+    await user.click(screen.getByRole('button', { name: 'common:actions.save' }))
+
+    expect(screen.getByText('settings:company.identity.confirmation.title')).toBeInTheDocument()
+    expect(screen.getByText('settings:company.identity.confirmation.message')).toBeInTheDocument()
+    expect(mockApiPatch).not.toHaveBeenCalled()
+
+    await user.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    await waitFor(() => {
+      expect(mockApiPatch).toHaveBeenCalledWith('/settings/company', expect.objectContaining({
+        legal_name: 'Company A SARL',
+      }))
+    })
   })
 })

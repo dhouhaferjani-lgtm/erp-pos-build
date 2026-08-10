@@ -93,6 +93,15 @@
       "dateFormat": "Format de date",
       "language": "Langue"
     },
+    "identity": {
+      "immutableHint": "Le pays et la devise sont figés après le provisionnement. Contactez le support si l'une de ces valeurs est incorrecte.",
+      "fiscalPermissionHint": "L'autorisation de modifier les paramètres fiscaux est requise pour changer la raison sociale, l'identifiant fiscal ou le numéro d'immatriculation.",
+      "confirmation": {
+        "title": "Confirmer la modification de l'identité fiscale",
+        "message": "Ces informations identifient la société sur les documents fiscaux et juridiques. Confirmez que les nouvelles valeurs sont correctes avant d'enregistrer.",
+        "confirm": "Confirmer et enregistrer"
+      }
+    },
     "modal": {
       "title": "Ajouter une entreprise",
       "subtitle": "Configurez votre profil d'entreprise en quelques étapes simples",
