@@ -141,10 +141,9 @@ class ReportsController extends Controller
      */
     public function laneSeparation(Request $request): JsonResponse
     {
-        $companyId = $this->companyContext->getCompanyId();
-
         /** @var Company $company */
-        $company = Company::query()->findOrFail($companyId);
+        $company = Company::query()->findOrFail($this->companyContext->getCompanyId());
+        $companyId = (string) $company->id;
 
         $fromDate = $request->query('from_date') !== null
             ? Carbon::parse((string) $request->query('from_date'))

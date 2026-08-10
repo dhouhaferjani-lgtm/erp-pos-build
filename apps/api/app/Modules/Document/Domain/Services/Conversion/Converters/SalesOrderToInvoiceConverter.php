@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
-use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Document;
@@ -61,7 +60,6 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
     public function __construct(
         protected readonly DocumentNumberingService $numberingService,
         private readonly GeneralLedgerService $glService,
-        private readonly FEFOInventoryService $fefoService,
         private readonly LocationContext $locationContext,
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
         protected readonly TaxCalculationService $taxCalculationService,

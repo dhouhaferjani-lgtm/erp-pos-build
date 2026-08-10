@@ -64,7 +64,6 @@ class InvoicedBeforeDeliveryScanner
      *     partner_name: string|null,
      *     total: string,
      *     currency: string,
-     *     posted_at: string|null,
      *     policy_at_post_time: string,
      *     policy_source_at_post_time: string
      * }>
@@ -111,12 +110,16 @@ class InvoicedBeforeDeliveryScanner
                 $findings[] = [
                     'id' => (string) $invoice->id,
                     'document_number' => (string) $invoice->document_number,
-                    'document_date' => $invoice->document_date?->toDateString() ?? '',
+                    'document_date' => $invoice->document_date->toDateString(),
                     'partner_id' => $invoice->partner_id,
-                    'partner_name' => $invoice->partner?->name,
+                    // 📌 `documents` has NO `posted_at` column — the posting
+                    // instant is only recoverable from the T25e audit stamp
+                    // (`stamped_at`), and only for documents posted after this
+                    // wave. Emitting a silently-null `posted_at` here would look
+                    // like data rather than an absent column.
+                    'partner_name' => $invoice->partner->name,
                     'total' => (string) $invoice->total,
                     'currency' => (string) $invoice->currency,
-                    'posted_at' => $invoice->posted_at?->toIso8601String(),
                     // No stamp at all ⇒ the document predates the policy. That is
                     // the distinction that makes this register readable, and the
                     // reason the stamp exists.

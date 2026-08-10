@@ -45,6 +45,7 @@ class CountryDocumentSettingsSeeder extends Seeder
                 // should know the seeded row is absent. `$this->command` is null
                 // when the seeder is instantiated directly (as
                 // TenantInitializationService does), hence the nullsafe call.
+                /** @phpstan-ignore-next-line nullsafe.neverNull — `$this->command` IS null when the seeder is instantiated directly (TenantInitializationService does exactly that) rather than through `$this->call()`. */
                 $this->command?->warn(sprintf(
                     'CountryDocumentSettingsSeeder: skipping %s — no matching row in countries. '
                     .'That country will resolve to the system default policy.',

@@ -27,6 +27,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
@@ -894,7 +895,11 @@ class InvoiceController extends Controller
             );
         }
 
-        $partner = $documentModel->partner;
+        // The delivery note copies the partner's name and address onto itself,
+        // so a partnerless invoice cannot produce one.
+        $partner = Partner::query()
+            ->where('company_id', $documentModel->company_id)
+            ->find($documentModel->partner_id);
 
         if ($partner === null) {
             return $this->validationErrorResponse(
