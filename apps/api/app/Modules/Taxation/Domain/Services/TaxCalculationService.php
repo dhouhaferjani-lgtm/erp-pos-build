@@ -19,6 +19,7 @@ use App\Modules\Taxation\Domain\Enums\TaxType;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class TaxCalculationService
 {
@@ -274,6 +275,33 @@ class TaxCalculationService
         // documentTaxTotal is persisted and posted as stamp_duty_amount, so a
         // generic DOCUMENT_TOTAL row must never enter this named money lane.
         foreach ($applicableTaxes as $taxConfig) {
+            // A row that reached here is ACTIVE and matched this document's
+            // type and date, so an operator has every reason to expect it to
+            // charge. Skipping it is correct — `documentTaxTotal` is persisted
+            // and posted as the named `stamp_duty_amount` money lane, which a
+            // generic DOCUMENT_TOTAL row must never enter — but it must never
+            // be SILENT (2026-08-10 fiscal gate, finding 9). The HTTP surface
+            // now refuses to create such a row; this is the brownfield path
+            // (seeder / import / raw SQL / template) it cannot reach. No throw:
+            // the typed service-layer refusal is designed in the own-named
+            // document-total ticket.
+            if ($taxConfig->applies_to === TaxApplicationLevel::DocumentTotal
+                && ! $taxConfig->is_stamp_duty
+            ) {
+                Log::warning('Taxation: skipping an active non-stamp DOCUMENT_TOTAL tax configuration; it contributes nothing to the document total.', [
+                    'tax_configuration_id' => $taxConfig->id,
+                    'tax_configuration_code' => $taxConfig->code,
+                    'tax_configuration_name' => $taxConfig->name,
+                    'country_code' => $countryCode,
+                    'company_id' => $company->id,
+                    'document_id' => $document->id,
+                    'document_type' => $documentType,
+                    'document_date' => $documentDate,
+                ]);
+
+                continue;
+            }
+
             if ($taxConfig->applies_to === TaxApplicationLevel::DocumentTotal
                 && $taxConfig->is_stamp_duty
             ) {
