@@ -136,24 +136,53 @@ enum PaymentType: string
      * type forces an explicit reversal ruling at compile time instead of
      * inheriting a shape that may be economically wrong.
      *
-     * `createPaymentRefundJournalEntry()` posts an AR-shaped entry
-     * (Dr CustomerReceivable / Cr cash). That shape is correct ONLY for
-     * `DocumentPayment`:
-     *  - `Advance` credits `SystemAccountPurpose::CustomerAdvance`, not AR;
-     *  - `SupplierPayment` is the wrong direction and the wrong accounts
+     * **DPA `DPA-REV2-A` (A-D2) — this method answers WHETHER, never WHICH
+     * ACCOUNT.** That distinction is the whole lane, so it replaces the rule this
+     * docblock used to state rather than merely dropping it.
+     *
+     * The old rule was: *"`createPaymentRefundJournalEntry()` posts an AR-shaped
+     * entry, which is correct ONLY for `DocumentPayment`, because `Advance`
+     * credits `SystemAccountPurpose::CustomerAdvance`, not AR."* The FACT is
+     * still true — an advance does credit `CustomerAdvance` — but it is no longer
+     * a REASON, because the reversing shape is no longer chosen from the type. It
+     * is chosen from the payment's POSTED LEDGER FOOTPRINT, read by
+     * `PaymentLedgerPartitionReader`.
+     *
+     * It had to change because the type and the ledger DISAGREE in three
+     * reachable shapes, each verified against its real writer:
+     *  - **X** — `payment_type = Advance` carrying AR-backed GL
+     *    (`PaymentController::storeMultiple()` types on allocation exhaustion at
+     *    `:1487-1490`, then posts an AR excess entry onto that same row);
+     *  - **Y** — `payment_type = DocumentPayment` carrying advance-only GL (a
+     *    payment allocated entirely to sales orders);
+     *  - **Z** — `origin = Pos` carrying AR-backed GL on an instrument.
+     *
+     * Under a type-driven selector, X and Y each post the exact mirror of the
+     * defect this lane exists to fix. **Do not reintroduce a `payment_type`
+     * branch as a SHAPE decision anywhere.**
+     *
+     * What each case still decides — reversibility and the money leg only:
+     *  - `DocumentPayment`, `Advance` — reversible with a cash leg. They are the
+     *    same BEHAVIOUR (the partition, not the type, picks the accounts), which
+     *    is why `Advance` maps to the existing `CashReversal` rather than
+     *    gaining a fourth `ReversalSupport` case;
+     *  - `CreditApplication` — reversible, never a cash movement;
+     *  - `SupplierPayment` — wrong direction AND wrong accounts
      *    (`VendorRefundService` owns supplier refunds);
-     *  - `POS` is direct-to-revenue with no AR at all (the POS void/refund lane
+     *  - `POS` — direct-to-revenue with no AR at all (the POS void/refund lane
      *    owns it);
-     *  - `Refund`/`Reversal` are themselves negative rows — reversing one is
-     *    refused outright (the symmetric "refund a reversal" hole is closed by
-     *    the non-positive-amount guard in `PaymentRefundService`).
+     *  - `Refund`/`Reversal` — themselves negative rows; reversing one is refused
+     *    outright (the symmetric "refund a reversal" hole is closed by the
+     *    non-positive-amount guard in `PaymentRefundService`).
      */
     public function reversalSupport(): ReversalSupport
     {
         return match ($this) {
             self::DocumentPayment => ReversalSupport::CashReversal,
+            // DPA-REV2-A (A7): an advance reverses through the SAME behaviour as
+            // a document payment. The accounts come from the ledger partition.
+            self::Advance => ReversalSupport::CashReversal,
             self::CreditApplication => ReversalSupport::NoCashLeg,
-            self::Advance => ReversalSupport::Unsupported,
             self::SupplierPayment => ReversalSupport::Unsupported,
             self::POS => ReversalSupport::Unsupported,
             self::Refund => ReversalSupport::Unsupported,

@@ -43,7 +43,19 @@ use Tests\TestCase;
  *
  * Owner-approved for `POS`, `SupplierPayment`, `Refund`, `Reversal` (and, in the
  * orthogonal instrument gate, `Cleared` — see DeferredTenderGuardsTest).
- * `Advance` carries owner question OQ-B.
+ *
+ * **DPA `DPA-REV2-A` (A7): `Advance` is NO LONGER REFUSED and was removed from
+ * the provider above.** OQ-B is closed. The refusal existed because
+ * `createPaymentRefundJournalEntry()` is AR-shaped and an advance credits
+ * `CustomerAdvance`, so "silently zero" beat "silently wrong". That premise is
+ * gone: the reversing shape now comes from the payment's posted ledger footprint
+ * (`PaymentLedgerPartitionReader`), and the customer-advance reversing entry
+ * exists (`GeneralLedgerService::reverseCustomerAdvanceJournalEntry()`), so an
+ * advance reverses CORRECTLY rather than being refused. The success path is
+ * covered by `AdvanceReversalGlShapeTest`, which asserts on posted journal lines.
+ *
+ * The four remaining refusals are refused on DIRECTION and LANE grounds, not on
+ * account-shape grounds — see `PaymentType::reversalSupport()`.
  */
 final class PaymentReversalRefusalTest extends TestCase
 {
@@ -115,7 +127,6 @@ final class PaymentReversalRefusalTest extends TestCase
     public static function unsupportedShapes(): array
     {
         return [
-            'advance' => [PaymentType::Advance, 'not implemented'],
             'supplier payment' => [PaymentType::SupplierPayment, 'supplier refund lane'],
             'pos' => [PaymentType::POS, 'pos void/return lane'],
             'refund row' => [PaymentType::Refund, 'cannot itself be reversed'],
@@ -172,33 +183,6 @@ final class PaymentReversalRefusalTest extends TestCase
             1,
             PaymentAllocation::query()->where('document_id', $this->invoice->id)->count(),
         );
-    }
-
-    /**
-     * Gate Important-7 / OQ-B: refusing `Advance` is a DEAD END, not a redirect.
-     * `refundPayment()` posts the SAME wrong AR shape for an advance
-     * (Dr CustomerReceivable against a payment that credited CustomerAdvance), so
-     * the message must never send the caller there. It must say plainly that no
-     * path exists and name the ticket that owns the missing shape.
-     */
-    public function test_the_advance_refusal_is_honest_and_names_its_ticket(): void
-    {
-        $payment = $this->paymentOfType(PaymentType::Advance);
-
-        try {
-            $this->refundService->reversePayment($payment, 'must refuse', $this->user->id);
-            self::fail('an advance must refuse reversal');
-        } catch (\DomainException $exception) {
-            $message = $exception->getMessage();
-
-            self::assertStringContainsString('DPA-V4-ADV-1', $message, 'the ticket id must be actionable');
-            self::assertStringContainsString('not implemented', strtolower($message));
-            self::assertStringNotContainsString(
-                'refund',
-                strtolower($message),
-                'must NOT point at the refund lane — that lane posts the same wrong AR shape',
-            );
-        }
     }
 
     /**

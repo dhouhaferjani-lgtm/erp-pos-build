@@ -255,16 +255,18 @@ final class AdvanceReversalGlShapeTest extends TestCase
     }
 
     /**
-     * A1b — a PURE customer advance is refused today, and the refusal is a dead
-     * end rather than a redirect (`PaymentRefundService.php:1161-1163`).
+     * A1b — **INVERTED BY A7, as planned.** This test used to pin the refusal
+     * (`'customer-advance reversal is not implemented (ticket DPA-V4-ADV-1)'`).
+     * A7 mapped `PaymentType::Advance` to `ReversalSupport::CashReversal`, so a
+     * pure customer advance must now REVERSE — through
+     * `reverseCustomerAdvanceJournalEntry()`, unwinding the liability it created
+     * rather than restoring a receivable that never existed.
      *
-     * GREEN today. **A7 inverts this test**: once `PaymentType::Advance` maps to
-     * `ReversalSupport::CashReversal`, a pure advance must reverse successfully
-     * through `reverseCustomerAdvanceJournalEntry()`. Pinned here so the
-     * inversion is a deliberate, visible edit rather than a silent behaviour
-     * change discovered later.
+     * The inversion is a deliberate, visible edit precisely because it was pinned
+     * first: the diff shows a refusal becoming a success, which is what a
+     * reviewer needs to see.
      */
-    public function test_a1b_a_pure_customer_advance_is_refused_today(): void
+    public function test_a1b_a_pure_customer_advance_now_reverses_against_the_advance_account(): void
     {
         $payment = Payment::query()->create([
             'id' => Str::uuid()->toString(),
@@ -282,15 +284,41 @@ final class AdvanceReversalGlShapeTest extends TestCase
             'created_by' => $this->user->id,
         ]);
 
-        try {
-            $this->refundService->reversePayment($payment, 'A1b pure advance', $this->user->id);
-            self::fail('a pure advance must refuse reversal today');
-        } catch (\DomainException $exception) {
-            self::assertStringContainsString('DPA-V4-ADV-1', $exception->getMessage());
-            self::assertStringContainsString('not implemented', strtolower($exception->getMessage()));
-        }
+        // The advance footprint the reversal must unwind.
+        $entry = DB::transaction(fn () => app(GeneralLedgerService::class)->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: $payment->id,
+            amount: '400.000',
+            paymentMethodAccountId: $this->accountId(SystemAccountPurpose::Bank),
+            date: now(),
+            user: $this->user,
+            description: 'Pure customer advance',
+            currencyCode: 'TND',
+            mode: PostingMode::SynchronousInTransaction,
+        ));
+        $payment->journal_entry_id = $entry->id;
+        $payment->save();
+        $this->fundRepository('400.000');
 
-        self::assertSame(PaymentStatus::Completed, $payment->fresh()?->status);
+        $reversal = $this->refundService->reversePayment($payment, 'A1b pure advance', $this->user->id);
+        self::assertInstanceOf(Payment::class, $reversal);
+
+        $debits = $this->postedDebitsByPurpose($reversal->id);
+        $actual = json_encode($debits, JSON_THROW_ON_ERROR);
+
+        self::assertSame(
+            '400.000',
+            $debits[SystemAccountPurpose::CustomerAdvance->value] ?? '0.000',
+            "a pure advance unwinds the LIABILITY it created. Posted debits: {$actual}",
+        );
+        self::assertArrayNotHasKey(
+            SystemAccountPurpose::CustomerReceivable->value,
+            $debits,
+            'no receivable was ever credited, so none may be restored — this is the wrong shape the '
+            ."old refusal existed to avoid, now avoided by posting the RIGHT one. Posted debits: {$actual}",
+        );
+        self::assertSame(PaymentStatus::Reversed, $payment->fresh()?->status);
     }
 
     /**
