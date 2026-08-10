@@ -6,6 +6,7 @@ namespace App\Modules\Accounting\Providers;
 
 use App\Modules\Accounting\Application\Services\AccountingPartnerReferenceSource;
 use App\Modules\Accounting\Infrastructure\Commands\BackfillRefundCompensationAccountsCommand;
+use App\Modules\Accounting\Presentation\Console\CheckCogsCoverageCommand;
 use App\Modules\Accounting\Presentation\Console\CheckSubledgerReconciliationCommand;
 use App\Shared\Contracts\Partner\PartnerReferenceSource;
 use Illuminate\Support\ServiceProvider;
@@ -31,6 +32,8 @@ class AccountingServiceProvider extends ServiceProvider
 
         if ($this->app->runningInConsole()) {
             $this->commands([
+                // DPA Wave 3 T23 — the lane-separation detector.
+                CheckCogsCoverageCommand::class,
                 CheckSubledgerReconciliationCommand::class,
                 // v3-refund-chain-integration spec §5.3 (T1 errata).
                 BackfillRefundCompensationAccountsCommand::class,

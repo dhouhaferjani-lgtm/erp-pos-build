@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Application\DTOs\DocumentData;
@@ -18,6 +19,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
+use App\Modules\Document\Domain\Services\DeliveryNoteFromDocumentFactory;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
@@ -75,6 +77,7 @@ class InvoiceController extends Controller
         private readonly CloseInvoiceWithToleranceService $closeInvoiceWithToleranceService,
         private readonly DocumentLineTaxResolver $lineTaxResolver,
         private readonly DeliveryComplianceGate $deliveryComplianceGate,
+        private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
     ) {}
 
     private function scale(): int
@@ -819,6 +822,141 @@ class InvoiceController extends Controller
                         'invoice_fiscal_hash' => $postedInvoice->fiscal_hash,
                         'invoice_chain_sequence' => $postedInvoice->chain_sequence,
                         'confirmed_delivery_notes' => $confirmedDns,
+                    ],
+                ]);
+            });
+        } catch (\DomainException $e) {
+            return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
+        }
+    }
+
+    /**
+     * THE REQUIRED PATH for a standalone goods invoice (Wave 3 T25c / D-30).
+     *
+     * ── WHY A SIBLING AND NOT A WIDENING OF confirmDeliveriesAndPost() ──
+     * That endpoint exists to CONFIRM delivery notes an order already has. It
+     * hard-refuses `NO_SOURCE_ORDER`, reads delivery-note ids only from the
+     * order's payload, and refuses `NO_DELIVERY_NOTES` when there are none —
+     * every one of which is correct for its own job and fatal for this one. And
+     * even if a note were created by other means, nothing would write the
+     * linkage: `DeliveredQuantityResolver` reads
+     * `invoice.payload['source_delivery_note_ids']` (written only by the DN →
+     * invoice converter) and the order shape. Without that write, create → confirm
+     * → re-post is refused AGAIN, and the compliance gate has no reachable
+     * compliant path. That is the defect this endpoint exists to close.
+     *
+     * The five steps, in one transaction (D-28 composite C-3):
+     *   1. generate a DRAFT delivery note from the invoice's PHYSICAL lines;
+     *   2. 🚨 write the linkage on the invoice payload — the shape the resolver
+     *      already reads — in the SAME transaction, never after;
+     *   3. confirm the delivery note (issues stock, seals the DN chain);
+     *   4. post the invoice — `hasEverIssuedGoods()` is now true, so T25b passes;
+     *   5. commit as one act: if the post fails, the delivery, the stock movement
+     *      and the linkage all roll back with it.
+     *
+     * POST /api/v1/invoices/{invoice}/create-delivery-and-post
+     */
+    public function createDeliveryAndPost(Request $request, string $invoice): JsonResponse
+    {
+        $documentModel = $this->baseQuery()
+            ->ofType(DocumentType::Invoice)
+            ->with(['lines.product', 'sourceDocument', 'partner'])
+            ->find($invoice);
+
+        if ($documentModel === null) {
+            return $this->notFoundResponse('Invoice');
+        }
+
+        if (! $documentModel->isConfirmed()) {
+            return $this->validationErrorResponse(
+                'INVOICE_NOT_CONFIRMED',
+                'Only confirmed invoices can be posted'
+            );
+        }
+
+        $deliveryStatus = $this->deliveryComplianceGate->evaluate($documentModel);
+
+        // This endpoint is ONLY for the population T25b refuses. Anything else
+        // has a different remedy and must not be routed here — an invoice with
+        // draft delivery notes belongs in confirm-deliveries-and-post, and a
+        // compliant invoice belongs in plain post.
+        if ($deliveryStatus->code !== DeliveryComplianceCode::DeliveryRequiredBeforeInvoice) {
+            return $this->validationErrorResponse(
+                'DELIVERY_CREATION_NOT_APPLICABLE',
+                'This invoice does not need a delivery note created for it.'
+            );
+        }
+
+        if (! $deliveryStatus->canAutoConfirm) {
+            return $this->validationErrorResponse(
+                'DELIVERY_CANNOT_BE_GENERATED',
+                $deliveryStatus->blockedReason ?? 'A delivery note cannot be generated for this invoice.'
+            );
+        }
+
+        $partner = $documentModel->partner;
+
+        if ($partner === null) {
+            return $this->validationErrorResponse(
+                'DELIVERY_CANNOT_BE_GENERATED',
+                'NO_PARTNER'
+            );
+        }
+
+        $location = $documentModel->location_id !== null
+            ? Location::query()->where('company_id', $documentModel->company_id)->find($documentModel->location_id)
+            : $this->locationContext->getDefaultLocation($documentModel->company_id);
+
+        if ($location === null) {
+            return $this->validationErrorResponse(
+                'DELIVERY_CANNOT_BE_GENERATED',
+                'NO_RESOLVABLE_LOCATION'
+            );
+        }
+
+        try {
+            return DB::transaction(function () use ($documentModel, $partner, $location): JsonResponse {
+                // 1 — generate
+                $deliveryNote = $this->deliveryNoteFactory->createDraftFrom(
+                    source: $documentModel,
+                    partner: $partner,
+                    location: $location,
+                    notes: 'Created from invoice '.$documentModel->document_number.' before posting',
+                );
+
+                // 2 — 🚨 LINKAGE. Without this the invoice re-post is refused
+                // again, because nothing else writes the key the resolver reads.
+                // Legal on this document: it is Confirmed, not SEALED, and the
+                // immutability trigger fires only on SEALED rows and does not
+                // cover `payload` in any case.
+                $payload = $documentModel->payload ?? [];
+                $existing = is_array($payload['source_delivery_note_ids'] ?? null)
+                    ? $payload['source_delivery_note_ids']
+                    : [];
+                $payload['source_delivery_note_ids'] = array_values(array_unique(
+                    array_merge($existing, [$deliveryNote->id])
+                ));
+                $documentModel->update(['payload' => $payload]);
+                $documentModel->refresh();
+
+                // 3 — confirm (issues stock, seals the DN fiscal chain)
+                $confirmed = $this->deliveryNoteService->confirm($deliveryNote);
+
+                // 4 — post; the gate now sees goods issued
+                $postedInvoice = $this->postingService->post($documentModel);
+
+                return response()->json([
+                    'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),
+                    'meta' => [
+                        'timestamp' => now()->toIso8601String(),
+                        'invoice_fiscal_hash' => $postedInvoice->fiscal_hash,
+                        'invoice_chain_sequence' => $postedInvoice->chain_sequence,
+                        'confirmed_delivery_notes' => [[
+                            'id' => $confirmed->id,
+                            'number' => $confirmed->document_number,
+                            'fiscal_hash' => $confirmed->fiscal_hash,
+                            'chain_sequence' => $confirmed->chain_sequence,
+                        ]],
                     ],
                 ]);
             });

@@ -312,6 +312,30 @@ trait BuildsDeliveryPolicyFixtures
     }
 
     /**
+     * A CONFIRMED return note against `$invoice` restocking `$quantity` of the
+     * fixture product from the fixture location — the shape
+     * `DeliveredQuantityResolver::priorReturnsPerTuple()` nets on.
+     */
+    protected function dpReturnEverything(Document $invoice, string $quantity): void
+    {
+        $returnNote = $this->dpCreateDocument([
+            'type' => DocumentType::ReturnNote,
+            'status' => DocumentStatus::Confirmed,
+            'location_id' => $this->dpLocation->id,
+            'source_document_id' => $invoice->id,
+            'document_number' => 'DP-RN-'.bin2hex(random_bytes(4)),
+        ], [[
+            'product_id' => $this->dpProduct->id,
+            'location_id' => $this->dpLocation->id,
+            'description' => '3E return line',
+            'quantity' => $quantity,
+            'unit_price' => '100.000',
+        ]]);
+
+        $returnNote->refresh();
+    }
+
+    /**
      * @param  array<string, mixed>  $attributes
      * @param  list<array<string, mixed>>  $lines
      */

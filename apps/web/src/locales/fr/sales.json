@@ -559,6 +559,29 @@
       "optionsUnknownReason": "Nous n'avons pas encore pu confirmer ce qui a été livré sur cette facture ; un retour de marchandises ne peut donc pas être enregistré ici.",
       "checkFailed": "Impossible de vérifier cette facture. Réessayez, ou rechargez la page.",
       "retryCheck": "Réessayer"
+    },
+    "preDeliveryInvoicing": {
+      "title": "Livraison requise avant comptabilisation",
+      "warning": "Cette facture porte sur des marchandises qui n'ont pas été livrées",
+      "warningDetails": "Selon les règles comptables de ce pays, une facture définitive de marchandises ne peut pas être émise avant la livraison. Le produit est constaté au transfert des marchandises et la TVA est due dès l'émission de la facture : la facture ne peut donc pas encore être comptabilisée.",
+      "policyInForce": "Règle en vigueur : livraison préalable requise (source : {{source}})",
+      "policySourceCompany": "le paramétrage de votre société",
+      "policySourceCountry": "la valeur par défaut de votre pays",
+      "policySourceSystem": "la valeur par défaut du système",
+      "whatHappensTitle": "Ce qui va se passer :",
+      "step1": "Un bon de livraison sera créé à partir des lignes de marchandises de cette facture",
+      "step2": "Le stock sera sorti de l'inventaire (diminue la quantité disponible)",
+      "step3": "Le bon de livraison sera scellé dans la chaîne de hachage fiscale",
+      "step4": "La facture sera ensuite comptabilisée et finalisée",
+      "createAndPost": "Livrer et comptabiliser la facture",
+      "creating": "Livraison en cours…",
+      "success": "Marchandises livrées et facture comptabilisée",
+      "alternativesTitle": "Si les marchandises ne sont pas encore expédiées",
+      "alternativeOrder": "Enregistrez plutôt un devis ou une commande, et saisissez tout paiement anticipé comme acompte client. Facturez une fois les marchandises livrées.",
+      "blockedTitle": "Un bon de livraison ne peut pas être créé automatiquement",
+      "blockedNoLocation": "Aucun emplacement de stock n'a pu être déterminé pour ces marchandises. Définissez un emplacement par défaut, ou un emplacement sur la facture, puis réessayez.",
+      "blockedNoPhysicalLines": "Cette facture ne comporte aucune ligne de marchandises à livrer.",
+      "blockedGeneric": "Créez et confirmez manuellement un bon de livraison, puis comptabilisez la facture."
     }
   },
   "deliveryNotes": {

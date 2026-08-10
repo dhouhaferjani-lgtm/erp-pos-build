@@ -152,6 +152,16 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:invoices.post')
         ->name('invoices.confirmDeliveriesAndPost');
 
+    // Wave 3 T25c / D-30 — the REQUIRED path for a standalone goods invoice under
+    // `require_delivery_first`. A sibling of confirm-deliveries-and-post rather
+    // than a widening of it: that endpoint CONFIRMS delivery notes an order
+    // already has (and hard-refuses NO_SOURCE_ORDER); this one CREATES one from
+    // the invoice's own physical lines, writes the linkage the resolver reads,
+    // confirms it and posts — in one transaction. Registered as D-28 composite C-3.
+    Route::post('/invoices/{invoice}/create-delivery-and-post', [InvoiceController::class, 'createDeliveryAndPost'])
+        ->middleware('can:invoices.post')
+        ->name('invoices.createDeliveryAndPost');
+
     // Close invoice with payment-tolerance write-off (Phase 3 / A2)
     Route::post('/invoices/{invoice}/close-with-tolerance', [InvoiceController::class, 'closeWithTolerance'])
         ->middleware('can:payments.allocate')
