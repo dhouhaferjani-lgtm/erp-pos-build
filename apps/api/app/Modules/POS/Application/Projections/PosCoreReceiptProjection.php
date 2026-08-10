@@ -1708,15 +1708,6 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     }
 
     /**
-     * Decrement stock for one product line.
-     *
-     * When `$variantId` is set, scopes to the variant-scoped `stock_levels`
-     * row (`product_id + variant_id + location_id`). When null, scopes to the
-     * product-level row (`product_id + variant_id IS NULL + location_id`).
-     * `variant_id` is written onto the `stock_movements` row for downstream
-     * reporting (Task 18). Column exists from Task 6.
-     */
-    /**
      * The cost snapshot for a POS stock movement (DPA Wave 3 T5).
      *
      * Reads `products.cost_price` through the ONE shared definition
@@ -1725,10 +1716,22 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * differently — the drift gate V10-I5 caught.
      *
      * Scoped by tenant + company: a forged/foreign `product_id` must not resolve.
-     * A product that cannot be resolved yields a ZERO cost rather than throwing:
-     * stock is a best-effort downstream projection and a projector may never
-     * reject an already-signed fiscal event (the doctrine at
-     * `applyScrapDisposition`). The miss is logged so it is observable.
+     *
+     * `withTrashed()` is load-bearing, not defensive (fix round 1, fiscal P2-1).
+     * A POS sale is authored on the DEVICE and projected later — on sync, on a
+     * retry, on a replay — and a product retired in between is a SOFT delete. Under
+     * the default scope that retired product resolved to null, so the movement was
+     * written and the stock decremented with `unit_cost = 0.000000` permanently;
+     * the Wave-3 exit seam reads its COGS basis from that row, so the effect is an
+     * understated COGS and an overstated margin whose only evidence is a log line.
+     * A soft-deleted product is a resolvable HISTORICAL fact and its cost is the
+     * cost that applied when the sale happened.
+     *
+     * A product that STILL cannot be resolved (a forged or cross-company
+     * `product_id`) yields a ZERO cost rather than throwing: stock is a
+     * best-effort downstream projection and a projector may never reject an
+     * already-signed fiscal event (the doctrine at `applyScrapDisposition`). The
+     * miss is logged so it is observable.
      *
      * @param  numeric-string  $quantity
      * @return array{unit_cost: numeric-string, total_cost: numeric-string}
@@ -1740,6 +1743,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $quantity,
     ): array {
         $product = Product::query()
+            ->withTrashed()
             ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->find($productId);
@@ -1775,6 +1779,15 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         return ['unit_cost' => $unitCost, 'total_cost' => $totalCost];
     }
 
+    /**
+     * Decrement stock for one product line.
+     *
+     * When `$variantId` is set, scopes to the variant-scoped `stock_levels`
+     * row (`product_id + variant_id + location_id`). When null, scopes to the
+     * product-level row (`product_id + variant_id IS NULL + location_id`).
+     * `variant_id` is written onto the `stock_movements` row for downstream
+     * reporting (Task 18). Column exists from Task 6.
+     */
     private function decrementStock(
         string $tenantId,
         string $companyId,

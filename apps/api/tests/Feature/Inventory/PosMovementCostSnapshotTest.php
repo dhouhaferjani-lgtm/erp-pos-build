@@ -4,13 +4,17 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\Product\Domain\Product;
+use Database\Factories\CompanyFactory;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 use Tests\Traits\BuildsPosSaleReceiptEvents;
 use Tests\Traits\BuildsWave3ExitFixtures;
@@ -168,6 +172,86 @@ final class PosMovementCostSnapshotTest extends TestCase
 
         self::assertSame('0.000000', $this->numericString($movement->unit_cost));
         self::assertSame('0.000000', $this->numericString($movement->total_cost));
+    }
+
+    /**
+     * Fix round 1 · fiscal gate P2-1.
+     *
+     * A POS sale is authored on the device and projected LATER — on sync, on a
+     * retry, on a replay of a queue that backed up. Between those two moments a
+     * merchandiser may retire the product, which on this schema is a SOFT delete.
+     * The snapshot resolved the product through the default (soft-delete-scoped)
+     * query, so the retired product came back NULL and the movement was written
+     * — and the stock decremented — with `unit_cost = 0.000000` **permanently**.
+     * 3C reads the COGS basis off that row, so the effect is an understated COGS
+     * and an overstated margin whose only evidence is a log line.
+     *
+     * `withTrashed()`: a soft-deleted product is a RESOLVABLE historical fact and
+     * its cost is exactly the cost that applied when the sale happened. The null
+     * branch below stays for the genuinely unresolvable case.
+     */
+    public function test_a_soft_deleted_product_still_yields_its_historical_cost(): void
+    {
+        $product = $this->physicalProduct(costPrice: '7.500000');
+        $this->seedStock($product->id, '20.0000');
+
+        // The event is authored while the product is live…
+        $event = $this->posSaleReceiptEvent($product->id, null, '2');
+
+        // …and the product is retired before the projection ever runs.
+        $product->delete();
+        self::assertTrue($product->trashed());
+
+        $this->project($event);
+
+        /** @var StockMovement $movement */
+        $movement = StockMovement::query()->where('reason', 'pos_sale')->firstOrFail();
+
+        self::assertSame('7.500000', $this->numericString($movement->unit_cost));
+        self::assertSame('15.000000', $this->numericString($movement->total_cost));
+    }
+
+    /**
+     * …and the fail-soft branch survives for a product that genuinely cannot be
+     * resolved (a forged or foreign `product_id`): zero cost, a warning, and NO
+     * exception — a projector may never reject an already-signed fiscal event.
+     */
+    public function test_a_genuinely_unresolvable_product_still_fails_soft_to_zero(): void
+    {
+        $product = $this->physicalProduct(costPrice: '7.500000');
+        $this->seedStock($product->id, '20.0000');
+
+        $event = $this->posSaleReceiptEvent($product->id, null, '2');
+
+        // Re-parent the product to a FOREIGN company: the scoped lookup — the
+        // api.document.010-shaped guard the snapshot carries — cannot resolve it
+        // under any `withTrashed()`, while the `stock_levels` row (company-keyed)
+        // survives so the writer still reaches the insert. This is the forged /
+        // cross-company shape the null branch exists for.
+        /** @var Company $foreign */
+        $foreign = CompanyFactory::new()->create(['tenant_id' => $this->tenantId]);
+        DB::table('products')->where('id', $product->id)->update(['company_id' => $foreign->id]);
+
+        /** @var list<string> $warnings */
+        $warnings = [];
+        Log::listen(static function (MessageLogged $logged) use (&$warnings): void {
+            if ($logged->level === 'warning') {
+                $warnings[] = $logged->message;
+            }
+        });
+
+        $this->project($event);
+
+        /** @var StockMovement $movement */
+        $movement = StockMovement::query()->where('reason', 'pos_sale')->firstOrFail();
+
+        self::assertSame('0.000000', $this->numericString($movement->unit_cost));
+        self::assertSame('0.000000', $this->numericString($movement->total_cost));
+
+        self::assertNotEmpty(array_filter(
+            $warnings,
+            static fn (string $message): bool => str_contains($message, 'unresolvable for the movement cost snapshot'),
+        ), 'the miss must be observable — a silent zero cost is the whole defect');
     }
 
     // =================================================================
