@@ -74,20 +74,23 @@ use Throwable;
  * twice on real PostgreSQL. **It still passed.** The Partner lock is therefore
  * *defence in depth*, not the sole serialiser of these two paths.
  *
- * What actually orders them as well is
- * `GeneralLedgerService::generateEntryNumber()`, which takes a per-company
- * `pg_advisory_xact_lock` (transaction-scoped, released at commit). The child
- * holds it from the moment it creates the clearing entry until it commits, so
- * the parent's reversal cannot post its own entry until the child is done and
- * its effect is visible.
+ * What actually orders them (gate re-review N-1, instrumented on real PG): the
+ * parent's `payments` INSERT stalls on its FK to `partners`, which needs
+ * `FOR KEY SHARE` against the `FOR UPDATE` the child holds via
+ * `clearCustomerAdvanceToReceivable()` (`GeneralLedgerService.php:1571-1576`)
+ * until the child commits. The per-company `pg_advisory_xact_lock` (which lives
+ * in `sealAndPersistEntry()`, not `generateEntryNumber()`) was ALSO disabled in
+ * the gate's probe and the test still passed — the FK row lock alone is the
+ * operative serialiser.
  *
  * This test is therefore a genuine **serialisation-outcome** test — it proves on
  * two real processes that the two paths cannot both consume the same pool and
  * that the `CustomerAdvance` liability is never over-drawn — but it is NOT proof
  * that the Partner lock is load-bearing. Reported to the code gate as a finding
- * rather than claimed as binding coverage: A-D3's read-then-write is protected,
- * and the Partner lock makes that protection explicit and local rather than
- * incidental to entry-number allocation, which is a reason to keep it.
+ * rather than claimed as binding coverage: A-D3's read-then-write is protected
+ * only by locks that are INCIDENTAL to other operations (an FK check on an
+ * INSERT), and the Partner lock makes that protection explicit and local, which
+ * is exactly why the keep-the-lock ruling stands.
  */
 final class AdvanceReversalConcurrencyTest extends TestCase
 {
