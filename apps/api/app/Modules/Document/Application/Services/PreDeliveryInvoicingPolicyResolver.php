@@ -37,6 +37,8 @@ use Illuminate\Support\Facades\Schema;
 final class PreDeliveryInvoicingPolicyResolver
 {
     /**
+     * The ENFORCEMENT accessor: resolve the policy in order to ACT on it.
+     *
      * @throws PreDeliveryInvoicingNotSupportedException when a rung resolves `allow`
      */
     public function resolveForCompany(Company $company): ResolvedPreDeliveryInvoicingPolicy
@@ -48,6 +50,32 @@ final class PreDeliveryInvoicingPolicyResolver
         }
 
         return $resolved;
+    }
+
+    /**
+     * The OBSERVATION accessor: resolve the policy in order to RECORD it. Never
+     * throws (fix round 1, fiscal F-3).
+     *
+     * ── WHY THE STAMP MUST NOT SHARE THE ENFORCEMENT ACCESSOR ──
+     * `DeliveryComplianceGate::stampDeliveryPolicyDecision()` runs on EVERY
+     * invoice post, including the compliant ones the gate itself returned early
+     * on without ever consulting this resolver. Reaching the throwing accessor
+     * from there turns the first operator who sets `allow` — a value the schema
+     * deliberately permits so the switch needs no DDL later — into a TOTAL
+     * invoice-posting outage, surfaced as an opaque `POSTING_FAILED`.
+     *
+     * And it would be wrong on its own terms: the stamp is an audit record of
+     * what was TRUE at post time. `allow` being in force is a true fact, and the
+     * one an auditor most needs to see. Refusing to write it down is the
+     * opposite of what the stamp is for.
+     *
+     * The refusal stays exactly where it belongs — on the path that would
+     * otherwise let a pre-delivery goods invoice post under `allow` with no
+     * 472/419 machinery behind it ({@see resolveForCompany()}).
+     */
+    public function resolveForAudit(Company $company): ResolvedPreDeliveryInvoicingPolicy
+    {
+        return $this->walkLadder($company);
     }
 
     private function walkLadder(Company $company): ResolvedPreDeliveryInvoicingPolicy

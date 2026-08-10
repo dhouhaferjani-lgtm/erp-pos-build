@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Enums\PostingContext;
 use App\Modules\Document\Domain\Events\InvoiceCancelled;
 use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
@@ -64,9 +65,14 @@ final class DocumentPostingService
      * This method is idempotent: calling it on an already-posted document
      * will return the document without error.
      *
+     * @param  PostingContext  $context  WHO is posting. Defaults to
+     *   {@see PostingContext::Standard}, so every existing caller keeps the full
+     *   gate; only a caller that names a different context can claim the narrow
+     *   pre-delivery exemption (fiscal F-1 — see {@see PostingContext}).
+     *
      * @throws \DomainException If document cannot be posted (wrong status)
      */
-    public function post(Document $document): Document
+    public function post(Document $document, PostingContext $context = PostingContext::Standard): Document
     {
         // Idempotent: if already posted, return success
         if ($document->isPosted()) {
@@ -82,12 +88,12 @@ final class DocumentPostingService
 
         // Tunisia fiscal compliance: Check if physical products have been delivered (for invoices)
         if ($document->type === DocumentType::Invoice) {
-            $this->validateDeliveryCompliance($document);
+            $this->validateDeliveryCompliance($document, $context);
         }
 
         $requiresFiscalChain = $this->requiresFiscalChain($document->type);
 
-        return DB::transaction(function () use ($document, $requiresFiscalChain): Document {
+        return DB::transaction(function () use ($document, $requiresFiscalChain, $context): Document {
             // Double-check inside transaction (another request may have posted it)
             $document->refresh();
             if ($document->isPosted()) {
@@ -113,7 +119,11 @@ final class DocumentPostingService
                 // it pre-seal makes the stamp and the seal one atomic act, and
                 // keeps it clear of the SEALED-only immutability trigger.
                 if ($document->type === DocumentType::Invoice) {
-                    $this->deliveryComplianceGate->stampDeliveryPolicyDecision($document);
+                    $this->deliveryComplianceGate->stampDeliveryPolicyDecision(
+                        $document,
+                        $context,
+                        $this->isExemptFromDeliveryRequirement($document, $context),
+                    );
                 }
 
                 $this->glPreflight->assertDocumentGlIsPostable($document);
@@ -612,11 +622,20 @@ final class DocumentPostingService
      *
      * @throws \DomainException If physical products haven't been delivered
      */
-    private function validateDeliveryCompliance(Document $invoice): void
+    private function validateDeliveryCompliance(Document $invoice, PostingContext $context): void
     {
         $status = $this->deliveryComplianceGate->evaluate($invoice);
 
         if ($status->isCompliant()) {
+            return;
+        }
+
+        // 🆕 Fix round 1 / fiscal F-1 — ORCHESTRATOR RULING (b): the NARROW,
+        // recorded exemption. See {@see PostingContext} for why this is a caller
+        // context and not a document-shape test, and
+        // {@see isExemptFromDeliveryRequirement()} for the two conditions.
+        if ($status->code === DeliveryComplianceCode::DeliveryRequiredBeforeInvoice
+            && $this->isExemptFromDeliveryRequirement($invoice, $context)) {
             return;
         }
 
@@ -637,5 +656,39 @@ final class DocumentPostingService
         }
 
         throw new \DomainException($status->message);
+    }
+
+    /**
+     * The ONLY way past the pre-delivery refusal (fix round 1, fiscal F-1).
+     *
+     * TWO conditions, deliberately, and neither is sufficient alone:
+     *
+     *   1. the CALLER named {@see PostingContext::WorkOrderGeneratedInvoice} — an
+     *      explicit, typed claim written at one call site, so adding a second
+     *      exempt path is an edit to the enum and to this method, never an
+     *      emergent consequence of how a document happens to be shaped;
+     *   2. the DOCUMENT really is work-order-generated (`work_order_id`), so a
+     *      caller that passes the context for an unrelated invoice — by mistake
+     *      or otherwise — gets the refusal anyway.
+     *
+     * It exempts ONE verdict: `DeliveryRequiredBeforeInvoice`. Draft delivery
+     * notes, an incomplete delivery and an order with no notes all still refuse,
+     * because those describe a delivery lane that EXISTS and is in the wrong
+     * state — a different fact from "this module has no delivery lane", which is
+     * the whole basis of the exemption.
+     *
+     * Scope of the underlying gap, and why this is not a licence: WO parts move
+     * NO stock today (no issuance path exists anywhere in the Workshop module),
+     * so a WO invoice recognises revenue with no movement and, post-cutover, no
+     * COGS. That is a real defect and it is ticketed —
+     * `docs/superpowers/tickets/2026-08-10-workshop-parts-goods-lane-gap.md` —
+     * for the DPA program backlog. When the WO goods lane lands, this exemption
+     * is expected to be DELETED, and the stamp's `delivery_requirement_exempted`
+     * flag is how the population posted under it is found.
+     */
+    private function isExemptFromDeliveryRequirement(Document $document, PostingContext $context): bool
+    {
+        return $context->claimsPreDeliveryExemption()
+            && $document->work_order_id !== null;
     }
 }

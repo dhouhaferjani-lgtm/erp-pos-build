@@ -11,10 +11,12 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Exceptions\PreDeliveryInvoicingNotSupportedException;
 use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use Database\Seeders\CountryDocumentSettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
@@ -156,6 +158,62 @@ class PreDeliveryInvoicingAuditStampTest extends TestCase
                 $this->dpCompany->refresh()->fiscal_chain_seed,
             ),
         );
+    }
+
+    /**
+     * 🚨 FIX ROUND 1 / fiscal F-3 — the stamp must RECORD, never REFUSE.
+     *
+     * The stamp runs on EVERY invoice post, including the compliant ones the gate
+     * returned early on without ever consulting the policy resolver. While it
+     * resolved through the THROWING accessor, the first operator to set `allow`
+     * — a value the CHECK constraint deliberately admits so the switch needs no
+     * DDL later — took every invoice in the company down with an opaque
+     * `POSTING_FAILED`. That is a total posting outage caused by an audit record.
+     *
+     * `allow` is set out-of-band here (raw update) precisely because the
+     * enforcement accessor refuses to hand it back: this is the state a database
+     * can be in, whatever the application would have permitted.
+     */
+    public function test_a_compliant_invoice_still_posts_under_allow_and_the_stamp_records_it(): void
+    {
+        DB::table('companies')
+            ->where('id', $this->dpCompany->id)
+            ->update(['pre_delivery_invoicing_policy' => 'allow']);
+
+        $deliveryNote = $this->dpConfirmedDeliveryNote([$this->dpPhysicalLine()]);
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+        $this->dpLinkConvertedShape($invoice, [$deliveryNote]);
+
+        $posted = $this->postingService()->post($invoice);
+
+        $this->assertSame(DocumentStatus::Posted, $posted->status);
+        $this->assertNotNull($posted->fiscal_hash);
+
+        $stamp = $posted->payload[DeliveryComplianceGate::STAMP_KEY];
+
+        // Recording `allow` is CORRECT. It is the single most audit-relevant fact
+        // the stamp can carry, and the reason the stamp exists.
+        $this->assertSame('allow', $stamp['policy']);
+        $this->assertSame('company', $stamp['policy_source']);
+    }
+
+    /**
+     * The refusal has NOT been softened — it has been moved to where it belongs.
+     * A goods invoice with nothing delivered, under `allow`, still cannot post:
+     * honouring `allow` would recognise pre-delivery revenue with no 472/419
+     * machinery behind it.
+     */
+    public function test_the_enforcement_path_still_refuses_under_allow(): void
+    {
+        DB::table('companies')
+            ->where('id', $this->dpCompany->id)
+            ->update(['pre_delivery_invoicing_policy' => 'allow']);
+
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine()]);
+
+        $this->expectException(PreDeliveryInvoicingNotSupportedException::class);
+
+        $this->postingService()->post($invoice);
     }
 
     public function test_the_stamp_survives_a_subsequent_payload_append(): void

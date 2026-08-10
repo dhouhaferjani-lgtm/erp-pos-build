@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\DTOs\ResolvedPreDeliveryInvoicingPolicy;
 use App\Modules\Document\Domain\Enums\DeliveryComplianceCode;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\PostingContext;
 use App\Modules\Product\Domain\Product;
 
 /**
@@ -222,14 +223,30 @@ final class DeliveryComplianceGate
      * Merged into the existing payload, never assigned over it — the same idiom
      * as `RefundService::appendDecision()` — so a later append cannot clobber it
      * and it cannot clobber a later append.
+     *
+     * ── WHY THE NON-THROWING ACCESSOR (fix round 1, fiscal F-3) ──
+     * This runs on EVERY invoice post, including the compliant ones
+     * {@see evaluate()} returned early on without consulting the resolver at all.
+     * Resolving through the throwing accessor here would mean the first operator
+     * to set `allow` gets a total invoice-posting outage flattened to
+     * `POSTING_FAILED` — and would refuse to write down the single fact an
+     * auditor most needs. The stamp records WHAT IS TRUE, `allow` included; the
+     * refusal lives on the enforcement path and only there.
+     *
+     * @param  bool  $deliveryRequirementExempted  whether the caller's context
+     *   carried the narrow F-1 exemption past the pre-delivery refusal. Recorded
+     *   so the exempted population is findable, not inferred.
      */
-    public function stampDeliveryPolicyDecision(Document $invoice): void
-    {
+    public function stampDeliveryPolicyDecision(
+        Document $invoice,
+        PostingContext $context = PostingContext::Standard,
+        bool $deliveryRequirementExempted = false,
+    ): void {
         $company = Company::query()->find($invoice->company_id);
 
         $resolvedPolicy = $company === null
             ? ResolvedPreDeliveryInvoicingPolicy::fromSystemDefault()
-            : $this->policyResolver->resolveForCompany($company);
+            : $this->policyResolver->resolveForAudit($company);
 
         $invoice->update([
             'payload' => array_merge($invoice->payload ?? [], [
@@ -244,6 +261,13 @@ final class DeliveryComplianceGate
                     'has_ever_issued_goods' => $this->resolver->hasEverIssuedGoods($invoice),
                     'has_goods_issued' => $this->resolver->hasGoodsIssued($invoice),
                     'delivery_note_ids' => $this->resolver->confirmedDeliveryNoteIdsFor($invoice),
+                    // WHO posted, and whether they used the narrow F-1 exemption.
+                    // Without these two keys an invoice that posted with no goods
+                    // issued is indistinguishable from one posted before the
+                    // policy existed — which is the exact confusion the stamp
+                    // exists to end.
+                    'posting_context' => $context->value,
+                    'delivery_requirement_exempted' => $deliveryRequirementExempted,
                     'stamped_at' => now()->toIso8601String(),
                 ],
             ]),
