@@ -13,9 +13,23 @@ use Database\Seeders\TunisiaTaxConfigurationSeeder;
  */
 final class CountryTaxConfigurationRegistry
 {
+    /**
+     * A mis-shaped entry fails CLOSED at every reader (`?? null` / `?? false`),
+     * which is the safe direction but is silent — the typed shape is what makes
+     * the omission a static-analysis error instead of a runtime surprise
+     * (F-12, 2026-08-10 tenancy gate).
+     *
+     * @var array<string, array{seeder: class-string, supports_stamp_duty: bool}>
+     */
     private const MAP = [
-        'TN' => TunisiaTaxConfigurationSeeder::class,
-        'FR' => FranceTaxConfigurationSeeder::class,
+        'TN' => [
+            'seeder' => TunisiaTaxConfigurationSeeder::class,
+            'supports_stamp_duty' => true,
+        ],
+        'FR' => [
+            'seeder' => FranceTaxConfigurationSeeder::class,
+            'supports_stamp_duty' => false,
+        ],
     ];
 
     /**
@@ -23,11 +37,16 @@ final class CountryTaxConfigurationRegistry
      */
     public function seederFor(string $countryCode): ?string
     {
-        return self::MAP[strtoupper($countryCode)] ?? null;
+        return self::MAP[strtoupper($countryCode)]['seeder'] ?? null;
     }
 
     public function supports(string $countryCode): bool
     {
         return $this->seederFor($countryCode) !== null;
+    }
+
+    public function supportsStampDuty(string $countryCode): bool
+    {
+        return self::MAP[strtoupper($countryCode)]['supports_stamp_duty'] ?? false;
     }
 }

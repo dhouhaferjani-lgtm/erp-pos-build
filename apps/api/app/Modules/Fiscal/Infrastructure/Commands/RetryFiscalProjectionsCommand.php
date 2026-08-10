@@ -8,6 +8,7 @@ use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\ProjectionStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEventProjectionRow;
 use App\Modules\Tenant\Domain\Tenant;
@@ -15,6 +16,7 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -24,9 +26,13 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
 {
     private const EXHAUSTED_ATTEMPTS = 5;
 
+    /** @var list<string> the narrowing options an empty value must never widen */
+    private const FILTER_OPTIONS = ['tenant', 'event-type', 'projector', 'event-id'];
+
     /** @var string */
     protected $signature = 'fiscal:retry-projections
         {--projector= : restrict to one fiscal_event_projections.projector_name}
+        {--event-type= : restrict to one fiscal_events.event_type, such as ACCOUNT_CHARGE}
         {--event-id= : restrict to one fiscal_events.id}
         {--tenant= : restrict tenant iteration to one tenant id}
         {--limit=100 : maximum rows to reset}
@@ -61,7 +67,51 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
             return self::FAILURE;
         }
 
+        // An explicitly-passed EMPTY filter must never be read as "no filter".
+        // `stringOption()` maps '' to null for the whole fleet, so
+        // `--tenant=$UNSET` from a shell script silently degraded a
+        // single-tenant repair into a fleet-wide one and `--event-type=`
+        // bypassed the enum validation below (2026-08-10 fiscal gate, finding
+        // 3). Scoped to this command deliberately: `stringOption()`'s
+        // permissive contract is shared by every other tenant-scoped command.
+        foreach (self::FILTER_OPTIONS as $filterOption) {
+            if ($this->option($filterOption) === '') {
+                $this->error(sprintf(
+                    '--%s was passed with an empty value; omit the option to widen the scope.',
+                    $filterOption,
+                ));
+
+                return self::INVALID;
+            }
+        }
+
         $tenantFilter = $this->stringOption('tenant');
+        $eventTypeOption = $this->stringOption('event-type');
+        $eventType = $eventTypeOption === null ? null : FiscalEventType::tryFrom($eventTypeOption);
+        if ($eventTypeOption !== null && $eventType === null) {
+            $this->error('--event-type must be a known fiscal event type.');
+
+            return self::INVALID;
+        }
+
+        // A typo used to exit 0 having done nothing, indistinguishable from
+        // "already repaired" — and the documented recovery invocation passes
+        // `--projector` (2026-08-10 fiscal gate, finding 2). The registry is
+        // already injected, so validating both filters is free.
+        $projector = $this->stringOption('projector');
+        if ($projector !== null && $this->registry->byName($projector) === null) {
+            $this->error('--projector must be a registered fiscal projector name.');
+
+            return self::INVALID;
+        }
+
+        $eventId = $this->stringOption('event-id');
+        if ($eventId !== null && ! Str::isUuid($eventId)) {
+            $this->error('--event-id must be a UUID.');
+
+            return self::INVALID;
+        }
+
         $remaining = $limit;
         $matchedCount = 0;
 
@@ -70,8 +120,16 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
         $syncAppliedCount = 0;
         $failureCount = 0;
 
-        $exit = $this->forEachTenant(function (Tenant $tenant) use (
-            $tenantFilter,
+        // Narrowing happens in the DIRECTORY QUERY, not in the closure: a
+        // `--tenant=X` run must not probe and initialize() every other tenant
+        // first, or an unrelated tenant's outage poisons X's exit code (and
+        // costs O(fleet) database opens). See
+        // TenantScopedCommand::forEachTenantNarrowed()'s docblock; both sibling
+        // fiscal commands were converted for the same reason.
+        $exit = $this->forEachTenantNarrowed($tenantFilter, function (Tenant $tenant) use (
+            $eventType,
+            $projector,
+            $eventId,
             $minAgeMinutes,
             &$remaining,
             &$matchedCount,
@@ -80,28 +138,38 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
             &$syncAppliedCount,
             &$failureCount,
         ): int {
-            if ($tenantFilter !== null && $tenant->id !== $tenantFilter) {
-                return self::SUCCESS;
-            }
-
             if ($remaining <= 0) {
                 return self::SUCCESS;
             }
 
-            $rowIds = $this->candidateRowIds($tenant->id, $remaining, $minAgeMinutes);
-            if ($rowIds === []) {
+            $rows = $this->candidateRows($tenant->id, $remaining, $minAgeMinutes, $eventType, $projector, $eventId);
+            if ($rows === []) {
                 return self::SUCCESS;
             }
 
-            $rowCount = count($rowIds);
+            $rowCount = count($rows);
             $matchedCount += $rowCount;
             $remaining -= $rowCount;
 
             if ($this->option('dry-run') === true) {
+                foreach ($rows as $row) {
+                    $this->line(sprintf(
+                        'tenant=%s event=%s event_type=%s projector=%s status=%s attempts=%d last_error=%s',
+                        $row['tenant_id'],
+                        $row['event_id'],
+                        $row['event_type'],
+                        $row['projector_name'],
+                        $row['projection_status'],
+                        $row['attempts'],
+                        $row['last_error'] ?? '',
+                    ));
+                }
+
                 return self::SUCCESS;
             }
 
-            foreach ($rowIds as $rowId) {
+            foreach ($rows as $candidate) {
+                $rowId = $candidate['id'];
                 $wasReset = $this->connection()->transaction(function () use ($rowId): bool {
                     $row = FiscalEventProjectionRow::query()
                         ->lockForUpdate()
@@ -126,9 +194,35 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
                     $job = new ApplyFiscalEventProjectionJob($rowId);
 
                     try {
+                        // A projection that dead-letters via the
+                        // NonRetryableProjectionException branch never reaches
+                        // the catch below: the job calls deadLetterImmediately()
+                        // then InteractsWithQueue::fail(), which no-ops when
+                        // $this->job is null (never dispatched), and returns
+                        // normally. The ROW STATE is correct (DeadLettered,
+                        // visible to --dry-run and the scheduled sweep) but this
+                        // tally counts it as applied and the run exits 0. Do not
+                        // trust $syncAppliedCount alone for that branch — see
+                        // docs/superpowers/tickets/
+                        // 2026-08-10-retry-projections-sync-tally-exit-code-contract.md.
                         $job->handle($this->connection(), $this->registry);
                         $syncAppliedCount++;
                     } catch (Throwable $e) {
+                        // `--sync` runs the job OUTSIDE Horizon, so nothing else
+                        // will ever call `failed()` for this attempt. Without
+                        // this call the row is left exactly where
+                        // `resetProjectionRow()` plus the job's own
+                        // `advanceFailureAccounting()` put it — `(Pending,
+                        // attempts=1)` — which matches NEITHER `candidateRows()`
+                        // (DeadLettered OR Pending >= EXHAUSTED_ATTEMPTS) NOR the
+                        // scheduled sweep NOR any queued job. A replay that fails
+                        // again would silently disappear from every operator
+                        // inventory (2026-08-10 fiscal gate, finding 1).
+                        // `failed()` is idempotent and writes the durable
+                        // terminal state: DeadLettered + dead_lettered_at +
+                        // last_error + Log::critical.
+                        $job->failed($e);
+
                         $failureCount++;
                         $this->error(sprintf(
                             'Projection row %s threw during synchronous retry: %s',
@@ -178,10 +272,25 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
     }
 
     /**
-     * @return list<string>
+     * @return list<array{
+     *     id: string,
+     *     tenant_id: string,
+     *     event_id: string,
+     *     event_type: string,
+     *     projector_name: string,
+     *     projection_status: string,
+     *     attempts: int,
+     *     last_error: string|null
+     * }>
      */
-    private function candidateRowIds(string $tenantId, int $limit, int $minAgeMinutes): array
-    {
+    private function candidateRows(
+        string $tenantId,
+        int $limit,
+        int $minAgeMinutes,
+        ?FiscalEventType $eventType,
+        ?string $projector,
+        ?string $eventId,
+    ): array {
         $cutoff = Carbon::now('UTC')->subMinutes($minAgeMinutes);
 
         $query = $this->connection()->table('fiscal_event_projections')
@@ -198,26 +307,46 @@ final class RetryFiscalProjectionsCommand extends TenantScopedCommand
             })
             ->where('fiscal_event_projections.updated_at', '<=', $cutoff->toDateTimeString())
             ->orderBy('fiscal_event_projections.updated_at')
+            ->orderBy('fiscal_event_projections.id')
             ->limit($limit);
 
-        $projector = $this->stringOption('projector');
+        if ($eventType !== null) {
+            $query->where('fiscal_events.event_type', $eventType->value);
+        }
+
         if ($projector !== null) {
             $query->where('fiscal_event_projections.projector_name', $projector);
         }
 
-        $eventId = $this->stringOption('event-id');
         if ($eventId !== null) {
             $query->where('fiscal_event_projections.fiscal_event_id', $eventId);
         }
 
-        $rowIds = [];
+        $rows = [];
         foreach ($query
-            ->pluck('fiscal_event_projections.id')
-            ->all() as $id) {
-            $rowIds[] = (string) $id;
+            ->get([
+                'fiscal_event_projections.id',
+                'fiscal_events.tenant_id',
+                'fiscal_events.id as event_id',
+                'fiscal_events.event_type',
+                'fiscal_event_projections.projector_name',
+                'fiscal_event_projections.projection_status',
+                'fiscal_event_projections.attempts',
+                'fiscal_event_projections.last_error',
+            ]) as $row) {
+            $rows[] = [
+                'id' => (string) $row->id,
+                'tenant_id' => (string) $row->tenant_id,
+                'event_id' => (string) $row->event_id,
+                'event_type' => (string) $row->event_type,
+                'projector_name' => (string) $row->projector_name,
+                'projection_status' => (string) $row->projection_status,
+                'attempts' => (int) $row->attempts,
+                'last_error' => $row->last_error === null ? null : (string) $row->last_error,
+            ];
         }
 
-        return $rowIds;
+        return $rows;
     }
 
     private function connection(): ConnectionInterface

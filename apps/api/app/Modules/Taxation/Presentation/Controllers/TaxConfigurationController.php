@@ -6,6 +6,7 @@ namespace App\Modules\Taxation\Presentation\Controllers;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
+use App\Modules\Taxation\Application\Registries\CountryTaxConfigurationRegistry;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Taxation\Presentation\Resources\TaxConfigurationResource;
 use Illuminate\Http\JsonResponse;
@@ -13,11 +14,13 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Routing\Controller;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class TaxConfigurationController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly CountryTaxConfigurationRegistry $countryRegistry,
     ) {}
 
     /**
@@ -94,6 +97,12 @@ class TaxConfigurationController extends Controller
             'fixed_amount.regex' => 'The fixed amount must have at most 3 decimal places.',
         ]);
 
+        $this->validateDocumentTotalPolicy(
+            $company->country_code,
+            $validated['applies_to'],
+            (bool) ($validated['is_stamp_duty'] ?? false),
+        );
+
         // Auto-generate code if not provided
         if (empty($validated['code'])) {
             $validated['code'] = strtoupper(str_replace(' ', '_', $validated['name']));
@@ -132,10 +141,12 @@ class TaxConfigurationController extends Controller
             ->findOrFail($id);
 
         $validated = $request->validate([
+            'tax_type' => ['sometimes', 'string', 'in:PERCENTAGE,FIXED_AMOUNT'],
             'name' => ['sometimes', 'string', 'max:100'],
             'code' => ['nullable', 'string', 'max:50'],
             'percentage_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'fixed_amount' => ['nullable', 'numeric', 'min:0', 'regex:/^\d+(\.\d{1,3})?$/'],
+            'applies_to' => ['sometimes', 'string', 'in:LINE_ITEMS,DOCUMENT_TOTAL'],
             'sequence_order' => ['nullable', 'integer', 'min:1'],
             'stacks_on' => ['nullable', 'string', 'in:SUBTOTAL,TOTAL_INCLUDING_PREVIOUS'],
             'applicable_document_types' => ['nullable', 'array'],
@@ -151,6 +162,12 @@ class TaxConfigurationController extends Controller
             'percentage_rate.regex' => 'The percentage rate must have at most 2 decimal places.',
             'fixed_amount.regex' => 'The fixed amount must have at most 3 decimal places.',
         ]);
+
+        $this->validateDocumentTotalPolicy(
+            $company->country_code,
+            $validated['applies_to'] ?? $configuration->applies_to->value,
+            (bool) ($validated['is_stamp_duty'] ?? $configuration->is_stamp_duty),
+        );
 
         $configuration->update($validated);
 
@@ -223,5 +240,51 @@ class TaxConfigurationController extends Controller
         );
 
         return response()->json(['data' => $documentTypes]);
+    }
+
+    public function capabilities(): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+
+        return response()->json([
+            'data' => [
+                'supports_stamp_duty' => $this->countryRegistry->supportsStampDuty($company->country_code),
+            ],
+        ]);
+    }
+
+    private function validateDocumentTotalPolicy(
+        string $countryCode,
+        string $appliesTo,
+        bool $isStampDuty,
+    ): void {
+        // These messages reach the operator verbatim in a toast, so they go
+        // through the API's lang files (F-4). The convention already exists —
+        // `SetLocale` is in the api middleware stack and AuthController /
+        // ExpenseRecurrenceController resolve their messages the same way.
+        if ($isStampDuty && ! $this->countryRegistry->supportsStampDuty($countryCode)) {
+            throw ValidationException::withMessages([
+                'is_stamp_duty' => [__('taxation.stamp_duty_not_supported_for_country')],
+            ]);
+        }
+
+        if ($appliesTo === 'DOCUMENT_TOTAL' && ! $isStampDuty) {
+            throw ValidationException::withMessages([
+                'applies_to' => [__('taxation.document_total_reserved_for_stamp_duty')],
+            ]);
+        }
+
+        // The symmetric half (F-3, 2026-08-10 tenancy gate). Without it a stamp
+        // duty could be tagged LINE_ITEMS: TaxCalculationService would then
+        // write `document_tax_details.is_stamp_duty = true` on a LINE_ITEMS
+        // row, so TunisiaVatStrategy counts stamp duty as collected while
+        // `stamp_duty_amount` stays 0.000, AND EloquentVatDataRepository
+        // excludes the row from the VAT base — the exact mirror image of the
+        // brownfield hole item H closed at calculation time.
+        if ($isStampDuty && $appliesTo !== 'DOCUMENT_TOTAL') {
+            throw ValidationException::withMessages([
+                'is_stamp_duty' => [__('taxation.stamp_duty_must_apply_to_document_total')],
+            ]);
+        }
     }
 }

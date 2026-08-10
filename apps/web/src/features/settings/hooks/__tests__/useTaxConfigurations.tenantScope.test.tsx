@@ -13,6 +13,7 @@ import {
   useDocumentTypes,
   useReorderTaxConfigurations,
   useTaxConfiguration,
+  useTaxConfigurationCapabilities,
   useTaxConfigurations,
   useUpdateTaxConfiguration,
 } from '../useTaxConfigurations'
@@ -24,6 +25,7 @@ const mockUpdate = vi.hoisted(() => vi.fn())
 const mockDelete = vi.hoisted(() => vi.fn())
 const mockReorder = vi.hoisted(() => vi.fn())
 const mockGetDocumentTypes = vi.hoisted(() => vi.fn())
+const mockGetCapabilities = vi.hoisted(() => vi.fn())
 
 vi.mock('../../api/taxConfigurationApi', () => ({
   taxConfigurationApi: {
@@ -34,6 +36,7 @@ vi.mock('../../api/taxConfigurationApi', () => ({
     delete: mockDelete,
     reorder: mockReorder,
     getDocumentTypes: mockGetDocumentTypes,
+    getCapabilities: mockGetCapabilities,
   },
 }))
 
@@ -96,7 +99,7 @@ function taxConfigurationFixture(id: string): TaxConfiguration {
     fixed_amount: null,
     applies_to: 'LINE_ITEMS',
     sequence_order: 1,
-    stacks_on: 'BASE_AMOUNT',
+    stacks_on: 'SUBTOTAL',
     applicable_document_types: ['invoice'],
     is_default: false,
     is_active: true,
@@ -118,7 +121,7 @@ const createPayload: TaxConfigurationFormData = {
   tax_type: 'PERCENTAGE',
   percentage_rate: '19.000',
   applies_to: 'LINE_ITEMS',
-  stacks_on: 'BASE_AMOUNT',
+  stacks_on: 'SUBTOTAL',
   applicable_document_types: ['invoice'],
   is_active: true,
 }
@@ -134,6 +137,7 @@ beforeEach(() => {
   mockDelete.mockResolvedValue(undefined)
   mockReorder.mockResolvedValue(undefined)
   mockGetDocumentTypes.mockResolvedValue(documentTypes)
+  mockGetCapabilities.mockResolvedValue({ supports_stamp_duty: true })
 })
 
 afterEach(() => {
@@ -149,18 +153,21 @@ describe('useTaxConfigurations tenant scope', () => {
       list: useTaxConfigurations(),
       detail: useTaxConfiguration('tax-1'),
       documentTypes: useDocumentTypes(),
+      capabilities: useTaxConfigurationCapabilities(),
     }), { wrapper })
 
     await waitFor(() => {
       expect(result.current.list.isSuccess).toBe(true)
       expect(result.current.detail.isSuccess).toBe(true)
       expect(result.current.documentTypes.isSuccess).toBe(true)
+      expect(result.current.capabilities.isSuccess).toBe(true)
     })
 
     expect(cacheKeys(queryClient)).toEqual(expect.arrayContaining([
       ['tax-configurations', 'list', 'tenant-A', 'company-1'],
       ['tax-configurations', 'detail', 'tax-1', 'tenant-A', 'company-1'],
       ['tax-configurations', 'document-types', 'tenant-A', 'company-1'],
+      ['tax-configurations', 'capabilities', 'tenant-A', 'company-1'],
     ]))
   })
 
@@ -173,11 +180,13 @@ describe('useTaxConfigurations tenant scope', () => {
       list: useTaxConfigurations(),
       detail: useTaxConfiguration('tax-1'),
       documentTypes: useDocumentTypes(),
+      capabilities: useTaxConfigurationCapabilities(),
     }), { wrapper })
 
     expect(mockList).not.toHaveBeenCalled()
     expect(mockGet).not.toHaveBeenCalled()
     expect(mockGetDocumentTypes).not.toHaveBeenCalled()
+    expect(mockGetCapabilities).not.toHaveBeenCalled()
   })
 
   it('keeps mutation invalidation inside the active tenant cache (.663-.667)', async () => {

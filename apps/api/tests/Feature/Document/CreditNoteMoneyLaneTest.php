@@ -23,6 +23,7 @@ use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
@@ -642,6 +643,71 @@ class CreditNoteMoneyLaneTest extends TestCase
             bccomp((string) $invoiceAfter->json('data.balance_due'), '68.810', 3),
             'balance_due must drop by the EX-STAMP amount only (118.810 - 50.000), agreeing with the GL — got '.$invoiceAfter->json('data.balance_due')
         );
+    }
+
+    public function test_non_stamp_document_total_never_enters_credit_note_stamp_or_gl_path(): void
+    {
+        TaxConfiguration::query()
+            ->where('country_code', 'TN')
+            ->where('code', 'STAMP_CREDIT_NOTE')
+            ->update(['is_active' => false]);
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'Generic credit-note surcharge',
+            'code' => 'GENERIC_CN_TOTAL',
+            'tax_type' => 'FIXED_AMOUNT',
+            'percentage_rate' => null,
+            'fixed_amount' => '7.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'is_default' => false,
+            'is_active' => true,
+            'sequence_order' => 100,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => ['CREDIT_NOTE'],
+            'is_stamp_duty' => false,
+            'is_recoverable' => false,
+        ]);
+
+        $invoice = $this->createPostedInvoiceWithLine(
+            'INV-NON-STAMP-DOC-TOTAL',
+            qty: '1.0000',
+            unitPrice: '99.000',
+            taxRate: '19.00',
+        );
+        $create = $this->actingAs($this->user)->postJson('/api/v1/credit-notes', [
+            'source_invoice_id' => $invoice->id,
+            'amount' => '50.000',
+            'reason' => 'return',
+        ]);
+        $create->assertCreated();
+        $creditNoteId = (string) $create->json('data.id');
+
+        $this->assertSame('50.000', $create->json('data.total'));
+        $this->assertSame('0.000', (string) Document::findOrFail($creditNoteId)->stamp_duty_amount);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/credit-notes/{$creditNoteId}/confirm")
+            ->assertOk()
+            ->assertJsonPath('data.total', '50.000');
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/credit-notes/{$creditNoteId}/post")
+            ->assertOk()
+            ->assertJsonPath('data.total', '50.000');
+
+        $creditNote = Document::findOrFail($creditNoteId);
+        $this->assertSame('0.000', (string) $creditNote->stamp_duty_amount);
+        $entry = JournalEntry::query()
+            ->where('source_type', 'Document')
+            ->where('source_id', $creditNoteId)
+            ->with('lines.account')
+            ->firstOrFail();
+        $stampPurposes = [
+            SystemAccountPurpose::PurchaseStampDuty,
+            SystemAccountPurpose::SalesStampDutyPayable,
+        ];
+        $this->assertFalse($entry->lines->contains(
+            static fn (JournalLine $line): bool => in_array($line->account->system_purpose, $stampPurposes, true),
+        ));
     }
 
     /**

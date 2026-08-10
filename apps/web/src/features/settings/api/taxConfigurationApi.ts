@@ -3,6 +3,7 @@ import type {
   TaxConfiguration,
   TaxConfigurationFormData,
   DocumentType,
+  TaxConfigurationCapabilities,
 } from '../types/tax'
 
 export const taxConfigurationApi = {
@@ -26,4 +27,7 @@ export const taxConfigurationApi = {
 
   getDocumentTypes: () =>
     apiGet<DocumentType[]>('/taxation/configurations/document-types'),
+
+  getCapabilities: () =>
+    apiGet<TaxConfigurationCapabilities>('/taxation/configurations/capabilities'),
 }

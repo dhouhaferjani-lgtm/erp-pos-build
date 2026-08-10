@@ -6,6 +6,7 @@ import {
   useCreateTaxConfiguration,
   useUpdateTaxConfiguration,
   useDocumentTypes,
+  useTaxConfigurationCapabilities,
 } from '../../../hooks/useTaxConfigurations'
 import type { TaxConfiguration, TaxConfigurationFormData, TaxType, TaxApplicationLevel } from '../../../features/settings/types/tax'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -31,13 +32,31 @@ const getDocumentTypeTranslationKey = (value: string): string => {
   return mapping[value] ?? value.toLowerCase()
 }
 
+/**
+ * Which explanation sits under the stamp-duty checkbox.
+ *
+ * A failed capability fetch is NOT the same statement as "this country does not
+ * support stamp duty" — telling a TN admin their country is unsupported because
+ * a request failed is a wrong answer, not a cautious one (F-6). All three states
+ * fail closed; only the wording differs.
+ */
+const stampDutyHintKey = (
+  isError: boolean,
+  isLoading: boolean,
+  supportsStampDuty: boolean,
+): string => {
+  if (isError) return 'settings:tax.configurations.form.stampDutyCapabilityUnavailable'
+  if (!isLoading && !supportsStampDuty) return 'settings:tax.configurations.form.stampDutyUnavailable'
+  return 'settings:tax.configurations.form.stampDutyHelp'
+}
+
 const defaultFormData: TaxConfigurationFormData = {
   name: '',
   code: '',
   tax_type: 'PERCENTAGE',
   percentage_rate: '',
   applies_to: 'LINE_ITEMS',
-  stacks_on: 'BASE_AMOUNT',
+  stacks_on: 'SUBTOTAL',
   applicable_document_types: [],
   is_active: true,
   is_recoverable: true,
@@ -49,8 +68,14 @@ const defaultFormData: TaxConfigurationFormData = {
 export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: TaxConfigFormModalProps) {
   const { t } = useTranslation(['settings', 'common', 'sales'])
   const { data: documentTypes = [] } = useDocumentTypes()
+  const {
+    data: capabilities,
+    isLoading: isLoadingCapabilities,
+    isError: capabilitiesUnavailable,
+  } = useTaxConfigurationCapabilities()
   const createTax = useCreateTaxConfiguration()
   const updateTax = useUpdateTaxConfiguration()
+  const supportsStampDuty = capabilities?.supports_stamp_duty === true
 
   const initialFormData = useMemo((): TaxConfigurationFormData => {
     if (editingTax) {
@@ -175,7 +200,12 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
               className={`block w-full rounded-md ${colorTokens.border.default} shadow-sm ${colorTokens.focus.primaryBorder} ${colorTokens.focus.primaryRing} sm:text-sm`}
             >
               <option value="LINE_ITEMS">{t('settings:tax.configurations.form.appliesToLineItems')}</option>
-              <option value="DOCUMENT_TOTAL">{t('settings:tax.configurations.form.appliesToDocument')}</option>
+              <option
+                value="DOCUMENT_TOTAL"
+                disabled={!supportsStampDuty || !(taxFormData.is_stamp_duty ?? false)}
+              >
+                {t('settings:tax.configurations.form.appliesToDocument')}
+              </option>
             </select>
           </div>
           <div>
@@ -260,13 +290,23 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
               <input
                 type="checkbox"
                 checked={taxFormData.is_stamp_duty ?? false}
-                onChange={(e) => { handleTaxFormChange('is_stamp_duty', e.target.checked); }}
+                disabled={!supportsStampDuty}
+                onChange={(e) => {
+                  const isStampDuty = e.target.checked
+                  setTaxFormData(prev => ({
+                    ...prev,
+                    is_stamp_duty: isStampDuty,
+                    ...(!isStampDuty && prev.applies_to === 'DOCUMENT_TOTAL'
+                      ? { applies_to: 'LINE_ITEMS' as const }
+                      : {}),
+                  }))
+                }}
                 className={`h-4 w-4 ${colorTokens.intent.primary.text} ${colorTokens.focus.primaryRing} ${colorTokens.border.default} rounded`}
               />
               <span className={`ms-2 text-sm ${colorTokens.text.secondary}`}>{t('settings:tax.configurations.form.stampDuty')}</span>
             </label>
             <p className={`text-xs ${colorTokens.text.subtle} mt-1 ms-6`}>
-              {t('settings:tax.configurations.form.stampDutyHelp')}
+              {t(stampDutyHintKey(capabilitiesUnavailable, isLoadingCapabilities, supportsStampDuty))}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4">

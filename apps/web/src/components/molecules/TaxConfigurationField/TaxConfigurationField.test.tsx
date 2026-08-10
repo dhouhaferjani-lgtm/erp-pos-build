@@ -18,7 +18,7 @@ vi.mock('../../../hooks/useTaxConfigurations', () => ({
         country_code: 'TN',
         code: 'TVA19',
         sequence_order: 1,
-        stacks_on: 'BASE_AMOUNT',
+        stacks_on: 'SUBTOTAL',
         is_stamp_duty: false,
         is_recoverable: true,
         created_at: '',

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Taxation;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -16,6 +17,7 @@ use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 use Tests\Traits\WithCurrencyScale;
 
@@ -601,6 +603,160 @@ class TaxCalculationServiceTest extends TestCase
         // Gate probe: pre-fix delta was +0.001 (base=1.498 vs subtotal
         // 1.497). Post-fix the declared base ties to the subtotal exactly.
         $this->assertSame('1.497', $result->taxes[0]->base);
+    }
+
+    /**
+     * Scope note (H2, 2026-08-10 fiscal gate finding 10): this test guards the
+     * H exclusion happening BEFORE the total is sealed — i.e. that a brownfield
+     * non-stamp DOCUMENT_TOTAL row cannot move `total`, and therefore cannot
+     * move the bytes any seal is computed over. It is NOT a guard against
+     * production seal-serialization drift: the payload here is hand-rolled
+     * against a locally constructed `FiscalHashService`, not the production
+     * sealing call site, and the `posted_at` literal below uses the
+     * `2026-08-10T00:00:00Z` form where production writes a `toDateString()`
+     * value. Changing the production seal payload will NOT fail this test.
+     */
+    public function test_non_stamp_document_total_rows_cannot_change_tn_stamp_totals_or_hash_input_bytes(): void
+    {
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => PartnerType::Customer,
+            'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'Timbre fiscal',
+            'code' => 'STAMP_BYTES',
+            'tax_type' => 'FIXED_AMOUNT',
+            'fixed_amount' => '1.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'sequence_order' => 90,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_stamp_duty' => true,
+        ]);
+        $document = Document::factory()->create([
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-H-BYTES',
+            'currency' => 'TND',
+        ]);
+        DocumentLine::create([
+            'document_id' => $document->id,
+            'line_number' => 1,
+            'description' => 'Byte-stable item',
+            'quantity' => '1',
+            'unit_price' => '100.000',
+            'tax_rate' => '0',
+            'line_total' => '100.000',
+        ]);
+        $document->load('lines');
+
+        $baseline = $this->service->calculateDocumentTaxes($document);
+        $hashService = new FiscalHashService;
+        $baselineBytes = $hashService->serializeForHashing([
+            'document_number' => $document->document_number,
+            'posted_at' => '2026-08-10T00:00:00Z',
+            'total' => $baseline->total,
+            'currency' => $document->currency,
+        ]);
+
+        TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'Generic document surcharge',
+            'code' => 'GEN_DOC_TOTAL_BYTES',
+            'tax_type' => 'FIXED_AMOUNT',
+            'fixed_amount' => '7.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'sequence_order' => 91,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_stamp_duty' => false,
+        ]);
+
+        $withInvalidBrownfieldRow = $this->service->calculateDocumentTaxes($document);
+        $withInvalidRowBytes = $hashService->serializeForHashing([
+            'document_number' => $document->document_number,
+            'posted_at' => '2026-08-10T00:00:00Z',
+            'total' => $withInvalidBrownfieldRow->total,
+            'currency' => $document->currency,
+        ]);
+
+        $this->assertSame('1.000', $baseline->documentTaxTotal);
+        $this->assertSame('101.000', $baseline->total);
+        $this->assertSame('INV-H-BYTES|2026-08-10T00:00:00Z|101.000|TND', $baselineBytes);
+        $this->assertSame($baseline->toArray(), $withInvalidBrownfieldRow->toArray());
+        $this->assertSame($baselineBytes, $withInvalidRowBytes);
+    }
+
+    /**
+     * The exclusion is correct but must never be silent (H1, 2026-08-10 fiscal
+     * gate finding 9). The row is ACTIVE and matched this document's type and
+     * date, so an operator expects it to charge; without a signal it simply
+     * calculates to nothing. The HTTP surface now refuses to create such a row,
+     * so this is the brownfield path (seeder / import / raw SQL) only.
+     */
+    public function test_skipping_a_non_stamp_document_total_row_is_logged_with_context(): void
+    {
+        Log::spy();
+
+        $partner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => PartnerType::Customer,
+            'tax_status' => PartnerTaxStatus::REGISTERED,
+        ]);
+        $brownfieldRow = TaxConfiguration::create([
+            'country_code' => 'TN',
+            'name' => 'Generic document surcharge',
+            'code' => 'GEN_DOC_TOTAL_LOGGED',
+            'tax_type' => 'FIXED_AMOUNT',
+            'fixed_amount' => '7.000',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'sequence_order' => 92,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_stamp_duty' => false,
+        ]);
+        $document = Document::factory()->create([
+            'company_id' => $this->company->id,
+            'partner_id' => $partner->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-H-LOGGED',
+            'currency' => 'TND',
+        ]);
+        DocumentLine::create([
+            'document_id' => $document->id,
+            'line_number' => 1,
+            'description' => 'Item',
+            'quantity' => '1',
+            'unit_price' => '100.000',
+            'tax_rate' => '0',
+            'line_total' => '100.000',
+        ]);
+        $document->load('lines');
+
+        $result = $this->service->calculateDocumentTaxes($document);
+
+        // The money behaviour is unchanged: the row still contributes nothing.
+        $this->assertSame('0', $result->documentTaxTotal);
+        $this->assertSame('100.000', $result->total);
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->withArgs(function (string $message, array $context) use ($brownfieldRow, $document): bool {
+                return str_contains($message, 'non-stamp DOCUMENT_TOTAL')
+                    && $context['tax_configuration_id'] === $brownfieldRow->id
+                    && $context['tax_configuration_code'] === 'GEN_DOC_TOTAL_LOGGED'
+                    && $context['country_code'] === 'TN'
+                    && $context['company_id'] === $this->company->id
+                    && $context['document_id'] === $document->id;
+            });
     }
 
     /** @test */

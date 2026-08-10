@@ -5,5 +5,6 @@ export {
   useCreateTaxConfiguration,
   useUpdateTaxConfiguration,
   useDocumentTypes,
+  useTaxConfigurationCapabilities,
   taxConfigurationKeys,
 } from '../features/settings/hooks/useTaxConfigurations'
