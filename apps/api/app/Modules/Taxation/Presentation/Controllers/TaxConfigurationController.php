@@ -258,15 +258,32 @@ class TaxConfigurationController extends Controller
         string $appliesTo,
         bool $isStampDuty,
     ): void {
+        // These messages reach the operator verbatim in a toast, so they go
+        // through the API's lang files (F-4). The convention already exists —
+        // `SetLocale` is in the api middleware stack and AuthController /
+        // ExpenseRecurrenceController resolve their messages the same way.
         if ($isStampDuty && ! $this->countryRegistry->supportsStampDuty($countryCode)) {
             throw ValidationException::withMessages([
-                'is_stamp_duty' => ['Stamp duty is not supported for this company country.'],
+                'is_stamp_duty' => [__('taxation.stamp_duty_not_supported_for_country')],
             ]);
         }
 
         if ($appliesTo === 'DOCUMENT_TOTAL' && ! $isStampDuty) {
             throw ValidationException::withMessages([
-                'applies_to' => ['DOCUMENT_TOTAL is reserved for supported stamp-duty configurations.'],
+                'applies_to' => [__('taxation.document_total_reserved_for_stamp_duty')],
+            ]);
+        }
+
+        // The symmetric half (F-3, 2026-08-10 tenancy gate). Without it a stamp
+        // duty could be tagged LINE_ITEMS: TaxCalculationService would then
+        // write `document_tax_details.is_stamp_duty = true` on a LINE_ITEMS
+        // row, so TunisiaVatStrategy counts stamp duty as collected while
+        // `stamp_duty_amount` stays 0.000, AND EloquentVatDataRepository
+        // excludes the row from the VAT base — the exact mirror image of the
+        // brownfield hole item H closed at calculation time.
+        if ($isStampDuty && $appliesTo !== 'DOCUMENT_TOTAL') {
+            throw ValidationException::withMessages([
+                'is_stamp_duty' => [__('taxation.stamp_duty_must_apply_to_document_total')],
             ]);
         }
     }

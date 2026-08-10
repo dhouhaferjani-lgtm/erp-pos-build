@@ -226,6 +226,112 @@ class TaxConfigurationManagementTest extends TestCase
         $this->assertSame('LINE_ITEMS', $configuration->refresh()->applies_to->value);
     }
 
+    /**
+     * F-3 closure (2026-08-10 tenancy gate). The DOCUMENT_TOTAL => stamp rule
+     * was one-directional, so a TN `is_stamp_duty=true` row tagged LINE_ITEMS
+     * was accepted — the mirror image of item H. Such a row writes
+     * `document_tax_details.is_stamp_duty=true`, which makes TunisiaVatStrategy
+     * count stamp duty as collected while `stamp_duty_amount` stays 0.000 AND
+     * excludes the row from the VAT base. Both directions must hold.
+     */
+    public function test_stamp_duty_must_be_applied_at_the_document_total(): void
+    {
+        $user = $this->userWith(['taxation.tax_configurations.manage']);
+        Sanctum::actingAs($user);
+
+        $this->withHeaders(['X-Company-ID' => $this->company->id])
+            ->postJson('/api/v1/taxation/configurations', $this->payload([
+                'code' => 'TN_STAMP_ON_LINES',
+                'applies_to' => 'LINE_ITEMS',
+                'is_stamp_duty' => true,
+            ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('is_stamp_duty', 'error.errors');
+
+        $this->assertNull(TaxConfiguration::where('code', 'TN_STAMP_ON_LINES')->first());
+    }
+
+    /**
+     * The update path must evaluate the MERGED state: a partial PATCH carrying
+     * only `is_stamp_duty` still has to read `applies_to` off the persisted row
+     * (F-3 + F-8, the `?? $configuration->…` fallback branches).
+     */
+    public function test_partial_update_cannot_flip_a_line_item_tax_into_a_stamp_duty(): void
+    {
+        $user = $this->userWith(['taxation.tax_configurations.manage']);
+        Sanctum::actingAs($user);
+
+        $configuration = $this->createLineConfiguration('TN', 'TN_LINE_TO_STAMP');
+
+        $this->withHeaders(['X-Company-ID' => $this->company->id])
+            ->patchJson('/api/v1/taxation/configurations/'.$configuration->id, [
+                'is_stamp_duty' => true,
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('is_stamp_duty', 'error.errors');
+
+        $this->assertFalse($configuration->refresh()->is_stamp_duty);
+        $this->assertSame('LINE_ITEMS', $configuration->applies_to->value);
+    }
+
+    /**
+     * F-8: the mirrored fallback. A PATCH carrying only `applies_to` must read
+     * `is_stamp_duty` off the persisted row — proven here on a row that IS a
+     * stamp duty, so moving it to LINE_ITEMS is the violation.
+     */
+    public function test_partial_update_cannot_move_a_stamp_duty_off_the_document_total(): void
+    {
+        $user = $this->userWith(['taxation.tax_configurations.manage']);
+        Sanctum::actingAs($user);
+
+        $configuration = TaxConfiguration::create([
+            'country_code' => 'TN',
+            'tax_type' => 'FIXED_AMOUNT',
+            'name' => 'TN_STAMP_ROW',
+            'code' => 'TN_STAMP_ROW',
+            'fixed_amount' => '0.600',
+            'applies_to' => 'DOCUMENT_TOTAL',
+            'sequence_order' => 9,
+            'stacks_on' => 'SUBTOTAL',
+            'applicable_document_types' => [],
+            'is_active' => true,
+            'is_recoverable' => false,
+            'is_stamp_duty' => true,
+            'is_default' => false,
+        ]);
+
+        $this->withHeaders(['X-Company-ID' => $this->company->id])
+            ->patchJson('/api/v1/taxation/configurations/'.$configuration->id, [
+                'applies_to' => 'LINE_ITEMS',
+            ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('is_stamp_duty', 'error.errors');
+
+        $this->assertSame('DOCUMENT_TOTAL', $configuration->refresh()->applies_to->value);
+        $this->assertTrue($configuration->is_stamp_duty);
+    }
+
+    /**
+     * F-8: a partial PATCH that touches NEITHER guarded field must still pass —
+     * the merged-state read must not manufacture a rejection for an untouched
+     * brownfield-legal row.
+     */
+    public function test_partial_update_of_an_unrelated_field_still_succeeds(): void
+    {
+        $user = $this->userWith(['taxation.tax_configurations.manage']);
+        Sanctum::actingAs($user);
+
+        $configuration = $this->createLineConfiguration('TN', 'TN_RENAME_ME');
+
+        $this->withHeaders(['X-Company-ID' => $this->company->id])
+            ->patchJson('/api/v1/taxation/configurations/'.$configuration->id, [
+                'name' => 'Renamed line tax',
+            ])
+            ->assertOk();
+
+        $this->assertSame('Renamed line tax', $configuration->refresh()->name);
+    }
+
     private function createFrenchCompany(User $user): Company
     {
         $company = Company::create([
