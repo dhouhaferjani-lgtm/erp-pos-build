@@ -427,17 +427,41 @@ final class RefundResidualTenantIsolationTest extends TestCase
 
     public function test_document_posting_service_uses_scoped_product_lookup(): void
     {
-        $source = $this->readSource('app/Modules/Document/Domain/Services/DocumentPostingService.php');
-        $this->assertStringContainsString('api.document.010', $source);
+        // DPA Wave 3 · the enforcement point MOVED TWICE and this guard follows
+        // it both times rather than weakening.
+        //
+        //  T4 / D-19 (3A/3B): the product lookup left
+        //    `DocumentPostingService::validateDeliveryCompliance()` for the ONE
+        //    physical predicate, so the invariant became "the caller hands the
+        //    predicate BOTH scope ids" + "the predicate scopes on BOTH".
+        //  T25f (3E) + the P2-3 hard gate (the 3A/3B × 3E merge): the whole
+        //    physical-line traversal left `DocumentPostingService` for
+        //    `DeliveryComplianceGate`, which `validateDeliveryCompliance()` now
+        //    simply asks. `DocumentPostingService` therefore no longer performs
+        //    or scopes a product lookup at all — asserting on it would pin a
+        //    line that does not exist. The gate is the enforcement point, and it
+        //    is where api.document.010 has to hold.
+        $gate = $this->readSource('app/Modules/Document/Domain/Services/DeliveryComplianceGate.php');
+        $this->assertStringContainsString('api.document.010', $gate);
 
-        // DPA Wave 3 T4 / D-19: the lookup itself moved into the ONE physical
-        // predicate, so the invariant is now enforced in TWO places and this
-        // guard follows it rather than weakening. DocumentPostingService must
-        // still pass BOTH scope ids…
         $this->assertMatchesRegularExpression(
-            '/PhysicalLinePredicate::forLine\(\s*\$line,\s*\$invoice->tenant_id,\s*\$invoice->company_id\s*\)/',
-            $source,
-            'validateDeliveryCompliance must hand the predicate BOTH tenant_id and company_id (api.document.010).',
+            '/PhysicalLinePredicate::forLine\(\s*\$line,\s*\$document->tenant_id,\s*\$document->company_id\s*\)/',
+            $gate,
+            'DeliveryComplianceGate::hasPhysicalLines() must hand the predicate BOTH tenant_id and company_id (api.document.010).',
+        );
+
+        // …and `DocumentPostingService` must not have quietly grown a second,
+        // unscoped traversal back: it may reach the answer only through the gate.
+        $posting = $this->readSource('app/Modules/Document/Domain/Services/DocumentPostingService.php');
+        $this->assertStringNotContainsString(
+            'Product::query()',
+            $posting,
+            'DocumentPostingService must ask DeliveryComplianceGate, not re-derive a product lookup.',
+        );
+        $this->assertStringContainsString(
+            'deliveryComplianceGate->evaluate(',
+            $posting,
+            'validateDeliveryCompliance must delegate to the gate.',
         );
 
         // …and the predicate must still scope on BOTH.

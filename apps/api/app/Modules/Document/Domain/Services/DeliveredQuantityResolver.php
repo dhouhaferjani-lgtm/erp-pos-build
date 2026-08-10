@@ -310,11 +310,67 @@ final class DeliveredQuantityResolver
     }
 
     /**
-     * The confirmed delivery notes backing this invoice, through BOTH linkage shapes.
+     * TRUE when goods were EVER issued against this invoice — delivery HAPPENED,
+     * regardless of what has since come back.
      *
-     * @return list<Document>
+     * ── WHY THIS IS NOT {@see hasGoodsIssued()} (Wave 3 D-29, fiscal gate N-5) ──
+     * `hasGoodsIssued()` answers *"are units still OUT?"* — it nets prior returns,
+     * deliberately, because it gates the guided cancel's restock options and an
+     * invoice whose every delivered unit has already come back has nothing left to
+     * restock. That makes it a **restock-capacity** predicate.
+     *
+     * The pre-delivery invoicing policy (D-18′) asks a different question:
+     * *"did delivery precede this invoice?"* Using the restock predicate there
+     * would refuse, on the fiscal posting chokepoint, an invoice that WAS
+     * legitimately delivered and then fully returned — a compliant document,
+     * blocked forever, because a return happened afterwards.
+     *
+     * So this is a SIBLING, not a widening: `hasGoodsIssued()` keeps its exact
+     * semantics because the over-return cap depends on them. Both live on this
+     * resolver, so the one-traversal rule (D-17) survives — they share
+     * {@see confirmedDeliveryNotesFor()}.
+     *
+     * Compliance predicate. NOT a restock-capacity predicate.
      */
-    private function confirmedDeliveryNotesFor(Document $invoice): array
+    public function hasEverIssuedGoods(Document $invoice): bool
+    {
+        foreach ($this->confirmedDeliveryNotesFor($invoice) as $deliveryNote) {
+            foreach ($deliveryNote->lines as $line) {
+                if ($line->product_id === null) {
+                    continue;
+                }
+
+                // `DeliveryNoteService::confirm()` writes `quantity_delivered = quantity`
+                // on every line at the same moment it issues stock (`:113-118`), so this
+                // is the recorded fact of issuance, not a restatement of the order.
+                $delivered = (string) ($line->quantity_delivered ?? '0');
+
+                if (bccomp($delivered, '0', self::QUANTITY_SCALE) > 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The ids of EVERY delivery note linked to this invoice, through both linkage
+     * shapes and **regardless of status** — drafts included.
+     *
+     * {@see confirmedDeliveryNotesFor()} filters to Confirmed because everything
+     * that counts delivered units must fail closed. The delivery-compliance gate
+     * needs the unfiltered set as well: a linked DRAFT delivery note is precisely
+     * what the guided "confirm & post" modal offers to confirm, and a gate that
+     * could not see it would report "nothing delivered" for an invoice one click
+     * away from compliance.
+     *
+     * ONE traversal, two filters — the ids are derived here and nowhere else
+     * (D-17: a copied traversal is how the two drift and the drift restocks twice).
+     *
+     * @return list<string>
+     */
+    public function linkedDeliveryNoteIdsFor(Document $invoice): array
     {
         $payload = $invoice->payload ?? [];
 
@@ -343,7 +399,21 @@ final class DeliveredQuantityResolver
             }
         }
 
-        $ids = array_values(array_unique($ids));
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * The confirmed delivery notes backing this invoice, through BOTH linkage shapes.
+     *
+     * PUBLIC since Wave 3 T25f (inv gate N-5): the delivery-compliance gate and the
+     * COGS-basis attribution both consume this set by name. Re-deriving the
+     * traversal at a call site is the third origin D-17 forbids.
+     *
+     * @return list<Document>
+     */
+    public function confirmedDeliveryNotesFor(Document $invoice): array
+    {
+        $ids = $this->linkedDeliveryNoteIdsFor($invoice);
 
         if ($ids === []) {
             return [];

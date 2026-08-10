@@ -9,6 +9,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Document\Domain\Services\SalesOrderService;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
@@ -333,8 +334,117 @@ final class PhysicalLinePredicateTest extends TestCase
     }
 
     // =================================================================
+    // gate-w3ab fiscal P2-3 — the DELIVERY-COMPLIANCE GATE asks this predicate
+    // =================================================================
+
+    /**
+     * 3A/3B × 3E merge · gate-w3ab fiscal **P2-3 hard gate**.
+     *
+     * `DeliveryComplianceGate::hasPhysicalLines()` is the chokepoint the whole
+     * delivery requirement hangs off: `evaluate()` returns `compliant()` outright
+     * when it answers false, so a wrong answer here is not a wrong message — it is
+     * an invoice for undelivered goods posting to the fiscal chain unchallenged.
+     *
+     * The gate arrived on the 3E branch carrying a VERBATIM RE-INLINE of the
+     * predicate's body (`$product === null || ! $product->is_physical`), because
+     * `PhysicalLinePredicate` did not exist there; 3A/3B meanwhile adopted the
+     * predicate at the two invoice-side sites 3E deleted. Both branches were green
+     * in isolation and neither test suite could see the collision: whichever
+     * merged second silently restored the two-authorities condition D-19 exists to
+     * remove. Green-on-both-branches does not protect against that — only a test
+     * that drives the GATE through the predicate's own populations does.
+     *
+     * So this case asks the gate, not the predicate, and pins the property the
+     * re-inline could lose in either direction:
+     *
+     *  - the three populations (physical / non-physical product / product-less);
+     *  - the `api.document.010` scope — a line pointing at a SIBLING COMPANY's
+     *    physical product must not make the gate see physical goods. Dropping the
+     *    scope arguments from the adopted call falls back to the unscoped
+     *    `$line->product` relation and turns this red.
+     */
+    public function test_the_delivery_compliance_gate_answers_through_the_shared_predicate(): void
+    {
+        $gate = $this->app->make(DeliveryComplianceGate::class);
+
+        $physical = $this->physicalProduct(costPrice: '50.000000');
+        $nonPhysical = $this->nonPhysicalProduct();
+
+        // ── 1. a physical line ⇒ the gate sees goods.
+        $withPhysical = $this->draftDocument(DocumentType::Invoice, $physical, '1.0000', 'INV-GATE-P');
+        self::assertTrue($gate->hasPhysicalLines($this->withLines($withPhysical)));
+
+        // ── 2. non-physical product line + pure service line ⇒ it does not.
+        $withoutPhysical = $this->draftDocument(DocumentType::Invoice, $nonPhysical, '1.0000', 'INV-GATE-N');
+        $this->addLine($withoutPhysical, productId: null, serviceId: $this->service()->id);
+        self::assertFalse($gate->hasPhysicalLines($this->withLines($withoutPhysical)));
+
+        // ── 3. a SIBLING COMPANY's physical product, referenced from this
+        // company's invoice. The predicate's scoped form refuses it; the gate
+        // must refuse it identically, or a forged `product_id` steers the
+        // enforcement point.
+        /** @var Company $foreignCompany */
+        $foreignCompany = CompanyFactory::new()->create(['tenant_id' => $this->tenantId]);
+        $foreignProduct = Product::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $foreignCompany->id,
+            'sku' => 'GATE-FOREIGN-'.Str::upper(Str::random(6)),
+            'name' => 'Sibling-company Widget',
+            'type' => ProductType::Part,
+            'unit' => 'piece',
+            'cost_price' => '50.000000',
+            'sale_price' => '100.00',
+            'tax_rate' => 0,
+            'is_active' => true,
+            'is_physical' => true,
+        ]);
+
+        $withForeign = $this->draftDocument(DocumentType::Invoice, $nonPhysical, '1.0000', 'INV-GATE-F');
+        $foreignLine = $this->addLine($withForeign, productId: $foreignProduct->id, serviceId: null);
+
+        self::assertFalse(
+            PhysicalLinePredicate::forLine($this->reload($foreignLine), $this->tenantId, $this->companyId),
+            'precondition: the predicate refuses a sibling company\'s product',
+        );
+        self::assertFalse(
+            $gate->hasPhysicalLines($this->withLines($withForeign)),
+            'the gate resolved a product belonging to a sibling company — api.document.010 lost',
+        );
+
+        // ── 4. and line-for-line, the gate agrees with the predicate on every
+        // document above. A body that diverges from `forLine()` in ANY population
+        // fails here even if it happens to agree on the aggregate.
+        foreach ([$withPhysical, $withoutPhysical, $withForeign] as $document) {
+            $loaded = $this->withLines($document);
+
+            $viaPredicate = $loaded->lines->contains(
+                fn (DocumentLine $line): bool => PhysicalLinePredicate::forLine(
+                    $line,
+                    $loaded->tenant_id,
+                    $loaded->company_id,
+                ),
+            );
+
+            self::assertSame(
+                $viaPredicate,
+                $gate->hasPhysicalLines($loaded),
+                sprintf('gate and predicate disagree on %s', (string) $document->document_number),
+            );
+        }
+    }
+
+    // =================================================================
     // Helpers
     // =================================================================
+
+    private function withLines(Document $document): Document
+    {
+        /** @var Document $fresh */
+        $fresh = $document->fresh(['lines']);
+
+        return $fresh;
+    }
 
     private function reload(DocumentLine $line): DocumentLine
     {

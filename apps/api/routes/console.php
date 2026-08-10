@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Accounting\Presentation\Console\CheckCogsCoverageCommand;
 use App\Modules\Accounting\Presentation\Console\CheckSubledgerReconciliationCommand;
 use App\Modules\Scheduling\Infrastructure\Commands\ScheduleAppointmentReminders;
 use App\Modules\Workshop\Technician\Infrastructure\Commands\CheckExpiringCertifications;
@@ -242,3 +243,21 @@ Schedule::command(CheckExpiringCertifications::class)
 Schedule::command(ScheduleAppointmentReminders::class)
     ->hourly()
     ->withoutOverlapping();
+
+// Schedule: DPA Wave 3 T23 / D-26 — lane-separation detector, daily at 2:45 AM.
+//
+// Reports documents where the goods lane and the money lane disagree:
+// invoiced-with-no-delivery (D-c), delivered-with-no-invoice (D-d), and goods
+// lines that produced no stock movement at all (D-f). It repairs nothing.
+//
+// Run IN-PROCESS, deliberately. The neighbouring `check-subledger-reconciliation`
+// entry above uses runInBackground() and is the ANTI-pattern, not the template:
+// runInBackground() forks a detached process whose exit code the scheduler does
+// not observe, so ->onFailure() would silently never fire and every finding
+// would exist only in the log, unread.
+Schedule::command(CheckCogsCoverageCommand::class)
+    ->dailyAt('02:45')
+    ->withoutOverlapping()
+    ->onFailure(function (): void {
+        Log::error('accounting:check-cogs-coverage exited non-zero — one or more companies have documents where the goods lane and the money lane disagree, or one or more tenants failed the scan. Findings are in the application log under [D-c] (posted goods invoice with no delivery behind it — after the pre-delivery invoicing policy took effect this should only ever contain LEGACY documents, each row carrying policy_at_post_time; a row stamped with a live policy means an unguarded posting path exists), [D-d] (confirmed delivery note with no invoice — feeds the 418 year-end accrual) and [D-f] (a goods line that produced no stock movement at all, so it will carry revenue and no COGS). Per-tenant failures are under the TenantScopedCommand::forEachTenant failure entry.');
+    });

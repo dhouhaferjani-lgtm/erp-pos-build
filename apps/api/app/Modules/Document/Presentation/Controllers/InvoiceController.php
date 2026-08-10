@@ -11,10 +11,16 @@ use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DeliveryComplianceCode;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
+use App\Modules\Document\Domain\Exceptions\GuidedDeliveryCannotBeGeneratedException;
+use App\Modules\Document\Domain\Exceptions\GuidedDeliveryNoLongerApplicableException;
+use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
+use App\Modules\Document\Domain\Services\DeliveryNoteFromDocumentFactory;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
@@ -22,7 +28,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
-use App\Modules\Inventory\Domain\PhysicalLinePredicate;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
@@ -72,6 +78,8 @@ class InvoiceController extends Controller
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CloseInvoiceWithToleranceService $closeInvoiceWithToleranceService,
         private readonly DocumentLineTaxResolver $lineTaxResolver,
+        private readonly DeliveryComplianceGate $deliveryComplianceGate,
+        private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
     ) {}
 
     private function scale(): int
@@ -658,24 +666,56 @@ class InvoiceController extends Controller
             );
         }
 
-        // Tunisia fiscal compliance: Check if physical products have been delivered
-        $hasPhysicalProducts = $this->invoiceHasPhysicalProducts($documentModel);
-        if ($hasPhysicalProducts) {
-            $deliveryCheckResult = $this->checkDeliveryNotesDelivered($documentModel);
-            if ($deliveryCheckResult !== null) {
-                // Return structured error with draft DN details for frontend modal
-                return response()->json([
-                    'error' => [
-                        'code' => 'DELIVERY_NOT_COMPLETED',
-                        'message' => $deliveryCheckResult['message'],
-                        'details' => [
-                            'status' => $deliveryCheckResult['status'],
-                            'draft_dns' => $deliveryCheckResult['draft_dns'] ?? [],
-                            'can_auto_confirm' => $deliveryCheckResult['can_auto_confirm'] ?? false,
-                        ],
+        // Delivery compliance. 🔁 Wave 3 T25f: this used to be a SECOND
+        // implementation of the rule (`checkDeliveryNotesDelivered()`, deleted),
+        // walking the source order's payload by hand and therefore blind to
+        // DN → invoice-converted invoices. It now asks the same gate the posting
+        // service asks, so the guided modal and the refusal cannot disagree.
+        $deliveryStatus = $this->deliveryComplianceGate->evaluate($documentModel);
+
+        // 🆕 T25b — the COMPLIANCE refusal gets its own machine code and its own
+        // payload. It is not "your delivery notes are in the wrong state"; it is
+        // "this jurisdiction does not permit this document to exist yet", and the
+        // guided flow it points at CREATES a delivery note rather than confirming
+        // one. Collapsing it into DELIVERY_NOT_COMPLETED would send the frontend
+        // to a modal that has nothing to confirm.
+        if ($deliveryStatus->code === DeliveryComplianceCode::DeliveryRequiredBeforeInvoice
+            && $deliveryStatus->resolvedPolicy !== null) {
+            return response()->json([
+                'error' => [
+                    'code' => DeliveryComplianceCode::DeliveryRequiredBeforeInvoice->value,
+                    'message' => $deliveryStatus->message,
+                    'details' => (new DeliveryRequiredBeforeInvoiceException(
+                        policy: $deliveryStatus->resolvedPolicy->policy->value,
+                        policySource: $deliveryStatus->resolvedPolicy->source,
+                        draftDeliveryNotes: $deliveryStatus->draftDeliveryNotes,
+                        canAutoConfirm: $deliveryStatus->canAutoConfirm,
+                        blockedReason: $deliveryStatus->blockedReason,
+                    ))->toPayload(),
+                ],
+            ], 422);
+        }
+
+        if (! $deliveryStatus->isCompliant()) {
+            // Return structured error with draft DN details for frontend modal
+            return response()->json([
+                'error' => [
+                    'code' => 'DELIVERY_NOT_COMPLETED',
+                    'message' => $deliveryStatus->message,
+                    'details' => [
+                        // The wire value is the pre-T25f vocabulary on purpose:
+                        // `InvoiceDetailPage.tsx:159` branches on the literal
+                        // 'draft_dns_found' to decide whether to open the guided
+                        // modal. The typed code lives on the enum; this is its
+                        // frozen presentation.
+                        'status' => $deliveryStatus->code === DeliveryComplianceCode::DraftDeliveryNotes
+                            ? 'draft_dns_found'
+                            : 'error',
+                        'draft_dns' => $deliveryStatus->draftDeliveryNotes,
+                        'can_auto_confirm' => $deliveryStatus->canAutoConfirm,
                     ],
-                ], 422);
-            }
+                ],
+            ], 422);
         }
 
         try {
@@ -793,6 +833,217 @@ class InvoiceController extends Controller
     }
 
     /**
+     * THE REQUIRED PATH for a standalone goods invoice (Wave 3 T25c / D-30).
+     *
+     * ── WHY A SIBLING AND NOT A WIDENING OF confirmDeliveriesAndPost() ──
+     * That endpoint exists to CONFIRM delivery notes an order already has. It
+     * hard-refuses `NO_SOURCE_ORDER`, reads delivery-note ids only from the
+     * order's payload, and refuses `NO_DELIVERY_NOTES` when there are none —
+     * every one of which is correct for its own job and fatal for this one. And
+     * even if a note were created by other means, nothing would write the
+     * linkage: `DeliveredQuantityResolver` reads
+     * `invoice.payload['source_delivery_note_ids']` (written only by the DN →
+     * invoice converter) and the order shape. Without that write, create → confirm
+     * → re-post is refused AGAIN, and the compliance gate has no reachable
+     * compliant path. That is the defect this endpoint exists to close.
+     *
+     * The steps, in one transaction. 📌 D-28 registration is PENDING (3C) —
+     * candidate C-5. This docblock previously claimed "D-28 composite C-3", which
+     * was false twice over: C-3 is TAKEN (`DeliveryNoteController::confirm`, the
+     * final-gate convergent Critical), and nothing was registered — the register
+     * itself is deferred to 3C by ruling.
+     *
+     *   0. 🔒 lock the invoice row and RE-DECIDE on it — everything checked above
+     *      this transaction was checked on an unlocked read (fix round 1, P1-2);
+     *   1. generate a DRAFT delivery note from the invoice's PHYSICAL lines;
+     *   2. 🚨 write the linkage on the invoice payload — the shape the resolver
+     *      already reads — in the SAME transaction, never after;
+     *   3. confirm the delivery note (issues stock, seals the DN chain);
+     *   4. post the invoice — `hasEverIssuedGoods()` is now true, so T25b passes;
+     *   5. mark the note invoiced, so it does not report itself to the 418
+     *      accrual as delivered-but-never-invoiced (fix round 1, P1-1);
+     *   6. commit as one act: if the post fails, the delivery, the stock movement
+     *      and the linkage all roll back with it.
+     *
+     * POST /api/v1/invoices/{invoice}/create-delivery-and-post
+     */
+    public function createDeliveryAndPost(Request $request, string $invoice): JsonResponse
+    {
+        $documentModel = $this->baseQuery()
+            ->ofType(DocumentType::Invoice)
+            ->with(['lines.product', 'sourceDocument', 'partner'])
+            ->find($invoice);
+
+        if ($documentModel === null) {
+            return $this->notFoundResponse('Invoice');
+        }
+
+        if (! $documentModel->isConfirmed()) {
+            return $this->validationErrorResponse(
+                'INVOICE_NOT_CONFIRMED',
+                'Only confirmed invoices can be posted'
+            );
+        }
+
+        $deliveryStatus = $this->deliveryComplianceGate->evaluate($documentModel);
+
+        // This endpoint is ONLY for the population T25b refuses. Anything else
+        // has a different remedy and must not be routed here — an invoice with
+        // draft delivery notes belongs in confirm-deliveries-and-post, and a
+        // compliant invoice belongs in plain post.
+        if ($deliveryStatus->code !== DeliveryComplianceCode::DeliveryRequiredBeforeInvoice) {
+            return $this->validationErrorResponse(
+                'DELIVERY_CREATION_NOT_APPLICABLE',
+                'This invoice does not need a delivery note created for it.'
+            );
+        }
+
+        if (! $deliveryStatus->canAutoConfirm) {
+            return $this->validationErrorResponse(
+                'DELIVERY_CANNOT_BE_GENERATED',
+                $deliveryStatus->blockedReason ?? 'A delivery note cannot be generated for this invoice.'
+            );
+        }
+
+        try {
+            return DB::transaction(function () use ($documentModel): JsonResponse {
+                // 0 — 🚨 THE LOCK, FIRST (fix round 1 / inv P1-2). Everything above
+                // ran OUTSIDE this transaction, so two concurrent submits can both
+                // reach here. Without the lock the loser applies a STALE payload —
+                // clobbering the linkage and the T25e stamp on a document the
+                // winner has already SEALED (`payload` is not covered by the
+                // immutability trigger) — confirms a FRESH draft delivery note, so
+                // the only-draft guard cannot fire, and issues the SAME goods from
+                // stock a second time; `post()` then early-returns and the operator
+                // gets a 200. `lockForUpdate()` re-reads the row and holds it, so
+                // the loser blocks here until the winner commits and then observes
+                // the moved document. Same idiom as
+                // `DocumentPostingService::cancel()`.
+                /** @var Document $documentModel */
+                $documentModel = Document::query()
+                    ->whereKey($documentModel->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $documentModel->load(['lines.product', 'sourceDocument', 'partner']);
+
+                // Re-decide on the LOCKED row, not on what we read before it. Both
+                // conditions matter: the status (the winner may have posted it) and
+                // the gate verdict (the winner may have delivered the goods, which
+                // makes this endpoint the wrong remedy).
+                if (! $documentModel->isConfirmed()
+                    || $this->deliveryComplianceGate->evaluate($documentModel)->code
+                        !== DeliveryComplianceCode::DeliveryRequiredBeforeInvoice) {
+                    throw GuidedDeliveryNoLongerApplicableException::becauseTheInvoiceMoved();
+                }
+
+                // 0b — the generator's two inputs, resolved UNDER THE LOCK (fix
+                // round 2 / inv N-3). They used to be read before the lock and
+                // carried in, which is the same stale-read shape P1-2 closed one
+                // level up: between that read and the lock another request can
+                // deactivate the location, move it to another company or delete
+                // the partner, and this transaction would then issue stock at a
+                // location it had already stopped being allowed to use. Two
+                // queries to remove the window.
+                //
+                // The delivery note copies the partner's name and address onto
+                // itself, so a partnerless invoice cannot produce one.
+                $partner = Partner::query()
+                    ->where('company_id', $documentModel->company_id)
+                    ->find($documentModel->partner_id);
+
+                if ($partner === null) {
+                    throw GuidedDeliveryCannotBeGeneratedException::noPartner();
+                }
+
+                // 🔁 Fix round 1 / inv P2-3: the SAME resolver the feasibility
+                // predicate used to answer `canAutoConfirm`. Resolving it twice,
+                // two ways, is how the gate came to promise a guided path this
+                // endpoint then declined — and, in the other direction, to
+                // declare un-generatable an invoice this endpoint would have
+                // handled.
+                $location = $this->deliveryComplianceGate->resolveDeliveryLocation($documentModel);
+
+                if ($location === null) {
+                    throw GuidedDeliveryCannotBeGeneratedException::noResolvableLocation();
+                }
+
+                // 1 — generate
+                $deliveryNote = $this->deliveryNoteFactory->createDraftFrom(
+                    source: $documentModel,
+                    partner: $partner,
+                    location: $location,
+                    notes: 'Created from invoice '.$documentModel->document_number.' before posting',
+                );
+
+                // 2 — 🚨 LINKAGE. Without this the invoice re-post is refused
+                // again, because nothing else writes the key the resolver reads.
+                // Legal on this document: it is Confirmed, not SEALED, and the
+                // immutability trigger fires only on SEALED rows and does not
+                // cover `payload` in any case.
+                $payload = $documentModel->payload ?? [];
+                $existing = is_array($payload['source_delivery_note_ids'] ?? null)
+                    ? $payload['source_delivery_note_ids']
+                    : [];
+                $payload['source_delivery_note_ids'] = array_values(array_unique(
+                    array_merge($existing, [$deliveryNote->id])
+                ));
+                $documentModel->update(['payload' => $payload]);
+                $documentModel->refresh();
+
+                // 3 — confirm (issues stock, seals the DN fiscal chain)
+                $confirmed = $this->deliveryNoteService->confirm($deliveryNote);
+
+                // 4 — post; the gate now sees goods issued
+                $postedInvoice = $this->postingService->post($documentModel);
+
+                // 5 — 🚨 MARK THE NOTE INVOICED (fix round 1 / inv P1-1). Mirrors
+                // `SalesOrderToInvoiceConverter::markDeliveryNotesAsInvoiced()`,
+                // with its own `invoiced_via` so the two paths stay
+                // distinguishable. Without it this note reports itself, forever,
+                // as "delivered, never invoiced": `invoiced_at` had exactly two
+                // writers in `app/` and neither is on this path, while
+                // `UninvoicedDeliveryNoteService` lists precisely that shape.
+                // Under `require_delivery_first` this is THE path for every
+                // standalone goods invoice, so the 418 year-end accrual would
+                // accrue revenue ON TOP of revenue this same transaction
+                // recognised and sealed.
+                $notePayload = $confirmed->payload ?? [];
+                $notePayload['invoiced_at'] = now()->toDateTimeString();
+                $notePayload['invoice_id'] = $postedInvoice->id;
+                $notePayload['invoiced_via'] = 'pre_post_delivery';
+                $confirmed->update(['payload' => $notePayload]);
+
+                return response()->json([
+                    'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),
+                    'meta' => [
+                        'timestamp' => now()->toIso8601String(),
+                        'invoice_fiscal_hash' => $postedInvoice->fiscal_hash,
+                        'invoice_chain_sequence' => $postedInvoice->chain_sequence,
+                        'confirmed_delivery_notes' => [[
+                            'id' => $confirmed->id,
+                            'number' => $confirmed->document_number,
+                            'fiscal_hash' => $confirmed->fiscal_hash,
+                            'chain_sequence' => $confirmed->chain_sequence,
+                        ]],
+                    ],
+                ]);
+            });
+        } catch (GuidedDeliveryCannotBeGeneratedException $e) {
+            // Same code and same machine reason the pre-lock checks used to
+            // return, so moving the lookups under the lock changed no contract.
+            return $this->validationErrorResponse('DELIVERY_CANNOT_BE_GENERATED', $e->reason);
+        } catch (GuidedDeliveryNoLongerApplicableException $e) {
+            // Same machine code as the pre-transaction check: the client sees ONE
+            // refusal for "this invoice does not need a delivery note created for
+            // it", whichever side of the row lock detected it.
+            return $this->validationErrorResponse('DELIVERY_CREATION_NOT_APPLICABLE', $e->getMessage());
+        } catch (\DomainException $e) {
+            return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
+        }
+    }
+
+    /**
      * Close a partially-paid invoice by writing off the residual balance to GL 658.
      *
      * Eligibility (enforced by CloseInvoiceWithToleranceService):
@@ -878,112 +1129,5 @@ class InvoiceController extends Controller
                 'timestamp' => now()->toIso8601String(),
             ],
         ]);
-    }
-
-    /**
-     * Check if invoice has any physical products.
-     */
-    private function invoiceHasPhysicalProducts(Document $invoice): bool
-    {
-        foreach ($invoice->lines as $line) {
-            // D-19 / T4: ONE physical predicate — this gate and
-            // DocumentPostingService::validateDeliveryCompliance() must never be
-            // able to disagree about what "physical" means.
-            if (PhysicalLinePredicate::forLine($line, $invoice->tenant_id, $invoice->company_id)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if all delivery notes for this invoice have been delivered.
-     *
-     * Returns array with status and details, or null if all checks pass.
-     *
-     * @return array{status: string, message: string, draft_dns?: array<int, mixed>, can_auto_confirm?: bool}|null
-     */
-    private function checkDeliveryNotesDelivered(Document $invoice): ?array
-    {
-        // Get source order if invoice was created from order
-        $sourceOrder = $invoice->sourceDocument;
-        if ($sourceOrder === null || $sourceOrder->type !== DocumentType::SalesOrder) {
-            // No source order - this is a standalone invoice, no delivery check needed
-            return null;
-        }
-
-        // Check if order has delivery notes
-        $orderPayload = $sourceOrder->payload ?? [];
-        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
-
-        if (empty($deliveryNoteIds)) {
-            return [
-                'status' => 'error',
-                'message' => 'Physical products must be delivered before posting invoice. No delivery notes found for the source order.',
-            ];
-        }
-
-        // Get all delivery notes and check their status
-        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
-            ->where('type', DocumentType::DeliveryNote)
-            ->with('lines')
-            ->get();
-
-        // Check for draft delivery notes (auto-created but not confirmed)
-        $draftDns = $deliveryNotes->filter(fn ($dn) => $dn->isDraft());
-
-        if ($draftDns->isNotEmpty()) {
-            // Check if all draft DNs are auto-created (can be batch confirmed)
-            $canAutoConfirm = $draftDns->every(function ($dn) {
-                $payload = $dn->payload ?? [];
-
-                return isset($payload['auto_created']) && $payload['auto_created'] === true;
-            });
-
-            return [
-                'status' => 'draft_dns_found',
-                'message' => 'Delivery notes must be confirmed before posting invoice',
-                'draft_dns' => $draftDns->map(fn ($dn) => [
-                    'id' => $dn->id,
-                    'number' => $dn->document_number,
-                    'total' => $dn->total,
-                    'line_count' => $dn->lines->count(),
-                ])->values()->toArray(),
-                'can_auto_confirm' => $canAutoConfirm,
-            ];
-        }
-
-        // Check if confirmed DNs are fully delivered
-        foreach ($deliveryNotes as $dn) {
-            if ($dn->isDraft()) {
-                continue; // Already handled above
-            }
-
-            // Check if all lines have been fully delivered
-            $fullyDelivered = true;
-            foreach ($dn->lines as $line) {
-                $qtyDelivered = $line->quantity_delivered ?? '0.00';
-                $qty = $line->quantity;
-
-                // If any line hasn't been fully delivered, mark as not complete
-                if (bccomp((string) $qtyDelivered, (string) $qty, 4) < 0) {
-                    $fullyDelivered = false;
-                    break;
-                }
-            }
-
-            if (! $fullyDelivered) {
-                return [
-                    'status' => 'error',
-                    'message' => sprintf(
-                        'Delivery note %s must be marked as fully delivered before posting invoice. Please update the delivery quantities.',
-                        $dn->document_number
-                    ),
-                ];
-            }
-        }
-
-        return null; // All delivery notes are confirmed and delivered
     }
 }

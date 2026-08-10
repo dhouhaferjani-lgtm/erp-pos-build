@@ -11,4 +11,12 @@ return [
         'sub_row' => 'dont gratuité : +:quantity unité gratuite',
         'line_total' => 'Total ligne: :quantity unités livrées attendues',
     ],
+    'pre_delivery_invoicing' => [
+        'refused' => "Cette facture contient des marchandises qui n'ont pas été livrées. Selon les règles comptables de ce pays, une facture définitive de marchandises ne peut pas être émise avant la livraison : elle ne peut donc pas encore être comptabilisée.",
+        'alternative_delivery_note' => 'Créez et confirmez maintenant un bon de livraison pour les marchandises, puis comptabilisez la facture.',
+        'alternative_advance_payment' => "Si le client paie d'avance, enregistrez un devis ou une commande et saisissez le règlement comme acompte client. Facturez une fois les marchandises livrées.",
+        'legacy_bucket_label' => 'Facturé avant livraison (historique / antérieur à la règle)',
+        'legacy_bucket_help' => "Factures comptabilisées avant la livraison des marchandises. Les nouvelles factures ne peuvent plus être comptabilisées ainsi ; cette liste est un registre d'exceptions pour les documents antérieurs à la règle.",
+        'policy_in_force' => 'Règle en vigueur : :policy (source : :source)',
+    ],
 ];

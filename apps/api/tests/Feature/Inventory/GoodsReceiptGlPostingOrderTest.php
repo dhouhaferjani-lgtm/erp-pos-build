@@ -91,6 +91,16 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
      * The tables `GoodsReceiptService::post()` takes ROW LOCKS on. None of these may
      * be written after the GL phase opens (fix round 2, NEW-2).
      *
+     * The last three are the **NEW-2-residual** the fix-round-2 re-review named as
+     * the row-lock set's one gap: a batch-tracked receipt line reaches
+     * `BatchStockService::findOrCreateBatch()` / `receiveBatchStock()`, which write
+     * `product_batches`, `inventory_batch_stock` and `inventory_batch_movements`.
+     * They were absent, so the whole batch write family sat OUTSIDE the invariant
+     * and a batch writer moved after the flush would not have been noticed. Listing
+     * them is only half the fix — a set nothing drives is a set nothing proves —
+     * which is why {@see test_the_gl_phase_runs_after_every_row_lock_on_a_batch_tracked_receipt()}
+     * exists.
+     *
      * @var list<string>
      */
     private const RECEIPT_ROW_LOCK_TABLES = [
@@ -102,6 +112,21 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
         'stock_levels',
         'stock_movements',
         'products',
+        'product_batches',
+        'inventory_batch_stock',
+        'inventory_batch_movements',
+    ];
+
+    /**
+     * The batch subset of {@see RECEIPT_ROW_LOCK_TABLES}, so the batch run can
+     * assert its own writes fired rather than passing vacuously.
+     *
+     * @var list<string>
+     */
+    private const BATCH_ROW_LOCK_TABLES = [
+        'product_batches',
+        'inventory_batch_stock',
+        'inventory_batch_movements',
     ];
 
     /** @var list<string> */
@@ -432,6 +457,69 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
     }
 
     /**
+     * gate-w3ab **NEW-2-residual (P3)** — the same invariant, driven over the batch
+     * write family the row-lock set was missing.
+     *
+     * The trace above receives plain (non-batch-tracked) lines, so
+     * `product_batches` / `inventory_batch_stock` / `inventory_batch_movements` were
+     * never written during it: adding them to `RECEIPT_ROW_LOCK_TABLES` on its own
+     * would have widened the set without widening the evidence. A batch-tracked
+     * line takes `BatchStockService::findOrCreateBatch()` — an upsert on
+     * `product_batches` — and then `receiveBatchStock()`, which writes
+     * `inventory_batch_stock` and appends `inventory_batch_movements`, all inside
+     * `GoodsReceiptService::post()`'s per-line loop. This run puts those writes into
+     * the stream and asserts the SAME property: none of them may land after the GL
+     * phase opens.
+     *
+     * The instrument would be vacuously green if the batch writes never fired, so
+     * the batch tables' presence in the stream is asserted first.
+     */
+    public function test_the_gl_phase_runs_after_every_row_lock_on_a_batch_tracked_receipt(): void
+    {
+        $purchaseOrder = $this->confirmedPurchaseOrder(
+            [
+                ['qty' => '10.0000', 'price' => '5.000'],
+                ['qty' => '4.0000', 'price' => '2.500'],
+            ],
+            batchTracked: true,
+        );
+
+        $writes = $this->traceWriteOrderDuringReceipt($purchaseOrder, batchTracked: true);
+
+        // Vacuity guard: the batch family must actually have been written.
+        foreach (self::BATCH_ROW_LOCK_TABLES as $table) {
+            self::assertNotNull(
+                $this->firstIndexTouching($writes, [$table]),
+                sprintf('`%s` was never written — the batch leg did not run and the assertion is vacuous', $table),
+            );
+        }
+
+        $glOpensAt = $this->firstIndexTouching($writes, self::GL_TABLES);
+        self::assertNotNull($glOpensAt, 'no GR-IR entry was written — the instrument is broken');
+
+        $lastBatchWriteAt = $this->lastIndexTouching($writes, self::BATCH_ROW_LOCK_TABLES);
+        self::assertNotNull($lastBatchWriteAt);
+
+        self::assertLessThan(
+            $glOpensAt,
+            $lastBatchWriteAt,
+            sprintf(
+                'a BATCH row lock was taken AFTER the GL phase opened — the NEW-2 invariant does not '
+                ."hold for batch-tracked receipts.\nGL opens at #%d: %s\nOffending write #%d: %s",
+                $glOpensAt,
+                $writes[$glOpensAt],
+                $lastBatchWriteAt,
+                $writes[$lastBatchWriteAt],
+            ),
+        );
+
+        // …and the whole set, batch tables included, still satisfies it.
+        $lastRowLockAt = $this->lastIndexTouching($writes, self::RECEIPT_ROW_LOCK_TABLES);
+        self::assertNotNull($lastRowLockAt, 'the receipt wrote no row-locked table at all — the instrument is broken');
+        self::assertLessThan($glOpensAt, $lastRowLockAt);
+    }
+
+    /**
      * The fail-closed GR-IR leg — `post($draft, $actor, null, true)` — is a SECOND
      * in-loop advisory acquisition that bypasses the event entirely, and it is
      * buffered by the same edit.
@@ -739,7 +827,7 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
      *
      * @return list<string>
      */
-    private function traceWriteOrderDuringReceipt(Document $purchaseOrder): array
+    private function traceWriteOrderDuringReceipt(Document $purchaseOrder, bool $batchTracked = false): array
     {
         /** @var list<string> $writes */
         $writes = [];
@@ -752,7 +840,7 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
             }
         });
 
-        $this->receive($purchaseOrder);
+        $this->receive($purchaseOrder, batchTracked: $batchTracked);
 
         return $writes;
     }
@@ -845,7 +933,7 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
     // Fixtures
     // =================================================================
 
-    private function receive(Document $purchaseOrder, bool $failClosedGrir = false): void
+    private function receive(Document $purchaseOrder, bool $failClosedGrir = false, bool $batchTracked = false): void
     {
         $service = app(GoodsReceiptService::class);
 
@@ -853,14 +941,25 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
         $fresh = $purchaseOrder->fresh(['lines']);
 
         $receivedQuantities = [];
-        foreach ($fresh->lines as $line) {
+        $batchData = [];
+        foreach ($fresh->lines as $index => $line) {
             $receivedQuantities[$line->id] = (string) $line->quantity;
+
+            if ($batchTracked) {
+                // NEW-2-residual: `post()` only reaches the batch writes when the
+                // line carries batch data AND the product requires batch tracking
+                // (`GoodsReceiptService.php:557`). Both halves are set here.
+                $batchData[$line->id] = [
+                    'batch_number' => 'LOT-T5B-'.$index.'-'.random_int(1000, 9999),
+                    'expiry_date' => now()->addYear()->toDateString(),
+                ];
+            }
         }
 
         $draft = $service->createDraft(
             $fresh,
             $receivedQuantities,
-            [],
+            $batchData,
             [],
             [],
             null,
@@ -934,7 +1033,7 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
     /**
      * @param  list<array{qty: string, price: string}>  $lines
      */
-    private function confirmedPurchaseOrder(array $lines): Document
+    private function confirmedPurchaseOrder(array $lines, bool $batchTracked = false): Document
     {
         $purchaseOrder = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -966,6 +1065,7 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
                 'cost_price' => $line['price'],
                 'is_active' => true,
                 'is_physical' => true,
+                'requires_batch_tracking' => $batchTracked,
             ]);
 
             $lineTotal = bcmul($this->numeric($line['qty']), $this->numeric($line['price']), 3);

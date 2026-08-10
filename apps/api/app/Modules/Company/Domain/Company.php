@@ -278,6 +278,9 @@ class Company extends Model
         'default_max_discount_percent',
         'discount_floor_mode',
         'price_entry_mode',
+        // Wave 3 T25a / D-27 — nullable override of the seeded country
+        // pre-delivery invoicing policy. NULL = inherit the country default.
+        'pre_delivery_invoicing_policy',
         'payment_tolerance_enabled',
         'payment_tolerance_percentage',
         'max_payment_tolerance_amount',

@@ -8,6 +8,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\PostingContext;
 use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
@@ -103,7 +104,25 @@ final readonly class DocumentGenerationAdapter
         $document->status = DocumentStatus::Confirmed;
         $document->save();
 
-        $this->posting->post($document);
+        // 🚨 DPA Wave 3 fix round 1 / fiscal F-1 — ORCHESTRATOR RULING (b).
+        // T25b put a delivery-compliance refusal on the posting chokepoint: an
+        // invoice carrying physical goods cannot post unless goods were EVER
+        // issued against it. This path cannot satisfy that and cannot be made to:
+        // the Workshop module has no stock-issuance lane at all (a WO part moves
+        // no stock and produces no delivery note anywhere), and the composite
+        // create-delivery-and-post endpoint needs a Confirmed invoice over HTTP
+        // while this transition creates → confirms → posts inside one service
+        // transaction. Refusing here would block a real repair job on a fact the
+        // system has no way to record; generating a delivery note here would
+        // fabricate a goods movement that never happened.
+        //
+        // So the exemption is CLAIMED EXPLICITLY, at the one call site that needs
+        // it, and it is recorded on the invoice's audit stamp. It is NOT a
+        // property of the document's shape — see {@see PostingContext}. The
+        // underlying gap (WO parts move no stock ⇒ revenue with no movement and,
+        // post-cutover, no COGS) is ticketed for the DPA program backlog:
+        // docs/superpowers/tickets/2026-08-10-workshop-parts-goods-lane-gap.md
+        $this->posting->post($document, PostingContext::WorkOrderGeneratedInvoice);
 
         return $document->id;
     }
