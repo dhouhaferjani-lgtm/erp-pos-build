@@ -50,12 +50,16 @@ use Illuminate\Database\Eloquent\Builder;
  *
  * ## Tenant scoping
  *
- * `physicalProductFor()` accepts an optional `(tenantId, companyId)` pair. When
+ * `physicalProductFor()` accepts an OPTIONAL `(tenantId, companyId)` pair. When
  * given, the product is resolved with that scope instead of through the relation
  * — preserving `DocumentPostingService`'s api.document.010 guard, which exists so
  * a forged cross-tenant `line.product_id` cannot resolve to a foreign product.
  * Call sites that never scoped keep the relation form; making them scoped is a
  * separate, deliberate change and is NOT smuggled in here.
+ *
+ * `physical()` REQUIRES the pair — see its own docblock: it takes a query rather
+ * than a loaded relation, so there is no "the caller already scoped it" reading,
+ * and it has no production callers to preserve.
  *
  * NOT adopted at `Document.php:926` (plan T4 risk note) — that helper answers a
  * different question and touching it widens the blast radius.
@@ -100,16 +104,28 @@ final class PhysicalLinePredicate
     /**
      * Restrict a `document_lines` query to the lines that move stock.
      *
+     * The `(tenantId, companyId)` pair is REQUIRED here, unlike on the row form
+     * (fix round 1, inv gate F-5). `Product` carries no global tenant/company
+     * scope and the tenant database is per-TENANT, not per-COMPANY, so an
+     * unscoped `whereHas('product')` resolves a sibling company's product — the
+     * api.document.010 hole the row form's optional pair exists to close. D-19
+     * hands this method to 3C's detector, which would have inherited it. There
+     * are zero production callers today, so mandatory costs nothing; optional
+     * would have been forgotten exactly once.
+     *
      * @param  Builder<DocumentLine>  $query
      * @return Builder<DocumentLine>
      */
-    public static function physical(Builder $query): Builder
+    public static function physical(Builder $query, string $tenantId, string $companyId): Builder
     {
         return $query
             ->whereNotNull('product_id')
-            ->whereHas('product', static function (Builder $product): void {
+            ->whereHas('product', static function (Builder $product) use ($tenantId, $companyId): void {
                 /** @var Builder<Product> $product */
-                $product->where('is_physical', true);
+                $product
+                    ->where('tenant_id', $tenantId)
+                    ->where('company_id', $companyId)
+                    ->where('is_physical', true);
             });
     }
 }
