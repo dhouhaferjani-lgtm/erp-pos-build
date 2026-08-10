@@ -29,13 +29,19 @@ would drop an info-level line, leaving both greps below to pass on an empty log.
 tenant, written once (a migration runs once per tenant database):
 
 ```bash
-# (a) EVERY tenant reported — absence is a FAILURE, not a pass. Set TENANT_COUNT first
-#     (e.g. TENANT_COUNT=$(php artisan tenants:list | grep -c .) — verify against your runner).
-test "$(grep -c 'CHART-PURPOSE BACKFILL MIGRATION:' storage/logs/laravel.log)" -eq "$TENANT_COUNT"
+# BEFORE running tenants:migrate: mark the current end of the log, so the gates below
+# read ONLY this deploy's window (laravel.log is cumulative — an exact count against the
+# whole file false-fails on every deploy after the first).
+LOG_MARK=$(wc -l < storage/logs/laravel.log)
+
+# (a) EVERY tenant reported — absence is a FAILURE, not a pass. Set TENANT_COUNT first.
+#     tenants:list prints a "Listing all tenants." header line — count only tenant rows:
+TENANT_COUNT=$(php artisan tenants:list | grep -c '^\[Tenant\]')
+test "$(tail -n +$((LOG_MARK+1)) storage/logs/laravel.log | grep -c 'CHART-PURPOSE BACKFILL MIGRATION:')" -eq "$TENANT_COUNT"
 
 # (b) no tenant failed. Covers BOTH the command-failure path (warning) and the
 #     exception path (error) — they share the token and the status word.
-! grep -q 'CHART-PURPOSE BACKFILL MIGRATION:.*status=FAILED' storage/logs/laravel.log
+! tail -n +$((LOG_MARK+1)) storage/logs/laravel.log | grep -q 'CHART-PURPOSE BACKFILL MIGRATION:.*status=FAILED'
 ```
 
 Each line carries `tenant=<key>`, so a failure is attributable in a shared `laravel.log`. The **per-company**

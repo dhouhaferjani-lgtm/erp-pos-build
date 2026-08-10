@@ -89,11 +89,13 @@ return new class extends Migration
             // active and rolls back to it alone, which is what makes the catch
             // below an honest guarantee. Proven by
             // BackfillChartPurposesMigrationTest::test_a_failing_backfill_does_not_poison_the_enclosing_migration_transaction.
-            // Bound to the MIGRATION's own connection, not the default one: they
-            // are the same object under `tenants:migrate` (config/tenancy.php
-            // passes no `--database`), but a runner that did pass one would open a
-            // separate real transaction while the enclosing one stayed poisoned —
-            // silently lapsing the very guarantee this block exists for.
+            // Bound to the MIGRATION's own connection to mirror how the framework
+            // itself resolves it (Migrator::runMigration). getConnection() is null
+            // here, and even under `migrate --database=X` the migrator SETS the
+            // default connection to X before running (MigrateCommand/Migrator), so
+            // this is byte-identical to a bare DB::transaction() today — a
+            // defensive alignment with the enclosing transaction's connection,
+            // not a divergence guard.
             DB::connection($this->getConnection())->transaction(function () use (&$exitCode, &$output): void {
                 $exitCode = Artisan::call(BackfillChartPurposesCommand::class);
                 $output = trim(Artisan::output());
