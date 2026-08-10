@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Company\Presentation\Controllers;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Company\Application\Services\CompanyFiscalIdentityService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\CompanyHashChain;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -20,6 +21,7 @@ use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Company\Presentation\Requests\CreateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateCompanyRequest;
 use App\Modules\Company\Presentation\Requests\UpdateReceiptSettingsRequest;
+use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Expense\Application\Services\ExpenseCategoryProvisioningService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
@@ -48,6 +50,8 @@ class CompanyController extends Controller
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
         private readonly ExpenseCategoryProvisioningService $expenseCategoryProvisioning,
+        private readonly CompanyFiscalIdentityService $companyFiscalIdentityService,
+        private readonly AuditService $auditService,
     ) {}
 
     /**
@@ -225,13 +229,48 @@ class CompanyController extends Controller
         /** @var array<string, mixed> $validated */
         $validated = $request->validated();
 
+        $fiscalIdentityAttributes = [];
+        foreach (['legal_name', 'tax_id', 'registration_number', 'vat_number'] as $attribute) {
+            if (array_key_exists($attribute, $validated)) {
+                $value = $validated[$attribute];
+                $fiscalIdentityAttributes[$attribute] = is_string($value) ? $value : null;
+            }
+        }
+
+        $fiscalIdentityChanges = $this->companyFiscalIdentityService->changedFields(
+            $company,
+            $fiscalIdentityAttributes,
+        );
+
+        if ($fiscalIdentityChanges !== [] && ! $user->can('settings.fiscal.update')) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => __('company.identity.fiscal_permission_required'),
+                ],
+            ], 403);
+        }
+
         // Validate tax status change if present
         if (isset($validated['tax_status'])) {
             $newStatus = CompanyTaxStatus::from($validated['tax_status']);
             $this->taxStatusValidationService->validateTaxStatusChange($company, $newStatus);
         }
 
-        $company->update($validated);
+        DB::transaction(function () use ($company, $fiscalIdentityChanges, $user, $validated): void {
+            $company->update($validated);
+
+            if ($fiscalIdentityChanges !== []) {
+                $this->auditService->record(
+                    companyId: $company->id,
+                    userId: $user->id,
+                    eventType: 'company.fiscal_identity_updated',
+                    aggregateType: 'company',
+                    aggregateId: $company->id,
+                    payload: ['changes' => $fiscalIdentityChanges],
+                );
+            }
+        });
 
         return response()->json([
             'data' => $this->formatCompany($company),

@@ -420,6 +420,118 @@ class CompanySettingsTest extends TestCase
         $this->assertEquals('Europe/London', $this->company->timezone);
     }
 
+    public function test_fiscal_settings_permission_is_seeded_to_admin_only(): void
+    {
+        $this->assertTrue($this->adminUser->can('settings.fiscal.update'));
+        $this->assertFalse($this->viewerUser->can('settings.fiscal.update'));
+    }
+
+    public function test_cosmetic_editor_can_update_cosmetic_settings_without_fiscal_permission(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Cosmetic Name',
+                'phone' => '+33 1 02 03 04 05',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'Cosmetic Name')
+            ->assertJsonPath('data.phone', '+33 1 02 03 04 05');
+    }
+
+    public function test_cosmetic_editor_cannot_update_fiscal_identity_in_french(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->withHeader('X-Language', 'fr')
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Must Not Persist',
+                'legal_name' => 'Identité Interdite SARL',
+                'tax_id' => 'FR00000000000',
+            ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error.code', 'FORBIDDEN')
+            ->assertJsonPath(
+                'error.message',
+                "Vous n'avez pas l'autorisation de modifier l'identité fiscale de la société.",
+            );
+
+        $this->company->refresh();
+        $this->assertSame('Test Company', $this->company->name);
+        $this->assertSame('Test Company SARL', $this->company->legal_name);
+        $this->assertNull($this->company->tax_id);
+    }
+
+    public function test_cosmetic_editor_cannot_bypass_fiscal_permission_with_immutable_country(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'country_code' => 'TN',
+            ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath(
+                'error.message',
+                'You do not have permission to update the company fiscal identity.',
+            );
+    }
+
+    public function test_idempotent_fiscal_identity_values_do_not_require_fiscal_permission(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Safe Resubmission',
+                'legal_name' => 'Test Company SARL',
+                'tax_id' => null,
+                'registration_number' => null,
+                'country_code' => 'FR',
+                'currency_code' => 'EUR',
+                'address' => ['country' => 'FR'],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'Safe Resubmission');
+    }
+
+    public function test_fiscal_identity_update_records_dedicated_old_new_audit_event(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'legal_name' => 'Audited Legal Name SARL',
+                'tax_id' => 'FR12345678901',
+                'registration_number' => 'RCS 123 456 789',
+            ]);
+
+        $response->assertOk();
+
+        $auditEvent = AuditEvent::query()
+            ->where('event_type', 'company.fiscal_identity_updated')
+            ->where('company_id', $this->company->id)
+            ->first();
+
+        $this->assertNotNull($auditEvent);
+        $this->assertSame('company', $auditEvent->aggregate_type);
+        $this->assertSame($this->company->id, $auditEvent->aggregate_id);
+        $this->assertEquals([
+            'legal_name' => ['old' => 'Test Company SARL', 'new' => 'Audited Legal Name SARL'],
+            'tax_id' => ['old' => null, 'new' => 'FR12345678901'],
+            'registration_number' => ['old' => null, 'new' => 'RCS 123 456 789'],
+        ], $auditEvent->payload['changes']);
+    }
+
     public function test_can_update_address(): void
     {
         $response = $this->actingAs($this->adminUser, 'sanctum')
@@ -611,6 +723,29 @@ class CompanySettingsTest extends TestCase
         $this->assertEquals('Original Name', $this->company->name); // Unchanged
         $this->assertEquals('+33 2 22 22 22 22', $this->company->phone); // Changed
         $this->assertEquals('Europe/Paris', $this->company->timezone); // Unchanged
+    }
+
+    private function createCosmeticEditor(): User
+    {
+        $editor = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Cosmetic Editor',
+            'email' => 'cosmetic-editor@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        $editor->givePermissionTo('settings.update');
+
+        UserCompanyMembership::create([
+            'user_id' => $editor->id,
+            'company_id' => $this->company->id,
+            'role' => MembershipRole::Owner,
+            'is_primary' => true,
+            'status' => MembershipStatus::Active,
+            'accepted_at' => now(),
+        ]);
+
+        return $editor;
     }
 
     // ==================== LOGO Upload Tests ====================

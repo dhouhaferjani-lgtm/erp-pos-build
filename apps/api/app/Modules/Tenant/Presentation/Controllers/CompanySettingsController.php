@@ -8,6 +8,7 @@ use App\Modules\Company\Application\Services\CompanyFiscalIdentityService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Domain\AuditEvent;
+use App\Modules\Compliance\Services\AuditService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Application\DTOs\CompanySettingsData;
 use App\Modules\Tenant\Domain\Tenant;
@@ -16,6 +17,7 @@ use App\Modules\Tenant\Presentation\Requests\UploadLogoRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -41,6 +43,7 @@ class CompanySettingsController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly CompanyFiscalIdentityService $companyFiscalIdentityService,
+        private readonly AuditService $auditService,
     ) {}
 
     /**
@@ -102,6 +105,65 @@ class CompanySettingsController extends Controller
         $validated = $request->validated();
         $changes = [];
 
+        $fiscalIdentityAttributes = [];
+        foreach ([
+            'legal_name' => 'legal_name',
+            'tax_id' => 'tax_id',
+            'registration_number' => 'registration_number',
+        ] as $requestKey => $attribute) {
+            if (array_key_exists($requestKey, $validated)) {
+                $value = $validated[$requestKey];
+                $fiscalIdentityAttributes[$attribute] = is_string($value) ? $value : null;
+            }
+        }
+
+        $fiscalIdentityChanges = $this->companyFiscalIdentityService->changedFields(
+            $company,
+            $fiscalIdentityAttributes,
+        );
+        $submittedIdentityChanges = $fiscalIdentityChanges;
+
+        if (array_key_exists('country_code', $validated)) {
+            $submittedIdentityChanges = array_replace(
+                $submittedIdentityChanges,
+                $this->companyFiscalIdentityService->changedFields(
+                    $company,
+                    ['country_code' => $validated['country_code']],
+                ),
+            );
+        }
+
+        if (array_key_exists('currency_code', $validated)) {
+            $submittedIdentityChanges = array_replace(
+                $submittedIdentityChanges,
+                $this->companyFiscalIdentityService->changedFields(
+                    $company,
+                    ['currency' => $validated['currency_code']],
+                ),
+            );
+        }
+
+        $submittedAddress = $validated['address'] ?? null;
+        if (is_array($submittedAddress) && array_key_exists('country', $submittedAddress)) {
+            $submittedIdentityChanges = array_replace(
+                $submittedIdentityChanges,
+                $this->companyFiscalIdentityService->changedFields(
+                    $company,
+                    ['country_code' => $submittedAddress['country']],
+                ),
+            );
+        }
+
+        if ($submittedIdentityChanges !== [] && ! $user->can('settings.fiscal.update')) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => __('company.identity.fiscal_permission_required'),
+                ],
+                'meta' => $this->getMeta($request),
+            ], Response::HTTP_FORBIDDEN);
+        }
+
         if (array_key_exists('country_code', $validated)) {
             $this->companyFiscalIdentityService->assertImmutableFieldsUnchanged(
                 $company,
@@ -117,7 +179,6 @@ class CompanySettingsController extends Controller
             );
         }
 
-        $submittedAddress = $validated['address'] ?? null;
         if (is_array($submittedAddress) && array_key_exists('country', $submittedAddress)) {
             $this->companyFiscalIdentityService->assertImmutableFieldsUnchanged(
                 $company,
@@ -172,16 +233,28 @@ class CompanySettingsController extends Controller
 
         }
 
-        $company->update($attributes);
+        DB::transaction(function () use ($attributes, $changes, $company, $fiscalIdentityChanges, $user): void {
+            $company->update($attributes);
 
-        // Log audit event
-        $this->logAuditEvent(
-            eventType: 'tenant.settings_updated',
-            aggregateId: $company->tenant_id,
-            userId: $user->id,
-            companyId: $this->companyContext->requireCompanyId(),
-            payload: ['changes' => $changes]
-        );
+            if ($fiscalIdentityChanges !== []) {
+                $this->auditService->record(
+                    companyId: $company->id,
+                    userId: $user->id,
+                    eventType: 'company.fiscal_identity_updated',
+                    aggregateType: 'company',
+                    aggregateId: $company->id,
+                    payload: ['changes' => $fiscalIdentityChanges],
+                );
+            }
+
+            $this->logAuditEvent(
+                eventType: 'tenant.settings_updated',
+                aggregateId: $company->tenant_id,
+                userId: $user->id,
+                companyId: $this->companyContext->requireCompanyId(),
+                payload: ['changes' => $changes]
+            );
+        });
 
         return response()->json([
             'data' => CompanySettingsData::fromCompany($company->refresh()),
