@@ -53,11 +53,15 @@ class UpdateCompanySettingsRequest extends FormRequest
             // company be stamped into a mode whose every journal entry would be
             // a mis-statement. `null` clears the override and re-inherits the
             // country default.
+            //
+            // The allow-list is DERIVED from `isSupported()` — the enum's own
+            // documented "ONE authority" for which modes are implemented — rather
+            // than restated here (fix round 1, fiscal gate P3-4).
             'inventory_valuation_mode' => [
                 'sometimes',
                 'nullable',
                 'string',
-                'in:'.InventoryValuationMode::Perpetual->value,
+                'in:'.implode(',', InventoryValuationMode::supportedValues()),
             ],
         ];
     }

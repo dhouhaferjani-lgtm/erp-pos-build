@@ -13,6 +13,7 @@ use App\Modules\Inventory\Application\Services\InventoryValuationModeResolver;
 use App\Modules\Inventory\Domain\Enums\InventoryValuationMode;
 use App\Modules\Inventory\Domain\Exceptions\UnsupportedValuationModeException;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Tenant\Presentation\Requests\UpdateCompanySettingsRequest;
 use Database\Factories\CompanyFactory;
 use Database\Seeders\CountriesSeeder;
 use Database\Seeders\CountryInventorySettingsSeeder;
@@ -115,6 +116,39 @@ final class InventoryValuationModeTest extends TestCase
     {
         self::assertTrue(InventoryValuationMode::Perpetual->isSupported());
         self::assertFalse(InventoryValuationMode::Periodic->isSupported());
+    }
+
+    /**
+     * Fix round 1 · fiscal gate P3-4 — the write boundary's allow-list is DERIVED
+     * from `isSupported()`, not restated.
+     *
+     * `UpdateCompanySettingsRequest` hardcoded `in:perpetual`. `isSupported()` is
+     * documented as "the ONE authority" for which modes are implemented, so a
+     * hardcoded list is a second authority that will not move when the first does
+     * — the day periodic ships, the 422 stays and the setting is unreachable.
+     */
+    public function test_the_supported_value_list_is_derived_from_is_supported(): void
+    {
+        self::assertSame(['perpetual'], InventoryValuationMode::supportedValues());
+
+        self::assertSame(
+            array_values(array_map(
+                static fn (InventoryValuationMode $mode): string => $mode->value,
+                array_filter(
+                    InventoryValuationMode::cases(),
+                    static fn (InventoryValuationMode $mode): bool => $mode->isSupported(),
+                ),
+            )),
+            InventoryValuationMode::supportedValues(),
+        );
+
+        $rules = (new UpdateCompanySettingsRequest)->rules()['inventory_valuation_mode'];
+        self::assertIsArray($rules);
+        self::assertContains(
+            'in:'.implode(',', InventoryValuationMode::supportedValues()),
+            $rules,
+            'the FormRequest must derive its allow-list from the enum, not restate it',
+        );
     }
 
     // =================================================================

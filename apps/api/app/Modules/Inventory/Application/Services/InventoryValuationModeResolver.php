@@ -87,6 +87,18 @@ final class InventoryValuationModeResolver
         throw UnsupportedValuationModeException::forCompany($companyId, $effective->mode);
     }
 
+    /**
+     * The jurisdiction default, or null when this country says nothing.
+     *
+     * The `country_inventory_settings` read is deliberately NOT wrapped in a
+     * `Schema::hasTable()` guard, unlike the seeder's (fix round 1, inv gate F-10).
+     * The asymmetry is intentional and fail-closed in opposite directions: a
+     * seeder must be a no-op before its own migration has run, whereas a resolver
+     * reached on a tenant database that is missing the table should raise rather
+     * than silently answer "no jurisdiction rule" and fall through to the system
+     * default — a wrong valuation mode is a silent mis-statement, a missing table
+     * is a loud deploy bug.
+     */
     private function countryMode(string $countryCode): ?InventoryValuationMode
     {
         if ($countryCode === '') {

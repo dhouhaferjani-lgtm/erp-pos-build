@@ -59,6 +59,24 @@ enum InventoryValuationMode: string
         return $this === self::Perpetual;
     }
 
+    /**
+     * The values a write boundary may accept — DERIVED from `isSupported()`.
+     *
+     * The settings FormRequest used to restate this as `in:perpetual`
+     * (fix round 1, fiscal gate P3-4). A hardcoded list is a second authority: the
+     * day periodic ships, `isSupported()` moves and the 422 does not, so the
+     * setting stays unreachable for no reason anyone would think to look for.
+     *
+     * @return list<string>
+     */
+    public static function supportedValues(): array
+    {
+        return array_values(array_map(
+            static fn (self $mode): string => $mode->value,
+            array_filter(self::cases(), static fn (self $mode): bool => $mode->isSupported()),
+        ));
+    }
+
     public function label(): string
     {
         return match ($this) {
