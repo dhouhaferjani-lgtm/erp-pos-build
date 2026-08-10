@@ -19,6 +19,7 @@ import { DocumentOutstandingCallout } from '../components/DocumentOutstandingCal
 import { CreateCreditNoteForm } from '../components/CreateCreditNoteForm'
 import { CreditNoteList } from '../components/CreditNoteList'
 import { DeliveryConfirmationModal } from '../components/DeliveryConfirmationModal'
+import type { DeliveryConfirmationVariant, PreDeliveryPolicySource } from '../components/DeliveryConfirmationModal'
 import { OutstandingAmountSection } from '../components/OutstandingAmountSection'
 import { PaymentHistorySection } from '../components/PaymentHistorySection'
 import { isPaymentStatus, paymentStatusFallbackLabel, paymentStatusIcon, paymentStatusTone } from '../components/paymentStatus'
@@ -90,6 +91,14 @@ export function InvoiceDetailPage() {
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showDeliveryConfirmationModal, setShowDeliveryConfirmationModal] = useState(false)
   const [draftDeliveryNotes, setDraftDeliveryNotes] = useState<Array<{ id: string; number: string; total: string; line_count: number }>>([])
+  /**
+   * DPA Wave 3 T25c. Which delivery situation the modal is in: confirming
+   * delivery notes that already exist, or CREATING one because the country's
+   * pre-delivery invoicing policy refuses to post an undelivered goods invoice.
+   */
+  const [deliveryModalVariant, setDeliveryModalVariant] = useState<DeliveryConfirmationVariant>('confirm-existing')
+  const [preDeliveryPolicySource, setPreDeliveryPolicySource] = useState<PreDeliveryPolicySource>('country')
+  const [preDeliveryBlockedReason, setPreDeliveryBlockedReason] = useState<string | null>(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('related')
   const [emailForm, setEmailForm] = useState({
@@ -153,7 +162,26 @@ export function InvoiceDetailPage() {
     onError: (error: Error) => {
       // Check if error is due to draft delivery notes
       if (error instanceof AxiosError) {
-        const errorData = error.response?.data as { error?: { code?: string; details?: { status?: string; can_auto_confirm?: boolean; draft_dns?: Array<{ id: string; number: string; total: string; line_count: number }> } } } | undefined
+        const errorData = error.response?.data as { error?: { code?: string; details?: { status?: string; can_auto_confirm?: boolean; policy_source?: PreDeliveryPolicySource; blocked_reason?: string | null; draft_dns?: Array<{ id: string; number: string; total: string; line_count: number }> } } } | undefined
+
+        // DPA Wave 3 T25b — the COMPLIANCE refusal. Distinct code, distinct
+        // remedy: there is nothing to confirm, so the guided flow creates the
+        // delivery note. Note there is no `can_auto_confirm === true` gate on
+        // opening the modal here: when the guided path is blocked the modal is
+        // what explains WHY and what to do instead, which a toast cannot.
+        if (errorData?.error?.code === 'DELIVERY_REQUIRED_BEFORE_INVOICE') {
+          setDraftDeliveryNotes([])
+          setDeliveryModalVariant('create-new')
+          setPreDeliveryPolicySource(errorData.error.details?.policy_source ?? 'country')
+          setPreDeliveryBlockedReason(
+            errorData.error.details?.can_auto_confirm === true
+              ? null
+              : (errorData.error.details?.blocked_reason ?? 'UNKNOWN'),
+          )
+          setShowDeliveryConfirmationModal(true)
+          return
+        }
+
         if (
           errorData?.error?.code === 'DELIVERY_NOT_COMPLETED' &&
           errorData?.error?.details?.status === 'draft_dns_found' &&
@@ -161,6 +189,8 @@ export function InvoiceDetailPage() {
         ) {
           const draftDns = errorData.error.details.draft_dns ?? []
           setDraftDeliveryNotes(draftDns)
+          setDeliveryModalVariant('confirm-existing')
+          setPreDeliveryBlockedReason(null)
           setShowDeliveryConfirmationModal(true)
           return
         }
@@ -184,6 +214,48 @@ export function InvoiceDetailPage() {
       ])
       setShowDeliveryConfirmationModal(false)
       toast.success(t('sales:invoices.deliveryConfirmation.success'))
+    },
+    onError: (error) => {
+      toast.error(getErrorMessage(error))
+    },
+  })
+
+  /**
+   * DPA Wave 3 T25c / D-30 — the REQUIRED path for a standalone goods invoice.
+   *
+   * A sibling endpoint, not a widening of confirm-deliveries-and-post: that one
+   * confirms delivery notes an ORDER already has and hard-refuses an invoice
+   * with no source order. This one creates the note from the invoice's own goods
+   * lines, writes the linkage the server resolver reads, confirms it and posts —
+   * in one server-side transaction.
+   */
+  const createDeliveryAndPostMutation = useMutation({
+    mutationFn: () => apiPost<Document>(`/invoices/${id}/create-delivery-and-post`, {}),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['document', 'invoice', id] }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('documents', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('delivery-notes', tenantId, companyId),
+        }),
+        // This mutation ISSUES STOCK — it is the only invoice action on this page
+        // that does. Leaving the stock and product caches alone left every
+        // on-hand figure in the session showing pre-issue quantities until
+        // something else happened to refetch them.
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('stock', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('stock-levels', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('products', tenantId, companyId),
+        }),
+      ])
+      setShowDeliveryConfirmationModal(false)
+      toast.success(t('sales:invoices.preDeliveryInvoicing.success'))
     },
     onError: (error) => {
       toast.error(getErrorMessage(error))
@@ -729,8 +801,21 @@ export function InvoiceDetailPage() {
         isOpen={showDeliveryConfirmationModal}
         onClose={() => { setShowDeliveryConfirmationModal(false); }}
         draftDeliveryNotes={draftDeliveryNotes}
-        onConfirmAndPost={() => { confirmDeliveriesAndPostMutation.mutate(); }}
-        isLoading={confirmDeliveriesAndPostMutation.isPending}
+        variant={deliveryModalVariant}
+        policySource={preDeliveryPolicySource}
+        blockedReason={preDeliveryBlockedReason}
+        onConfirmAndPost={() => {
+          if (deliveryModalVariant === 'create-new') {
+            createDeliveryAndPostMutation.mutate()
+            return
+          }
+          confirmDeliveriesAndPostMutation.mutate()
+        }}
+        isLoading={
+          deliveryModalVariant === 'create-new'
+            ? createDeliveryAndPostMutation.isPending
+            : confirmDeliveriesAndPostMutation.isPending
+        }
       />
 
       {/* Credit Note Form Modal */}

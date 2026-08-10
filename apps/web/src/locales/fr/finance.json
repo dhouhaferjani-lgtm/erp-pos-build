@@ -427,5 +427,38 @@
       "title": "Aucun mouvement de trésorerie",
       "description": "Aucun mouvement ne correspond aux filtres sélectionnés."
     }
+  },
+  "laneSeparation": {
+    "title": "Marchandises et factures",
+    "description": "Documents pour lesquels le flux marchandises et le flux monétaire divergent. Aucune écriture n'est générée depuis cette page.",
+    "policyInForce": "Règle en vigueur : {{policy}} ({{source}})",
+    "policyValue": {
+      "require_delivery_first": "livraison requise avant facturation",
+      "allow": "facturation avant livraison autorisée"
+    },
+    "policySource": {
+      "company": "le paramétrage de votre société",
+      "country": "la valeur par défaut de votre pays",
+      "system": "la valeur par défaut du système"
+    },
+    "uninvoicedTitle": "Livré, non facturé",
+    "uninvoicedHelp": "Bons de livraison confirmés sans facture correspondante. C'est la population couverte par l'écriture de régularisation 418 en fin d'exercice ; sa comptabilisation reste une action distincte et volontaire.",
+    "uninvoicedEmpty": "Tous les bons de livraison confirmés ont été facturés.",
+    "legacyTitle": "Facturé, non livré — historique, dérogations et exceptions",
+    "legacyHelp": "Factures comptabilisées pour des marchandises sans livraison correspondante. Sous la politique actuelle, rien de nouveau ne rejoint cette liste SAUF une dérogation enregistrée : elle ne doit donc que diminuer. Trois états de ligne : « Antérieur à la règle » est historique et relève de l'appréciation du comptable ; un badge bleu de dérogation signifie que la facture a été comptabilisée délibérément selon une règle enregistrée ; un « À investiguer » orange signifie qu'une facture a été comptabilisée sans passer le contrôle de livraison et sans dérogation — c'est la seule à traiter.",
+    "legacyEmpty": "Aucune facture n'a été comptabilisée avant ses marchandises, et aucune dérogation n'a été enregistrée.",
+    "prePolicy": "Antérieur à la règle",
+    "columns": {
+      "document": "Document",
+      "date": "Date",
+      "partner": "Partenaire",
+      "total": "Total",
+      "policyAtPostTime": "Règle à la comptabilisation"
+    },
+    "unexplained": "À investiguer",
+    "exemption": {
+      "work_order_generated_invoice": "Dérogation : ordre de réparation",
+      "generic": "Dérogation enregistrée"
+    }
   }
 }

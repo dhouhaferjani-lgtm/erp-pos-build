@@ -192,6 +192,13 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:reports.operational')
         ->name('reports.upcoming-payments');
 
+    // DPA Wave 3 T24 — lane-separation reconciliation (delivered-not-invoiced +
+    // the invoiced-not-delivered legacy register). LISTING ONLY: this endpoint
+    // posts nothing. The 418 accrual and its reversal stay operator-driven.
+    Route::get('/reports/lane-separation', [ReportsController::class, 'laneSeparation'])
+        ->middleware('can:reports.financial')
+        ->name('reports.lane-separation');
+
     Route::get('/reports/finance-summary', [ReportsController::class, 'financeSummary'])
         ->middleware('can:reports.financial')
         ->name('reports.finance-summary');

@@ -559,6 +559,29 @@
       "optionsUnknownReason": "We could not confirm what was delivered on this invoice yet, so a goods return cannot be recorded from here.",
       "checkFailed": "We could not check this invoice. Retry, or reload the page.",
       "retryCheck": "Retry"
+    },
+    "preDeliveryInvoicing": {
+      "title": "Delivery Required Before Posting",
+      "warning": "This invoice covers goods that have not been delivered",
+      "warningDetails": "Under this country's accounting rules a definitive goods invoice cannot be issued before delivery. Revenue is recognised when the goods transfer, and VAT becomes payable the moment the invoice is issued — so the invoice cannot be posted yet.",
+      "policyInForce": "Policy in force: delivery required first (source: {{source}})",
+      "policySourceCompany": "your company setting",
+      "policySourceCountry": "your country's default",
+      "policySourceSystem": "the system default",
+      "whatHappensTitle": "What will happen:",
+      "step1": "A delivery note will be created from this invoice's goods lines",
+      "step2": "Stock will be issued from inventory (reduces quantity on hand)",
+      "step3": "The delivery note will be sealed into the fiscal hash chain",
+      "step4": "The invoice will then be posted and finalised",
+      "createAndPost": "Deliver & Post Invoice",
+      "creating": "Delivering…",
+      "success": "Goods delivered and invoice posted",
+      "alternativesTitle": "If the goods have not shipped yet",
+      "alternativeOrder": "Record a quote or sales order instead, and register any up-front payment as a customer advance. Invoice once the goods are delivered.",
+      "blockedTitle": "A delivery note cannot be created automatically",
+      "blockedNoLocation": "No stock location could be resolved for these goods. Set a default location, or a location on the invoice, and try again.",
+      "blockedNoPhysicalLines": "This invoice has no goods lines to deliver.",
+      "blockedGeneric": "Create and confirm a delivery note manually, then post the invoice."
     }
   },
   "deliveryNotes": {

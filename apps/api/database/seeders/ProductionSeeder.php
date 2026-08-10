@@ -37,6 +37,7 @@ class ProductionSeeder extends Seeder
         //     denomination). MUST run after CountriesSeeder — country_code FK.
         $this->command->info('[1b/6] Seeding country payment settings...');
         $this->call(CountryPaymentSettingsSeeder::class);
+        $this->call(CountryDocumentSettingsSeeder::class);
         $this->command->info('     Country payment settings seeded successfully.');
 
         // 1c. Country Inventory Settings (valuation mode). Same FK ordering

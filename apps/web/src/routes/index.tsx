@@ -98,6 +98,7 @@ const PosHubPage = lazy(() => import('../features/pos/pages/PosHubPage').then((m
 const MarketingHubPage = lazy(() => import('../features/marketing').then((m) => ({ default: m.MarketingHubPage })))
 const FinanceHubPage = lazy(() => import('../features/finance/pages/FinanceHubPage').then((m) => ({ default: m.FinanceHubPage })))
 const CashMovementsReportPage = lazy(() => import('../features/finance/pages/CashMovementsReportPage').then((m) => ({ default: m.CashMovementsReportPage })))
+const LaneSeparationReportPage = lazy(() => import('../features/finance/pages/LaneSeparationReportPage').then((m) => ({ default: m.LaneSeparationReportPage })))
 
 // Inventory module
 const ProductListPage = lazy(() => import('../features/inventory/ProductListPage').then((m) => ({ default: m.ProductListPage })))
@@ -2003,6 +2004,16 @@ export function AppRoutes() {
                   <TreasuryOverviewPage />
                 </SuspenseWrapper>
               </RequirePermission>
+            }
+          />
+          <Route
+            path="lane-separation"
+            element={
+              <SuspenseWrapper>
+                <RequirePermission permission="reports.financial">
+                  <LaneSeparationReportPage />
+                </RequirePermission>
+              </SuspenseWrapper>
             }
           />
           <Route

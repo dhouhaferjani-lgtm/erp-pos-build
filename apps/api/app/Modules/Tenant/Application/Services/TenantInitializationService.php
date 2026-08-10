@@ -15,6 +15,7 @@ use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\BanksSeeder;
 use Database\Seeders\CountriesSeeder;
+use Database\Seeders\CountryDocumentSettingsSeeder;
 use Database\Seeders\CountryInventorySettingsSeeder;
 use Database\Seeders\CountryPaymentSettingsSeeder;
 use Database\Seeders\CountryTaxRatesSeeder;
@@ -204,6 +205,10 @@ class TenantInitializationService
         // migration's own upsert is skipped on a fresh tenant because
         // `countries` is still empty when tenants:migrate runs.
         (new CountryPaymentSettingsSeeder)->run();
+        // Wave 3 T25a / D-27: the document-lane country policy family. Same
+        // ordering requirement as the payment settings — the country_code FK
+        // needs the `countries` lookup rows to exist first.
+        (new CountryDocumentSettingsSeeder)->run();
         // Same ordering constraint, same reason (DPA Wave 3 T8): the
         // country_code FK needs the lookup rows, and this table's migration
         // deliberately seeds nothing.

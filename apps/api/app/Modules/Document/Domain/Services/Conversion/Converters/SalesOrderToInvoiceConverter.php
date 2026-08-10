@@ -5,17 +5,16 @@ declare(strict_types=1);
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
-use App\Modules\BatchExpiry\Domain\Services\FEFOInventoryService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
+use App\Modules\Document\Domain\Services\DeliveryNoteFromDocumentFactory;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
@@ -23,7 +22,6 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 /**
  * Converter for Sales Order to Invoice conversion.
@@ -62,11 +60,11 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
     public function __construct(
         protected readonly DocumentNumberingService $numberingService,
         private readonly GeneralLedgerService $glService,
-        private readonly FEFOInventoryService $fefoService,
         private readonly LocationContext $locationContext,
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
         protected readonly TaxCalculationService $taxCalculationService,
         private readonly StripSubToleranceDiscountsService $discountStripper,
+        private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
     ) {}
 
     public function sourceType(): DocumentType
@@ -465,11 +463,19 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
     }
 
     /**
-     * Auto-create a delivery note for an order with physical products.
+     * Auto-create a DRAFT delivery note for an order with physical products.
      *
-     * Creates delivery note in "confirmed" status but with delivery_status "not_delivered".
-     * This allows the invoice to be created immediately while still enforcing Tunisia
-     * compliance - the delivery note must be marked as delivered before invoice can be posted.
+     * 🔁 Wave 3 T25c: the generator itself now lives in
+     * {@see DeliveryNoteFromDocumentFactory},
+     * because a STANDALONE invoice needs the identical machinery under
+     * `require_delivery_first` and a copy would drift. What stays here is the
+     * order-specific half: resolving the location and recording the new note in
+     * `order.payload['delivery_note_ids']` — the linkage shape only an order has.
+     *
+     * 📌 The note is created **DRAFT** (previously this docblock claimed
+     * "confirmed" while the code wrote Draft — corrected in T25c). The invoice
+     * can be created immediately; the note must be confirmed, which issues stock
+     * and seals the fiscal chain, before the invoice can be posted.
      *
      * @return Document The created delivery note
      */
@@ -480,169 +486,43 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
             'order_number' => $order->document_number,
         ]);
 
-        // Get location_id from order, or fallback to company's default location
-        $locationId = $order->location_id;
+        // 📌 DISCLOSED DEVIATION (T25c extraction, named in fix round 1 / fiscal
+        // F-9). Before the extraction this path took `$order->location_id`
+        // VERBATIM and only resolved a Location model on the null branch, so a
+        // stale or cross-company order location was carried onto the delivery
+        // note unchecked. The factory needs a real `Location`, so the id is now
+        // resolved AND company-scoped — a tightening, and one that can refuse
+        // where the old code proceeded. It is deliberate: a delivery note is a
+        // stock-issuing document and issuing from another company's warehouse is
+        // not a lesser evil than a refusal.
+        //
+        // Each branch gets its OWN message: "no default location" was emitted for
+        // both, which sent an operator hunting for a company default when the
+        // real fault was the order's own location_id.
+        if ($order->location_id !== null) {
+            $location = Location::query()
+                ->where('company_id', $order->company_id)
+                ->find($order->location_id);
 
-        if ($locationId === null) {
-            $defaultLocation = $this->locationContext->getDefaultLocation($order->company_id);
+            if ($location === null) {
+                throw new \DomainException(
+                    "The order's location does not belong to this company, so a delivery note cannot be created for it"
+                );
+            }
+        } else {
+            $location = $this->locationContext->getDefaultLocation($order->company_id);
 
-            if ($defaultLocation === null) {
+            if ($location === null) {
                 throw new \DomainException('No default location found for company');
             }
-
-            $locationId = $defaultLocation->id;
         }
 
-        // Create delivery note document in DRAFT status
-        // User must explicitly confirm via modal before posting invoice
-        /** @phpstan-ignore argument.type */
-        $delivery = Document::create([
-            'id' => Str::uuid()->toString(),
-            'tenant_id' => $order->tenant_id,
-            'company_id' => $order->company_id,
-            'location_id' => $locationId,
-            'type' => DocumentType::DeliveryNote,
-            'status' => DocumentStatus::Draft, // Draft - requires explicit confirmation
-            'document_number' => $this->numberingService->generateNumber($order->tenant_id, $order->company_id, DocumentType::DeliveryNote),
-            'document_date' => now(),
-            'partner_id' => $order->partner_id,
-            'partner_name' => $order->partner->name,
-            'partner_address' => $order->partner->street_address,
-            'currency' => $order->currency,
-            'subtotal' => $order->subtotal,
-            'discount_amount' => $order->discount_amount,
-            'tax_amount' => $order->tax_amount,
-            'total' => $order->total,
-            'notes' => 'Auto-created during invoice conversion - requires confirmation',
-            'source_document_id' => $order->id,
-            'payload' => [
-                'auto_created' => true, // Flag for batch confirmation
-            ],
-        ]);
-
-        // Copy lines (only physical products), with FEFO splitting for batch-tracked products
-        $dnLineNumber = 0;
-        foreach ($order->lines as $line) {
-            // Skip non-physical products
-            $product = null;
-            if ($line->product_id !== null) {
-                // api.document.014/015/016: scope Product lookup by the source
-                // document's tenant + company so a corrupted line.product_id
-                // pointing across tenants surfaces as null and the line is
-                // treated defensively as a service.
-                $product = Product::query()
-                    ->where('tenant_id', $order->tenant_id)
-                    ->where('company_id', $order->company_id)
-                    ->find($line->product_id);
-                if ($product !== null && ! $product->isPhysical()) {
-                    continue; // Skip services
-                }
-            }
-
-            // Check if product requires batch tracking
-            $requiresBatch = $product !== null
-                && ($product->requires_batch_tracking ?? false);
-
-            if ($requiresBatch) {
-                // FEFO: split into multiple DN lines (one per batch)
-                $result = $this->fefoService->suggestBatchesForSale(
-                    (string) $line->product_id,
-                    (string) $locationId,
-                    (string) $line->quantity,
-                );
-
-                if ($result->fullyFulfilled) {
-                    foreach ($result->suggestions as $suggestion) {
-                        $dnLineNumber++;
-                        /** @var numeric-string $batchQty */
-                        $batchQty = (string) $suggestion->quantity;
-                        /** @var numeric-string $unitPrice */
-                        $unitPrice = (string) $line->unit_price;
-                        $lineTotal = bcmul($batchQty, $unitPrice, $this->scale());
-
-                        DocumentLine::create([
-                            'id' => Str::uuid()->toString(),
-                            'document_id' => $delivery->id,
-                            'line_number' => $dnLineNumber,
-                            'product_id' => $line->product_id,
-                            'product_code' => $line->product_code,
-                            'description' => $line->description,
-                            'quantity' => $batchQty,
-                            'unit_price' => $line->unit_price,
-                            'discount_percent' => $line->discount_percent,
-                            'discount_amount' => null,
-                            'tax_rate' => $line->tax_rate,
-                            'line_total' => $lineTotal,
-                            'notes' => $line->notes,
-                            'designation_default_snapshot' => $line->designation_default_snapshot,
-                            'source_line_id' => $line->id,
-                            'batch_id' => $suggestion->batch->id,
-                        ]);
-                    }
-                } else {
-                    // Fallback: create single line without batch (insufficient batch stock)
-                    $dnLineNumber++;
-                    DocumentLine::create([
-                        'id' => Str::uuid()->toString(),
-                        'document_id' => $delivery->id,
-                        'line_number' => $dnLineNumber,
-                        'product_id' => $line->product_id,
-                        'product_code' => $line->product_code,
-                        'description' => $line->description,
-                        'quantity' => $line->quantity,
-                        'unit_price' => $line->unit_price,
-                        'discount_percent' => $line->discount_percent,
-                        'discount_amount' => $line->discount_amount,
-                        'tax_rate' => $line->tax_rate,
-                        'line_total' => $line->line_total ?? '0.00',
-                        'notes' => $line->notes,
-                        'designation_default_snapshot' => $line->designation_default_snapshot,
-                        'source_line_id' => $line->id,
-                    ]);
-
-                    Log::warning('FEFO allocation failed for auto-created DN, falling back to non-batch line', [
-                        'product_id' => $line->product_id,
-                        'quantity' => $line->quantity,
-                        'shortfall' => $result->shortfall,
-                    ]);
-                }
-            } else {
-                $dnLineNumber++;
-                DocumentLine::create([
-                    'id' => Str::uuid()->toString(),
-                    'document_id' => $delivery->id,
-                    'line_number' => $dnLineNumber,
-                    'product_id' => $line->product_id,
-                    'product_code' => $line->product_code,
-                    'description' => $line->description,
-                    'quantity' => $line->quantity,
-                    'unit_price' => $line->unit_price,
-                    'discount_percent' => $line->discount_percent,
-                    'discount_amount' => $line->discount_amount,
-                    'tax_rate' => $line->tax_rate,
-                    'line_total' => $line->line_total ?? '0.00',
-                    'notes' => $line->notes,
-                    'designation_default_snapshot' => $line->designation_default_snapshot,
-                    'source_line_id' => $line->id,
-                ]);
-            }
-
-            // Update order line's quantity_delivered
-            $line->update([
-                'quantity_delivered' => $line->quantity,
-            ]);
-        }
-
-        // Copy vehicle context if present
-        if ($order->vehicleContext !== null) {
-            $delivery->vehicleContext()->create([
-                'id' => Str::uuid()->toString(),
-                'vehicle_id' => $order->vehicleContext->vehicle_id,
-                'vehicle_snapshot' => $order->vehicleContext->vehicle_snapshot,
-                'mileage_at_service' => $order->vehicleContext->mileage_at_service,
-                'context_data' => $order->vehicleContext->context_data,
-            ]);
-        }
+        $delivery = $this->deliveryNoteFactory->createDraftFrom(
+            source: $order,
+            partner: $order->partner,
+            location: $location,
+            notes: 'Auto-created during invoice conversion - requires confirmation',
+        );
 
         // Update order payload to track delivery note
         $orderPayload = $order->payload ?? [];

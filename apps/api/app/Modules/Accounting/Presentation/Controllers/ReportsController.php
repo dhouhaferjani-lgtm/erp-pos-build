@@ -33,9 +33,13 @@ use App\Modules\Accounting\Presentation\Requests\GetOwnerStockAlertsRequest;
 use App\Modules\Accounting\Presentation\Requests\GetProfitLossRequest;
 use App\Modules\Accounting\Presentation\Requests\GetTrialBalanceRequest;
 use App\Modules\Accounting\Presentation\Requests\GetUpcomingPaymentsRequest;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationScopeBoundary;
 use App\Modules\Company\Services\LocationScopeResolver;
+use App\Modules\Compliance\Services\InvoicedBeforeDeliveryScanner;
+use App\Modules\Compliance\Services\UninvoicedDeliveryNoteService;
+use App\Modules\Document\Application\Services\PreDeliveryInvoicingPolicyResolver;
 use App\Modules\Identity\Domain\User;
 use Carbon\Carbon;
 use Illuminate\Contracts\Auth\Authenticatable;
@@ -101,7 +105,83 @@ class ReportsController extends Controller
         private readonly FinanceSummaryService $financeSummaryService,
         private readonly LocationScopeResolver $locationScopeResolver,
         private readonly LocationScopeBoundary $locationScopeBoundary,
+        private readonly UninvoicedDeliveryNoteService $uninvoicedDeliveryNoteService,
+        private readonly InvoicedBeforeDeliveryScanner $invoicedBeforeDeliveryScanner,
+        private readonly PreDeliveryInvoicingPolicyResolver $preDeliveryInvoicingPolicyResolver,
     ) {}
+
+    /**
+     * Lane-separation reconciliation: the two mirrored populations where goods
+     * and money parted company (DPA Wave 3 T24 / D-26).
+     *
+     * **LISTING ONLY. This endpoint creates no journal entry** — viewing it must
+     * never move the ledger. The 418 year-end accrual
+     * (`generateYearEndAdjustment`) and its reversal stay OPERATOR-DRIVEN, on
+     * their own explicit endpoints, and that separation is deliberate: an
+     * accrual posted because someone opened a report is an accrual nobody
+     * decided to make.
+     *
+     * Two buckets:
+     *
+     *  - `uninvoiced_delivery_notes` (**D-d**) — goods left, no invoice. This is
+     *    the 418 accrual's population.
+     *  - `invoiced_not_delivered` (**D-c**) — an invoice was issued with no goods
+     *    behind it. 🚨 **LEGACY / PRE-POLICY register, not a workflow.** Under
+     *    `require_delivery_first` no new invoice joins it **except a recorded
+     *    exemption** (fix round 2 / inv N-1 — the earlier "no new invoice can
+     *    join it" stopped being true when the F-1 Workshop exemption landed). A
+     *    row here is therefore one of three things: a document that predates the
+     *    policy (`policy_at_post_time = pre_policy`); a deliberate, bounded
+     *    exemption (`delivery_requirement_exempted = true`, with
+     *    `posting_context` naming who claimed it); or evidence of an unguarded
+     *    posting path — the only one worth investigating. The doctrinally
+     *    correct entry for it would be Dr revenue / Cr 472 — a revenue-timing
+     *    change to the money lane, and a materially larger lane than this one.
+     *    So: listed, never posted.
+     *
+     * The resolved policy in force travels with the response so an operator can
+     * tell an exception from a permitted flow at a glance.
+     *
+     * GET /api/v1/reports/lane-separation
+     */
+    public function laneSeparation(Request $request): JsonResponse
+    {
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($this->companyContext->getCompanyId());
+        $companyId = (string) $company->id;
+
+        $fromDate = $request->query('from_date') !== null
+            ? Carbon::parse((string) $request->query('from_date'))
+            : null;
+        $toDate = $request->query('to_date') !== null
+            ? Carbon::parse((string) $request->query('to_date'))
+            : null;
+
+        $report = $this->uninvoicedDeliveryNoteService->generateYearEndReport($companyId, $fromDate, $toDate);
+
+        // 🔁 Fix round 2 / inv N-2 — the OBSERVATION accessor, for the same reason
+        // fix round 1 gave the T25e stamp one (F-3): a report states what is true,
+        // it does not enforce. Resolving through the throwing accessor meant the
+        // first company to carry `allow` lost the very report that would have
+        // shown them what that setting had done — a 500 where the answer should
+        // have been the word "allow".
+        $resolvedPolicy = $this->preDeliveryInvoicingPolicyResolver->resolveForAudit($company);
+
+        return response()->json([
+            'data' => [
+                'uninvoiced_delivery_notes' => $report['uninvoiced_delivery_notes'],
+                'uninvoiced_totals' => $report['totals'],
+                'uninvoiced_by_partner' => array_values($report['by_partner']),
+                'invoiced_not_delivered' => $this->invoicedBeforeDeliveryScanner->scan($companyId, $fromDate, $toDate),
+                'policy' => $resolvedPolicy->policy->value,
+                'policy_source' => $resolvedPolicy->source,
+            ],
+            'meta' => [
+                'generated_at' => $report['generated_at'],
+                'company_id' => $companyId,
+            ],
+        ]);
+    }
 
     public function salesByLocation(GetOwnerSalesReportRequest $request): JsonResponse
     {
