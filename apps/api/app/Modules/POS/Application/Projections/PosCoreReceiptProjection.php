@@ -43,6 +43,7 @@ use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Application\Services\RestockPolicyResolver;
 use App\Modules\Product\Domain\Enums\RestockPolicy;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Voucher\Application\DTOs\VoucherRedemptionRequest;
 use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
@@ -136,6 +137,24 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * reconciliation below is a scale-4 bccomp rather than a string compare.
      */
     private const int DENOMINATION_SCALE = 4;
+
+    /**
+     * The internal at-rest cost precision of the perpetual WAC ledger — the same
+     * constant `WeightedAverageCostService::COST_SCALE` and
+     * `StockAdjustmentService::COST_SCALE` carry, and the scale of
+     * `stock_movements.unit_cost` / `total_cost` (decimal(19,6)).
+     *
+     * DPA Wave 3 T5. It is a CONSTANT, never `CurrencyScaleResolver::getScale()`,
+     * and that is load-bearing rather than stylistic: this projector runs in a
+     * queue worker with NO `CompanyContext` (house rule 20), where the bare
+     * no-arg resolver throws `UnboundCompanyContextException`
+     * (`CurrencyScaleResolver.php:44-52`). The cost columns are
+     * resolver-independent by construction, exactly as
+     * `StockAdjustmentService::recordMovement()` already writes them — which is
+     * precisely why V10 could route the fiscal projection through `issue()` and
+     * V8 could not route it through `WeightedAverageCostService` (plan §0.1).
+     */
+    private const int COST_SCALE = 6;
 
     /**
      * Cash-rounding cutover version. `fiscal_events.event_version >= 3` is the
@@ -1697,6 +1716,65 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * `variant_id` is written onto the `stock_movements` row for downstream
      * reporting (Task 18). Column exists from Task 6.
      */
+    /**
+     * The cost snapshot for a POS stock movement (DPA Wave 3 T5).
+     *
+     * Reads `products.cost_price` through the ONE shared definition
+     * ({@see Product::resolveMovementUnitCost()}) so this writer, the batch
+     * write-off and the POS return scrap can never value the same product
+     * differently — the drift gate V10-I5 caught.
+     *
+     * Scoped by tenant + company: a forged/foreign `product_id` must not resolve.
+     * A product that cannot be resolved yields a ZERO cost rather than throwing:
+     * stock is a best-effort downstream projection and a projector may never
+     * reject an already-signed fiscal event (the doctrine at
+     * `applyScrapDisposition`). The miss is logged so it is observable.
+     *
+     * @param  numeric-string  $quantity
+     * @return array{unit_cost: numeric-string, total_cost: numeric-string}
+     */
+    private function movementCostSnapshot(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+        string $quantity,
+    ): array {
+        $product = Product::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->find($productId);
+
+        if ($product === null) {
+            Log::warning('PosCoreReceiptProjection: product unresolvable for the movement cost snapshot; the movement will carry a zero cost', [
+                'product_id' => $productId,
+                'company_id' => $companyId,
+            ]);
+
+            /** @var numeric-string $zero */
+            $zero = bcadd('0', '0', self::COST_SCALE);
+
+            return ['unit_cost' => $zero, 'total_cost' => $zero];
+        }
+
+        /** @var numeric-string $rawUnitCost */
+        $rawUnitCost = $product->resolveMovementUnitCost();
+        /** @var numeric-string $unitCost */
+        $unitCost = bcadd($rawUnitCost, '0', self::COST_SCALE);
+
+        // The POS writers store a POSITIVE magnitude on both legs; take the
+        // absolute value anyway so total_cost can never go negative if that
+        // convention ever changes.
+        $absoluteQuantity = bccomp($quantity, '0', 4) < 0
+            ? bcmul($quantity, '-1', 4)
+            : $quantity;
+
+        /** @var numeric-string $absoluteQuantity */
+        /** @var numeric-string $totalCost */
+        $totalCost = bcmul($unitCost, $absoluteQuantity, self::COST_SCALE);
+
+        return ['unit_cost' => $unitCost, 'total_cost' => $totalCost];
+    }
+
     private function decrementStock(
         string $tenantId,
         string $companyId,
@@ -1765,6 +1843,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
 
+        $cost = $this->movementCostSnapshot($tenantId, $companyId, $productId, $qty);
+
         StockMovement::query()->create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
@@ -1777,6 +1857,13 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'quantity' => $quantity,
             'quantity_before' => $quantityBefore,
             'quantity_after' => $quantityAfter,
+            // DPA Wave 3 T5 — written by the SAME idempotent insert as the
+            // movement, never a follow-up UPDATE: the projection is replayed on
+            // retry and a second write would double-count.
+            // avg_cost_before / avg_cost_after stay NULL: the POS path does not
+            // re-average (claiming it did would be the V8 mistake).
+            'unit_cost' => $cost['unit_cost'],
+            'total_cost' => $cost['total_cost'],
             'reference' => 'POS Fiscal Event Projection',
             'reference_type' => 'pos_receipt',
             'reference_id' => $receiptId,
@@ -2099,6 +2186,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
 
+        $cost = $this->movementCostSnapshot($tenantId, $companyId, $productId, $qty);
+
         StockMovement::query()->create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
@@ -2111,6 +2200,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'quantity' => $quantity,
             'quantity_before' => $quantityBefore,
             'quantity_after' => $quantityAfter,
+            // DPA Wave 3 T5 — see decrementStock(). Same definition, same scale.
+            'unit_cost' => $cost['unit_cost'],
+            'total_cost' => $cost['total_cost'],
             'reference' => 'POS Fiscal Event Projection (refund/void restock)',
             'reference_type' => 'pos_receipt',
             'reference_id' => $receiptId,

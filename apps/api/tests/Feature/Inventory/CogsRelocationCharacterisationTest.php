@@ -33,7 +33,7 @@ use Tests\Traits\BuildsWave3ExitFixtures;
  *  (b) a delivery-note confirm creates a stock movement with `reason IS NULL`
  *      — **inverted by T2** (see the test's own note);
  *  (c) the two LIVE POS writers create movements with `unit_cost IS NULL`
- *      — **inverted by T5**;
+ *      — ✅ **INVERTED BY T5**;
  *  (d) a return-note confirm creates NO journal entry at all (§0.16 — the RN-GL
  *      leg is greenfield);
  *  (e) a service-only invoice creates no COGS entry;
@@ -180,10 +180,12 @@ final class CogsRelocationCharacterisationTest extends TestCase
     // (c) both LIVE POS writers leave unit_cost NULL
     // =================================================================
 
-    public function test_the_two_live_pos_writers_create_movements_with_a_null_unit_cost(): void
+    public function test_the_two_live_pos_writers_create_costed_movements(): void
     {
-        // ⚠ INVERTED BY T5 — after T5 both movements carry a non-null
-        // `unit_cost`/`total_cost` snapshot at COST_SCALE = 6.
+        // ✅ INVERTED BY T5. BEFORE T5 both assertions here were
+        // `assertNull($movement->unit_cost)` / `->total_cost` — the POS writers
+        // produced uncosted rows, so the Wave-3 exit seam (which reads the cost
+        // from the MOVEMENT ROW) would have booked no COGS for any POS sale.
         //
         // NOTE (deviation recorded in the task report): plan T1 says "all three
         // POS writers (§0.6)". §0.6 as CORRECTED in Revision 2 (and §0b.8) lists
@@ -207,10 +209,10 @@ final class CogsRelocationCharacterisationTest extends TestCase
         /** @var StockMovement $returnMovement */
         $returnMovement = StockMovement::query()->where('reason', 'pos_return')->firstOrFail();
 
-        self::assertNull($saleMovement->unit_cost, 'decrementStockForLines writes no cost today');
-        self::assertNull($saleMovement->total_cost);
-        self::assertNull($returnMovement->unit_cost, 'restockForLines writes no cost today');
-        self::assertNull($returnMovement->total_cost);
+        self::assertSame('7.500000', $this->numericString($saleMovement->unit_cost));
+        self::assertSame('15.000000', $this->numericString($saleMovement->total_cost));
+        self::assertSame('7.500000', $this->numericString($returnMovement->unit_cost));
+        self::assertSame('7.500000', $this->numericString($returnMovement->total_cost));
 
         // Both already carry the classification Wave 3 depends on.
         self::assertSame('pos_receipt', $saleMovement->reference_type);
