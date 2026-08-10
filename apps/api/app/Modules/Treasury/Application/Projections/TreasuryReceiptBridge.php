@@ -563,11 +563,24 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
     }
 
     /**
-     * Savepoint-contained, fail-closed wrapper. The savepoint first restores a
-     * PostgreSQL transaction poisoned by a failed audit INSERT; rethrowing then
-     * rolls back the bridge's outer transaction so the projection job remains
-     * pending and retries. A purpose-missing projection must never be
+     * Fail-closed wrapper: **the rethrow is the load-bearing part.** It rolls
+     * back the bridge's outer `DB::transaction()`, so the projection row stays
+     * pending and Horizon retries. A purpose-missing projection must never be
      * acknowledged when its only durable operator signal was not persisted.
+     *
+     * The nested `DB::transaction()` (a SAVEPOINT) is recovery-only here, NOT
+     * the mechanism that makes this safe. Its job is narrow: on PostgreSQL a
+     * failed statement aborts the enclosing transaction (`25P02` on everything
+     * after it), so the savepoint leaves the connection in a state where the
+     * outer rollback and the job's own failure accounting can still run. It is
+     * NOT containment in the "carry on regardless" sense — nothing here
+     * continues after the catch.
+     *
+     * Contrast {@see alertIfShortfallExceedsConfigSafely()}, where the savepoint
+     * IS load-bearing: that path swallows, because the write-off it reports on
+     * was already posted and the money must not be undone by a telemetry fault.
+     * The two wrappers look alike and mean opposite things — do not unify them
+     * without deciding which discipline each alert deserves.
      */
     private function recordTolerancePurposeMissingAlertOrFail(
         FiscalEvent $event,

@@ -602,28 +602,43 @@ final class TreasuryReceiptBridgeRoundingGlTest extends TestCase
             'projector_name' => 'treasury_receipt_bridge',
         ]);
         $job = new ApplyFiscalEventProjectionJob($row->id);
-        $this->installPurposeMissingAuditFailureTrigger();
 
+        // try/finally: an assertion failure (or an unexpected throw) between
+        // install and removal would otherwise leave the trigger installed.
+        // Harmless only by accident today — RefreshDatabase wraps the test in a
+        // transaction and DDL is transactional on both PG and SQLite — but the
+        // fixture must not depend on that.
         $thrown = null;
         try {
-            $job->handle(DB::connection(), app(FiscalEventProjectionRegistry::class));
-        } catch (Throwable $exception) {
-            $thrown = $exception;
+            $this->installPurposeMissingAuditFailureTrigger();
+
+            try {
+                $job->handle(DB::connection(), app(FiscalEventProjectionRegistry::class));
+            } catch (Throwable $exception) {
+                $thrown = $exception;
+            }
+
+            $this->assertNotNull($thrown, 'Audit persistence failure must escape so the projection job can retry.');
+            $this->assertStringContainsString('forced purpose alert failure', $thrown->getMessage());
+            $this->assertSame(ProjectionStatus::Pending, $row->refresh()->projection_status);
+            $this->assertSame(1, $row->attempts);
+            $this->assertNull($row->applied_at);
+            $this->assertSame(0, Payment::query()->where('fiscal_event_id', $event->id)->count());
+            $this->assertSame(0, JournalEntry::query()->where('source_id', $receipt->id)->count());
+            $this->assertDatabaseMissing('audit_events', [
+                'event_type' => 'pos.gl.tolerance_purpose_missing',
+                'aggregate_id' => $event->id,
+            ]);
+
+            // The drawer figures are the operator-visible half of the rollback
+            // and were the gap in this test (2026-08-10 treasury gate,
+            // finding 2). String comparison — never a float on money.
+            $this->assertSame('0.000', $this->cashRepositoryBalance());
+            $this->assertSame(0, $this->cashRepositoryMovementCount());
+        } finally {
+            $this->removePurposeMissingAuditFailureTrigger();
         }
 
-        $this->assertNotNull($thrown, 'Audit persistence failure must escape so the projection job can retry.');
-        $this->assertStringContainsString('forced purpose alert failure', $thrown->getMessage());
-        $this->assertSame(ProjectionStatus::Pending, $row->refresh()->projection_status);
-        $this->assertSame(1, $row->attempts);
-        $this->assertNull($row->applied_at);
-        $this->assertSame(0, Payment::query()->where('fiscal_event_id', $event->id)->count());
-        $this->assertSame(0, JournalEntry::query()->where('source_id', $receipt->id)->count());
-        $this->assertDatabaseMissing('audit_events', [
-            'event_type' => 'pos.gl.tolerance_purpose_missing',
-            'aggregate_id' => $event->id,
-        ]);
-
-        $this->removePurposeMissingAuditFailureTrigger();
         $job->handle(DB::connection(), app(FiscalEventProjectionRegistry::class));
 
         $this->assertSame(ProjectionStatus::Applied, $row->refresh()->projection_status);
@@ -636,6 +651,37 @@ final class TreasuryReceiptBridgeRoundingGlTest extends TestCase
             'event_type' => 'pos.gl.tolerance_purpose_missing',
             'aggregate_id' => $event->id,
         ]);
+
+        // Exactly-once on the retry: the cash lands in the drawer once, and
+        // one movement explains it. A non-atomic rollback would show either a
+        // doubled balance or a movement without a matching balance.
+        $this->assertSame('9.950', $this->cashRepositoryBalance());
+        $this->assertSame(1, $this->cashRepositoryMovementCount());
+    }
+
+    /**
+     * Read through the model so the `decimal:3` cast normalises the value:
+     * SQLite hands back an unpadded `0` where PostgreSQL returns `0.000`, and
+     * the assertion must mean the same thing on both drivers.
+     */
+    private function cashRepositoryBalance(): string
+    {
+        return PaymentRepository::query()
+            ->where('company_id', $this->companyId)
+            ->firstOrFail()
+            ->balance;
+    }
+
+    private function cashRepositoryMovementCount(): int
+    {
+        $repositoryId = PaymentRepository::query()
+            ->where('company_id', $this->companyId)
+            ->firstOrFail()
+            ->id;
+
+        return DB::table('repository_movements')
+            ->where('payment_repository_id', $repositoryId)
+            ->count();
     }
 
     // =================================================================
