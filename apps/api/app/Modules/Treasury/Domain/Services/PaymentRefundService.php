@@ -816,11 +816,27 @@ class PaymentRefundService
             // order→invoice conversion could consume the advance between this
             // read and the post below. Lock order of record (A-D8):
             //   Payment -> Document(s) -> Instrument -> Partner -> GL advisory -> Repository
-            Partner::query()
+            // m-B (code gate): an explicit domain refusal rather than
+            // `firstOrFail()`. A null `partner_id`, or a partner outside the
+            // company scope, would otherwise surface as a raw
+            // `ModelNotFoundException` (model class name + uuid) through the
+            // controller's 422 catch — a 422, but not one that tells the operator
+            // anything.
+            // (A null `partner_id` is not reachable — `payments.partner_id` is
+            // non-nullable on the model, and PHPStan proves the comparison dead —
+            // so the scope guard below is the whole of m-B.)
+            $partner = Partner::query()
                 ->whereKey($original->partner_id)
                 ->where('company_id', $original->company_id)
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
+
+            if (! $partner instanceof Partner) {
+                throw new \DomainException(
+                    "payment {$original->id} references partner {$original->partner_id}, which does not "
+                    .'resolve in this company scope; refusing to unwind its advance liability blind.'
+                );
+            }
 
             $available = $this->glService->availableCustomerAdvance(
                 $original->company_id,

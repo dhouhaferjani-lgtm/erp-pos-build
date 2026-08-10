@@ -290,7 +290,8 @@ final class AdvanceReversalReportingAndApiTest extends TestCase
     }
 
     /**
-     * A12's actual claim: the NEW refusal classes land on the controller's
+     * A12's actual claim — a TRANSPORT claim, not a guard claim: the NEW
+     * refusal classes land on the controller's
      * existing `\Exception` → 422 catch rather than surfacing as 500s.
      * `\DomainException` extends `\LogicException` extends `\Exception`, so they
      * do — but "it should work" is not evidence, and a 500 here would be an
@@ -298,8 +299,12 @@ final class AdvanceReversalReportingAndApiTest extends TestCase
      */
     public function test_a12_the_new_advance_refusals_surface_as_422_not_500(): void
     {
-        // A-D3's ceiling: an advance whose liability was never posted has zero
-        // available, so reversing it refuses.
+        // m-C (code gate): this fixture exercises **A-D4b belt 1** (coverage),
+        // NOT A-D3's ceiling — the entry below is keyed on a fresh uuid, so the
+        // partition reads empty and the coverage assert throws first. The real
+        // A-D3 ceiling test lives in AdvanceReversalRefusalsAndCeilingTest
+        // (`test_ad3_refuses_when_the_advance_pool_is_already_consumed`).
+        // What this test is FOR is the transport claim: a refusal is a 422.
         $payment = $this->pureAdvancePayment('400.000', postGl: false);
 
         // Give it a journal entry with an unclassifiable footprint so belt 1 fires.
