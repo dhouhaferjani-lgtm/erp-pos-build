@@ -19,6 +19,7 @@ use App\Modules\Inventory\Domain\InventoryCounting;
 use App\Modules\Inventory\Domain\InventoryCountingItem;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
@@ -115,9 +116,9 @@ final class InventoryEventsTest extends TestCase
         $this->stockService->recordSale(
             product: $this->product,
             location: $this->location,
-            quantity: 5.0,
+            quantity: '5.0000',
             reference: 'DN-TEST-001',
-            referenceType: 'Document',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: '00000000-0000-4000-8000-000000000001'
         );
 
@@ -140,10 +141,10 @@ final class InventoryEventsTest extends TestCase
         $this->stockService->recordReturn(
             product: $this->product,
             location: $this->location,
-            quantity: 3.0,
-            originalCost: 50.00,
+            quantity: '3.0000',
+            originalCost: '50.000000',
             reference: 'RN-TEST-001',
-            referenceType: 'Document',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: '00000000-0000-4000-8000-000000000001'
         );
 

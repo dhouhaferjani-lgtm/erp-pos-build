@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Events\SalesOrderConfirmed;
 use App\Modules\Document\Domain\Events\SalesOrderConfirmedV2;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use Illuminate\Support\Facades\DB;
 
@@ -114,9 +115,16 @@ final class SalesOrderService
         $reservations = [];
         $reservationsV2 = [];
         foreach ($salesOrder->lines as $line) {
-            // Skip service lines (non-physical products)
-            if ($line->product->is_service ?? false) {
-                continue;
+            // D-19 / T4: ONE physical predicate. This subsumes the former
+            // `product_id === null` skip further down (which ran AFTER the
+            // no-location throw) as well as the phantom `is_service` read.
+            // The product object is taken from the predicate so the reserved
+            // product id and the physicality answer can never come from two
+            // different reads.
+            $product = PhysicalLinePredicate::physicalProductFor($line);
+
+            if ($product === null) {
+                continue; // Skip services and non-physical products
             }
 
             // Skip lines with zero or negative quantity
@@ -132,15 +140,10 @@ final class SalesOrderService
                 );
             }
 
-            // Skip lines without product_id
-            if ($line->product_id === null) {
-                continue;
-            }
-
             // Reserve stock for this line
             $reservation = $this->stockReservationService->reserve(
                 company: $company,
-                productId: $line->product_id,
+                productId: $product->id,
                 locationId: $locationId,
                 quantity: (string) $line->quantity,
                 sourceType: ReservationSource::SalesOrder,
@@ -153,7 +156,7 @@ final class SalesOrderService
             // V1 entry shape — kept byte-identical (no variant_id).
             $reservations[] = [
                 'line_id' => $line->id,
-                'product_id' => $line->product_id,
+                'product_id' => $product->id,
                 'quantity' => (string) $line->quantity,
                 'location_id' => $locationId,
             ];
@@ -162,7 +165,7 @@ final class SalesOrderService
             // successor event. Built separately so the V1 payload is untouched.
             $reservationsV2[] = [
                 'line_id' => $line->id,
-                'product_id' => $line->product_id,
+                'product_id' => $product->id,
                 'variant_id' => $line->variant_id,
                 'quantity' => (string) $line->quantity,
                 'location_id' => $locationId,

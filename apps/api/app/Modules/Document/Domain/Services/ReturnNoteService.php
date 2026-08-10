@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
@@ -654,9 +655,11 @@ final class ReturnNoteService
     private function receiveStockBack(Document $returnNote): void
     {
         foreach ($returnNote->lines as $line) {
-            // Skip service lines (non-physical products)
-            if ($line->product === null || ($line->product->is_service ?? false)) {
-                continue;
+            // D-19 / T4: ONE physical predicate (was the phantom `is_service`).
+            $product = PhysicalLinePredicate::physicalProductFor($line);
+
+            if ($product === null) {
+                continue; // Skip services and non-physical products
             }
 
             // Skip lines with zero or negative quantity
@@ -688,7 +691,7 @@ final class ReturnNoteService
 
             // Receive stock back using WAC service with audit trail
             $this->wacService->recordReturn(
-                product: $line->product,
+                product: $product,
                 location: $location,
                 quantity: CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
                 originalCost: $originalCost,

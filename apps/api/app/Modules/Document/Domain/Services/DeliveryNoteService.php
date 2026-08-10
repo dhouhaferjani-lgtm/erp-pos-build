@@ -17,6 +17,7 @@ use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
+use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
@@ -249,8 +250,13 @@ final class DeliveryNoteService
     private function issueStock(Document $deliveryNote): void
     {
         foreach ($deliveryNote->lines as $line) {
-            if ($line->product === null || ($line->product->is_service ?? false)) {
-                continue; // Skip services
+            // D-19 / T4: ONE physical predicate. The former guard read the
+            // PHANTOM `is_service` (§0.15) and therefore issued stock for
+            // non-physical PRODUCT lines.
+            $product = PhysicalLinePredicate::physicalProductFor($line);
+
+            if ($product === null) {
+                continue; // Skip services and non-physical products
             }
 
             $location = $line->location ?? $deliveryNote->location;
@@ -261,7 +267,7 @@ final class DeliveryNoteService
 
             // Record stock sale with audit trail
             $movement = $this->wacService->recordSale(
-                product: $line->product,
+                product: $product,
                 location: $location,
                 quantity: CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
                 reference: $deliveryNote->document_number,

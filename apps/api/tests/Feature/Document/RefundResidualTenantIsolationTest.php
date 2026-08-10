@@ -429,8 +429,25 @@ final class RefundResidualTenantIsolationTest extends TestCase
     {
         $source = $this->readSource('app/Modules/Document/Domain/Services/DocumentPostingService.php');
         $this->assertStringContainsString('api.document.010', $source);
+
+        // DPA Wave 3 T4 / D-19: the lookup itself moved into the ONE physical
+        // predicate, so the invariant is now enforced in TWO places and this
+        // guard follows it rather than weakening. DocumentPostingService must
+        // still pass BOTH scope ids…
+        $this->assertMatchesRegularExpression(
+            '/PhysicalLinePredicate::forLine\(\s*\$line,\s*\$invoice->tenant_id,\s*\$invoice->company_id\s*\)/',
+            $source,
+            'validateDeliveryCompliance must hand the predicate BOTH tenant_id and company_id (api.document.010).',
+        );
+
+        // …and the predicate must still scope on BOTH.
         // Opus Finding D: require BOTH tenant_id AND company_id, not just tenant_id.
-        $this->assertMatchesRegularExpression('/Product::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/', $source);
+        $predicate = $this->readSource('app/Modules/Inventory/Domain/PhysicalLinePredicate.php');
+        $this->assertMatchesRegularExpression(
+            '/Product::query\(\)\s*->where\([\'"]tenant_id[\'"][^)]+\)\s*->where\([\'"]company_id[\'"]/',
+            $predicate,
+            'PhysicalLinePredicate must scope the product lookup by tenant_id AND company_id.',
+        );
     }
 
     public function test_draft_persistence_service_uses_scoped_lookups(): void
