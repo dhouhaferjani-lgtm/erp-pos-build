@@ -17,7 +17,6 @@ use App\Modules\Document\Domain\Events\InvoicePosted;
 use App\Modules\Document\Domain\Events\SalesOrderCancelled;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
-use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
@@ -54,6 +53,7 @@ final class DocumentPostingService
         private readonly DocumentGlPreflightInterface $glPreflight,
         private readonly DocumentGlReversalInterface $glReversal,
         private readonly DocumentPeriodLockInterface $periodLock,
+        private readonly DeliveryComplianceGate $deliveryComplianceGate,
     ) {}
 
     /**
@@ -580,83 +580,32 @@ final class DocumentPostingService
     }
 
     /**
-     * Validate Tunisia fiscal compliance for invoices with physical products.
+     * Enforce the delivery requirement for invoices carrying physical products.
      *
-     * Ensures that all physical products have been delivered before posting
-     * the invoice. This is enforced at posting time (not creation time) to
-     * allow for a better UX where delivery notes can be auto-created.
+     * Enforced at POSTING time (not creation time) so delivery notes can be
+     * auto-created and confirmed as part of a guided flow.
+     *
+     * 🔁 Wave 3 T25f: the traversal that used to live here — walking
+     * `sourceOrder.payload['delivery_note_ids']` by hand — has moved to
+     * {@see DeliveryComplianceGate}, which reads BOTH linkage shapes through
+     * `DeliveredQuantityResolver`. `InvoiceController::checkDeliveryNotesDelivered()`
+     * was the second copy of the same logic and is gone; the controller now asks
+     * the same gate, so the guided 422 and the posting refusal can no longer
+     * disagree about whether an invoice was delivered.
+     *
+     * Behaviour is UNCHANGED for every invoice that posted before T25f. What is
+     * new is that DN → invoice-converted invoices are now *visible* to the gate
+     * (they pass it: their delivery notes are Confirmed by construction) instead
+     * of being waved through by a "no source order" early return.
      *
      * @throws \DomainException If physical products haven't been delivered
      */
     private function validateDeliveryCompliance(Document $invoice): void
     {
-        // Check if invoice has any physical products
-        $hasPhysicalProducts = false;
-        foreach ($invoice->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
+        $status = $this->deliveryComplianceGate->evaluate($invoice);
 
-            // api.document.010: scope by invoice's tenant + company.
-            $product = Product::query()
-                ->where('tenant_id', $invoice->tenant_id)
-                ->where('company_id', $invoice->company_id)
-                ->find($line->product_id);
-            if ($product !== null && $product->is_physical) {
-                $hasPhysicalProducts = true;
-                break;
-            }
-        }
-
-        if (! $hasPhysicalProducts) {
-            return; // No physical products - no delivery requirement
-        }
-
-        // Get source order if invoice was created from order
-        $sourceOrder = $invoice->sourceDocument;
-        if ($sourceOrder === null || $sourceOrder->type !== DocumentType::SalesOrder) {
-            // No source order - this is a standalone invoice, no delivery check needed
-            return;
-        }
-
-        // Check if order has delivery notes
-        $orderPayload = $sourceOrder->payload ?? [];
-        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
-
-        if (empty($deliveryNoteIds)) {
-            throw new \DomainException(
-                'Physical products must be delivered before posting invoice. No delivery notes found for the source order.'
-            );
-        }
-
-        // Get all delivery notes and check if they're fully delivered
-        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
-            ->where('type', DocumentType::DeliveryNote)
-            ->with('lines')
-            ->get();
-
-        foreach ($deliveryNotes as $dn) {
-            // Check if all lines have been fully delivered
-            $fullyDelivered = true;
-            foreach ($dn->lines as $line) {
-                $qtyDelivered = $line->quantity_delivered ?? '0.00';
-                $qty = $line->quantity;
-
-                // If any line hasn't been fully delivered, mark as not complete
-                if (bccomp((string) $qtyDelivered, (string) $qty, 4) < 0) {
-                    $fullyDelivered = false;
-                    break;
-                }
-            }
-
-            if (! $fullyDelivered) {
-                throw new \DomainException(
-                    sprintf(
-                        'Delivery note %s must be marked as fully delivered before posting invoice. Please update the delivery quantities.',
-                        $dn->document_number
-                    )
-                );
-            }
+        if (! $status->isCompliant()) {
+            throw new \DomainException($status->message);
         }
     }
 }

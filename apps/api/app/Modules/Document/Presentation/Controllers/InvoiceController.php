@@ -11,10 +11,12 @@ use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DeliveryComplianceCode;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
@@ -71,6 +73,7 @@ class InvoiceController extends Controller
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly CloseInvoiceWithToleranceService $closeInvoiceWithToleranceService,
         private readonly DocumentLineTaxResolver $lineTaxResolver,
+        private readonly DeliveryComplianceGate $deliveryComplianceGate,
     ) {}
 
     private function scale(): int
@@ -657,24 +660,32 @@ class InvoiceController extends Controller
             );
         }
 
-        // Tunisia fiscal compliance: Check if physical products have been delivered
-        $hasPhysicalProducts = $this->invoiceHasPhysicalProducts($documentModel);
-        if ($hasPhysicalProducts) {
-            $deliveryCheckResult = $this->checkDeliveryNotesDelivered($documentModel);
-            if ($deliveryCheckResult !== null) {
-                // Return structured error with draft DN details for frontend modal
-                return response()->json([
-                    'error' => [
-                        'code' => 'DELIVERY_NOT_COMPLETED',
-                        'message' => $deliveryCheckResult['message'],
-                        'details' => [
-                            'status' => $deliveryCheckResult['status'],
-                            'draft_dns' => $deliveryCheckResult['draft_dns'] ?? [],
-                            'can_auto_confirm' => $deliveryCheckResult['can_auto_confirm'] ?? false,
-                        ],
+        // Delivery compliance. 🔁 Wave 3 T25f: this used to be a SECOND
+        // implementation of the rule (`checkDeliveryNotesDelivered()`, deleted),
+        // walking the source order's payload by hand and therefore blind to
+        // DN → invoice-converted invoices. It now asks the same gate the posting
+        // service asks, so the guided modal and the refusal cannot disagree.
+        $deliveryStatus = $this->deliveryComplianceGate->evaluate($documentModel);
+        if (! $deliveryStatus->isCompliant()) {
+            // Return structured error with draft DN details for frontend modal
+            return response()->json([
+                'error' => [
+                    'code' => 'DELIVERY_NOT_COMPLETED',
+                    'message' => $deliveryStatus->message,
+                    'details' => [
+                        // The wire value is the pre-T25f vocabulary on purpose:
+                        // `InvoiceDetailPage.tsx:159` branches on the literal
+                        // 'draft_dns_found' to decide whether to open the guided
+                        // modal. The typed code lives on the enum; this is its
+                        // frozen presentation.
+                        'status' => $deliveryStatus->code === DeliveryComplianceCode::DraftDeliveryNotes
+                            ? 'draft_dns_found'
+                            : 'error',
+                        'draft_dns' => $deliveryStatus->draftDeliveryNotes,
+                        'can_auto_confirm' => $deliveryStatus->canAutoConfirm,
                     ],
-                ], 422);
-            }
+                ],
+            ], 422);
         }
 
         try {
@@ -877,113 +888,5 @@ class InvoiceController extends Controller
                 'timestamp' => now()->toIso8601String(),
             ],
         ]);
-    }
-
-    /**
-     * Check if invoice has any physical products.
-     */
-    private function invoiceHasPhysicalProducts(Document $invoice): bool
-    {
-        foreach ($invoice->lines as $line) {
-            if ($line->product_id === null) {
-                continue;
-            }
-
-            if ($line->product !== null && $line->product->is_physical) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if all delivery notes for this invoice have been delivered.
-     *
-     * Returns array with status and details, or null if all checks pass.
-     *
-     * @return array{status: string, message: string, draft_dns?: array<int, mixed>, can_auto_confirm?: bool}|null
-     */
-    private function checkDeliveryNotesDelivered(Document $invoice): ?array
-    {
-        // Get source order if invoice was created from order
-        $sourceOrder = $invoice->sourceDocument;
-        if ($sourceOrder === null || $sourceOrder->type !== DocumentType::SalesOrder) {
-            // No source order - this is a standalone invoice, no delivery check needed
-            return null;
-        }
-
-        // Check if order has delivery notes
-        $orderPayload = $sourceOrder->payload ?? [];
-        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
-
-        if (empty($deliveryNoteIds)) {
-            return [
-                'status' => 'error',
-                'message' => 'Physical products must be delivered before posting invoice. No delivery notes found for the source order.',
-            ];
-        }
-
-        // Get all delivery notes and check their status
-        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
-            ->where('type', DocumentType::DeliveryNote)
-            ->with('lines')
-            ->get();
-
-        // Check for draft delivery notes (auto-created but not confirmed)
-        $draftDns = $deliveryNotes->filter(fn ($dn) => $dn->isDraft());
-
-        if ($draftDns->isNotEmpty()) {
-            // Check if all draft DNs are auto-created (can be batch confirmed)
-            $canAutoConfirm = $draftDns->every(function ($dn) {
-                $payload = $dn->payload ?? [];
-
-                return isset($payload['auto_created']) && $payload['auto_created'] === true;
-            });
-
-            return [
-                'status' => 'draft_dns_found',
-                'message' => 'Delivery notes must be confirmed before posting invoice',
-                'draft_dns' => $draftDns->map(fn ($dn) => [
-                    'id' => $dn->id,
-                    'number' => $dn->document_number,
-                    'total' => $dn->total,
-                    'line_count' => $dn->lines->count(),
-                ])->values()->toArray(),
-                'can_auto_confirm' => $canAutoConfirm,
-            ];
-        }
-
-        // Check if confirmed DNs are fully delivered
-        foreach ($deliveryNotes as $dn) {
-            if ($dn->isDraft()) {
-                continue; // Already handled above
-            }
-
-            // Check if all lines have been fully delivered
-            $fullyDelivered = true;
-            foreach ($dn->lines as $line) {
-                $qtyDelivered = $line->quantity_delivered ?? '0.00';
-                $qty = $line->quantity;
-
-                // If any line hasn't been fully delivered, mark as not complete
-                if (bccomp((string) $qtyDelivered, (string) $qty, 4) < 0) {
-                    $fullyDelivered = false;
-                    break;
-                }
-            }
-
-            if (! $fullyDelivered) {
-                return [
-                    'status' => 'error',
-                    'message' => sprintf(
-                        'Delivery note %s must be marked as fully delivered before posting invoice. Please update the delivery quantities.',
-                        $dn->document_number
-                    ),
-                ];
-            }
-        }
-
-        return null; // All delivery notes are confirmed and delivered
     }
 }
