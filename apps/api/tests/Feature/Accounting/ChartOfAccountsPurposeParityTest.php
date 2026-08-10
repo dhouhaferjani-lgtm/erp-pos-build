@@ -63,12 +63,24 @@ final class ChartOfAccountsPurposeParityTest extends TestCase
             'FR' => [SystemAccountPurpose::SalesStampDutyPayable],
             'XX' => [SystemAccountPurpose::SalesStampDutyPayable],
 
-            // OWNED BY ANOTHER LANE — do not close these here.
-            // H-2 (TN rounding dust must leave 4375 for 6588/7588) owns the two
-            // rounding-difference purposes; H-1 (TN chart re-numbered onto the
-            // PCN, where class 6 headers differ from the PCG the seeder
-            // currently carries) owns the class-6 FX pair, whose correct PCN
-            // parent is exactly what H-1 re-numbers.
+            // OWNED BY ANOTHER LANE — do not close these here. Each lane must
+            // DELETE its entry below when it lands, or this guard keeps passing
+            // green while TN stays four purposes short.
+            //
+            // H-2 (TN rounding dust must leave 4375) owns the two
+            // rounding-difference purposes. CODE COLLISION WARNING for that
+            // lane: `6588`/`7588` are NOT available — `6588` already exists and
+            // already carries RoundingLossExpense in all three charts
+            // (TunisiaChartOfAccountsSeeder / FranceChartOfAccountsSeeder /
+            // GenericChartOfAccountsSeeder), under UNIQUE(company_id, code), so
+            // seeding it again aborts the tenant run with a QueryException. H-2
+            // picks the account; the FR and Generic charts already map this pair
+            // to 6581/7581, which are free in the TN chart today.
+            //
+            // H-1 (TN chart re-numbered onto the PCN, where class 6 headers
+            // differ from the PCG the seeder currently carries) owns the
+            // class-6 FX pair, whose correct PCN parent is exactly what H-1
+            // re-numbers.
             'TN' => [
                 SystemAccountPurpose::SalesRoundingDifferenceExpense,
                 SystemAccountPurpose::SalesRoundingDifferenceIncome,

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Console\Commands\BackfillChartPurposesCommand;
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -197,10 +198,87 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $this->seedAccount($company, '41', 'asset');
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 3')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 3')
             ->assertFailed();
 
         $this->assertSame(0, DB::table('accounts')->where('company_id', $company->id)->where('code', '603')->count());
+    }
+
+    public function test_it_refuses_an_account_at_the_canonical_code_with_the_wrong_type(): void
+    {
+        $company = $this->makeCompany('FR', '9');
+        $this->seedBrownfieldFrenchChart($company);
+        // A chart where 603 was hand-created as a revenue account.
+        $wrongType = $this->seedAccount($company, '603', 'revenue');
+
+        $this->artisan('accounting:backfill-chart-purposes')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->assertFailed();
+
+        $this->assertNull(DB::table('accounts')->where('id', $wrongType)->value('system_purpose'));
+        $this->assertNull(Account::findByPurpose($company->id, SystemAccountPurpose::CostOfGoodsSold));
+    }
+
+    public function test_it_refuses_an_inactive_account_at_the_canonical_code(): void
+    {
+        $company = $this->makeCompany('FR', '10');
+        $this->seedBrownfieldFrenchChart($company);
+        $inactive = $this->seedAccount($company, '628', 'expense', null, null, false);
+
+        $this->artisan('accounting:backfill-chart-purposes')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->assertFailed();
+
+        $this->assertNull(DB::table('accounts')->where('id', $inactive)->value('system_purpose'));
+    }
+
+    public function test_it_refuses_to_repurpose_an_account_that_already_carries_another_purpose(): void
+    {
+        $company = $this->makeCompany('FR', '11');
+        $this->seedBrownfieldFrenchChart($company);
+        // 628 already used for something else by an operator.
+        $taken = $this->seedAccount(
+            $company,
+            '628',
+            'expense',
+            null,
+            SystemAccountPurpose::MarketingGoodwillExpense->value,
+        );
+
+        $this->artisan('accounting:backfill-chart-purposes')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->assertFailed();
+
+        $this->assertSame(
+            SystemAccountPurpose::MarketingGoodwillExpense->value,
+            DB::table('accounts')->where('id', $taken)->value('system_purpose'),
+        );
+        $this->assertNull(Account::findByPurpose($company->id, SystemAccountPurpose::GeneralExpense));
+    }
+
+    public function test_it_refuses_a_holder_of_the_purpose_that_has_the_wrong_type(): void
+    {
+        $company = $this->makeCompany('FR', '12');
+        $this->seedBrownfieldFrenchChart($company);
+        // PURPOSE-FIRST branch: the purpose resolves, but onto a revenue account.
+        $badHolder = $this->seedAccount(
+            $company,
+            '6037',
+            'revenue',
+            null,
+            SystemAccountPurpose::CostOfGoodsSold->value,
+        );
+
+        $this->artisan('accounting:backfill-chart-purposes')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->assertFailed();
+
+        // Neither repaired nor duplicated — reported for an operator.
+        $this->assertSame(0, DB::table('accounts')->where('company_id', $company->id)->where('code', '603')->count());
+        $this->assertSame(
+            SystemAccountPurpose::CostOfGoodsSold->value,
+            DB::table('accounts')->where('id', $badHolder)->value('system_purpose'),
+        );
     }
 
     public function test_dry_run_reports_without_writing(): void
@@ -223,7 +301,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $countAfterFirst = DB::table('accounts')->where('company_id', $company->id)->count();
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
             ->assertSuccessful();
 
         $this->assertSame($countAfterFirst, DB::table('accounts')->where('company_id', $company->id)->count());
@@ -236,7 +314,7 @@ final class BackfillChartPurposesCommandTest extends TestCase
         $company->delete();
 
         $this->artisan('accounting:backfill-chart-purposes')
-            ->expectsOutputToContain(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
+            ->expectsOutput(BackfillChartPurposesCommand::SUMMARY_TOKEN_PREFIX.' 0')
             ->assertSuccessful();
 
         $this->assertSame(0, DB::table('accounts')->where('company_id', $company->id)->where('code', '603')->count());

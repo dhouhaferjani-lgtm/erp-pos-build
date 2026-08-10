@@ -5,12 +5,14 @@ declare(strict_types=1);
 namespace Tests\Feature\Company;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\HashChainType;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\PosStockPolicy;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Expense\Domain\ExpenseCategory;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -61,6 +63,36 @@ class CreateCompanyTest extends TestCase
             'company_id' => $existingCompany->id,
             'role' => MembershipRole::Owner,
         ]);
+    }
+
+    public function test_created_company_receives_default_expense_categories(): void
+    {
+        // Gate finding I-2: G-3 was wired only into the registration path, so a
+        // SECOND company added to an existing tenant still received none — the
+        // register's "real tenants receive no expense categories" headline stayed
+        // literally true for every non-first company.
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/companies', [
+                'name' => 'Second Company',
+                'legal_name' => 'Second Company SARL',
+                'country_code' => 'FR',
+                'currency' => 'EUR',
+                'locale' => 'fr_FR',
+                'timezone' => 'Europe/Paris',
+            ])->assertCreated();
+
+        $companyId = (string) $response->json('data.id');
+
+        $categories = ExpenseCategory::query()->where('company_id', $companyId)->get();
+        $this->assertGreaterThanOrEqual(6, $categories->count());
+
+        foreach ($categories as $category) {
+            $this->assertNotNull($category->account_id, "Category '{$category->name}' has no GL account");
+        }
+
+        $utilities = $categories->firstWhere('name', 'Eau & Électricité');
+        $this->assertNotNull($utilities);
+        $this->assertSame('6061', Account::query()->whereKey($utilities->account_id)->value('code'));
     }
 
     public function test_authenticated_user_can_create_company(): void

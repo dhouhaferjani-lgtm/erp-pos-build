@@ -57,12 +57,29 @@ final class PaymentTypeReversalTest extends TestCase
     /**
      * D-6 matrix. The `match` inside `reversalSupport()` is exhaustive (no
      * `default`), so a future `PaymentType` case is a compile-time decision.
+     *
+     * **DPA `DPA-REV2-A` (A7): `Advance` moved from `Unsupported` to
+     * `CashReversal`.** This is the test of record for that matrix, and it is the
+     * one the fix-round-0 lane failed to update (code-gate finding I-A) — the
+     * declared regression sweep omitted `tests/Unit/`, so a red suite was
+     * reported as green.
+     *
+     * `Advance` shares `CashReversal` with `DocumentPayment` rather than gaining
+     * a fourth case because, under A-D2, the two have identical BEHAVIOUR: a cash
+     * movement is emitted, and the ACCOUNTS come from the payment's posted ledger
+     * footprint, not from the type. `ReversalSupport` answers *whether*, never
+     * *which account*.
      */
     public function test_reversal_support_matches_the_d6_matrix(): void
     {
         self::assertSame(ReversalSupport::CashReversal, PaymentType::DocumentPayment->reversalSupport());
         self::assertSame(ReversalSupport::NoCashLeg, PaymentType::CreditApplication->reversalSupport());
-        self::assertSame(ReversalSupport::Unsupported, PaymentType::Advance->reversalSupport());
+        self::assertSame(
+            ReversalSupport::CashReversal,
+            PaymentType::Advance->reversalSupport(),
+            'A7: a customer advance is reversible — the customer-advance reversing entry exists '
+            .'(reverseCustomerAdvanceJournalEntry) and the partition picks the accounts',
+        );
         self::assertSame(ReversalSupport::Unsupported, PaymentType::SupplierPayment->reversalSupport());
         self::assertSame(ReversalSupport::Unsupported, PaymentType::POS->reversalSupport());
         self::assertSame(ReversalSupport::Unsupported, PaymentType::Refund->reversalSupport());

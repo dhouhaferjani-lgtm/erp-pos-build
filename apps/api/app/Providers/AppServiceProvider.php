@@ -7,6 +7,7 @@ namespace App\Providers;
 use App\Models\Country;
 use App\Models\VerticalConfig;
 use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Application\Services\PaymentLedgerPartitionReader;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Observers\JournalEntryObserver;
@@ -42,6 +43,7 @@ use App\Shared\Contracts\AbilityAuthorizerInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\Accounting\FiscalPeriodLockReaderInterface;
+use App\Shared\Contracts\Accounting\PaymentLedgerPartitionReaderInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CatalogLookupInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -102,6 +104,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AccountingServiceInterface::class, AccountingService::class);
         $this->app->bind(DocumentGlPreflightInterface::class, AccountingService::class);
         $this->app->bind(DocumentGlReversalInterface::class, AccountingService::class);
+        // DPA-REV2-A (A5): the reversal lane's SOLE GL-shape selector. Treasury
+        // reaches it through this Shared contract only (rule 6) — never through
+        // the concrete reader or an Accounting model.
+        $this->app->bind(PaymentLedgerPartitionReaderInterface::class, PaymentLedgerPartitionReader::class);
         $this->app->bind(PlatformSubmissionInterface::class, ProductSubmissionService::class);
         $this->app->bind(CatalogLookupInterface::class, BarcodeLookupService::class);
         $this->app->bind(EnrichmentQueryInterface::class, ProductEnrichmentQueryService::class);

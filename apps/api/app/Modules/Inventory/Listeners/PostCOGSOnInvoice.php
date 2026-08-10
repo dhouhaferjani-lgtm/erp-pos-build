@@ -20,8 +20,11 @@ use Illuminate\Support\Facades\Log;
  * - COGS = Weighted Average Cost (WAC) × quantity
  *
  * And creates a journal entry:
- * - Debit: Cost of Goods Sold (601)
- * - Credit: Inventory (37)
+ * - Debit: SystemAccountPurpose::CostOfGoodsSold — the *inventaire permanent*
+ *   destocking charge: FR/TN `603` "Variation des stocks", Generic `6030`.
+ *   (This docblock previously said "601", which no chart has ever mapped.)
+ *   The account is ALWAYS resolved by purpose, never by code.
+ * - Credit: SystemAccountPurpose::Inventory — FR/TN `37`, Generic `3700`.
  *
  * Services (non-physical products) are skipped as they have no inventory cost.
  */

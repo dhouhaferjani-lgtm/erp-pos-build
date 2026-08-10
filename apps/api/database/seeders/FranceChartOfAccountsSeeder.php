@@ -169,11 +169,14 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '4035', 'name' => 'Fournisseurs - Chèques à payer', 'type' => 'liability', 'parent_code' => '40', 'is_system' => true],
             ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
-            // R2 E-1 / register H-5 — the PCG counterpart of the TN chart's own
-            // 409 → SupplierAdvance mapping. `SupplierAdvance` is in
+            // R2 E-1 / register H-5 + DPA-REV2-A A2 (both lanes converged here):
+            // 409 IS the PCG supplier-advance account ("avances et acomptes versés
+            // sur commandes") — the PCG counterpart of the TN chart's own 409 →
+            // SupplierAdvance mapping. `SupplierAdvance` is in
             // SystemAccountPurpose::requiredPurposes(), so before this line a
             // French chart FAILED ChartOfAccountsService::validateCompanyAccounts()
-            // and GeneralLedgerService::createSupplierAdvance* threw.
+            // and GeneralLedgerService::createSupplierAdvance* threw. Metadata only —
+            // `asset` already matches expectedAccountType().
             ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::SupplierAdvance->value, 'is_system' => true],
 
@@ -188,8 +191,13 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             // (the delivery-note accrual, PCG 418 by name already).
             ['code' => '418', 'name' => 'Clients - Produits non encore facturés', 'type' => 'asset', 'parent_code' => '41',
                 'system_purpose' => SystemAccountPurpose::UninvoicedRevenue->value, 'is_system' => true],
-            // R2 E-1 / register H-5 — PCG counterpart of the TN chart's 419 →
-            // CustomerAdvance mapping; also a requiredPurposes() member.
+            // R2 E-1 / register H-5 + DPA-REV2-A A2 (both lanes converged here):
+            // 419 IS the PCG customer-advance account ("clients créditeurs, avances
+            // et acomptes reçus") — PCG counterpart of the TN chart's 419 →
+            // CustomerAdvance mapping; also a requiredPurposes() member. Without it
+            // a French company hard-fails createCustomerAdvanceJournalEntry() at
+            // GeneralLedgerService:417 on any over-payment. Metadata only —
+            // `liability` already matches expectedAccountType().
             ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41',
                 'system_purpose' => SystemAccountPurpose::CustomerAdvance->value, 'is_system' => true],
 
@@ -266,6 +274,17 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             // the purpose sits on the 603 family node because the purpose is not
             // product-class aware. Resolution is purpose-first, so an operator (or
             // the super-admin COA template) may move it to 6037 without code change.
+            // EXPERT-COMPTABLE CONFIRMATION OWED (SEEDS gate finding I-3): because
+            // the ERP is perpetual and NEVER debits 607 on the normal purchase flow
+            // (purchases capitalise to Inventory via GR-IR,
+            // GeneralLedgerService::…GoodsReceivedNotInvoiced; the only 607
+            // resolution is the bonus-stock return path), the whole cost of sales
+            // lands in "variation des stocks" and the compte de résultat / liasse
+            // 2052 line "Achats de marchandises" stays structurally 0.00. The P&L
+            // TOTAL is correct; the FS/FT split is not the conventional PCG
+            // presentation. Not a regression (TN behaves the same) and not a
+            // blocker — but the expert must rule on the presentation before the
+            // first liasse, not at filing. Register H-5 carries the full list.
             ['code' => '603', 'name' => 'Variation des stocks (approvisionnements et marchandises)', 'type' => 'expense', 'parent_code' => '60',
                 'system_purpose' => SystemAccountPurpose::CostOfGoodsSold->value, 'is_system' => true],
             // Register G-4 parity — the PCG homes for the four expense purposes

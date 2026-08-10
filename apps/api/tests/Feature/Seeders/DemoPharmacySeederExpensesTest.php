@@ -136,8 +136,10 @@ final class DemoPharmacySeederExpensesTest extends TestCase
             'name' => 'Cash',
         ]);
 
-        // Mirror the REAL PaymentRepositorySeeder opening balances so this test
-        // catches a till overdraft (CASH-01 opens at 500.000, not a cushy 5000).
+        // Mirror the DEMO opening balances (DemoPaymentRepositorySeeder — since
+        // DPA lane H-3 the real PaymentRepositorySeeder leaves both tills at
+        // zero and creates no bank account at all) so this test still catches a
+        // till overdraft: CASH-01 opens at 500.000, not a cushy 5000.
         $repository = PaymentRepository::factory()->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,

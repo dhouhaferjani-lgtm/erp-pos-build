@@ -470,8 +470,14 @@ final class PaymentReversalDocumentTest extends TestCase
         $invoice = $this->paidInvoice('500.00');
         $original = $this->paymentAllocatedTo([[$invoice, '500.00']], '500.00', [
             'repository_id' => $repository->id,
-            'journal_entry_id' => $this->postedPaymentEntry()->id,
         ]);
+        // DPA-REV2-A (A8): this fixture used to attach a `customer_payment` entry
+        // with a RANDOM source_id and NO lines — enough for D-17's "did it post
+        // GL?" question, but not a real footprint. The reversing shape is now read
+        // FROM the ledger (A-D2), so the fixture has to be faithful: source_id =
+        // the payment, and real Cr AR / Dr cash lines. A-D4b's coverage belt
+        // correctly refuses the old synthetic shape.
+        $this->linkRealPaymentFootprint($original, '500.00', (string) $repository->gl_account_id);
 
         $reversal = $this->refundService->reversePayment($original, 'cash reversal', $this->user->id);
 
@@ -672,6 +678,51 @@ final class PaymentReversalDocumentTest extends TestCase
      * A POSTED journal entry standing in for the original payment's own GL leg —
      * D-17 only asks whether the original posted one.
      */
+    /**
+     * A POSTED `customer_payment` footprint that actually belongs to `$payment`:
+     * `source_id = $payment->id`, `Dr` the till's GL account, `Cr` AR
+     * partner-tagged — the shape `createPaymentReceivedJournalEntry()` writes.
+     *
+     * DPA-REV2-A (A8): required because the reversing shape is read from the
+     * LEDGER now, so a payment must carry a footprint the partition can classify.
+     */
+    private function linkRealPaymentFootprint(Payment $payment, string $amount, string $cashAccountId): void
+    {
+        $entry = JournalEntry::query()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'JE-'.Str::random(8),
+            'entry_date' => now(),
+            'description' => 'Original customer payment',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'customer_payment',
+            'journal_code' => JournalCode::fromSourceType('customer_payment')->value,
+            'source_id' => $payment->id,
+        ]);
+
+        JournalLine::query()->create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $cashAccountId,
+            'partner_id' => null,
+            'debit' => $amount,
+            'credit' => '0',
+            'description' => 'Cash received',
+            'line_order' => 0,
+        ]);
+        JournalLine::query()->create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => Account::findByPurposeOrFail($this->company->id, SystemAccountPurpose::CustomerReceivable)->id,
+            'partner_id' => $this->customer->id,
+            'debit' => '0',
+            'credit' => $amount,
+            'description' => 'Receivable settled',
+            'line_order' => 1,
+        ]);
+
+        $payment->journal_entry_id = $entry->id;
+        $payment->save();
+    }
+
     private function postedPaymentEntry(): JournalEntry
     {
         return JournalEntry::query()->create([

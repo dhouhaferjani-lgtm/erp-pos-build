@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Services;
 
+use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use Illuminate\Database\QueryException;
@@ -20,13 +21,15 @@ use Illuminate\Database\QueryException;
  * happens to agree today. Both callers now depend on this class; the pin lives
  * in tests/Feature/Treasury/TenderRepositoryResolverTest.php.
  *
- * The rule (unchanged): a mapped repository (`PaymentMethod::default_repository_id`)
- * wins only when it belongs to the same tenant+company, is active, and remains
- * GL-linked. Otherwise the historical deterministic fallback — the first
- * tenant+company GL-linked repository ordered by stable UUID. The `is_active`
- * filter is deliberately on the mapped branch ONLY, exactly as the bridge has
- * always had it; widening it here would silently change fiscal projection
- * behaviour.
+ * The rule: a mapped repository (`PaymentMethod::default_repository_id`) wins
+ * only when it belongs to the same tenant+company, is active, and remains
+ * GL-linked. Otherwise the fallback — the first tenant+company GL-linked
+ * repository, preferring a `cash_register`, then a `safe`, then anything else,
+ * and breaking ties on the stable UUID as it always has (DPA lane H-3 gate
+ * ruling C-1; before that the type preference was absent and the winner was
+ * merely whichever row happened to sort first). The `is_active` filter is
+ * deliberately on the mapped branch ONLY, exactly as the bridge has always had
+ * it; widening it here would silently change fiscal projection behaviour.
  */
 final readonly class TenderRepositoryResolver
 {
@@ -47,10 +50,31 @@ final readonly class TenderRepositoryResolver
                 }
             }
 
+            // DPA lane H-3 / gate ruling C-1 — deterministic TYPE preference ahead
+            // of the historical UUID ordering. A tenant is provisioned with a cash
+            // register and a safe (PaymentRepositorySeeder), and an unmapped cash
+            // tender belongs in the till, not the safe. Before this, the winner was
+            // whichever row sorted first by UUID: correct today only because
+            // `HasUuids` mints time-ordered uuid7 and the seeder inserts CASH-01
+            // first — an emergent property that a framework bump, a switch to
+            // uuid4, or a reordered seeder array would silently invert, rerouting
+            // every new tenant's POS cash to the safe.
+            //
+            // Tie-preserving by construction: the CASE only separates rows of
+            // DIFFERENT types, so any fixture whose repositories share a type (all
+            // of PaymentRepositoryFactory's, whose default is `cash_register`)
+            // falls straight through to `orderBy('id')` — the previous behaviour,
+            // unchanged. The `is_active` filter deliberately stays on the mapped
+            // branch only; widening it here would change fiscal projection
+            // behaviour (see the class docblock).
             return PaymentRepository::query()
                 ->where('tenant_id', $tenantId)
                 ->where('company_id', $companyId)
                 ->whereNotNull('gl_account_id')
+                ->orderByRaw(
+                    'CASE WHEN type = ? THEN 0 WHEN type = ? THEN 1 ELSE 2 END',
+                    [RepositoryType::CashRegister->value, RepositoryType::Safe->value],
+                )
                 ->orderBy('id')
                 ->first();
         } catch (QueryException) {

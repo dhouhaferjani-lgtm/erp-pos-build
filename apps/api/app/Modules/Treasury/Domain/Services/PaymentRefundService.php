@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Document\Domain\CreditNoteAllocation;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\Treasury\Application\DTOs\MovementIntent;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
@@ -28,6 +29,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Accounting\PaymentLedgerPartitionReaderInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
@@ -59,6 +61,10 @@ class PaymentRefundService
         private readonly GeneralLedgerService $glService,
         private readonly TreasuryMovementServiceInterface $movementService,
         private readonly InstrumentReversalCancellerInterface $instrumentReversalCanceller,
+        // DPA-REV2-A (A5/A-D2): the SOLE GL-shape selector, reached through the
+        // Shared contract only (rule 6) — Treasury never imports the concrete
+        // reader or an Accounting model.
+        private readonly PaymentLedgerPartitionReaderInterface $partitionReader,
     ) {}
 
     private function scale(): int
@@ -728,18 +734,224 @@ class PaymentRefundService
             );
         }
 
-        $entry = $this->glService->createPaymentRefundJournalEntry(
-            companyId: $original->company_id,
-            partnerId: $original->partner_id,
-            refundPaymentId: $reversalPaymentId,
-            amount: $netAmount,
-            paymentMethodAccountId: $repository->gl_account_id,
-            date: now(),
-            description: "Reversal of payment {$original->reference}",
-            postedByUserId: $userId,
-            currencyCode: $original->currency,
-            mode: PostingMode::SynchronousInTransaction,
+        // ================== DPA `DPA-REV2-A` (A8) — the partition ==================
+        // Every guard above is pre-existing and unchanged, in its original order.
+        // From here the LEDGER decides the reversing shape (A-D2). `$support` has
+        // already done its only job (whether, and whether cash moves) at the D-6
+        // gate; it never picks an account.
+        $partition = $this->partitionReader->read(
+            $original->company_id,
+            $original->id,
+            $original->currency,
         );
+
+        /** @var numeric-string $originalAmount */
+        $originalAmount = CurrencyScale::bcformat((string) $original->amount, $scale);
+
+        // A-D4b belt 1 — COVERAGE, a statement about the ORIGINAL's footprint.
+        // The partition must account for the WHOLE original payment. This is the
+        // lane's only defence against a footprint nobody has modelled: an unknown
+        // `source_type`, a manual entry, or a DRAFT left by a failed AfterCommit
+        // post.
+        //
+        // It does NOT catch shapes X/Y/Z — those are non-empty and sum correctly,
+        // and A-D2's selector handles them by making them CORRECT rather than by
+        // refusing them. Do not weaken this belt later on the reasoning that
+        // "X/Y/Z are already handled": it was never what handled them.
+        //
+        // ⚠️ It also does NOT decide how much to EMIT. Reading it as an emission
+        // rule is exactly the code gate's Critical C-A: the partition is GROSS
+        // (it describes the original), while the reversing document and the cash
+        // movement are NET of the refund lineage. What is emitted is derived
+        // below and belted by its own invariant.
+        if (bccomp($partition->total(), $originalAmount, $scale) !== 0) {
+            throw new \DomainException(
+                "payment {$original->id} posted journal entry {$original->journal_entry_id}, but its "
+                ."classifiable ledger footprint sums to {$partition->total()} against an original "
+                ."amount of {$originalAmount}. Refusing to reverse a payment whose GL we cannot fully "
+                .'account for (an unrecognised source type, a manual entry, or an unposted draft).'
+            );
+        }
+
+        // A-D4b belt 2 — NON-EMPTINESS under D-17. Reaching here means the
+        // original carries a journal entry, so it owes a reversing entry; an
+        // empty partition says we cannot classify what to reverse.
+        if ($partition->isEmpty()) {
+            throw new \DomainException(
+                "payment {$original->id} carries journal entry {$original->journal_entry_id} but has no "
+                .'classifiable receivable- or advance-backed footprint; refusing rather than guessing '
+                .'which account to restore.'
+            );
+        }
+
+        $advanceBacked = $partition->advanceBacked;
+        $arBacked = $partition->arBacked;
+
+        if (bccomp($advanceBacked, '0', $scale) > 0) {
+            // A-D6 — an advance-backed payment with ANY prior refund refuses.
+            // Prior refunds posted the AR-ONLY shape, so which bucket they
+            // consumed is undefined, and a pro-rata split would silently
+            // mis-state two accounts. Keyed on `advanceBacked > 0` rather than on
+            // "mixed": shape Y is advance-backed WITHOUT being mixed and would
+            // otherwise slip past.
+            $alreadyRefunded = $this->alreadyRefundedForOriginal($original, $scale);
+            if (bccomp($alreadyRefunded, '0', $scale) > 0) {
+                throw new \DomainException(
+                    "payment {$original->id} has {$advanceBacked} booked as a customer advance and "
+                    ."{$alreadyRefunded} already refunded. Prior refunds post the receivable shape only, "
+                    .'so which portion they consumed is not recorded and splitting it now would be a '
+                    .'guess. Refusing.'
+                );
+            }
+
+            // A-D3 — the reversible ceiling is the partner's UNCONSUMED advance
+            // pool. Reversing an advance already applied to an invoice would drive
+            // the liability negative and re-credit cash the customer consumed as
+            // goods. Refuse; never partially reverse (a partial post would break
+            // the document↔GL equality D-5b establishes and would leave the
+            // operator no path for the remainder).
+            //
+            // Taken under a Partner row lock, ONLY on this arm — the pure-AR
+            // path's lock profile is unchanged. Without it a concurrent
+            // order→invoice conversion could consume the advance between this
+            // read and the post below. Lock order of record (A-D8):
+            //   Payment -> Document(s) -> Instrument -> Partner -> GL advisory -> Repository
+            // m-B (code gate): an explicit domain refusal rather than
+            // `firstOrFail()`. A null `partner_id`, or a partner outside the
+            // company scope, would otherwise surface as a raw
+            // `ModelNotFoundException` (model class name + uuid) through the
+            // controller's 422 catch — a 422, but not one that tells the operator
+            // anything.
+            // (A null `partner_id` is not reachable — `payments.partner_id` is
+            // non-nullable on the model, and PHPStan proves the comparison dead —
+            // so the scope guard below is the whole of m-B.)
+            $partner = Partner::query()
+                ->whereKey($original->partner_id)
+                ->where('company_id', $original->company_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $partner instanceof Partner) {
+                throw new \DomainException(
+                    "payment {$original->id} references partner {$original->partner_id}, which does not "
+                    .'resolve in this company scope; refusing to unwind its advance liability blind.'
+                );
+            }
+
+            $available = $this->glService->availableCustomerAdvance(
+                $original->company_id,
+                $original->partner_id,
+                $original->currency,
+            );
+
+            if (bccomp($advanceBacked, $available, $scale) > 0) {
+                throw new \DomainException(
+                    "payment {$original->id} booked {$advanceBacked} as a customer advance, but only "
+                    ."{$available} of this partner's advance balance is still unconsumed. Credit-note "
+                    .'the invoice that consumed the prepayment first — that un-applies it — then '
+                    .'reverse this payment.'
+                );
+            }
+        }
+
+        // ============ C-A (code gate, fix round 1) — WHAT TO EMIT ============
+        // The partition is GROSS: it describes the ORIGINAL payment's footprint.
+        // The reversing document and the cash movement are NET of the refund
+        // lineage (`netUnreversed = originalAmount - alreadyRefunded`). Emitting
+        // the buckets verbatim therefore over-reverses by exactly the refunded
+        // amount whenever a prior refund exists — which belt 1, by pinning the
+        // buckets to `$originalAmount`, guarantees rather than prevents.
+        //
+        // Two cases, and they are exhaustive because A-D6 above already refused
+        // the third:
+        //
+        //  1. `advanceBacked == 0` (the plain document payment — the shape C-A
+        //     exposed). Prior refunds posted the AR-ONLY shape
+        //     (`postRefundGlAndMovement`), so they have already debited AR by
+        //     `alreadyRefunded`. The reversal owes the REMAINDER: `$netAmount`.
+        //     With no refund lineage `$netAmount == $arBacked`, so the ordinary
+        //     reversal is unchanged from base byte for byte.
+        //
+        //  2. `advanceBacked > 0`. A-D6 has already refused any prior refund on
+        //     this arm, so `alreadyRefunded == 0` and therefore
+        //     `netUnreversed == originalAmount == arBacked + advanceBacked`
+        //     exactly. The buckets ARE the net; each portion is posted at its
+        //     exact value with NO proration (proration is OQ-3's ticket, not
+        //     this lane's).
+        //
+        // Deriving proration for case 2-with-refunds would be a guess that
+        // silently mis-states two accounts, which is precisely why A-D6 refuses.
+        if (bccomp($advanceBacked, '0', $scale) === 0) {
+            /** @var numeric-string $arPortion */
+            $arPortion = $netAmount;
+            /** @var numeric-string $advancePortion */
+            $advancePortion = bcadd('0', '0', $scale);
+        } else {
+            /** @var numeric-string $arPortion */
+            $arPortion = $arBacked;
+            /** @var numeric-string $advancePortion */
+            $advancePortion = $advanceBacked;
+        }
+
+        // BELT 3 — the one-value-three-artifacts invariant, and the direct
+        // regression guard for C-A. Whatever we post to the GL must equal what
+        // the reversing DOCUMENT says and what the cash MOVEMENT moves. A9's
+        // instrument belt already checks this shape against the amount actually
+        // unwound (`GeneralLedgerService::b2bCancellationDebits()`); this is the
+        // cash branch stating the same invariant, so the two branches can no
+        // longer disagree about which figure is authoritative.
+        if (bccomp(bcadd($arPortion, $advancePortion, $scale), $netAmount, $scale) !== 0) {
+            throw new \DomainException(
+                "payment {$original->id}: the reversing entries would post "
+                .bcadd($arPortion, $advancePortion, $scale)
+                ." while the reversing document and cash movement carry {$netAmount}. "
+                .'Refusing to let the ledger and the document disagree about how much was unwound.'
+            );
+        }
+
+        // A-D2 — conditional emission, at the amounts derived above. Both entries
+        // take `source_id = the reversal payment id` with DIFFERENT `source_type`s,
+        // so they cannot collide (D-9).
+        $arEntryId = null;
+        $advanceEntryId = null;
+
+        if (bccomp($arPortion, '0', $scale) > 0) {
+            $arEntryId = $this->glService->createPaymentRefundJournalEntry(
+                companyId: $original->company_id,
+                partnerId: $original->partner_id,
+                refundPaymentId: $reversalPaymentId,
+                amount: $arPortion,
+                paymentMethodAccountId: $repository->gl_account_id,
+                date: now(),
+                description: "Reversal of payment {$original->reference}",
+                postedByUserId: $userId,
+                currencyCode: $original->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            )->id;
+        }
+
+        if (bccomp($advancePortion, '0', $scale) > 0) {
+            $advanceEntryId = $this->glService->reverseCustomerAdvanceJournalEntry(
+                companyId: $original->company_id,
+                partnerId: $original->partner_id,
+                reversalPaymentId: $reversalPaymentId,
+                amount: $advancePortion,
+                paymentMethodAccountId: $repository->gl_account_id,
+                date: now(),
+                description: "Reversal of customer advance from payment {$original->reference}",
+                postedByUserId: $userId,
+                currencyCode: $original->currency,
+                mode: PostingMode::SynchronousInTransaction,
+            )->id;
+        }
+
+        // Exactly ONE movement for the whole net, unchanged (D-8). It carries the
+        // AR entry's id when one exists, else the advance entry's — the spine's
+        // "every movement carries a posted JE" invariant. A mixed reversal
+        // therefore shows ONE `repository_movements` row against TWO GL twins
+        // (A-D11): the total is right, and the 1:N is asserted per shape.
+        /** @var string $movementJournalEntryId */
+        $movementJournalEntryId = $arEntryId ?? $advanceEntryId;
 
         $this->movementService->record(new MovementIntent(
             repositoryId: $repository->id,
@@ -751,7 +963,7 @@ class PaymentRefundService
             sourceType: MovementSourceType::Refund,
             sourceId: $original->id,
             idempotencyLeg: "reversal:{$reversalPaymentId}",
-            journalEntryId: $entry->id,
+            journalEntryId: $movementJournalEntryId,
             occurredAt: null,
             reasonCode: null,
             reversesMovementId: null,
@@ -1148,20 +1360,22 @@ class PaymentRefundService
     }
 
     /**
-     * D-6 refusal text. Each message names the lane that DOES own the operation —
-     * or, for customer advances, honestly states that no lane owns it yet.
+     * D-6 refusal text. Each message names the lane that DOES own the operation.
      *
-     * The `Advance` message must NEVER point at the refund lane: `refundPayment()`
-     * posts the same AR-shaped entry (`Dr CustomerReceivable`) against an advance
-     * that credited `CustomerAdvance`, so redirecting there would send the caller
-     * to an equally wrong path. Ticket `DPA-V4-ADV-1` owns the missing shape.
+     * DPA `DPA-REV2-A` (A7): `Advance` is no longer here. It used to carry an
+     * honest dead-end message naming ticket `DPA-V4-ADV-1` — the missing
+     * customer-advance reversing shape — which this lane implemented
+     * (`reverseCustomerAdvanceJournalEntry()`), so the ticket is closed and the
+     * type moved to the `LogicException` arm beside the other reversible shapes.
+     *
+     * NOTE for whoever adds the next refusal: `refundPayment()`/`partialRefund()`
+     * still post the AR shape for an advance (V4's OQ-B parallel defect), so no
+     * message here may redirect an advance to the refund lane. That path is
+     * ticketed separately and is now the LAST wrong-shape advance path.
      */
     private function unsupportedReversalMessage(PaymentType $type): string
     {
         return match ($type) {
-            PaymentType::Advance => 'customer-advance reversal is not implemented (ticket DPA-V4-ADV-1): '
-                .'the original payment credits the customer-advance account, and no reversing entry '
-                .'exists for that shape yet. There is currently no supported path for this correction.',
             PaymentType::SupplierPayment => 'a supplier payment cannot be reversed here — both the direction '
                 .'and the accounts differ; use the supplier refund lane (VendorRefundService).',
             PaymentType::POS => 'a POS payment cannot be reversed here — POS posts direct to revenue with no '
@@ -1176,6 +1390,10 @@ class PaymentRefundService
             // for an `Unsupported` shape, so these two arms are unreachable —
             // stating them is the point.
             PaymentType::DocumentPayment,
+            // DPA-REV2-A (A7): `Advance` joined the reversible shapes. Its
+            // accounts come from the ledger partition, so there is no longer a
+            // missing shape to refuse for.
+            PaymentType::Advance,
             PaymentType::CreditApplication => throw new \LogicException(
                 "unsupportedReversalMessage() called for {$type->value}, which IS reversible; "
                 .'the caller must gate on reversalSupport() first.'
