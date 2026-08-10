@@ -22,6 +22,7 @@ use App\Modules\Inventory\Domain\StockTransferLine;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -709,7 +710,7 @@ class WeightedAverageCostServiceTest extends TestCase
             location: $this->location,
             quantity: 5.0,
             reference: 'DN-2025-001',
-            referenceType: 'Document',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: $documentId
         );
 
@@ -783,7 +784,7 @@ class WeightedAverageCostServiceTest extends TestCase
             quantity: 2.0,
             originalCost: 50.0,
             reference: 'RN-2025-001',
-            referenceType: 'Document',
+            referenceType: StockMovementReferenceType::Document,
             referenceId: $documentId
         );
 

@@ -6,38 +6,21 @@ namespace Tests\Feature\Inventory;
 
 use App\Modules\Accounting\Application\Services\AccountingService;
 use App\Modules\Accounting\Domain\JournalEntry;
-use App\Modules\Company\Domain\Company;
-use App\Modules\Company\Domain\Enums\LocationType;
-use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
-use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
-use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\InvoicePosted;
-use App\Modules\Document\Domain\Services\DeliveryNoteService;
-use App\Modules\Document\Domain\Services\DocumentPostingService;
-use App\Modules\Document\Domain\Services\ReturnNoteService;
-use App\Modules\Identity\Domain\User;
-use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
-use App\Modules\Partner\Domain\Enums\PartnerType;
-use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
-use App\Modules\POS\Domain\Terminal;
-use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
-use App\Modules\Tenant\Domain\Tenant;
-use App\Modules\Treasury\Domain\PaymentMethod;
-use Database\Factories\CompanyFactory;
-use Database\Seeders\FranceChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
-use Illuminate\Support\Str;
 use Tests\TestCase;
 use Tests\Traits\BuildsPosSaleReceiptEvents;
+use Tests\Traits\BuildsWave3ExitFixtures;
 
 /**
  * DPA Wave 3 · sub-wave 3A · **T1 — characterisation**.
@@ -84,74 +67,14 @@ use Tests\Traits\BuildsPosSaleReceiptEvents;
 final class CogsRelocationCharacterisationTest extends TestCase
 {
     use BuildsPosSaleReceiptEvents;
+    use BuildsWave3ExitFixtures;
     use RefreshDatabase;
-
-    private string $tenantId;
-
-    private string $companyId;
-
-    private string $locationId;
-
-    private string $terminalId;
-
-    private string $operatorId;
-
-    private Partner $customer;
 
     protected function setUp(): void
     {
         parent::setUp();
 
-        $tenant = Tenant::factory()->create();
-        $this->tenantId = $tenant->id;
-
-        /** @var Company $company */
-        $company = CompanyFactory::new()->create(['tenant_id' => $this->tenantId]);
-        $this->companyId = $company->id;
-
-        app(CompanyContext::class)->setCompanyId($this->companyId);
-
-        (new FranceChartOfAccountsSeeder)->run($this->companyId, $this->tenantId);
-
-        $location = Location::create([
-            'id' => Str::uuid()->toString(),
-            'company_id' => $this->companyId,
-            'name' => 'Main Warehouse',
-            'type' => LocationType::Warehouse,
-            'is_default' => true,
-            'is_active' => true,
-            'pos_enabled' => true,
-        ]);
-        $this->locationId = $location->id;
-
-        $terminal = Terminal::factory()->create([
-            'tenant_id' => $this->tenantId,
-            'company_id' => $this->companyId,
-            'location_id' => $this->locationId,
-            'genesis_seed' => str_repeat('0', 64),
-        ]);
-        $this->terminalId = $terminal->id;
-
-        $user = User::factory()->create(['tenant_id' => $this->tenantId]);
-        $this->operatorId = $user->id;
-        $this->actingAs($user);
-
-        PaymentMethod::factory()->create([
-            'tenant_id' => $this->tenantId,
-            'company_id' => $this->companyId,
-            'code' => 'CASH',
-            'name' => 'Cash',
-        ]);
-
-        $this->customer = Partner::create([
-            'id' => Str::uuid()->toString(),
-            'tenant_id' => $this->tenantId,
-            'company_id' => $this->companyId,
-            'type' => PartnerType::Customer,
-            'name' => 'Characterisation Customer',
-            'code' => 'CUST-'.Str::upper(Str::random(6)),
-            'country_code' => 'FR',
-        ]);
+        $this->bootWave3ExitFixtures();
     }
 
     // =================================================================
@@ -213,15 +136,15 @@ final class CogsRelocationCharacterisationTest extends TestCase
         self::assertSame(2, $cogs->lines->count());
 
         $debit = $cogs->lines->firstWhere(
-            fn ($line): bool => bccomp($this->numeric($line->debit), '0', 3) > 0,
+            fn ($line): bool => bccomp($this->numericString($line->debit), '0', 3) > 0,
         );
         $credit = $cogs->lines->firstWhere(
-            fn ($line): bool => bccomp($this->numeric($line->credit), '0', 3) > 0,
+            fn ($line): bool => bccomp($this->numericString($line->credit), '0', 3) > 0,
         );
         self::assertNotNull($debit);
         self::assertNotNull($credit);
-        self::assertSame(0, bccomp($this->numeric($debit->debit), '500', 3), 'COGS debit is 10 x 50');
-        self::assertSame(0, bccomp($this->numeric($credit->credit), '500', 3), 'Inventory credit is 10 x 50');
+        self::assertSame(0, bccomp($this->numericString($debit->debit), '500', 3), 'COGS debit is 10 x 50');
+        self::assertSame(0, bccomp($this->numericString($credit->credit), '500', 3), 'Inventory credit is 10 x 50');
         self::assertSame('603', $this->accountCode($debit->account_id), 'FR CostOfGoodsSold purpose account');
         self::assertSame('37', $this->accountCode($credit->account_id), 'FR Inventory purpose account');
     }
@@ -230,11 +153,14 @@ final class CogsRelocationCharacterisationTest extends TestCase
     // (b) a DN confirm writes a movement with NO reason
     // =================================================================
 
-    public function test_a_delivery_note_confirm_creates_a_stock_movement_with_a_null_reason(): void
+    public function test_a_delivery_note_confirm_creates_a_classified_stock_movement(): void
     {
-        // ⚠ INVERTED BY T2 — after T2 this movement carries
-        // MovementReason::Delivery and `reference_type` is written through the
-        // StockMovementReferenceType enum (same persisted string 'Document').
+        // ✅ INVERTED BY T2 (this commit). BEFORE T2 the assertion here was
+        // `assertNull($movement->reason)` — "today the DN exit movement is
+        // unclassified". T2 makes it MovementReason::Delivery, which is what
+        // makes the Wave-3 exit seam reachable at all. The persisted
+        // `reference_type` byte is unchanged ('Document'); see
+        // ExitMovementClassificationTest for the byte-identity guard.
         $product = $this->physicalProduct(costPrice: '50.000000');
         $this->seedStock($product->id, '100.0000');
 
@@ -245,9 +171,9 @@ final class CogsRelocationCharacterisationTest extends TestCase
             ->where('reference_id', $deliveryNote->id)
             ->firstOrFail();
 
-        self::assertNull($movement->reason, 'Today the DN exit movement is unclassified.');
+        self::assertSame(MovementReason::Delivery, $movement->reason);
         self::assertSame('Document', $movement->reference_type);
-        self::assertSame(0, bccomp($this->numeric($movement->quantity), '-10', 4), 'sale magnitude is negative');
+        self::assertSame(0, bccomp($this->numericString($movement->quantity), '-10', 4), 'sale magnitude is negative');
     }
 
     // =================================================================
@@ -328,20 +254,7 @@ final class CogsRelocationCharacterisationTest extends TestCase
 
     public function test_a_service_only_invoice_creates_no_cogs_entry(): void
     {
-        $service = Product::create([
-            'id' => Str::uuid()->toString(),
-            'tenant_id' => $this->tenantId,
-            'company_id' => $this->companyId,
-            'sku' => 'SVC-'.Str::upper(Str::random(6)),
-            'name' => 'Labour',
-            'type' => ProductType::Service,
-            'unit' => 'hour',
-            'cost_price' => '20.000000',
-            'sale_price' => '80.00',
-            'tax_rate' => 0,
-            'is_active' => true,
-            'is_physical' => false,
-        ]);
+        $service = $this->nonPhysicalProduct();
 
         $invoice = $this->postedInvoiceFor($service, quantity: '3.0000');
 
@@ -404,123 +317,12 @@ final class CogsRelocationCharacterisationTest extends TestCase
         return $removed;
     }
 
-    private function physicalProduct(string $costPrice): Product
-    {
-        return Product::create([
-            'id' => Str::uuid()->toString(),
-            'tenant_id' => $this->tenantId,
-            'company_id' => $this->companyId,
-            'sku' => 'PROD-'.Str::upper(Str::random(6)),
-            'name' => 'Characterisation Widget',
-            'type' => ProductType::Part,
-            'unit' => 'piece',
-            'cost_price' => $costPrice,
-            'sale_price' => '100.00',
-            'purchase_price' => '45.00',
-            'tax_rate' => 0,
-            'is_active' => true,
-            'is_physical' => true,
-        ]);
-    }
-
-    private function seedStock(string $productId, string $quantity): StockLevel
-    {
-        return StockLevel::create([
-            'id' => Str::uuid()->toString(),
-            'tenant_id' => $this->tenantId,
-            'company_id' => $this->companyId,
-            'product_id' => $productId,
-            'variant_id' => null,
-            'location_id' => $this->locationId,
-            'quantity' => $quantity,
-            'reserved' => '0.0000',
-        ]);
-    }
-
-    private function postedInvoiceFor(Product $product, string $quantity): Document
-    {
-        $invoice = $this->draftDocument(DocumentType::Invoice, $product, $quantity, 'INV');
-        $invoice->update(['status' => DocumentStatus::Confirmed]);
-
-        /** @var Document $confirmed */
-        $confirmed = $invoice->fresh(['lines']);
-
-        return $this->app->make(DocumentPostingService::class)->post($confirmed);
-    }
-
-    private function confirmedDeliveryNoteFor(Product $product, string $quantity): Document
-    {
-        $deliveryNote = $this->draftDocument(DocumentType::DeliveryNote, $product, $quantity, 'DN');
-
-        return $this->app->make(DeliveryNoteService::class)->confirm($deliveryNote);
-    }
-
-    private function confirmedReturnNoteFor(Product $product, string $quantity): Document
-    {
-        $returnNote = $this->draftDocument(DocumentType::ReturnNote, $product, $quantity, 'RN');
-
-        return $this->app->make(ReturnNoteService::class)->confirm($returnNote);
-    }
-
-    private function draftDocument(DocumentType $type, Product $product, string $quantity, string $prefix): Document
-    {
-        /** @var numeric-string $quantity */
-        $lineTotal = bcmul($quantity, '100.00', 2);
-
-        $document = Document::create([
-            'id' => Str::uuid()->toString(),
-            'company_id' => $this->companyId,
-            'tenant_id' => $this->tenantId,
-            'type' => $type,
-            'status' => DocumentStatus::Draft,
-            'partner_id' => $this->customer->id,
-            'location_id' => $this->locationId,
-            'document_number' => $prefix.'-W3A-'.Str::upper(Str::random(6)),
-            'document_date' => now(),
-            'currency' => 'EUR',
-            'total' => $lineTotal,
-        ]);
-
-        DocumentLine::create([
-            'id' => Str::uuid()->toString(),
-            'document_id' => $document->id,
-            'line_number' => 1,
-            'product_id' => $product->id,
-            'location_id' => $this->locationId,
-            'description' => $product->name,
-            'quantity' => $quantity,
-            'unit_price' => '100.00',
-            'tax_rate' => 0,
-            'line_total' => $lineTotal,
-        ]);
-
-        /** @var Document $fresh */
-        $fresh = $document->fresh(['lines']);
-
-        return $fresh;
-    }
-
     private function journalEntryCount(string $sourceId, string $sourceType): int
     {
         return JournalEntry::query()
             ->where('source_id', $sourceId)
             ->where('source_type', $sourceType)
             ->count();
-    }
-
-    /**
-     * Narrow a decimal-column read to `numeric-string` for bcmath (no float ever
-     * touches money — house rule 19).
-     *
-     * @return numeric-string
-     */
-    private function numeric(mixed $value): string
-    {
-        $string = (string) $value; // @phpstan-ignore-line cast.string
-        self::assertTrue(is_numeric($string), 'decimal column must read back numeric');
-
-        /** @var numeric-string $string */
-        return $string;
     }
 
     private function accountCode(string $accountId): string

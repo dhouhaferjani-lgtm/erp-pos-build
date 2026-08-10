@@ -23,6 +23,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use App\Shared\Exceptions\ReturnPeriodLockedException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -682,7 +683,7 @@ final class ReturnNoteService
                 quantity: (float) $line->quantity,
                 originalCost: $originalCost,
                 reference: $returnNote->document_number,
-                referenceType: 'Document',
+                referenceType: StockMovementReferenceType::Document,
                 referenceId: $returnNote->id
             );
         }

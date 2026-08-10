@@ -18,6 +18,7 @@ use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -256,7 +257,7 @@ final class DeliveryNoteService
                 location: $location,
                 quantity: (float) $line->quantity,
                 reference: $deliveryNote->document_number,
-                referenceType: 'Document',
+                referenceType: StockMovementReferenceType::Document,
                 referenceId: $deliveryNote->id
             );
 
