@@ -169,11 +169,14 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             ['code' => '4035', 'name' => 'Fournisseurs - Chèques à payer', 'type' => 'liability', 'parent_code' => '40', 'is_system' => true],
             ['code' => '408', 'name' => 'Fournisseurs - Factures non parvenues', 'type' => 'liability', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value, 'is_system' => true],
-            // R2 E-1 / register H-5 — the PCG counterpart of the TN chart's own
-            // 409 → SupplierAdvance mapping. `SupplierAdvance` is in
+            // R2 E-1 / register H-5 + DPA-REV2-A A2 (both lanes converged here):
+            // 409 IS the PCG supplier-advance account ("avances et acomptes versés
+            // sur commandes") — the PCG counterpart of the TN chart's own 409 →
+            // SupplierAdvance mapping. `SupplierAdvance` is in
             // SystemAccountPurpose::requiredPurposes(), so before this line a
             // French chart FAILED ChartOfAccountsService::validateCompanyAccounts()
-            // and GeneralLedgerService::createSupplierAdvance* threw.
+            // and GeneralLedgerService::createSupplierAdvance* threw. Metadata only —
+            // `asset` already matches expectedAccountType().
             ['code' => '409', 'name' => 'Fournisseurs débiteurs', 'type' => 'asset', 'parent_code' => '40',
                 'system_purpose' => SystemAccountPurpose::SupplierAdvance->value, 'is_system' => true],
 
@@ -188,8 +191,13 @@ class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeede
             // (the delivery-note accrual, PCG 418 by name already).
             ['code' => '418', 'name' => 'Clients - Produits non encore facturés', 'type' => 'asset', 'parent_code' => '41',
                 'system_purpose' => SystemAccountPurpose::UninvoicedRevenue->value, 'is_system' => true],
-            // R2 E-1 / register H-5 — PCG counterpart of the TN chart's 419 →
-            // CustomerAdvance mapping; also a requiredPurposes() member.
+            // R2 E-1 / register H-5 + DPA-REV2-A A2 (both lanes converged here):
+            // 419 IS the PCG customer-advance account ("clients créditeurs, avances
+            // et acomptes reçus") — PCG counterpart of the TN chart's 419 →
+            // CustomerAdvance mapping; also a requiredPurposes() member. Without it
+            // a French company hard-fails createCustomerAdvanceJournalEntry() at
+            // GeneralLedgerService:417 on any over-payment. Metadata only —
+            // `liability` already matches expectedAccountType().
             ['code' => '419', 'name' => 'Clients créditeurs', 'type' => 'liability', 'parent_code' => '41',
                 'system_purpose' => SystemAccountPurpose::CustomerAdvance->value, 'is_system' => true],
 

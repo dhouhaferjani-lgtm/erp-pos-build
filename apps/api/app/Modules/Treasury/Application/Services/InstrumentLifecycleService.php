@@ -26,7 +26,6 @@ use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\InstrumentStatus;
 use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementSourceType;
-use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\PaymentStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceLineStatus;
 use App\Modules\Treasury\Domain\Enums\RemittanceStatus;
@@ -42,6 +41,7 @@ use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Contracts\Accounting\PaymentLedgerPartitionReaderInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Treasury\InstrumentReversalCancellerInterface;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
@@ -61,6 +61,9 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
         private CurrencyScaleResolverInterface $scaleResolver,
         private InstrumentRemittanceService $remittanceService,
         private TreasuryMovementServiceInterface $movementService,
+        // DPA-REV2-A (A5): reached through the Shared contract only (rule 6) —
+        // Treasury never imports the concrete reader or an Accounting model.
+        private PaymentLedgerPartitionReaderInterface $partitionReader,
     ) {}
 
     /**
@@ -657,11 +660,27 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
      * `$payment === null || $payment->journal_entry_id === null` skips the
      * GL/transaction assertions inside `createInstrumentCancellationEntry()`.
      *
-     * I4 fix: derives the `CancellationShape` from the linked payment's
-     * `origin` instead of hardcoding `B2b` — a POS-bridged instrument
-     * (`PaymentOrigin::Pos`) reversed through this generic admin path still
-     * reverses PRODUCT REVENUE, not the customer receivable account (which
-     * would be wrong for a POS sale that was never on account).
+     * I4 fix — **SUPERSEDED by DPA `DPA-REV2-A` (A-D7 + orchestrator ruling
+     * 2026-08-10); recorded, not deleted, so the history is legible.** I4 made
+     * this method derive the `CancellationShape` from the linked payment's
+     * `origin` instead of hardcoding `B2b`, reasoning that a POS-bridged
+     * instrument should reverse PRODUCT REVENUE rather than the customer
+     * receivable, "which would be wrong for a POS sale that was never on
+     * account".
+     *
+     * That reasoning is **false for everything that can actually reach this
+     * method**. A pure POS SALE RECEIPT is `PaymentType::POS`, which the D-6 gate
+     * refuses before any instrument is resolved — so it never arrives here at
+     * all. The only payments that reached I4's `PosRevenue` arm were
+     * `DocumentPayment` rows with `origin = Pos`: the POS ACCOUNT PAYMENT, which
+     * is BY DEFINITION on account and whose GL footprint is AR-/advance-backed.
+     * I4's arm could therefore only ever fire on the case it got wrong (shape Z,
+     * plan §1.5) — debiting revenue for money never booked to revenue.
+     *
+     * The selector is now `B2b` unconditionally and `origin` is consulted
+     * NOWHERE in this method; the LEDGER partition drives the debits.
+     * `PosRevenue` survives only where it is genuinely correct: an explicit
+     * caller-supplied shape from the POS void lane through `cancel()`.
      *
      * N2 fix (2026-08-02 minor-followups ticket): the `DB::transactionLevel()`
      * guard below only proves SOME transaction is open — it is inert under
@@ -741,13 +760,38 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
             );
         }
 
-        $shape = $payment->origin === PaymentOrigin::Pos
-            ? CancellationShape::PosRevenue
-            : CancellationShape::B2b;
-
+        // DPA `DPA-REV2-A` (A-D7 + orchestrator ruling 2026-08-10) — the LEDGER
+        // decides the shape here, and `$payment->origin` is consulted NOWHERE in
+        // this method.
+        //
+        // The old selector was `$payment->origin === PaymentOrigin::Pos ?
+        // PosRevenue : B2b`, justified as "wrong for a POS sale that was never on
+        // account". That justification is FALSE for everything that can actually
+        // reach this line. This method has one caller
+        // (`PaymentRefundService::cancelReceivedInstrumentForReversal()`, reached
+        // only from `reversePayment()`), and the D-6 gate refuses
+        // `PaymentType::POS` before any instrument is resolved — so a pure POS
+        // SALE RECEIPT can never arrive here. The only payments that reached the
+        // `PosRevenue` arm were `DocumentPayment`/`origin = Pos` rows: the POS
+        // ACCOUNT PAYMENT, which is BY DEFINITION on account and whose GL
+        // footprint is AR-/advance-backed (shape Z, plan §1.5). The arm's only
+        // possible traffic was the case it got wrong — it debited ProductRevenue
+        // for money never booked to revenue, left the receivable standing and
+        // dropped the partner tag.
+        //
+        // Deleting a dead selector that could only ever fire wrongly is safer
+        // than keeping it as a fallback, so `B2b` is now unconditional. The
+        // partition drives the DEBITS inside `createInstrumentCancellationEntry()`;
+        // an empty partition keeps the legacy single AR restoration.
+        //
+        // `PosRevenue` remains reachable ONLY through an explicit caller-supplied
+        // shape on `cancel()` — the POS void lane
+        // (`TreasuryReceiptBridge::…(…, CancellationShape::PosRevenue)`), which is
+        // out of scope for this lane and untouched.
+        //
         // DPA V4 (D-5): surface the posted cancellation entry id so the caller's
         // reversing DOCUMENT can link it rather than post a second AR restoration.
-        return $this->performCancellation($instrument, $payment, $userId, $reason, $shape);
+        return $this->performCancellation($instrument, $payment, $userId, $reason, CancellationShape::B2b);
     }
 
     /**
@@ -776,6 +820,19 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
                 ? InstrumentAccountPurpose::ChecksToCollect
                 : InstrumentAccountPurpose::EffectsReceivable;
             $portfolioAccountId = $this->accountResolver->resolveOrFail($purpose, $instrument->company_id);
+
+            // DPA `DPA-REV2-A` (A5/A-D7): ONE reader, both call sites. `cancel()`
+            // and `cancelForPaymentReversal()` both land here, so deriving the
+            // partition in this shared body is what stops the two paths drifting
+            // apart. The caller-supplied `$shape` stays authoritative — the POS
+            // void lane passes `PosRevenue` explicitly and must keep it (plan §8);
+            // the partition only drives the `B2b` arm's DEBITS.
+            $partition = $this->partitionReader->read(
+                $payment->company_id,
+                $payment->id,
+                $payment->currency,
+            );
+
             $entry = $this->generalLedger->createInstrumentCancellationEntry(
                 companyId: $instrument->company_id,
                 tenantId: $instrument->tenant_id,
@@ -785,6 +842,7 @@ final readonly class InstrumentLifecycleService implements InstrumentReversalCan
                 amount: $instrument->amount,
                 shape: $shape,
                 date: now(),
+                partition: $partition,
             );
             $this->generalLedger->postEntryNow($entry, User::query()->find($userId), $instrument->currency);
             $journalEntryId = $entry->id;

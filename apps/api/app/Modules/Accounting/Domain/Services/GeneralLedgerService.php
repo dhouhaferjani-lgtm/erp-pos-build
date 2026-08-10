@@ -33,6 +33,7 @@ use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherSource;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
+use App\Shared\Contracts\Accounting\PaymentLedgerPartition;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\ExpenseVatSplit;
@@ -569,6 +570,118 @@ final class GeneralLedgerService
         if ($mode === PostingMode::SynchronousInTransaction) {
             // postEntryNow tolerates a null actor (posted_by stays null); the
             // supplier-refund flow always supplies one in practice.
+            $this->postEntryNow($entry, $user, $currencyCode);
+        } elseif ($user !== null) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
+     * DPA `DPA-REV2-A` (A-D1) — the GL reversal for a CUSTOMER ADVANCE, and the
+     * missing half of the customer-advance idiom.
+     *
+     * The exact algebraic inverse of {@see createCustomerAdvanceJournalEntry}
+     * (which posts Dr cash / Cr CustomerAdvance partner-tagged), and the customer
+     * twin of {@see reverseSupplierAdvanceJournalEntry} — with the legs on the
+     * sides a customer LIABILITY requires rather than a supplier asset:
+     *
+     *   Debit:  CustomerAdvance (partner-tagged) — the liability we owed is discharged
+     *   Credit: Bank/Cash                        — money goes back to the customer
+     *
+     * `source_type` is `'customer_advance_refund'` and `source_id` is the
+     * REVERSAL payment row id, never the original (D-9). That is what lets a
+     * MIXED reversal post two entries — one `'customer_payment_refund'`, one
+     * `'customer_advance_refund'` — against the same reversal payment without
+     * colliding on `(source_type, source_id)`.
+     *
+     * JOURNAL CODE: `'customer_advance_refund'` has no arm in
+     * {@see JournalCode::fromSourceType()} and therefore falls to `Misc`/OD,
+     * matching `'advance'` and `'supplier_advance_refund'`. This is DELIBERATE
+     * and must not be "fixed" to `Bank`/BQ: re-classifying the advance family
+     * would move EXISTING `'advance'` entries between FEC journals. It is open
+     * question OQ-4, pending an expert-comptable ruling. A consequence worth
+     * knowing (A-D11): a single mixed reversal therefore splits one economic act
+     * across two FEC journals, BQ + OD.
+     *
+     * @param  numeric-string  $amount
+     */
+    public function reverseCustomerAdvanceJournalEntry(
+        string $companyId,
+        string $partnerId,
+        string $reversalPaymentId,
+        string $amount,
+        string $paymentMethodAccountId,
+        \DateTimeInterface $date,
+        ?string $description = null,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+        PostingMode $mode = PostingMode::AfterCommit,
+    ): JournalEntry {
+        // Verbatim from the supplier sibling (:513-515): SynchronousInTransaction
+        // posts via postEntryNow so the GL post is atomic with — and its company
+        // advisory lock is taken BEFORE — the movement port's repository row lock
+        // (global lock order). Refuse to mint a Draft that postEntryNow would orphan.
+        if ($mode === PostingMode::SynchronousInTransaction && DB::transactionLevel() < 1) {
+            throw new \LogicException('reverseCustomerAdvanceJournalEntry: SynchronousInTransaction requires an enclosing database transaction; refusing to create a Draft that postEntryNow would then orphan.');
+        }
+
+        $advanceAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance);
+        $user = null;
+        if ($postedByUserId !== null) {
+            /** @var User $user */
+            $user = User::query()->findOrFail($postedByUserId);
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId, $partnerId, $reversalPaymentId, $amount, $paymentMethodAccountId,
+            $date, $description, $advanceAccount
+        ): JournalEntry {
+            $entryNumber = $this->generateEntryNumber($companyId);
+
+            $company = Company::findOrFail($companyId);
+
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $entryNumber,
+                'entry_date' => $date,
+                'description' => $description ?? 'Customer advance reversal',
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => 'customer_advance_refund',
+                'journal_code' => JournalCode::fromSourceType('customer_advance_refund')->value,
+                'source_id' => $reversalPaymentId,
+            ]);
+
+            // Debit: Customer Advances (discharge the liability - with partner for subledger)
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $advanceAccount->id,
+                'partner_id' => $partnerId,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => 'Customer advance reversed',
+                'line_order' => 0,
+            ]);
+
+            // Credit: Bank/Cash — money returned to the customer
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $paymentMethodAccountId,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => 'Advance returned to customer',
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($mode === PostingMode::SynchronousInTransaction) {
+            // postEntryNow tolerates a null actor (posted_by stays null); this is
+            // what guarantees the reversal is POSTED even for an unresolvable actor.
             $this->postEntryNow($entry, $user, $currencyCode);
         } elseif ($user !== null) {
             $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
@@ -1576,7 +1689,11 @@ final class GeneralLedgerService
                 throw new \InvalidArgumentException('Customer advance clearing amount must be positive.');
             }
 
-            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id);
+            // N-3: the helper now takes an explicit scale. This caller already
+            // holds the Partner lock and already resolved the advance account
+            // above, so it keeps using the private helper directly rather than
+            // re-resolving through availableCustomerAdvance().
+            $availableAdvance = $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccount->id, $this->scale());
 
             if (bccomp($amount, $availableAdvance, $this->scale()) > 0) {
                 throw new \InvalidArgumentException(
@@ -1634,17 +1751,70 @@ final class GeneralLedgerService
     }
 
     /**
+     * DPA `DPA-REV2-A` (A6, gate finding I-2) — the UNCONSUMED customer-advance
+     * balance a partner holds, at the ENTITY currency's scale.
+     *
+     * This is the ceiling the reversal lane refuses against (A-D3): reversing an
+     * advance that has already been applied to an invoice would drive the
+     * `CustomerAdvance` liability negative and re-credit cash the customer
+     * consumed as goods.
+     *
+     * **POOL-LEVEL SEMANTICS (m-1), stated so it is not re-raised as a bug.**
+     * Consumption is partner-pool-level with no back-link to the funding payment
+     * (`clearCustomerAdvanceToReceivable()` posts with
+     * `source_id = the INVOICE id`), so this is a ceiling on the PARTNER'S POOL,
+     * not on any individual advance. Reversing advance P1 — even a fully consumed
+     * one — therefore passes if some other advance P2 for the same partner is
+     * unconsumed, draining P2's liability instead. That is economically
+     * defensible: the liability is per-partner by construction, and the fail
+     * direction is safe — it can never drive the liability negative.
+     *
+     * The figure is posted balance NET of pending `prepayment_application`
+     * DRAFTS, so an in-flight order→invoice conversion cannot be double-spent.
+     *
+     * **N-3 — this replaced `availableCustomerAdvanceMagnitude(..., string
+     * $advanceAccountId)`.** The account id parameter is gone: the account is
+     * resolved INSIDE from `SystemAccountPurpose::CustomerAdvance`, so no caller
+     * can pass the wrong one.
+     *
+     * **Rule 19 / I-2:** every comparison and subtraction is at
+     * `getScale($currency)` for the ENTITY currency passed in — never the bare
+     * no-arg `$this->scale()` this method used to use, which throws outside
+     * request context (queued jobs, console commands).
+     *
+     * **OQ-7 is MOOT at the data level — see the task report.** The plan offered
+     * "add a currency predicate to the balance query" or "refuse a
+     * multi-currency partner". Neither is needed and the first is not even
+     * implementable: `journal_entries` and `journal_lines` carry **no currency
+     * column at all**. All GL for a company is denominated in that company's
+     * `currency`, so a partner cannot hold advances in two currencies within one
+     * company's ledger. The currency argument therefore governs SCALE only,
+     * which is exactly the defect I-2 actually found.
+     *
+     * @param  string  $currency  the ENTITY currency (rule 19 — never resolved implicitly)
      * @return numeric-string
      */
-    private function availableCustomerAdvanceMagnitude(string $companyId, string $partnerId, string $advanceAccountId): string
+    public function availableCustomerAdvance(string $companyId, string $partnerId, string $currency): string
+    {
+        $scale = $this->scaleResolver->getScale($currency);
+        $advanceAccountId = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance)->id;
+
+        return $this->availableCustomerAdvanceMagnitude($companyId, $partnerId, $advanceAccountId, $scale);
+    }
+
+    /**
+     * @param  int  $scale  ENTITY-currency scale, supplied by the caller (rule 19)
+     * @return numeric-string
+     */
+    private function availableCustomerAdvanceMagnitude(string $companyId, string $partnerId, string $advanceAccountId, int $scale): string
     {
         $advanceBalance = $this->partnerBalanceService->getCustomerAdvanceBalance($companyId, $partnerId);
 
-        if (bccomp($advanceBalance, '0', $this->scale()) >= 0) {
+        if (bccomp($advanceBalance, '0', $scale) >= 0) {
             return '0';
         }
 
-        $postedAdvanceMagnitude = bcsub('0', $advanceBalance, $this->scale());
+        $postedAdvanceMagnitude = bcsub('0', $advanceBalance, $scale);
 
         /** @var object{debit_total: numeric-string|null}|null $pendingDraftResult */
         $pendingDraftResult = JournalLine::query()
@@ -1658,9 +1828,9 @@ final class GeneralLedgerService
             ->first();
 
         $pendingDraftClearing = $pendingDraftResult->debit_total ?? '0';
-        $availableAfterDrafts = bcsub($postedAdvanceMagnitude, $pendingDraftClearing, $this->scale());
+        $availableAfterDrafts = bcsub($postedAdvanceMagnitude, $pendingDraftClearing, $scale);
 
-        if (bccomp($availableAfterDrafts, '0', $this->scale()) <= 0) {
+        if (bccomp($availableAfterDrafts, '0', $scale) <= 0) {
             return '0';
         }
 
@@ -3113,6 +3283,7 @@ final class GeneralLedgerService
         string $amount,
         CancellationShape $shape,
         \DateTimeInterface $date,
+        ?PaymentLedgerPartition $partition = null,
     ): JournalEntry {
         if (DB::transactionLevel() < 1) {
             throw new \LogicException('Instrument cancellation entries require an enclosing transaction.');
@@ -3127,13 +3298,8 @@ final class GeneralLedgerService
             $amount,
             $shape,
             $date,
+            $partition,
         ): JournalEntry {
-            $counterpart = $this->getAccountByPurpose(
-                $companyId,
-                $shape === CancellationShape::B2b
-                    ? SystemAccountPurpose::CustomerReceivable
-                    : SystemAccountPurpose::ProductRevenue,
-            );
             $entry = JournalEntry::query()->create([
                 'tenant_id' => $tenantId,
                 'company_id' => $companyId,
@@ -3146,17 +3312,43 @@ final class GeneralLedgerService
                 'source_id' => $instrumentId,
             ]);
 
-            JournalLine::query()->create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $counterpart->id,
-                'partner_id' => $shape === CancellationShape::B2b ? $partnerId : null,
-                'debit' => $amount,
-                'credit' => '0',
-                'description' => $shape === CancellationShape::B2b
-                    ? 'Customer receivable restored'
-                    : 'POS revenue reversed',
-                'line_order' => 0,
-            ]);
+            // EXHAUSTIVE — no `default`, deliberately (A-D7). The pre-DPA code
+            // resolved the debit through three parallel ternaries (account,
+            // partner_id, description), which is how a fourth shape gets added
+            // wrongly. A future `CancellationShape` case is now a compile error.
+            $debitLines = match ($shape) {
+                // UNCHANGED, byte for byte: one Dr ProductRevenue, partner_id
+                // null. Only its SELECTION narrowed — under A-D7 it is reachable
+                // solely through an explicit caller-supplied shape (the POS void
+                // lane), never from a reversal.
+                CancellationShape::PosRevenue => [[
+                    'account_id' => $this->getAccountByPurpose($companyId, SystemAccountPurpose::ProductRevenue)->id,
+                    'partner_id' => null,
+                    'amount' => $amount,
+                    'description' => 'POS revenue reversed',
+                ]],
+
+                CancellationShape::B2b => $this->b2bCancellationDebits(
+                    $companyId,
+                    $partnerId,
+                    $amount,
+                    $partition,
+                ),
+            };
+
+            $lineOrder = 0;
+            foreach ($debitLines as $line) {
+                JournalLine::query()->create([
+                    'journal_entry_id' => $entry->id,
+                    'account_id' => $line['account_id'],
+                    'partner_id' => $line['partner_id'],
+                    'debit' => $line['amount'],
+                    'credit' => '0',
+                    'description' => $line['description'],
+                    'line_order' => $lineOrder++,
+                ]);
+            }
+
             JournalLine::query()->create([
                 'journal_entry_id' => $entry->id,
                 'account_id' => $portfolioAccountId,
@@ -3164,11 +3356,84 @@ final class GeneralLedgerService
                 'debit' => '0',
                 'credit' => $amount,
                 'description' => 'Instrument portfolio reversed',
-                'line_order' => 1,
+                'line_order' => $lineOrder,
             ]);
 
             return $entry->load('lines');
         });
+    }
+
+    /**
+     * DPA `DPA-REV2-A` (A-D7) — the `B2b` debit side, driven by the LEDGER.
+     *
+     * A non-empty partition emits one debit per non-zero bucket, each
+     * partner-tagged, and asserts they sum to the instrument nominal. That is the
+     * only way a MIXED deferred tender (one cheque, an AR leg and an advance leg
+     * against the same portfolio) can be cancelled correctly — no single
+     * `CancellationShape` case could represent it, which is why the ENTRY takes
+     * the partition rather than the enum gaining a third case.
+     *
+     * An EMPTY partition keeps the LEGACY shape verbatim: a single partner-tagged
+     * `Dr CustomerReceivable` at the nominal. This is deliberate and load-bearing
+     * — the standalone `cancel()` endpoint is pinned unchanged by the plan (§8,
+     * A9's test list), and it is the arm that receives an `origin = Pos` payment
+     * with no AR/advance footprint under the 2026-08-10 orchestrator ruling.
+     *
+     * @param  numeric-string  $amount  the instrument nominal
+     * @return list<array{account_id: string, partner_id: string|null, amount: numeric-string, description: string}>
+     */
+    private function b2bCancellationDebits(
+        string $companyId,
+        ?string $partnerId,
+        string $amount,
+        ?PaymentLedgerPartition $partition,
+    ): array {
+        $receivableAccountId = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerReceivable)->id;
+
+        if ($partition === null || $partition->isEmpty()) {
+            return [[
+                'account_id' => $receivableAccountId,
+                'partner_id' => $partnerId,
+                'amount' => $amount,
+                'description' => 'Customer receivable restored',
+            ]];
+        }
+
+        $scale = $partition->scale;
+
+        // The reversing DOCUMENT and the cancellation ENTRY must agree about how
+        // much was unwound (the D-5b equality already guarantees
+        // nominal == netUnreversed). Fail closed on divergence rather than
+        // posting an unbalanced or under-stated restoration.
+        if (bccomp($partition->total(), $amount, $scale) !== 0) {
+            throw new \DomainException(
+                "instrument cancellation partition sums to {$partition->total()} but the instrument "
+                ."nominal is {$amount}; the cancellation entry and the payment's ledger footprint "
+                .'disagree about how much was unwound. Refusing.'
+            );
+        }
+
+        $lines = [];
+
+        if (bccomp($partition->arBacked, '0', $scale) > 0) {
+            $lines[] = [
+                'account_id' => $receivableAccountId,
+                'partner_id' => $partnerId,
+                'amount' => $partition->arBacked,
+                'description' => 'Customer receivable restored',
+            ];
+        }
+
+        if (bccomp($partition->advanceBacked, '0', $scale) > 0) {
+            $lines[] = [
+                'account_id' => $this->getAccountByPurpose($companyId, SystemAccountPurpose::CustomerAdvance)->id,
+                'partner_id' => $partnerId,
+                'amount' => $partition->advanceBacked,
+                'description' => 'Customer advance reversed',
+            ];
+        }
+
+        return $lines;
     }
 
     /**
