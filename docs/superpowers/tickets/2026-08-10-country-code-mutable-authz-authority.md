@@ -1,7 +1,11 @@
 # OWNER-VISIBLE: `company.country_code` Is a Mutable Field Now Acting as an Authorization Authority
 
 Raised by: tenancy-authz-reviewer gate verdict (item G, 2026-08-10), finding F-1.
-Status: OWNER RULING NEEDED. Code fix explicitly OUT of scope for fix round 1.
+Status: GUARD LANE IMPLEMENTED on local branch `fix/company-identity-guards` (2026-08-10).
+The owner selected post-provisioning immutability for company country/currency, plus a separate
+`settings.fiscal.update` permission and dedicated old/new audit events for mutable tax identity.
+The remaining `tax_configurations.company_id` scoping work is explicitly deferred to its own
+reviewed follow-up lane and remains open.
 
 ## Why this needs a decision, not just a fix
 
@@ -30,6 +34,16 @@ No step requires a permission the actor did not already have. The mutation path 
 
 Options 1 and 3 are complementary, not alternatives.
 
-## Until then
+## Guard-lane disposition
 
-The stamp-duty capability check should be described as a **usability guard**, not a security boundary. Do not cite it as an authorization control in the country-defaults spec or the launch readiness register until this is closed.
+The tenant settings path can no longer change `company.country_code` or `company.currency` after
+provisioning, including through the nested `address.country` alias. Idempotent resubmissions are
+accepted so the existing full-form settings save remains usable. Genuine corrections remain a
+super-admin support-access procedure; support impersonation deliberately reaches the same guarded
+tenant controller in v1, so the correction itself must be handled through the operational
+super-admin escalation rather than the tenant settings form.
+
+This closes the self-service authority escalation described above for the guard lane. It does not
+close the sibling-company blast radius inherent in globally country-scoped `tax_configurations`;
+that model should still not be described as company-isolated until the follow-up scoping lane is
+implemented and reviewed.
