@@ -32,6 +32,24 @@ const getDocumentTypeTranslationKey = (value: string): string => {
   return mapping[value] ?? value.toLowerCase()
 }
 
+/**
+ * Which explanation sits under the stamp-duty checkbox.
+ *
+ * A failed capability fetch is NOT the same statement as "this country does not
+ * support stamp duty" — telling a TN admin their country is unsupported because
+ * a request failed is a wrong answer, not a cautious one (F-6). All three states
+ * fail closed; only the wording differs.
+ */
+const stampDutyHintKey = (
+  isError: boolean,
+  isLoading: boolean,
+  supportsStampDuty: boolean,
+): string => {
+  if (isError) return 'settings:tax.configurations.form.stampDutyCapabilityUnavailable'
+  if (!isLoading && !supportsStampDuty) return 'settings:tax.configurations.form.stampDutyUnavailable'
+  return 'settings:tax.configurations.form.stampDutyHelp'
+}
+
 const defaultFormData: TaxConfigurationFormData = {
   name: '',
   code: '',
@@ -288,16 +306,7 @@ export function TaxConfigFormModal({ isOpen, onClose, onSaved, editingTax }: Tax
               <span className={`ms-2 text-sm ${colorTokens.text.secondary}`}>{t('settings:tax.configurations.form.stampDuty')}</span>
             </label>
             <p className={`text-xs ${colorTokens.text.subtle} mt-1 ms-6`}>
-              {/* A failed capability fetch is NOT the same statement as
-                  "this country does not support stamp duty" — telling a TN
-                  admin their country is unsupported because a request failed
-                  is a wrong answer, not a cautious one (F-6). Both still fail
-                  closed: the controls stay disabled either way. */}
-              {capabilitiesUnavailable
-                ? t('settings:tax.configurations.form.stampDutyCapabilityUnavailable')
-                : !isLoadingCapabilities && !supportsStampDuty
-                  ? t('settings:tax.configurations.form.stampDutyUnavailable')
-                  : t('settings:tax.configurations.form.stampDutyHelp')}
+              {t(stampDutyHintKey(capabilitiesUnavailable, isLoadingCapabilities, supportsStampDuty))}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-4">
