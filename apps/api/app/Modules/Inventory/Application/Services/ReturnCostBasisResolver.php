@@ -94,7 +94,7 @@ final class ReturnCostBasisResolver
                     bcdiv($accumulated, $drawnTotal, self::WORKING_SCALE),
                     self::COST_SCALE,
                 ),
-                source: ReturnCostBasis::SOURCE_CURRENT_COST,
+                source: ReturnCostBasis::SOURCE_EXIT_MOVEMENT,
                 movementIds: $movementIds,
             );
         }
