@@ -483,6 +483,31 @@ class CompanySettingsTest extends TestCase
                 'error.errors.country_code.0',
                 'The company country is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
             );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+    }
+
+    public function test_mixed_fiscal_and_immutable_payload_without_fiscal_permission_persists_nothing(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'legal_name' => 'Must Not Persist SARL',
+                'country_code' => 'TN',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['country_code'])
+            ->assertJsonPath(
+                'error.errors.country_code.0',
+                'The company country is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertSame('Test Company SARL', $this->company->legal_name);
     }
 
     public function test_idempotent_fiscal_identity_values_do_not_require_fiscal_permission(): void

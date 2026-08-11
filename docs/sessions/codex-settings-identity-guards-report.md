@@ -348,10 +348,13 @@ No full PHPUnit suite was run. Every backend run named explicit test paths.
 
 ### Commit handoff
 
-The implementation and verification completed, but this Codex session could not create the
-requested commit. The workspace files are writable while `.git` is mounted read-only by the
-session permission profile; `git add` failed when Git attempted to create `.git/index.lock`.
-No stash or push was attempted. Branch HEAD therefore remains
-`ad8e8d15d737df7d05ce021db171ab41236767d9`, with the verified fix round present as unstaged working
-tree changes. The intended commit subject is
-`fix-round-1: close company identity guard review findings`.
+The Codex session itself could not create the commit (`.git` was mounted read-only by its
+permission profile, so `git add` failed on `.git/index.lock`), so the orchestrator committed the
+verified fix round afterwards. Branch `fix/company-identity-guards` HEAD is now
+`f9eabdde84a94d8261dc097929bb73f71573eb0e`, subject
+`fix-round-1: authz/fiscal gate remediation (PENDING RE-GATE)`, on top of
+`ad8e8d15d737df7d05ce021db171ab41236767d9`. No stash and no push were made at any point.
+
+Re-gate outcome: the 2026-08-11 adversarial re-gate (tenancy-authz reviewer) returned **ACCEPT**,
+with three minor non-blocking findings applied post-gate (this handoff correction, the restored
+service guard, and precedence-test hardening).
