@@ -92,3 +92,41 @@ Fresh pre-review PostgreSQL path results:
 - T11c green arm + aborting-savepoint proof: `7 passed (78 assertions)`;
 - T11c ruled red-before arm: `4 failed (48 assertions)`, each at the desired no-`40P01` assertion;
 - PHPStan level 8 on the touched production seam: `[OK] No errors`; Pint and `git diff --check` pass.
+
+### M1 adversarial round 1 remediation
+
+Round 1 returned `CHANGES-REQUIRED`. Its central finding was valid: the original T11c red arm
+hardcoded its lock order and therefore would not flip when T16d/T16e landed. The replacement runs
+the real writers. A two-line interactive scrap return records the company advisory at query 53 and
+later inventory persistence through 79; a voucher-funded POS projection records company GL at 13
+and stock persistence through 30. Pairs 7–10 therefore fail at real, task-specific T16d/T16e
+boundaries. Four independent two-connection sensitivity controls still reproduce `40P01`.
+
+The remaining round-1 findings were remediated as follows:
+
+- all four posting kinds, count-direction accounts, write-off arguments, and replay idempotency are
+  covered;
+- enqueue is query-free; savepoint/root/next-root and cross-connection buffer isolation are covered;
+- two DN-attributed contexts produce two entries in one root flush with no cross-contamination;
+- multi-line return confirmation persists every `return_cost_basis` record and its exact movement
+  cost;
+- `batch_write_off` and reversal writers now match the blocking partial unique index; the duplicate
+  probe across all five source types returned `0`;
+- synchronous replay repairs an existing Draft; count-correction account readiness and the pgsql
+  migration guard are no longer hardcoded deviations;
+- I-2 uses AST nodes and has positive plus comment-decoy/disjoint rule tests;
+- voucher ledger amount scaling now takes the explicit ledger currency, allowing the queued POS
+  projector trace to run with no `CompanyContext`.
+
+The harness revert/replay is real: `2a4c67c4b` removed the hardening while the tests remained and
+produced `23505`, Draft-not-Posted, and cross-connection buffer-loss failures. `a8c797222` reapplied
+it and the identical focused run passed `3 tests (19 assertions)`. Fresh green results are seam,
+cost-basis, and structural-rule paths `26 passed (116 assertions)`; interactive scrap non-T11c
+regressions `9 passed (30 assertions)`; projection non-T11c regressions `7 passed (34 assertions)`;
+and the T11c sensitivity/abort suite `11 passed (126 assertions)`. The ruled production red arm is
+four expected failures with explicit trace positions. PHPStan on touched production files, Pint,
+`git diff --check`, and adversarial-review shell syntax all pass.
+
+Round-1 P3-12 remains a plan-level follow-up rather than an implementation deviation: successive
+return notes do not net prior draws from an original exit. It is recorded here for the M3 detector
+and plan owner; changing the settled T15a algorithm inside M1 would exceed the approved task.
