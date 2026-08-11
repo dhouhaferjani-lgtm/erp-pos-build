@@ -1,6 +1,8 @@
 # Owner decision sheet — event-sourcing remediation program (2026-08-11)
 
-These 16 items unblock the critical path of the event-sourcing remediation program. Answer in place (edit this file) or verbally — either is fine. Where a recommendation is given below, it is the **orchestrator's recommendation, not a decision**: nothing here is ruled until the owner rules it. All wording is sourced from the three dossiers listed under each item; if a summary here drifts from the dossier text, **the dossier text is authoritative**.
+> **Entry gate round 1 = CHANGES-REQUIRED (2026-08-11).** An independent adversarial review of the program artefacts at HEAD `0c00cf526` returned 8 findings (1 Critical, 5 High, 2 minor); **all 8 corrections were verified against code and applied on 2026-08-11.** Two of them changed this sheet: **D-1's premise was refuted** (the loyalty "double-earn" exclusion does not exist — see below) and **D-17 was added** (SV-16). Verdict of record: [`docs/superpowers/reviews/2026-08-11-event-sourcing-entry-gate-verdict.md`](../superpowers/reviews/2026-08-11-event-sourcing-entry-gate-verdict.md); register corrections: [`ES-REGISTER-CORRECTIONS-2026-08-11.md`](ES-REGISTER-CORRECTIONS-2026-08-11.md).
+
+These 17 items unblock the critical path of the event-sourcing remediation program. Answer in place (edit this file) or verbally — either is fine. Where a recommendation is given below, it is the **orchestrator's recommendation, not a decision**: nothing here is ruled until the owner rules it. All wording is sourced from the three dossiers listed under each item; if a summary here drifts from the dossier text, **the dossier text is authoritative**.
 
 Source dossiers:
 - **Handover** = `docs/handoff/HANDOVER-event-sourcing-remediation-2026-08-11.md`
@@ -12,10 +14,26 @@ Source dossiers:
 ## Section 1 — Blocks Lane A1 (the v3 blackout fix — answer these FIRST)
 
 ### D-1 (= Handover Q7) — ES-01 emission shape
-`PosCoreReceiptProjection` deliberately calls loyalty directly to avoid double-earning, so emitting `ReceiptCompleted` from the projector is not available. Does the NF525 `TICKET` audit row come from a **new event class**, or from a **direct audit write inside the projector**? (Handover §8 Q7: *"It sets the precedent every other projector fix follows."*)
-**Blocks:** Lane A1.
-**Options:** new event class · direct audit write inside the projector.
-**Orchestrator recommendation:** a NEW event class (not `ReceiptCompleted` — the loyalty double-earn exclusion stands), with explicitly scoped consumers. A direct audit write would reproduce the exact gap class (state changes with no event) this program exists to close.
+**⚠️ Premise corrected 2026-08-11 (entry gate round 1).** The earlier framing — *"the projector calls loyalty directly to avoid double-earning, so emitting a receipt lifecycle event is not available"* — was **REFUTED against code**. Both earn paths use **identical source identity** (`sourceType: 'pos_receipt'` + the receipt id — `PosCoreReceiptProjection.php:1487-1515`; `EarnPointsOnReceiptCompleted.php:97-112`); a duplicate earn is **rejected and swallowed** (`EarningProcessingService.php:53-70`; `SaleEarningService.php:67-85`); and a **partial unique index** backstops the race (`2026_07_06_100000_add_source_columns_to_loyalty_transactions.php:84-93`). **Re-emitting an existing receipt lifecycle event cannot double-earn.** The direct loyalty call stays OK-BY-DESIGN — only its *stated reason* was wrong.
+
+So: where does the NF525 `TICKET` `audit_events` row for a device-authored v3 receipt come from?
+**Blocks:** Lane A1 — *"it sets the precedent every other projector fix follows"* (Handover §8 Q7).
+**Options (all three are genuinely open now):**
+1. **Emit the existing receipt lifecycle event from the projector.** Note **which** event: the NF525 `TICKET` listener keys on **`ReceiptCreated`** (`DomainEventSubscriber::handleReceiptCreated`, `:660-684`) — *not* on `ReceiptCompleted`, which is the loyalty-earning event. Cheapest path; reuses a wired consumer; the guards above make it safe.
+2. **A new event class with explicitly scoped consumers** — e.g. a device-authored-receipt class that says what actually happened (a receipt was *projected from a sealed fiscal event*, not created by the server) and carries exactly the NF525 payload.
+3. **A direct audit write inside the projector** — no event at all.
+
+**Orchestrator recommendation — no forced pick; decide on compliance-event semantics.** The gate's own advice: the question is **what the event means, what payload it carries, and where its transaction boundary sits**, not loyalty safety. The trade-offs:
+
+| | Reuse `ReceiptCreated` (1) | New class (2) | Direct audit write (3) |
+|---|---|---|---|
+| **Semantics** | Slight lie: a v3 receipt was *projected from a sealed device event*, not created server-side; `ReceiptCreated`'s docblock says *"fired after fiscal sealing"*, which fits better than it first looks | Truthful by construction — you name what happened | No semantic claim at all |
+| **Payload fit** | `fiscal_hash` / `chain_sequence` are already on the class and already non-null at projection time | You choose the payload; must re-derive what NF525 `TICKET` needs | You write the `audit_events` row directly — total control, zero contract |
+| **Blast radius** | **Widest** — every existing `ReceiptCreated` consumer starts firing for the fiscal era; must be enumerated before choosing this | Narrow, and explicit | None |
+| **Cost** | Lowest (one emission, no new wiring) | Medium (class + listener + registration) | Low code, but **reproduces the exact gap class this program exists to close** — a state change with no event, and the next audit finds it again |
+| **Transaction boundary** | Same for all three: inside the projector's `DB::transaction`, **inside** the existing `fiscal_event_id` idempotency guard, so Horizon redelivery cannot double-emit | | |
+
+Whichever is chosen, the deciding step before implementation is an **enumeration of the current consumers** of the reused class (option 1) or an explicit consumer list (option 2) — an event whose consumer set is unknown is not a safe reuse.
 
 ### D-2 (= Handover Q8) — blackout-window backfill policy
 The v3 era currently has zero `audit_events` `TICKET`/`OUVERTURE`/`FERMETURE`/`RAPPORT_Z` rows. Reconstruct them from `fiscal_events` (which hold the underlying data), or accept a documented hole with a stated start date? (Handover §8 Q8: *"Compliance-record decision, and it changes A1's shape substantially."*)
@@ -45,7 +63,7 @@ Should `insufficient_repository_balance` continue to **refuse** the booking when
 **Options:** refuse (current behaviour) · record-and-alert.
 *(No recommendation given — present options only, per instruction.)*
 
-### D-6 (= SV Stage 0.5 / E-8) — TND variance thresholds + alert severity
+### D-6 (= SV Stage 0.6 / E-8) — TND variance thresholds + alert severity
 Confirm or revise the TND thresholds (soft `1.0000` / hard `20.0000`, `CompanyFraudSettings.php:54-57`) and `cash_variance_email_severity` (currently `'none'`). SV notes: *"Alert volume changes on deploy regardless of the flag"* (SV `15-…:288`, §D.3-10).
 **Blocks:** Stage 0 of the SV dossier; independent of the GL-flag flip but affects alert volume on deploy.
 **Options:** keep current thresholds/severity · revise thresholds and/or set a non-`'none'` email severity.
@@ -56,6 +74,19 @@ Approve a Toast-style two-stage deposit reconciliation flow as a **follow-on lan
 **Blocks:** nothing critical-path — it does not gate Stage 0-5 or the flip condition, but needs a disposition so it isn't silently absorbed into this program's scope.
 **Options:** approve as a follow-on lane, scoped separately · drop.
 **Orchestrator recommendation:** approve as a follow-on lane — not in this program's scope.
+
+### D-17 (= SV-16 / SV Stage 0.5) — `SAFE_DROP` vs `CASH_OUT` authorability
+*(Added 2026-08-11 at entry gate round 1: SV-16 states this decision is required before acceptance, but it was missing from SV §1's owner-owed list, from SV Stage 0 and from the handover's question list. Numbered D-17 so the existing IDs do not shift.)*
+
+`SAFE_DROP` and `CASH_CORRECTION` are declared `PROJECTED` (`FiscalEventCoveragePolicy.php:56-57`) with **live projector arms** (`ZSessionLifecycleProjection.php:32-33`) but the device has **no caller for either** — they exist only in the type union (`zSessionAuthoring.ts:91-92`) and the engine allow-set (`FiscalEventEngine.ts:241-242`). Today a safe drop travels as a plain `CASH_OUT` (`apps/pos/src/api/cashDrawerApi.ts:177` → `zSessionAuthoring.ts:645`). Safe drop is a standard NF525 cash-control operation and is currently **unimplementable end-to-end**.
+
+**Blocks:** SV §5.2 **acceptance** — step 3 of the end-to-end test is a mid-shift safe drop, and there is no authorable event for it until this is answered (SV §5.2 outcome 3); and **Stage 3 reconciliation** — the DEPOSIT/PAYOUT GL-typing decision (D-3 / E-3) has to cover whichever event type wins, and SV-13's no-double-book guard spans both rails.
+**Options:**
+1. **Implement a device `SAFE_DROP` caller** (and keep the projector arm), so a safe drop is a distinct, typed cash-control operation with its own NF525 identity.
+2. **Rule that safe drops travel as `CASH_OUT`**, formally document it, and **retire the unreachable `SAFE_DROP` projector arm** (rule 8: the class may be retired only if it was never authored in production — grep-proof required).
+3. Same as 2 for now, with 1 as a documented post-launch follow-on.
+
+*(No recommendation given — present options only, per instruction. Note the choice is partly compliance-facing: option 2 means an inspector sees safe drops and ordinary cash-outs as the same event type.)*
 
 ---
 

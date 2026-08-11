@@ -1,0 +1,177 @@
+# HANDOVER — Event-Sourcing Remediation Session
+
+**Created:** 2026-08-11 · **By:** the event-sourcing audit session (read-only; no code changed)
+**For:** the fixes session that owns remediation. Owner rulings of record — [`OWNER-DECISIONS-ui-audit-2026-08-10.md`](OWNER-DECISIONS-ui-audit-2026-08-10.md):
+- *"Multi-agent audit runs in THIS session; **fixes belong to a SEPARATE dedicated session**"* (§ first-tenant POS rulings);
+- superseding packaging ruling (§ Final A-9 + remediation-packaging rulings): **three findings dossiers, folded into the EXISTING fixes session — not a new dedicated session.** This file is dossier **(1) events-specific**.
+
+**Dossier boundary — read before claiming work.** The owner split remediation three ways:
+
+| # | Dossier | Owns |
+|---|---|---|
+| **(1)** | **this file** + [`00-CONSOLIDATED-REGISTER.md`](../sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md) | Event-sourcing coverage: ES-01…ES-88 |
+| (2) | `docs/handoff/FINDINGS-shift-variance-gl-2026-08-11.md` | Shift-variance GL **and everything related** — which includes this register's **Lane B** content (ES-02, ES-05, ES-13) and the archaeology's five gates |
+| (3) | `docs/handoff/FINDINGS-other-problems-2026-08-11.md` | Everything else found this session, not owned by the UI wave plan or by this register |
+
+Consequence for §3: **Lane B is the interface to dossier (2), not a lane this dossier executes independently.** Its rows stay in the register (they are event gaps and must be traceable here), but the shift-variance GL dossier is the sequencing authority for them. Do not build a second plan for the same five gates.
+
+Also newly ruled and load-bearing for Lane B: **A-9 CONFIRMED — whole-drawer counting**; the takings-only formula is dead code born of a missing float join, to be buried, with the `config/treasury.php` and `PostShiftCashVarianceAdjustment` docblock comments that describe it as policy corrected. Blind counting stays RULED ON everywhere.
+
+---
+
+## 1. Mission
+
+Close the gaps between "state changed" and "an event says so" across the ERP, in an order that makes each fix **verifiable at the moment it lands** — starting with the two chain-verification commands, which currently cannot fail on the fiscal era.
+
+Not in scope: re-auditing. The audit is done, cited to `file:line`, and gated by class and severity. This session **implements**, gates each milestone adversarially, and escalates the open owner questions in §8 rather than deciding them.
+
+## 2. The register
+
+**Authoritative input:** [`docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md`](../sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md) — 88 deduplicated rows (`ES-01`…`ES-88`), each traceable to a section finding with `file:line` evidence.
+
+**Read it together with its addendum:** [`ES-REGISTER-CORRECTIONS-2026-08-11.md`](ES-REGISTER-CORRECTIONS-2026-08-11.md). The register is the audit's **immutable record** and is never edited; the entry gate (round 1, 2026-08-11, **CHANGES-REQUIRED** — verdict of record at [`docs/superpowers/reviews/2026-08-11-event-sourcing-entry-gate-verdict.md`](../superpowers/reviews/2026-08-11-event-sourcing-entry-gate-verdict.md)) nonetheless produced row-level corrections, which live in that addendum. **Register + addendum = the contract.** Corrections currently carried there: **ES-07** (scope narrowed — the Z-report branch *does* verify fiscal-era chains), **ES-76** (14 listed modules, not "~13"), **ES-84** (two `reserved_quantity` + two `reserved` casts), and the **refuted loyalty "would double-earn" rationale** behind one OK-BY-DESIGN entry.
+
+| | |
+|---|---|
+| Rows | **88** (from 124 raw findings across 5 sections) |
+| Severity | **P0 10 · P1 24 · P2 42 · P3 12** |
+| Class | GAP-CRITICAL 25 · GAP 40 · DEAD-EVENT 14 · DIRECT-PROJECTION-WRITE 9 |
+| Confidence | 79 CONFIRMED · 7 SUSPECTED · 2 partial |
+| Launch relevance | **49 LAUNCH · 39 POST-LAUNCH** (cash-only first tenant) |
+
+Backing sections: [`01-pos-fiscal.md`](../sessions/EVENT-SOURCING-AUDIT-2026-08-11/01-pos-fiscal.md) · [`02-treasury-gl.md`](../sessions/EVENT-SOURCING-AUDIT-2026-08-11/02-treasury-gl.md) · [`03-inventory-costing.md`](../sessions/EVENT-SOURCING-AUDIT-2026-08-11/03-inventory-costing.md) · [`04-documents-sales-purchases.md`](../sessions/EVENT-SOURCING-AUDIT-2026-08-11/04-documents-sales-purchases.md) · [`05-catalog-settings-misc.md`](../sessions/EVENT-SOURCING-AUDIT-2026-08-11/05-catalog-settings-misc.md) *(Haiku-authored — every row SUSPECTED, re-verify before touching)*.
+
+Cross-lane context that must be read before Lane B: [`UI-PRESENTATION-AUDIT-2026-08-10/16-takings-formula-archaeology.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/16-takings-formula-archaeology.md).
+
+## 3. Lane structure
+
+**Ten execution lanes + one tracking row-set** — an **exact partition of all 88 register rows, each row in exactly one row-set.** *(Corrected at entry gate round 1: the previous version said "seven lanes" over eight labels, double-assigned ES-11, and left 16 rows in no lane at all.)* The register's themes T1–T8 map onto lanes A0–G; lanes **H** and **I** and the tracking row-set **X** exist because the register carries rows the eight themes never claimed. **Sequencing is load-bearing** — Lane A0 exists because nothing else in this program can be honestly verified until it lands.
+
+| Lane | Theme | Rows | # | Sequence |
+|---|---|---|---|---|
+| **A0 — Honest verification** | T5 | ES-06, ES-07, ES-08, ES-09, ES-16, ES-17, ES-41, ES-42, ES-43 | 9 | **FIRST. Blocks every other lane's exit criteria.** |
+| **A1 — v3 event blackout** | T1 | ES-01, ES-03, ES-04, ES-11, ES-12, ES-14, ES-15, ES-19, ES-20, ES-22, ES-44, ES-47 | 12 | Immediately after A0. **ES-11 is shared with B — A1 implements, B consumes** (B does not own it) |
+| **B — Cash-drawer / float booking** *(executed under dossier (2))* | T2 | ES-02, ES-05, ES-13 | 3 | Parallel with A1; **content of `FINDINGS-shift-variance-gl-2026-08-11.md` — that dossier sequences it.** Consumes A1's ES-11 output |
+| **C — Purchase-side, expense & treasury instruments** | T3 | ES-29, ES-30, ES-49, ES-50, ES-51, ES-52, ES-53, ES-54, ES-56, ES-57, ES-71, ES-73 | 12 | After A1. ES-56/ES-57 (instrument re-presentation + `updateDetails`) join here — same module, same reviewer, same POST-launch trigger |
+| **D — GL invariants & opening balances** | T4 | ES-10, ES-23, ES-24, ES-25, ES-55, ES-58, ES-72, ES-83 | 8 | After A1; **partly overlaps C** — coordinate the `JournalEntryPosted` invariant once |
+| **E — Stock writers & batch documents** | T6 | ES-26, ES-27, ES-28, ES-59–ES-68, ES-84 | 14 | **Coordinated with the channel/ecommerce lane** |
+| **F — Dead events & variant blindness** | T7 | ES-21, ES-75, ES-77–ES-82, ES-85, ES-86, ES-87, ES-88 | 12 | Tail. **ES-48 moved to X** (its retirement is gated on the E1 refund-enable decision, not on F's own Q3 ruling — the Q3 answer still governs its *shape*) |
+| **G — Zero-event modules** | T8 | ES-33 (Pricing), ES-34 (Billing), ES-76 (**14 listed modules, unverified**) | 3 | Tail; **G is gated on owner answers (§8)** |
+| **H — POS operational & terminal-lifecycle audit gaps** | *(none — new)* | ES-18, ES-35, ES-36, ES-37, ES-38, ES-39, ES-40 | 7 | After A1. Non-fiscal POS state mutations with no event: `pos_pin` writes, terminal archive/destroy/claim, manager-override ordering, held orders / tables, orders, exchanges |
+| **I — Document lifecycle events** | *(none — new)* | ES-69, ES-70, ES-74 | 3 | After A1, coordinated with C/D. `Draft→Confirmed` and `Confirmed→Draft` for Invoice/CreditNote/Quote, and the seven-way `DraftDocumentCreated` asymmetry |
+| **X — External-execution tracking** *(tracked here, executed elsewhere)* | — | ES-31, ES-32, ES-45, ES-46, ES-48 | 5 | **NOT executed by this program.** ES-31 → the **DN-consolidation build** (owner ruling 13's DB-level double-invoice guard *is* this fix). ES-32/ES-45/ES-46/ES-48 → sequenced behind the **launch-program E1 refund-enable block** per the interactions table below. Escalate if the owning lane has not started when this program reaches them; do **not** absorb |
+| | | **Total** | **88** | exactly-once across all eleven row-sets |
+
+### Per-lane entry criteria
+
+| Lane | Entry criteria (all must hold before the first commit) |
+|---|---|
+| **A0** | Nothing — this is the head of the program. Must produce, before it exits: a `pos:verify-chains` that reads fiscal-era rows and cross-checks `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash`; a `fiscal:verify-event-chain` that checks `payload` ↔ `canonical_bytes`, `integrity_status`, sealed coordinates and `sequence_number` contiguity, with a fleet-wide driver. ES-06's second-approver shape is an **owner question** (§8 Q1) — build the *detection* first, the *workflow* after the ruling. |
+| **A1** | A0's verifiers merged and green on a seeded v3 tenant. Emission goes **inside** each projector's existing `fiscal_event_id` idempotency guard and inside its `DB::transaction` — never before the guard (Horizon redelivery would double-emit). |
+| **B** | A1's `ZSessionLifecycleProjection` / `ZReportProjection` emission pattern merged (ES-02 rides that pattern). **Plus** the archaeology's two written sequencing constraints: (1) the v3 `CashCountRecorded` producer lands **after** the backfill command for the disabled window; (2) `pos_shifts.variance` must end with **ONE** definition across all three close paths. ES-05's float half needs a **producer and a consumer** — `recordOpening` emits nothing today, so there is no hook to attach a listener to. |
+| **C** | A1 merged (the POS receipt/treasury bridge shapes are settled). Each new event must be placed inside the correct `DB::afterCommit` boundary per existing module convention. |
+| **D** | A0 merged. ES-10 must unify the two GL posting paths so `JournalEntryPosted` becomes a **real** invariant, then delete the compensating partner-balance write (ES-10's second half) — not before. Hard constraint: `journal_entries(source_type, source_id)` has **no uniqueness constraint** (~40 `source_type` literals live), so every new event-driven posting path carries its own `exists()` guard. |
+| **E** | Owner ruling on ES-26 (does a batch inter-location transfer get its own document type, or route through `StockTransferService`? §8 Q6). ES-28's fix must land **before** the channel/ecommerce lane goes live, or the channel advertises pre-sale quantities. ES-60 must fix the row **at insert** (pass `MovementType::TransferIn/Out` + a `StockMovementReferenceType::StockTransfer` case into `receive()`/`issue()`), not by another post-hoc `UPDATE`. |
+| **F** | Owner ruling on the V1/V2 disposition (§8 Q3). Rule 8 applies to the **class**, not the dispatch site: a never-emitted class may be retired; a consumed class needs its consumer migrated, never a rename. |
+| **G** | Owner answers on Billing (§8 Q2). ES-76 requires a real mutation sweep first — section 05 counted directories, not writes, and its list names **14** modules. |
+| **H** | A1 merged (so a POS event added here cannot collide with the projector-emission pattern). ES-37 is an **ordering** fix, not a new event — move the existing `ManagerOverrideAuthorized` dispatch after the `OperatorApproval` insert and inside the transaction; do not mint a second event for it. |
+| **I** | D's `JournalEntryPosted` invariant decision made (ES-69's confirm step is the doc-side twin of it), and Wave-3's invoice-delivery tasks checked in `progress.md` for overlap before ES-74 is touched. |
+| **X** | **No entry criteria — this program does not execute these rows.** Its only obligation is to keep them traceable and escalate if the owning lane stalls. A row may leave X only by an explicit owner ruling that re-homes it. |
+
+### Interactions with EXISTING lanes — read before claiming any of this work
+
+| Existing lane | Interaction | Rule |
+|---|---|---|
+| **document-per-action remediation, Wave-3** (`.superpowers/sdd/HANDOVER-document-per-action-remediation-2026-08-08/`) | Wave-3 is 42 tasks, all inventory / COGS / valuation / invoice-delivery / supplier-return / GR-IR. It **explicitly scopes G3 and drawer booking OUT** — `plan-wave3.md:3646` §5 *Out of scope*, item 5: *"G3 enablement. Separate pre-enable gate."* Negative-searched across the whole 4,362-line plan: `CashDrawerOperationRecorded` 0, `CashCountRecorded` 0, `shift_variance_gl_enabled` 0, `cash drawer` 0, `opening float` 0. | **Lane B owns ES-02 / ES-05 / ES-13. Do NOT file them into Wave-3.** Conversely: do not touch Wave-3's inventory/COGS tasks from Lane E — check the Wave-3 ledger (`progress.md`, authoritative) for overlap on ES-59/ES-61/ES-64/ES-71 before starting. |
+| **shift-variance GL lane / dossier (2)** (`FINDINGS-shift-variance-gl-2026-08-11.md`, per the owner's packaging ruling) | It owns five gates: B1 (float + DEPOSIT/PAYOUT booking), B2 (v3 `CashCountRecorded`), G-2 (company-setting relocation), G-3 (backfill command), G-4 (`default_repository_id` seeding), plus the `ShiftManagementService.php:168-182` legacy-branch fix and the three takings-only artefact corrections (now confirmed dead by the A-9 whole-drawer ruling). | **Lane B's rows ARE that dossier's content.** Do not stand up a second owner for the same five gates. This register keeps ES-02/ES-05/ES-13 for traceability; dossier (2) sequences and executes them. |
+| **launch program E1 refund-enable block** | Owner escalation acknowledged: *"TN VAT refund-netting gap → refund-enable E1 block (launch program lane)"* (`OWNER-DECISIONS…:67`). | **The VAT refund-netting gap belongs to E1, not here.** The *event* gaps on the refund paths (ES-32, ES-45, ES-46, ES-48) sit in **Lane X** — tracked here, sequenced behind E1's enable decision, never shipped ahead of it. |
+| **DN-consolidation build** (owner ruling 13, APPROVED) | Owner already required a *"DB-level double-invoice guard"* as a prerequisite of that build — which is exactly ES-31's fix. | **The DN-consolidation build owns ES-31** — it sits in **Lane X** (tracked, not executed). This register records it so no lane duplicates it. If that build has not started when this program reaches it, escalate rather than absorb. |
+| **channel / ecommerce lane** (owner: PrestaShop + Woo connected at launch) | ES-28 and ES-75 are the reason channel stock is wrong for every POS movement and blind to variants. | Lane E coordinates delivery with that lane. ES-28 is a **hard prerequisite** of a correct channel launch. |
+| **precision-contract lane (rule 19)** | ES-84 carries live float-casts on quantity columns at four sites: **two on `reserved_quantity`** (BatchStock) **+ two on `reserved`** (StockLevel) — `StockReservationService.php:267-283` (release) and `:391-407` (expiry). | Hand those lines to the precision lane or fix it under its guards — do not smuggle a precision change into an event commit. |
+
+## 4. Non-negotiables
+
+1. **Events are immutable forever (CLAUDE rule 8).** Every gap in this register is closed by a **NEW** event, a new consumer, or new wiring — **never** by renaming, restructuring or repurposing a class already in use. Worked examples already identified: `InstrumentCleared` → new `InstrumentRepresented` (ES-56); the `CashCountRecordedV2` fallback sketched in the B2 ticket (ES-02); `SupplierInvoicePosted` / `SupplierCreditNotePosted` as genuinely new classes (ES-29/ES-30). Rule 8 binds the **class**, not the dispatch site — a class that was never emitted in production may be retired (ES-81), and a dead dispatch may be deleted, but only after grepping stored/replayed audit rows for the name.
+2. **Adversarial review at every milestone** (owner standing rule). Reviewer by lane: A0/A1/B → `fiscal-pos-reviewer` + `treasury-reviewer`; C/D → `treasury-reviewer`; E → `inventory-costing-reviewer`; F/G → the owning-domain reviewer. Reviews go **to a file**, not inline. Spec and plan get an adversarial pass **before** implementation, and each milestone gets one. Codex Sol/Luna HIGH effort for adversarial/plan review; Opus for implementation.
+3. **NEVER run the full PHPUnit suite** — it crashes the laptop. Run tests **by path**. Ask before anything broader.
+4. **Dev-branch discipline.** Work in a `git worktree` off `dev`; merge into LOCAL `dev` first; promote to `origin/dev` only as a clean fast-forward, in verified batches; never force-push `dev`; never `reset --hard` / `branch -f` the shared pointer. The `dev-push-guard` hook enforces it. **Do not use `git stash`** — the stash stack is repo-global across worktrees.
+5. **Push to `origin/dev` auto-deploys staging including `tenants:migrate`.** Any migration this program adds must be self-guarding, or its prerequisite must run before the push.
+6. **No placeholder code, no scope creep.** Fix exactly the register row; note adjacent findings and continue.
+7. **Do not "fix" the OK-BY-DESIGN items** listed in register §3 — notably: imperative GL posting from orchestrating services (required by the documented lock order), `PosCoreReceiptProjection` calling loyalty directly instead of emitting `ReceiptCompleted`, the POS Treasury bridges not emitting `PaymentRecorded` (gate-reconfirmed: they project hash-chained fiscal events under fiscal source identity — `TreasuryReceiptBridge.php:46-67,1331-1359,1400-1438`), `is_voided` never being set true, and the 410 tombstone routes.
+   ⚠️ **Corrected rationale, entry gate round 1 — the loyalty entry's *reason* was false.** The direct-call design **stays OK-BY-DESIGN**, but not because emitting an event "would double-earn". Both earn paths carry **identical source identity** (`sourceType: 'pos_receipt'` + receipt id — `PosCoreReceiptProjection.php:1487-1515`; `EarnPointsOnReceiptCompleted.php:97-112`), duplicates are **rejected and swallowed** (`EarningProcessingService.php:53-70`; `SaleEarningService.php:67-85`), and a **partial unique index** backstops the race (`2026_07_06_100000_add_source_columns_to_loyalty_transactions.php:84-93`). Read the entry as *"guarded by source-identity dedup + unique index"*. **Consequence: double-earn does NOT exclude emitting a receipt lifecycle event from the projector** — §8 Q7 is decided on compliance-event semantics, not on loyalty safety.
+
+## 5. Verification contract
+
+**The contract is CONDITIONAL BY FIX CLASS.** *(Corrected at entry gate round 1: the previous "all three, always" wording is not executable — a verifier fix or a dead-event retirement cannot legitimately emit a new event and run a consumer.)* Find your fix's class first, then ship exactly what that class owes. Dossier (2) already uses this convention, writing **`—`** in a column that does not apply to a given fix (`FINDINGS-shift-variance-gl-2026-08-11.md` §5.1) — use the same **`—`** here, and never leave a column silently blank.
+
+| Fix class | What it must ship |
+|---|---|
+| **Emission fixes** — a state change that emits no event (the bulk of the register: A1, B, C, D, E's missing-event rows, H, I) | **V1 + V2 + V3**, all three below. |
+| **Verifier fixes** (Lane A0: ES-07, ES-08, and the detection half of ES-06) | **Not V1/V2/V3** — a **red-run contract** instead: the corrected verifier **FAILS on a deliberately tampered fixture** (payload rewritten on a sealed event; a `previous_hash` from the wrong `chain_context`; a `pos_receipts.fiscal_hash` that disagrees with its `fiscal_events.current_hash`) **and PASSES on the clean equivalent**. Both runs are part of the diff. V1 `—`, V2 `—`, V3 as applicable where the fix also writes a projection. |
+| **Dead-event retirements** (Lane F, and any `X`-tracked retirement) | **Not V1/V2/V3** — a **grep-proof + removal test**: evidence that the class has **no stored or replayed rows** (grep the class/event name across `audit_events` payloads, replay fixtures and stored projections, not just `app/`), plus a test that asserts the dispatch site is gone and nothing regressed. Rule 8 binds the **class**, not the dispatch site. |
+| **Consumer-wiring fixes** — the event already fires, the listener is missing or unregistered (ES-25, ES-88, the orphaned-listener half of F) | **V2 + V3** only. V1 is `—` — the emission already exists and is not part of the diff; do **not** add a redundant emission assertion to manufacture a V1. |
+
+**The three requirements, for the classes that owe them:**
+
+| # | Requirement |
+|---|---|
+| **V1** | **Event emitted** — a test that exercises the real production entry point (HTTP route, projector `apply()`, console command) and asserts the event fires **once**, with the correct payload, at the correct transaction boundary. `Event::fake()` assertions on a service called directly do not satisfy V1 for a projector fix; the redelivery path must be covered (call `apply()` twice, assert one emission). |
+| **V2** | **Consumer test** — a test that the *real registered listener* runs and does its work. An event with no consumer is not a fix, it is a new dead event (this register already contains 14 of those). If the fix's consumer is a new listener, its registration site is part of the diff. |
+| **V3** | **Projection / GL assertion** — the durable consequence is asserted against the database: the `audit_events` row exists with the right NF525 type; the `journal_entries` + `journal_lines` balance; the projection row matches. For queued/fiscal-projection tests, `app(CompanyContext::class)->clear()` **before** `apply()` — binding context in `setUp` masks the worker reality — and pass explicit currency to scale resolution (rule 19). |
+
+**Gate on the gate: verification must be made honest before it is used.**
+`pos:verify-chains` currently reports *"All chains verified successfully"* while its **receipt** arm has read **zero** fiscal-era rows and no `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash` cross-check exists (ES-07 as narrowed — its **Z-report** arm *does* verify the `z_session` fiscal-event chains, `ZReportHashService.php:251-293`), and `fiscal:verify-event-chain` cannot see the one live mutation surface (ES-06/ES-08). Until Lane A0 lands:
+
+- **no fix may cite either command as evidence of correctness**, and
+- **A0's own exit criterion is a red run** — the corrected verifiers must be demonstrated failing against a deliberately tampered fixture row (payload rewritten on a sealed event; a `previous_hash` from the wrong `chain_context`) before they are trusted to pass.
+
+Additional program-wide checks worth adding once, in A0 or A1:
+- an **orphaned-event ratchet** in CI (emitted with zero registered listeners → fail on new drift, baseline the existing 14);
+- a **projector-emission** architecture test (every registered `FiscalEventProjector` that writes a POS projection emits its corresponding domain event) — this is the regression guard that would have prevented T1 entirely.
+
+## 6. Top-10 P0 list (spelled out)
+
+These are the entire P0 set. All ten are **LAUNCH-RELEVANT** on the shipping first-tenant configuration.
+
+| # | ID | What is broken now | Evidence |
+|---|---|---|---|
+| 1 | **ES-07** *(scope narrowed at entry gate round 1)* | `pos:verify-chains` reports success while its **receipt** arm has verified **nothing** on a v3 tenant: projected receipts are excluded via `whereNull('fiscal_event_id')` and a zero count returns `is_valid: true` (`:293-318`, same carve-out at `:337-346`); and **no cross-check of `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash` exists anywhere.** A false green light for the receipt chain. **NOT true of the Z-report arm** — it counts projected Z rows too (`:372-398`) and `ZReportHashService::verifyZReportChain()` (`:210-216`) walks and re-hashes the `z_session` / `training_z_session` `fiscal_events` chains from the terminal `genesis_seed` (`:251-293`). Fix the receipt arm and add the mirror cross-check; **do not rewrite the Z arm as if it were blind.** | `01/GC-10` — `VerifyPosChainCommand.php:257,293-318,337-346,372-398`; `ZReportHashService.php:210-216,251-293`; addendum [`ES-REGISTER-CORRECTIONS-2026-08-11.md`](ES-REGISTER-CORRECTIONS-2026-08-11.md) §1 |
+| 2 | **ES-06** | A human-supplied payload can be written onto an **already-sealed** `fiscal_events` row; `canonical_bytes` is frozen and never compared; every projector reads `payload`. Single actor, no second approver, no correcting event, undetectable by any verifier. | `01/GC-7` — `ParseFailureResolutionService.php:63-80,165-179,291-351` |
+| 3 | **ES-08** | `fiscal:verify-event-chain` does not verify `payload` ↔ `canonical_bytes`, `integrity_status`, sealed coordinates or sequence contiguity, and has no fleet-wide driver. | `01/G-18` — `VerifyEventChainCommand.php:83-85,363-436` |
+| 4 | **ES-01** | v3 `SALE_RECEIPT` projection emits **no** receipt lifecycle event → **no NF525 `TICKET` audit row exists for any device-authored receipt.** Tier-2 is empty for the whole fiscal era. | `01/GC-3` — `PosCoreReceiptProjection.php:218-479` |
+| 5 | **ES-05** | Cash-drawer lane: v3 writes **no drawer-op row and no event**; the device's signed Z-report `expected_cash` omits every cash-in/out; the legacy event has an **audit-only** consumer (no Treasury movement, no GL, no document); opening float / closing count / cash SALE emit **nothing at all**. Physical cash moves with no ledger counterpart. | `01/GC-2` + `01/G-1` + `02/F-1` + `02/F-2` + `arch/B1` |
+| 6 | **ES-02** | v3 shift close raises **no `CashCountRecorded`** → no fraud alert, no GL variance journal entry; the single booking consumer is additionally config-disabled by default. Owner has **RULED** the event must be emitted on v3. | `01/GC-1` + `02/F-11` + `arch/B2` + `owner/A-9` |
+| 7 | **ES-10** | `AccountingService` creates the system's highest-volume GL entries already `Posted`, hand-rolling the chain: never emits `JournalEntryPosted`, and **bypasses the per-company advisory lock and the `ClosedFiscalPeriodException` guard**; compensates with a silent best-effort direct write to the partner-balance projection. | `02/F-8` + `02/F-19` — `AccountingService.php:398,550,894,741,746-755` |
+| 8 | **ES-09** | Server-authored fiscal events resolve the chain head **without `company_id` or `chain_context`** and stamp `Verified` unconditionally — on any two-context terminal (every v3 terminal) they can emit a permanently unverifiable link. Live callers: `ACCOUNT_STATUS_CHANGED`, `DEPOSIT_RECEIPT`. | `01/GC-9` — `TerminalRegistrySnapshotService.php:443-464`; `VirtualAdminFiscalEventService.php:372-389` |
+| 9 | **ES-03** | v3 `SESSION_OPEN`/`SESSION_CLOSE` raise no `ShiftOpened`/`ShiftClosed` → **no NF525 `OUVERTURE_CAISSE` / `FERMETURE_CAISSE`** rows for any cutover terminal. | `01/GC-4` — `ZSessionLifecycleProjection.php:136-277` |
+| 10 | **ES-04** | v3 `Z_REPORT` raises no `ZReportGenerated` → **no NF525 `RAPPORT_Z`** audit row, and `pos_grandtotal_events` is empty for the fiscal era. | `01/GC-5` — `ZReportProjection.php:54-101`; `GrandtotalService.php:109` |
+
+**Ordering note.** ES-07/ES-06/ES-08 are listed 1–3 not because they are the worst *outcomes* but because they are the *controls*: while they are broken, a fix to ES-01…ES-04 cannot be shown to have worked. ES-01…ES-04 are one defect with four faces — the same emission pattern, inside the same idempotency guards, closes all four plus ES-11/ES-14/ES-15/ES-20.
+
+## 7. What this session must NOT do
+
+- Re-run the audit, or re-derive severity. The register is the input.
+- Decide any §8 question. Escalate.
+- Absorb work explicitly owned elsewhere: the VAT refund-netting gap (E1), the DN-consolidation race (DN build), Wave-3's inventory/COGS tasks.
+- Enable `TREASURY_SHIFT_VARIANCE_GL_ENABLED`, or flip `require_blind_cash_count` defaults, without the owner's pre-enable gate sequence (backfill command first).
+- Touch `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/` — it is the audit's record. New artefacts go to this session's own directory.
+
+## 8. OPEN OWNER QUESTIONS — do not pre-empt
+
+| # | Question | Blocks | Why it is not the fix session's call |
+|---|---|---|---|
+| **Q1** | **ES-06 second-approver design.** Should resolving a parse failure on a sealed fiscal event require a second approver, and should the correction be recorded as a **new correcting fiscal event** rather than an in-place payload rewrite? If the payload can never be re-derived from `canonical_bytes`, what is the accepted record of truth? | A0 (workflow half) | It is a compliance-posture decision with an expert-comptable dimension, not an implementation choice. Build the *detection* meanwhile. |
+| **Q2** | **Is the Billing module live for the first tenant?** (ES-34) If no, Lane G's Billing work is post-launch and the SUSPECTED finding can stay unverified longer. If yes, it needs a real audit before any event work. | Lane G | Scope/launch decision. |
+| **Q3** | **V1/V2/V3 disposition** (ES-75, ES-88, ES-48). Migrate the live consumers to V2 — which also fixes the variant-blindness of channel sync and fraud audit — or retire the V2 dispatches? Rule 8 permits both; they have opposite costs. | Lane F, and E's ES-28 | Architectural direction with a rule-8 interpretation in it. |
+| **Q4** | **Do drawer DEPOSIT / PAYOUT get their own justifying document** (document-per-action), or is a Treasury booking listener on the event sufficient? And what happens to `TREASURY_SHIFT_VARIANCE_GL_ENABLED` once ES-02/ES-05 land? | Lane B | The owner's own document-per-action principle is at stake; the archaeology deliberately left this open. |
+| **Q5** | **Digital signature** (ES-43). `compliance.md` lists RSA-2048/ECDSA-256 as an NF525 requirement; the chain is an unkeyed SHA-256 and the `signature_*` columns are unexercised. Acceptable for the TN first tenant, deferred to the FR lane, or launch-blocking? | A0 exit scope | Regulatory acceptance decision. |
+| **Q6** | **ES-26 batch inter-location transfer**: give it its own document type, or route it through `StockTransferService` and retire `BatchStockService::transferBatchStock`? | Lane E | Domain-model decision with a UI consequence. |
+| **Q7** | **ES-01 emission shape** *(premise corrected at entry gate round 1 — the double-earn exclusion was **REFUTED**; see §4.7. Loyalty dedup + the unique index make re-emitting an existing receipt lifecycle event safe, so all three options are genuinely open).* Where does the NF525 `TICKET` `audit_events` row come from: **(i)** emit the existing lifecycle event from the projector — note the NF525 TICKET listener keys on **`ReceiptCreated`** (`DomainEventSubscriber::handleReceiptCreated`, `:660-684`), not on `ReceiptCompleted`; **(ii)** a **new** event class with explicitly scoped consumers; or **(iii)** a direct audit write inside the projector? The real question is **compliance-event semantics, payload and transaction boundary** — which class truthfully describes a device-authored, already-sealed receipt, what payload an NF525 `TICKET` row needs, and whether emission sits inside the projector's `DB::transaction` + `fiscal_event_id` idempotency guard. | A1 | It sets the precedent every other projector fix follows. |
+| **Q8** | **Blackout-window backfill policy.** The v3 era currently has no `audit_events` `TICKET` / `OUVERTURE` / `FERMETURE` / `RAPPORT_Z` rows at all. Reconstruct them from `fiscal_events` (which hold the data), or accept a documented hole with a stated start date? | A1 exit | Compliance-record decision, and it changes A1's shape substantially. |
+| **Q9** | **Expert-comptable ratification of the RETOUR representation shift** (`01/O-4`) is recorded as still **OWED**. Does it gate anything in this program? | Lane C sequencing | Pre-existing owed item; this session should not silently assume it is closed. |
+| **Q11** | **`SAFE_DROP` vs `CASH_OUT` authorability** (= dossier (2) SV-16, owner sheet **D-17**; added at entry gate round 1). Implement a device `SAFE_DROP` caller, or rule that safe drops travel as `CASH_OUT` and retire the unreachable projector arm? Today the type is `PROJECTED` with a live projector arm and **no device caller**. | Lane B / dossier (2) Stage 0.5, its §5.2 acceptance test (step 3 has no authorable event) and Stage 3's DEPOSIT/PAYOUT typing | Compliance-facing: option 2 means an inspector sees safe drops and ordinary cash-outs as one event type. |
+| **Q10** | **ES-64 GR-IR backfill intent.** `BackfillGoodsReceiptsCommand` creates receipts with no `GoodsReceived`, so no GR-IR liability is posted. Intended (and needs a note) or a permanent GL hole (and needs a corrective run)? | Lane E | Requires knowing whether the backfilled population is live in any tenant. |
+
+---
+
+**Handover complete.** The register is the contract; this file is the method. Start at Lane A0, and do not claim anything is verified until the verifiers can fail.
