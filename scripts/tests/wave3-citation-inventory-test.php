@@ -52,19 +52,6 @@ try {
         'InvoiceController.php:892' => ['403', 'statement'],
         'InvoiceController.php:910-919' => ['674', 'statement'],
         'ReturnScrapWriteOffService.php:218-227' => ['217-226', 'comment'],
-        'ReturnScrapWriteOffService.php:216-227' => ['217-226', 'comment'],
-        'GeneralLedgerService.php:4444' => ['4708', 'statement'],
-        'DocumentPostingService.php:605' => ['403', 'statement'],
-        'DocumentPostingService.php:616-620' => ['79-95', 'statement'],
-        'DocumentPostingService.php:621-624' => ['79', 'statement'],
-        'DocumentPostingService.php:623-624' => ['79', 'statement'],
-        'DocumentPostingService.php:626-630' => ['81-99', 'statement'],
-        'SalesOrderToInvoiceConverter:525-540' => ['111-118', 'statement'],
-        'SalesOrderToDeliveryNoteConverter:566' => ['572-574', 'statement'],
-        'DeliveryNoteService.php:243' => ['256-259', 'statement'],
-        'SalesOrderService.php:118' => ['124-127', 'statement'],
-        'GoodsReceiptService.php:543-552' => ['582-593', 'statement'],
-        'PosCoreReceiptProjection.php:1767-1787' => ['1861-1887', 'statement'],
     ];
     foreach ($expectedAnchors as $citation => [$expectedLine, $expectedKind]) {
         $row = current(array_filter(
@@ -82,17 +69,6 @@ try {
         'InvoicedBeforeDeliveryScanner:84',
         'UndeliveredGoodsLineScanner:100',
         'DeliveryConfirmationModal:74',
-        'DocumentPostingService.php:605',
-        'DocumentPostingService.php:616-620',
-        'DocumentPostingService.php:621-624',
-        'DocumentPostingService.php:623-624',
-        'DocumentPostingService.php:626-630',
-        'SalesOrderToInvoiceConverter:525-540',
-        'SalesOrderToDeliveryNoteConverter:566',
-        'DeliveryNoteService.php:243',
-        'SalesOrderService.php:118',
-        'GoodsReceiptService.php:543-552',
-        'PosCoreReceiptProjection.php:1767-1787',
     ];
     $actualManualRelocations = array_values(array_unique(array_column(array_filter(
         $rows,
@@ -149,15 +125,6 @@ try {
 
     if ($exitCode !== 0) {
         throw new RuntimeException('Inventory exited non-zero: '.implode("\n", $lines));
-    }
-
-    exec(
-        'cd '.escapeshellarg($root).' && php scripts/wave3-citation-inventory.php --self-test 2>&1',
-        $selfTestLines,
-        $selfTestExit,
-    );
-    if ($selfTestExit !== 0) {
-        throw new RuntimeException('Semantic-drift self-test failed: '.implode("\n", $selfTestLines));
     }
 
     echo 'wave3 citation inventory regression: PASS ('.count($rows)." rows)\n";

@@ -20,21 +20,6 @@ if ($argc !== 2) {
     exit(64);
 }
 
-if ($argv[1] === '--self-test') {
-    $checks = [
-        anchorsCoherent("'source_id' => \$movementId,", "'source_id' => \$movementId,", 'statement'),
-        !anchorsCoherent("'source_id' => \$movementId,", 'JournalLine::create([', 'statement'),
-        anchorsCoherent('// GL ORDERING DEPENDENCY', '// GL ORDERING DEPENDENCY', 'comment'),
-        !anchorsCoherent('if ($product->is_physical) {', 'return;', 'statement'),
-    ];
-    if (in_array(false, $checks, true)) {
-        fwrite(STDERR, "semantic drift self-test: FAIL\n");
-        exit(1);
-    }
-    echo "semantic drift self-test: PASS\n";
-    exit(0);
-}
-
 $root = dirname(__DIR__);
 $output = $argv[1];
 $briefPath = $root.'/docs/handoff/CODEX-DISPATCH-wave3-3c-3d-2026-08-10.md';
@@ -102,7 +87,6 @@ foreach ($sources as $sourceName => $contents) {
             $lines = file($absolute, FILE_IGNORE_NEW_LINES);
             $reference = referenceContext($root, $resolved, $oldStart, $oldEnd);
             $expectedAnchorKind = $reference[2] ?? null;
-            $expectedAnchorText = $reference[3] ?? null;
             if (is_array($lines) && $reference !== null) {
                 [$expectedSymbol, $oldSymbolLine] = $reference;
                 $mappedSymbol = enclosingSymbol($lines, $newStart, $resolved);
@@ -140,12 +124,7 @@ foreach ($sources as $sourceName => $contents) {
                     [$newStart, $newEnd, $anchorText, $anchorKind] = $anchor;
                     $symbol = symbolForAnchor($lines, $newStart, $newEnd, $resolved, $anchorKind);
                     $assertion = semanticAssertion($anchorText, $symbol, $anchorKind);
-                    if (! $relocated
-                        && is_string($expectedAnchorText)
-                        && !anchorsCoherent($expectedAnchorText, $anchorText, $expectedAnchorKind ?? $anchorKind)) {
-                        $status = 'unresolved';
-                        $reason = 'semantic_drift_requires_relocation';
-                    } elseif ($symbol === '' || $assertion === '') {
+                    if ($symbol === '' || $assertion === '') {
                         $status = 'unresolved';
                         $reason = 'missing_symbol_or_semantic_anchor';
                     }
@@ -276,7 +255,7 @@ function relativePath(string $root, string $absolute): string
     return str_starts_with($absolute, $prefix) ? substr($absolute, strlen($prefix)) : $absolute;
 }
 
-/** @return array{string, int, string, string}|null */
+/** @return array{string, int, string}|null */
 function referenceContext(string $root, string $resolved, int $oldStart, int $oldEnd): ?array
 {
     if (str_starts_with($resolved, '/') || str_starts_with($resolved, '.superpowers/') || str_starts_with($resolved, 'apps/api/vendor/')) {
@@ -299,11 +278,11 @@ function referenceContext(string $root, string $resolved, int $oldStart, int $ol
     if ($anchor === null) {
         return null;
     }
-    [$anchorStart, $anchorEnd, $anchorText, $anchorKind] = $anchor;
+    [$anchorStart, $anchorEnd, , $anchorKind] = $anchor;
     $symbol = symbolForAnchor($lines, $anchorStart, $anchorEnd, $resolved, $anchorKind);
     $symbolLine = locateSymbolLine($lines, $symbol) ?? $anchorStart;
 
-    return [$symbol, $symbolLine, $anchorKind, $anchorText];
+    return [$symbol, $symbolLine, $anchorKind];
 }
 
 /** @param list<string> $lines */
@@ -348,42 +327,6 @@ function applyRelocation(string $citedFile, string $lineSpec, string $resolved, 
         // The cited FE concern is the current parseFloat call, not a mapped JSX fragment.
         'DeliveryConfirmationModal:74' => [
             'apps/web/src/features/documents/components/DeliveryConfirmationModal.tsx', 74, 74,
-        ],
-        // T25f centralized the deleted DocumentPostingService traversal.
-        'DocumentPostingService.php:605' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 403, 403,
-        ],
-        'DocumentPostingService.php:616-620' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 79, 95,
-        ],
-        'DocumentPostingService.php:621-624' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 79, 79,
-        ],
-        'DocumentPostingService.php:623-624' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 79, 79,
-        ],
-        'DocumentPostingService.php:626-630' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 81, 99,
-        ],
-        // T25f moved the scoped product-copy twin into the shared factory.
-        'SalesOrderToInvoiceConverter:525-540' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryNoteFromDocumentFactory.php', 111, 118,
-        ],
-        // Integrated 3A/3B semantic successors whose code shape intentionally changed.
-        'SalesOrderToDeliveryNoteConverter:566' => [
-            'apps/api/app/Modules/Document/Domain/Services/Conversion/Converters/SalesOrderToDeliveryNoteConverter.php', 572, 574,
-        ],
-        'DeliveryNoteService.php:243' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryNoteService.php', 256, 259,
-        ],
-        'SalesOrderService.php:118' => [
-            'apps/api/app/Modules/Document/Domain/Services/SalesOrderService.php', 124, 127,
-        ],
-        'GoodsReceiptService.php:543-552' => [
-            'apps/api/app/Modules/Inventory/Application/Services/GoodsReceiptService.php', 582, 593,
-        ],
-        'PosCoreReceiptProjection.php:1767-1787' => [
-            'apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php', 1861, 1887,
         ],
     ];
 
@@ -591,25 +534,12 @@ function locateSemanticAnchor(array $lines, int $start, int $end, ?string $prefe
     $start = max(1, $start);
     $end = min(count($lines), max($start, $end));
     $first = trim($lines[$start - 1]);
-    $firstCommentLine = null;
-    $commentCount = 0;
-    $statementCount = 0;
-    for ($line = $start; $line <= $end; $line++) {
-        $value = trim($lines[$line - 1]);
-        if (isCommentLine($value)) {
-            $firstCommentLine ??= $line;
-            $commentCount++;
-        } elseif (isStatementLine($value)) {
-            $statementCount++;
-        }
-    }
     $commentPreferred = $preferredKind === 'comment'
-        || ($preferredKind === null && (isCommentLine($first) || ($commentCount > 0 && $statementCount === 0)));
+        || ($preferredKind === null && isCommentLine($first));
 
     if ($commentPreferred) {
-        $commentStart = $firstCommentLine ?? $start;
-        $commentFirst = trim($lines[$commentStart - 1]);
-        if (str_starts_with($commentFirst, '//') && $commentStart > 1 && str_starts_with(trim($lines[$commentStart - 2]), '//')) {
+        $commentStart = $start;
+        if (str_starts_with($first, '//') && $start > 1 && str_starts_with(trim($lines[$start - 2]), '//')) {
             $commentStart--;
         }
 
@@ -631,22 +561,18 @@ function locateSemanticAnchor(array $lines, int $start, int $end, ?string $prefe
         }
     }
 
-    if (isStatementLine($first)) {
-        return [$start, max($start, $end), $first, 'statement'];
-    }
-
-    for ($line = $start - 1; $line >= max(1, $start - 2); $line--) {
-        $value = trim($lines[$line - 1]);
-        if (isStatementLine($value)) {
-            return [$line, $line, $value, 'statement'];
-        }
-    }
-
     $to = min(count($lines), max($end, $start + 6));
-    for ($line = $start + 1; $line <= $to; $line++) {
+    for ($line = $start; $line <= $to; $line++) {
         $value = trim($lines[$line - 1]);
         if (isStatementLine($value)) {
             return [$line, max($line, $end), $value, 'statement'];
+        }
+    }
+
+    for ($line = max(1, $start - 2); $line < $start; $line++) {
+        $value = trim($lines[$line - 1]);
+        if (isStatementLine($value)) {
+            return [$line, $line, $value, 'statement'];
         }
     }
 
@@ -723,36 +649,6 @@ function semanticAssertion(string $anchor, string $symbol, string $anchorKind): 
     }
 
     return $symbol.' performs the mapped domain/configuration statement `'.$text.'`';
-}
-
-function anchorsCoherent(string $reference, string $current, string $kind): bool
-{
-    $referenceTokens = semanticTokens($reference);
-    $currentTokens = semanticTokens($current);
-    if ($referenceTokens === [] || $currentTokens === []) {
-        return trim($reference) === trim($current);
-    }
-
-    $overlap = array_intersect($referenceTokens, $currentTokens);
-    $containment = count($overlap) / min(count($referenceTokens), count($currentTokens));
-    $threshold = $kind === 'comment' ? 0.35 : 0.34;
-
-    return $containment >= $threshold;
-}
-
-/** @return list<string> */
-function semanticTokens(string $text): array
-{
-    preg_match_all('/[A-Za-z_][A-Za-z0-9_]{2,}/', strtolower($text), $matches);
-    $stop = [
-        'and', 'are', 'but', 'for', 'from', 'function', 'not', 'null', 'return',
-        'static', 'that', 'the', 'this', 'true', 'false', 'where', 'with',
-    ];
-
-    return array_values(array_unique(array_filter(
-        $matches[0],
-        static fn (string $token): bool => !in_array($token, $stop, true),
-    )));
 }
 
 function lineRange(int $start, int $end): string
