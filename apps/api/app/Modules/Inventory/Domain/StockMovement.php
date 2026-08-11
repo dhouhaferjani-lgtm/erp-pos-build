@@ -191,6 +191,21 @@ class StockMovement extends Model
     }
 
     /**
+     * Absolute row delta at the canonical stock-quantity scale.
+     *
+     * Writers disagree on the sign of `quantity`; quantity_before/after is the
+     * row-level authority used by the GL seam for both direction and magnitude.
+     *
+     * @return numeric-string
+     */
+    public function absoluteDeltaForRow(): string
+    {
+        $delta = bcsub((string) $this->quantity_after, (string) $this->quantity_before, 4);
+
+        return str_starts_with($delta, '-') ? substr($delta, 1) : $delta;
+    }
+
+    /**
      * Scope to filter by tenant.
      *
      * @param  Builder<static>  $query

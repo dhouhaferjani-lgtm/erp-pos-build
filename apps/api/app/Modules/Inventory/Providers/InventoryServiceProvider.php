@@ -9,6 +9,7 @@ use App\Modules\Inventory\Application\Contracts\InventoryReservationServiceInter
 use App\Modules\Inventory\Application\Listeners\ApplyStockAdjustmentsOnCountingCompleted;
 use App\Modules\Inventory\Application\Listeners\ExitOnboardingOnFullCountFinalized;
 use App\Modules\Inventory\Application\Services\GoodsReceiptService;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Application\Services\LinkedCostApplicationService;
 use App\Modules\Inventory\Application\Services\LocationStockQueryService;
 use App\Modules\Inventory\Application\Services\StockReservationService;
@@ -23,13 +24,17 @@ use App\Shared\Contracts\Inventory\ReservationReleaserInterface;
 use App\Shared\Contracts\LocationStockReader;
 use App\Shared\Contracts\TransferLineReader;
 use App\Shared\Contracts\VariantStockReader;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 
 class InventoryServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
+        $this->app->scoped(InventoryGlPostingBuffer::class);
+
         $this->app->bind(
             ReceiptLineGuardInterface::class,
             GoodsReceiptService::class,
@@ -82,5 +87,17 @@ class InventoryServiceProvider extends ServiceProvider
         // Onboarding auto-exit (C3): a finalized whole-location count sourced
         // from the full catalog (includes_zero_stock) exits onboarding_mode.
         Event::listen(InventoryCountingCompleted::class, ExitOnboardingOnFullCountFinalized::class);
+
+        Event::listen(TransactionRolledBack::class, function (TransactionRolledBack $event): void {
+            if ($event->connection->transactionLevel() !== 0) {
+                return;
+            }
+
+            $buffer = $this->app->make(InventoryGlPostingBuffer::class);
+            if (! $buffer->isEmpty()) {
+                Log::warning('Discarding inventory GL contexts after root transaction rollback.');
+            }
+            $buffer->reset();
+        });
     }
 }

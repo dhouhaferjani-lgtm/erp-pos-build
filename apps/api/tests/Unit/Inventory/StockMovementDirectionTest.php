@@ -42,4 +42,22 @@ final class StockMovementDirectionTest extends TestCase
 
         $this->assertSame('flat', $m->directionForRow());
     }
+
+    public function test_absolute_delta_uses_the_row_at_canonical_quantity_scale(): void
+    {
+        $in = new StockMovement;
+        $in->setRawAttributes([
+            'quantity_before' => '10.0000',
+            'quantity_after' => '12.3456',
+        ]);
+
+        $out = new StockMovement;
+        $out->setRawAttributes([
+            'quantity_before' => '12.3456',
+            'quantity_after' => '10.0000',
+        ]);
+
+        $this->assertSame('2.3456', $in->absoluteDeltaForRow());
+        $this->assertSame('2.3456', $out->absoluteDeltaForRow());
+    }
 }

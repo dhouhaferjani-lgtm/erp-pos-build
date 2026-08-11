@@ -33,6 +33,8 @@ enum SystemAccountPurpose: string
 
     // Expense Accounts
     case CostOfGoodsSold = 'cost_of_goods_sold';
+    case InventoryShrinkageExpense = 'inventory_shrinkage_expense';
+    case InventoryGainIncome = 'inventory_gain_income';
     case PurchaseExpenses = 'purchase_expenses';
     case OfficeExpense = 'office_expense';
     case TravelExpense = 'travel_expense';
@@ -121,6 +123,8 @@ enum SystemAccountPurpose: string
             self::ProductRevenue => 'Product Sales Revenue',
             self::ServiceRevenue => 'Service Revenue',
             self::CostOfGoodsSold => 'Cost of Goods Sold',
+            self::InventoryShrinkageExpense => 'Inventory Shrinkage Expense',
+            self::InventoryGainIncome => 'Inventory Gain Income',
             self::PurchaseExpenses => 'Purchase Expenses',
             self::OfficeExpense => 'Office Expense',
             self::TravelExpense => 'Travel Expense',
@@ -199,6 +203,7 @@ enum SystemAccountPurpose: string
             self::ProductRevenue, self::ServiceRevenue,
             self::PaymentToleranceIncome, self::PurchasePriceVarianceIncome, self::RealizedFxGain,
             self::VoucherBreakageIncome, self::SalesRoundingDifferenceIncome => AccountType::Revenue,
+            self::InventoryGainIncome => AccountType::Revenue,
 
             self::CostOfGoodsSold, self::PurchaseExpenses, self::OfficeExpense,
             self::TravelExpense, self::MealsExpense, self::UtilitiesExpense, self::GeneralExpense,
@@ -207,6 +212,7 @@ enum SystemAccountPurpose: string
             self::MarketingGoodwillExpense, self::RoundingLossExpense,
             self::SalesRoundingDifferenceExpense,
             self::PurchaseStampDuty => AccountType::Expense,
+            self::InventoryShrinkageExpense => AccountType::Expense,
 
             self::RetainedEarnings, self::OpeningBalanceEquity => AccountType::Equity,
         };

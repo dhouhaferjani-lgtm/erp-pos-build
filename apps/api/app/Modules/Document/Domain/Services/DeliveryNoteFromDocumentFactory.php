@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\GuidedDeliveryCannotBeGeneratedException;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -51,9 +52,9 @@ final class DeliveryNoteFromDocumentFactory
     /**
      * Copy the source's PHYSICAL lines onto a new draft delivery note.
      *
-     * Batch-tracked products are split FEFO into one line per batch; a failed
-     * allocation degrades to a single unbatched line and logs, rather than
-     * refusing — the same behaviour the sales-order path has always had.
+     * Batch-tracked products are split FEFO into one line per batch. Failure is
+     * a typed refusal: the guided path must never silently flatten a batch-
+     * tracked line. The operator can confirm delivery manually with a batch.
      *
      * @param  bool  $autoCreated  marks the note batch-confirmable from the guided modal
      */
@@ -152,17 +153,17 @@ final class DeliveryNoteFromDocumentFactory
                             'designation_default_snapshot' => $line->designation_default_snapshot,
                             'source_line_id' => $line->id,
                             'batch_id' => $suggestion->batch->id,
+                            'location_id' => $line->location_id,
                         ]);
                     }
                 } else {
-                    $dnLineNumber++;
-                    $this->copyLine($delivery, $line, $dnLineNumber);
-
-                    Log::warning('FEFO allocation failed for auto-created DN, falling back to non-batch line', [
+                    Log::warning('FEFO allocation failed for guided delivery; refusing silent unbatched fallback.', [
                         'product_id' => $line->product_id,
                         'quantity' => $line->quantity,
                         'shortfall' => $result->shortfall,
                     ]);
+
+                    throw GuidedDeliveryCannotBeGeneratedException::fefoAllocationFailed();
                 }
             } else {
                 $dnLineNumber++;
@@ -204,6 +205,7 @@ final class DeliveryNoteFromDocumentFactory
             'notes' => $line->notes,
             'designation_default_snapshot' => $line->designation_default_snapshot,
             'source_line_id' => $line->id,
+            'location_id' => $line->location_id,
         ]);
     }
 }

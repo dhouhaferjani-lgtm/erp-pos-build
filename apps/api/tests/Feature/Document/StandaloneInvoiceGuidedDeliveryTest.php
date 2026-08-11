@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use Database\Seeders\CountryDocumentSettingsSeeder;
 use Illuminate\Database\Events\TransactionBeginning;
@@ -122,6 +123,54 @@ class StandaloneInvoiceGuidedDeliveryTest extends TestCase
             $deliveryNote->lines->whereNotNull('product_id')->count(),
             'Exactly one goods line, and it is the physical one.',
         );
+    }
+
+    public function test_guided_delivery_preserves_the_source_line_location(): void
+    {
+        $lineLocation = Location::create([
+            'company_id' => $this->dpCompany->id,
+            'code' => 'DP-LINE-WH',
+            'name' => 'Line Warehouse',
+            'type' => LocationType::Warehouse,
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+        StockLevel::create([
+            'tenant_id' => $this->dpTenant->id,
+            'company_id' => $this->dpCompany->id,
+            'product_id' => $this->dpProduct->id,
+            'location_id' => $lineLocation->id,
+            'quantity' => '10.0000',
+            'reserved' => '0.0000',
+        ]);
+        $line = $this->dpPhysicalLine('2.0000');
+        $line['location_id'] = $lineLocation->id;
+        $invoice = $this->dpConfirmedInvoice([$line]);
+
+        $this->actingAs($this->dpUser)
+            ->postJson("/api/v1/invoices/{$invoice->id}/create-delivery-and-post")
+            ->assertStatus(200);
+
+        $movement = StockMovement::query()->where('reference_type', 'Document')->latest('created_at')->firstOrFail();
+        $this->assertSame($lineLocation->id, $movement->location_id);
+    }
+
+    public function test_guided_delivery_refuses_a_failed_fefo_allocation_loudly(): void
+    {
+        $this->dpProduct->update(['requires_batch_tracking' => true]);
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine('2.0000')]);
+
+        $response = $this->actingAs($this->dpUser)
+            ->postJson("/api/v1/invoices/{$invoice->id}/create-delivery-and-post");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'DELIVERY_CANNOT_BE_GENERATED');
+        $response->assertJsonPath('error.message', 'FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH');
+        $this->assertSame(0, Document::query()
+            ->where('type', DocumentType::DeliveryNote)
+            ->where('source_document_id', $invoice->id)
+            ->count());
+        $this->assertSame(0, StockMovement::query()->count());
     }
 
     /**

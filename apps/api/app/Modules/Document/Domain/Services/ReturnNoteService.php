@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
+use App\Modules\Inventory\Application\Services\ReturnCostBasisResolver;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
@@ -61,8 +62,6 @@ final class ReturnNoteService
      * Resolver-independent by construction: the cost columns never depend on a
      * bound company's currency scale.
      */
-    private const COST_SCALE = 6;
-
     public function __construct(
         private readonly WeightedAverageCostService $wacService,
         private readonly FiscalHashService $hashService,
@@ -72,6 +71,7 @@ final class ReturnNoteService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
         private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
+        private readonly ReturnCostBasisResolver $returnCostBasisResolver,
     ) {}
 
     /**
@@ -686,51 +686,32 @@ final class ReturnNoteService
                 ->where('company_id', $returnNote->company_id)
                 ->findOrFail($locationId);
 
-            // Get original cost (from source document if available, otherwise use current cost)
-            $originalCost = $this->getOriginalCost($line);
+            $basis = $this->returnCostBasisResolver->resolveForReturnLine($line, (string) $line->quantity);
 
             // Receive stock back using WAC service with audit trail
             $this->wacService->recordReturn(
                 product: $product,
                 location: $location,
                 quantity: CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
-                originalCost: $originalCost,
+                originalCost: $basis->unitCost,
                 reference: $returnNote->document_number,
                 referenceType: StockMovementReferenceType::Document,
                 referenceId: $returnNote->id
             );
+
+            $payload = $returnNote->payload ?? [];
+            $records = is_array($payload['return_cost_basis'] ?? null) ? $payload['return_cost_basis'] : [];
+            $records[] = [
+                'line_id' => $line->id,
+                'product_id' => $line->product_id,
+                'quantity' => CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
+                'unit_cost' => $basis->unitCost,
+                'source' => $basis->source,
+                'movement_ids' => $basis->movementIds,
+            ];
+            $payload['return_cost_basis'] = $records;
+            $returnNote->update(['payload' => $payload]);
         }
-    }
-
-    /**
-     * Get the original cost for a returned line.
-     *
-     * If return note references a source document (invoice/delivery note),
-     * use the cost from that document. Otherwise, use current product cost.
-     *
-     * @return numeric-string the unit cost at COST_SCALE — never a float
-     */
-    private function getOriginalCost(DocumentLine $line): string
-    {
-        // If return note references source document, get cost from there.
-        //
-        // NOTE (DPA Wave 3 §0b.3): on production data this branch is dead —
-        // every writer of `document_lines.landed_unit_cost` is purchase-side, so
-        // a customer return's source (a sales invoice or DN) never carries it and
-        // the fallback always wins. Replacing the basis is D-24/T15a's job, NOT
-        // T3's; T3 only stops the value being laundered through a float.
-        if ($line->document->source_document_id !== null) {
-            $sourceLine = DocumentLine::where('document_id', $line->document->source_document_id)
-                ->where('product_id', $line->product_id)
-                ->first();
-
-            if ($sourceLine !== null && $sourceLine->landed_unit_cost !== null) {
-                return CurrencyScale::bcformatStrict((string) $sourceLine->landed_unit_cost, self::COST_SCALE);
-            }
-        }
-
-        // Fallback: use current product cost
-        return CurrencyScale::bcformatStrict((string) ($line->product->cost_price ?? '0'), self::COST_SCALE);
     }
 
     /**

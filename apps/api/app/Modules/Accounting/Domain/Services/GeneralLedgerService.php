@@ -4616,6 +4616,138 @@ final class GeneralLedgerService
     }
 
     /**
+     * True when the chart can post a movement-keyed inventory entry.
+     * Count-correction purposes are installed by Wave 3D before that kind is
+     * reachable; Wave 3C exits and returns use COGS as the counter-account.
+     */
+    public function hasInventoryMovementAccounts(string $companyId, MovementReason $reason): bool
+    {
+        if ($reason === MovementReason::CountCorrection) {
+            return false;
+        }
+
+        return Account::findByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold) !== null
+            && Account::findByPurpose($companyId, SystemAccountPurpose::Inventory) !== null;
+    }
+
+    /**
+     * Create one idempotent, movement-keyed inventory entry.
+     *
+     * The amount is already rounded once by InventoryGlPostingService. Both
+     * lines reuse it verbatim, so the entry balances by construction.
+     *
+     * @param  numeric-string  $amount
+     */
+    public function createInventoryMovementEntry(
+        string $companyId,
+        string $movementId,
+        string $sourceType,
+        string $amount,
+        MovementReason $reason,
+        SystemAccountPurpose $counterPurpose,
+        bool $debitInventory,
+        \DateTimeInterface $entryDate,
+        string $description,
+        ?string $postedByUserId = null,
+        ?string $currencyCode = null,
+        bool $postSynchronously = false,
+    ): ?JournalEntry {
+        $scale = $this->scaleResolver->getScale($currencyCode);
+        if (bccomp($amount, '0', $scale) <= 0) {
+            return null;
+        }
+
+        $existing = JournalEntry::query()
+            ->where('source_type', $sourceType)
+            ->where('source_id', $movementId)
+            ->with('lines')
+            ->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+        $counterAccount = $this->getAccountByPurpose($companyId, $counterPurpose);
+
+        $user = null;
+        if ($postedByUserId !== null) {
+            $user = User::query()->find($postedByUserId);
+            if ($user === null) {
+                Log::error('createInventoryMovementEntry: actor does not resolve; posting as system-generated', [
+                    'company_id' => $companyId,
+                    'movement_id' => $movementId,
+                    'posted_by_user_id' => $postedByUserId,
+                ]);
+            }
+        }
+
+        $entry = DB::transaction(function () use (
+            $companyId,
+            $movementId,
+            $sourceType,
+            $amount,
+            $reason,
+            $debitInventory,
+            $entryDate,
+            $description,
+            $inventoryAccount,
+            $counterAccount,
+        ): JournalEntry {
+            $existing = JournalEntry::query()
+                ->where('source_type', $sourceType)
+                ->where('source_id', $movementId)
+                ->with('lines')
+                ->first();
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            $company = Company::findOrFail($companyId);
+            $entry = JournalEntry::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $companyId,
+                'entry_number' => $this->generateEntryNumber($companyId),
+                'entry_date' => $entryDate->format('Y-m-d'),
+                'description' => $description,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => $sourceType,
+                'journal_code' => JournalCode::fromSourceType($sourceType)->value,
+                'source_id' => $movementId,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $debitInventory ? $inventoryAccount->id : $counterAccount->id,
+                'partner_id' => null,
+                'debit' => $amount,
+                'credit' => '0',
+                'description' => $reason->label(),
+                'line_order' => 0,
+            ]);
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $debitInventory ? $counterAccount->id : $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $amount,
+                'description' => $reason->label(),
+                'line_order' => 1,
+            ]);
+
+            return $entry->load('lines');
+        });
+
+        if ($postSynchronously && $entry->status !== JournalEntryStatus::Posted) {
+            $this->postEntryNow($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+            $entry->refresh()->load('lines');
+        } elseif (! $postSynchronously && $user !== null && $entry->status !== JournalEntryStatus::Posted) {
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $companyId, $currencyCode);
+        }
+
+        return $entry;
+    }
+
+    /**
      * Create journal entry for inventory write-off (expired/damaged batch stock,
      * POS return scrap).
      *

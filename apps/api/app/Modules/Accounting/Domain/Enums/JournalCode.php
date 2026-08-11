@@ -28,6 +28,8 @@ enum JournalCode: string
      * Any source_type not explicitly listed here falls through to Misc (OD) —
      * this is the deliberate default for every non-sales/purchase/bank/cash
      * GL flow (advances, tolerances, COGS, GR-IR, vouchers, write-offs, etc.).
+     * POS revenue remains Cash; movement-keyed inventory legs are explicitly
+     * Misc so adding a new inventory source type requires an intentional answer.
      */
     public static function fromSourceType(string $sourceType): self
     {
@@ -37,6 +39,8 @@ enum JournalCode: string
             'payment', 'customer_payment', 'supplier_payment', 'customer_payment_refund', 'acquirer_fee' => self::Bank,
             'pos_payment', 'pos_receipt', 'pos_receipt_refund' => self::Cash,
             'instrument', 'instrument_remittance' => self::Effets,
+            'inventory_exit', 'inventory_entry', 'inventory_shrinkage',
+            'batch_write_off', 'batch_write_off_reversal' => self::Misc,
             default => self::Misc,
         };
     }
