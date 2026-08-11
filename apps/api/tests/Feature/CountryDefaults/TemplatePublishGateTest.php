@@ -44,7 +44,7 @@ final class TemplatePublishGateTest extends TestCase
         self::assertSame('v1', $published->capability_registry_version);
         self::assertSame($actor->id, $published->certified_by);
         self::assertNotNull($published->published_at);
-        self::assertMatchesRegularExpression('/^[a-f0-9]{64}$/', (string) $published->content_hash);
+        self::assertSame('c3436e61299a8fc0a7cdee4f4eb449e54bbef9738dccee7e22f61ec3854aafc7', $published->content_hash);
         self::assertDatabaseHas('admin_audit_logs', [
             'action' => 'country_defaults.template.published',
             'entity_id' => $template->id,

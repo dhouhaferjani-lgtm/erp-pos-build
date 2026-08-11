@@ -12,6 +12,7 @@ use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 use App\Modules\CountryDefaults\Domain\ValueObjects\CertificationScope;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
+use App\Modules\CountryDefaults\Infrastructure\Models\CountryTemplateAssignment;
 use App\Services\AdminAuditService;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use DomainException;
@@ -152,8 +153,18 @@ final class TemplatePublishingService
         $connection = $this->centralConnection();
 
         return $connection->transaction(function () use ($templateId, $actor, $connection): AdminTemplate {
+            $assignments = CountryTemplateAssignment::query()
+                ->where('template_id', $templateId)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
             $template = AdminTemplate::query()->lockForUpdate()->findOrFail($templateId);
-            if ($template->assignments()->lockForUpdate()->first() !== null) {
+            $hasAssignment = $assignments->isNotEmpty() || CountryTemplateAssignment::query()
+                ->where('template_id', $templateId)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first() !== null;
+            if ($hasAssignment) {
                 throw new DomainException('A template referenced by an assignment cannot be archived.');
             }
             if ($template->status !== TemplateStatus::Published) {
@@ -188,8 +199,18 @@ final class TemplatePublishingService
         $connection = $this->centralConnection();
 
         $connection->transaction(function () use ($templateId, $actor, $connection): void {
+            $assignments = CountryTemplateAssignment::query()
+                ->where('template_id', $templateId)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
             $template = AdminTemplate::query()->lockForUpdate()->findOrFail($templateId);
-            if ($template->assignments()->lockForUpdate()->first() !== null) {
+            $hasAssignment = $assignments->isNotEmpty() || CountryTemplateAssignment::query()
+                ->where('template_id', $templateId)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->first() !== null;
+            if ($hasAssignment) {
                 throw new DomainException('A template referenced by an assignment cannot be deleted.');
             }
             if ($template->status !== TemplateStatus::Draft) {

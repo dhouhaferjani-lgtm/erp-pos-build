@@ -9,12 +9,14 @@ use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
 use App\Modules\CountryDefaults\Domain\ValueObjects\CertificationScope;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
+use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
 use App\Modules\CountryDefaults\Infrastructure\Models\CountryTemplateAssignment;
 use App\Services\AdminAuditService;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use DomainException;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 final class TemplateAssignmentService
@@ -22,6 +24,7 @@ final class TemplateAssignmentService
     public function __construct(
         private readonly CountryAccountingCapabilities $capabilities,
         private readonly TemplatePublishingService $publishing,
+        private readonly CanonicalCoaSerializer $serializer,
         private readonly AdminAuditService $audit,
     ) {}
 
@@ -68,6 +71,18 @@ final class TemplateAssignmentService
             if ($template->capability_registry_version !== $this->capabilities->version()) {
                 throw new DomainException('Assignment template certification uses a stale capability version.');
             }
+            if (! is_string($template->content_hash) || preg_match('/^[a-f0-9]{64}$/', $template->content_hash) !== 1) {
+                throw new DomainException('Assignment template certification requires a valid content_hash.');
+            }
+            if (! is_string($template->standard_ref) || trim($template->standard_ref) === '') {
+                throw new DomainException('Assignment template certification requires a nonblank standard_ref.');
+            }
+            if (! is_string($template->certified_by) || $template->certified_by === '') {
+                throw new DomainException('Assignment template certification requires certified_by.');
+            }
+            if ($template->published_at === null) {
+                throw new DomainException('Assignment template certification requires published_at.');
+            }
 
             try {
                 $scope = new CertificationScope(
@@ -83,6 +98,9 @@ final class TemplateAssignmentService
 
             $accounts = array_values($template->accounts()->lockForUpdate()->get()->all());
             $this->publishing->validateAccounts($accounts, $scope);
+            if (! hash_equals($template->content_hash, $this->serializer->hash($this->canonicalRows($accounts)))) {
+                throw new DomainException('Assignment template content_hash does not match its locked canonical rows.');
+            }
 
             $action = $assignment === null
                 ? 'country_defaults.assignment.created'
@@ -90,14 +108,28 @@ final class TemplateAssignmentService
             $oldTemplateId = $assignment?->template_id;
 
             if ($assignment === null) {
-                $assignment = CountryTemplateAssignment::query()->create([
+                $assignmentId = Str::uuid()->toString();
+                $connection->table('country_template_assignments')->insert([
+                    'id' => $assignmentId,
                     'country_code' => $normalized,
-                    'domain' => $domain,
+                    'domain' => $domain->value,
                     'template_id' => $template->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
+                $assignment = CountryTemplateAssignment::query()->findOrFail($assignmentId);
             } else {
-                $assignment->template_id = $template->id;
-                $assignment->save();
+                $updated = $connection->table('country_template_assignments')
+                    ->where('id', $assignment->id)
+                    ->where('template_id', $oldTemplateId)
+                    ->update([
+                        'template_id' => $template->id,
+                        'updated_at' => now(),
+                    ]);
+                if ($updated !== 1) {
+                    throw new DomainException('Assignment changed after its lifecycle lock.');
+                }
+                $assignment->refresh();
             }
 
             $this->assertAuditTransaction($connection);
@@ -140,7 +172,12 @@ final class TemplateAssignmentService
                 'template_id' => $assignment->template_id,
             ];
             $assignmentId = $assignment->id;
-            $assignment->delete();
+            $deleted = $connection->table('country_template_assignments')
+                ->where('id', $assignmentId)
+                ->delete();
+            if ($deleted !== 1) {
+                throw new DomainException('Assignment changed after its lifecycle lock.');
+            }
 
             $this->assertAuditTransaction($connection);
             $this->audit->log(
@@ -180,6 +217,26 @@ final class TemplateAssignmentService
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param  list<AdminTemplateAccount>  $accounts
+     * @return list<array<string, \BackedEnum|bool|int|string|null>>
+     */
+    private function canonicalRows(array $accounts): array
+    {
+        return array_map(
+            static fn ($account): array => [
+                'code' => $account->code,
+                'name' => $account->name,
+                'type' => $account->type,
+                'parent_code' => $account->parent_code,
+                'system_purpose' => $account->system_purpose,
+                'is_system' => $account->is_system,
+                'sort_order' => $account->sort_order,
+            ],
+            $accounts,
+        );
     }
 
     private function centralConnection(): ConnectionInterface

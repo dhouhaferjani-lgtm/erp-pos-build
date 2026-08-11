@@ -15,10 +15,12 @@ use App\Modules\CountryDefaults\Domain\Registries\ProtectedAccountCodeRegistry;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
+use App\Modules\CountryDefaults\Infrastructure\Models\CountryTemplateAssignment;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use LogicException;
 use Tests\TestCase;
 
 final class TemplateAssignmentServiceTest extends TestCase
@@ -104,6 +106,127 @@ final class TemplateAssignmentServiceTest extends TestCase
             'country_code' => '*',
             'domain' => TemplateDomain::ChartOfAccounts->value,
         ]);
+    }
+
+    public function test_direct_model_create_cannot_bypass_assignment_validation_and_audit(): void
+    {
+        $actor = $this->actor();
+        $template = $this->published('FR', $actor);
+        $auditCount = DB::connection($template->getConnectionName())->table('admin_audit_logs')->count();
+
+        try {
+            CountryTemplateAssignment::query()->create([
+                'country_code' => 'FR',
+                'domain' => TemplateDomain::ChartOfAccounts,
+                'template_id' => $template->id,
+            ]);
+            self::fail('Direct assignment create must require the lifecycle service.');
+        } catch (LogicException $exception) {
+            self::assertStringContainsString('service', $exception->getMessage());
+        }
+
+        self::assertDatabaseMissing('country_template_assignments', ['country_code' => 'FR']);
+        self::assertSame($auditCount, DB::connection($template->getConnectionName())->table('admin_audit_logs')->count());
+    }
+
+    public function test_direct_model_repoint_cannot_bypass_assignment_validation_and_audit(): void
+    {
+        $actor = $this->actor();
+        $first = $this->published('FR', $actor);
+        $second = $this->published('FR', $actor);
+        $assignment = app(TemplateAssignmentService::class)->assign(
+            'FR',
+            TemplateDomain::ChartOfAccounts,
+            $first->id,
+            $actor,
+        );
+        $auditCount = DB::connection($first->getConnectionName())->table('admin_audit_logs')->count();
+
+        try {
+            $assignment->template_id = $second->id;
+            $assignment->save();
+            self::fail('Direct assignment repoint must require the lifecycle service.');
+        } catch (LogicException $exception) {
+            self::assertStringContainsString('service', $exception->getMessage());
+        }
+
+        self::assertSame($first->id, $assignment->refresh()->template_id);
+        self::assertSame($auditCount, DB::connection($first->getConnectionName())->table('admin_audit_logs')->count());
+    }
+
+    public function test_direct_wildcard_delete_cannot_bypass_pin_and_audit(): void
+    {
+        $actor = $this->actor();
+        $template = $this->published('*', $actor);
+        $assignment = app(TemplateAssignmentService::class)->assign(
+            '*',
+            TemplateDomain::ChartOfAccounts,
+            $template->id,
+            $actor,
+        );
+        $auditCount = DB::connection($template->getConnectionName())->table('admin_audit_logs')->count();
+
+        try {
+            $assignment->delete();
+            self::fail('Direct wildcard deletion must require the lifecycle service.');
+        } catch (LogicException $exception) {
+            self::assertStringContainsString('service', $exception->getMessage());
+        }
+
+        self::assertDatabaseHas('country_template_assignments', ['id' => $assignment->id]);
+        self::assertSame($auditCount, DB::connection($template->getConnectionName())->table('admin_audit_logs')->count());
+    }
+
+    public function test_assignment_requires_complete_certification_metadata(): void
+    {
+        $actor = $this->actor();
+        $service = app(TemplateAssignmentService::class);
+
+        foreach (
+            [
+                ['content_hash', null, 'content_hash'],
+                ['standard_ref', '   ', 'standard_ref'],
+                ['certified_by', null, 'certified_by'],
+                ['published_at', null, 'published_at'],
+            ] as [$column, $value, $message]
+        ) {
+            $template = $this->published('FR', $actor);
+            DB::connection($template->getConnectionName())->table('admin_templates')
+                ->where('id', $template->id)
+                ->update([$column => $value]);
+
+            try {
+                $service->assign('FR', TemplateDomain::ChartOfAccounts, $template->id, $actor);
+                self::fail("Assignment must reject missing certification field {$column}.");
+            } catch (DomainException $exception) {
+                self::assertStringContainsString($message, $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_assignment_recomputes_and_matches_the_locked_canonical_hash(): void
+    {
+        $actor = $this->actor();
+        $template = $this->published('FR', $actor);
+        DB::connection($template->getConnectionName())->table('admin_template_accounts')
+            ->where('template_id', $template->id)
+            ->orderBy('sort_order')
+            ->limit(1)
+            ->update(['name' => 'Tampered after certification']);
+
+        try {
+            app(TemplateAssignmentService::class)->assign(
+                'FR',
+                TemplateDomain::ChartOfAccounts,
+                $template->id,
+                $actor,
+            );
+            self::fail('Assignment must reject a canonical content hash mismatch.');
+        } catch (DomainException $exception) {
+            self::assertStringContainsString('content_hash', $exception->getMessage());
+        }
+
+        self::assertDatabaseMissing('country_template_assignments', ['country_code' => 'FR']);
     }
 
     private function published(string $country, SuperAdmin $actor): AdminTemplate

@@ -33,6 +33,7 @@ final class TemplateAuditTransactionTest extends TestCase
     {
         $actor = $this->actor();
         $draft = $this->validTemplate('FR', TemplateStatus::Draft);
+        $source = $this->validTemplate('FR', TemplateStatus::Published, $actor);
         $this->installFailingAudit();
 
         try {
@@ -43,7 +44,6 @@ final class TemplateAuditTransactionTest extends TestCase
         }
         self::assertSame(TemplateStatus::Draft, $draft->refresh()->status);
 
-        $source = $this->validTemplate('FR', TemplateStatus::Published);
         try {
             app(TemplatePublishingService::class)->cloneToDraft($source->id, 'Rollback clone', $actor);
             self::fail('Audit failure must abort clone.');
@@ -56,7 +56,7 @@ final class TemplateAuditTransactionTest extends TestCase
     public function test_archive_and_delete_roll_back_when_audit_fails(): void
     {
         $actor = $this->actor();
-        $published = $this->validTemplate('FR', TemplateStatus::Published);
+        $published = $this->validTemplate('FR', TemplateStatus::Published, $actor);
         $draft = $this->validTemplate('FR', TemplateStatus::Draft);
         $this->installFailingAudit();
 
@@ -78,8 +78,8 @@ final class TemplateAuditTransactionTest extends TestCase
     public function test_assignment_create_repoint_and_remove_roll_back_when_audit_fails(): void
     {
         $actor = $this->actor();
-        $first = $this->validTemplate('FR', TemplateStatus::Published);
-        $second = $this->validTemplate('FR', TemplateStatus::Published);
+        $first = $this->validTemplate('FR', TemplateStatus::Published, $actor);
+        $second = $this->validTemplate('FR', TemplateStatus::Published, $actor);
         $this->installFailingAudit();
         $service = app(TemplateAssignmentService::class);
 
@@ -90,11 +90,16 @@ final class TemplateAuditTransactionTest extends TestCase
             self::assertDatabaseMissing('country_template_assignments', ['country_code' => 'FR']);
         }
 
-        $assignment = CountryTemplateAssignment::query()->create([
+        $assignmentId = Str::uuid()->toString();
+        DB::connection($first->getConnectionName())->table('country_template_assignments')->insert([
+            'id' => $assignmentId,
             'country_code' => 'FR',
-            'domain' => TemplateDomain::ChartOfAccounts,
+            'domain' => TemplateDomain::ChartOfAccounts->value,
             'template_id' => $first->id,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
+        $assignment = CountryTemplateAssignment::query()->findOrFail($assignmentId);
         try {
             $service->assign('FR', TemplateDomain::ChartOfAccounts, $second->id, $actor);
             self::fail('Audit failure must abort assignment repoint.');
@@ -141,18 +146,13 @@ final class TemplateAuditTransactionTest extends TestCase
         $this->app->instance(AdminAuditService::class, $audit);
     }
 
-    private function validTemplate(string $country, TemplateStatus $status): AdminTemplate
+    private function validTemplate(string $country, TemplateStatus $status, ?SuperAdmin $actor = null): AdminTemplate
     {
-        $template = AdminTemplate::withoutEvents(static fn (): AdminTemplate => AdminTemplate::query()->create([
+        $template = AdminTemplate::query()->create([
             'domain' => TemplateDomain::ChartOfAccounts,
             'name' => 'Audit fixture '.Str::random(8),
-            'status' => $status,
-            'content_hash' => $status === TemplateStatus::Published ? str_repeat('a', 64) : null,
-            'standard_ref' => $status === TemplateStatus::Published ? 'PCG 2026' : null,
-            'certified_country_codes' => $status === TemplateStatus::Published ? [$country] : null,
-            'capability_registry_version' => $status === TemplateStatus::Published ? 'v1' : null,
-            'published_at' => $status === TemplateStatus::Published ? now() : null,
-        ]));
+            'status' => TemplateStatus::Draft,
+        ]);
         $sort = 1;
         foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
             if ($entry['classification'] !== 'REQUIRED') {
@@ -164,12 +164,20 @@ final class TemplateAuditTransactionTest extends TestCase
             $this->row($template, $protected['code'], AccountType::from($protected['expected_type']), $sort++, null, $protected['requires_system']);
         }
 
-        return $template;
+        if ($status === TemplateStatus::Draft) {
+            return $template;
+        }
+
+        if (! $actor instanceof SuperAdmin) {
+            throw new RuntimeException('Published audit fixtures require a certifying actor.');
+        }
+
+        return app(TemplatePublishingService::class)->publish($template->id, 'PCG 2026', [$country], $actor);
     }
 
     private function row(AdminTemplate $template, string $code, AccountType $type, int $sort, ?SystemAccountPurpose $purpose, bool $system): void
     {
-        AdminTemplateAccount::withoutEvents(static fn (): AdminTemplateAccount => AdminTemplateAccount::query()->create([
+        AdminTemplateAccount::query()->create([
             'template_id' => $template->id,
             'code' => $code,
             'name' => $purpose === null ? 'Protected '.$code : $purpose->name,
@@ -178,7 +186,7 @@ final class TemplateAuditTransactionTest extends TestCase
             'system_purpose' => $purpose,
             'is_system' => $system,
             'sort_order' => $sort,
-        ]));
+        ]);
     }
 
     private function actor(): SuperAdmin

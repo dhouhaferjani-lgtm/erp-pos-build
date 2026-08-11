@@ -10,9 +10,9 @@ use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
-use App\Modules\CountryDefaults\Infrastructure\Models\CountryTemplateAssignment;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
 use Tests\TestCase;
@@ -83,9 +83,13 @@ final class TemplateImmutabilityTest extends TestCase
         ]);
         self::assertNull($template->bootstrap_key);
 
-        $template->forceFill(['bootstrap_key' => 'coa.test.legacy-v1'])->save();
+        DB::connection($template->getConnectionName())->transaction(
+            static fn (): bool => $template->forceFill(['bootstrap_key' => 'coa.test.legacy-v1'])->save(),
+        );
         try {
-            $template->forceFill(['bootstrap_key' => 'coa.changed'])->save();
+            DB::connection($template->getConnectionName())->transaction(
+                static fn (): bool => $template->forceFill(['bootstrap_key' => 'coa.changed'])->save(),
+            );
             self::fail('A non-null bootstrap key must be immutable.');
         } catch (LogicException $exception) {
             self::assertStringContainsString('immutable', $exception->getMessage());
@@ -109,6 +113,143 @@ final class TemplateImmutabilityTest extends TestCase
         }
     }
 
+    public function test_draft_header_update_requires_an_active_central_transaction(): void
+    {
+        $this->outsideCentralTransaction(function (): void {
+            $draft = AdminTemplate::query()->create([
+                'domain' => TemplateDomain::ChartOfAccounts,
+                'name' => 'Header transaction guard',
+                'status' => TemplateStatus::Draft,
+            ]);
+            $draft->name = 'Unsafe header edit';
+
+            try {
+                $draft->save();
+                self::fail('Draft header edits outside a central transaction must fail.');
+            } catch (LogicException $exception) {
+                self::assertStringContainsString('transaction', $exception->getMessage());
+            }
+
+            self::assertSame('Header transaction guard', $draft->refresh()->name);
+        });
+    }
+
+    public function test_draft_account_create_requires_an_active_central_transaction(): void
+    {
+        $this->outsideCentralTransaction(function (): void {
+            $draft = AdminTemplate::query()->create([
+                'domain' => TemplateDomain::ChartOfAccounts,
+                'name' => 'Account create transaction guard',
+                'status' => TemplateStatus::Draft,
+            ]);
+
+            try {
+                $this->createAccount($draft, '100', 1);
+                self::fail('Draft account creates outside a central transaction must fail.');
+            } catch (LogicException $exception) {
+                self::assertStringContainsString('transaction', $exception->getMessage());
+            }
+
+            self::assertSame(0, $draft->accounts()->count());
+        });
+    }
+
+    public function test_draft_account_update_and_delete_require_an_active_central_transaction(): void
+    {
+        $this->outsideCentralTransaction(function (): void {
+            $draft = AdminTemplate::query()->create([
+                'domain' => TemplateDomain::ChartOfAccounts,
+                'name' => 'Account mutation transaction guard',
+                'status' => TemplateStatus::Draft,
+            ]);
+            $account = AdminTemplateAccount::withoutEvents(fn (): AdminTemplateAccount => $this->createAccount($draft, '100', 1));
+
+            $account->name = 'Unsafe account edit';
+            try {
+                $account->save();
+                self::fail('Draft account updates outside a central transaction must fail.');
+            } catch (LogicException $exception) {
+                self::assertStringContainsString('transaction', $exception->getMessage());
+            }
+
+            try {
+                $account->refresh()->delete();
+                self::fail('Draft account deletes outside a central transaction must fail.');
+            } catch (LogicException $exception) {
+                self::assertStringContainsString('transaction', $exception->getMessage());
+            }
+            self::assertDatabaseHas('admin_template_accounts', ['id' => $account->id, 'name' => 'Account 100']);
+        });
+    }
+
+    public function test_locked_central_transaction_permits_ordinary_draft_edits(): void
+    {
+        $draft = AdminTemplate::query()->create([
+            'domain' => TemplateDomain::ChartOfAccounts,
+            'name' => 'Safe draft edit',
+            'status' => TemplateStatus::Draft,
+        ]);
+        $connection = DB::connection($draft->getConnectionName());
+
+        $connection->transaction(function () use ($draft): void {
+            $draft->name = 'Safely edited';
+            $draft->save();
+            $account = $this->createAccount($draft, '100', 1);
+            $account->name = 'Safely edited account';
+            $account->save();
+            $account->delete();
+        });
+
+        self::assertSame('Safely edited', $draft->refresh()->name);
+        self::assertSame(0, $draft->accounts()->count());
+    }
+
+    public function test_stale_draft_header_is_rechecked_under_lock_before_save(): void
+    {
+        $stale = AdminTemplate::query()->create([
+            'domain' => TemplateDomain::ChartOfAccounts,
+            'name' => 'Stale draft',
+            'status' => TemplateStatus::Draft,
+        ]);
+        DB::connection($stale->getConnectionName())->table('admin_templates')
+            ->where('id', $stale->id)
+            ->update(['status' => TemplateStatus::Published->value]);
+        $stale->name = 'Unsafe stale overwrite';
+
+        try {
+            DB::connection($stale->getConnectionName())->transaction(static fn (): bool => $stale->save());
+            self::fail('A stale draft instance must not overwrite a concurrently published template.');
+        } catch (LogicException $exception) {
+            self::assertStringContainsString('immutable', $exception->getMessage());
+        }
+
+        self::assertSame('Stale draft', $stale->refresh()->name);
+        self::assertSame(TemplateStatus::Published, $stale->status);
+    }
+
+    public function test_production_has_no_generic_bulk_template_mutation_bypass(): void
+    {
+        $production = '';
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(app_path()));
+        foreach ($iterator as $file) {
+            if (! $file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+            $production .= "\n".(string) file_get_contents($file->getPathname());
+        }
+
+        self::assertDoesNotMatchRegularExpression(
+            '/AdminTemplate(?:Account)?::query\(\)(?:(?!;).)*->(?:update|delete)\s*\(/s',
+            $production,
+        );
+        self::assertDoesNotMatchRegularExpression(
+            '/->accounts\(\)(?:(?!;).)*->(?:update|delete)\s*\(/s',
+            $production,
+        );
+        self::assertStringNotContainsString('AdminTemplate::withoutEvents', $production);
+        self::assertStringNotContainsString('AdminTemplateAccount::withoutEvents', $production);
+    }
+
     public function test_clone_archive_delete_and_assignment_reference_rules(): void
     {
         $actor = $this->actor();
@@ -130,10 +271,13 @@ final class TemplateImmutabilityTest extends TestCase
         self::assertDatabaseMissing('admin_templates', ['id' => $clone->id]);
 
         $referenced = $this->publishedTemplate($actor);
-        CountryTemplateAssignment::query()->create([
+        DB::connection($referenced->getConnectionName())->table('country_template_assignments')->insert([
+            'id' => Str::uuid()->toString(),
             'country_code' => 'FR',
-            'domain' => TemplateDomain::ChartOfAccounts,
+            'domain' => TemplateDomain::ChartOfAccounts->value,
             'template_id' => $referenced->id,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         try {
@@ -201,5 +345,39 @@ final class TemplateImmutabilityTest extends TestCase
             'role' => 'super_admin',
             'is_active' => true,
         ]);
+    }
+
+    private function createAccount(AdminTemplate $template, string $code, int $sortOrder): AdminTemplateAccount
+    {
+        return AdminTemplateAccount::query()->create([
+            'template_id' => $template->id,
+            'code' => $code,
+            'name' => 'Account '.$code,
+            'type' => 'asset',
+            'parent_code' => null,
+            'system_purpose' => null,
+            'is_system' => false,
+            'sort_order' => $sortOrder,
+        ]);
+    }
+
+    private function outsideCentralTransaction(callable $assertions): void
+    {
+        $connection = DB::connection((new AdminTemplate)->getConnectionName());
+        $initialLevel = $connection->transactionLevel();
+        while ($connection->transactionLevel() > 0) {
+            $connection->commit();
+        }
+
+        try {
+            $assertions();
+        } finally {
+            $connection->table('country_template_assignments')->delete();
+            $connection->table('admin_template_accounts')->delete();
+            $connection->table('admin_templates')->delete();
+            while ($connection->transactionLevel() < $initialLevel) {
+                $connection->beginTransaction();
+            }
+        }
     }
 }

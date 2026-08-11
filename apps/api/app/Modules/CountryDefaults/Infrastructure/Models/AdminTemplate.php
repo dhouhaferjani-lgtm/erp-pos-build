@@ -43,27 +43,41 @@ final class AdminTemplate extends Model
         });
 
         self::updating(static function (self $template): void {
-            $originalBootstrapKey = $template->getRawOriginal('bootstrap_key');
-            if ($originalBootstrapKey !== null && $template->isDirty('bootstrap_key')) {
-                throw new LogicException('Template bootstrap_key is immutable.');
-            }
-
             $originalStatus = $template->getRawOriginal('status');
-            if ($originalStatus === TemplateStatus::Draft->value && $template->isDirty('status')) {
+            if (in_array($originalStatus, [TemplateStatus::Published->value, TemplateStatus::Archived->value], true)) {
+                throw new LogicException('Published and archived template content and certification are immutable.');
+            }
+            if ($template->isDirty('status')) {
                 throw new LogicException('Template lifecycle transitions require the publishing service.');
             }
-            if (! in_array($originalStatus, [TemplateStatus::Published->value, TemplateStatus::Archived->value], true)) {
-                return;
-            }
 
-            throw new LogicException('Published and archived template content and certification are immutable.');
+            $current = self::lockCurrentDraft($template);
+            if ($current->bootstrap_key !== null && $template->isDirty('bootstrap_key')) {
+                throw new LogicException('Template bootstrap_key is immutable.');
+            }
         });
 
         self::deleting(static function (self $template): void {
             if ($template->status !== TemplateStatus::Draft) {
                 throw new LogicException('Published and archived templates are immutable and require lifecycle services.');
             }
+
+            self::lockCurrentDraft($template);
         });
+    }
+
+    private static function lockCurrentDraft(self $template): self
+    {
+        if ($template->getConnection()->transactionLevel() < 1) {
+            throw new LogicException('Draft template edits require an active central transaction.');
+        }
+
+        $current = self::query()->whereKey($template->getKey())->lockForUpdate()->first();
+        if (! $current instanceof self || $current->status !== TemplateStatus::Draft) {
+            throw new LogicException('Published and archived template content and certification are immutable.');
+        }
+
+        return $current;
     }
 
     /** @return array<string, string> */

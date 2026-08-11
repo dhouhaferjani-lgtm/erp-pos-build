@@ -32,8 +32,22 @@ final class AdminTemplateAccount extends Model
     protected static function booted(): void
     {
         $guard = static function (self $account): void {
-            $template = AdminTemplate::query()->find($account->template_id);
-            if ($template !== null && $template->status !== TemplateStatus::Draft) {
+            if ($account->exists && $account->isDirty('template_id')) {
+                throw new LogicException('A template account cannot move between templates.');
+            }
+
+            if ($account->getConnection()->transactionLevel() < 1) {
+                $status = AdminTemplate::query()->whereKey($account->template_id)->value('status');
+                $statusValue = $status instanceof TemplateStatus ? $status->value : $status;
+                if ($statusValue !== TemplateStatus::Draft->value) {
+                    throw new LogicException('Published and archived template account rows are immutable.');
+                }
+
+                throw new LogicException('Draft template account edits require an active central transaction.');
+            }
+
+            $template = AdminTemplate::query()->whereKey($account->template_id)->lockForUpdate()->first();
+            if (! $template instanceof AdminTemplate || $template->status !== TemplateStatus::Draft) {
                 throw new LogicException('Published and archived template account rows are immutable.');
             }
         };

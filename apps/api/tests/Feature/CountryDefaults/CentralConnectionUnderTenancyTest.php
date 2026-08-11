@@ -89,11 +89,16 @@ final class CentralConnectionUnderTenancyTest extends TestCase
             'is_system' => false,
             'sort_order' => 1,
         ]);
-        $assignment = CountryTemplateAssignment::query()->create([
+        $assignmentId = Str::uuid()->toString();
+        DB::connection($centralConnection)->table('country_template_assignments')->insert([
+            'id' => $assignmentId,
             'country_code' => 'FR',
-            'domain' => TemplateDomain::ChartOfAccounts,
+            'domain' => TemplateDomain::ChartOfAccounts->value,
             'template_id' => $template->id,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
+        $assignment = CountryTemplateAssignment::query()->findOrFail($assignmentId);
 
         foreach ([$template, $row, $assignment] as $model) {
             self::assertSame($centralConnection, $model->getConnectionName());

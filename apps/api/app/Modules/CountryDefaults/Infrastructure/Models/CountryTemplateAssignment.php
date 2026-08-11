@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use InvalidArgumentException;
+use LogicException;
 use Stancl\Tenancy\Database\Concerns\CentralConnection;
 
 final class CountryTemplateAssignment extends Model
@@ -32,6 +33,13 @@ final class CountryTemplateAssignment extends Model
 
             $assignment->country_code = $countryCode;
         });
+
+        $serviceOnly = static function (): void {
+            throw new LogicException('Country template assignments may only be mutated through the lifecycle service.');
+        };
+        self::creating($serviceOnly);
+        self::updating($serviceOnly);
+        self::deleting($serviceOnly);
     }
 
     /** @return array<string, string> */
