@@ -6,9 +6,9 @@ reviewer_model: opus
 max_fix_rounds: 5
 
 # Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
-base_sha: 7f84dc91ada4d9dbc9b834e2bdd2acc90a079b3a
+base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
 # 3C branch off base_sha; after 3C merges to local dev, create 3D branch off the new dev (see brief DELIVERABLE).
-branch_3c: null
+branch_3c: codex/dpa-wave3-3c
 branch_3d: null
 
 owner_gates:
@@ -72,5 +72,5 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
