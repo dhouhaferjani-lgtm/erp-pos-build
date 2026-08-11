@@ -33,6 +33,115 @@ The exact 27 REQUIRED purposes are `Bank`, `Cash`, `CustomerReceivable`, `Invent
 | FR | 144 | `[]` | absent, as required for a non-timbre scope | `[]` |
 | Generic (`*`) | 61 | `[]` | absent, as required for a non-timbre scope | `[]` |
 
+### Committed reconciliation evidence
+
+Run the following exact command from this pinned worktree's root. Composer supplies framework
+dependencies only: the enum, seeder contract, and all three seeder definitions are explicitly
+required from the resolved worktree before reflection, and every reflected source path must remain
+under that root.
+
+```bash
+php -r '
+$root = realpath(getcwd());
+if ($root === false) {
+  throw new RuntimeException("Unable to resolve the worktree root.");
+}
+require $root . "/apps/api/vendor/autoload.php";
+require_once $root . "/apps/api/app/Modules/Accounting/Domain/Enums/SystemAccountPurpose.php";
+require_once $root . "/apps/api/database/seeders/Contracts/ChartOfAccountsSeederContract.php";
+require_once $root . "/apps/api/database/seeders/TunisiaChartOfAccountsSeeder.php";
+require_once $root . "/apps/api/database/seeders/FranceChartOfAccountsSeeder.php";
+require_once $root . "/apps/api/database/seeders/GenericChartOfAccountsSeeder.php";
+$sources = [
+  "purpose_enum" => App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::class,
+  "seeder_contract" => Database\Seeders\Contracts\ChartOfAccountsSeederContract::class,
+  "TN_seeder" => Database\Seeders\TunisiaChartOfAccountsSeeder::class,
+  "FR_seeder" => Database\Seeders\FranceChartOfAccountsSeeder::class,
+  "GENERIC_seeder" => Database\Seeders\GenericChartOfAccountsSeeder::class,
+];
+echo "source_root=" . $root . PHP_EOL;
+foreach ($sources as $label => $class) {
+  $sourceFile = (new ReflectionClass($class))->getFileName();
+  if (!is_string($sourceFile) || !str_starts_with($sourceFile, $root . DIRECTORY_SEPARATOR)) {
+    throw new RuntimeException($label . " did not resolve from the worktree: " . var_export($sourceFile, true));
+  }
+  echo $label . "_file=" . $sourceFile . PHP_EOL;
+}
+$seeders = [
+  "TN" => Database\Seeders\TunisiaChartOfAccountsSeeder::class,
+  "FR" => Database\Seeders\FranceChartOfAccountsSeeder::class,
+  "GENERIC" => Database\Seeders\GenericChartOfAccountsSeeder::class,
+];
+$required = [
+  "bank", "cash", "customer_receivable", "inventory", "supplier_payable",
+  "vat_collected", "vat_deductible", "product_revenue", "service_revenue",
+  "cost_of_goods_sold", "general_expense", "opening_balance_equity",
+  "purchase_price_variance_expense", "purchase_price_variance_income",
+  "goods_received_not_invoiced", "purchase_stamp_duty", "sales_discount",
+  "customer_advance", "supplier_advance", "sales_returns_clearing",
+  "voucher_liability", "marketing_goodwill_expense", "pos_tender_clearing",
+  "rounding_loss_expense", "payment_tolerance_expense", "payment_tolerance_income",
+  "purchase_expenses",
+];
+$enumValues = array_map(
+  static fn (App\Modules\Accounting\Domain\Enums\SystemAccountPurpose $purpose): string => $purpose->value,
+  App\Modules\Accounting\Domain\Enums\SystemAccountPurpose::cases(),
+);
+$unknownRequired = array_values(array_diff($required, $enumValues));
+if ($unknownRequired !== []) {
+  throw new RuntimeException("Unknown REQUIRED purpose: " . json_encode($unknownRequired, JSON_THROW_ON_ERROR));
+}
+$oldDeltas = [
+  "TN" => ["sales_discount"],
+  "FR" => ["cost_of_goods_sold", "general_expense", "sales_discount", "customer_advance", "supplier_advance", "code:624"],
+  "GENERIC" => [],
+];
+echo "base_sha=" . trim((string) shell_exec("git -C " . escapeshellarg($root) . " rev-parse origin/dev")) . PHP_EOL;
+echo "enum_case_count=" . count($enumValues) . PHP_EOL;
+echo "required_count=" . count($required) . PHP_EOL;
+foreach ($seeders as $country => $class) {
+  $method = new ReflectionMethod($class, "getAccountsDefinition");
+  $method->setAccessible(true);
+  $rows = $method->invoke(new $class());
+  $purposes = array_values(array_filter(array_column($rows, "system_purpose"), static fn ($value): bool => is_string($value)));
+  $codes = array_column($rows, "code");
+  $missing = array_values(array_diff($required, $purposes));
+  $stamp = in_array("sales_stamp_duty_payable", $purposes, true) ? "present" : "absent";
+  $deltaMissing = [];
+  foreach ($oldDeltas[$country] as $delta) {
+    if (str_starts_with($delta, "code:")) {
+      $code = substr($delta, 5);
+      if (!in_array($code, $codes, true)) { $deltaMissing[] = $delta; }
+    } elseif (!in_array($delta, $purposes, true)) {
+      $deltaMissing[] = $delta;
+    }
+  }
+  echo $country . " accounts=" . count($rows)
+    . " missing_required=" . json_encode($missing, JSON_THROW_ON_ERROR)
+    . " sales_stamp_duty_payable=" . $stamp
+    . " old_delta_missing=" . json_encode($deltaMissing, JSON_THROW_ON_ERROR)
+    . PHP_EOL;
+}
+'
+```
+
+Its verbatim output at the pinned worktree is:
+
+```text
+source_root=/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/country-defaults-phase-a
+purpose_enum_file=/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/country-defaults-phase-a/apps/api/app/Modules/Accounting/Domain/Enums/SystemAccountPurpose.php
+seeder_contract_file=/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/country-defaults-phase-a/apps/api/database/seeders/Contracts/ChartOfAccountsSeederContract.php
+TN_seeder_file=/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/country-defaults-phase-a/apps/api/database/seeders/TunisiaChartOfAccountsSeeder.php
+FR_seeder_file=/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/country-defaults-phase-a/apps/api/database/seeders/FranceChartOfAccountsSeeder.php
+GENERIC_seeder_file=/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/country-defaults-phase-a/apps/api/database/seeders/GenericChartOfAccountsSeeder.php
+base_sha=7d85232cc54abd6a6b2135f476205ab434e71a66
+enum_case_count=41
+required_count=27
+TN accounts=139 missing_required=[] sales_stamp_duty_payable=present old_delta_missing=[]
+FR accounts=144 missing_required=[] sales_stamp_duty_payable=absent old_delta_missing=[]
+GENERIC accounts=61 missing_required=[] sales_stamp_duty_payable=absent old_delta_missing=[]
+```
+
 Zero missing REQUIRED purposes is not, by itself, the full publish or certification gate. The
 scope-dependent stamp-purpose rule and every other publish invariant still apply. The old content
 deltas are empty, but human authenticated HTTP publish remains mandatory and is the only path that
@@ -59,10 +168,14 @@ tenant migration `apps/api/database/migrations/tenant/2026_03_23_300000_fix_exis
 
 ### D-3 — One timbre authority
 
-The existing Taxation registry is no longer an independent authority for the timbre predicate. The
-single-authority dependency direction is executed as S-1 below: a shared contract, one
-CountryDefaults implementation that owns both the `{TN}` predicate and its version, and Taxation
-delegation to that contract.
+At the pinned base, `CountryTaxConfigurationRegistry` still owns the live timbre predicate:
+its `MAP` stores `supports_stamp_duty` as `true` for TN and `false` for FR
+(`apps/api/app/Modules/Taxation/Application/Registries/CountryTaxConfigurationRegistry.php:20-33`),
+and `supportsStampDuty()` answers directly from that map
+(`apps/api/app/Modules/Taxation/Application/Registries/CountryTaxConfigurationRegistry.php:48-50`).
+This pinned-base Taxation predicate is the duplicate-authority drift against the accepted target.
+M1 must remove it from the Taxation map and make Taxation delegate to the sole versioned
+CountryDefaults authority by executing S-1 below; M0 does not claim that rewire is already complete.
 
 ### D-4 — Protected-code variants
 

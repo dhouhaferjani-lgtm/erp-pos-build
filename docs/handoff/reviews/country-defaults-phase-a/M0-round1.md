@@ -1,5 +1,14 @@
 ## Adversarial merge-gate register — M0 (round 1), lens: **treasury**
 
+> **Provenance after recoverable history cleanup.** This register was generated against the
+> pre-cleanup SHAs shown in its original reviewed-range line below; that line remains unchanged as
+> historical truth. Those objects remain reachable on
+> `codex/country-defaults-phase-a-pre-rewrite` (tip `7a4d65f25`). The current equivalent M0 first
+> commit is `c744c19cc` (`Phase 0.0.0: Reconcile country defaults baseline`), which folds in the
+> original M0 and fix-round-1 changes. The current commit recording this round-1 register/review
+> state is `b65cdaee2` (`Phase 0.0.1: Record M0 review findings`). M7 should use this mapping to
+> trace the preserved findings without treating the historical range as current ancestry.
+
 **Range reviewed:** `7d85232cc..ef57a03ae` (3 commits; 7 files; **zero** `.php`/`.ts`/`.tsx` files).
 **Artifacts held to the brief:** `docs/handoff/CODEX-DISPATCH-country-defaults-phase-a-2026-08-10.md` §0/§0.1 + "M0" section (`:259-285`), §9 deliverable (`:822-831`).
 
