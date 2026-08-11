@@ -6,6 +6,7 @@ namespace Tests\Feature\Company;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Compliance\Domain\AuditEvent;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -111,6 +112,89 @@ final class CompanyUpdateAuthorizationTest extends TestCase
             'id' => $this->company->id,
             'default_max_discount_percent' => '50.00',
         ]);
+    }
+
+    public function test_cosmetic_editor_can_update_cosmetic_company_fields(): void
+    {
+        $editor = $this->userWithRole('viewer');
+        $editor->givePermissionTo('settings.update');
+
+        $response = $this->actingAs($editor)->putJson("/api/v1/companies/{$this->company->id}", [
+            'name' => 'Cosmetic Company Name',
+            'phone' => '+216 70 000 000',
+        ]);
+
+        $response->assertOk();
+        $this->assertSame('Cosmetic Company Name', $this->company->refresh()->name);
+    }
+
+    public function test_cosmetic_editor_cannot_update_company_fiscal_identity(): void
+    {
+        $editor = $this->userWithRole('viewer');
+        $editor->givePermissionTo('settings.update');
+        $originalIdentity = $this->company->only([
+            'legal_name',
+            'tax_id',
+            'registration_number',
+            'vat_number',
+        ]);
+
+        $response = $this->actingAs($editor)->putJson("/api/v1/companies/{$this->company->id}", [
+            'legal_name' => 'Bypassed Legal Name',
+            'tax_id' => 'TN0000000A',
+            'registration_number' => 'BYPASS-REG',
+            'vat_number' => 'BYPASS-VAT',
+        ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error.code', 'FORBIDDEN')
+            ->assertJsonPath(
+                'error.message',
+                'You do not have permission to update the company fiscal identity.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame($originalIdentity, $this->company->only([
+            'legal_name',
+            'tax_id',
+            'registration_number',
+            'vat_number',
+        ]));
+    }
+
+    public function test_admin_company_fiscal_identity_update_records_old_new_audit_event(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $originalIdentity = $this->company->only([
+            'legal_name',
+            'tax_id',
+            'registration_number',
+            'vat_number',
+        ]);
+
+        $response = $this->actingAs($admin)->putJson("/api/v1/companies/{$this->company->id}", [
+            'legal_name' => 'Updated Company Legal Name',
+            'tax_id' => 'TN1234567A',
+            'registration_number' => 'REG-123',
+            'vat_number' => 'VAT-123',
+        ]);
+
+        $response->assertOk();
+
+        $auditEvent = AuditEvent::query()
+            ->where('event_type', 'company.fiscal_identity_updated')
+            ->where('company_id', $this->company->id)
+            ->first();
+
+        $this->assertNotNull($auditEvent);
+        $this->assertSame('company', $auditEvent->aggregate_type);
+        $this->assertSame($this->company->id, $auditEvent->aggregate_id);
+        $this->assertEquals([
+            'legal_name' => ['old' => $originalIdentity['legal_name'], 'new' => 'Updated Company Legal Name'],
+            'tax_id' => ['old' => $originalIdentity['tax_id'], 'new' => 'TN1234567A'],
+            'registration_number' => ['old' => $originalIdentity['registration_number'], 'new' => 'REG-123'],
+            'vat_number' => ['old' => $originalIdentity['vat_number'], 'new' => 'VAT-123'],
+        ], $auditEvent->payload['changes']);
     }
 
     // ── PUT /companies/{id}/reservation-settings (sibling finding) ─────

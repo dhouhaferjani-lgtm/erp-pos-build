@@ -498,6 +498,7 @@ class RolesAndPermissionsSeeder extends Seeder
             // System
             'settings.view',
             'settings.update',
+            'settings.fiscal.update',
             'settings.manage',
             'audit.view',
             'imports.manage',

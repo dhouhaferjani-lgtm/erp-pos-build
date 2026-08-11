@@ -93,6 +93,15 @@
       "dateFormat": "Date Format",
       "language": "Language"
     },
+    "identity": {
+      "immutableHint": "Country and currency are fixed after provisioning. Contact support if either value was set incorrectly.",
+      "fiscalPermissionHint": "You need fiscal settings permission to change the legal name, tax ID, or registration number.",
+      "confirmation": {
+        "title": "Confirm fiscal identity change",
+        "message": "These details identify the company on fiscal and legal records. Confirm that the new values are correct before saving.",
+        "confirm": "Confirm and save"
+      }
+    },
     "modal": {
       "title": "Add New Company",
       "subtitle": "Set up your company profile in a few simple steps",

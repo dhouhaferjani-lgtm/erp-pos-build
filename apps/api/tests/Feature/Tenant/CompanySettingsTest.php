@@ -205,22 +205,109 @@ class CompanySettingsTest extends TestCase
             ->withHeader('X-Company-Id', $this->company->id)
             ->patchJson('/api/v1/settings/company', [
                 'tax_id' => '7654321BM000',
-                'currency_code' => 'TND',
                 'address' => [
                     'street' => 'Rue de Marseille',
                     'city' => 'Sfax',
                     'postal_code' => '3000',
-                    'country' => 'TN',
                 ],
             ]);
 
         $response->assertOk();
         $company = $this->company->fresh();
         $this->assertSame('7654321BM000', $company->tax_id);
-        $this->assertSame('TND', $company->currency);
+        $this->assertSame('EUR', $company->currency);
+        $this->assertSame('FR', $company->country_code);
         $this->assertSame('Rue de Marseille', $company->address_street);
         $this->assertSame('Sfax', $company->address_city);
         $this->assertSame($tenantBefore, $this->tenant->fresh()->only(['tax_id', 'currency_code', 'name', 'address']));
+    }
+
+    public function test_country_code_is_immutable_after_provisioning(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Must Not Persist',
+                'country_code' => 'TN',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['country_code'])
+            ->assertJsonPath(
+                'error.errors.country_code.0',
+                'The company country is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertSame('Test Company', $this->company->name);
+    }
+
+    public function test_address_country_alias_is_immutable_after_provisioning_in_french(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->withHeader('X-Language', 'fr')
+            ->patchJson('/api/v1/settings/company', [
+                'address' => [
+                    'street' => 'Must Not Persist',
+                    'country' => 'TN',
+                ],
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['address.country']);
+        $this->assertSame(
+            "Le pays de la société est fixé lors de sa création. Toute correction nécessite une procédure d'exploitation du support qui n'est pas encore disponible.",
+            $response->json('error.errors')['address.country'][0],
+        );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertNull($this->company->address_street);
+    }
+
+    public function test_currency_is_immutable_after_provisioning(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'phone' => '+216 00 000 000',
+                'currency_code' => 'TND',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['currency_code'])
+            ->assertJsonPath(
+                'error.errors.currency_code.0',
+                'The company currency is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame('EUR', $this->company->currency);
+        $this->assertNull($this->company->phone);
+    }
+
+    public function test_idempotent_identity_values_allow_cosmetic_settings_update(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Updated Safely',
+                'country_code' => 'FR',
+                'currency_code' => 'EUR',
+                'address' => [
+                    'street' => '1 Rue de la Paix',
+                    'country' => 'FR',
+                ],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'Updated Safely')
+            ->assertJsonPath('data.country_code', 'FR')
+            ->assertJsonPath('data.currency_code', 'EUR');
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertSame('EUR', $this->company->currency);
+        $this->assertSame('1 Rue de la Paix', $this->company->address_street);
     }
 
     public function test_update_persists_line_designation_override_setting(): void
@@ -331,6 +418,171 @@ class CompanySettingsTest extends TestCase
         $this->assertEquals('Updated Company Name', $this->company->name);
         $this->assertEquals('Updated Legal Name SARL', $this->company->legal_name);
         $this->assertEquals('Europe/London', $this->company->timezone);
+    }
+
+    public function test_fiscal_settings_permission_is_seeded_to_admin_only(): void
+    {
+        $this->assertTrue($this->adminUser->can('settings.fiscal.update'));
+        $this->assertFalse($this->viewerUser->can('settings.fiscal.update'));
+    }
+
+    public function test_cosmetic_editor_can_update_cosmetic_settings_without_fiscal_permission(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Cosmetic Name',
+                'phone' => '+33 1 02 03 04 05',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'Cosmetic Name')
+            ->assertJsonPath('data.phone', '+33 1 02 03 04 05');
+    }
+
+    public function test_cosmetic_editor_cannot_update_fiscal_identity_in_french(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->withHeader('X-Language', 'fr')
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Must Not Persist',
+                'legal_name' => 'Identité Interdite SARL',
+                'tax_id' => 'FR00000000000',
+            ]);
+
+        $response->assertForbidden()
+            ->assertJsonPath('error.code', 'FORBIDDEN')
+            ->assertJsonPath(
+                'error.message',
+                "Vous n'avez pas l'autorisation de modifier l'identité fiscale de la société.",
+            );
+
+        $this->company->refresh();
+        $this->assertSame('Test Company', $this->company->name);
+        $this->assertSame('Test Company SARL', $this->company->legal_name);
+        $this->assertNull($this->company->tax_id);
+    }
+
+    public function test_immutable_country_validation_precedes_fiscal_permission_check(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'country_code' => 'TN',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['country_code'])
+            ->assertJsonPath(
+                'error.errors.country_code.0',
+                'The company country is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+    }
+
+    public function test_mixed_fiscal_and_immutable_payload_without_fiscal_permission_persists_nothing(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'legal_name' => 'Must Not Persist SARL',
+                'country_code' => 'TN',
+            ]);
+
+        $this->assertJsonValidationErrors($response, ['country_code'])
+            ->assertJsonPath(
+                'error.errors.country_code.0',
+                'The company country is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
+            );
+
+        $this->company->refresh();
+        $this->assertSame('FR', $this->company->country_code);
+        $this->assertSame('Test Company SARL', $this->company->legal_name);
+    }
+
+    public function test_idempotent_fiscal_identity_values_do_not_require_fiscal_permission(): void
+    {
+        $editor = $this->createCosmeticEditor();
+
+        $response = $this->actingAs($editor, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'name' => 'Safe Resubmission',
+                'legal_name' => 'Test Company SARL',
+                'tax_id' => null,
+                'registration_number' => null,
+                'country_code' => 'FR',
+                'currency_code' => 'EUR',
+                'address' => ['country' => 'FR'],
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.name', 'Safe Resubmission');
+    }
+
+    public function test_fiscal_identity_update_records_dedicated_old_new_audit_event(): void
+    {
+        $response = $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->patchJson('/api/v1/settings/company', [
+                'legal_name' => 'Audited Legal Name SARL',
+                'tax_id' => 'FR12345678901',
+                'registration_number' => 'RCS 123 456 789',
+            ]);
+
+        $response->assertOk();
+
+        $auditEvent = AuditEvent::query()
+            ->where('event_type', 'company.fiscal_identity_updated')
+            ->where('company_id', $this->company->id)
+            ->first();
+
+        $this->assertNotNull($auditEvent);
+        $this->assertSame('company', $auditEvent->aggregate_type);
+        $this->assertSame($this->company->id, $auditEvent->aggregate_id);
+        $this->assertEquals([
+            'legal_name' => ['old' => 'Test Company SARL', 'new' => 'Audited Legal Name SARL'],
+            'tax_id' => ['old' => null, 'new' => 'FR12345678901'],
+            'registration_number' => ['old' => null, 'new' => 'RCS 123 456 789'],
+        ], $auditEvent->payload['changes']);
+    }
+
+    public function test_audit_write_failure_rolls_back_company_update(): void
+    {
+        $originalLegalName = $this->company->legal_name;
+        AuditEvent::creating(static function (): void {
+            throw new \RuntimeException('Forced audit write failure.');
+        });
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->actingAs($this->adminUser, 'sanctum')
+                ->withHeader('X-Company-Id', $this->company->id)
+                ->patchJson('/api/v1/settings/company', [
+                    'legal_name' => 'Must Roll Back SARL',
+                ]);
+
+            $this->fail('Expected the forced audit write failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Forced audit write failure.', $exception->getMessage());
+        }
+
+        $this->company->refresh();
+        $this->assertSame($originalLegalName, $this->company->legal_name);
+        $this->assertDatabaseMissing('audit_events', [
+            'company_id' => $this->company->id,
+            'event_type' => 'company.fiscal_identity_updated',
+        ]);
     }
 
     public function test_can_update_address(): void
@@ -524,6 +776,29 @@ class CompanySettingsTest extends TestCase
         $this->assertEquals('Original Name', $this->company->name); // Unchanged
         $this->assertEquals('+33 2 22 22 22 22', $this->company->phone); // Changed
         $this->assertEquals('Europe/Paris', $this->company->timezone); // Unchanged
+    }
+
+    private function createCosmeticEditor(): User
+    {
+        $editor = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Cosmetic Editor',
+            'email' => 'cosmetic-editor@example.com',
+            'password' => 'Password1!',
+            'status' => UserStatus::Active,
+        ]);
+        $editor->givePermissionTo('settings.update');
+
+        UserCompanyMembership::create([
+            'user_id' => $editor->id,
+            'company_id' => $this->company->id,
+            'role' => MembershipRole::Owner,
+            'is_primary' => true,
+            'status' => MembershipStatus::Active,
+            'accepted_at' => now(),
+        ]);
+
+        return $editor;
     }
 
     // ==================== LOGO Upload Tests ====================
