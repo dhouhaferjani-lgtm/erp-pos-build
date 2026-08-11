@@ -41,10 +41,10 @@ milestones:
     # post-cutover is a hard gate item. Atomic cutover membership unchanged. Resume M1.
     status: in_progress
     fix_rounds: 2
-    commit: 1f3d7c6ef302af64a85cf6979e67a0109cfba52a
+    commit: c4230baf2588f6bfa34df6353596ff476f3cae7b
     verdict: docs/handoff/reviews/wave3-3c-3d/M1-round2.md
     last_verdict: CHANGES-REQUIRED
-    updated: 1a8ff2819
+    updated: c4230baf2
   - id: M2
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
