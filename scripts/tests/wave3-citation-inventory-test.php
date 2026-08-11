@@ -38,6 +38,15 @@ try {
         'SalesOrderToInvoiceConverter:334',
         'InvoicedBeforeDeliveryScanner:84',
         'DeliveryConfirmationModal:74',
+        '2026_06_26_120000:45-47',
+        '2026_07_12_100000:23-25',
+        '2026_07_28_100200:126-128',
+        '2026_07_28_100200:132-134',
+        '2026_08_08_120100:41-43',
+        '2026_07_08_100400:36-38',
+        '2025_12_12_120002:19',
+        '2026_04_19_130002:132',
+        'validateDeliveryCompliance:605',
     ] as $required) {
         if (!in_array($required, $citations, true)) {
             throw new RuntimeException("Missing extensionless citation: {$required}");
@@ -55,6 +64,7 @@ try {
         'ReturnScrapWriteOffService.php:216-227' => ['217-226', 'comment'],
         'GeneralLedgerService.php:4444' => ['4708', 'statement'],
         'DocumentPostingService.php:605' => ['403', 'statement'],
+        'validateDeliveryCompliance:605' => ['403', 'statement'],
         'DocumentPostingService.php:616-620' => ['79-95', 'statement'],
         'DocumentPostingService.php:621-624' => ['79', 'statement'],
         'DocumentPostingService.php:623-624' => ['79', 'statement'],
@@ -65,6 +75,7 @@ try {
         'SalesOrderService.php:118' => ['124-127', 'statement'],
         'GoodsReceiptService.php:543-552' => ['582-593', 'statement'],
         'PosCoreReceiptProjection.php:1767-1787' => ['1861-1887', 'statement'],
+        'database/seeders/ParapharmacySeeder.php:971' => ['977-979', 'comment'],
     ];
     foreach ($expectedAnchors as $citation => [$expectedLine, $expectedKind]) {
         $row = current(array_filter(
@@ -83,6 +94,7 @@ try {
         'UndeliveredGoodsLineScanner:100',
         'DeliveryConfirmationModal:74',
         'DocumentPostingService.php:605',
+        'validateDeliveryCompliance:605',
         'DocumentPostingService.php:616-620',
         'DocumentPostingService.php:621-624',
         'DocumentPostingService.php:623-624',
@@ -102,6 +114,15 @@ try {
     sort($actualManualRelocations);
     if ($actualManualRelocations !== $expectedManualRelocations) {
         throw new RuntimeException('Manual relocation table is not fully pinned: '.json_encode($actualManualRelocations));
+    }
+
+    $treasuryIndex = current(array_filter(
+        $rows,
+        static fn (array $row): bool => $row['citation'] === '2026_07_12_100000:23-25',
+    ));
+    if (!is_array($treasuryIndex)
+        || !str_ends_with($treasuryIndex['resolved_path'], '2026_07_12_100000_unique_journal_entries_source_treasury_transfer.php')) {
+        throw new RuntimeException('Ambiguous migration prefix did not resolve to the plan-context treasury index.');
     }
 
     foreach ([

@@ -23,12 +23,12 @@ owner_gates:
 
 milestones:
   - id: M0
-    title: "Preflight — citation inventory (fail on unresolved>0), D-19 register (18/10/3/4), V-10 fix, WAC-float check, N-2 data probe, ticket presence"
+    title: "Preflight — citation inventory (fail on unresolved>0), D-19 register (18/10/3/4), WAC-float check, N-2 data probe, ticket presence"
     review_lenses: [inventory-costing, fiscal-pos]
     status: review
-    fix_rounds: 4
-    commit: 06ebab27d73251cf9b66dc2e1ddff85dcbbcb583
-    verdict: docs/handoff/reviews/wave3-3c-3d/M0-round4.md
+    fix_rounds: 5
+    commit: 1d16e5e2c4beede334ea0e52e299bac41c1356c8
+    verdict: docs/handoff/reviews/wave3-3c-3d/M0-round5.md
     last_verdict: CHANGES-REQUIRED
   - id: M1
     title: "3C seam infra: T11, T11e, T12, T13, T11c (ten lock-order pairs) + T15a (pre-cutover) + T16c audit (negative branch inapplicable) + V-10 narrow fix"
