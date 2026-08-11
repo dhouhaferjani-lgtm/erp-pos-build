@@ -43,3 +43,25 @@ Round-5 revert/replay: revert `e45248fdf` dropped the corpus to 256 and made the
 M0 gate: round 6 independently reproduced the 266-row corpus, exercised relocation-pin mutations, re-derived C-2/C-3 depths, and returned `ACCEPT`. M0 is passed; M1 begins from the accepted evidence register.
 
 Deviation discovered and resolved in the execution model: `RefundService` currently calls `ReturnNoteService::confirmWithin()` at transaction depth 1, while D-28 states depth 2. M2 will add the implied inner savepoint at that call before the writer-tail flush and retain C-2's root-tail flush. This aligns runtime depth with the settled architecture without changing the domain transition or lock set.
+
+## M1 — stopped on architecture contradiction
+
+Partial implementation is preserved at `abb3018efd9b582ad788f7162271c940192a0f62`. It contains the movement-keyed GL DTO/buffer/service, scoped lifecycle and rollback reset, `absoluteDeltaForRow`, source-type constant and partial unique migration, explicit journal mappings, static buffer-only/I-2 rules, original-exit return-cost resolver and payload recording, and V-10's location carry plus typed FEFO refusal. This is not represented as a passed milestone.
+
+T16c audit result: **negative branch inapplicable**. The interactive return loop routes `Scrap` to `applyScrapPair` (`ReceiptReturnService.php:435-449`). That method opens one savepoint and calls `restoreStock` followed by `ReturnScrapWriteOffService::writeOff` (`:1394-1422`), with a shared catch that rethrows retryable concurrency faults and contains other failures (`:1423-1441`). The symmetric pair is therefore live. M2 must apply D-23/T16d buffering to this interactive pair as well as the projection pair.
+
+Verification run immediately before the stop:
+
+- PostgreSQL `InventoryGlPostingSeamTest`: `3 passed (19 assertions)`; covers one-rounding arithmetic (`3 × 1.6666666 = 5.000` at TND scale), Posted/balanced/idempotent entry, persisted partial-index predicate, `23505`, root rollback reset, and a named `connectionsToTransact(): []` leak-alarm mechanism.
+- `StandaloneInvoiceGuidedDeliveryTest`: `11 passed (43 assertions)`, including source-line location preservation and `FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH` with no draft DN or movement left behind.
+- `ReturnCostBasisResolverTest` + `ReturnNoteConfirmSealAndPeriodTest`: `11 passed (37 assertions)`; FIFO weighted exit basis, stable movement ids, honest current-cost fallback, and existing RN period/seal behavior.
+- inventory unit paths: `7 passed (15 assertions)`.
+- PHPStan level 8 on touched seam/accounting/document files: `[OK] No errors`.
+- Pint on all touched PHP files: completed successfully.
+- Deterministic two-connection PostgreSQL sensitivity probe: `session_a_sqlstate=40P01`, `session_b_sqlstate=00000`, proving the reversed-lock instrument detects the required failure class rather than green-by-vacuum.
+
+### Harness STOP C
+
+The brief makes T11c (all ten pairs) part of M1 and says pairs 7/8 become green through T16d and pairs 9/10 through T16e; if any pair cannot be green, 3C must stop (`CODEX-DISPATCH-wave3-3c-3d-2026-08-10.md:381-390`). The authoritative plan says the same (`plan-wave3.md:2724-2738`). But the brief simultaneously requires T16d and T16e to remain in M2's single indivisible cutover commit (`CODEX-DISPATCH-wave3-3c-3d-2026-08-10.md:399-406`), and the plan says T16d/T16e ship in that cutover and may not be separately deployable (`plan-wave3.md:2910-2929`, `:2947-2977`, `:2979-2983`).
+
+There is no compliant M1 state: moving T16d/T16e earlier violates the atomic cutover invariant; leaving them in M2 makes M1's required ten-pair green gate impossible. Per `SELF-REVIEW-HARNESS.md` STOP C, no adversarial M1 register was invoked because the milestone could not reach the implement-green-review boundary. The required owner/orchestrator action is to re-sequence the gate, most naturally by accepting pairs 7-10's red-before evidence in M1 and requiring their green-after evidence as part of M2.
