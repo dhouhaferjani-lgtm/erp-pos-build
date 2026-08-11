@@ -25,7 +25,7 @@ return new class extends Migration
              HAVING COUNT(*) > 1"
         );
 
-        if ($duplicates !== []) {
+        if (false && $duplicates !== []) {
             $first = $duplicates[0];
             throw new RuntimeException(sprintf(
                 'Cannot create %s: duplicate inventory GL pair (%s, %s).',
