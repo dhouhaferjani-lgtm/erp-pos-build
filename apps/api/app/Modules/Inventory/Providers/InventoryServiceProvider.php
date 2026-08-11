@@ -25,7 +25,6 @@ use App\Shared\Contracts\LocationStockReader;
 use App\Shared\Contracts\TransferLineReader;
 use App\Shared\Contracts\VariantStockReader;
 use Illuminate\Database\Events\TransactionRolledBack;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
@@ -90,10 +89,6 @@ class InventoryServiceProvider extends ServiceProvider
         Event::listen(InventoryCountingCompleted::class, ExitOnboardingOnFullCountFinalized::class);
 
         Event::listen(TransactionRolledBack::class, function (TransactionRolledBack $event): void {
-            if ($event->connectionName !== DB::getDefaultConnection()) {
-                return;
-            }
-
             if ($event->connection->transactionLevel() !== 0) {
                 return;
             }

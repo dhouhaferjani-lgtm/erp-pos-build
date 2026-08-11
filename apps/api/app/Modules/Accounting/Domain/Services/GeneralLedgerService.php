@@ -4623,9 +4623,7 @@ final class GeneralLedgerService
     public function hasInventoryMovementAccounts(string $companyId, MovementReason $reason): bool
     {
         if ($reason === MovementReason::CountCorrection) {
-            return Account::findByPurpose($companyId, SystemAccountPurpose::Inventory) !== null
-                && Account::findByPurpose($companyId, SystemAccountPurpose::InventoryShrinkageExpense) !== null
-                && Account::findByPurpose($companyId, SystemAccountPurpose::InventoryGainIncome) !== null;
+            return false;
         }
 
         return Account::findByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold) !== null
@@ -4659,6 +4657,18 @@ final class GeneralLedgerService
             return null;
         }
 
+        $existing = JournalEntry::query()
+            ->where('source_type', $sourceType)
+            ->where('source_id', $movementId)
+            ->with('lines')
+            ->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
+        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+        $counterAccount = $this->getAccountByPurpose($companyId, $counterPurpose);
+
         $user = null;
         if ($postedByUserId !== null) {
             $user = User::query()->find($postedByUserId);
@@ -4670,23 +4680,6 @@ final class GeneralLedgerService
                 ]);
             }
         }
-
-        $existing = JournalEntry::query()
-            ->where('source_type', $sourceType)
-            ->where('source_id', $movementId)
-            ->with('lines')
-            ->first();
-        if ($existing !== null) {
-            if ($postSynchronously && $existing->status !== JournalEntryStatus::Posted) {
-                $this->postEntryNow($existing, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
-                $existing->refresh()->load('lines');
-            }
-
-            return $existing;
-        }
-
-        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
-        $counterAccount = $this->getAccountByPurpose($companyId, $counterPurpose);
 
         $entry = DB::transaction(function () use (
             $companyId,
@@ -4805,6 +4798,9 @@ final class GeneralLedgerService
             return null;
         }
 
+        $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
+        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
+
         // Resolve the actor DEFENSIVELY. On the POS projection path the id is
         // `fiscal_events.operator_id` — a device-authored bare uuid column with no
         // FK, which this projector already treats as untrusted elsewhere. A
@@ -4825,36 +4821,10 @@ final class GeneralLedgerService
             }
         }
 
-        $existing = JournalEntry::query()
-            ->where('source_type', 'batch_write_off')
-            ->where('source_id', $movementId)
-            ->with('lines')
-            ->first();
-        if ($existing !== null) {
-            if ($postSynchronously && $existing->status !== JournalEntryStatus::Posted) {
-                $this->postEntryNow($existing, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
-                $existing->refresh()->load('lines');
-            }
-
-            return $existing;
-        }
-
-        $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
-        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
-
         $entry = DB::transaction(function () use (
             $companyId, $batchNumber, $amount, $reason, $movementId,
             $cogsAccount, $inventoryAccount
         ): JournalEntry {
-            $existing = JournalEntry::query()
-                ->where('source_type', 'batch_write_off')
-                ->where('source_id', $movementId)
-                ->with('lines')
-                ->first();
-            if ($existing !== null) {
-                return $existing;
-            }
-
             $entryNumber = $this->generateEntryNumber($companyId);
             $company = Company::findOrFail($companyId);
 
@@ -4895,7 +4865,7 @@ final class GeneralLedgerService
             return $entry->load('lines');
         });
 
-        if ($postSynchronously && $entry->status !== JournalEntryStatus::Posted) {
+        if ($postSynchronously) {
             // Seal + persist in the caller's transaction: the entry and the stock
             // movement commit or roll back as ONE unit, and the chain advisory lock
             // is actually effective (it only is inside an explicit transaction).
@@ -4952,29 +4922,12 @@ final class GeneralLedgerService
 
         $wasPosted = $original->status === JournalEntryStatus::Posted;
 
-        $existing = JournalEntry::query()
-            ->where('company_id', $companyId)
-            ->where('source_type', 'batch_write_off_reversal')
-            ->where('source_id', $reversalMovementId)
-            ->with('lines')
-            ->first();
-
         $user = null;
         if ($wasPosted && $postedByUserId !== null) {
             $user = User::query()->findOrFail($postedByUserId);
         }
 
-        $entry = $existing ?? DB::transaction(function () use ($companyId, $original, $reversalMovementId): JournalEntry {
-            $existing = JournalEntry::query()
-                ->where('company_id', $companyId)
-                ->where('source_type', 'batch_write_off_reversal')
-                ->where('source_id', $reversalMovementId)
-                ->with('lines')
-                ->first();
-            if ($existing !== null) {
-                return $existing;
-            }
-
+        $entry = DB::transaction(function () use ($companyId, $original, $reversalMovementId): JournalEntry {
             $company = Company::findOrFail($companyId);
             $entryNumber = $this->generateEntryNumber($companyId);
 
@@ -5009,8 +4962,8 @@ final class GeneralLedgerService
 
         // Mirror the original's posted status. Post synchronously (not afterCommit)
         // so the reversal status is deterministic in the caller's transaction.
-        if ($wasPosted && $entry->status !== JournalEntryStatus::Posted) {
-            $this->postEntryNow($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+        if ($user !== null) {
+            $this->postEntry($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
             $entry->refresh()->load('lines');
         }
 
