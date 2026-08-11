@@ -49,7 +49,7 @@ final class InventoryPaymentRepositoryLockDisjointness implements Rule
         ];
     }
 
-    /** @param list<Node> $nodes */
+    /** @param array<Node> $nodes */
     private function containsString(array $nodes, string $value): bool
     {
         foreach ($nodes as $candidate) {
@@ -61,7 +61,7 @@ final class InventoryPaymentRepositoryLockDisjointness implements Rule
         return false;
     }
 
-    /** @param list<Node> $nodes */
+    /** @param array<Node> $nodes */
     private function containsMethodCall(array $nodes, string $method): bool
     {
         foreach ($nodes as $candidate) {
@@ -75,7 +75,7 @@ final class InventoryPaymentRepositoryLockDisjointness implements Rule
         return false;
     }
 
-    /** @param list<Node> $nodes */
+    /** @param array<Node> $nodes */
     private function containsName(array $nodes, string $shortName): bool
     {
         foreach ($nodes as $candidate) {
