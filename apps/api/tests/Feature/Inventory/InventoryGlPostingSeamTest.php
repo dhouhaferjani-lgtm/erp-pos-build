@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\PeriodStatus;
 use App\Modules\Company\Domain\FiscalPeriod;
@@ -105,6 +106,173 @@ final class InventoryGlPostingSeamTest extends TestCase
         }
     }
 
+    public function test_entry_dispatch_debits_inventory_and_credits_cogs(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $cogs = $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $inventory = $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+
+        $posted = $this->flush($this->context(
+            $company,
+            movementId: '13131313-1313-4313-8313-131313131313',
+            kind: MovementGlKind::Entry,
+            reason: MovementReason::CustomerReturn,
+            quantityBefore: '0.0000',
+            quantityAfter: '2.0000',
+            unitCost: '2.500000',
+        ));
+
+        $entry = $posted[0]?->refresh()->load('lines');
+        $this->assertNotNull($entry);
+        $this->assertSame('inventory_entry', $entry->source_type);
+        $this->assertSame($inventory->id, $entry->lines[0]->account_id);
+        $this->assertSame('5.000', (string) $entry->lines[0]->debit);
+        $this->assertSame($cogs->id, $entry->lines[1]->account_id);
+        $this->assertSame('5.000', (string) $entry->lines[1]->credit);
+    }
+
+    public function test_count_correction_dispatch_posts_gain_and_shrinkage_directions(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $inventory = $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+        $gain = $this->account($tenant, $company, SystemAccountPurpose::InventoryGainIncome, AccountType::Revenue);
+        $shrinkage = $this->account($tenant, $company, SystemAccountPurpose::InventoryShrinkageExpense, AccountType::Expense);
+
+        $gainEntry = $this->flush($this->context(
+            $company,
+            movementId: '14141414-1414-4414-8414-141414141414',
+            kind: MovementGlKind::CountCorrection,
+            reason: MovementReason::CountCorrection,
+            quantityBefore: '1.0000',
+            quantityAfter: '3.0000',
+            unitCost: '2.500000',
+        ))[0]?->refresh()->load('lines');
+        $shrinkageEntry = $this->flush($this->context(
+            $company,
+            movementId: '15151515-1515-4515-8515-151515151515',
+            kind: MovementGlKind::CountCorrection,
+            reason: MovementReason::CountCorrection,
+            quantityBefore: '3.0000',
+            quantityAfter: '1.0000',
+            unitCost: '2.500000',
+        ))[0]?->refresh()->load('lines');
+
+        $this->assertNotNull($gainEntry);
+        $this->assertSame($inventory->id, $gainEntry->lines[0]->account_id);
+        $this->assertSame('5.000', (string) $gainEntry->lines[0]->debit);
+        $this->assertSame($gain->id, $gainEntry->lines[1]->account_id);
+        $this->assertSame('5.000', (string) $gainEntry->lines[1]->credit);
+
+        $this->assertNotNull($shrinkageEntry);
+        $this->assertSame($shrinkage->id, $shrinkageEntry->lines[0]->account_id);
+        $this->assertSame('5.000', (string) $shrinkageEntry->lines[0]->debit);
+        $this->assertSame($inventory->id, $shrinkageEntry->lines[1]->account_id);
+        $this->assertSame('5.000', (string) $shrinkageEntry->lines[1]->credit);
+    }
+
+    public function test_batch_write_off_dispatch_preserves_context_and_replays_idempotently(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $cogs = $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $inventory = $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+        $movementId = '16161616-1616-4616-8616-161616161616';
+        $context = $this->context(
+            $company,
+            movementId: $movementId,
+            kind: MovementGlKind::BatchWriteOff,
+            reason: MovementReason::WriteOff,
+            quantityBefore: '4.0000',
+            quantityAfter: '1.0000',
+            unitCost: '1.6666666',
+            batchNumber: 'LOT-M1-16',
+            productId: '17171717-1717-4717-8717-171717171717',
+        );
+
+        $first = $this->flush($context)[0]?->refresh()->load('lines');
+        $second = $this->flush($context)[0]?->refresh()->load('lines');
+
+        $this->assertNotNull($first);
+        $this->assertNotNull($second);
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame('batch_write_off', $first->source_type);
+        $this->assertStringContainsString('LOT-M1-16', $first->description);
+        $this->assertSame($cogs->id, $first->lines[0]->account_id);
+        $this->assertSame('5.000', (string) $first->lines[0]->debit);
+        $this->assertSame($inventory->id, $first->lines[1]->account_id);
+        $this->assertSame('5.000', (string) $first->lines[1]->credit);
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'batch_write_off')->where('source_id', $movementId)->count());
+
+        $gl = app(GeneralLedgerService::class);
+        $reversalId = '22222222-2222-4222-8222-222222222223';
+        [$reversal, $replayedReversal] = DB::transaction(static function () use ($gl, $company, $movementId, $reversalId): array {
+            return [
+                $gl->reverseInventoryWriteOffEntry($company->id, $movementId, $reversalId, currencyCode: 'TND'),
+                $gl->reverseInventoryWriteOffEntry($company->id, $movementId, $reversalId, currencyCode: 'TND'),
+            ];
+        });
+        $this->assertNotNull($reversal);
+        $this->assertNotNull($replayedReversal);
+        $this->assertSame($reversal->id, $replayedReversal->id);
+        $this->assertSame(JournalEntryStatus::Posted, $replayedReversal->status);
+        $this->assertSame(1, JournalEntry::query()->where('source_type', 'batch_write_off_reversal')->where('source_id', $reversalId)->count());
+    }
+
+    public function test_movement_replay_repairs_an_existing_draft_before_returning(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+        $movementId = '23232323-2323-4323-8323-232323232323';
+        $gl = app(GeneralLedgerService::class);
+
+        $draft = $gl->createInventoryMovementEntry(
+            companyId: $company->id,
+            movementId: $movementId,
+            sourceType: 'inventory_exit',
+            amount: '5.000',
+            reason: MovementReason::Delivery,
+            counterPurpose: SystemAccountPurpose::CostOfGoodsSold,
+            debitInventory: false,
+            entryDate: new \DateTimeImmutable('2026-08-10'),
+            description: 'Draft repair probe',
+            currencyCode: 'TND',
+        );
+        $this->assertSame(JournalEntryStatus::Draft, $draft?->status);
+
+        $replayed = DB::transaction(static fn (): ?JournalEntry => $gl->createInventoryMovementEntry(
+            companyId: $company->id,
+            movementId: $movementId,
+            sourceType: 'inventory_exit',
+            amount: '5.000',
+            reason: MovementReason::Delivery,
+            counterPurpose: SystemAccountPurpose::CostOfGoodsSold,
+            debitInventory: false,
+            entryDate: new \DateTimeImmutable('2026-08-10'),
+            description: 'Draft repair probe',
+            currencyCode: 'TND',
+            postSynchronously: true,
+        ));
+
+        $this->assertSame($draft?->id, $replayed?->id);
+        $this->assertSame(JournalEntryStatus::Posted, $replayed?->status);
+    }
+
     public function test_nested_flush_only_alarms_after_root_commit_and_never_posts(): void
     {
         Log::spy();
@@ -125,11 +293,20 @@ final class InventoryGlPostingSeamTest extends TestCase
 
     public function test_root_rollback_discards_contexts_before_the_next_writer(): void
     {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
         $buffer = app(InventoryGlPostingBuffer::class);
+        $rolledBackMovementId = '44444444-4444-4444-8444-444444444444';
+        $nextMovementId = '18181818-1818-4818-8818-181818181818';
 
         try {
-            DB::transaction(function () use ($buffer): void {
-                $buffer->enqueue($this->context('44444444-4444-4444-8444-444444444444'));
+            DB::transaction(function () use ($buffer, $company, $rolledBackMovementId): void {
+                $buffer->enqueue($this->context($company, movementId: $rolledBackMovementId));
                 throw new \RuntimeException('force rollback');
             });
         } catch (\RuntimeException) {
@@ -137,6 +314,61 @@ final class InventoryGlPostingSeamTest extends TestCase
         }
 
         $this->assertTrue($buffer->isEmpty());
+
+        DB::transaction(function () use ($buffer, $company, $nextMovementId): void {
+            $buffer->enqueue($this->context($company, movementId: $nextMovementId));
+            $this->assertCount(1, $buffer->flushIfOutermost());
+        });
+
+        $this->assertFalse(JournalEntry::query()->where('source_id', $rolledBackMovementId)->exists());
+        $this->assertTrue(JournalEntry::query()->where('source_id', $nextMovementId)->exists());
+    }
+
+    public function test_enqueue_performs_zero_database_queries(): void
+    {
+        $buffer = app(InventoryGlPostingBuffer::class);
+        $context = $this->context('company-id', movementId: '19191919-1919-4919-8919-191919191919');
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $buffer->enqueue($context);
+
+        $this->assertSame([], DB::getQueryLog());
+        $buffer->reset();
+        DB::disableQueryLog();
+    }
+
+    public function test_nested_savepoint_rollback_discards_only_its_frame_then_flushes_outer_context(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+        $buffer = app(InventoryGlPostingBuffer::class);
+        $outerId = '20202020-2020-4020-8020-202020202020';
+        $innerId = '21212121-2121-4121-8121-212121212121';
+
+        DB::transaction(function () use ($buffer, $company, $outerId, $innerId): void {
+            $buffer->enqueue($this->context($company, movementId: $outerId));
+            $marker = $buffer->mark();
+
+            try {
+                DB::transaction(function () use ($buffer, $company, $innerId): void {
+                    $buffer->enqueue($this->context($company, movementId: $innerId));
+                    throw new \RuntimeException('roll back savepoint');
+                });
+            } catch (\RuntimeException) {
+                $buffer->rollbackTo($marker);
+            }
+
+            $this->assertCount(1, $buffer->flushIfOutermost());
+        });
+
+        $this->assertTrue(JournalEntry::query()->where('source_id', $outerId)->exists());
+        $this->assertFalse(JournalEntry::query()->where('source_id', $innerId)->exists());
     }
 
     public function test_historical_movement_stops_before_logging_or_account_lookup(): void
@@ -414,15 +646,18 @@ final class InventoryGlPostingSeamTest extends TestCase
     private function context(
         Company|string $company,
         string $movementId = self::MOVEMENT_ID,
+        MovementGlKind $kind = MovementGlKind::Exit,
         MovementReason $reason = MovementReason::Delivery,
         string $quantityBefore = '3.0000',
         string $quantityAfter = '0.0000',
         string $unitCost = '1.6666666',
         bool $isHistorical = false,
         ?string $postedByUserId = null,
+        ?string $batchNumber = null,
+        ?string $productId = null,
     ): MovementGlContext {
         return new MovementGlContext(
-            kind: MovementGlKind::Exit,
+            kind: $kind,
             movementId: $movementId,
             companyId: is_string($company) ? $company : $company->id,
             currencyCode: 'TND',
@@ -436,6 +671,8 @@ final class InventoryGlPostingSeamTest extends TestCase
             entryDate: new \DateTimeImmutable('2026-08-10T10:00:00+00:00'),
             postedByUserId: $postedByUserId,
             isHistorical: $isHistorical,
+            batchNumber: $batchNumber,
+            productId: $productId,
         );
     }
 }

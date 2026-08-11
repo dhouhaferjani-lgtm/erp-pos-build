@@ -7,6 +7,7 @@ namespace Tests\Feature\Inventory;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Inventory\Application\DTOs\ReturnCostBasis;
 use App\Modules\Inventory\Application\Services\ReturnCostBasisResolver;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -69,6 +70,48 @@ final class ReturnCostBasisResolverTest extends TestCase
         Log::shouldHaveReceived('warning')->once()->withArgs(
             static fn (string $message): bool => str_contains($message, 'no attributable delivery exit exists'),
         );
+    }
+
+    public function test_confirm_persists_every_line_basis_and_records_return_at_that_exact_cost(): void
+    {
+        $this->dpProduct->update(['cost_price' => '12.345678']);
+        $delivery = $this->dpConfirmedDeliveryNote([$this->dpPhysicalLine('1.0000')]);
+        $invoice = $this->dpConfirmedInvoice([
+            $this->dpPhysicalLine('0.5000'),
+            $this->dpPhysicalLine('0.5000'),
+        ]);
+        $this->dpLinkConvertedShape($invoice, [$delivery]);
+        $return = $this->dpCreateDocument([
+            'type' => DocumentType::ReturnNote,
+            'status' => DocumentStatus::Draft,
+            'location_id' => $this->dpLocation->id,
+            'source_document_id' => $invoice->id,
+            'document_number' => 'RN-BASIS-PERSISTED',
+        ], [
+            $this->dpPhysicalLine('0.5000'),
+            $this->dpPhysicalLine('0.5000'),
+        ]);
+
+        $confirmed = app(ReturnNoteService::class)->confirm($return);
+
+        $records = $confirmed->payload['return_cost_basis'] ?? null;
+        $this->assertIsArray($records);
+        $this->assertCount(2, $records);
+        $this->assertSame($confirmed->lines->pluck('id')->all(), array_column($records, 'line_id'));
+        foreach ($records as $record) {
+            $this->assertSame($this->dpProduct->id, $record['product_id']);
+            $this->assertSame('0.5000', $record['quantity']);
+            $this->assertSame('12.345678', $record['unit_cost']);
+            $this->assertSame(ReturnCostBasis::SOURCE_EXIT_MOVEMENT, $record['source']);
+            $this->assertCount(1, $record['movement_ids']);
+        }
+
+        $returnMovements = StockMovement::query()
+            ->where('reference_id', $confirmed->id)
+            ->orderBy('created_at')
+            ->get();
+        $this->assertCount(2, $returnMovements);
+        $this->assertSame(['12.345678', '12.345678'], $returnMovements->pluck('unit_cost')->map(static fn ($cost): string => (string) $cost)->all());
     }
 
     private function returnNote(?Document $source, string $quantity): Document
