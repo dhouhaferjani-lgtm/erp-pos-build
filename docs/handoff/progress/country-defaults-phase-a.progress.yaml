@@ -46,8 +46,9 @@ milestones:
     status: review
     fix_rounds: 1
     commit: 76f4c536432c6c3ceb74c6f0c5b4ec89393f9fc3
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M2-round2.md
+    last_verdict: CHANGES-REQUIRED
+    updated: 211133e86
   - id: M3
     title: "defaults_editor role + EnsureCentralAdmin (central_admin alias) + route groups (minimal auth edit: only nested logout/me) + MFA feature flag + full API surface"
     review_lenses: [tenancy-authz]
