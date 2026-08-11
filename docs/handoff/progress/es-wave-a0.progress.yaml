@@ -1,0 +1,87 @@
+wave: es-wave-a0
+brief: docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+# No pre-dispatch adversarial register exists for this brief; per-milestone registers land here.
+review_register: docs/handoff/reviews/es-wave-a0/
+reviewer_model: opus
+max_fix_rounds: 5
+
+# PIN AT DISPATCH. base_sha = local dev tip at dispatch (entry gate CLOSED at round 4).
+# M0 verifies HEAD == base_sha AND the contract digest:
+#   git show <base_sha>:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | tail -n +63 | shasum -a 256
+#   expected 04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540 — mismatch ABORTS the wave.
+base_sha: null
+# Branch codex/es-wave-a0 in worktree .worktrees/es-wave-a0, created from base_sha off LOCAL dev.
+# Handback only: NOT merged, NOT pushed — the orchestrator merges after the wave completes.
+branch: null
+
+owner_gates:
+  - id: base-sha-pin
+    question: "Confirm base_sha is the local dev tip and that the ES register snapshot digest matches 04760455… (M0 verifies both)."
+    status: satisfiable_by_M0
+  - id: D-8-es06-second-approver
+    question: "ES-06: does resolving a parse failure on a SEALED fiscal event require a second approver, and is the correction recorded as a NEW correcting fiscal event rather than an in-place payload rewrite? (Handover Q1 / owner sheet D-8.) A0 ships DETECTION regardless; the workflow half is excluded until ruled."
+    blocks_milestone: none
+    status: open
+  - id: D-11-es43-signature
+    question: "ES-43: unkeyed SHA-256 vs the NF525 RSA-2048/ECDSA-256 requirement — acceptable for the TN first tenant, deferred to the FR lane, or launch-blocking? (Handover Q5 / owner sheet D-11.) ES-43 is EXCLUDED from A0's scope until answered; if it defers to FR it leaves A0's exit scope entirely. Forward-only when it lands: signature_* populated at INSERT for NEW rows only, never on a sealed row."
+    blocks_milestone: none
+    status: open
+  - id: ES-42-device-permission-grant
+    question: "ES-42: adding a can: gate to POST /pos/sync/fiscal-events is a LIVE DEVICE route. If no existing permission the device principal already holds fits, the grant (permission + role seeder + permission:cache-reset) is a policy/deploy choice, not an implementation one — STOP and ask rather than inventing it."
+    blocks_milestone: M4
+    status: conditional
+
+milestones:
+  - id: M0
+    title: "Preflight — contract digest verify (abort on mismatch), HEAD==BASE_SHA, seeded two-context v3 tenant fixture, TAMPERED-FIXTURE toolkit (T-a payload-vs-canonical_bytes, T-b previous_hash from wrong chain_context, T-c fiscal_hash mirror) built on VerifyEventChainCommandTest/ParseFailureResumeTest, narrowed ES-07 claim + do-NOT-rewrite-the-Z-arm record, citation sweep (unresolved=0)"
+    review_lenses: [fiscal-pos, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M1
+    title: "ES-08 — extend fiscal:verify-event-chain: payload<->canonical_bytes, integrity_status (quarantined-but-intact must stop reporting verified), sealed coordinates, sequence_number contiguity, fleet-wide driver preserving the actor-anchored permission gate + tenant binding. Verifier-class contract: RED on T-a and T-b, green on clean, EACH new check individually demonstrated red."
+    review_lenses: [fiscal-pos, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2
+    title: "ES-07 (NARROWED) — pos:verify-chains receipt arm reads fiscal-era rows under the correct hash shape (the whereNull carve-out is DELIBERATE: add an arm, do not delete the filter) + the pos_receipts.fiscal_hash <-> fiscal_events.current_hash mirror cross-check. The Z arm is NOT blind — out of scope beyond what the mirror requires. RED on T-c + tampered projected chain; negative control on an all-legacy tenant."
+    review_lenses: [fiscal-pos, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "ES-06 DETECTION half only (divergence on sealed rows detectable + demonstrated red; second-approver/correcting-event workflow is owner-gated D-8 -> blocked_owner if reached) + ES-16/ES-17 stragglers: implementer PROPOSES each row's verification contract, the inline reviewer APPROVES it at this milestone's review, THEN implementation."
+    review_lenses: [fiscal-pos, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M4
+    title: "Guard/constraint class — ES-09 (chain-head resolution scoped by company_id + chain_context at BOTH TerminalRegistrySnapshotService and VirtualAdminFiscalEventService, matching OutboxIngestor; stop the unconditional Verified/Parsed stamping) + ES-41 (PG-only immutability driver gate CONFIRMED; pending_seal->fiscalized branch SUSPECTED — verify before asserting) + ES-42 (can: gate, principal enumerated). Refusal contract each: red test drives the previously-accepted bad input, guard refuses, NOTHING persisted; green legitimate half in the same diff."
+    review_lenses: [fiscal-pos, treasury]
+    owner_gate: ES-42-device-permission-grant
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M5
+    title: "Program-wide ratchets + WHOLE-LANE GATE — orphaned-event CI ratchet (baseline the existing 14 dead events BY NAME, fail on the 15th) + projector-emission architecture test as a RATCHET with an enumerated skip-list (A1 has not run; a hard assertion would be a red wall), both demonstrated to bite. Whole-lane review over the integrated branch with full accumulated evidence + both lenses. Report the A0 EXIT STATEMENT."
+    review_lenses: [fiscal-pos, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []
