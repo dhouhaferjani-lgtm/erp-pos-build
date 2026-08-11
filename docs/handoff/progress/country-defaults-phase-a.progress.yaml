@@ -44,11 +44,10 @@ milestones:
     title: "Central schema (3 tables, directly in database/migrations/) + CentralConnection models + publish/assignment domain services; locks/transactions/audit-in-transaction"
     review_lenses: [tenancy-authz, treasury]
     status: review
-    fix_rounds: 0
-    commit: 7dc121e59af87a4857450ac6bd224e90ae8b5d1d
-    verdict: docs/handoff/reviews/country-defaults-phase-a/M2-round1.md
-    last_verdict: CHANGES-REQUIRED
-    updated: ac01b3e26
+    fix_rounds: 1
+    commit: 76f4c536432c6c3ceb74c6f0c5b4ec89393f9fc3
+    verdict: null
+    last_verdict: null
   - id: M3
     title: "defaults_editor role + EnsureCentralAdmin (central_admin alias) + route groups (minimal auth edit: only nested logout/me) + MFA feature flag + full API surface"
     review_lenses: [tenancy-authz]
