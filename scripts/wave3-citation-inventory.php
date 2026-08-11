@@ -76,7 +76,6 @@ foreach ($sources as $sourceName => $contents) {
         $newEnd = null;
         $symbol = null;
         $assertion = null;
-        $anchorKind = null;
 
         if ($resolved === null) {
             $status = 'unresolved';
@@ -85,12 +84,11 @@ foreach ($sources as $sourceName => $contents) {
             [$newStart, $newEnd] = mapLines($root, $resolved, $oldStart, $oldEnd);
             $absolute = str_starts_with($resolved, '/') ? $resolved : $root.'/'.$resolved;
             $lines = file($absolute, FILE_IGNORE_NEW_LINES);
-            $reference = referenceContext($root, $resolved, $oldStart, $oldEnd);
-            $expectedAnchorKind = $reference[2] ?? null;
+            $reference = referenceContext($root, $resolved, $oldStart);
             if (is_array($lines) && $reference !== null) {
                 [$expectedSymbol, $oldSymbolLine] = $reference;
                 $mappedSymbol = enclosingSymbol($lines, $newStart, $resolved);
-                if ($expectedAnchorKind !== 'comment' && $expectedSymbol !== '' && $mappedSymbol !== $expectedSymbol) {
+                if ($expectedSymbol !== '' && $mappedSymbol !== $expectedSymbol) {
                     $newSymbolLine = locateSymbolLine($lines, $expectedSymbol);
                     if ($newSymbolLine !== null) {
                         $offset = max(0, $oldStart - $oldSymbolLine);
@@ -110,24 +108,11 @@ foreach ($sources as $sourceName => $contents) {
                 $status = 'unresolved';
                 $reason = 'mapped_line_out_of_range';
             } else {
-                $anchor = locateSemanticAnchor(
-                    $lines,
-                    $newStart,
-                    $newEnd,
-                    $relocated ? 'statement' : $expectedAnchorKind,
-                    $resolved,
-                );
-                if ($anchor === null) {
+                $symbol = enclosingSymbol($lines, $newStart, $resolved);
+                $assertion = semanticAnchor($lines, $newStart, $newEnd, $symbol);
+                if ($symbol === '' || $assertion === '' || !hasExecutableAnchor($lines, $newStart, $newEnd, $resolved)) {
                     $status = 'unresolved';
                     $reason = 'missing_symbol_or_semantic_anchor';
-                } else {
-                    [$newStart, $newEnd, $anchorText, $anchorKind] = $anchor;
-                    $symbol = symbolForAnchor($lines, $newStart, $newEnd, $resolved, $anchorKind);
-                    $assertion = semanticAssertion($anchorText, $symbol, $anchorKind);
-                    if ($symbol === '' || $assertion === '') {
-                        $status = 'unresolved';
-                        $reason = 'missing_symbol_or_semantic_anchor';
-                    }
                 }
             }
         }
@@ -142,7 +127,6 @@ foreach ($sources as $sourceName => $contents) {
             $newStart === null ? '' : lineRange($newStart, $newEnd ?? $newStart),
             $symbol ?? '',
             $assertion ?? '',
-            $anchorKind ?? '',
             $status,
             $reason,
         ];
@@ -163,20 +147,16 @@ if ($handle === false) {
 
 fputcsv($handle, [
     'source', 'source_line', 'citation', 'cited_file', 'old_line', 'resolved_path',
-    'new_line', 'symbol', 'semantic_assertion', 'anchor_kind', 'status', 'reason',
+    'new_line', 'symbol', 'semantic_assertion', 'status', 'reason',
 ], ',', '"', '\\');
 foreach ($rows as $row) {
     fputcsv($handle, $row, ',', '"', '\\');
 }
 fclose($handle);
 
-$unresolved = count(array_filter($rows, static fn (array $row): bool => $row[10] === 'unresolved'));
-$relocated = count(array_filter($rows, static fn (array $row): bool => $row[10] === 'relocated'));
-$extensionless = count(array_filter($rows, static fn (array $row): bool => preg_match('/^[A-Z][A-Za-z0-9_]+:/', $row[2]) === 1));
-$fileScope = count(array_filter($rows, static fn (array $row): bool => str_contains($row[7], 'file scope')));
-$commentAnchors = count(array_filter($rows, static fn (array $row): bool => $row[9] === 'comment'));
+$unresolved = count(array_filter($rows, static fn (array $row): bool => $row[9] === 'unresolved'));
+$relocated = count(array_filter($rows, static fn (array $row): bool => $row[9] === 'relocated'));
 printf("N_extracted=%d N_mapped=%d relocated=%d unresolved=%d output=%s\n", $extracted, count($rows) - $unresolved, $relocated, $unresolved, $output);
-printf("csv_rows=%d extensionless=%d relocated=%d file_scope=%d comment_anchors=%d\n", count($rows), $extensionless, $relocated, $fileScope, $commentAnchors);
 exit($unresolved === 0 ? 0 : 1);
 
 /** @return list<string> */
@@ -255,8 +235,8 @@ function relativePath(string $root, string $absolute): string
     return str_starts_with($absolute, $prefix) ? substr($absolute, strlen($prefix)) : $absolute;
 }
 
-/** @return array{string, int, string}|null */
-function referenceContext(string $root, string $resolved, int $oldStart, int $oldEnd): ?array
+/** @return array{string, int}|null */
+function referenceContext(string $root, string $resolved, int $oldLine): ?array
 {
     if (str_starts_with($resolved, '/') || str_starts_with($resolved, '.superpowers/') || str_starts_with($resolved, 'apps/api/vendor/')) {
         return null;
@@ -270,19 +250,14 @@ function referenceContext(string $root, string $resolved, int $oldStart, int $ol
     }
 
     $lines = preg_split('/\\R/', $contents);
-    if (!is_array($lines) || $oldStart > count($lines)) {
+    if (!is_array($lines) || $oldLine > count($lines)) {
         return null;
     }
 
-    $anchor = locateSemanticAnchor($lines, $oldStart, $oldEnd, null, $resolved);
-    if ($anchor === null) {
-        return null;
-    }
-    [$anchorStart, $anchorEnd, , $anchorKind] = $anchor;
-    $symbol = symbolForAnchor($lines, $anchorStart, $anchorEnd, $resolved, $anchorKind);
-    $symbolLine = locateSymbolLine($lines, $symbol) ?? $anchorStart;
+    $symbol = enclosingSymbol($lines, $oldLine, $resolved);
+    $symbolLine = locateSymbolLine($lines, $symbol) ?? $oldLine;
 
-    return [$symbol, $symbolLine, $anchorKind];
+    return [$symbol, $symbolLine];
 }
 
 /** @param list<string> $lines */
@@ -317,9 +292,13 @@ function applyRelocation(string $citedFile, string $lineSpec, string $resolved, 
         'InvoiceController.php:910-919' => [
             'apps/api/app/Modules/Document/Presentation/Controllers/InvoiceController.php', 669, 674,
         ],
+        // The old resolver range guarded null product ids; retain that executable guard.
+        'DeliveredQuantityResolver:399-402' => [
+            'apps/api/app/Modules/Document/Domain/Services/DeliveredQuantityResolver.php', 521, 523,
+        ],
         // These scanners were added after the plan reference and need current semantic addresses.
         'InvoicedBeforeDeliveryScanner:84' => [
-            'apps/api/app/Modules/Compliance/Services/InvoicedBeforeDeliveryScanner.php', 95, 100,
+            'apps/api/app/Modules/Compliance/Services/InvoicedBeforeDeliveryScanner.php', 92, 100,
         ],
         'UndeliveredGoodsLineScanner:100' => [
             'apps/api/app/Modules/Compliance/Services/UndeliveredGoodsLineScanner.php', 127, 127,
@@ -327,6 +306,22 @@ function applyRelocation(string $citedFile, string $lineSpec, string $resolved, 
         // The cited FE concern is the current parseFloat call, not a mapped JSX fragment.
         'DeliveryConfirmationModal:74' => [
             'apps/web/src/features/documents/components/DeliveryConfirmationModal.tsx', 74, 74,
+        ],
+        // Comment-only citations are carried onto the executable behavior they explain.
+        'WorkOrderInvoiceDeliveryExemptionTest:40-44' => [
+            'apps/api/tests/Feature/Document/WorkOrderInvoiceDeliveryExemptionTest.php', 97, 101,
+        ],
+        'RefundService.php:1094-1099' => [
+            'apps/api/app/Modules/Document/Domain/Services/RefundService.php', 1141, 1143,
+        ],
+        'GeneralLedgerService.php:3248-3255' => [
+            'apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php', 3521, 3522,
+        ],
+        'PosCoreReceiptProjection.php:1913-1922' => [
+            'apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php', 2068, 2070,
+        ],
+        'ReturnScrapWriteOffService.php:218-227' => [
+            'apps/api/app/Modules/POS/Application/Services/ReturnScrapWriteOffService.php', 214, 214,
         ],
     ];
 
@@ -513,142 +508,6 @@ function executableAnchor(array $lines, int $start, int $end): ?string
     }
 
     return null;
-}
-
-/**
- * @param list<string> $lines
- * @return array{int, int, string, string}|null
- */
-function locateSemanticAnchor(array $lines, int $start, int $end, ?string $preferredKind, string $path): ?array
-{
-    if (str_ends_with($path, '.md')) {
-        for ($line = $start; $line <= min(count($lines), max($start, $end)); $line++) {
-            if (trim($lines[$line - 1]) !== '') {
-                return [$line, $line, trim($lines[$line - 1]), 'document'];
-            }
-        }
-
-        return null;
-    }
-
-    $start = max(1, $start);
-    $end = min(count($lines), max($start, $end));
-    $first = trim($lines[$start - 1]);
-    $commentPreferred = $preferredKind === 'comment'
-        || ($preferredKind === null && isCommentLine($first));
-
-    if ($commentPreferred) {
-        $commentStart = $start;
-        if (str_starts_with($first, '//') && $start > 1 && str_starts_with(trim($lines[$start - 2]), '//')) {
-            $commentStart--;
-        }
-
-        $commentLines = [];
-        $commentEnd = $commentStart - 1;
-        for ($line = $commentStart; $line <= $end; $line++) {
-            $value = trim($lines[$line - 1]);
-            if ($value === '') {
-                continue;
-            }
-            if (!isCommentLine($value)) {
-                break;
-            }
-            $commentLines[] = $value;
-            $commentEnd = $line;
-        }
-        if ($commentLines !== []) {
-            return [$commentStart, $commentEnd, implode(' ', $commentLines), 'comment'];
-        }
-    }
-
-    $to = min(count($lines), max($end, $start + 6));
-    for ($line = $start; $line <= $to; $line++) {
-        $value = trim($lines[$line - 1]);
-        if (isStatementLine($value)) {
-            return [$line, max($line, $end), $value, 'statement'];
-        }
-    }
-
-    for ($line = max(1, $start - 2); $line < $start; $line++) {
-        $value = trim($lines[$line - 1]);
-        if (isStatementLine($value)) {
-            return [$line, $line, $value, 'statement'];
-        }
-    }
-
-    return null;
-}
-
-function isCommentLine(string $value): bool
-{
-    return preg_match('/^(?:\/\*|\*|\/\/|\{\/\*)/', $value) === 1;
-}
-
-function isStatementLine(string $value): bool
-{
-    return $value !== ''
-        && !isCommentLine($value)
-        && preg_match('/^[{}\]();,]+$/', $value) !== 1
-        && preg_match('/^(?:<>|<\/>|}>|<)$/', $value) !== 1;
-}
-
-/** @param list<string> $lines */
-function symbolForAnchor(array $lines, int $start, int $end, string $path, string $anchorKind): string
-{
-    if ($anchorKind === 'comment') {
-        $value = trim($lines[$start - 1]);
-        if (str_starts_with($value, '*') || str_starts_with($value, '/*')) {
-            for ($index = $end; $index < min(count($lines), $end + 100); $index++) {
-                if (preg_match('/^\s*(?:(?:public|protected|private|static|final|abstract)\s+)*function\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/', $lines[$index], $match)) {
-                    return $match[1].'()';
-                }
-                if (preg_match('/^\s*(?:(?:final|abstract|readonly)\s+)*(?:class|enum|interface|trait)\s+([A-Za-z_][A-Za-z0-9_]*)/', $lines[$index], $match)) {
-                    return $match[1];
-                }
-            }
-        }
-    }
-
-    return enclosingSymbol($lines, $start, $path);
-}
-
-function semanticAssertion(string $anchor, string $symbol, string $anchorKind): string
-{
-    if ($symbol === '') {
-        return '';
-    }
-
-    $text = mb_substr(preg_replace('/\s+/', ' ', trim($anchor)) ?? '', 0, 280);
-    if ($anchorKind === 'document') {
-        return $symbol.' states the mapped obligation: `'.$text.'`';
-    }
-    if ($anchorKind === 'comment') {
-        $clean = trim(preg_replace('/^(?:(?:\/\*+)|(?:\*+)|(?:\/\/)|(?:\{\/\*))\s*/', '', $text) ?? $text);
-        return $symbol.' documents the cited invariant: `'.$clean.'`';
-    }
-    if (preg_match('/\bthrow\b/', $text) === 1) {
-        return $symbol.' refuses the cited condition by throwing at `'.$text.'`';
-    }
-    if (preg_match('/\breturn\b/', $text) === 1) {
-        return $symbol.' returns the cited result at `'.$text.'`';
-    }
-    if (preg_match('/\bcase\s+([A-Za-z_][A-Za-z0-9_]*)/', $text, $match) === 1) {
-        return $symbol.' defines enum case '.$match[1].' at `'.$text.'`';
-    }
-    if (preg_match('/\bfunction\s+([A-Za-z_][A-Za-z0-9_]*)/', $text, $match) === 1) {
-        return $symbol.' declares callable '.$match[1].' at `'.$text.'`';
-    }
-    if (preg_match('/(?:->|::)([A-Za-z_][A-Za-z0-9_]*)\s*\(/', $text, $match) === 1) {
-        return $symbol.' invokes '.$match[1].'() for the cited behavior at `'.$text.'`';
-    }
-    if (preg_match('/\$([A-Za-z_][A-Za-z0-9_]*)\s*=/', $text, $match) === 1) {
-        return $symbol.' assigns $'.$match[1].' for the cited behavior at `'.$text.'`';
-    }
-    if (preg_match('/^if\s*\(/', $text) === 1) {
-        return $symbol.' guards the cited behavior with `'.$text.'`';
-    }
-
-    return $symbol.' performs the mapped domain/configuration statement `'.$text.'`';
 }
 
 function lineRange(int $start, int $end): string

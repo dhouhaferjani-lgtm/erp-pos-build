@@ -26,9 +26,9 @@ milestones:
     title: "Preflight — citation inventory (fail on unresolved>0), D-19 register (18/10/3/4), V-10 fix, WAC-float check, N-2 data probe, ticket presence"
     review_lenses: [inventory-costing, fiscal-pos]
     status: review
-    fix_rounds: 3
-    commit: 7609d2ae226dcedc150c13b2b6e28cc76eb7455a
-    verdict: docs/handoff/reviews/wave3-3c-3d/M0-round3.md
+    fix_rounds: 2
+    commit: 78933f51ec9d135e52365003fd4e9792ddb9cec9
+    verdict: docs/handoff/reviews/wave3-3c-3d/M0-round2.md
     last_verdict: CHANGES-REQUIRED
   - id: M1
     title: "3C seam infra: T11, T11e, T12, T13, T11c (ten lock-order pairs) + T15a (pre-cutover) + T16c audit (negative branch inapplicable) + V-10 narrow fix"
