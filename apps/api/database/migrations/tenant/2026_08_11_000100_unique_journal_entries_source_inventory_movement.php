@@ -12,6 +12,10 @@ return new class extends Migration
 
     public function up(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         $types = $this->quotedTypes();
         $duplicates = DB::select(
             "SELECT source_type, source_id, COUNT(*) AS duplicate_count
@@ -39,6 +43,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::statement('DROP INDEX IF EXISTS '.self::INDEX);
     }
 
