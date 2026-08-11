@@ -98,7 +98,10 @@ foreach ($sources as $sourceName => $contents) {
                 }
             }
 
-            [$resolved, $newStart, $newEnd] = applyRelocation($citedFile, $lineSpec, $resolved, $newStart, $newEnd);
+            [$resolved, $newStart, $newEnd, $relocated] = applyRelocation($citedFile, $lineSpec, $resolved, $newStart, $newEnd);
+            if ($relocated) {
+                $status = 'relocated';
+            }
             $absolute = str_starts_with($resolved, '/') ? $resolved : $root.'/'.$resolved;
             $lines = file($absolute, FILE_IGNORE_NEW_LINES);
             if (!is_array($lines) || $newStart < 1 || $newStart > count($lines)) {
@@ -151,8 +154,9 @@ foreach ($rows as $row) {
 }
 fclose($handle);
 
-$unresolved = count(array_filter($rows, static fn (array $row): bool => $row[9] !== 'mapped'));
-printf("N_extracted=%d N_mapped=%d unresolved=%d output=%s\n", $extracted, count($rows) - $unresolved, $unresolved, $output);
+$unresolved = count(array_filter($rows, static fn (array $row): bool => $row[9] === 'unresolved'));
+$relocated = count(array_filter($rows, static fn (array $row): bool => $row[9] === 'relocated'));
+printf("N_extracted=%d N_mapped=%d relocated=%d unresolved=%d output=%s\n", $extracted, count($rows) - $unresolved, $relocated, $unresolved, $output);
 exit($unresolved === 0 ? 0 : 1);
 
 /** @return list<string> */
@@ -275,7 +279,7 @@ function locateSymbolLine(array $lines, string $symbol): ?int
     return null;
 }
 
-/** @return array{string, int, int} */
+/** @return array{string, int, int, bool} */
 function applyRelocation(string $citedFile, string $lineSpec, string $resolved, int $start, int $end): array
 {
     $key = $citedFile.':'.$lineSpec;
@@ -288,9 +292,44 @@ function applyRelocation(string $citedFile, string $lineSpec, string $resolved, 
         'InvoiceController.php:910-919' => [
             'apps/api/app/Modules/Document/Presentation/Controllers/InvoiceController.php', 669, 674,
         ],
+        // The old resolver range guarded null product ids; retain that executable guard.
+        'DeliveredQuantityResolver:399-402' => [
+            'apps/api/app/Modules/Document/Domain/Services/DeliveredQuantityResolver.php', 521, 523,
+        ],
+        // These scanners were added after the plan reference and need current semantic addresses.
+        'InvoicedBeforeDeliveryScanner:84' => [
+            'apps/api/app/Modules/Compliance/Services/InvoicedBeforeDeliveryScanner.php', 92, 100,
+        ],
+        'UndeliveredGoodsLineScanner:100' => [
+            'apps/api/app/Modules/Compliance/Services/UndeliveredGoodsLineScanner.php', 127, 127,
+        ],
+        // The cited FE concern is the current parseFloat call, not a mapped JSX fragment.
+        'DeliveryConfirmationModal:74' => [
+            'apps/web/src/features/documents/components/DeliveryConfirmationModal.tsx', 74, 74,
+        ],
+        // Comment-only citations are carried onto the executable behavior they explain.
+        'WorkOrderInvoiceDeliveryExemptionTest:40-44' => [
+            'apps/api/tests/Feature/Document/WorkOrderInvoiceDeliveryExemptionTest.php', 97, 101,
+        ],
+        'RefundService.php:1094-1099' => [
+            'apps/api/app/Modules/Document/Domain/Services/RefundService.php', 1141, 1143,
+        ],
+        'GeneralLedgerService.php:3248-3255' => [
+            'apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php', 3521, 3522,
+        ],
+        'PosCoreReceiptProjection.php:1913-1922' => [
+            'apps/api/app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php', 2068, 2070,
+        ],
+        'ReturnScrapWriteOffService.php:218-227' => [
+            'apps/api/app/Modules/POS/Application/Services/ReturnScrapWriteOffService.php', 214, 214,
+        ],
     ];
 
-    return $relocations[$key] ?? [$resolved, $start, $end];
+    if (isset($relocations[$key])) {
+        return [...$relocations[$key], true];
+    }
+
+    return [$resolved, $start, $end, false];
 }
 
 function citedEnd(string $lineSpec, int $start): int
@@ -450,7 +489,8 @@ function executableAnchor(array $lines, int $start, int $end): ?string
             continue;
         }
 
-        if (in_array($value, ['/**', '/*', '*/', '//', '*'], true)) {
+        if (preg_match('/^(?:\/\*|\*|\/\/)/', $value) === 1
+            || preg_match('/^(?:<>|<\/>|}>|<)$/', $value) === 1) {
             continue;
         }
 
@@ -459,7 +499,10 @@ function executableAnchor(array $lines, int $start, int $end): ?string
 
     for ($line = max(1, $start - 2); $line < $start; $line++) {
         $value = trim($lines[$line - 1]);
-        if ($value !== '' && preg_match('/^[{}\\]();,]+$/', $value) !== 1 && !in_array($value, ['/**', '/*', '*/', '//', '*'], true)) {
+        if ($value !== ''
+            && preg_match('/^[{}\\]();,]+$/', $value) !== 1
+            && preg_match('/^(?:\/\*|\*|\/\/)/', $value) !== 1
+            && preg_match('/^(?:<>|<\/>|}>|<)$/', $value) !== 1) {
             return $value;
         }
     }

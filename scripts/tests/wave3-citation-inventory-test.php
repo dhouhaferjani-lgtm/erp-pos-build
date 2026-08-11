@@ -44,8 +44,24 @@ try {
         }
     }
 
+    $expectedRelocations = [
+        'DeliveredQuantityResolver:399-402' => '521-523',
+        'InvoicedBeforeDeliveryScanner:84' => '92-100',
+        'DeliveryConfirmationModal:74' => '74',
+        'UndeliveredGoodsLineScanner:100' => '127',
+    ];
+    foreach ($expectedRelocations as $citation => $expectedLine) {
+        $row = current(array_filter(
+            $rows,
+            static fn (array $candidate): bool => $candidate['citation'] === $citation,
+        ));
+        if (!is_array($row) || $row['new_line'] !== $expectedLine) {
+            throw new RuntimeException("Incorrect semantic relocation for {$citation}; expected {$expectedLine}.");
+        }
+    }
+
     foreach ($rows as $row) {
-        if (($row['status'] ?? null) !== 'mapped') {
+        if (!in_array(($row['status'] ?? null), ['mapped', 'relocated'], true)) {
             throw new RuntimeException('Unresolved row: '.json_encode($row, JSON_THROW_ON_ERROR));
         }
         if (str_contains((string) $row['symbol'], 'file scope')) {
@@ -53,6 +69,12 @@ try {
         }
         if (preg_match('/anchors the cited behavior at `?\s*[{});]+\s*`?$/', (string) $row['semantic_assertion']) === 1) {
             throw new RuntimeException('Punctuation-only semantic anchor passed validation: '.$row['citation']);
+        }
+        if (preg_match('/documents the cited invariant/', (string) $row['semantic_assertion']) === 1) {
+            throw new RuntimeException('Comment/docblock fragment passed code-anchor validation: '.$row['citation']);
+        }
+        if (preg_match('/`\s*(?:<>|}>|<\/?>)\s*`$/', (string) $row['semantic_assertion']) === 1) {
+            throw new RuntimeException('Markup punctuation passed code-anchor validation: '.$row['citation']);
         }
     }
 
