@@ -39,8 +39,7 @@ enum JournalCode: string
             'payment', 'customer_payment', 'supplier_payment', 'customer_payment_refund', 'acquirer_fee' => self::Bank,
             'pos_payment', 'pos_receipt', 'pos_receipt_refund' => self::Cash,
             'instrument', 'instrument_remittance' => self::Effets,
-            'inventory_entry' => self::Cash,
-            'inventory_exit', 'inventory_shrinkage',
+            'inventory_exit', 'inventory_entry', 'inventory_shrinkage',
             'batch_write_off', 'batch_write_off_reversal' => self::Misc,
             default => self::Misc,
         };
