@@ -24,11 +24,13 @@ php scripts/wave3-citation-inventory.php docs/handoff/reviews/wave3-3c-3d/M0-cit
 Actual output:
 
 ```text
-N_extracted=256 N_mapped=256 relocated=15 unresolved=0 output=docs/handoff/reviews/wave3-3c-3d/M0-citation-inventory.csv
-csv_rows=256 extensionless=13 relocated=15 file_scope=0 comment_anchors=0
+N_extracted=256 N_mapped=256 relocated=6 unresolved=0 output=docs/handoff/reviews/wave3-3c-3d/M0-citation-inventory.csv
+csv_rows=256 extensionless=13 relocated=6 file_scope=0 comment_anchors=34
 ```
 
-The extractor consumes the dispatch and the authoritative plan from its beginning through the end of §4. It extracts both `File.php:line` and extensionless `Class:line` forms, resolves each path, maps from the plan reference SHA where possible, and fails non-zero if the path, mapped line, real enclosing symbol, or classified executable assertion is absent. Comment/docblock fragments, file-scope fallbacks, and punctuation-only anchors are forbidden for code rows. Fifteen rows have the distinct `relocated` status: the two independently verified 3E extractions plus stale or comment-only citations carried to executable semantic successors. The complete row set is in `M0-citation-inventory.csv`; `scripts/tests/wave3-citation-inventory-test.php` pins the live corpus, four critical relocations, and the forbidden anchor classes.
+The extractor consumes the dispatch and the authoritative plan from its beginning through the end of §4. It extracts both `File.php:line` and extensionless `Class:line` forms, resolves each path, maps from the plan reference SHA where possible, and fails non-zero if the path, actual anchor line, real enclosing/documented symbol, or classified semantic assertion is absent. It distinguishes statement, comment, and document anchors: a citation whose reference construct is a rationale block stays on that block and names the method it documents, while a statement citation records the exact statement line found rather than a nearby blank, brace, or comment. Six rows have `relocated` status, representing five fully pinned manual relocation keys (one appears twice in the corpus); all other drift is mechanically mapped. The command itself emits both reproducible metric lines above.
+
+The complete row set is in `M0-citation-inventory.csv`; `scripts/tests/wave3-citation-inventory-test.php` pins the live corpus, all five manual relocation keys, the comment-subject regression at `ReturnScrapWriteOffService.php:217-226`, and docblock-to-symbol coherence. M2 is required to read this register and rerun the command before implementation; stale literals remaining in the authority prose are not implementation addresses.
 
 Known moved-anchor validation:
 
@@ -216,6 +218,8 @@ The round-1 register is retained in `M0-round1.md`. Its required changes were ha
 
 Fix-commit revert/replay evidence: reverting `5158f7432` produced `N_extracted=243` and the covering check exited 1 with `FAIL: missing extensionless citation SalesOrderToInvoiceConverter:334`. Reapplying the fix at `d2b5765e0` restored the 256-row green result.
 
-Round-2 P1-1 was reproduced red before the fix: the regression exited 255 at `DeliveredQuantityResolver:399-402`, whose stale mapping landed on a comment. The executable-only validator and relocations now produce 256/256 rows, 15 explicitly marked `relocated`, zero comment anchors, and zero unresolved rows. Round-2 P2-1 is closed by the continuation register and exact R3-2 ordering above. Its P3 evidence-tightening notes were also incorporated: distinct relocation status, C-5's resource-class dismissal, twin containment safety, the original-receipt gate citation, exact GR line ranges, and the live-corpus wording for the regression.
+Round-2 P1-1 was reproduced red before the fix: the regression exited 255 at `DeliveredQuantityResolver:399-402`, whose stale mapping landed on an unrelated comment. The corrected mapping records the executable `521-523` guard. Round 3 refined the validator so citations whose intended construct is itself a comment/docblock remain comment anchors rather than being forced onto a nearby statement. Round-2 P2-1 is closed by the continuation register and exact R3-2 ordering above. Its P3 evidence-tightening notes were also incorporated: distinct relocation status, C-5's resource-class dismissal, twin containment safety, the original-receipt gate citation, exact GR line ranges, and the live-corpus wording for the regression.
 
 Round-2 fix-commit revert/replay: reverting `fba85a50c` at `2d6723f9d` made the covering probe exit 1 with `FAIL: stale comment-backed DeliveredQuantityResolver mapping was accepted`; reapplying at `78933f51e` restored the executable `521-523` relocation and green corpus.
+
+Round-3 response: `ReturnScrapWriteOffService.php:218-227` now maps to its unchanged ordering block at current `217-226`, with `anchor_kind=comment` and symbol `writeOff()`. Every row's `new_line` is the address from which its assertion was taken. Docblocks resolve forward to the method/class they document, closing the three named symbol mismatches. The second metrics line is emitted by the inventory command, and the manual relocation table was reduced to five keys and fully pinned by the regression test. The round-3 red state is the prior corpus's `ReturnScrapWriteOffService` row at unrelated `postSynchronously: true` line 214.

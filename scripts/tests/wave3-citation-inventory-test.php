@@ -44,19 +44,50 @@ try {
         }
     }
 
-    $expectedRelocations = [
-        'DeliveredQuantityResolver:399-402' => '521-523',
-        'InvoicedBeforeDeliveryScanner:84' => '92-100',
-        'DeliveryConfirmationModal:74' => '74',
-        'UndeliveredGoodsLineScanner:100' => '127',
+    $expectedAnchors = [
+        'DeliveredQuantityResolver:399-402' => ['521-523', 'statement'],
+        'InvoicedBeforeDeliveryScanner:84' => ['95-100', 'statement'],
+        'DeliveryConfirmationModal:74' => ['74', 'statement'],
+        'UndeliveredGoodsLineScanner:100' => ['127', 'statement'],
+        'InvoiceController.php:892' => ['403', 'statement'],
+        'InvoiceController.php:910-919' => ['674', 'statement'],
+        'ReturnScrapWriteOffService.php:218-227' => ['217-226', 'comment'],
     ];
-    foreach ($expectedRelocations as $citation => $expectedLine) {
+    foreach ($expectedAnchors as $citation => [$expectedLine, $expectedKind]) {
         $row = current(array_filter(
             $rows,
             static fn (array $candidate): bool => $candidate['citation'] === $citation,
         ));
-        if (!is_array($row) || $row['new_line'] !== $expectedLine) {
+        if (!is_array($row) || $row['new_line'] !== $expectedLine || ($row['anchor_kind'] ?? null) !== $expectedKind) {
             throw new RuntimeException("Incorrect semantic relocation for {$citation}; expected {$expectedLine}.");
+        }
+    }
+
+    $expectedManualRelocations = [
+        'InvoiceController.php:892',
+        'InvoiceController.php:910-919',
+        'InvoicedBeforeDeliveryScanner:84',
+        'UndeliveredGoodsLineScanner:100',
+        'DeliveryConfirmationModal:74',
+    ];
+    $actualManualRelocations = array_values(array_unique(array_column(array_filter(
+        $rows,
+        static fn (array $row): bool => ($row['status'] ?? null) === 'relocated',
+    ), 'citation')));
+    sort($expectedManualRelocations);
+    sort($actualManualRelocations);
+    if ($actualManualRelocations !== $expectedManualRelocations) {
+        throw new RuntimeException('Manual relocation table is not fully pinned: '.json_encode($actualManualRelocations));
+    }
+
+    foreach ([
+        'DeliveredQuantityResolver.php:185-199' => 'hasGoodsIssued()',
+        'StockAdjustmentDocumentService.php:336' => 'correct()',
+        'ReceiptReturnService.php:1250' => 'restoreStock()',
+    ] as $citation => $expectedSymbol) {
+        $row = current(array_filter($rows, static fn (array $candidate): bool => $candidate['citation'] === $citation));
+        if (!is_array($row) || $row['symbol'] !== $expectedSymbol) {
+            throw new RuntimeException("Docblock symbol mismatch for {$citation}; expected {$expectedSymbol}.");
         }
     }
 
@@ -70,8 +101,22 @@ try {
         if (preg_match('/anchors the cited behavior at `?\s*[{});]+\s*`?$/', (string) $row['semantic_assertion']) === 1) {
             throw new RuntimeException('Punctuation-only semantic anchor passed validation: '.$row['citation']);
         }
-        if (preg_match('/documents the cited invariant/', (string) $row['semantic_assertion']) === 1) {
-            throw new RuntimeException('Comment/docblock fragment passed code-anchor validation: '.$row['citation']);
+        if (!in_array(($row['anchor_kind'] ?? null), ['statement', 'comment', 'document'], true)) {
+            throw new RuntimeException('Unclassified semantic anchor: '.$row['citation']);
+        }
+        $resolved = (string) $row['resolved_path'];
+        $absolute = str_starts_with($resolved, '/') ? $resolved : $root.'/'.$resolved;
+        $source = file($absolute, FILE_IGNORE_NEW_LINES);
+        $anchorLine = (int) preg_replace('/\D.*$/', '', (string) $row['new_line']);
+        $anchorText = is_array($source) && $anchorLine > 0 ? trim((string) ($source[$anchorLine - 1] ?? '')) : '';
+        $isComment = preg_match('/^(?:\/\*|\*|\/\/|\{\/\*)/', $anchorText) === 1;
+        $isPunctuation = preg_match('/^[{}\]();,]+$/', $anchorText) === 1
+            || preg_match('/^(?:<>|<\/>|}>|<)$/', $anchorText) === 1;
+        if ($row['anchor_kind'] === 'statement' && ($anchorText === '' || $isComment || $isPunctuation)) {
+            throw new RuntimeException('Statement row records a non-statement address: '.$row['citation']);
+        }
+        if ($row['anchor_kind'] === 'comment' && ! $isComment) {
+            throw new RuntimeException('Comment row records a non-comment address: '.$row['citation']);
         }
         if (preg_match('/`\s*(?:<>|}>|<\/?>)\s*`$/', (string) $row['semantic_assertion']) === 1) {
             throw new RuntimeException('Markup punctuation passed code-anchor validation: '.$row['citation']);
