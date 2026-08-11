@@ -22,6 +22,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Exceptions\UnsupportedValuationModeException;
 use App\Modules\Inventory\Domain\InventoryGlSourceTypes;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -336,6 +337,17 @@ final class InventoryGlPostingSeamTest extends TestCase
         $this->assertSame([], DB::getQueryLog());
         $buffer->reset();
         DB::disableQueryLog();
+    }
+
+    public function test_rollback_on_a_non_default_connection_does_not_discard_tenant_contexts(): void
+    {
+        $buffer = app(InventoryGlPostingBuffer::class);
+        $buffer->enqueue($this->context('company-id', movementId: '24242424-2424-4424-8424-242424242424'));
+
+        event(new TransactionRolledBack(DB::connection('central')));
+
+        $this->assertFalse($buffer->isEmpty());
+        $buffer->reset();
     }
 
     public function test_nested_savepoint_rollback_discards_only_its_frame_then_flushes_outer_context(): void
