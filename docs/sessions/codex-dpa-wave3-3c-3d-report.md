@@ -26,4 +26,6 @@ Fix-round revert/replay: revert `3fabdaa34` reduced the inventory to 243 citatio
 
 Adversarial round 2 found four comment/punctuation mappings and the unrecorded bare R3-2 continuation. The round-2 test was red at the stale `DeliveredQuantityResolver:399-402` comment mapping. The corrected inventory is `N_extracted=256 N_mapped=256 relocated=15 unresolved=0`, with zero comment or file-scope anchors; the report now records current POS ordering through closure line 477 and all remaining bare-continuation coverage.
 
+Round-2 revert/replay: revert `2d6723f9d` made the semantic covering probe exit 1 for the stale comment-backed resolver mapping; restore `78933f51e` returned the executable relocation and 256-row regression to green.
+
 Deviation discovered and resolved in the execution model: `RefundService` currently calls `ReturnNoteService::confirmWithin()` at transaction depth 1, while D-28 states depth 2. M2 will add the implied inner savepoint at that call before the writer-tail flush and retain C-2's root-tail flush. This aligns runtime depth with the settled architecture without changing the domain transition or lock set.
