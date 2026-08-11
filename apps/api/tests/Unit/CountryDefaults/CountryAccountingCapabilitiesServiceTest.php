@@ -6,6 +6,7 @@ namespace Tests\Unit\CountryDefaults;
 
 use App\Modules\CountryDefaults\Application\Services\CountryAccountingCapabilitiesService;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 final class CountryAccountingCapabilitiesServiceTest extends TestCase
 {
@@ -21,9 +22,21 @@ final class CountryAccountingCapabilitiesServiceTest extends TestCase
         self::assertFalse($capabilities->supportsStampDuty(''));
     }
 
-    public function test_capability_version_is_the_stable_v1_scalar(): void
+    public function test_v1_version_and_full_capable_country_set_are_one_exact_contract(): void
     {
-        // Production break caught: the capability set changes without the certification version changing with it.
-        self::assertSame('v1', (new CountryAccountingCapabilitiesService)->version());
+        // Production break caught: v1's complete capable-country set changes without this versioned contract being reviewed.
+        $capabilities = new CountryAccountingCapabilitiesService;
+        $reflection = new ReflectionClass($capabilities);
+
+        self::assertSame(
+            [
+                'version' => 'v1',
+                'stamp_duty_countries' => ['TN'],
+            ],
+            [
+                'version' => $capabilities->version(),
+                'stamp_duty_countries' => $reflection->getConstant('STAMP_DUTY_COUNTRIES'),
+            ],
+        );
     }
 }

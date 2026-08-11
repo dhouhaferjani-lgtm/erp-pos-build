@@ -18,6 +18,7 @@ explicitly adjudicate every item at its target milestone, and M7 must cite the r
 | Add a direct guard for DYNAMIC-only REQUIRED demotion | M2 invariant-test owner | M2, before publish-gate work relies on the manifest |
 | Prove correct legacy ordering-adapter routing | M4 fixture-export owner | M4, before legacy goldens are accepted |
 | Preserve honest red-first chronology evidence | Every later milestone owner + M7 evidence owner | M2 onward; M1 limitation recorded at M7 |
+| Document why manual existing-company literal-code backfills are outside D-4 | M2 publish-gate owner | M2 publish-gate design and report |
 
 ## 1. Validate and normalize assignment route input before the value object
 
@@ -74,8 +75,11 @@ Acceptance criteria:
 ## 4. Declare the certification-critical Intl dependency
 
 `CanonicalCoaSerializer` calls `Normalizer::normalize()`, but `apps/api/composer.json` does not
-declare `ext-intl`. Runtime images currently install Intl; Composer metadata must describe that
-requirement before M4 relies on clean-environment fixture generation.
+declare `ext-intl`. Runtime images currently install Intl, while
+`symfony/polyfill-intl-normalizer` also makes `Normalizer` available when native Intl is absent.
+Class existence therefore does not prove that certification bytes came from native ICU. Composer
+metadata must declare the extension and M4 must positively identify the native implementation in
+the fixture-generation environment.
 
 Acceptance criteria:
 
@@ -83,9 +87,11 @@ Acceptance criteria:
   updates the lock metadata as required by Composer.
 - `composer validate`, `composer check-platform-reqs`, and the canonical serializer tests pass in
   the supported container/CI runtime.
-- A clean dependency install fails clearly when Intl is absent rather than reaching fixture export
-  and failing at runtime.
-- M4 cites this dependency check before accepting certified fixture hashes.
+- M4's fixture preflight proves `extension_loaded('intl')` is true, `Normalizer` is the internal
+  native class rather than the Symfony userland polyfill, and records the active ICU version.
+- The closure evidence does not rely on `class_exists(Normalizer::class)` or on expecting a clean
+  install to fail when Intl is absent; the positive native-ICU preflight is authoritative.
+- M4 cites the Composer and native-ICU checks before accepting certified fixture hashes.
 
 ## 5. Treat line-keyed ratchet updates as evidence re-review
 
@@ -158,6 +164,27 @@ Acceptance criteria:
   final diff; the evidence location and timestamp/order must be reviewable.
 - M7 audits each milestone's evidence and explicitly lists any remaining chronology gaps instead
   of silently marking the TDD gate complete.
+
+## 9. Document the D-4 boundary for manual existing-company backfills
+
+`ProtectedAccountCodeRegistry` covers the two literal-code sources named by D-4:
+`InstrumentAccountResolver` and `ExpenseCategorySeeder`. Three manual commands also contain chart
+codes: `BackfillPayableInstrumentAccountsCommand`, `BackfillRefundCompensationAccountsCommand`, and
+`BackfillTolerancePurposesCommand`. They operate on existing companies, while Phase A templates
+apply only at company creation under the standing `no-existing-company-mutation` constraint. They
+are intentionally outside M2's publish protection; the omission must be recorded as a boundary,
+not mistaken for a complete repository-wide literal-code inventory.
+
+Acceptance criteria:
+
+- M2's publish-gate design/report enumerates the three manual backfill commands and states why
+  existing-company repair tools are excluded from D-4 template publish protection.
+- M2 does not widen `ProtectedAccountCodeRegistry` merely to absorb these commands; their safety,
+  idempotency, and operator controls remain owned by their existing-company backfill lanes.
+- If any listed command or literal becomes part of template publication or new-company
+  provisioning, that milestone reopens the boundary and adds the code to publish protection before
+  merge.
+- M7 cites M2's boundary decision when reconciling D-4 coverage against final HEAD.
 
 ## Closure gate
 
