@@ -40,4 +40,6 @@ Adversarial round 5 found ten unextracted timestamp/lowercase citations, the T18
 
 Round-5 revert/replay: revert `e45248fdf` dropped the corpus to 256 and made the timestamp-citation probe exit 1; restore `f0a74d332` returned all 266 citations to green.
 
+M0 gate: round 6 independently reproduced the 266-row corpus, exercised relocation-pin mutations, re-derived C-2/C-3 depths, and returned `ACCEPT`. M0 is passed; M1 begins from the accepted evidence register.
+
 Deviation discovered and resolved in the execution model: `RefundService` currently calls `ReturnNoteService::confirmWithin()` at transaction depth 1, while D-28 states depth 2. M2 will add the implied inner savepoint at that call before the writer-tail flush and retain C-2's root-tail flush. This aligns runtime depth with the settled architecture without changing the domain transition or lock set.
