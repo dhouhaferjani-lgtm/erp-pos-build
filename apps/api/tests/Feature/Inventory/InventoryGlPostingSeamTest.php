@@ -383,6 +383,51 @@ final class InventoryGlPostingSeamTest extends TestCase
         $this->assertFalse(JournalEntry::query()->where('source_id', $innerId)->exists());
     }
 
+    public function test_one_root_flush_posts_both_dn_contexts_without_cross_contamination(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+        $firstMovementId = '25252525-2525-4525-8525-252525252525';
+        $secondMovementId = '26262626-2626-4626-8626-262626262626';
+        $firstDnId = '27272727-2727-4727-8727-272727272727';
+        $secondDnId = '28282828-2828-4828-8828-282828282828';
+        $buffer = app(InventoryGlPostingBuffer::class);
+        $flushCount = 0;
+
+        $posted = DB::transaction(function () use (
+            $buffer,
+            $company,
+            $firstMovementId,
+            $secondMovementId,
+            $firstDnId,
+            $secondDnId,
+            &$flushCount,
+        ): array {
+            $buffer->enqueue($this->context($company, movementId: $firstMovementId, sourceId: $firstDnId));
+            $buffer->enqueue($this->context($company, movementId: $secondMovementId, sourceId: $secondDnId));
+            $flushCount++;
+
+            return $buffer->flushIfOutermost();
+        });
+
+        $this->assertSame(1, $flushCount);
+        $this->assertCount(2, $posted);
+        $this->assertEqualsCanonicalizing(
+            [$firstMovementId, $secondMovementId],
+            JournalEntry::query()
+                ->where('source_type', 'inventory_exit')
+                ->whereIn('source_id', [$firstMovementId, $secondMovementId])
+                ->pluck('source_id')
+                ->all(),
+        );
+        $this->assertTrue($buffer->isEmpty());
+    }
+
     public function test_historical_movement_stops_before_logging_or_account_lookup(): void
     {
         Log::spy();
@@ -667,6 +712,7 @@ final class InventoryGlPostingSeamTest extends TestCase
         ?string $postedByUserId = null,
         ?string $batchNumber = null,
         ?string $productId = null,
+        string $sourceId = '22222222-2222-4222-8222-222222222222',
     ): MovementGlContext {
         return new MovementGlContext(
             kind: $kind,
@@ -678,7 +724,7 @@ final class InventoryGlPostingSeamTest extends TestCase
             quantityAfter: $quantityAfter,
             unitCost: $unitCost,
             sourceType: 'Document',
-            sourceId: '22222222-2222-4222-8222-222222222222',
+            sourceId: $sourceId,
             occurredAt: new \DateTimeImmutable('2026-08-10T10:00:00+00:00'),
             entryDate: new \DateTimeImmutable('2026-08-10T10:00:00+00:00'),
             postedByUserId: $postedByUserId,
