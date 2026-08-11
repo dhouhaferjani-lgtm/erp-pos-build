@@ -17,6 +17,9 @@
         <testsuite name="Architecture">
             <directory>tests/Architecture</directory>
         </testsuite>
+        <testsuite name="PHPStan Rules">
+            <directory>tests/PHPStan</directory>
+        </testsuite>
     </testsuites>
     <groups>
         <exclude>

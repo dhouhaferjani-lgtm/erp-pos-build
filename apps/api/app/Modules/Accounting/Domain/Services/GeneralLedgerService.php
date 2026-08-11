@@ -2709,15 +2709,13 @@ final class GeneralLedgerService
 
         $user = User::query()->find($ledgerRow->user_id);
 
-        $scale = $this->scaleResolver->getScale((string) $ledgerRow->currency);
-
-        $entry = DB::transaction(function () use ($ledgerRow, $voucher, $scale): JournalEntry {
+        $entry = DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
             $companyId = $voucher->company_id;
             $entryNumber = $this->generateEntryNumber($companyId);
             /** @var numeric-string $rawAmount */
             $rawAmount = $ledgerRow->amount;
-            $absAmount = bccomp($rawAmount, '0', $scale) < 0
-                ? bcmul($rawAmount, '-1', $scale)
+            $absAmount = bccomp($rawAmount, '0', $this->scale()) < 0
+                ? bcmul($rawAmount, '-1', $this->scale())
                 : $rawAmount;
 
             $entry = JournalEntry::create([
@@ -5011,8 +5009,8 @@ final class GeneralLedgerService
 
         // Mirror the original's posted status. Post synchronously (not afterCommit)
         // so the reversal status is deterministic in the caller's transaction.
-        if ($wasPosted && $entry->status !== JournalEntryStatus::Posted) {
-            $this->postEntryNow($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
+        if ($user !== null && $entry->status !== JournalEntryStatus::Posted) {
+            $this->postEntry($entry, $user, $currencyCode ?? $this->currencyCodeForCompany($companyId));
             $entry->refresh()->load('lines');
         }
 

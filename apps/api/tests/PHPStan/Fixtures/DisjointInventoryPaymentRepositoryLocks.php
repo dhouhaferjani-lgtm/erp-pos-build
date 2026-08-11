@@ -10,6 +10,7 @@ final class PaymentRepositoryOnly
     {
         // stock_levels and ProductCostLock are comment-only decoys.
         db()->table('payment_repositories')->lockForUpdate()->first();
+        logger()->warning('stock_levels is a string-only decoy');
     }
 }
 

@@ -6,6 +6,7 @@ namespace App\PHPStan\Rules;
 
 use PhpParser\Node;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PhpParser\Node\Stmt\Class_;
@@ -27,14 +28,14 @@ final class InventoryPaymentRepositoryLockDisjointness implements Rule
         $finder = new NodeFinder;
         $nodes = $finder->find($node->stmts, static fn (Node $candidate): bool => ! $candidate instanceof Class_);
 
-        $referencesPaymentRepositories = $this->containsString($nodes, 'payment_repositories');
+        $referencesPaymentRepositories = $this->containsTableReference($nodes, 'payment_repositories');
         $takesRowLock = $this->containsMethodCall($nodes, 'lockForUpdate');
         if (! $referencesPaymentRepositories || ! $takesRowLock) {
             return [];
         }
 
-        $referencesInventoryLock = $this->containsString($nodes, 'stock_levels')
-            || $this->containsString($nodes, 'inventory_countings')
+        $referencesInventoryLock = $this->containsTableReference($nodes, 'stock_levels')
+            || $this->containsTableReference($nodes, 'inventory_countings')
             || $this->containsName($nodes, 'ProductCostLock');
         if (! $referencesInventoryLock) {
             return [];
@@ -50,10 +51,19 @@ final class InventoryPaymentRepositoryLockDisjointness implements Rule
     }
 
     /** @param array<Node> $nodes */
-    private function containsString(array $nodes, string $value): bool
+    private function containsTableReference(array $nodes, string $table): bool
     {
         foreach ($nodes as $candidate) {
-            if ($candidate instanceof String_ && $candidate->value === $value) {
+            if (! $candidate instanceof MethodCall && ! $candidate instanceof StaticCall) {
+                continue;
+            }
+            if (! $candidate->name instanceof Node\Identifier
+                || ! in_array($candidate->name->name, ['table', 'from', 'join', 'leftJoin', 'rightJoin'], true)) {
+                continue;
+            }
+
+            $argument = $candidate->args[0]->value ?? null;
+            if ($argument instanceof String_ && $argument->value === $table) {
                 return true;
             }
         }
