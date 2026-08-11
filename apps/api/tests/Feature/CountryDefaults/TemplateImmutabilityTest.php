@@ -307,6 +307,51 @@ final class TemplateImmutabilityTest extends TestCase
         }
     }
 
+    public function test_clone_inserts_each_parent_before_children_regardless_of_sort_order(): void
+    {
+        $actor = $this->actor();
+        $source = AdminTemplate::withoutEvents(static fn (): AdminTemplate => AdminTemplate::query()->create([
+            'domain' => TemplateDomain::ChartOfAccounts,
+            'name' => 'Non-topological published fixture',
+            'status' => TemplateStatus::Published,
+            'content_hash' => str_repeat('a', 64),
+            'standard_ref' => 'PCG 2026',
+            'certified_country_codes' => ['FR'],
+            'capability_registry_version' => 'v1',
+            'certified_by' => $actor->id,
+            'published_at' => now(),
+            'created_by' => $actor->id,
+        ]));
+
+        foreach ([
+            ['code' => '70', 'parent_code' => null, 'sort_order' => 90],
+            ['code' => '706', 'parent_code' => '70', 'sort_order' => 20],
+            ['code' => '7061', 'parent_code' => '706', 'sort_order' => 1],
+        ] as $row) {
+            AdminTemplateAccount::withoutEvents(static fn (): AdminTemplateAccount => AdminTemplateAccount::query()->create([
+                'template_id' => $source->id,
+                'code' => $row['code'],
+                'name' => 'Account '.$row['code'],
+                'type' => 'expense',
+                'parent_code' => $row['parent_code'],
+                'system_purpose' => null,
+                'is_system' => false,
+                'sort_order' => $row['sort_order'],
+            ]));
+        }
+
+        $clone = app(TemplatePublishingService::class)->cloneToDraft($source->id, 'Hierarchy clone', $actor);
+
+        self::assertSame(
+            [
+                ['code' => '7061', 'parent_code' => '706', 'sort_order' => 1],
+                ['code' => '706', 'parent_code' => '70', 'sort_order' => 20],
+                ['code' => '70', 'parent_code' => null, 'sort_order' => 90],
+            ],
+            $clone->accounts()->orderBy('sort_order')->get(['code', 'parent_code', 'sort_order'])->toArray(),
+        );
+    }
+
     private function publishedTemplate(?SuperAdmin $actor = null): AdminTemplate
     {
         $actor ??= $this->actor();

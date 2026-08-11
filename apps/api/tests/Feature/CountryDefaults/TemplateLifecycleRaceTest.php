@@ -47,38 +47,28 @@ final class TemplateLifecycleRaceTest extends TestCase
 
     public function test_real_publish_vs_assign_services_serialize_at_the_template_lock(): void
     {
+        $this->requirePostgreSqlRace('publish versus assign');
         $actor = $this->actor();
         $template = $this->validDraft('FR');
 
-        if (DB::getDriverName() === 'pgsql') {
-            [$parent, $child] = $this->socketPair();
-            $pid = pcntl_fork();
-            self::assertGreaterThanOrEqual(0, $pid);
-            if ($pid === 0) {
-                fclose($parent);
-                $this->runPausedPublishChild($child, $template->id, $actor->id, 'PCG 2026', ['FR']);
-            }
-
-            fclose($child);
-            self::assertSame("publish-locked\n", fgets($parent));
-            $assignment = app(TemplateAssignmentService::class)->assign(
-                'FR',
-                TemplateDomain::ChartOfAccounts,
-                $template->id,
-                $actor,
-            );
-            pcntl_waitpid($pid, $status);
-            self::assertSame(0, pcntl_wexitstatus($status));
-        } else {
-            $published = app(TemplatePublishingService::class)->publish($template->id, 'PCG 2026', ['FR'], $actor);
-            $assignment = app(TemplateAssignmentService::class)->assign(
-                'FR',
-                TemplateDomain::ChartOfAccounts,
-                $published->id,
-                $actor,
-            );
-            $this->addToAssertionCount(5);
+        [$parent, $child] = $this->socketPair();
+        $pid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $pid);
+        if ($pid === 0) {
+            fclose($parent);
+            $this->runPausedPublishChild($child, $template->id, $actor->id, 'PCG 2026', ['FR']);
         }
+
+        fclose($child);
+        self::assertSame("publish-locked\n", fgets($parent));
+        $assignment = app(TemplateAssignmentService::class)->assign(
+            'FR',
+            TemplateDomain::ChartOfAccounts,
+            $template->id,
+            $actor,
+        );
+        pcntl_waitpid($pid, $status);
+        self::assertSame(0, pcntl_wexitstatus($status));
 
         self::assertSame($template->id, $assignment->template_id);
         self::assertSame(TemplateStatus::Published, $template->refresh()->status);
@@ -90,6 +80,7 @@ final class TemplateLifecycleRaceTest extends TestCase
     #[DataProvider('draftEditOperations')]
     public function test_real_publish_vs_stale_draft_edit_rechecks_under_the_service_lock(string $operation): void
     {
+        $this->requirePostgreSqlRace("publish versus stale {$operation}");
         $actor = $this->actor();
         $template = $this->validDraft('FR');
         $staleTemplate = AdminTemplate::query()->findOrFail($template->id);
@@ -97,22 +88,15 @@ final class TemplateLifecycleRaceTest extends TestCase
         $originalTemplateName = $staleTemplate->name;
         $originalAccountName = $staleAccount->name;
         $createdCode = 'RACE-CREATE';
-        $pid = -1;
-
-        if (DB::getDriverName() === 'pgsql') {
-            [$parent, $child] = $this->socketPair();
-            $pid = pcntl_fork();
-            self::assertGreaterThanOrEqual(0, $pid);
-            if ($pid === 0) {
-                fclose($parent);
-                $this->runPausedPublishChild($child, $template->id, $actor->id, 'PCG 2026', ['FR']);
-            }
-            fclose($child);
-            self::assertSame("publish-locked\n", fgets($parent));
-        } else {
-            app(TemplatePublishingService::class)->publish($template->id, 'PCG 2026', ['FR'], $actor);
-            $this->addToAssertionCount(4);
+        [$parent, $child] = $this->socketPair();
+        $pid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $pid);
+        if ($pid === 0) {
+            fclose($parent);
+            $this->runPausedPublishChild($child, $template->id, $actor->id, 'PCG 2026', ['FR']);
         }
+        fclose($child);
+        self::assertSame("publish-locked\n", fgets($parent));
 
         $exception = null;
         try {
@@ -156,12 +140,8 @@ final class TemplateLifecycleRaceTest extends TestCase
             $exception = $caught;
         }
 
-        if (DB::getDriverName() === 'pgsql') {
-            pcntl_waitpid($pid, $status);
-            self::assertSame(0, pcntl_wexitstatus($status));
-        } else {
-            $this->addToAssertionCount(1);
-        }
+        pcntl_waitpid($pid, $status);
+        self::assertSame(0, pcntl_wexitstatus($status));
 
         self::assertInstanceOf(LogicException::class, $exception);
         self::assertStringContainsString('immutable', $exception->getMessage());
@@ -191,6 +171,7 @@ final class TemplateLifecycleRaceTest extends TestCase
 
     public function test_real_repoint_vs_archive_services_share_assignment_first_global_order(): void
     {
+        $this->requirePostgreSqlRace('repoint versus archive');
         $actor = $this->actor();
         $old = $this->published('FR', $actor);
         $new = $this->published('FR', $actor);
@@ -201,29 +182,18 @@ final class TemplateLifecycleRaceTest extends TestCase
             $actor,
         );
 
-        if (DB::getDriverName() === 'pgsql') {
-            [$parent, $child] = $this->socketPair();
-            $pid = pcntl_fork();
-            self::assertGreaterThanOrEqual(0, $pid);
-            if ($pid === 0) {
-                fclose($parent);
-                $this->runLockedRepointChild($child, $assignment->id, $new->id, $actor->id);
-            }
-            fclose($child);
-            self::assertSame("assignment-locked\n", fgets($parent));
-            $archived = app(TemplatePublishingService::class)->archive($old->id, $actor);
-            pcntl_waitpid($pid, $status);
-            self::assertSame(0, pcntl_wexitstatus($status));
-        } else {
-            app(TemplateAssignmentService::class)->assign(
-                'FR',
-                TemplateDomain::ChartOfAccounts,
-                $new->id,
-                $actor,
-            );
-            $archived = app(TemplatePublishingService::class)->archive($old->id, $actor);
-            $this->addToAssertionCount(5);
+        [$parent, $child] = $this->socketPair();
+        $pid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $pid);
+        if ($pid === 0) {
+            fclose($parent);
+            $this->runLockedRepointChild($child, $assignment->id, $new->id, $actor->id);
         }
+        fclose($child);
+        self::assertSame("assignment-locked\n", fgets($parent));
+        $archived = app(TemplatePublishingService::class)->archive($old->id, $actor);
+        pcntl_waitpid($pid, $status);
+        self::assertSame(0, pcntl_wexitstatus($status));
 
         self::assertSame(TemplateStatus::Archived, $archived->status);
         self::assertSame($new->id, $assignment->refresh()->template_id);
@@ -234,29 +204,19 @@ final class TemplateLifecycleRaceTest extends TestCase
 
     public function test_real_new_assign_vs_archive_rechecks_after_the_template_lock(): void
     {
+        $this->requirePostgreSqlRace('new assignment versus archive');
         $actor = $this->actor();
         $template = $this->published('DE', $actor);
-        $pid = -1;
 
-        if (DB::getDriverName() === 'pgsql') {
-            [$parent, $child] = $this->socketPair();
-            $pid = pcntl_fork();
-            self::assertGreaterThanOrEqual(0, $pid);
-            if ($pid === 0) {
-                fclose($parent);
-                $this->runPausedAssignChild($child, $template->id, $actor->id, 'DE');
-            }
-            fclose($child);
-            self::assertSame("assignment-template-locked\n", fgets($parent));
-        } else {
-            app(TemplateAssignmentService::class)->assign(
-                'DE',
-                TemplateDomain::ChartOfAccounts,
-                $template->id,
-                $actor,
-            );
-            $this->addToAssertionCount(4);
+        [$parent, $child] = $this->socketPair();
+        $pid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $pid);
+        if ($pid === 0) {
+            fclose($parent);
+            $this->runPausedAssignChild($child, $template->id, $actor->id, 'DE');
         }
+        fclose($child);
+        self::assertSame("assignment-template-locked\n", fgets($parent));
 
         $exception = null;
         try {
@@ -265,12 +225,8 @@ final class TemplateLifecycleRaceTest extends TestCase
             $exception = $caught;
         }
 
-        if (DB::getDriverName() === 'pgsql') {
-            pcntl_waitpid($pid, $status);
-            self::assertSame(0, pcntl_wexitstatus($status));
-        } else {
-            $this->addToAssertionCount(1);
-        }
+        pcntl_waitpid($pid, $status);
+        self::assertSame(0, pcntl_wexitstatus($status));
 
         self::assertInstanceOf(DomainException::class, $exception);
         self::assertStringContainsString('assignment', $exception->getMessage());
@@ -304,6 +260,13 @@ final class TemplateLifecycleRaceTest extends TestCase
                 "{$method} must lock assignment rows before the template.",
             );
         }
+    }
+
+    public function test_publish_and_archive_require_exactly_one_locked_status_transition(): void
+    {
+        $publishingSource = (string) file_get_contents(app_path('Modules/CountryDefaults/Application/Services/TemplatePublishingService.php'));
+
+        self::assertSame(2, substr_count($publishingSource, 'if ($updated !== 1)'));
     }
 
     /** @param list<string> $scope */
@@ -445,6 +408,16 @@ final class TemplateLifecycleRaceTest extends TestCase
         self::assertNotFalse($sockets);
 
         return [$sockets[0], $sockets[1]];
+    }
+
+    private function requirePostgreSqlRace(string $label): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            self::markTestSkipped("PostgreSQL-only lifecycle race ({$label}); SQLite cannot prove row-lock concurrency.");
+        }
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped("PostgreSQL-only lifecycle race ({$label}) requires ext-pcntl.");
+        }
     }
 
     private function resetChildConnection(): void

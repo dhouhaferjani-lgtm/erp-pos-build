@@ -44,6 +44,14 @@ final class CountryCodeNormalizationTest extends TestCase
         self::assertSame('*', $service->assign(' * ', TemplateDomain::ChartOfAccounts, $wildcard->id, $actor)->country_code);
     }
 
+    public function test_publish_boundary_normalizes_country_scope_before_persisting_certification(): void
+    {
+        $actor = $this->actor();
+        $published = $this->publishedTemplate('TN', $actor, [' tn ']);
+
+        self::assertSame(['TN'], $published->certified_country_codes);
+    }
+
     public function test_model_rejects_malformed_assignment_country_codes_before_lifecycle_dispatch(): void
     {
         foreach (['', 'FRA', 'T1', 'tn-1'] as $countryCode) {
@@ -60,7 +68,8 @@ final class CountryCodeNormalizationTest extends TestCase
         }
     }
 
-    private function publishedTemplate(string $country, SuperAdmin $actor): AdminTemplate
+    /** @param list<string>|null $publishScope */
+    private function publishedTemplate(string $country, SuperAdmin $actor, ?array $publishScope = null): AdminTemplate
     {
         $template = AdminTemplate::query()->create([
             'domain' => TemplateDomain::ChartOfAccounts,
@@ -102,7 +111,12 @@ final class CountryCodeNormalizationTest extends TestCase
             );
         }
 
-        return app(TemplatePublishingService::class)->publish($template->id, 'Standard 2026', [$country], $actor);
+        return app(TemplatePublishingService::class)->publish(
+            $template->id,
+            'Standard 2026',
+            $publishScope ?? [$country],
+            $actor,
+        );
     }
 
     private function row(

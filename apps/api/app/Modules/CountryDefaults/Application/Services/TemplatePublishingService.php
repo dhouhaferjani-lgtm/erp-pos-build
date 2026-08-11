@@ -68,7 +68,7 @@ final class TemplatePublishingService
                 $accounts->all(),
             ));
 
-            $connection->table('admin_templates')
+            $updated = $connection->table('admin_templates')
                 ->where('id', $template->id)
                 ->where('status', TemplateStatus::Draft->value)
                 ->update([
@@ -81,6 +81,9 @@ final class TemplatePublishingService
                     'published_at' => now(),
                     'updated_at' => now(),
                 ]);
+            if ($updated !== 1) {
+                throw new DomainException('Template changed after its publish lifecycle lock.');
+            }
             $template->refresh();
 
             $this->assertAuditTransaction($connection);
@@ -111,7 +114,7 @@ final class TemplatePublishingService
 
         return $connection->transaction(function () use ($templateId, $name, $actor, $connection): AdminTemplate {
             $source = AdminTemplate::query()->lockForUpdate()->findOrFail($templateId);
-            $sourceRows = $source->accounts()->orderBy('sort_order')->lockForUpdate()->get();
+            $sourceRows = array_values($source->accounts()->orderBy('sort_order')->lockForUpdate()->get()->all());
 
             $clone = AdminTemplate::query()->create([
                 'domain' => $source->domain,
@@ -121,7 +124,7 @@ final class TemplatePublishingService
                 'cloned_from_id' => $source->id,
                 'created_by' => $actor->id,
             ]);
-            foreach ($sourceRows as $row) {
+            foreach ($this->cloneInsertionOrder($sourceRows) as $row) {
                 AdminTemplateAccount::query()->create([
                     'template_id' => $clone->id,
                     'code' => $row->code,
@@ -171,13 +174,16 @@ final class TemplatePublishingService
                 throw new DomainException('Only an unassigned published template can be archived.');
             }
 
-            $connection->table('admin_templates')
+            $updated = $connection->table('admin_templates')
                 ->where('id', $template->id)
                 ->where('status', TemplateStatus::Published->value)
                 ->update([
                     'status' => TemplateStatus::Archived->value,
                     'updated_at' => now(),
                 ]);
+            if ($updated !== 1) {
+                throw new DomainException('Template changed after its archive lifecycle lock.');
+            }
             $template->refresh();
 
             $this->assertAuditTransaction($connection);
@@ -307,6 +313,44 @@ final class TemplatePublishingService
                 }
             }
         }
+    }
+
+    /**
+     * Preserve sort order among currently insertable rows while ensuring every external parent
+     * exists before the immediate composite self-FK checks its child.
+     *
+     * @param  list<AdminTemplateAccount>  $rows
+     * @return list<AdminTemplateAccount>
+     */
+    private function cloneInsertionOrder(array $rows): array
+    {
+        $pending = [];
+        foreach ($rows as $row) {
+            $pending[$row->code] = $row;
+        }
+
+        $ordered = [];
+        $insertedCodes = [];
+        while ($pending !== []) {
+            $madeProgress = false;
+            foreach ($pending as $code => $row) {
+                $parentCode = $row->parent_code;
+                if ($parentCode !== null && $parentCode !== $code && ! isset($insertedCodes[$parentCode])) {
+                    continue;
+                }
+
+                $ordered[] = $row;
+                $insertedCodes[$code] = true;
+                unset($pending[$code]);
+                $madeProgress = true;
+            }
+
+            if (! $madeProgress) {
+                throw new DomainException('Template account hierarchy contains a cycle or unresolved parent.');
+            }
+        }
+
+        return $ordered;
     }
 
     private function centralConnection(): ConnectionInterface
