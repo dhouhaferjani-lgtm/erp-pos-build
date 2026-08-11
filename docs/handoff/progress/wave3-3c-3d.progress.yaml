@@ -34,11 +34,16 @@ milestones:
   - id: M1
     title: "3C seam infra: T11, T11e, T12, T13, T11c (ten lock-order pairs) + T15a (pre-cutover) + T16c audit (negative branch inapplicable) + V-10 narrow fix"
     review_lenses: [inventory-costing, fiscal-pos]
-    status: blocked_architecture
+    # ORCHESTRATOR RULING 2026-08-11: contradiction resolved — see
+    # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
+    # M1 exit: ten-pair suite exists; pairs 1-6 GREEN; pairs 7-10 RED-with-captured-evidence
+    # (red-before half of the brief's acceptance). M2 exit hardened: all ten pairs GREEN
+    # post-cutover is a hard gate item. Atomic cutover membership unchanged. Resume M1.
+    status: in_progress
     fix_rounds: 0
     commit: abb3018efd9b582ad788f7162271c940192a0f62
     verdict: null
-    last_verdict: ARCHITECTURE_CONTRADICTION
+    last_verdict: ARCHITECTURE_CONTRADICTION_RESOLVED_BY_RULING
     updated: abb3018ef
   - id: M2
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
@@ -74,6 +79,8 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: blocked_architecture      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
-blockers:
-  - "M1 requires T11c pairs 7-10 green before M1 can pass (brief:381-390; plan-wave3.md:2724-2738), but those pairs can only turn green after T16d/T16e. The same authorities require T16d/T16e to ship only inside M2's indivisible T14+T15+T16+T16b+T16d+T16e+T17 cutover commit (brief:399-406; plan-wave3.md:2910-2929,2947-2977,2979-2983). Moving either fix into M1 violates atomic cutover; leaving it in M2 makes M1's mandatory ten-pair green gate impossible. Owner/orchestrator must re-sequence the T11c green-after gate (for example, accept red-before evidence in M1 and require final green in M2)."
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+# 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
+# evidence to M1, all-ten-green hardened into M2's gate) — see
+# docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
+blockers: []
