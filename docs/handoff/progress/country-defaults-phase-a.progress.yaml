@@ -34,9 +34,9 @@ milestones:
   - id: M1
     title: "Invariant kernel (no DB/HTTP): CountryAccountingCapabilities contract+impl, CertificationScope VO, ProvisioningRequiredPurposes::V1 manifest + conformance suite + AST ratchet, protected-code registry, CanonicalCoaSerializer + golden vector, frozen-seeder @deprecated docblocks"
     review_lenses: [treasury]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 6df85c92e9932920719abcf2673dade8e76bb01f
     verdict: null
     last_verdict: null
   - id: M2
