@@ -769,7 +769,7 @@ export function CompanyPage() {
                   id="country"
                   value={formData.address?.country ?? formData.country_code ?? ''}
                   disabled
-                  aria-describedby="company-identity-immutable-hint"
+                  aria-describedby="company-country-identity-immutable-hint"
                 >
                   <option value="">{t('common:selectCountry')}</option>
                   {countries.map((country) => (
@@ -779,7 +779,7 @@ export function CompanyPage() {
                   ))}
                 </Select>
               </FormField>
-              <p id="company-identity-immutable-hint" className={cn('text-xs', textColors.tertiary)}>
+              <p id="company-country-identity-immutable-hint" className={cn('text-xs', textColors.tertiary)}>
                 {t('settings:company.identity.immutableHint')}
               </p>
               <div className="grid grid-cols-2 gap-4">
@@ -927,7 +927,7 @@ export function CompanyPage() {
                   id="currency_code"
                   value={formData.currency_code ?? 'TND'}
                   disabled
-                  aria-describedby="company-identity-immutable-hint"
+                  aria-describedby="company-currency-identity-immutable-hint"
                 >
                   <option value="EUR">{t('settings:company.currencies.EUR')}</option>
                   <option value="USD">{t('settings:company.currencies.USD')}</option>
@@ -937,6 +937,9 @@ export function CompanyPage() {
                   <option value="DZD">{t('settings:company.currencies.DZD')}</option>
                 </Select>
               </FormField>
+              <p id="company-currency-identity-immutable-hint" className={cn('text-xs', textColors.tertiary)}>
+                {t('settings:company.identity.immutableHint')}
+              </p>
               <FormField label={t('settings:company.fields.timezone')} htmlFor="timezone">
                 <Select
                   id="timezone"

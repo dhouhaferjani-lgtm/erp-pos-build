@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -318,7 +318,15 @@ describe('CompanyPage fiscal identity guards', () => {
 
     expect(await screen.findByLabelText('settings:company.fields.country')).toBeDisabled()
     expect(screen.getByLabelText('settings:company.fields.currency')).toBeDisabled()
-    expect(screen.getByText('settings:company.identity.immutableHint')).toBeInTheDocument()
+    expect(screen.getAllByText('settings:company.identity.immutableHint')).toHaveLength(2)
+
+    const regionalCard = screen
+      .getByRole('heading', { name: 'settings:company.sections.regional' })
+      .closest('div')
+    if (regionalCard === null) {
+      throw new Error('Regional Settings card was not rendered')
+    }
+    expect(within(regionalCard).getByText('settings:company.identity.immutableHint')).toBeInTheDocument()
   })
 
   it('locks fiscal identity fields for an editor who only has cosmetic settings permission', async () => {

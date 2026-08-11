@@ -18,8 +18,10 @@ Implemented the complete guard lane named by
   settings endpoint. Both the direct country field and the nested `address.country` alias are
   guarded. Idempotent same-value resubmissions remain valid because `CompanyPage` submits the
   loaded full form.
-- Added `settings.fiscal.update`, granted only to the seeded `admin` tier. Ordinary
-  `settings.update` continues to authorize cosmetic settings.
+- Added `settings.fiscal.update` as defense-in-depth for custom and future roles. The split
+  constrains no seeded role today: only seeded `admin` holds `settings.update`, and `admin`
+  receives every permission. A future or custom cosmetic editor can hold `settings.update`
+  without gaining fiscal-identity mutation authority.
 - Mutable company fiscal identity is `legal_name`, `tax_id`, `registration_number`, and, on the
   adjacent `PUT /companies/{id}` surface, `vat_number`. Actual changes require the fiscal
   permission; unchanged values do not.
@@ -60,7 +62,9 @@ no longer maps either direct country/currency values or `address.country` into u
 
 The mixed cosmetic/fiscal endpoints retain their route-level `settings.update` middleware and add
 conditional controller enforcement for actual fiscal changes. This preserves cosmetic access while
-preventing the adjacent `PUT /companies/{id}` endpoint from bypassing the split.
+preventing the adjacent `PUT /companies/{id}` endpoint from bypassing the split. This is currently
+defense-in-depth for explicitly assigned/custom permission sets and future seeded roles; it does not
+remove an authority held by any seeded non-admin role because no such role has `settings.update`.
 
 ### 3. Frontend affordances and confirmation
 
@@ -232,6 +236,19 @@ The permission catalog changed. Deployments must run the roles/permissions seede
 tenants and then run `php artisan permission:cache-reset`. The permission cache is tenant-blind, so
 the reset must not be skipped. Deploy the matching frontend permission map in the same release.
 
+Before staging promotion, run this probe against **every tenant database** and require zero rows:
+
+```sql
+SELECT id, tenant_id, name, country_code, currency
+FROM companies
+WHERE country_code IS NULL OR currency IS NULL;
+```
+
+Before any live tenant onboarding, approve and publish a support-operations runbook for a genuinely
+mis-provisioned country/currency. That procedure is not built today; support must not promise that
+the application can perform the correction. Owner acknowledgement is tracked in
+`docs/superpowers/tickets/2026-08-10-no-fiscal-identity-correction-path.md`.
+
 ## Decisions and deviations
 
 - `CompanyPage` resubmits the loaded country and currency on ordinary saves, so guards compare
@@ -256,10 +273,85 @@ There were no functional deviations from the brief and no TODOs or stub logic we
 
 ## Open follow-ups and concerns
 
-- Company-scope `tax_configurations` in a separate reviewed lane. The guard closes self-service
-  authority escalation but does not make global country-scoped tax configuration rows
-  company-isolated.
-- Consider formalizing the operational super-admin correction procedure as an audited command or
-  endpoint in its own lane if correction volume justifies it.
+- Gate `POST /api/v1/companies`: the settings-mutation route is closed, but un-permissioned company
+  creation can still mint a chosen country authority. The launch-readiness item remains open.
+- Company-scope authored `tax_configurations` in a separate reviewed lane. Global country-scoped
+  rows are not company-isolated and can still affect a sibling company.
+- Define and approve the operational super-admin correction procedure before live onboarding. No
+  in-product correction exists today; this is an owner-ack item, not an optional volume-based
+  enhancement.
 - Existing backend `file_get_contents(...)` test warnings and frontend React `act(...)` warnings
   should be cleaned separately; they predate this work and do not mask a failing assertion here.
+
+## Fix round 1 — gate-review follow-up
+
+Date: 2026-08-10
+
+This round addresses the fiscal-light P2/P3 findings and the documentary blockers from the
+tenancy-authz `CHANGES-REQUESTED` verdict. It does not implement the newly documented authorization
+or operational follow-up lanes.
+
+### Documentary and launch-readiness corrections
+
+- Reclassified the country-authority ticket as partially closed. Existing-company mutation through
+  settings is closed; un-permissioned `POST /api/v1/companies` can still mint a chosen country
+  authority, and country-scoped `tax_configurations` still affect sibling companies. Launch
+  readiness therefore remains open.
+- Added separate tickets for the `POST /companies` gate, `tax_status` permission/audit asymmetry,
+  branch-location tax identity under `inventory.adjust`, and the owner acknowledgement required
+  for the absent country/currency correction path.
+- Replaced English and French “contact support” promises with the true state: fiscal identity is
+  fixed at creation and the necessary support-operations procedure is not yet available.
+- Corrected P3-1 wording: `settings.fiscal.update` constrains no seeded role today because only
+  seeded `admin` has `settings.update` and `admin` receives all permissions. The split is
+  defense-in-depth for custom assignments and future roles.
+- Added two deploy gates: a staging query that must find zero companies with NULL country/currency,
+  and a runbook/owner-ack requirement before a live tenant onboards.
+
+### Small code corrections
+
+- Replaced the fiscal-identity service's open string-key contract with PHPStan literal unions for
+  mutable and immutable fields. Immutable validation now has an exhaustive two-arm `match`; the
+  former `LogicException` default is no longer reachable or needed.
+- Reordered tenant settings handling so immutable country/currency changes return 422 before the
+  caller's `settings.fiscal.update` permission is considered. Mutable fiscal changes still return
+  403 for a caller without that permission; idempotent immutable submissions remain accepted.
+- Added a real transaction-boundary test that forces `AuditEvent` creation to throw and proves the
+  preceding company update is rolled back with no fiscal audit row persisted.
+- Updated the stale F-7 capability-cache comment: company country is immutable, while the
+  tenant/company-scoped query key handles company switches and newly created companies.
+- Added a second visible immutable hint directly under Regional Settings beside the disabled
+  currency select. Country and currency now each reference their adjacent hint through distinct
+  `aria-describedby` IDs.
+
+### Red/green and final verification
+
+No full PHPUnit suite was run. Every backend run named explicit test paths.
+
+- Backend red, SQLite: the new precedence test failed because the response still returned 403;
+  the rollback characterization already passed. Result: 1 failed, 1 warning, 5 assertions.
+- Frontend red: the Regional Settings assertion found one immutable hint instead of two. Result:
+  1 failed, 14 skipped.
+- Focused green on both SQLite and PostgreSQL 5432: 7 tests, 28 assertions, 0 failures per driver.
+- Final SQLite paths (`CompanySettingsTest.php` and `CompanyUpdateAuthorizationTest.php`): 61 tests,
+  245 assertions, 0 failures.
+- Final PostgreSQL paths, identical files and port 5432: 61 tests, 245 assertions, 0 failures.
+- PHPUnit labels all 61 tests as warnings because of the pre-existing `file_get_contents(...)`
+  warning already recorded in the baseline report; no assertion or test failed.
+- Pint, scoped to the five touched PHP service/controller/test/translation files: pass.
+- PHPStan, scoped to the touched production service/controller and translation files: no errors.
+  An exploratory inclusion of the entire legacy feature-test file exposed its existing nullable
+  model diagnostics; the one diagnostic introduced by the new rollback assertion was corrected.
+- Full touched frontend test file: 15 passed. Existing React `act(...)` warnings remain unchanged.
+- Frontend typecheck: pass. ESLint: 0 errors; only the three pre-existing `CompanyPage.tsx` warnings.
+- React Doctor: 91/100, four changed files scanned, no issues found.
+
+### Commit handoff
+
+The implementation and verification completed, but this Codex session could not create the
+requested commit. The workspace files are writable while `.git` is mounted read-only by the
+session permission profile; `git add` failed when Git attempted to create `.git/index.lock`.
+No stash or push was attempted. Branch HEAD therefore remains
+`ad8e8d15d737df7d05ce021db171ab41236767d9`, with the verified fix round present as unstaged working
+tree changes. The intended commit subject is
+`fix-round-1: close company identity guard review findings`.

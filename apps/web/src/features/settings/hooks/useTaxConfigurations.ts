@@ -58,14 +58,9 @@ export function useTaxConfigurationCapabilities() {
     queryKey: tenantScopedKey([...taxConfigurationKeys.capabilities()]),
     queryFn: () => taxConfigurationApi.getCapabilities(),
     enabled: hasTenantScope,
-    // Derived from the company's country_code, which is effectively static for
-    // the life of a session — same reasoning as useDocumentTypes above, and the
-    // key is tenant/company-scoped so switching companies refetches rather than
-    // reusing this entry. Trade-off (F-7): changing country_code in company
-    // settings does NOT invalidate this, so a session that edits its own
-    // country keeps the stale capability until remount. Acceptable while
-    // country_code is a rare admin action; if it becomes routine, invalidate
-    // taxConfigurationKeys.capabilities() from the settings mutation.
+    // Derived from company.country_code, which is immutable after creation.
+    // The tenant/company-scoped key still separates newly created companies and
+    // refetches when the active company changes, so this entry can remain static.
     staleTime: Infinity,
   })
 }

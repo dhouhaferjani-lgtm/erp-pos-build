@@ -121,48 +121,8 @@ class CompanySettingsController extends Controller
             $company,
             $fiscalIdentityAttributes,
         );
-        $submittedIdentityChanges = $fiscalIdentityChanges;
-
-        if (array_key_exists('country_code', $validated)) {
-            $submittedIdentityChanges = array_replace(
-                $submittedIdentityChanges,
-                $this->companyFiscalIdentityService->changedFields(
-                    $company,
-                    ['country_code' => $validated['country_code']],
-                ),
-            );
-        }
-
-        if (array_key_exists('currency_code', $validated)) {
-            $submittedIdentityChanges = array_replace(
-                $submittedIdentityChanges,
-                $this->companyFiscalIdentityService->changedFields(
-                    $company,
-                    ['currency' => $validated['currency_code']],
-                ),
-            );
-        }
 
         $submittedAddress = $validated['address'] ?? null;
-        if (is_array($submittedAddress) && array_key_exists('country', $submittedAddress)) {
-            $submittedIdentityChanges = array_replace(
-                $submittedIdentityChanges,
-                $this->companyFiscalIdentityService->changedFields(
-                    $company,
-                    ['country_code' => $submittedAddress['country']],
-                ),
-            );
-        }
-
-        if ($submittedIdentityChanges !== [] && ! $user->can('settings.fiscal.update')) {
-            return response()->json([
-                'error' => [
-                    'code' => 'FORBIDDEN',
-                    'message' => __('company.identity.fiscal_permission_required'),
-                ],
-                'meta' => $this->getMeta($request),
-            ], Response::HTTP_FORBIDDEN);
-        }
 
         if (array_key_exists('country_code', $validated)) {
             $this->companyFiscalIdentityService->assertImmutableFieldsUnchanged(
@@ -185,6 +145,16 @@ class CompanySettingsController extends Controller
                 ['country_code' => $submittedAddress['country']],
                 ['country_code' => 'address.country'],
             );
+        }
+
+        if ($fiscalIdentityChanges !== [] && ! $user->can('settings.fiscal.update')) {
+            return response()->json([
+                'error' => [
+                    'code' => 'FORBIDDEN',
+                    'message' => __('company.identity.fiscal_permission_required'),
+                ],
+                'meta' => $this->getMeta($request),
+            ], Response::HTTP_FORBIDDEN);
         }
 
         // Track changes for audit log

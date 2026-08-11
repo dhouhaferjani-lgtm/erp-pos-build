@@ -234,7 +234,7 @@ class CompanySettingsTest extends TestCase
         $this->assertJsonValidationErrors($response, ['country_code'])
             ->assertJsonPath(
                 'error.errors.country_code.0',
-                'The company country cannot be changed after provisioning. Contact support if it was set incorrectly.',
+                'The company country is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
             );
 
         $this->company->refresh();
@@ -256,7 +256,7 @@ class CompanySettingsTest extends TestCase
 
         $this->assertJsonValidationErrors($response, ['address.country']);
         $this->assertSame(
-            "Le pays de la société ne peut pas être modifié après le provisionnement. Contactez le support s'il a été configuré incorrectement.",
+            "Le pays de la société est fixé lors de sa création. Toute correction nécessite une procédure d'exploitation du support qui n'est pas encore disponible.",
             $response->json('error.errors')['address.country'][0],
         );
 
@@ -277,7 +277,7 @@ class CompanySettingsTest extends TestCase
         $this->assertJsonValidationErrors($response, ['currency_code'])
             ->assertJsonPath(
                 'error.errors.currency_code.0',
-                'The company currency cannot be changed after provisioning. Contact support if it was set incorrectly.',
+                'The company currency is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
             );
 
         $this->company->refresh();
@@ -468,7 +468,7 @@ class CompanySettingsTest extends TestCase
         $this->assertNull($this->company->tax_id);
     }
 
-    public function test_cosmetic_editor_cannot_bypass_fiscal_permission_with_immutable_country(): void
+    public function test_immutable_country_validation_precedes_fiscal_permission_check(): void
     {
         $editor = $this->createCosmeticEditor();
 
@@ -478,10 +478,10 @@ class CompanySettingsTest extends TestCase
                 'country_code' => 'TN',
             ]);
 
-        $response->assertForbidden()
+        $this->assertJsonValidationErrors($response, ['country_code'])
             ->assertJsonPath(
-                'error.message',
-                'You do not have permission to update the company fiscal identity.',
+                'error.errors.country_code.0',
+                'The company country is fixed at creation. Correction requires a support-operations procedure that is not yet available.',
             );
     }
 
@@ -530,6 +530,34 @@ class CompanySettingsTest extends TestCase
             'tax_id' => ['old' => null, 'new' => 'FR12345678901'],
             'registration_number' => ['old' => null, 'new' => 'RCS 123 456 789'],
         ], $auditEvent->payload['changes']);
+    }
+
+    public function test_audit_write_failure_rolls_back_company_update(): void
+    {
+        $originalLegalName = $this->company->legal_name;
+        AuditEvent::creating(static function (): void {
+            throw new \RuntimeException('Forced audit write failure.');
+        });
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->actingAs($this->adminUser, 'sanctum')
+                ->withHeader('X-Company-Id', $this->company->id)
+                ->patchJson('/api/v1/settings/company', [
+                    'legal_name' => 'Must Roll Back SARL',
+                ]);
+
+            $this->fail('Expected the forced audit write failure.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Forced audit write failure.', $exception->getMessage());
+        }
+
+        $this->company->refresh();
+        $this->assertSame($originalLegalName, $this->company->legal_name);
+        $this->assertDatabaseMissing('audit_events', [
+            'company_id' => $this->company->id,
+            'event_type' => 'company.fiscal_identity_updated',
+        ]);
     }
 
     public function test_can_update_address(): void
