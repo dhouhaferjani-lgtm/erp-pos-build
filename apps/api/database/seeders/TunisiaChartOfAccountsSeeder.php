@@ -18,6 +18,8 @@ use Illuminate\Support\Str;
  *
  * Implements {@see ChartOfAccountsSeederContract} so it can be returned
  * type-safely from {@see DemoPharmacySeeder::localeChartOfAccountsSeeder()}.
+ *
+ * @deprecated compatibility artifact; frozen at 7d85232cc
  */
 final class TunisiaChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeederContract
 {

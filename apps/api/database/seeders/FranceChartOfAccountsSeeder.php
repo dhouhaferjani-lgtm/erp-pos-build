@@ -17,6 +17,8 @@ use Illuminate\Support\Str;
  * Assigns system_purpose values to key accounts for country-agnostic GL operations.
  *
  * Based on PCG 2014 (Plan Comptable Général) as regulated by ANC (Autorité des Normes Comptables).
+ *
+ * @deprecated compatibility artifact; frozen at 7d85232cc
  */
 class FranceChartOfAccountsSeeder extends Seeder implements ChartOfAccountsSeederContract
 {
