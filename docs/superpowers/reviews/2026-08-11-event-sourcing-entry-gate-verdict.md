@@ -106,3 +106,17 @@ The complete verdict could not be written to the requested path because the sess
 | `FINDINGS-other-problems-2026-08-11.md` | **UNFIT** — its defining ownership boundary and 20-item summary are contradicted by at least OP-03, OP-17 and OP-18. |
 
 ENTRY GATE: CHANGES-REQUIRED
+
+---
+
+## Round 2 (2026-08-11, at fd9a199e8)
+
+*Provenance: scoped re-review of the round-1 corrections by an independent Codex reviewer, verdict returned in-band (no file written by the run); persisted here verbatim by the orchestrator.*
+
+**HEAD:** fd9a199e83843dd6c4ccf755a0834b6033839dde · **Round 2**, scoped re-review of the eight Round-1 findings plus fresh-eye diff pass · Read-only.
+
+Round-1 findings: (1) ES-07 narrowing APPLIED-DEFECTIVE — detailed correction accurate, but handover mission line still says both commands "cannot fail on the fiscal era" unqualified (HANDOVER:24). (2) Partition APPLIED-DEFECTIVE — 88 exactly-once verified (A0 9/A1 12/B 3/C 12/D 8/E 14/F 12/G 3/H 7/I 3/X 5, recounted clean; orphans thematically correct), sole defect = ES-48 wrongly tied to Q3's V1/V2 disposition (HANDOVER:58,165) while Q3/D-10 text covers ES-75/ES-28 and omits ES-48. (3) Conditional V1/V2/V3 APPLIED-DEFECTIVE — classes present + A0 red-run intact, but four classes don't cover every register fix shape: ES-31 locking/DB constraint, ES-42 route authorization, ES-43 signature implementation, ES-60 post-emission ledger rewrite, ES-83 stale projection column have no applicable contract. (4) Loyalty rationale / D-1 APPLIED-FAITHFUL. (5) Lane B APPLIED-DEFECTIVE — producer choice/dedup + SV-16 Stage 0.5 + renumbering all good; handover Q11 not option-complete vs D-17 (omits option 3 "CASH_OUT now, SAFE_DROP post-launch follow-on"). (6) Dossier 3 APPLIED-FAITHFUL (A6+B8+C1+D2=17). (7) ES-84 APPLIED-FAITHFUL. (8) ES-76 APPLIED-FAITHFUL.
+
+Fresh-eye: [Low] D-17 overstates SAFE_DROP/CASH_CORRECTION as existing "only" in the authoring type union + engine allow-set — they also appear in the payload registry and engine validation branches; the narrower "no production caller" claim holds. [Low] Owner-question ordering: Q11 inserted before Q10.
+
+ENTRY GATE ROUND 2: CHANGES-REQUIRED
