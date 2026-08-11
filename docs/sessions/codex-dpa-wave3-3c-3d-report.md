@@ -36,6 +36,4 @@ Adversarial round 4 found cross-file construct moves that line-diff mapping coul
 
 Round-4 revert/replay: revert `b48e88974` made the deleted-delivery-predicate successor probe exit 1; restore `06ebab27d` returned the cross-file relocation and semantic drift gate to green.
 
-Adversarial round 5 found ten unextracted timestamp/lowercase citations, the T18 seeder comment annotation, and stale-line exposure in manual relocations. The inventory now contains 266 rows, consumes required comment/docblock annotations, records the ambiguous treasury migration rule, and validates each relocation by symbol and semantic text. Current result: `N_extracted=266 N_mapped=266 relocated=24 unresolved=0`.
-
 Deviation discovered and resolved in the execution model: `RefundService` currently calls `ReturnNoteService::confirmWithin()` at transaction depth 1, while D-28 states depth 2. M2 will add the implied inner savepoint at that call before the writer-tail flush and retain C-2's root-tail flush. This aligns runtime depth with the settled architecture without changing the domain transition or lock set.

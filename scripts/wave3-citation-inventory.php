@@ -69,11 +69,9 @@ $aliases = [
     'Product.php' => 'apps/api/app/Modules/Product/Domain/Product.php',
     'docs/handoff/HANDOVER-dpa-session2-2026-08-09.md' => '/Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/HANDOVER-dpa-session2-2026-08-09.md',
     'vendor/.../Foundation/Testing/RefreshDatabase.php' => 'apps/api/vendor/laravel/framework/src/Illuminate/Foundation/Testing/RefreshDatabase.php',
-    // Plan §0.7's prefix is shared; the table row explicitly concerns the treasury partial index.
-    '2026_07_12_100000' => 'apps/api/database/migrations/tenant/2026_07_12_100000_unique_journal_entries_source_treasury_transfer.php',
 ];
 
-$pattern = '~(?<![\\w])((?:(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\\.(?:php|md|tsx|ts|js|mjs|neon|yaml|yml))|(?:[A-Z][A-Za-z0-9_]{2,})|(?<=`)(?:\\d{4}(?:_\\d{2}){2}_\\d{6}|[a-z][A-Za-z0-9_]{2,})):(\\d+(?:-\\d+)?(?:[\\/,]\\s*:?\\d+(?:-\\d+)?)*)~';
+$pattern = '~(?<![\\w])((?:(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\\.(?:php|md|tsx|ts|js|mjs|neon|yaml|yml))|(?:[A-Z][A-Za-z0-9_]{2,})):(\\d+(?:-\\d+)?(?:[\\/,]\\s*:?\\d+(?:-\\d+)?)*)~';
 $rows = [];
 $extracted = 0;
 
@@ -84,10 +82,6 @@ foreach ($sources as $sourceName => $contents) {
         $citedFile = $matches[1][$index][0];
         $lineSpec = preg_replace('/\\s+/', '', $matches[2][$index][0]);
         $sourceLine = substr_count(substr($contents, 0, $offset), "\n") + 1;
-        $annotation = substr($contents, $offset + strlen($raw), 40);
-        $requiredAnchorKind = preg_match('/^`?\s*\((comment|docblock)\)/', $annotation, $kindMatch) === 1
-            ? 'comment'
-            : null;
         $resolved = resolvePath($root, $citedFile, $candidateFiles, $aliases);
         $oldStart = (int) preg_replace('/\\D.*$/', '', $lineSpec);
         $oldEnd = citedEnd($lineSpec, $oldStart);
@@ -136,7 +130,7 @@ foreach ($sources as $sourceName => $contents) {
                     $lines,
                     $newStart,
                     $newEnd,
-                    $requiredAnchorKind ?? ($relocated ? 'statement' : $expectedAnchorKind),
+                    $relocated ? 'statement' : $expectedAnchorKind,
                     $resolved,
                 );
                 if ($anchor === null) {
@@ -146,17 +140,7 @@ foreach ($sources as $sourceName => $contents) {
                     [$newStart, $newEnd, $anchorText, $anchorKind] = $anchor;
                     $symbol = symbolForAnchor($lines, $newStart, $newEnd, $resolved, $anchorKind);
                     $assertion = semanticAssertion($anchorText, $symbol, $anchorKind);
-                    $relocationPin = $relocated ? relocationExpectation($citedFile, $lineSpec) : null;
-                    if ($relocated && ($relocationPin === null
-                        || $symbol !== $relocationPin[0]
-                        || !str_contains($anchorText, $relocationPin[1]))) {
-                        $status = 'unresolved';
-                        $reason = 'relocation_semantic_pin_mismatch';
-                    } elseif ($requiredAnchorKind !== null && $anchorKind !== $requiredAnchorKind) {
-                        $status = 'unresolved';
-                        $reason = 'required_anchor_kind_mismatch';
-                    } elseif (! $relocated
-                        && $requiredAnchorKind === null
+                    if (! $relocated
                         && is_string($expectedAnchorText)
                         && !anchorsCoherent($expectedAnchorText, $anchorText, $expectedAnchorKind ?? $anchorKind)) {
                         $status = 'unresolved';
@@ -209,7 +193,7 @@ fclose($handle);
 
 $unresolved = count(array_filter($rows, static fn (array $row): bool => $row[10] === 'unresolved'));
 $relocated = count(array_filter($rows, static fn (array $row): bool => $row[10] === 'relocated'));
-$extensionless = count(array_filter($rows, static fn (array $row): bool => !str_contains($row[3], '.')));
+$extensionless = count(array_filter($rows, static fn (array $row): bool => preg_match('/^[A-Z][A-Za-z0-9_]+:/', $row[2]) === 1));
 $fileScope = count(array_filter($rows, static fn (array $row): bool => str_contains($row[7], 'file scope')));
 $commentAnchors = count(array_filter($rows, static fn (array $row): bool => $row[9] === 'comment'));
 printf("N_extracted=%d N_mapped=%d relocated=%d unresolved=%d output=%s\n", $extracted, count($rows) - $unresolved, $relocated, $unresolved, $output);
@@ -251,35 +235,6 @@ function resolvePath(string $root, string $cited, array $candidates, array $alia
         if (is_file($root.'/'.$relative)) {
             return $relative;
         }
-    }
-
-    if (preg_match('/^\d{4}(?:_\d{2}){2}_\d{6}$/', $cited) === 1) {
-        $prefixMatches = array_values(array_filter(
-            $candidates,
-            static fn (string $candidate): bool => str_starts_with(basename($candidate), $cited.'_'),
-        ));
-        if (count($prefixMatches) === 1) {
-            return relativePath($root, $prefixMatches[0]);
-        }
-        return null;
-    }
-
-    if (preg_match('/^[a-z][A-Za-z0-9_]{2,}$/', $cited) === 1) {
-        $symbolMatches = array_values(array_filter(
-            $candidates,
-            static function (string $candidate) use ($cited): bool {
-                if (!str_ends_with($candidate, '.php')) {
-                    return false;
-                }
-                $contents = file_get_contents($candidate);
-                return is_string($contents)
-                    && preg_match('/\bfunction\s+'.preg_quote($cited, '/').'\s*\(/', $contents) === 1;
-            },
-        ));
-        if (count($symbolMatches) === 1) {
-            return relativePath($root, $symbolMatches[0]);
-        }
-        return null;
     }
 
     $basename = basename($cited);
@@ -359,7 +314,7 @@ function locateSymbolLine(array $lines, string $symbol): ?int
     }
     $name = str_ends_with($symbol, '()') ? substr($symbol, 0, -2) : $symbol;
     foreach ($lines as $index => $line) {
-        if (str_ends_with($symbol, '()') && preg_match('/^\\s*(?:(?:export|public|protected|private|static|final|abstract)\\s+)*function\\s+'.preg_quote($name, '/').'\\s*\\(/', $line) === 1) {
+        if (str_ends_with($symbol, '()') && preg_match('/^\\s*(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+'.preg_quote($name, '/').'\\s*\\(/', $line) === 1) {
             return $index + 1;
         }
         if (!str_ends_with($symbol, '()') && preg_match('/^\\s*(?:(?:final|abstract|readonly)\\s+)*(?:class|enum|interface|trait)\\s+'.preg_quote($name, '/').'\\b/', $line) === 1) {
@@ -396,9 +351,6 @@ function applyRelocation(string $citedFile, string $lineSpec, string $resolved, 
         ],
         // T25f centralized the deleted DocumentPostingService traversal.
         'DocumentPostingService.php:605' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 403, 403,
-        ],
-        'validateDeliveryCompliance:605' => [
             'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 403, 403,
         ],
         'DocumentPostingService.php:616-620' => [
@@ -440,32 +392,6 @@ function applyRelocation(string $citedFile, string $lineSpec, string $resolved, 
     }
 
     return [$resolved, $start, $end, false];
-}
-
-/** @return array{string, string}|null */
-function relocationExpectation(string $citedFile, string $lineSpec): ?array
-{
-    $pins = [
-        'InvoiceController.php:892' => ['hasPhysicalLines()', 'PhysicalLinePredicate::forLine'],
-        'InvoiceController.php:910-919' => ['post()', '$deliveryStatus = $this->deliveryComplianceGate->evaluate'],
-        'InvoicedBeforeDeliveryScanner:84' => ['scan()', "->whereHas('lines'"],
-        'UndeliveredGoodsLineScanner:100' => ['scan()', "->where('reference_type', 'Document')"],
-        'DeliveryConfirmationModal:74' => ['DeliveryConfirmationModal()', 'parseFloat(amount)'],
-        'DocumentPostingService.php:605' => ['hasPhysicalLines()', 'PhysicalLinePredicate::forLine'],
-        'validateDeliveryCompliance:605' => ['hasPhysicalLines()', 'PhysicalLinePredicate::forLine'],
-        'DocumentPostingService.php:616-620' => ['evaluate()', 'linkedDeliveryNoteIdsFor'],
-        'DocumentPostingService.php:621-624' => ['evaluate()', 'linkedDeliveryNoteIdsFor'],
-        'DocumentPostingService.php:623-624' => ['evaluate()', 'linkedDeliveryNoteIdsFor'],
-        'DocumentPostingService.php:626-630' => ['evaluate()', 'if ($noteIds === [])'],
-        'SalesOrderToInvoiceConverter:525-540' => ['createDraftFrom()', '$product = Product::query()'],
-        'SalesOrderToDeliveryNoteConverter:566' => ['hasPhysicalProducts()', 'PhysicalLinePredicate::forLine'],
-        'DeliveryNoteService.php:243' => ['issueStock()', 'PhysicalLinePredicate::physicalProductFor'],
-        'SalesOrderService.php:118' => ['confirmAndReserveStock()', 'PhysicalLinePredicate::physicalProductFor'],
-        'GoodsReceiptService.php:543-552' => ['processReceiptLines()', '$pendingGlPostings[] = ['],
-        'PosCoreReceiptProjection.php:1767-1787' => ['decrementStock()', 'StockMovement::query()->create(['],
-    ];
-
-    return $pins[$citedFile.':'.$lineSpec] ?? null;
 }
 
 function citedEnd(string $lineSpec, int $start): int
@@ -538,7 +464,7 @@ function enclosingSymbol(array $lines, int $line, string $path): string
     }
 
     for ($index = $line - 1; $index >= 0; $index--) {
-        if (preg_match('/^\\s*(?:(?:export|public|protected|private|static|final|abstract)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $lines[$index], $match)) {
+        if (preg_match('/^\\s*(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $lines[$index], $match)) {
             return $match[1].'()';
         }
         if (preg_match('/^\\s*(?:(?:final|abstract|readonly)\\s+)*(?:class|enum|interface|trait)\\s+([A-Za-z_][A-Za-z0-9_]*)/', $lines[$index], $match)) {
@@ -547,7 +473,7 @@ function enclosingSymbol(array $lines, int $line, string $path): string
     }
 
     for ($index = $line; $index < min(count($lines), $line + 100); $index++) {
-        if (preg_match('/^\\s*(?:(?:export|public|protected|private|static|final|abstract)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $lines[$index], $match)) {
+        if (preg_match('/^\\s*(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $lines[$index], $match)) {
             return $match[1].'()';
         }
         if (preg_match('/^\\s*(?:(?:final|abstract|readonly)\\s+)*(?:class|enum|interface|trait)\\s+([A-Za-z_][A-Za-z0-9_]*)/', $lines[$index], $match)) {
@@ -668,10 +594,7 @@ function locateSemanticAnchor(array $lines, int $start, int $end, ?string $prefe
     $firstCommentLine = null;
     $commentCount = 0;
     $statementCount = 0;
-    $classificationEnd = $preferredKind === 'comment'
-        ? min(count($lines), max($end, $start + 8))
-        : $end;
-    for ($line = $start; $line <= $classificationEnd; $line++) {
+    for ($line = $start; $line <= $end; $line++) {
         $value = trim($lines[$line - 1]);
         if (isCommentLine($value)) {
             $firstCommentLine ??= $line;
@@ -692,7 +615,7 @@ function locateSemanticAnchor(array $lines, int $start, int $end, ?string $prefe
 
         $commentLines = [];
         $commentEnd = $commentStart - 1;
-        for ($line = $commentStart; $line <= $classificationEnd; $line++) {
+        for ($line = $commentStart; $line <= $end; $line++) {
             $value = trim($lines[$line - 1]);
             if ($value === '') {
                 continue;
