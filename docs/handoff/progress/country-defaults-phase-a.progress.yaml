@@ -26,8 +26,8 @@ milestones:
     title: "Reconciliation addendum — recompute §0 drift table from current origin/dev; capture pre-addendum reconciliation command output (documentation-only, no red test)"
     review_lenses: [treasury]
     status: review
-    fix_rounds: 1
-    commit: c744c19cc2642e327f700544a108e0655eccd29f
+    fix_rounds: 2
+    commit: 118190f1f4ea0b863f7bdced646ae34564880053
     verdict: docs/handoff/reviews/country-defaults-phase-a/M0-round2.md
     last_verdict: CHANGES-REQUIRED
   - id: M1
