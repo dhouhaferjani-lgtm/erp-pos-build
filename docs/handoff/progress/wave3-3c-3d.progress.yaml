@@ -1,0 +1,76 @@
+wave: wave3-3c-3d
+brief: docs/handoff/CODEX-DISPATCH-wave3-3c-3d-2026-08-10.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+review_register: .superpowers/sdd/HANDOVER-document-per-action-remediation-2026-08-08/review-3c3d-handover-2026-08-10.md
+reviewer_model: opus
+max_fix_rounds: 5
+
+# Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
+base_sha: 7f84dc91ada4d9dbc9b834e2bdd2acc90a079b3a
+# 3C branch off base_sha; after 3C merges to local dev, create 3D branch off the new dev (see brief DELIVERABLE).
+branch_3c: null
+branch_3d: null
+
+owner_gates:
+  - id: base-sha-pin
+    question: "Confirm base_sha is local dev with 3A/3B+3E merged and both Workshop tickets present (M0 verifies)."
+    status: satisfiable_by_M0
+  - id: V-7-treasury-codes
+    question: "T20 proposes TN/FR/Generic shrinkage/gain account codes; treasury-reviewer must APPROVE before T20 merges. This is a merge condition, not an opinion."
+    blocks_milestone: M4
+    status: open
+  # OQ-13 (device-date), OQ-2 (seed best-known codes), OQ-12 (accept liasse caveat) are ALREADY RULED — not gates.
+
+milestones:
+  - id: M0
+    title: "Preflight — citation inventory (fail on unresolved>0), D-19 register (18/10/3/4), V-10 fix, WAC-float check, N-2 data probe, ticket presence"
+    review_lenses: [inventory-costing, fiscal-pos]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M1
+    title: "3C seam infra: T11, T11e, T12, T13, T11c (ten lock-order pairs) + T15a (pre-cutover) + T16c audit (negative branch inapplicable) + V-10 narrow fix"
+    review_lenses: [inventory-costing, fiscal-pos]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2
+    title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
+    review_lenses: [inventory-costing, fiscal-pos]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "3C tail: T18, T19, T19b + POS and GR D-f arms (WO arm = tested no-op tied to workshop-parts ticket; D-f POS arm carries NO grace window) + C-5 registration + flushIfOutermost tail + D-e stock_adjustment exclusion"
+    review_lenses: [inventory-costing, fiscal-pos]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M4
+    title: "3D France/purposes arm: T20 (propose shrinkage/gain codes — treasury approval a MERGE CONDITION), T20b. requiresGLEntry stays TRUE; thread unitCost, exclude adjustment path from GL buffer, preserve D-b exclusion."
+    review_lenses: [inventory-costing, treasury]
+    owner_gate: V-7-treasury-codes
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M5
+    title: "3D listener: T21, T22. Whole-branch gate: re-run full accumulated evidence + every lens over the integrated branch."
+    review_lenses: [inventory-costing, fiscal-pos, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []

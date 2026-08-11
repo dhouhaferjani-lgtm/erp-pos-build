@@ -1,0 +1,91 @@
+wave: country-defaults-phase-a
+brief: docs/handoff/CODEX-DISPATCH-country-defaults-phase-a-2026-08-10.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+spec: docs/superpowers/specs/2026-08-08-country-defaults-super-admin-design.md
+review_register: docs/superpowers/specs/reviews/2026-08-10-country-defaults-phase-a-handover-review.md
+reviewer_model: opus
+max_fix_rounds: 5
+
+# Re-pin at dispatch (V-1): origin/dev moves. If it advanced past 7d85232cc, re-verify the §0 drift table before coding.
+base_sha: null
+branch: null
+
+owner_gates:
+  - id: spec-read-through
+    question: "Owner reads the accepted spec (Rev 14) before dispatch. This is a pre-dispatch human step, not a milestone."
+    status: open
+  - id: defaults-editor-activation
+    question: "defaults_editor role stays FEATURE-FLAGGED OFF until the central-admin MFA lane lands. Do not enable in Phase A."
+    status: standing_constraint
+  - id: no-existing-company-mutation
+    question: "Templates apply at company creation only. NO Phase A code may mutate an existing company's accounts. Enforced by the M7 branch-wide assertions."
+    status: standing_constraint
+
+milestones:
+  - id: M0
+    title: "Reconciliation addendum — recompute §0 drift table from current origin/dev; capture pre-addendum reconciliation command output (documentation-only, no red test)"
+    review_lenses: [treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M1
+    title: "Invariant kernel (no DB/HTTP): CountryAccountingCapabilities contract+impl, CertificationScope VO, ProvisioningRequiredPurposes::V1 manifest + conformance suite + AST ratchet, protected-code registry, CanonicalCoaSerializer + golden vector, frozen-seeder @deprecated docblocks"
+    review_lenses: [treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2
+    title: "Central schema (3 tables, directly in database/migrations/) + CentralConnection models + publish/assignment domain services; locks/transactions/audit-in-transaction"
+    review_lenses: [tenancy-authz, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "defaults_editor role + EnsureCentralAdmin (central_admin alias) + route groups (minimal auth edit: only nested logout/me) + MFA feature flag + full API surface"
+    review_lenses: [tenancy-authz]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M4
+    title: "Legacy golden exporter + bootstrap key-as-assertion data migration (drafts only) + country-defaults:verify global drift scan; report 27-REQUIRED + scope-dependent SalesStampDutyPayable results"
+    review_lenses: [treasury, tenancy-authz]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M5
+    title: "Provisioning rewire: resolver 4-step algorithm, TemplateChartOfAccountsSeeder, full consumer inventory (incl. ExpenseCategoryProvisioningService), rollback semantics — behind COUNTRY_DEFAULTS_PROVISIONING_ENABLED (default false)"
+    review_lenses: [treasury, tenancy-authz]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M6
+    title: "Admin FE (apps/web/src/features/admin/country-defaults/): templates list, editor grid, assignments, three-role shell, en+fr"
+    review_lenses: [frontend-conventions, tenancy-authz]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M7
+    title: "Whole-branch integration gate + executable evidence manifest (all M1-M6 paths on PG + SQLite parity, static scopes, country-defaults:verify, route inventory, six branch-wide static assertions) — no new implementation; failure of any item blocks"
+    review_lenses: [treasury, tenancy-authz, frontend-conventions]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []
