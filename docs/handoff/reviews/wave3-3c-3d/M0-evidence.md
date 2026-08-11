@@ -203,3 +203,5 @@ The round-1 register is retained in `M0-round1.md`. Its required changes were ha
 - P2-2: no substitution was made. The authoritative plan itself names `counting listener × goods receipt` as pair 4 at `plan-wave3.md:2716`; the per-item replay transaction is sufficient to exercise the reversed order in M1 even though T21 later widens the transaction to the whole count.
 - P2-3: the D-f design is keyed by the receipt line's unique movement links and also validates the mandated PO/product source tuple.
 - P3: the moved POS/C-1 anchors, D-19 convergence, original-cost no-fallback ruling, C-2 I-1 reason, and verbatim probe command are all recorded above.
+
+Fix-commit revert/replay evidence: reverting `5158f7432` produced `N_extracted=243` and the covering check exited 1 with `FAIL: missing extensionless citation SalesOrderToInvoiceConverter:334`. Reapplying the fix at `d2b5765e0` restored the 256-row green result.

@@ -22,4 +22,6 @@ Evidence and actual outputs are recorded in `docs/handoff/reviews/wave3-3c-3d/M0
 
 Decision: POS refund re-entry will use the original POS sale movement cost at the same product grain (R-1 option a).
 
+Fix-round revert/replay: revert `3fabdaa34` reduced the inventory to 243 citations and the covering check exited 1 for the missing `SalesOrderToInvoiceConverter:334` citation; restore `d2b5765e0` returned the regression to 256 passing rows.
+
 Deviation discovered and resolved in the execution model: `RefundService` currently calls `ReturnNoteService::confirmWithin()` at transaction depth 1, while D-28 states depth 2. M2 will add the implied inner savepoint at that call before the writer-tail flush and retain C-2's root-tail flush. This aligns runtime depth with the settled architecture without changing the domain transition or lock set.
