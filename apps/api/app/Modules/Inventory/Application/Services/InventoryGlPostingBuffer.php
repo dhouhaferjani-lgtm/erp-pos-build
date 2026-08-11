@@ -71,7 +71,7 @@ final class InventoryGlPostingBuffer
         foreach ($pending as $ctx) {
             $posted[] = match ($ctx->kind) {
                 MovementGlKind::Exit => $this->posting->postForExit($ctx),
-                MovementGlKind::Entry => $this->posting->postForExit($ctx),
+                MovementGlKind::Entry => $this->posting->postForEntry($ctx),
                 MovementGlKind::CountCorrection => $this->posting->postForCountCorrection($ctx),
                 MovementGlKind::BatchWriteOff => $this->posting->postForBatchWriteOff($ctx),
             };
