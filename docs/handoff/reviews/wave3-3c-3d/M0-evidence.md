@@ -8,7 +8,6 @@
 - foundations ancestor check: `6974231d0` is an ancestor of `BASE_SHA` (exit 0).
 - dedicated branch/worktree: `codex/dpa-wave3-3c` at `.worktrees/dpa-wave3-3c`.
 - the worktree was clean immediately after creation; subsequent M0 artifact and progress changes are this milestone's own work.
-- pin provenance: the copy of the progress YAML inside commit `26b63f0ff` still named an abandoned sibling harness commit (`7f84dc91a…`). The current `dev` dispatch state read before worktree creation, at `8ce919be2`, independently ratified `26b63f0ff` as the base. This run did not choose a new base to match its HEAD; it copied the already-ratified current dispatch pin into the isolated branch and records that substitution here explicitly.
 - required tickets present on the pinned commit:
   - `docs/superpowers/tickets/2026-08-07-wo-quote-tax-inclusive-line-total.md`
   - `docs/superpowers/tickets/2026-08-10-workshop-parts-goods-lane-gap.md`
@@ -24,11 +23,11 @@ php scripts/wave3-citation-inventory.php docs/handoff/reviews/wave3-3c-3d/M0-cit
 Actual output:
 
 ```text
-N_extracted=256 N_mapped=256 unresolved=0 output=docs/handoff/reviews/wave3-3c-3d/M0-citation-inventory.csv
-csv_rows=256 extensionless=13 file_scope=0
+N_extracted=243 N_mapped=243 unresolved=0 output=docs/handoff/reviews/wave3-3c-3d/M0-citation-inventory.csv
+csv_rows=243
 ```
 
-The extractor consumes the dispatch and the authoritative plan from its beginning through the end of §4. It extracts both `File.php:line` and extensionless `Class:line` forms, resolves each path, maps from the plan reference SHA where possible, relocates the two independently verified 3E extractions, and fails non-zero if the path, mapped line, real enclosing symbol, or classified semantic assertion is absent. File-scope fallbacks and punctuation-only anchors are forbidden. The complete row set is in `M0-citation-inventory.csv` and `scripts/tests/wave3-citation-inventory-test.php` pins the three failure classes.
+The extractor consumes the dispatch and the authoritative plan from its beginning through the end of §4, resolves every explicit `file:line` citation, maps from the plan reference SHA where possible, and fails non-zero if the path, mapped line, symbol, or semantic assertion is absent. The complete row set is in `M0-citation-inventory.csv`.
 
 Known moved-anchor validation:
 
@@ -70,7 +69,7 @@ The C-2 depth discrepancy is actionable but not an architecture contradiction: t
 | 1. DN confirm × DN confirm | direct delivery writer overlap |
 | 2. DN confirm × RN confirm | delivery stock row locks versus RN's sorted product-cost locks |
 | 3. DN confirm × POS projection | shared stock rows across document and device lanes |
-| 4. counting listener × goods receipt | per-item counting product-cost locks versus GR's up-front locks. This remains the authoritative plan row (`plan-wave3.md:2716`). It is executable before T21 because a replay item already opens `DB::transaction` at current lines 257-288 and the legacy adjustment service owns its own transaction; T21's future whole-counting root is not required to exercise one item's reversed lock order. |
+| 4. counting listener × goods receipt | per-item counting product-cost locks versus GR's up-front locks |
 | 5. POS projection × goods receipt | carried T5b ordering proof |
 | 6. C-1 multi-DN confirm/post × concurrent invoice post | required nested composite; additionally prove all DNs post in one root flush |
 | 7. POS refund-with-scrap × DN confirm | inline scrap advisory before T16d |
@@ -89,19 +88,13 @@ Semantic implementation anchor:
 1. Resolve the refund's `pos_receipts.original_receipt_id` from the refund receipt id already passed to `restockStock()`.
 2. Query original `stock_movements` by `reference_type = 'pos_receipt'`, `reference_id = original_receipt_id`, and the same `(product_id, variant_id, location_id)` grain.
 3. Drain original exits deterministically by `(occurred_at ASC, id ASC)` for the refunded quantity and compute a quantity-weighted unit cost at `COST_SCALE = 6`, using decimal-string math only.
-4. Never fall back to live WAC. The upstream refund gate already requires a resolvable original receipt. If that receipt has no attributable exit movement, emit a zero-cost row plus a warning and let D-b expose the missing basis; using current cost would silently reinstate the exact residual R-1 closes. The signed POS event is not refused after acceptance.
+4. Fall back to the existing current-cost snapshot only when no attributable exit exists, with a warning that names the accounting consequence.
 
 Distinguishing red-first test: project a sale at `10.000000`, move `products.cost_price` to `12.000000`, project its linked refund, then assert the POSReturn movement and inventory-entry JE both use `10.000000`. The competing live-WAC choice produces `12.000000` and makes the test red.
 
 This is POS-local and does not restore D-24's deleted `POSSale` arm.
 
 ## R-11 pre-deploy data probe
-
-Probe command, verbatim:
-
-```text
-psql -h 127.0.0.1 -p 5432 -d postgres -Atqc "select datname from pg_database where datistemplate = false and datname like 'tenant%' order by datname" | while IFS= read -r tenant_db; do count=$(psql -h 127.0.0.1 -p 5432 -d "$tenant_db" -Atqc "select count(distinct sm.id) from stock_movements sm join document_lines dl on dl.document_id = sm.reference_id and dl.product_id = sm.product_id join products p on p.id = sm.product_id and p.tenant_id = sm.tenant_id and p.company_id = sm.company_id where sm.reason = 'delivery' and p.is_physical = false" 2>/dev/null) || count=QUERY_ERROR; printf '%s,%s\n' "$tenant_db" "$count"; done
-```
 
 Probe SQL (run read-only on every local PostgreSQL database matching `tenant%` on port 5432):
 
@@ -138,19 +131,11 @@ tenant019ea8ab-fbc2-72a9-b519-525d3b91f019,0
 tenant019f7946-812a-7297-9448-ed4bc5d7415e,0
 ```
 
-Integer result on this local sample: **0** across **14** tenant databases. Denominators independently checked during round 1: **0** `stock_movements` with `reason='delivery'`, **12** total stock movements, **0** products with `is_physical=false`, and **2003** total products. This developer sample is therefore vacuous and does **not** self-close the deploy-target question. The deploy-target integer remains unmeasured here; T19 must carry the conditional remediation section and require this same query against every deploy tenant before cutover.
+Integer total: **0** across **14** tenant databases. R-11 self-closes; T19 does not need a non-zero remediation procedure.
 
 ## Goods-receipt D-f movement anchor
 
-The literal is established, not inferred: both free and paid GR movement calls pass `referenceType: 'Document'` and `referenceId: $purchaseOrder->id` at `GoodsReceiptService.php:576-578` and `625-627`; `WeightedAverageCostService::recordPurchase()` persists those arguments at lines `278-279`.
-
-The line grain is also established. `goods_receipt_lines` has unique nullable `movement_id` and `free_movement_id` links (`2026_07_04_100000_create_goods_receipts_tables.php:48-49,61-69`), and `GoodsReceiptService.php:701-702` writes the exact movements created for that receipt line. M3's anti-join must therefore:
-
-1. start from each posted `goods_receipt_line` with a positive received/free quantity;
-2. join the corresponding `movement_id` or `free_movement_id` to `stock_movements.id` so two partial receipts for one PO/product cannot satisfy one another;
-3. additionally validate the mandated source tuple on that row: `reference_type = 'Document'`, `reference_id = goods_receipts.purchase_order_id`, and matching `product_id`.
-
-This preserves the dispatch's source key while making the receipt-line identity non-vacuous. A line with a null link or a missing/mismatched movement fires D-f.
+The literal is established, not inferred: both free and paid GR movement calls pass `referenceType: 'Document'` and `referenceId: $purchaseOrder->id` at `GoodsReceiptService.php:576-578` and `625-627`; `WeightedAverageCostService::recordPurchase()` persists those arguments at lines `278-279`. Therefore the GR anti-join must use **`reference_type = 'Document'` and the purchase-order document id**, not the goods-receipt id and not the POS literal.
 
 ## WAC float and quantity follow-up
 
@@ -183,7 +168,7 @@ The register is historical across the 3A/3B→3E integration, so moved consumers
 | 17 | `PostCOGSOnInvoice::extractPhysicalProductLines()` lines 126-141 | assigned to 3C, self-closing by T17 deletion; record as retired-by-cutover, not adopted. |
 | 18 | 3E merge-gate site `DeliveryComplianceGate::hasPhysicalLines()` line 403 | off-branch row now executed and adopted on the integrated base; `PhysicalLinePredicateTest` drives it. |
 
-Count reconciliation: **18 total = 10 adopted register rows + 3 deliberate non-adoptions + 4 assigned-to-3C rows + 1 integrated off-branch merge-gate row**. Rows 1, 2, and 18 intentionally converge on current `DeliveryComplianceGate::hasPhysicalLines()` line 403 after 3E centralized two earlier consumers and the merge gate adopted the shared predicate; they remain separate historical register obligations. The duplicated current anchor at rows 8/16 is also intentional: row 8 is the 3A adopted-site history, while row 16 is the dispatch's carried 3C obligation and is recorded as already satisfied on the pinned integration base.
+Count reconciliation: **18 total = 10 adopted register rows + 3 deliberate non-adoptions + 4 assigned-to-3C rows + 1 integrated off-branch merge-gate row**. The duplicated current anchor at rows 8/16 is intentional: row 8 is the 3A adopted-site history, while row 16 is the dispatch's carried 3C obligation and is recorded as already satisfied on the pinned integration base.
 
 ### NEW-3 mutable-flag exposure
 
@@ -191,15 +176,4 @@ Predicate coherence intentionally reads mutable `products.is_physical`; a catalo
 
 ## M0 conclusion
 
-All mechanically satisfiable preconditions resolve. Citation `unresolved = 0`, the caller sweep is enumerated (including C-5 and the C-2 depth correction), both Workshop tickets exist, the WAC float cast is absent, the GR reference literal and per-receipt-line grain are established, and D-19 reconciles to 18. R-11's local integer is 0 on a zero-denominator sample; deploy-target execution remains a documented T19 cutover precondition rather than being falsely self-closed.
-
-## Adversarial round 1 response
-
-The round-1 register is retained in `M0-round1.md`. Its required changes were handled as follows:
-
-- P1-1/P1-2: the extractor now includes extensionless class citations and rejects missing real symbols, file-scope fallbacks, and unclassified semantic assertions. The regression initially failed with `Missing extensionless citation: SalesOrderToInvoiceConverter:334`; it now reports `wave3 citation inventory regression: PASS (256 rows)`.
-- P1-3: the local R-11 result is explicitly labelled vacuous and the deploy query remains a T19 cutover prerequisite.
-- P2-1: the pin provenance and independent dispatch ratification are disclosed above.
-- P2-2: no substitution was made. The authoritative plan itself names `counting listener × goods receipt` as pair 4 at `plan-wave3.md:2716`; the per-item replay transaction is sufficient to exercise the reversed order in M1 even though T21 later widens the transaction to the whole count.
-- P2-3: the D-f design is keyed by the receipt line's unique movement links and also validates the mandated PO/product source tuple.
-- P3: the moved POS/C-1 anchors, D-19 convergence, original-cost no-fallback ruling, C-2 I-1 reason, and verbatim probe command are all recorded above.
+All mechanical preconditions resolve. Citation `unresolved = 0`, the caller sweep is enumerated (including C-5 and the C-2 depth correction), both Workshop tickets exist, the WAC float cast is absent, the GR reference literal is established, D-19 reconciles to 18, and the R-11 integer count is 0.

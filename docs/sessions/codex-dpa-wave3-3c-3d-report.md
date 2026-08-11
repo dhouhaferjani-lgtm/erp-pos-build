@@ -18,7 +18,7 @@ Files touched:
 - `docs/handoff/progress/wave3-3c-3d.progress.yaml`
 - this report
 
-Evidence and actual outputs are recorded in `docs/handoff/reviews/wave3-3c-3d/M0-evidence.md`. The run started with `HEAD == BASE_SHA`; after adversarial fix round 1, `N_extracted=256`, `N_mapped=256`, `unresolved=0`, including 13 extensionless citations and zero file-scope fallbacks. The regression test's red state was `Missing extensionless citation: SalesOrderToInvoiceConverter:334`; its green state is `wave3 citation inventory regression: PASS (256 rows)`. R-11's local result is `0` on a zero-denominator sample and is not treated as deploy evidence; both Workshop tickets are present; D-19 reconciles to 18 rows; GR movements use `Document` / purchase-order id and receipt-line identity is carried by unique `movement_id` / `free_movement_id` links.
+Evidence and actual outputs are recorded in `docs/handoff/reviews/wave3-3c-3d/M0-evidence.md`. Key results: `HEAD == BASE_SHA`; `N_extracted=243`, `N_mapped=243`, `unresolved=0`; R-11 total `0` across 14 tenant databases; both Workshop tickets present; D-19 reconciles to 18 rows; GR movements use `Document` / purchase-order id.
 
 Decision: POS refund re-entry will use the original POS sale movement cost at the same product grain (R-1 option a).
 

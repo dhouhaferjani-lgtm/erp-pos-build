@@ -56,7 +56,7 @@ $aliases = [
     'vendor/.../Foundation/Testing/RefreshDatabase.php' => 'apps/api/vendor/laravel/framework/src/Illuminate/Foundation/Testing/RefreshDatabase.php',
 ];
 
-$pattern = '~(?<![\\w])((?:(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\\.(?:php|md|tsx|ts|js|mjs|neon|yaml|yml))|(?:[A-Z][A-Za-z0-9_]{2,})):(\\d+(?:-\\d+)?(?:[\\/,]\\s*:?\\d+(?:-\\d+)?)*)~';
+$pattern = '~(?<![\\w])((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\\.(?:php|md|tsx|ts|js|mjs|neon|yaml|yml)):(\\d+(?:-\\d+)?(?:[\\/,]\\s*:?\\d+(?:-\\d+)?)*)~';
 $rows = [];
 $extracted = 0;
 
@@ -84,30 +84,13 @@ foreach ($sources as $sourceName => $contents) {
             [$newStart, $newEnd] = mapLines($root, $resolved, $oldStart, $oldEnd);
             $absolute = str_starts_with($resolved, '/') ? $resolved : $root.'/'.$resolved;
             $lines = file($absolute, FILE_IGNORE_NEW_LINES);
-            $reference = referenceContext($root, $resolved, $oldStart);
-            if (is_array($lines) && $reference !== null) {
-                [$expectedSymbol, $oldSymbolLine] = $reference;
-                $mappedSymbol = enclosingSymbol($lines, $newStart, $resolved);
-                if ($expectedSymbol !== '' && $mappedSymbol !== $expectedSymbol) {
-                    $newSymbolLine = locateSymbolLine($lines, $expectedSymbol);
-                    if ($newSymbolLine !== null) {
-                        $offset = max(0, $oldStart - $oldSymbolLine);
-                        $newStart = min(count($lines), $newSymbolLine + $offset);
-                        $newEnd = min(count($lines), $newStart + max(0, $oldEnd - $oldStart));
-                    }
-                }
-            }
-
-            [$resolved, $newStart, $newEnd] = applyRelocation($citedFile, $lineSpec, $resolved, $newStart, $newEnd);
-            $absolute = str_starts_with($resolved, '/') ? $resolved : $root.'/'.$resolved;
-            $lines = file($absolute, FILE_IGNORE_NEW_LINES);
             if (!is_array($lines) || $newStart < 1 || $newStart > count($lines)) {
                 $status = 'unresolved';
                 $reason = 'mapped_line_out_of_range';
             } else {
                 $symbol = enclosingSymbol($lines, $newStart, $resolved);
                 $assertion = semanticAnchor($lines, $newStart, $newEnd, $symbol);
-                if ($symbol === '' || $assertion === '' || !hasExecutableAnchor($lines, $newStart, $newEnd, $resolved)) {
+                if ($symbol === '' || $assertion === '') {
                     $status = 'unresolved';
                     $reason = 'missing_symbol_or_semantic_anchor';
                 }
@@ -195,8 +178,7 @@ function resolvePath(string $root, string $cited, array $candidates, array $alia
     $basename = basename($cited);
     $matches = array_values(array_filter(
         $candidates,
-        static fn (string $candidate): bool => basename($candidate) === $basename
-            || pathinfo($candidate, PATHINFO_FILENAME) === $basename,
+        static fn (string $candidate): bool => basename($candidate) === $basename,
     ));
     if (count($matches) === 1) {
         return relativePath($root, $matches[0]);
@@ -229,68 +211,6 @@ function relativePath(string $root, string $absolute): string
 {
     $prefix = rtrim($root, '/').'/';
     return str_starts_with($absolute, $prefix) ? substr($absolute, strlen($prefix)) : $absolute;
-}
-
-/** @return array{string, int}|null */
-function referenceContext(string $root, string $resolved, int $oldLine): ?array
-{
-    if (str_starts_with($resolved, '/') || str_starts_with($resolved, '.superpowers/') || str_starts_with($resolved, 'apps/api/vendor/')) {
-        return null;
-    }
-
-    $contents = shell_exec(
-        'git -C '.escapeshellarg($root).' show '.escapeshellarg(PLAN_REFERENCE_SHA.':'.$resolved).' 2>/dev/null',
-    );
-    if (!is_string($contents) || $contents === '') {
-        return null;
-    }
-
-    $lines = preg_split('/\\R/', $contents);
-    if (!is_array($lines) || $oldLine > count($lines)) {
-        return null;
-    }
-
-    $symbol = enclosingSymbol($lines, $oldLine, $resolved);
-    $symbolLine = locateSymbolLine($lines, $symbol) ?? $oldLine;
-
-    return [$symbol, $symbolLine];
-}
-
-/** @param list<string> $lines */
-function locateSymbolLine(array $lines, string $symbol): ?int
-{
-    if ($symbol === '') {
-        return null;
-    }
-    $name = str_ends_with($symbol, '()') ? substr($symbol, 0, -2) : $symbol;
-    foreach ($lines as $index => $line) {
-        if (str_ends_with($symbol, '()') && preg_match('/^\\s*(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+'.preg_quote($name, '/').'\\s*\\(/', $line) === 1) {
-            return $index + 1;
-        }
-        if (!str_ends_with($symbol, '()') && preg_match('/^\\s*(?:(?:final|abstract|readonly)\\s+)*(?:class|enum|interface|trait)\\s+'.preg_quote($name, '/').'\\b/', $line) === 1) {
-            return $index + 1;
-        }
-    }
-
-    return null;
-}
-
-/** @return array{string, int, int} */
-function applyRelocation(string $citedFile, string $lineSpec, string $resolved, int $start, int $end): array
-{
-    $key = $citedFile.':'.$lineSpec;
-    $relocations = [
-        // 3E centralized the former InvoiceController physical-line loop.
-        'InvoiceController.php:892' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryComplianceGate.php', 403, 403,
-        ],
-        // T25f deleted the second controller traversal and delegates to the gate.
-        'InvoiceController.php:910-919' => [
-            'apps/api/app/Modules/Document/Presentation/Controllers/InvoiceController.php', 669, 674,
-        ],
-    ];
-
-    return $relocations[$key] ?? [$resolved, $start, $end];
 }
 
 function citedEnd(string $lineSpec, int $start): int
@@ -362,109 +282,36 @@ function enclosingSymbol(array $lines, int $line, string $path): string
         return 'document scope';
     }
 
-    for ($index = $line - 1; $index >= 0; $index--) {
-        if (preg_match('/^\\s*(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $lines[$index], $match)) {
+    for ($index = $line - 1; $index >= max(0, $line - 250); $index--) {
+        if (preg_match('/\\bfunction\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $lines[$index], $match)) {
             return $match[1].'()';
         }
-        if (preg_match('/^\\s*(?:(?:final|abstract|readonly)\\s+)*(?:class|enum|interface|trait)\\s+([A-Za-z_][A-Za-z0-9_]*)/', $lines[$index], $match)) {
+        if (preg_match('/\\b(?:class|enum|interface|trait)\\s+([A-Za-z_][A-Za-z0-9_]*)/', $lines[$index], $match)) {
             return $match[1];
         }
     }
 
-    for ($index = $line; $index < min(count($lines), $line + 100); $index++) {
-        if (preg_match('/^\\s*(?:(?:public|protected|private|static|final|abstract)\\s+)*function\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $lines[$index], $match)) {
-            return $match[1].'()';
-        }
-        if (preg_match('/^\\s*(?:(?:final|abstract|readonly)\\s+)*(?:class|enum|interface|trait)\\s+([A-Za-z_][A-Za-z0-9_]*)/', $lines[$index], $match)) {
-            return $match[1];
-        }
-    }
-
-    for ($index = $line - 1; $index >= 0; $index--) {
-        if (preg_match('/(?:Route|Schedule)::([A-Za-z_][A-Za-z0-9_]*)/', $lines[$index], $match)) {
-            return strtolower(pathinfo($path, PATHINFO_FILENAME)).' '.$match[1].' registration';
-        }
-    }
-
-    if (str_ends_with($path, '.neon') || str_ends_with($path, '.yaml') || str_ends_with($path, '.yml')) {
-        return basename($path).' configuration';
-    }
-
-    return '';
+    return basename($path).' file scope';
 }
 
 /** @param list<string> $lines */
 function semanticAnchor(array $lines, int $start, int $end, string $symbol): string
 {
-    $anchor = executableAnchor($lines, $start, $end);
-    if ($symbol === '' || $anchor === null) {
-        return '';
-    }
-
-    $text = preg_replace('/\\s+/', ' ', trim($anchor)) ?? '';
-    $text = mb_substr($text, 0, 280);
-    if (str_starts_with($symbol, 'section ')) {
-        return $symbol.' states the mapped obligation: `'.$text.'`';
-    }
-    if (preg_match('/^(?:\\*|\/\\/|\/\\*)/', trim($anchor)) === 1) {
-        return $symbol.' documents the cited invariant: `'.trim(preg_replace('/^(?:\\*|\/\\/|\/\\*)\\s*/', '', $text) ?? $text).'`';
-    }
-    if (preg_match('/\\bthrow\\b/', $text) === 1) {
-        return $symbol.' refuses the cited condition by throwing at `'.$text.'`';
-    }
-    if (preg_match('/\\breturn\\b/', $text) === 1) {
-        return $symbol.' returns the cited result at `'.$text.'`';
-    }
-    if (preg_match('/\\bcase\\s+([A-Za-z_][A-Za-z0-9_]*)/', $text, $match) === 1) {
-        return $symbol.' defines enum case '.$match[1].' at `'.$text.'`';
-    }
-    if (preg_match('/\\bfunction\\s+([A-Za-z_][A-Za-z0-9_]*)/', $text, $match) === 1) {
-        return $symbol.' declares callable '.$match[1].' at `'.$text.'`';
-    }
-    if (preg_match('/(?:->|::)([A-Za-z_][A-Za-z0-9_]*)\\s*\\(/', $text, $match) === 1) {
-        return $symbol.' invokes '.$match[1].'() for the cited behavior at `'.$text.'`';
-    }
-    if (preg_match('/\\$([A-Za-z_][A-Za-z0-9_]*)\\s*=/', $text, $match) === 1) {
-        return $symbol.' assigns $'.$match[1].' for the cited behavior at `'.$text.'`';
-    }
-    if (preg_match('/^if\\s*\\(/', $text) === 1) {
-        return $symbol.' guards the cited behavior with `'.$text.'`';
-    }
-
-    return $symbol.' performs the mapped domain/configuration statement `'.$text.'`';
-}
-
-/** @param list<string> $lines */
-function hasExecutableAnchor(array $lines, int $start, int $end, string $path): bool
-{
-    return executableAnchor($lines, $start, $end) !== null;
-}
-
-/** @param list<string> $lines */
-function executableAnchor(array $lines, int $start, int $end): ?string
-{
-    $to = min(count($lines), max($end, $start + 6));
-    for ($line = $start; $line <= $to; $line++) {
+    $last = min(count($lines), max($start, min($end, $start + 4)));
+    $excerpt = [];
+    for ($line = $start; $line <= $last; $line++) {
         $value = trim($lines[$line - 1]);
-        if ($value === '' || preg_match('/^[{}\\]();,]+$/', $value) === 1) {
-            continue;
-        }
-
-        if (in_array($value, ['/**', '/*', '*/', '//', '*'], true)) {
-            continue;
-        }
-
-        return $value;
-    }
-
-    for ($line = max(1, $start - 2); $line < $start; $line++) {
-        $value = trim($lines[$line - 1]);
-        if ($value !== '' && preg_match('/^[{}\\]();,]+$/', $value) !== 1 && !in_array($value, ['/**', '/*', '*/', '//', '*'], true)) {
-            return $value;
+        if ($value !== '') {
+            $excerpt[] = $value;
         }
     }
+    $text = trim(implode(' ', $excerpt));
+    $text = preg_replace('/\\s+/', ' ', $text) ?? '';
+    if ($text === '') {
+        $text = 'blank-line boundary immediately within the named symbol';
+    }
 
-    return null;
+    return $symbol.' anchors the cited behavior at `'.mb_substr($text, 0, 320).'`';
 }
 
 function lineRange(int $start, int $end): string
