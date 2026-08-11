@@ -165,12 +165,33 @@ class StandaloneInvoiceGuidedDeliveryTest extends TestCase
 
         $response->assertStatus(422);
         $response->assertJsonPath('error.code', 'DELIVERY_CANNOT_BE_GENERATED');
-        $response->assertJsonPath('error.message', 'FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH');
+        $response->assertJsonPath('error.reason', 'FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH');
+        $response->assertJsonPath(
+            'error.message',
+            'Automatic FEFO allocation failed. Confirm the delivery manually and choose the batch explicitly.',
+        );
         $this->assertSame(0, Document::query()
             ->where('type', DocumentType::DeliveryNote)
             ->where('source_document_id', $invoice->id)
             ->count());
         $this->assertSame(0, StockMovement::query()->count());
+    }
+
+    public function test_guided_delivery_fefo_refusal_has_a_french_operator_remedy(): void
+    {
+        $this->dpProduct->update(['requires_batch_tracking' => true]);
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine('2.0000')]);
+
+        $this->actingAs($this->dpUser)
+            ->withHeader('X-Language', 'fr')
+            ->postJson("/api/v1/invoices/{$invoice->id}/create-delivery-and-post")
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'DELIVERY_CANNOT_BE_GENERATED')
+            ->assertJsonPath('error.reason', 'FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH')
+            ->assertJsonPath(
+                'error.message',
+                "L'allocation FEFO automatique a échoué. Confirmez la livraison manuellement et choisissez explicitement le lot.",
+            );
     }
 
     /**

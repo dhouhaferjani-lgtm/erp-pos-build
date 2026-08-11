@@ -353,6 +353,31 @@ final class GoodsReceiptGlPostingOrderTest extends TestCase
         );
     }
 
+    public function test_goods_received_fires_after_the_purchase_order_reaches_received(): void
+    {
+        $purchaseOrder = $this->confirmedPurchaseOrder([
+            ['qty' => '2.0000', 'price' => '5.000'],
+            ['qty' => '3.0000', 'price' => '7.000'],
+        ]);
+        $statusesAtDispatch = [];
+
+        Event::listen(GoodsReceived::class, function (GoodsReceived $event) use (&$statusesAtDispatch): void {
+            $documentId = DocumentLine::query()->whereKey($event->poLineId)->value('document_id');
+            $statusesAtDispatch[] = Document::query()->whereKey($documentId)->value('status');
+        });
+
+        $this->receive($purchaseOrder);
+
+        self::assertCount(2, $statusesAtDispatch, 'the production event arm did not run once per received line');
+        foreach ($statusesAtDispatch as $status) {
+            self::assertSame(
+                DocumentStatus::Received,
+                $status,
+                'GoodsReceived fired before the purchase-order header write, so I-1 is not transaction-terminal.',
+            );
+        }
+    }
+
     // =================================================================
     // THE CONTENTION PROOF — seed of T11c pairs 4-5
     // =================================================================

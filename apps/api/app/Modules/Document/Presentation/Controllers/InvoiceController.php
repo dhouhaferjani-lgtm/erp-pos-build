@@ -1030,9 +1030,17 @@ class InvoiceController extends Controller
                 ]);
             });
         } catch (GuidedDeliveryCannotBeGeneratedException $e) {
-            // Same code and same machine reason the pre-lock checks used to
-            // return, so moving the lookups under the lock changed no contract.
-            return $this->validationErrorResponse('DELIVERY_CANNOT_BE_GENERATED', $e->reason);
+            $message = $e->reason === 'FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH'
+                ? __('documents.guided_delivery.fefo_allocation_failed')
+                : $e->reason;
+
+            return response()->json([
+                'error' => [
+                    'code' => 'DELIVERY_CANNOT_BE_GENERATED',
+                    'message' => $message,
+                    'reason' => $e->reason,
+                ],
+            ], 422);
         } catch (GuidedDeliveryNoLongerApplicableException $e) {
             // Same machine code as the pre-transaction check: the client sees ONE
             // refusal for "this invoice does not need a delivery note created for

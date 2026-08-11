@@ -44,9 +44,9 @@ M0 gate: round 6 independently reproduced the 266-row corpus, exercised relocati
 
 Deviation discovered and resolved in the execution model: `RefundService` currently calls `ReturnNoteService::confirmWithin()` at transaction depth 1, while D-28 states depth 2. M2 will add the implied inner savepoint at that call before the writer-tail flush and retain C-2's root-tail flush. This aligns runtime depth with the settled architecture without changing the domain transition or lock set.
 
-## M1 — stopped on architecture contradiction
+## M1 — implementation resumed under sequencing ruling
 
-Partial implementation is preserved at `abb3018efd9b582ad788f7162271c940192a0f62`. It contains the movement-keyed GL DTO/buffer/service, scoped lifecycle and rollback reset, `absoluteDeltaForRow`, source-type constant and partial unique migration, explicit journal mappings, static buffer-only/I-2 rules, original-exit return-cost resolver and payload recording, and V-10's location carry plus typed FEFO refusal. This is not represented as a passed milestone.
+The first implementation slice is preserved at `abb3018efd9b582ad788f7162271c940192a0f62`. It contains the movement-keyed GL DTO/buffer/service, scoped lifecycle and rollback reset, `absoluteDeltaForRow`, source-type constant and partial unique migration, explicit journal mappings, static buffer-only/I-2 rules, original-exit return-cost resolver and payload recording, and V-10's location carry plus typed FEFO refusal.
 
 T16c audit result: **negative branch inapplicable**. The interactive return loop routes `Scrap` to `applyScrapPair` (`ReceiptReturnService.php:435-449`). That method opens one savepoint and calls `restoreStock` followed by `ReturnScrapWriteOffService::writeOff` (`:1394-1422`), with a shared catch that rethrows retryable concurrency faults and contains other failures (`:1423-1441`). The symmetric pair is therefore live. M2 must apply D-23/T16d buffering to this interactive pair as well as the projection pair.
 
@@ -60,8 +60,35 @@ Verification run immediately before the stop:
 - Pint on all touched PHP files: completed successfully.
 - Deterministic two-connection PostgreSQL sensitivity probe: `session_a_sqlstate=40P01`, `session_b_sqlstate=00000`, proving the reversed-lock instrument detects the required failure class rather than green-by-vacuum.
 
-### Harness STOP C
+### Sequencing ruling and amended T11c exit
 
 The brief makes T11c (all ten pairs) part of M1 and says pairs 7/8 become green through T16d and pairs 9/10 through T16e; if any pair cannot be green, 3C must stop (`CODEX-DISPATCH-wave3-3c-3d-2026-08-10.md:381-390`). The authoritative plan says the same (`plan-wave3.md:2724-2738`). But the brief simultaneously requires T16d and T16e to remain in M2's single indivisible cutover commit (`CODEX-DISPATCH-wave3-3c-3d-2026-08-10.md:399-406`), and the plan says T16d/T16e ship in that cutover and may not be separately deployable (`plan-wave3.md:2910-2929`, `:2947-2977`, `:2979-2983`).
 
-There is no compliant M1 state: moving T16d/T16e earlier violates the atomic cutover invariant; leaving them in M2 makes M1's required ten-pair green gate impossible. Per `SELF-REVIEW-HARNESS.md` STOP C, no adversarial M1 register was invoked because the milestone could not reach the implement-green-review boundary. The required owner/orchestrator action is to re-sequence the gate, most naturally by accepting pairs 7-10's red-before evidence in M1 and requiring their green-after evidence as part of M2.
+The original STOP C was correct and was resolved by
+`docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md`
+at `77d07de3c`. The amended M1 exit is pairs 1–6 green plus pairs 7–10 red with
+cause-specific evidence; all ten green is now a hard M2 gate. No T16d/T16e production change moved
+out of the atomic cutover.
+
+The full evidence is in `docs/handoff/reviews/wave3-3c-3d/M1-evidence.md`. On real PostgreSQL,
+pairs 1–6 plus the aborting-savepoint advisory proof passed (`7 passed`, `78 assertions`). Pairs
+7–10 each reproduced `40P01`; pair 7/8 name missing T16d and pair 9/10 name missing T16e. A separate
+production-path assertion proves every `GoodsReceived` event observes the purchase order already at
+`Received` (`1 passed`, `3 assertions`).
+
+The seam ladder now covers historical, non-COGS, flat, periodic document refusal / POS skip,
+unmapped chart warning, non-positive value, direction contradiction, closed-period propagation,
+unresolvable-device actor degradation, exact one-rounding arithmetic, movement idempotency, and the
+migration duplicate pre-check. V-10 now returns a stable machine reason plus an en/fr localized
+operator remedy; the red state was a missing `error.reason` and English fallback under `X-Language:
+fr`, and the focused green state is `2 passed (10 assertions)`.
+
+Fresh pre-review PostgreSQL path results:
+
+- seam + inventory unit paths: `20 passed (60 assertions)`;
+- guided delivery: `12 passed (48 assertions)`;
+- return-note period/seal + cost resolver: `11 passed (38 assertions)`;
+- goods-receipt production ordering: `12 passed (42 assertions)`;
+- T11c green arm + aborting-savepoint proof: `7 passed (78 assertions)`;
+- T11c ruled red-before arm: `4 failed (48 assertions)`, each at the desired no-`40P01` assertion;
+- PHPStan level 8 on the touched production seam: `[OK] No errors`; Pint and `git diff --check` pass.

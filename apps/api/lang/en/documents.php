@@ -23,6 +23,9 @@ return [
         'sub_row' => 'including bonus: +:quantity free unit',
         'line_total' => 'Line total: :quantity expected delivered units',
     ],
+    'guided_delivery' => [
+        'fefo_allocation_failed' => 'Automatic FEFO allocation failed. Confirm the delivery manually and choose the batch explicitly.',
+    ],
     'pre_delivery_invoicing' => [
         /*
          | Wave 3 T25b/T25d. GUIDED-REQUIRE: the refusal must name where the

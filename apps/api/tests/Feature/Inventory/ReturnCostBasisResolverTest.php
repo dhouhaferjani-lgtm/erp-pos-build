@@ -12,6 +12,7 @@ use App\Modules\Inventory\Application\Services\ReturnCostBasisResolver;
 use App\Modules\Inventory\Domain\StockMovement;
 use Database\Seeders\CountryDocumentSettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
@@ -57,6 +58,7 @@ final class ReturnCostBasisResolverTest extends TestCase
     {
         $this->dpProduct->update(['cost_price' => '27.125000']);
         $return = $this->returnNote(null, '1.0000');
+        Log::spy();
 
         $basis = app(ReturnCostBasisResolver::class)
             ->resolveForReturnLine($return->lines->sole(), '1.0000');
@@ -64,6 +66,9 @@ final class ReturnCostBasisResolverTest extends TestCase
         $this->assertSame(ReturnCostBasis::SOURCE_CURRENT_COST, $basis->source);
         $this->assertSame('27.125000', $basis->unitCost);
         $this->assertSame([], $basis->movementIds);
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            static fn (string $message): bool => str_contains($message, 'no attributable delivery exit exists'),
+        );
     }
 
     private function returnNote(?Document $source, string $quantity): Document

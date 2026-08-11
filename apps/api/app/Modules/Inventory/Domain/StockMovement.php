@@ -202,7 +202,7 @@ class StockMovement extends Model
     {
         $delta = bcsub((string) $this->quantity_after, (string) $this->quantity_before, 4);
 
-        return str_starts_with($delta, '-') ? substr($delta, 1) : $delta;
+        return bccomp($delta, '0', 4) < 0 ? bcsub('0', $delta, 4) : $delta;
     }
 
     /**
