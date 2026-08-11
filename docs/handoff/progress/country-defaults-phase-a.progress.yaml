@@ -37,7 +37,7 @@ milestones:
     status: review
     fix_rounds: 2
     commit: 06064a3a67a3ad416e55c769492d501411807eb7
-    verdict: docs/handoff/reviews/country-defaults-phase-a/M1-round2.md
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M1-round3.md
     last_verdict: CHANGES-REQUIRED
   - id: M2
     title: "Central schema (3 tables, directly in database/migrations/) + CentralConnection models + publish/assignment domain services; locks/transactions/audit-in-transaction"
