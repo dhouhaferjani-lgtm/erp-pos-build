@@ -19,6 +19,7 @@ explicitly adjudicate every item at its target milestone, and M7 must cite the r
 | Prove correct legacy ordering-adapter routing | M4 fixture-export owner | M4, before legacy goldens are accepted |
 | Preserve honest red-first chronology evidence | Every later milestone owner + M7 evidence owner | M2 onward; M1 limitation recorded at M7 |
 | Document why manual existing-company literal-code backfills are outside D-4 | M2 publish-gate owner | M2 publish-gate design and report |
+| Document the deliberate purchase/sales stamp-purpose asymmetry | M2 publish-gate owner | M2 publish-gate design, tests, and report |
 
 ## 1. Validate and normalize assignment route input before the value object
 
@@ -185,6 +186,32 @@ Acceptance criteria:
   provisioning, that milestone reopens the boundary and adds the code to publish protection before
   merge.
 - M7 cites M2's boundary decision when reconciling D-4 coverage against final HEAD.
+
+## 10. Document the purchase/sales stamp-purpose classification asymmetry
+
+`PurchaseStampDuty` is globally REQUIRED while `SalesStampDutyPayable` is SCOPE_REQUIRED, even
+though both are resolved in the same `hasStampDuty` branch. This is deliberate. Every frozen chart
+already carries `PurchaseStampDuty`, and its presence outside a timbre-capable scope does not alter
+absorber selection. A stray `SalesStampDutyPayable` row in a non-timbre template can become a
+runtime absorber and must therefore be forbidden there. The asymmetry encodes the non-timbre
+content ban, not different call-site reachability.
+
+Existing-company country changes remain outside Phase A under addendum decision S-5 and the
+standing `no-existing-company-mutation` constraint. Phase A does not promise to retrofit a company
+created from a non-timbre chart when its country is later changed to a timbre country.
+
+Acceptance criteria:
+
+- M2's publish-gate design states the rationale above rather than inferring both purposes should
+  share a classification merely because their guarded lookup is adjacent.
+- Publish tests require `PurchaseStampDuty` in every template, require
+  `SalesStampDutyPayable` for timbre-capable exact scopes, and reject it in non-timbre and wildcard
+  scopes according to the accepted capability/scope rules.
+- M2 records that the `SalesStampDutyPayable` rejection protects absorber selection and cites the
+  accepted non-timbre content invariant.
+- M2 and M7 cite S-5 when discussing existing-company country changes; any future support for that
+  operation requires a separately reviewed migration/backfill design rather than widening this
+  publish gate implicitly.
 
 ## Closure gate
 
