@@ -8,9 +8,12 @@ use App\Modules\CountryDefaults\Application\Services\CountryAccountingCapabiliti
 use App\Modules\CountryDefaults\Providers\CountryDefaultsServiceProvider;
 use App\Modules\Taxation\Application\Registries\CountryTaxConfigurationRegistry;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
+use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
+use Database\Seeders\CountriesSeeder;
 use Database\Seeders\FranceTaxConfigurationSeeder;
 use Database\Seeders\TunisiaTaxConfigurationSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use PhpParser\Node;
 use PhpParser\NodeFinder;
 use PhpParser\ParserFactory;
@@ -22,6 +25,8 @@ use Tests\TestCase;
 
 final class CapabilityAuthoritySingularityTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_only_one_concrete_capability_authority_and_one_version_set_exist(): void
     {
         // Production break caught: a second predicate, country set, or capability-version authority appears.
@@ -129,17 +134,21 @@ PHP);
 
     public function test_tax_seeder_stamp_capability_and_country_authority_agree(): void
     {
-        // Production break caught: an active stamp-duty tax seeder is added without capability certification drift.
+        // Production break caught: actual seeded stamp rows have no active member or appear for a non-capable country.
         $capabilities = new CountryAccountingCapabilitiesService;
         $seeders = [
             'TN' => TunisiaTaxConfigurationSeeder::class,
             'FR' => FranceTaxConfigurationSeeder::class,
         ];
+        (new CountriesSeeder)->run();
 
         foreach ($seeders as $country => $seeder) {
-            $source = (string) file_get_contents((string) (new ReflectionClass($seeder))->getFileName());
-            $seedsActiveStampDuty = str_contains($source, "'is_stamp_duty' => true")
-                && preg_match("/'is_active'\s*=>\s*true/", $source) === 1;
+            (new $seeder)->run();
+            $seedsActiveStampDuty = TaxConfiguration::query()
+                ->where('country_code', $country)
+                ->where('is_stamp_duty', true)
+                ->where('is_active', true)
+                ->exists();
 
             self::assertSame($seedsActiveStampDuty, $capabilities->supportsStampDuty($country));
         }

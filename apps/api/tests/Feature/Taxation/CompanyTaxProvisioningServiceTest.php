@@ -12,7 +12,9 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
+use Database\Seeders\DemoTenantSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionProperty;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -46,9 +48,19 @@ final class CompanyTaxProvisioningServiceTest extends TestCase
         (new CountriesSeeder)->run();
         $company = $this->makeCompany('FR');
         $service = $this->service();
-        $service->provisionForCompany($company);
-        $service->provisionForCompany($company);
+        $service->provisionForCompany($company, failLoudOnMissingCountry: true);
+        $service->provisionForCompany($company, failLoudOnMissingCountry: true);
         $this->assertSame(5, TaxConfiguration::where('country_code', 'FR')->count());
+    }
+
+    public function test_demo_tenant_seeder_has_initialized_readonly_provisioning_dependency(): void
+    {
+        $seeder = $this->app->make(DemoTenantSeeder::class);
+        $property = new ReflectionProperty($seeder, 'companyTaxProvisioning');
+
+        $this->assertTrue($property->isReadOnly());
+        $this->assertTrue($property->isInitialized($seeder));
+        $this->assertInstanceOf(CompanyTaxProvisioningService::class, $property->getValue($seeder));
     }
 
     public function test_fails_loud_when_countries_missing(): void

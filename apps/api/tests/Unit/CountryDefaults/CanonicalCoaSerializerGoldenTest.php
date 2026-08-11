@@ -79,4 +79,42 @@ final class CanonicalCoaSerializerGoldenTest extends TestCase
             ['code' => '2', 'name' => 'Two', 'type' => 'asset', 'parent_code' => null, 'system_purpose' => null, 'is_system' => false, 'sort_order' => 1],
         ]);
     }
+
+    public function test_legacy_definition_insertion_order_is_adapted_to_one_based_sort_order(): void
+    {
+        $legacyRows = [
+            ['code' => '20', 'name' => 'Second by code', 'type' => 'asset', 'parent_code' => null, 'system_purpose' => null, 'is_system' => false],
+            ['code' => '10', 'name' => 'First by code', 'type' => 'asset', 'parent_code' => null, 'system_purpose' => null, 'is_system' => true],
+        ];
+
+        $adapted = (new CanonicalCoaSerializer)->withLegacyInsertionOrder($legacyRows);
+
+        self::assertSame(1, $adapted[0]['sort_order']);
+        self::assertSame(2, $adapted[1]['sort_order']);
+        self::assertSame(
+            "{\"code\":\"20\",\"name\":\"Second by code\",\"type\":\"asset\",\"parent_code\":null,\"system_purpose\":null,\"is_system\":false,\"sort_order\":1}\n"
+            .'{"code":"10","name":"First by code","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":2}',
+            (new CanonicalCoaSerializer)->serialize($adapted),
+        );
+    }
+
+    public function test_template_activation_state_cannot_change_canonical_content(): void
+    {
+        $row = [
+            'code' => '10',
+            'name' => 'Cash',
+            'type' => 'asset',
+            'parent_code' => null,
+            'system_purpose' => 'cash',
+            'is_system' => true,
+            'sort_order' => 1,
+        ];
+        $serializer = new CanonicalCoaSerializer;
+
+        self::assertSame(
+            $serializer->serialize([['is_active' => false, ...$row]]),
+            $serializer->serialize([['is_active' => true, ...$row]]),
+        );
+        self::assertStringNotContainsString('is_active', $serializer->serialize([['is_active' => false, ...$row]]));
+    }
 }

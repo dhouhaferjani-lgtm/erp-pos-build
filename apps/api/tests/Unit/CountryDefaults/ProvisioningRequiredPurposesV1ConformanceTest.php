@@ -117,6 +117,68 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
         ProvisioningRequiredPurposesV1::assertConforms($fixture);
     }
 
+    public function test_rebalancing_required_and_soft_counts_cannot_hide_direction_misclassification(): void
+    {
+        $fixture = ProvisioningRequiredPurposesV1::entries();
+        foreach ($fixture as &$entry) {
+            if ($entry['purpose'] === SystemAccountPurpose::GeneralExpense) {
+                $entry['classification'] = 'SOFT';
+                $entry['call_site'] = 'NONE';
+            }
+            if ($entry['purpose'] === SystemAccountPurpose::OfficeExpense) {
+                $entry['classification'] = 'REQUIRED';
+                $entry['call_site'] = 'fabricated required path';
+            }
+        }
+        unset($entry);
+
+        $this->expectException(LogicException::class);
+        ProvisioningRequiredPurposesV1::assertConforms($fixture);
+    }
+
+    public function test_every_evidence_citation_resolves_to_current_source_semantics(): void
+    {
+        foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
+            [$kind, $citation] = explode(':', $entry['evidence_citation'], 2);
+
+            if ($kind === 'DIRECT') {
+                self::assertContains($citation, ProvisioningRequiredPurposesV1::registeredThrowingCallSites());
+                $this->assertRegisteredEvidence($citation, $entry['purpose']);
+
+                continue;
+            }
+
+            if ($kind === 'DYNAMIC') {
+                [$registered, $sourceReference] = explode(' <- ', $citation, 2);
+                self::assertContains($registered, ProvisioningRequiredPurposesV1::registeredThrowingCallSites());
+                $dynamicMethod = $this->assertRegisteredEvidence($registered, null);
+                $sourceMethod = $this->assertPurposeReference($sourceReference, $entry['purpose']);
+
+                if ($dynamicMethod->name->toString() !== $sourceMethod->name->toString()) {
+                    $sourceMethodName = $sourceMethod->name->toString();
+                    $delegatesToSource = (new NodeFinder)->findFirst(
+                        $dynamicMethod->stmts ?? [],
+                        static fn (Node $node): bool => $node instanceof Node\Expr\MethodCall
+                            && $node->name instanceof Node\Identifier
+                            && $node->name->toString() === $sourceMethodName,
+                    );
+                    self::assertNotNull($delegatesToSource, $entry['purpose']->name);
+                }
+
+                continue;
+            }
+
+            if ($kind === 'CONDITIONAL') {
+                $this->assertPurposeReference($citation, $entry['purpose']);
+
+                continue;
+            }
+
+            self::assertSame('NONE', $kind, $entry['purpose']->name);
+            self::assertSame('SOFT', $entry['classification'], $entry['purpose']->name);
+        }
+    }
+
     public function test_conditional_entries_have_a_real_precheck_and_a_4xx_render_path(): void
     {
         // Production break caught: a CONDITIONAL lookup loses its dominating precheck or 422 mapping.
@@ -423,11 +485,94 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
         self::assertNotSame(FiscalStatus::Sealed, $fresh->fiscal_status);
     }
 
-    private function methodNode(string $source, string $method): Node\Stmt\ClassMethod
+    private function assertRegisteredEvidence(
+        string $signature,
+        ?SystemAccountPurpose $expectedPurpose,
+    ): Node\Stmt\ClassMethod {
+        self::assertMatchesRegularExpression(
+            '/^(.+\.php):(\d+)\|([^|]+)::([^|]+)\|([^|]+)\|([^|]+)$/',
+            $signature,
+        );
+        if (preg_match(
+            '/^(.+\.php):(\d+)\|([^|]+)::([^|]+)\|([^|]+)\|([^|]+)$/',
+            $signature,
+            $parts,
+        ) !== 1) {
+            throw new LogicException("Malformed registered evidence: {$signature}");
+        }
+        [, $file, $line, $class, $method, $callee, $purpose] = $parts;
+        $expectedName = $expectedPurpose === null ? 'DYNAMIC' : $expectedPurpose->name;
+        self::assertSame($expectedName, $purpose);
+
+        $methodNode = $this->methodNode($this->source($file), $method, $class);
+        $call = (new NodeFinder)->findFirst(
+            $methodNode->stmts ?? [],
+            static fn (Node $node): bool => ($node instanceof Node\Expr\StaticCall || $node instanceof Node\Expr\MethodCall)
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === $callee
+                && $node->getStartLine() === (int) $line,
+        );
+        self::assertNotNull($call, $signature);
+
+        if ($expectedPurpose !== null) {
+            $purposeArgument = $call->args[1]->value ?? null;
+            self::assertInstanceOf(Node\Expr\ClassConstFetch::class, $purposeArgument, $signature);
+            self::assertInstanceOf(Node\Identifier::class, $purposeArgument->name, $signature);
+            self::assertSame($expectedPurpose->name, $purposeArgument->name->toString(), $signature);
+        }
+
+        return $methodNode;
+    }
+
+    private function assertPurposeReference(
+        string $reference,
+        SystemAccountPurpose $expectedPurpose,
+    ): Node\Stmt\ClassMethod {
+        self::assertMatchesRegularExpression(
+            '/^(.+\.php):(\d+)\|([^|]+)::([^|]+)\|([^|]+)$/',
+            $reference,
+        );
+        if (preg_match(
+            '/^(.+\.php):(\d+)\|([^|]+)::([^|]+)\|([^|]+)$/',
+            $reference,
+            $parts,
+        ) !== 1) {
+            throw new LogicException("Malformed purpose reference: {$reference}");
+        }
+        [, $file, $line, $class, $method, $purpose] = $parts;
+        self::assertSame($expectedPurpose->name, $purpose, $reference);
+
+        $methodNode = $this->methodNode($this->source($file), $method, $class);
+        $purposeReference = (new NodeFinder)->findFirst(
+            $methodNode->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\ClassConstFetch
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === $expectedPurpose->name
+                && $node->getStartLine() === (int) $line,
+        );
+        self::assertNotNull($purposeReference, $reference);
+
+        return $methodNode;
+    }
+
+    private function methodNode(string $source, string $method, ?string $class = null): Node\Stmt\ClassMethod
     {
         $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($source) ?? [];
-        $node = (new NodeFinder)->findFirst(
-            $ast,
+        $finder = new NodeFinder;
+        $scope = $ast;
+        if ($class !== null) {
+            $classNode = $finder->findFirst(
+                $ast,
+                static fn (Node $candidate): bool => $candidate instanceof Node\Stmt\Class_
+                    && $candidate->name?->toString() === $class,
+            );
+            if (! $classNode instanceof Node\Stmt\Class_) {
+                throw new LogicException("Required class {$class} is absent from the cited source.");
+            }
+            $scope = $classNode->getMethods();
+        }
+        $node = $finder->findFirst(
+            $scope,
             static fn (Node $candidate): bool => $candidate instanceof Node\Stmt\ClassMethod
                 && $candidate->name->toString() === $method,
         );

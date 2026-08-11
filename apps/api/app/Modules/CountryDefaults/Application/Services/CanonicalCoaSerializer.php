@@ -14,6 +14,33 @@ final class CanonicalCoaSerializer
     private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
     /**
+     * Pin the frozen definition-array insertion sequence as legacy export order.
+     *
+     * M4's legacy exporter must call this on the definitions exactly as they
+     * appear in frozen seeder source, before database insertion/querying can
+     * discard that sequence. Persisted template rows still own an explicit,
+     * unique sort_order; serialize() never synthesizes or weakens that contract.
+     *
+     * @param  list<array<string, BackedEnum|bool|int|string|null>>  $rows
+     * @return list<array<string, BackedEnum|bool|int|string|null>>
+     */
+    public function withLegacyInsertionOrder(array $rows): array
+    {
+        $adapted = [];
+        foreach ($rows as $index => $row) {
+            $adapted[] = [...$row, 'sort_order' => $index + 1];
+        }
+
+        return $adapted;
+    }
+
+    /**
+     * Canonical template content deliberately has no activation field. The central
+     * admin_template_accounts schema stores no is_active value, and the future
+     * template-backed company seeder must derive is_active=true for every account
+     * it creates. Activation is therefore provisioning policy, never editable or
+     * hash-bearing template content.
+     *
      * @param  list<array<string, BackedEnum|bool|int|string|null>>  $rows
      */
     public function serialize(array $rows): string

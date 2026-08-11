@@ -31,50 +31,50 @@ final class ProvisioningRequiredPurposesV1
     public static function entries(): array
     {
         return [
-            self::entry(SystemAccountPurpose::Bank, 'GeneralLedgerService paid-expense repository branch', self::REQUIRED, null, 'GeneralLedgerService.php:3950-3951'),
-            self::entry(SystemAccountPurpose::Cash, 'GeneralLedgerService paid-expense repository branch', self::REQUIRED, null, 'GeneralLedgerService.php:3950-3951'),
-            self::entry(SystemAccountPurpose::CustomerReceivable, 'AccountingService invoice posting', self::REQUIRED, null, 'AccountingService.php:409'),
-            self::entry(SystemAccountPurpose::Inventory, 'GeneralLedgerService inventory and GR-IR posting', self::REQUIRED, null, 'GeneralLedgerService.php:1721,1829,1986'),
-            self::entry(SystemAccountPurpose::SupplierPayable, 'GeneralLedgerService supplier posting', self::REQUIRED, null, 'GeneralLedgerService.php:1989'),
-            self::entry(SystemAccountPurpose::VatCollected, 'AccountingService invoice posting', self::REQUIRED, null, 'AccountingService.php:427'),
-            self::entry(SystemAccountPurpose::VatDeductible, 'GeneralLedgerService GR-IR clearing', self::REQUIRED, null, 'GeneralLedgerService.php:1984'),
-            self::entry(SystemAccountPurpose::ProductRevenue, 'AccountingService invoice posting', self::REQUIRED, null, 'AccountingService.php:414'),
-            self::entry(SystemAccountPurpose::ServiceRevenue, 'AccountingService eager invoice resolution', self::REQUIRED, null, 'AccountingService.php:422,574'),
-            self::entry(SystemAccountPurpose::CostOfGoodsSold, 'PostCOGSOnInvoice listener to GeneralLedgerService', self::REQUIRED, null, 'PostCOGSOnInvoice.php:43-80 -> GeneralLedgerService.php:1720'),
-            self::entry(SystemAccountPurpose::GeneralExpense, 'GeneralLedgerService category-less expense fallback', self::REQUIRED, null, 'GeneralLedgerService.php:3924,3938'),
-            self::entry(SystemAccountPurpose::OpeningBalanceEquity, 'AccountingOpeningService opening balance post', self::REQUIRED, null, 'AccountingOpeningService.php:314'),
-            self::entry(SystemAccountPurpose::PurchasePriceVarianceExpense, 'GeneralLedgerService eager GR-IR clearing', self::REQUIRED, null, 'GeneralLedgerService.php:1987'),
-            self::entry(SystemAccountPurpose::PurchasePriceVarianceIncome, 'GeneralLedgerService eager GR-IR clearing', self::REQUIRED, null, 'GeneralLedgerService.php:1988'),
-            self::entry(SystemAccountPurpose::GoodsReceivedNotInvoiced, 'GeneralLedgerService GR-IR posting and clearing', self::REQUIRED, null, 'GeneralLedgerService.php:1830,1983'),
-            self::entry(SystemAccountPurpose::PurchaseStampDuty, 'GeneralLedgerService eager GR-IR supplier-invoice clearing', self::REQUIRED, null, 'GeneralLedgerService.php:1985'),
-            self::entry(SystemAccountPurpose::SalesDiscount, 'GeneralLedgerService POS account-charge discount path', self::REQUIRED, null, 'GeneralLedgerService.php:3807-3827; TreasuryAccountChargeBridge.php:239-249'),
-            self::entry(SystemAccountPurpose::CustomerAdvance, 'PaymentAllocationService ordinary order/excess allocation', self::REQUIRED, null, 'PaymentAllocationService.php:307-365 -> GeneralLedgerService.php:396-417'),
-            self::entry(SystemAccountPurpose::SupplierAdvance, 'VendorRefundService ordinary prepayment refund', self::REQUIRED, null, 'VendorRefundService.php:153-175 -> GeneralLedgerService.php:496-517'),
-            self::entry(SystemAccountPurpose::SalesReturnsClearing, 'GeneralLedgerService voucher issuance/redemption', self::REQUIRED, null, 'Voucher routes.php:20-42; GeneralLedgerService.php:2563-2566,2619-2648'),
-            self::entry(SystemAccountPurpose::VoucherLiability, 'GeneralLedgerService voucher issuance/redemption', self::REQUIRED, null, 'VoucherIssuanceService.php:295-356; VoucherRedemptionService.php:184-204,226-253'),
-            self::entry(SystemAccountPurpose::MarketingGoodwillExpense, 'GeneralLedgerService voucher issuance', self::REQUIRED, null, 'VoucherIssuanceService.php:295-356; GeneralLedgerService.php:2563-2566'),
-            self::entry(SystemAccountPurpose::PosTenderClearing, 'GeneralLedgerService voucher redemption', self::REQUIRED, null, 'VoucherRedemptionService.php:184-204,226-253; GeneralLedgerService.php:2619-2648'),
-            self::entry(SystemAccountPurpose::RoundingLossExpense, 'GeneralLedgerService voucher rounding', self::REQUIRED, null, 'VoucherRedemptionService.php:226-253; GeneralLedgerService.php:2619-2648'),
-            self::entry(SystemAccountPurpose::PaymentToleranceExpense, 'Treasury tolerance projection', self::REQUIRED, null, 'TreasuryReceiptBridge.php:567-583'),
-            self::entry(SystemAccountPurpose::PaymentToleranceIncome, 'Treasury tolerance projection', self::REQUIRED, null, 'TreasuryReceiptBridge.php:567-583'),
-            self::entry(SystemAccountPurpose::PurchaseExpenses, 'GeneralLedgerService supplier bonus-return posting', self::REQUIRED, null, 'GeneralLedgerService.php:2311-2370; CreateSupplierInvoiceRequest.php:68-72,140-148'),
+            self::entry(SystemAccountPurpose::Bank, 'GeneralLedgerService::createFromExpense paid bank branch', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4215|GeneralLedgerService::createFromExpense|getAccountByPurpose|Bank'),
+            self::entry(SystemAccountPurpose::Cash, 'GeneralLedgerService::createFromExpense paid cash branch', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4216|GeneralLedgerService::createFromExpense|getAccountByPurpose|Cash'),
+            self::entry(SystemAccountPurpose::CustomerReceivable, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:412|AccountingService::createInvoiceGLEntries|findAccountByPurpose|CustomerReceivable'),
+            self::entry(SystemAccountPurpose::Inventory, 'GeneralLedgerService::createGoodsReceiptGrIrEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1999|GeneralLedgerService::createGoodsReceiptGrIrEntry|findByPurposeOrFail|Inventory'),
+            self::entry(SystemAccountPurpose::SupplierPayable, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2159|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|SupplierPayable'),
+            self::entry(SystemAccountPurpose::VatCollected, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:424|AccountingService::createInvoiceGLEntries|findAccountByPurpose|VatCollected'),
+            self::entry(SystemAccountPurpose::VatDeductible, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2154|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|VatDeductible'),
+            self::entry(SystemAccountPurpose::ProductRevenue, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:416|AccountingService::createInvoiceGLEntries|findAccountByPurpose|ProductRevenue'),
+            self::entry(SystemAccountPurpose::ServiceRevenue, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:420|AccountingService::createInvoiceGLEntries|findAccountByPurpose|ServiceRevenue'),
+            self::entry(SystemAccountPurpose::CostOfGoodsSold, 'GeneralLedgerService::createCOGSEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1890|GeneralLedgerService::createCOGSEntry|getAccountByPurpose|CostOfGoodsSold'),
+            self::entry(SystemAccountPurpose::GeneralExpense, 'GeneralLedgerService::createFromExpense category fallback', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4203|GeneralLedgerService::createFromExpense|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4189|GeneralLedgerService::createFromExpense|GeneralExpense'),
+            self::entry(SystemAccountPurpose::OpeningBalanceEquity, 'AccountingOpeningService::postBatch', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingOpeningService.php:314|AccountingOpeningService::postBatch|findByPurposeOrFail|OpeningBalanceEquity'),
+            self::entry(SystemAccountPurpose::PurchasePriceVarianceExpense, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2157|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|PurchasePriceVarianceExpense'),
+            self::entry(SystemAccountPurpose::PurchasePriceVarianceIncome, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2158|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|PurchasePriceVarianceIncome'),
+            self::entry(SystemAccountPurpose::GoodsReceivedNotInvoiced, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2153|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|GoodsReceivedNotInvoiced'),
+            self::entry(SystemAccountPurpose::PurchaseStampDuty, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2155|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|PurchaseStampDuty'),
+            self::entry(SystemAccountPurpose::SalesDiscount, 'GeneralLedgerService::createPOSChargeEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4091|GeneralLedgerService::createPOSChargeEntry|getAccountByPurpose|SalesDiscount'),
+            self::entry(SystemAccountPurpose::CustomerAdvance, 'GeneralLedgerService::createCustomerAdvanceJournalEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:418|GeneralLedgerService::createCustomerAdvanceJournalEntry|getAccountByPurpose|CustomerAdvance'),
+            self::entry(SystemAccountPurpose::SupplierAdvance, 'GeneralLedgerService::reverseSupplierAdvanceJournalEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:518|GeneralLedgerService::reverseSupplierAdvanceJournalEntry|getAccountByPurpose|SupplierAdvance'),
+            self::entry(SystemAccountPurpose::SalesReturnsClearing, 'GeneralLedgerService voucher event resolution', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2735|GeneralLedgerService::createVoucherLedgerEntry|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2795|GeneralLedgerService::resolveVoucherEventAccounts|SalesReturnsClearing'),
+            self::entry(SystemAccountPurpose::VoucherLiability, 'GeneralLedgerService voucher event resolution', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2735|GeneralLedgerService::createVoucherLedgerEntry|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2812|GeneralLedgerService::resolveVoucherEventAccounts|VoucherLiability'),
+            self::entry(SystemAccountPurpose::MarketingGoodwillExpense, 'GeneralLedgerService voucher event resolution', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2735|GeneralLedgerService::createVoucherLedgerEntry|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2799|GeneralLedgerService::resolveVoucherEventAccounts|MarketingGoodwillExpense'),
+            self::entry(SystemAccountPurpose::PosTenderClearing, 'GeneralLedgerService voucher event resolution', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2736|GeneralLedgerService::createVoucherLedgerEntry|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2813|GeneralLedgerService::resolveVoucherEventAccounts|PosTenderClearing'),
+            self::entry(SystemAccountPurpose::RoundingLossExpense, 'GeneralLedgerService voucher event resolution', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2736|GeneralLedgerService::createVoucherLedgerEntry|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2818|GeneralLedgerService::resolveVoucherEventAccounts|RoundingLossExpense'),
+            self::entry(SystemAccountPurpose::PaymentToleranceExpense, 'GeneralLedgerService::createRepositoryAdjustmentJournalEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1239|GeneralLedgerService::createRepositoryAdjustmentJournalEntry|getAccountByPurpose|PaymentToleranceExpense'),
+            self::entry(SystemAccountPurpose::PaymentToleranceIncome, 'GeneralLedgerService::createRepositoryAdjustmentJournalEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1240|GeneralLedgerService::createRepositoryAdjustmentJournalEntry|getAccountByPurpose|PaymentToleranceIncome'),
+            self::entry(SystemAccountPurpose::PurchaseExpenses, 'GeneralLedgerService::createSupplierCreditNoteEntryWithBonusReturn', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2540|GeneralLedgerService::createSupplierCreditNoteEntryWithBonusReturn|findByPurposeOrFail|PurchaseExpenses'),
 
-            self::entry(SystemAccountPurpose::SalesStampDutyPayable, 'GeneralLedgerService credit-note stamp branch', self::SCOPE_REQUIRED, null, 'GeneralLedgerService.php:291 inside if ($hasStampDuty)'),
+            self::entry(SystemAccountPurpose::SalesStampDutyPayable, 'GeneralLedgerService::createFromCreditNote stamp-duty scope', self::SCOPE_REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:292|GeneralLedgerService::createFromCreditNote|getAccountByPurpose|SalesStampDutyPayable'),
 
-            self::entry(SystemAccountPurpose::SalesReturn, 'RefundCompensationService prechecked throwing GL path', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'RefundCompensationService.php:184-193; bootstrap/app.php:487-496 (422)'),
-            self::entry(SystemAccountPurpose::RefundWriteOff, 'RefundCompensationService prechecked throwing GL path', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'RefundCompensationService.php:184-193; bootstrap/app.php:487-496 (422)'),
-            self::entry(SystemAccountPurpose::SalesRoundingDifferenceIncome, 'AccountingService residual preflight', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'AccountingService.php:212-233,82-96; DocumentPostingService.php:95-109 (422 before sealing)'),
-            self::entry(SystemAccountPurpose::SalesRoundingDifferenceExpense, 'AccountingService residual preflight', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'AccountingService.php:212-233,82-96; DocumentPostingService.php:95-109 (422 before sealing)'),
+            self::entry(SystemAccountPurpose::SalesReturn, 'RefundCompensationService::compensate precheck', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'CONDITIONAL:app/Modules/Fiscal/Application/Services/RefundCompensationService.php:187|RefundCompensationService::compensate|SalesReturn'),
+            self::entry(SystemAccountPurpose::RefundWriteOff, 'RefundCompensationService::compensate precheck', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'CONDITIONAL:app/Modules/Fiscal/Application/Services/RefundCompensationService.php:187|RefundCompensationService::compensate|RefundWriteOff'),
+            self::entry(SystemAccountPurpose::SalesRoundingDifferenceIncome, 'AccountingService::residualPlan preflight', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'CONDITIONAL:app/Modules/Accounting/Application/Services/AccountingService.php:224|AccountingService::residualPlan|SalesRoundingDifferenceIncome'),
+            self::entry(SystemAccountPurpose::SalesRoundingDifferenceExpense, 'AccountingService::residualPlan preflight', self::CONDITIONAL, self::DOMAIN_PRECHECK_4XX, 'CONDITIONAL:app/Modules/Accounting/Application/Services/AccountingService.php:223|AccountingService::residualPlan|SalesRoundingDifferenceExpense'),
 
-            self::entry(SystemAccountPurpose::OfficeExpense, 'NONE', self::SOFT, null, 'No registered production throwing purpose-resolution site.'),
-            self::entry(SystemAccountPurpose::TravelExpense, 'NONE', self::SOFT, null, 'No registered production throwing purpose-resolution site.'),
-            self::entry(SystemAccountPurpose::MealsExpense, 'NONE', self::SOFT, null, 'No registered production throwing purpose-resolution site.'),
-            self::entry(SystemAccountPurpose::UtilitiesExpense, 'NONE', self::SOFT, null, 'No registered production throwing purpose-resolution site.'),
-            self::entry(SystemAccountPurpose::RetainedEarnings, 'NONE', self::SOFT, null, 'No registered production throwing purpose-resolution site.'),
-            self::entry(SystemAccountPurpose::RealizedFxGain, 'NONE', self::SOFT, null, 'No registered production throwing purpose-resolution site.'),
-            self::entry(SystemAccountPurpose::RealizedFxLoss, 'NONE', self::SOFT, null, 'No registered production throwing purpose-resolution site.'),
-            self::entry(SystemAccountPurpose::VoucherBreakageIncome, 'NONE', self::SOFT, null, 'No Expired voucher arm is wired in production.'),
-            self::entry(SystemAccountPurpose::UninvoicedRevenue, 'NONE', self::SOFT, null, 'UninvoicedDeliveryNoteService has zero production callers; production-root AST scan enforced.'),
+            self::entry(SystemAccountPurpose::OfficeExpense, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
+            self::entry(SystemAccountPurpose::TravelExpense, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
+            self::entry(SystemAccountPurpose::MealsExpense, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
+            self::entry(SystemAccountPurpose::UtilitiesExpense, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
+            self::entry(SystemAccountPurpose::RetainedEarnings, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
+            self::entry(SystemAccountPurpose::RealizedFxGain, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
+            self::entry(SystemAccountPurpose::RealizedFxLoss, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
+            self::entry(SystemAccountPurpose::VoucherBreakageIncome, 'NONE', self::SOFT, null, 'NONE:No Expired voucher arm is wired in production.'),
+            self::entry(SystemAccountPurpose::UninvoicedRevenue, 'NONE', self::SOFT, null, 'NONE:UninvoicedDeliveryNoteService has zero production callers; production-root AST scan enforced.'),
         ];
     }
 
@@ -213,6 +213,15 @@ final class ProvisioningRequiredPurposesV1
 
             if (trim($entry['call_site']) === '' || trim($entry['evidence_citation']) === '') {
                 throw new LogicException("Purpose {$purpose} lacks operational evidence.");
+            }
+            $evidenceKind = strstr($entry['evidence_citation'], ':', true);
+            $allowedEvidenceKinds = match ($classification) {
+                self::REQUIRED, self::SCOPE_REQUIRED => ['DIRECT', 'DYNAMIC'],
+                self::CONDITIONAL => ['CONDITIONAL'],
+                self::SOFT => ['NONE'],
+            };
+            if (! in_array($evidenceKind, $allowedEvidenceKinds, true)) {
+                throw new LogicException("Purpose {$purpose} has evidence pointing in the wrong classification direction.");
             }
             if ($entry['gate_kind'] !== null && ! in_array($entry['gate_kind'], self::allowedGateKinds(), true)) {
                 throw new LogicException("Purpose {$purpose} uses a forbidden gate kind.");
