@@ -136,3 +136,29 @@ Six-edit check: (1) mission narrowing APPLIED-FAITHFUL; (2) ES-48 re-pointing AP
 | 2 | Contract not version-controlled | Tracked verbatim snapshot `docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md` (source SHA-256 `04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540`, backing-section hashes in its header). It is now the **contract-of-record**; the `docs/sessions/` original stays the audit's working record and is cited as provenance only. Citations updated in handover §2 / the ES-48 paragraph / the register addendum, with the `N + 50` line-offset mapping recorded. `docs/sessions/` untouched. |
 | 3a | ES-43 contract contradictory | Re-classed to the **emission-class** shape and stated **FORWARD-ONLY**: `signature_*` populated at INSERT for new events only, sealed rows never touched — they are DB-frozen (`2026_05_14_100002_create_fiscal_events_immutability.php:71`, `:80`, `:96-100`, re-verified). V1-analog = signature present+valid on a new row; V3-analog = the verifier fails an absent/invalid signature; plus a no-pre-existing-row-changed assertion. Whole row stays gated on Q5 / D-11. |
 | 3b | ES-80 fits no class | Removed from the Lane-F dead-event-retirement mapping (it retires a **table**, not an event class) and added to §5's straggler footnote with the per-milestone contract-approval requirement. "Write-only" re-verified: sole writer `ManagerPinController.php:117`; zero readers — `OperatorApproval.php:25-56` declares only table/fillable/casts, and no other `app/`, route, test, POS or web reference reads `operator_approvals`. |
+
+---
+
+## Round 4 (2026-08-11, at 542fc90b8)
+
+*Provenance: terminal scoped check by an independent Codex reviewer, verdict returned in-band.*
+
+Register snapshot APPLIED-DEFECTIVE (sole defect: the published verification command hashes the untracked source, not the committed body — SNAPSHOT.md:25-29; the committed 232-line body itself hashes to the declared digest and contains 88 unique sequential IDs, line-mapping verified); ES-43 APPLIED-FAITHFUL (forward-only, migration freeze confirmed at :80,:96-100,:108-110); ES-80 APPLIED-FAITHFUL (write-only confirmed, Lane F=12, partition 88/88 exactly-once via automated expansion). Fresh-eye: [Medium] the snapshot verify command is not commit-scoped. Fitness: snapshot FIT-WITH-CORRECTION; handover, addendum, owner sheet, verdict record all FIT. ENTRY GATE ROUND 4: CHANGES-REQUIRED.
+
+---
+
+## Gate closure (2026-08-11, orchestrator disposition)
+
+The round-4 sole residual (verify-command scoping) was closed by **this commit** — the commit that carries this entry (the exact SHA is inherently unable to be embedded as literal content within itself; it is recorded in the orchestrator's completion report and `git log`) — with the corrected command EXECUTED and its output recorded below (paste both command outputs verbatim). Convergence: round 1 = 8 findings, round 2 = 6 residuals, round 3 = 3 residuals, round 4 = 1 mechanical residual, closed with executed evidence. Orchestrator declares the ENTRY GATE CLOSED — artifacts graduate to program input. A fifth reviewer round was deliberately not run for a single self-verifying command-line edit; this disposition records that call for the audit trail.
+
+**Primary (commit-scoped) command output** (`git show HEAD:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | tail -n +63 | shasum -a 256`, run against the pre-amend commit `0704b3c25` — content-identical to this commit for the snapshot file, since only this verdict record changed in the amend):
+
+```
+04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540  -
+```
+
+**Working-file check output** (`tail -n +63 docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | shasum -a 256`):
+
+```
+04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540  -
+```

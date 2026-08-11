@@ -25,6 +25,18 @@ The audit's register lives at `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-
 Verify at any time with:
 
 ```bash
+# primary: commit-scoped verify — hashes the committed body of THIS file
+# (everything after the header separator), immune to gitignored-source
+# drift. Body starts at line 63 (the "# Event-Sourcing Coverage Audit"
+# heading, immediately after the header separator + blank line at 61-62);
+# adjust the offset below if a future edit changes the header length.
+git show HEAD:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | tail -n +63 | shasum -a 256
+# expected: 04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540
+```
+
+```bash
+# optional: working-record drift check (only meaningful on the audit
+# machine, where docs/sessions/ still holds the untracked working copy)
 shasum -a 256 docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md
 ```
 
