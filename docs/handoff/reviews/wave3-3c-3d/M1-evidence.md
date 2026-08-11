@@ -100,9 +100,9 @@ Tests: 2 failed (6 assertions)
 FAIL  Tests\Feature\Inventory\InventoryGlVoucherLockOrderTraceTest
 
 pair 9 voucher-pos-sale_x_dn-confirm:
-  T16e missing; first_company_advisory=13, last_inventory=30
+  T16e missing; first_company_advisory=13, last_inventory=34
 pair 10 voucher-pos-sale_x_pos-sale:
-  T16e missing; first_company_advisory=13, last_inventory=30
+  T16e missing; first_company_advisory=13, last_inventory=34
 
 Tests: 2 failed (6 assertions)
 ```
@@ -110,7 +110,7 @@ Tests: 2 failed (6 assertions)
 These are cause-specific production reds. Pairs 7/8 process a real two-line interactive scrap
 return: line one reaches inline movement-keyed GL at query 53, then line two continues inventory
 persistence through query 79. Pairs 9/10 project a real voucher-funded POS sale: voucher GL takes
-the company advisory at query 13, then stock projection continues through query 30. The four
+the company advisory at query 13, then stock projection continues through query 34. The four
 two-connection controls separately return one `40P01` apiece for the corresponding reversed order.
 After M2, the same writer tests must turn green without edits; the separate sensitivity controls
 remain green by continuing to prove that a deliberately reversed order is detected.
@@ -173,6 +173,17 @@ refreshes. Voucher scaling is byte-for-byte restored
 to the pre-M1 CompanyContext mechanism. The reversal idempotency guard retains the shipped inline
 `postEntry` mechanism; its owning BatchExpiry suite plus voucher actor/refund suites pass `15 tests
 (48 assertions)`.
+
+The workflow's exact PostgreSQL class allowlist was also run from `.github/workflows/ci.yml`. Its
+M1-owned `PosCoreReceiptProjectionRefundDispositionStockTest` remained green (`7 tests`, `34
+assertions`), and the ruled-red dedicated voucher trace was not selected. The broad allowlist ended
+with `1004 passed (4159 assertions), 3 skipped, 5 failed`; none of the five failures is in an M1
+changed file or an M1-owned test. They were the pre-existing chokepoint manifest's single-line anchor
+against a multiline counting call, a one-hour PHP/PostgreSQL timezone mismatch, two existing
+refund-chain arithmetic assertions, and a support-access test configured for the absent
+`iziposcentral` database. This broad run is diagnostic only: the harness requires PostgreSQL tests
+by path, and the M1-owned by-path evidence above is green except for the four red rows required by the
+sequencing ruling.
 
 ## Aborting subtransaction cannot-verify
 

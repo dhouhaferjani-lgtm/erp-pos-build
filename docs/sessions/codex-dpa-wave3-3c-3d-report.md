@@ -99,7 +99,7 @@ Round 1 returned `CHANGES-REQUIRED`. Its central finding was valid: the original
 hardcoded its lock order and therefore would not flip when T16d/T16e landed. The replacement runs
 the real writers. A two-line interactive scrap return records the company advisory at query 53 and
 later inventory persistence through 79; a voucher-funded POS projection records company GL at 13
-and stock persistence through 30. Pairs 7–10 therefore fail at real, task-specific T16d/T16e
+and stock persistence through 34. Pairs 7–10 therefore fail at real, task-specific T16d/T16e
 boundaries. Four independent two-connection sensitivity controls still reproduce `40P01`.
 
 The remaining round-1 findings were remediated as follows:
@@ -157,3 +157,11 @@ T11e `43bc692ff`/`8654aeda8`, T12 `2ad32b56f`/`059e003fd`, T13
 `005aa9434`/`d7ac34af4`. Every mutation failed on its intended contract and the same focused test
 passed after the committed revert. T11c's ruled-red production outputs are its red-before evidence;
 T16c is an audit and has no behavioral commit to revert.
+
+The round-2 CI-isolation check ran the workflow's exact PostgreSQL class filter. The M1-owned
+allowlisted projection class passed all `7 tests (34 assertions)`, and the dedicated ruled-red
+voucher trace was correctly absent from the selection. The diagnostic aggregate was `1004 passed
+(4159 assertions), 3 skipped, 5 failed`; the five failures are outside the M1 diff and attributable
+to existing manifest-anchor formatting, local PHP/PostgreSQL timezone mismatch, two refund-chain
+arithmetic assertions, and the unprovisioned `iziposcentral` test database. The required red paths
+were immediately rerun by path and reproduced `53 -> 79` for T16d and `13 -> 34` for T16e.
