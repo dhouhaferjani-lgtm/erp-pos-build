@@ -18,10 +18,11 @@ use Tests\TestCase;
  * one shared stock row (rather than two reversed stock rows) isolates the cycle
  * this wave owns: inventory -> company GL versus company GL -> inventory.
  *
- * Pairs 1-6 encode the post-T5b / D-28 target order and must stay green. Pairs
- * 7-10 encode the currently-shipped inline scrap/voucher order and intentionally
- * stay red in M1; the 2026-08-11 orchestrator ruling moves their green-after
- * requirement to the indivisible M2 cutover containing T16d and T16e.
+ * Pairs 1-6 encode the post-T5b / D-28 target order and must stay green. The
+ * production-driven red arms for pairs 7-10 live beside their real writers in
+ * PosReturnScrapWriteOffTest and PosCoreReceiptProjectionRefundDispositionStockTest.
+ * This file retains their two-sided PostgreSQL sensitivity control: reversing
+ * the observed production order must still be capable of producing 40P01.
  */
 final class InventoryGlLockOrderContentionTest extends TestCase
 {
@@ -61,7 +62,7 @@ final class InventoryGlLockOrderContentionTest extends TestCase
     }
 
     #[DataProvider('redPairs')]
-    public function test_pairs_seven_to_ten_require_the_cutover_to_make_the_advisory_terminal(
+    public function test_pairs_seven_to_ten_sensitivity_control_reproduces_40p01(
         string $pair,
         string $missingTask,
     ): void {
@@ -69,11 +70,11 @@ final class InventoryGlLockOrderContentionTest extends TestCase
 
         $states = $this->runAdvisoryFirstOrder($pair);
 
-        self::assertNotContains(
+        self::assertContains(
             '40P01',
             $states,
             sprintf(
-                '%s reproduced the I-1 AB-BA cycle because %s has not landed: one root frame held '
+                '%s sensitivity control did not reproduce I-1 AB-BA for %s: one root frame held '
                 .'inventory then requested company GL while the other held company GL then requested inventory.',
                 $pair,
                 $missingTask,

@@ -29,7 +29,10 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -427,6 +430,85 @@ final class PosReturnScrapWriteOffTest extends TestCase
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    /** @return iterable<string, array{string}> */
+    public static function t11cScrapPairs(): iterable
+    {
+        yield 'pair 7 — POS refund scrap x DN confirm' => ['pos-refund-scrap_x_dn-confirm'];
+        yield 'pair 8 — POS refund scrap x POS sale' => ['pos-refund-scrap_x_pos-sale'];
+    }
+
+    #[DataProvider('t11cScrapPairs')]
+    public function test_t11c_scrap_company_advisory_is_terminal_to_the_full_inventory_loop(string $pair): void
+    {
+        $firstProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '2.500000',
+        ]);
+        $secondProduct = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '3.500000',
+        ]);
+        $this->createStockLevel($firstProduct->id, '10.0000');
+        $this->createStockLevel($secondProduct->id, '10.0000');
+        $sale = $this->createReceipt();
+        $firstLine = $this->createProductLine($sale, $firstProduct, ['line_number' => 1]);
+        $secondLine = $this->createProductLine($sale, $secondProduct, ['line_number' => 2]);
+
+        /** @var list<array{sql: string, bindings: array<int, mixed>}> $trace */
+        $trace = [];
+        DB::listen(static function (QueryExecuted $query) use (&$trace): void {
+            $trace[] = ['sql' => strtolower($query->sql), 'bindings' => array_values($query->bindings)];
+        });
+
+        $this->service->processReturn(
+            originalReceiptId: $sale->id,
+            returnLines: [
+                [
+                    'line_id' => $firstLine->id,
+                    'quantity' => '2.000',
+                    'physical_receipt' => true,
+                    'resalable' => false,
+                    'disposition' => 'scrap',
+                ],
+                [
+                    'line_id' => $secondLine->id,
+                    'quantity' => '2.000',
+                    'physical_receipt' => true,
+                    'resalable' => false,
+                    'disposition' => 'scrap',
+                ],
+            ],
+            returnReason: ReturnReason::Defective,
+            cashier: $this->cashier,
+            terminalId: $this->terminal->id,
+        );
+
+        $firstCompanyAdvisory = null;
+        $lastInventoryStatement = null;
+        foreach ($trace as $index => $query) {
+            if ($firstCompanyAdvisory === null
+                && str_contains($query['sql'], 'pg_advisory_xact_lock(hashtextextended')
+                && ($query['bindings'][0] ?? null) === $this->company->id) {
+                $firstCompanyAdvisory = $index;
+            }
+            if (str_contains($query['sql'], '"stock_levels"')
+                || str_contains($query['sql'], '"stock_movements"')) {
+                $lastInventoryStatement = $index;
+            }
+        }
+
+        self::assertNotNull($firstCompanyAdvisory, "{$pair}: production trace did not reach the company GL advisory.");
+        self::assertNotNull($lastInventoryStatement, "{$pair}: production trace did not reach inventory persistence.");
+        self::assertGreaterThan(
+            $lastInventoryStatement,
+            $firstCompanyAdvisory,
+            "{$pair}: T16d missing — production acquired the company GL advisory before the inventory loop was terminal. "
+            ."first_company_advisory={$firstCompanyAdvisory}, last_inventory={$lastInventoryStatement}",
+        );
+    }
 
     private function scrapReturn(Receipt $sale, ReceiptLine $line, string $quantity): Receipt
     {

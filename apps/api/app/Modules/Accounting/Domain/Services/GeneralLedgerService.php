@@ -2709,13 +2709,15 @@ final class GeneralLedgerService
 
         $user = User::query()->find($ledgerRow->user_id);
 
-        $entry = DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
+        $scale = $this->scaleResolver->getScale((string) $ledgerRow->currency);
+
+        $entry = DB::transaction(function () use ($ledgerRow, $voucher, $scale): JournalEntry {
             $companyId = $voucher->company_id;
             $entryNumber = $this->generateEntryNumber($companyId);
             /** @var numeric-string $rawAmount */
             $rawAmount = $ledgerRow->amount;
-            $absAmount = bccomp($rawAmount, '0', $this->scale()) < 0
-                ? bcmul($rawAmount, '-1', $this->scale())
+            $absAmount = bccomp($rawAmount, '0', $scale) < 0
+                ? bcmul($rawAmount, '-1', $scale)
                 : $rawAmount;
 
             $entry = JournalEntry::create([

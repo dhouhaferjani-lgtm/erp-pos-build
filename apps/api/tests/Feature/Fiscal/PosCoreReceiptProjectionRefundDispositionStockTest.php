@@ -28,9 +28,13 @@ use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -373,6 +377,98 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             ->count());
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function t11cVoucherPairs(): iterable
+    {
+        yield 'pair 9 — voucher POS sale x DN confirm' => ['voucher-pos-sale_x_dn-confirm'];
+        yield 'pair 10 — voucher POS sale x POS sale' => ['voucher-pos-sale_x_pos-sale'];
+    }
+
+    #[DataProvider('t11cVoucherPairs')]
+    public function test_t11c_voucher_company_advisory_is_terminal_to_stock_projection(string $pair): void
+    {
+        Account::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '4196',
+            'name' => 'Voucher Liability',
+            'type' => AccountType::Liability,
+            'system_purpose' => SystemAccountPurpose::VoucherLiability,
+            'is_active' => true,
+        ]);
+        Account::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '5801',
+            'name' => 'POS Tender Clearing',
+            'type' => AccountType::Asset,
+            'system_purpose' => SystemAccountPurpose::PosTenderClearing,
+            'is_active' => true,
+        ]);
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => 'STORE_VOUCHER',
+            'name' => 'Store Voucher',
+        ]);
+        Voucher::factory()->forTerminal(Terminal::query()->findOrFail($this->terminalId))->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => 'T11C-VOUCHER',
+            'currency' => 'EUR',
+            'initial_balance' => '50.00',
+            'current_balance' => '50.00',
+            'issued_by_user_id' => $this->operatorId,
+        ]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+        $this->seedStockLevel($product->id, '10.0000');
+        $sale = $this->v4SaleEvent(
+            $product->id,
+            '1.000',
+            sequenceNumber: 1,
+            paymentOverride: [
+                'amount' => '10.00',
+                'instrument_serial' => 'T11C-VOUCHER',
+                'instrument_type' => 'store_voucher',
+                'method_code' => 'STORE_VOUCHER',
+            ],
+        );
+
+        /** @var list<array{sql: string, bindings: array<int, mixed>}> $trace */
+        $trace = [];
+        DB::listen(static function (QueryExecuted $query) use (&$trace): void {
+            $trace[] = ['sql' => strtolower($query->sql), 'bindings' => array_values($query->bindings)];
+        });
+
+        $this->project($sale);
+
+        $firstCompanyAdvisory = null;
+        $lastInventoryStatement = null;
+        foreach ($trace as $index => $query) {
+            if ($firstCompanyAdvisory === null
+                && str_contains($query['sql'], 'pg_advisory_xact_lock(hashtextextended')
+                && ($query['bindings'][0] ?? null) === $this->companyId) {
+                $firstCompanyAdvisory = $index;
+            }
+            if (str_contains($query['sql'], '"stock_levels"')
+                || str_contains($query['sql'], '"stock_movements"')) {
+                $lastInventoryStatement = $index;
+            }
+        }
+
+        self::assertNotNull($firstCompanyAdvisory, "{$pair}: production trace did not reach voucher GL.");
+        self::assertNotNull($lastInventoryStatement, "{$pair}: production trace did not reach stock projection.");
+        self::assertGreaterThan(
+            $lastInventoryStatement,
+            $firstCompanyAdvisory,
+            "{$pair}: T16e missing — production redeemed the voucher and acquired company GL before stock projection. "
+            ."first_company_advisory={$firstCompanyAdvisory}, last_inventory={$lastInventoryStatement}",
+        );
+    }
+
     // =================================================================
     // Helpers
     // =================================================================
@@ -423,8 +519,12 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
     /**
      * @param  numeric-string  $quantity
      */
-    private function v4SaleEvent(string $productId, string $quantity, int $sequenceNumber): FiscalEvent
-    {
+    private function v4SaleEvent(
+        string $productId,
+        string $quantity,
+        int $sequenceNumber,
+        ?array $paymentOverride = null,
+    ): FiscalEvent {
         return $this->buildEvent(
             invoiceTypeCode: 'SALE',
             eventVersion: 3,
@@ -434,6 +534,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             receiptUuid: '00000000-0000-4000-8000-000000000001',
             originalLineReferences: null,
             originalReceiptReference: null,
+            paymentOverride: $paymentOverride,
         );
     }
 
@@ -483,6 +584,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         string $receiptUuid,
         ?array $originalLineReferences,
         ?array $originalReceiptReference,
+        ?array $paymentOverride = null,
     ): FiscalEvent {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -524,14 +626,14 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             'lottery_code' => null,
             'notes' => null,
             'original_receipt_reference' => $originalReceiptReference,
-            'payments' => [[
+            'payments' => [array_merge([
                 'amount' => $lineTotal,
                 'foreign_currency_amount' => null,
                 'foreign_currency_code' => null,
                 'instrument_serial' => null,
                 'instrument_type' => null,
                 'method_code' => 'CASH',
-            ]],
+            ], $paymentOverride ?? [])],
             'receipt_uuid' => $receiptUuid,
             'seller' => [
                 'address' => ['city' => 'Paris', 'country_code' => 'FR', 'postal_code' => '75001', 'street' => '1 rue de la Paix'],
