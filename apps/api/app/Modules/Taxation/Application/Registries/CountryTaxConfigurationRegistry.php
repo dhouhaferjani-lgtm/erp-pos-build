@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Taxation\Application\Registries;
 
-use App\Modules\CountryDefaults\Application\Services\CountryAccountingCapabilitiesService;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use Database\Seeders\FranceTaxConfigurationSeeder;
 use Database\Seeders\TunisiaTaxConfigurationSeeder;
@@ -16,7 +15,7 @@ use Database\Seeders\TunisiaTaxConfigurationSeeder;
 final class CountryTaxConfigurationRegistry
 {
     public function __construct(
-        private readonly CountryAccountingCapabilities $capabilities = new CountryAccountingCapabilitiesService,
+        private readonly CountryAccountingCapabilities $capabilities,
     ) {}
 
     /**

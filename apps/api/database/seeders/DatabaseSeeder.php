@@ -31,7 +31,7 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database with test data.
      */
-    public function run(): void
+    public function run(CompanyTaxProvisioningService $companyTaxProvisioning): void
     {
         // CENTRAL reference data (plans live in the central database; the super
         // admin is a platform-level account in central). Seed BEFORE creating
@@ -95,9 +95,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $frCompany]);
 
         $this->command->info('Provisioning tax configurations for French company...');
-        (new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        ))->provisionForCompany($frCompany);
+        $companyTaxProvisioning->provisionForCompany($frCompany, failLoudOnMissingCountry: true);
 
         $this->command->info('Creating partners for French company...');
         $this->createPartners($tenant, $frCompany);
@@ -129,9 +127,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $tnCompany]);
 
         $this->command->info('Provisioning tax configurations for Tunisian company...');
-        (new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        ))->provisionForCompany($tnCompany);
+        $companyTaxProvisioning->provisionForCompany($tnCompany, failLoudOnMissingCountry: true);
 
         $this->command->info('Creating partners for Tunisian company...');
         $this->createPartners($tenant, $tnCompany);

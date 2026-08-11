@@ -45,7 +45,8 @@ final class OnboardingTaxStepTest extends TestCase
         (new CountriesSeeder)->run();
         $company = $this->makeCompany('TN');
 
-        (new CompanyTaxProvisioningService(failLoudOnMissingCountry: true))->provisionForCompany($company);
+        $this->app->make(CompanyTaxProvisioningService::class)
+            ->provisionForCompany($company, failLoudOnMissingCountry: true);
         $company->refresh();
 
         $taxStep = $this->findTaxStep($this->checklist->getStatus($company->id));
@@ -80,7 +81,8 @@ final class OnboardingTaxStepTest extends TestCase
         (new CountriesSeeder)->run();
         $company = $this->makeCompany('FR');
 
-        (new CompanyTaxProvisioningService(failLoudOnMissingCountry: true))->provisionForCompany($company);
+        $this->app->make(CompanyTaxProvisioningService::class)
+            ->provisionForCompany($company, failLoudOnMissingCountry: true);
         $company->refresh();
 
         $taxStep = $this->findTaxStep($this->checklist->getStatus($company->id));
@@ -100,7 +102,8 @@ final class OnboardingTaxStepTest extends TestCase
         (new CountriesSeeder)->run();
         $company = $this->makeCompany('US');
 
-        (new CompanyTaxProvisioningService(failLoudOnMissingCountry: true))->provisionForCompany($company);
+        $this->app->make(CompanyTaxProvisioningService::class)
+            ->provisionForCompany($company, failLoudOnMissingCountry: true);
         $company->refresh();
 
         $taxStep = $this->findTaxStep($this->checklist->getStatus($company->id));

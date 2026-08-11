@@ -13,7 +13,7 @@ final class CountryTaxConfigurationRegistryTest extends TestCase
 {
     public function test_maps_known_countries_to_seeder_classes(): void
     {
-        $registry = new CountryTaxConfigurationRegistry;
+        $registry = $this->app->make(CountryTaxConfigurationRegistry::class);
 
         $this->assertSame(TunisiaTaxConfigurationSeeder::class, $registry->seederFor('TN'));
         $this->assertSame(FranceTaxConfigurationSeeder::class, $registry->seederFor('fr')); // case-insensitive

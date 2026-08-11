@@ -44,7 +44,7 @@ class TunisianParapharmacySeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(): void
+    public function run(CompanyTaxProvisioningService $companyTaxProvisioning): void
     {
         $this->command->info('==============================================');
         $this->command->info('TUNISIAN PARAPHARMACY SEEDER');
@@ -107,10 +107,7 @@ class TunisianParapharmacySeeder extends Seeder
         // Requires: countries table must be populated (by a prior seeder run or
         // DatabaseSeeder); if countries is empty this will throw loudly.
         $this->command->info('Provisioning Tunisia tax configuration...');
-        $companyTaxProvisioning = new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        );
-        $companyTaxProvisioning->provisionForCompany($company);
+        $companyTaxProvisioning->provisionForCompany($company, failLoudOnMissingCountry: true);
 
         // Create Tunisian withholding rules
         $this->command->info('Creating Tunisian withholding tax rules...');

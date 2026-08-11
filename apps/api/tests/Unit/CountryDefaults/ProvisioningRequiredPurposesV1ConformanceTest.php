@@ -4,21 +4,40 @@ declare(strict_types=1);
 
 namespace Tests\Unit\CountryDefaults;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\GlResidualRefusal;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\UnpostableDocumentGlException;
+use App\Modules\Company\Domain\Company;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
+use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\Tenant\Domain\Tenant;
+use Database\Seeders\FranceChartOfAccountsSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Str;
 use LogicException;
 use PhpParser\Node;
+use PhpParser\NodeFinder;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
-use PHPUnit\Framework\TestCase;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
+use Tests\TestCase;
 
 final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_manifest_is_the_complete_exact_41_case_partition(): void
     {
         // Production break caught: a purpose disappears, appears twice, or changes operational classification.
@@ -119,6 +138,50 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
         self::assertMatchesRegularExpression('/render\(function \(DomainException .*?\], 422\);/s', $bootstrap);
     }
 
+    public function test_removing_each_conditional_absorber_breaks_the_structural_dominance_proof(): void
+    {
+        $refund = $this->source('app/Modules/Fiscal/Application/Services/RefundCompensationService.php');
+        $accounting = $this->source('app/Modules/Accounting/Application/Services/AccountingService.php');
+        $posting = $this->source('app/Modules/Document/Domain/Services/DocumentPostingService.php');
+
+        $this->assertConditionalGateDominance($refund, $accounting, $posting);
+
+        foreach (
+            [
+                ['refund', 'SystemAccountPurpose::RefundWriteOff'],
+                ['refund', 'SystemAccountPurpose::SalesReturn'],
+                ['accounting', 'SystemAccountPurpose::SalesRoundingDifferenceIncome'],
+                ['accounting', 'SystemAccountPurpose::SalesRoundingDifferenceExpense'],
+            ] as [$target, $absorber]
+        ) {
+            $mutatedRefund = $target === 'refund'
+                ? str_replace($absorber, 'SystemAccountPurpose::GeneralExpense', $refund)
+                : $refund;
+            $mutatedAccounting = $target === 'accounting'
+                ? str_replace($absorber, 'SystemAccountPurpose::GeneralExpense', $accounting)
+                : $accounting;
+
+            try {
+                $this->assertConditionalGateDominance($mutatedRefund, $mutatedAccounting, $posting);
+                self::fail("Removing {$absorber} must invalidate the conditional gate proof.");
+            } catch (LogicException $exception) {
+                self::assertNotSame('', $exception->getMessage());
+            }
+        }
+    }
+
+    public function test_each_missing_rounding_absorber_is_refused_live_before_fiscal_sealing(): void
+    {
+        $this->assertMissingRoundingAbsorberRefusesBeforeSeal(
+            DocumentType::Invoice,
+            SystemAccountPurpose::SalesRoundingDifferenceIncome,
+        );
+        $this->assertMissingRoundingAbsorberRefusesBeforeSeal(
+            DocumentType::CreditNote,
+            SystemAccountPurpose::SalesRoundingDifferenceExpense,
+        );
+    }
+
     public function test_soft_entries_have_no_registered_throwing_site(): void
     {
         // Production break caught: a SOFT purpose becomes reachable through a registered throwing resolver.
@@ -175,6 +238,217 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
         }
 
         self::assertSame([], $references);
+    }
+
+    private function assertConditionalGateDominance(
+        string $refundSource,
+        string $accountingSource,
+        string $postingSource,
+    ): void {
+        $finder = new NodeFinder;
+
+        $refundMethod = $this->methodNode($refundSource, 'compensate');
+        $refundPrecheck = null;
+        foreach ($finder->findInstanceOf($refundMethod->stmts ?? [], Node\Stmt\Foreach_::class) as $foreach) {
+            $purposes = $this->classConstantNames($foreach->expr);
+            sort($purposes);
+            if ($purposes === ['RefundWriteOff', 'SalesReturn']) {
+                $refundPrecheck = $foreach;
+                break;
+            }
+        }
+        if (! $refundPrecheck instanceof Node\Stmt\Foreach_) {
+            throw new LogicException('Refund compensation must precheck both conditional account purposes together.');
+        }
+
+        $hasExistenceCheck = $finder->findFirst(
+            $refundPrecheck->stmts,
+            static fn (Node $node): bool => $node instanceof Node\Expr\MethodCall
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === 'hasAccountForPurpose',
+        ) !== null;
+        $hasDomainRefusal = $finder->findFirst(
+            $refundPrecheck->stmts,
+            static fn (Node $node): bool => $node instanceof Node\Expr\New_
+                && $node->class instanceof Node\Name
+                && $node->class->getLast() === 'RefundCompensationRefusedException',
+        ) !== null;
+        $transaction = $finder->findFirst(
+            $refundMethod->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\StaticCall
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === 'transaction',
+        );
+        if (! $hasExistenceCheck || ! $hasDomainRefusal || ! $transaction instanceof Node
+            || $refundPrecheck->getEndLine() >= $transaction->getStartLine()) {
+            throw new LogicException('Refund purpose refusal must dominate the transaction and throwing GL path.');
+        }
+
+        $residualMethod = $this->methodNode($accountingSource, 'residualPlan');
+        $roundingAssignment = $finder->findFirst(
+            $residualMethod->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\Assign
+                && $node->var instanceof Node\Expr\Variable
+                && $node->var->name === 'roundingPurpose'
+                && $node->expr instanceof Node\Expr\Ternary,
+        );
+        if (! $roundingAssignment instanceof Node\Expr\Assign) {
+            throw new LogicException('Residual planning must choose a document-type-specific rounding absorber.');
+        }
+        $roundingPurposes = $this->classConstantNames($roundingAssignment->expr);
+        sort($roundingPurposes);
+        if ($roundingPurposes !== ['SalesRoundingDifferenceExpense', 'SalesRoundingDifferenceIncome']) {
+            throw new LogicException('Residual planning must cover both rounding absorber purposes.');
+        }
+
+        $roundingLookup = $finder->findFirst(
+            $residualMethod->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\StaticCall
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === 'findByPurpose'
+                && ($node->args[1]->value ?? null) instanceof Node\Expr\Variable
+                && $node->args[1]->value->name === 'roundingPurpose',
+        );
+        $noAbsorberRefusal = $finder->findFirst(
+            $residualMethod->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\ClassConstFetch
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === 'NoAbsorbingAccount',
+        );
+        if (! $roundingLookup instanceof Node || ! $noAbsorberRefusal instanceof Node
+            || $roundingLookup->getStartLine() >= $noAbsorberRefusal->getStartLine()) {
+            throw new LogicException('A missing rounding absorber must produce the preflight refusal.');
+        }
+
+        $preflightMethod = $this->methodNode($accountingSource, 'assertDocumentGlIsPostable');
+        $plansResidual = $finder->findFirst(
+            $preflightMethod->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\MethodCall
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === 'residualPlan',
+        );
+        $throwsRefusal = $finder->findFirstInstanceOf(
+            $preflightMethod->stmts ?? [],
+            Node\Expr\Throw_::class,
+        );
+        if (! $plansResidual instanceof Node || ! $throwsRefusal instanceof Node
+            || $plansResidual->getStartLine() >= $throwsRefusal->getStartLine()) {
+            throw new LogicException('The public GL preflight must throw the residual-plan refusal.');
+        }
+
+        $postMethod = $this->methodNode($postingSource, 'post');
+        $livePreflight = $finder->findFirst(
+            $postMethod->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\MethodCall
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === 'assertDocumentGlIsPostable',
+        );
+        $seal = $finder->findFirst(
+            $postMethod->stmts ?? [],
+            static fn (Node $node): bool => $node instanceof Node\Expr\MethodCall
+                && $node->name instanceof Node\Identifier
+                && $node->name->toString() === 'postWithFiscalChain',
+        );
+        if (! $livePreflight instanceof Node || ! $seal instanceof Node
+            || $livePreflight->getStartLine() >= $seal->getStartLine()) {
+            throw new LogicException('Document posting must execute GL preflight before fiscal sealing.');
+        }
+    }
+
+    private function assertMissingRoundingAbsorberRefusesBeforeSeal(
+        DocumentType $documentType,
+        SystemAccountPurpose $missingPurpose,
+    ): void {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->create([
+            'tenant_id' => $tenant->id,
+            'country_code' => 'FR',
+            'currency' => 'EUR',
+        ]);
+        (new FranceChartOfAccountsSeeder)->run($company->id, $tenant->id);
+        Account::query()
+            ->where('company_id', $company->id)
+            ->where('system_purpose', $missingPurpose->value)
+            ->delete();
+
+        $customer = Partner::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'type' => PartnerType::Customer,
+        ]);
+        $document = Document::create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'partner_id' => $customer->id,
+            'type' => $documentType,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => strtoupper($documentType->value).'-M1-'.uniqid(),
+            'document_date' => now(),
+            'currency' => 'EUR',
+            'subtotal' => '24.26',
+            'tax_amount' => '4.85',
+            'total' => '29.11',
+            'balance_due' => '29.11',
+        ]);
+        foreach ([1, 2] as $lineNumber) {
+            DocumentLine::create([
+                'id' => Str::uuid()->toString(),
+                'document_id' => $document->id,
+                'line_number' => $lineNumber,
+                'description' => 'M1 rounding preflight probe',
+                'quantity' => '1.00',
+                'unit_price' => '12.13',
+                'tax_rate' => '20.00',
+                'line_total' => '12.13',
+            ]);
+        }
+
+        $postableDocument = $document->fresh(['lines']);
+        if ($postableDocument === null) {
+            throw new LogicException('The preflight mutation document disappeared before posting.');
+        }
+
+        try {
+            $this->app->make(DocumentPostingService::class)->post($postableDocument);
+            self::fail("{$missingPurpose->value} must be required before fiscal sealing.");
+        } catch (UnpostableDocumentGlException $exception) {
+            self::assertSame(GlResidualRefusal::NoAbsorbingAccount, $exception->refusal);
+        }
+
+        $fresh = $document->fresh();
+        self::assertNotNull($fresh);
+        self::assertSame(DocumentStatus::Confirmed, $fresh->status);
+        self::assertNull($fresh->fiscal_hash);
+        self::assertNull($fresh->chain_sequence);
+        self::assertNotSame(FiscalStatus::Sealed, $fresh->fiscal_status);
+    }
+
+    private function methodNode(string $source, string $method): Node\Stmt\ClassMethod
+    {
+        $ast = (new ParserFactory)->createForNewestSupportedVersion()->parse($source) ?? [];
+        $node = (new NodeFinder)->findFirst(
+            $ast,
+            static fn (Node $candidate): bool => $candidate instanceof Node\Stmt\ClassMethod
+                && $candidate->name->toString() === $method,
+        );
+        if (! $node instanceof Node\Stmt\ClassMethod) {
+            throw new LogicException("Required method {$method} is absent from the conditional gate.");
+        }
+
+        return $node;
+    }
+
+    /** @return list<string> */
+    private function classConstantNames(Node $root): array
+    {
+        $names = [];
+        foreach ((new NodeFinder)->findInstanceOf([$root], Node\Expr\ClassConstFetch::class) as $fetch) {
+            if ($fetch->name instanceof Node\Identifier) {
+                $names[] = $fetch->name->toString();
+            }
+        }
+
+        return $names;
     }
 
     private function source(string $relativePath): string

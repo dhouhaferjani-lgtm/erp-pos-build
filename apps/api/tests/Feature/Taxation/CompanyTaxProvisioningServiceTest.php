@@ -25,11 +25,14 @@ final class CompanyTaxProvisioningServiceTest extends TestCase
         (new CountriesSeeder)->run();
         $company = $this->makeCompany('TN');
 
-        (new CompanyTaxProvisioningService(failLoudOnMissingCountry: true))->provisionForCompany($company);
+        $this->service()->provisionForCompany($company, failLoudOnMissingCountry: true);
 
         $this->assertGreaterThanOrEqual(4, TaxConfiguration::where('country_code', 'TN')->count());
         $company->refresh();
         $default = TaxConfiguration::where('country_code', 'TN')->where('is_default', true)->first();
+        if ($default === null) {
+            $this->fail('TN provisioning must create a default tax configuration.');
+        }
         $this->assertNotNull($company->default_tax_configuration_id);
         $this->assertSame($default->id, $company->default_tax_configuration_id);
         // Company.default_tax_rate is decimal(5,2); SQLite returns the numeric form ('19') while PG
@@ -42,7 +45,7 @@ final class CompanyTaxProvisioningServiceTest extends TestCase
     {
         (new CountriesSeeder)->run();
         $company = $this->makeCompany('FR');
-        $service = new CompanyTaxProvisioningService(failLoudOnMissingCountry: true);
+        $service = $this->service();
         $service->provisionForCompany($company);
         $service->provisionForCompany($company);
         $this->assertSame(5, TaxConfiguration::where('country_code', 'FR')->count());
@@ -52,14 +55,14 @@ final class CompanyTaxProvisioningServiceTest extends TestCase
     {
         $company = $this->makeCompany('TN'); // countries NOT seeded
         $this->expectException(RuntimeException::class);
-        (new CompanyTaxProvisioningService(failLoudOnMissingCountry: true))->provisionForCompany($company);
+        $this->service()->provisionForCompany($company, failLoudOnMissingCountry: true);
     }
 
     public function test_skips_silently_for_unsupported_country(): void
     {
         (new CountriesSeeder)->run();
         $company = $this->makeCompany('US');
-        (new CompanyTaxProvisioningService(failLoudOnMissingCountry: true))->provisionForCompany($company);
+        $this->service()->provisionForCompany($company, failLoudOnMissingCountry: true);
         $company->refresh();
         $this->assertNull($company->default_tax_configuration_id);
     }
@@ -95,5 +98,10 @@ final class CompanyTaxProvisioningServiceTest extends TestCase
             'status' => CompanyStatus::Active,
             'is_headquarters' => true,
         ]);
+    }
+
+    private function service(): CompanyTaxProvisioningService
+    {
+        return $this->app->make(CompanyTaxProvisioningService::class);
     }
 }

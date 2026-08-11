@@ -81,6 +81,8 @@ use Spatie\Permission\Models\Role;
  */
 class DemoTenantSeeder extends Seeder
 {
+    private CompanyTaxProvisioningService $companyTaxProvisioning;
+
     /**
      * Cached automotive units for the current tenant being seeded. Reset at
      * the top of `createUnlimitedDemoTenant` so re-running the seeder for a
@@ -93,8 +95,9 @@ class DemoTenantSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(): void
+    public function run(CompanyTaxProvisioningService $companyTaxProvisioning): void
     {
+        $this->companyTaxProvisioning = $companyTaxProvisioning;
         // Ensure plans exist
         $this->call(PlansSeeder::class);
 
@@ -2068,10 +2071,7 @@ class DemoTenantSeeder extends Seeder
      */
     private function provisionCompanyTax(Company $company): void
     {
-        $provisioning = new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: false,
-        );
-        $provisioning->provisionForCompany($company);
+        $this->companyTaxProvisioning->provisionForCompany($company);
     }
 
     /**

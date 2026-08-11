@@ -68,8 +68,8 @@ final class EndToEndTaxResolutionTest extends TestCase
         ]);
 
         // ---- Step 2: provision tax ------------------------------------------
-        (new CompanyTaxProvisioningService(failLoudOnMissingCountry: true))
-            ->provisionForCompany($company);
+        $this->app->make(CompanyTaxProvisioningService::class)
+            ->provisionForCompany($company, failLoudOnMissingCountry: true);
 
         $company->refresh();
 

@@ -22,11 +22,10 @@ use RuntimeException;
 final class CompanyTaxProvisioningService
 {
     public function __construct(
-        private readonly CountryTaxConfigurationRegistry $registry = new CountryTaxConfigurationRegistry,
-        private readonly bool $failLoudOnMissingCountry = false,
+        private readonly CountryTaxConfigurationRegistry $registry,
     ) {}
 
-    public function provisionForCompany(Company $company): void
+    public function provisionForCompany(Company $company, bool $failLoudOnMissingCountry = false): void
     {
         $countryCode = strtoupper($company->country_code);
 
@@ -37,7 +36,7 @@ final class CompanyTaxProvisioningService
 
         $countryExists = DB::table('countries')->where('code', $countryCode)->exists();
         if (! $countryExists) {
-            if ($this->failLoudOnMissingCountry) {
+            if ($failLoudOnMissingCountry) {
                 throw new RuntimeException(
                     "Cannot seed tax configurations: country '{$countryCode}' is missing from the countries table. "
                     .'Seed reference data (CountriesSeeder) before provisioning company tax.'

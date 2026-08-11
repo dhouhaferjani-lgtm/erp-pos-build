@@ -92,7 +92,7 @@ class CoffeeShopSeeder extends Seeder
     /** @var array<string, ModifierGroup> */
     private array $modifierGroups = [];
 
-    public function run(): void
+    public function run(CompanyTaxProvisioningService $companyTaxProvisioning): void
     {
         $this->command->newLine();
         $this->command->info('Seeding Cafe Tunis - Coffee Shop with F&B');
@@ -142,10 +142,7 @@ class CoffeeShopSeeder extends Seeder
 
         // 4b. Provision country tax configurations (TN: VAT bands + stamp duty + company default).
         //     Countries are seeded at step 2 above; CoA is now in place.
-        $companyTaxProvisioning = new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        );
-        $companyTaxProvisioning->provisionForCompany($this->company);
+        $companyTaxProvisioning->provisionForCompany($this->company, failLoudOnMissingCountry: true);
         $this->command->info('Tax configurations provisioned');
 
         // 5. Ingredient products

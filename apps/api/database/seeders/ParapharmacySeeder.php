@@ -104,6 +104,7 @@ class ParapharmacySeeder extends Seeder
      */
     public function __construct(
         private readonly ProgramBootstrapService $loyaltyBootstrap,
+        private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
     ) {}
 
     protected function loyaltyBootstrap(): ProgramBootstrapService
@@ -376,10 +377,7 @@ class ParapharmacySeeder extends Seeder
         //     Called after CoA + countries (seeded above at step 2) so the
         //     provisioning service can resolve GL accounts and the countries
         //     FK is already in the tenant-scoped connection.
-        $companyTaxProvisioning = new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        );
-        $companyTaxProvisioning->provisionForCompany($this->company);
+        $this->companyTaxProvisioning->provisionForCompany($this->company, failLoudOnMissingCountry: true);
         $this->command->info('✓ Tax configurations provisioned');
 
         // 5. Seed products (1000 default; T1.0: configurable via SCALE)
