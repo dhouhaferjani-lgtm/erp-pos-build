@@ -35,8 +35,8 @@ milestones:
     title: "Invariant kernel (no DB/HTTP): CountryAccountingCapabilities contract+impl, CertificationScope VO, ProvisioningRequiredPurposes::V1 manifest + conformance suite + AST ratchet, protected-code registry, CanonicalCoaSerializer + golden vector, frozen-seeder @deprecated docblocks"
     review_lenses: [treasury]
     status: review
-    fix_rounds: 0
-    commit: 6df85c92e9932920719abcf2673dade8e76bb01f
+    fix_rounds: 1
+    commit: 1a3982d3f09f56e6bccd1d8ff1bb1a1d79a40688
     verdict: docs/handoff/reviews/country-defaults-phase-a/M1-round1.md
     last_verdict: CHANGES-REQUIRED
   - id: M2
