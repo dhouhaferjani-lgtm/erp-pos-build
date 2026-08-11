@@ -130,3 +130,30 @@ four expected failures with explicit trace positions. PHPStan on touched product
 Round-1 P3-12 remains a plan-level follow-up rather than an implementation deviation: successive
 return notes do not net prior draws from an original exit. It is recorded here for the M3 detector
 and plan owner; changing the settled T15a algorithm inside M1 would exceed the approved task.
+
+### M1 adversarial round 2 remediation
+
+Round 2 confirmed the production T16d/T16e reds can flip, then found that the voucher red rows had
+been placed inside a class selected by the shared PG merge gate. They now live in the dedicated
+`InventoryGlVoucherLockOrderTraceTest`, which is outside that allowlist; the allowlisted projection
+class is green (`7 passed, 34 assertions`). Pairs 1–3 are now described honestly as M1 target-order
+sensitivity controls because production inventory-GL wiring is atomic M2 scope. Pairs 4/5 retain
+their production GR proof and pair 6 retains buffer-level composition proof. Duplicate pair labels
+are explicitly a per-writer terminality trace crossed with two D-28 counterpart labels.
+
+The seam's real-root-commit harness is explicitly PostgreSQL-only: in-memory SQLite loudly skips
+all 21 methods rather than losing its schema between application refreshes. The voucher-scale
+change used only to unblock a no-context fixture was
+reverted; the dedicated trace binds the same CompanyContext required by the shipped path and the
+scale mechanism is byte-for-byte pre-M1. Batch reversal retains the shipped inline `postEntry`
+mechanism while keeping idempotency; voucher actor/refund and BatchExpiry owning suites pass `15
+tests (48 assertions)`. `StockMovement` now uses `QuantityScale::SCALE`; the I-2 AST rule matches
+table-call arguments rather than arbitrary string nodes, and all PHPStan rule tests are part of a
+named phpunit testsuite (`8 passed, 8 assertions`).
+
+Per-task mutation/replay is committed and captured in M1 evidence: T11 `6ab4cb163`/`ea0658233`,
+T11e `43bc692ff`/`8654aeda8`, T12 `2ad32b56f`/`059e003fd`, T13
+`7ffda98ff`/`f129c5879`, T15a `d0cce02c0`/`c150cfc0d`, and V-10
+`005aa9434`/`d7ac34af4`. Every mutation failed on its intended contract and the same focused test
+passed after the committed revert. T11c's ruled-red production outputs are its red-before evidence;
+T16c is an audit and has no behavioral commit to revert.

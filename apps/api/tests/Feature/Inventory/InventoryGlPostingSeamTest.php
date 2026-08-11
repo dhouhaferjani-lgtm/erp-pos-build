@@ -38,6 +38,17 @@ final class InventoryGlPostingSeamTest extends TestCase
 
     private const MOVEMENT_ID = '11111111-1111-4111-8111-111111111111';
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped(
+                'Inventory GL seam tests require PostgreSQL and real root commits; in-memory SQLite cannot persist the schema when connectionsToTransact() is empty.',
+            );
+        }
+    }
+
     /**
      * Let afterCommit and root-depth assertions observe production transaction
      * levels; RefreshDatabase otherwise holds the test at level one forever.

@@ -16,7 +16,14 @@ The acceptance evidence has two independent halves:
    voucher redemption after stock projection.
 2. `InventoryGlLockOrderContentionTest` uses two independent PostgreSQL connections to prove that
    the observed advisory-first shape is capable of producing `40P01`, while the terminal-advisory
-   target does not. This is a sensitivity control, not the source of the production order claim.
+   target does not. This is a sensitivity control, not the source of a production order claim.
+
+Pairs 1–3 cannot yet be production-traced for inventory GL because their T14/T16 posting wiring is
+the indivisible M2 cutover. Their M1 rows are explicitly target-order sensitivity controls, not
+claims that those writers already call the seam. Pairs 4/5 have independent production GR ordering
+evidence below. Pair 6 has buffer-level D-28 composition evidence below. M2's all-ten-green gate must
+run the post-cutover production writer tests; the permanently-green sensitivity controls are not a
+substitute for that gate.
 
 - Target order: both roots take inventory before company GL. The second root waits on inventory,
   then takes GL after the first commits. Both statements return SQLSTATE `00000`.
@@ -61,8 +68,8 @@ already at `DocumentStatus::Received`. Actual result: `1 passed (3 assertions)`.
 
 Pair 6's D-28 composition arm is independently pinned by
 `InventoryGlPostingSeamTest::test_one_root_flush_posts_both_dn_contexts_without_cross_contamination`:
-two DN-attributed contexts produce two distinct `inventory_exit` rows through exactly one root
-`flushIfOutermost()` call, and leave the scoped buffer empty. Actual result: `1 passed (4 assertions)`.
+two DN-attributed contexts produce two distinct `inventory_exit` rows through the test's single root
+`flushIfOutermost()` call, and leave the scoped buffer empty. Actual result: `1 passed (3 assertions)`.
 
 ## Pairs 7–10 — required RED in M1
 
@@ -75,8 +82,7 @@ php artisan test tests/Feature/POS/PosReturnScrapWriteOffTest.php --filter=t11c_
 
 DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 \
 DB_DATABASE=autoerp_test DB_USERNAME=autoerp DB_PASSWORD=*** \
-php artisan test tests/Feature/Fiscal/PosCoreReceiptProjectionRefundDispositionStockTest.php \
-  --filter=t11c_voucher
+php artisan test tests/Feature/Inventory/InventoryGlVoucherLockOrderTraceTest.php
 ```
 
 Actual output, reproduced on the ruled M1 tree:
@@ -91,7 +97,7 @@ pair 8 pos-refund-scrap_x_pos-sale:
 
 Tests: 2 failed (6 assertions)
 
-FAIL  Tests\Feature\Fiscal\PosCoreReceiptProjectionRefundDispositionStockTest
+FAIL  Tests\Feature\Inventory\InventoryGlVoucherLockOrderTraceTest
 
 pair 9 voucher-pos-sale_x_dn-confirm:
   T16e missing; first_company_advisory=13, last_inventory=30
@@ -108,6 +114,12 @@ the company advisory at query 13, then stock projection continues through query 
 two-connection controls separately return one `40P01` apiece for the corresponding reversed order.
 After M2, the same writer tests must turn green without edits; the separate sensitivity controls
 remain green by continuing to prove that a deliberately reversed order is detected.
+
+The two labels in each task arm are intentionally the same per-writer terminality trace crossed with
+two counterpart labels; the counterparty is not executed twice. I-1 is a writer-local terminality
+property, so once the scrap/voucher writer has no inventory statement after company GL, its cross
+product with either terminal writer is safe. The labels express the D-28 matrix rows, not four
+distinct fixture bodies.
 
 ## Round-1 remediation and revert/replay
 
@@ -130,6 +142,37 @@ movement remained Draft, and a central-connection rollback erased the tenant buf
 `a8c797222` reapplied the implementation; after resetting only the dedicated `autoerp_test` public
 schema (the first replay run exhausted PostgreSQL's test-schema DDL lock budget), the same run passed
 `3 tests (19 assertions)`.
+
+## Per-task red mutation / replay evidence
+
+Each M1 behavioral task now has a committed, test-sensitive mutation followed by a committed revert
+and a green rerun:
+
+| Task | Red mutation | Red consequence | Replay | Green result |
+|---|---|---|---|---|
+| T11 | `6ab4cb163` | Entry dispatch produced `inventory_exit` | `ea0658233` | entry dispatch `1 passed (6)` |
+| T11e | `43bc692ff` | I-2 overlap fixture produced no diagnostic | `8654aeda8` | rule test `2 passed (2)` |
+| T12 | `2ad32b56f` | `inventory_entry` mapped to Cash, not Misc | `059e003fd` | mapping `1 passed (6)` |
+| T13 | `7ffda98ff` | duplicate reached raw `23505`, losing named precheck | `f129c5879` | precheck `1 passed (2)` |
+| T15a | `d0cce02c0` | attributable exits mislabeled `current_cost` | `c150cfc0d` | resolver/payload `2 passed (19)` |
+| V-10 | `005aa9434` | stable FEFO `error.reason` missing in en/fr | `d7ac34af4` | refusal tests `2 passed (10)` |
+
+T11c's red-before half is the ruled production failure above; T16c is an audit with no production
+change to revert.
+
+## Round-2 merge-gate isolation
+
+The ruled-red voucher trace now lives in
+`tests/Feature/Inventory/InventoryGlVoucherLockOrderTraceTest.php`, outside the shared PG gate's
+class-name allowlist. The allowlisted
+`PosCoreReceiptProjectionRefundDispositionStockTest` contains only green regressions and passes
+`7 tests (34 assertions)`. The trace retains the same real writer and cause-specific red output.
+The seam class requires real root commits (`connectionsToTransact(): []`), so in-memory SQLite now
+loudly skips all 21 PostgreSQL seam methods instead of losing its schema between application
+refreshes. Voucher scaling is byte-for-byte restored
+to the pre-M1 CompanyContext mechanism. The reversal idempotency guard retains the shipped inline
+`postEntry` mechanism; its owning BatchExpiry suite plus voucher actor/refund suites pass `15 tests
+(48 assertions)`.
 
 ## Aborting subtransaction cannot-verify
 
