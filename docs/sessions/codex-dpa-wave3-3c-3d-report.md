@@ -34,4 +34,6 @@ Round-3 revert/replay: revert `ac89b8c88` made the V10 comment-target probe exit
 
 Adversarial round 4 found cross-file construct moves that line-diff mapping could not detect. The inventory now fails closed on reference/current semantic drift and explicitly relocates the deleted delivery-compliance cluster, D-19 twin B, and five other integrated semantic successors. Both V10 comment citation forms map to `217-226`, and the write-off `source_id` precedent maps to line 4708. Current result: `N_extracted=256 N_mapped=256 relocated=23 unresolved=0`, with 16 fully pinned relocation keys.
 
+Round-4 revert/replay: revert `b48e88974` made the deleted-delivery-predicate successor probe exit 1; restore `06ebab27d` returned the cross-file relocation and semantic drift gate to green.
+
 Deviation discovered and resolved in the execution model: `RefundService` currently calls `ReturnNoteService::confirmWithin()` at transaction depth 1, while D-28 states depth 2. M2 will add the implied inner savepoint at that call before the writer-tail flush and retain C-2's root-tail flush. This aligns runtime depth with the settled architecture without changing the domain transition or lock set.
