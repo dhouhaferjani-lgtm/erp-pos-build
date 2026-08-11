@@ -177,3 +177,5 @@ sequencing resolution, and the SV-1 rider set are all sound and are unchanged by
 
 Fix the nine findings and re-gate, or dispatch on the orchestrator's authority once the fixes are in
 the tree. The base SHA remains the single open item at dispatch in both packages.
+
+Round 2: PASS — see 2026-08-11-es-briefs-gate-r2.md.
