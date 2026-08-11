@@ -280,6 +280,9 @@ final class TemplatePublishingService
         }
 
         foreach ($accounts as $account) {
+            if ($account->parent_code === $account->code) {
+                throw new DomainException("Template account {$account->code} cannot reference itself as parent.");
+            }
             if ($account->parent_code !== null && ! isset($byCode[$account->parent_code])) {
                 throw new DomainException("Parent {$account->parent_code} does not resolve inside the template.");
             }
@@ -335,7 +338,7 @@ final class TemplatePublishingService
             $madeProgress = false;
             foreach ($pending as $code => $row) {
                 $parentCode = $row->parent_code;
-                if ($parentCode !== null && $parentCode !== $code && ! isset($insertedCodes[$parentCode])) {
+                if ($parentCode !== null && $parentCode !== (string) $code && ! isset($insertedCodes[$parentCode])) {
                     continue;
                 }
 

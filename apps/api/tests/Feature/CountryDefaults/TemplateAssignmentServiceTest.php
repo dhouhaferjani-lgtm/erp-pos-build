@@ -7,6 +7,7 @@ namespace Tests\Feature\CountryDefaults;
 use App\Models\SuperAdmin;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\CountryDefaults\Application\Services\CanonicalCoaSerializer;
 use App\Modules\CountryDefaults\Application\Services\TemplateAssignmentService;
 use App\Modules\CountryDefaults\Application\Services\TemplatePublishingService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
@@ -229,6 +230,34 @@ final class TemplateAssignmentServiceTest extends TestCase
         self::assertDatabaseMissing('country_template_assignments', ['country_code' => 'FR']);
     }
 
+    public function test_assignment_rejects_a_self_parent_cycle_during_structural_revalidation(): void
+    {
+        $actor = $this->actor();
+        $template = $this->published('FR', $actor);
+        $account = $template->accounts()->orderBy('sort_order')->firstOrFail();
+        $connection = DB::connection($template->getConnectionName());
+        $connection->table('admin_template_accounts')
+            ->where('id', $account->id)
+            ->update(['parent_code' => $account->code]);
+        $connection->table('admin_templates')
+            ->where('id', $template->id)
+            ->update(['content_hash' => $this->canonicalHash($template)]);
+
+        try {
+            app(TemplateAssignmentService::class)->assign(
+                'FR',
+                TemplateDomain::ChartOfAccounts,
+                $template->id,
+                $actor,
+            );
+            self::fail('Assignment must revalidate and reject a self-parent cycle.');
+        } catch (DomainException $exception) {
+            self::assertStringContainsString('itself', $exception->getMessage());
+        }
+
+        self::assertDatabaseMissing('country_template_assignments', ['country_code' => 'FR']);
+    }
+
     private function published(string $country, SuperAdmin $actor): AdminTemplate
     {
         $template = AdminTemplate::query()->create([
@@ -265,6 +294,21 @@ final class TemplateAssignmentServiceTest extends TestCase
             'is_system' => $system,
             'sort_order' => $sort,
         ]);
+    }
+
+    private function canonicalHash(AdminTemplate $template): string
+    {
+        $rows = $template->accounts()->orderBy('sort_order')->get()->map(static fn (AdminTemplateAccount $account): array => [
+            'code' => $account->code,
+            'name' => $account->name,
+            'type' => $account->type,
+            'parent_code' => $account->parent_code,
+            'system_purpose' => $account->system_purpose,
+            'is_system' => $account->is_system,
+            'sort_order' => $account->sort_order,
+        ])->all();
+
+        return app(CanonicalCoaSerializer::class)->hash(array_values($rows));
     }
 
     private function actor(): SuperAdmin

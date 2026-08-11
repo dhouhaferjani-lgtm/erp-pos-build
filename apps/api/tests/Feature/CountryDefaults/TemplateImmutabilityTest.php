@@ -352,6 +352,20 @@ final class TemplateImmutabilityTest extends TestCase
         );
     }
 
+    public function test_clone_keeps_a_legacy_numeric_self_parent_row_correctable(): void
+    {
+        $actor = $this->actor();
+        $source = $this->publishedTemplate($actor);
+        $account = $source->accounts()->firstOrFail();
+        DB::connection($source->getConnectionName())->table('admin_template_accounts')
+            ->where('id', $account->id)
+            ->update(['parent_code' => $account->code]);
+
+        $clone = app(TemplatePublishingService::class)->cloneToDraft($source->id, 'Correctable self-parent clone', $actor);
+
+        self::assertSame('100', $clone->accounts()->sole()->parent_code);
+    }
+
     private function publishedTemplate(?SuperAdmin $actor = null): AdminTemplate
     {
         $actor ??= $this->actor();

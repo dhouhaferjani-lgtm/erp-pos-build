@@ -176,6 +176,18 @@ final class TemplatePublishGateTest extends TestCase
         }
     }
 
+    public function test_publish_rejects_a_self_parent_cycle(): void
+    {
+        $actor = $this->actor();
+        $template = $this->validDraft(['FR']);
+        $account = $template->accounts()->orderBy('sort_order')->firstOrFail();
+        DB::connection($template->getConnectionName())->table('admin_template_accounts')
+            ->where('id', $account->id)
+            ->update(['parent_code' => $account->code]);
+
+        $this->assertPublishFails($template, ['FR'], 'itself', $actor);
+    }
+
     public function test_blank_standard_reference_and_non_draft_status_are_rejected_after_lock(): void
     {
         $actor = $this->actor();
