@@ -25,11 +25,11 @@ milestones:
   - id: M0
     title: "Reconciliation addendum — recompute §0 drift table from current origin/dev; capture pre-addendum reconciliation command output (documentation-only, no red test)"
     review_lenses: [treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: review
+    fix_rounds: 1
+    commit: c744c19cc2642e327f700544a108e0655eccd29f
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M0-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M1
     title: "Invariant kernel (no DB/HTTP): CountryAccountingCapabilities contract+impl, CertificationScope VO, ProvisioningRequiredPurposes::V1 manifest + conformance suite + AST ratchet, protected-code registry, CanonicalCoaSerializer + golden vector, frozen-seeder @deprecated docblocks"
     review_lenses: [treasury]
