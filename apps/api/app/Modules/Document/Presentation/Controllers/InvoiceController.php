@@ -1038,6 +1038,7 @@ class InvoiceController extends Controller
                 'error' => [
                     'code' => 'DELIVERY_CANNOT_BE_GENERATED',
                     'message' => $message,
+                    'reason' => $e->reason,
                 ],
             ], 422);
         } catch (GuidedDeliveryNoLongerApplicableException $e) {
