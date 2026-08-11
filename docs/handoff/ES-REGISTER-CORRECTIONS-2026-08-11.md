@@ -1,8 +1,10 @@
 # ES register — corrections addendum (entry gate round 1, 2026-08-11)
 
-**Why this file exists.** `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md` is the **immutable record of the audit** — it is not edited after the fact (handover §7: *"Touch `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/` — it is the audit's record"* is forbidden). The entry-gate review of 2026-08-11 nonetheless produced **row-level corrections** to that register. They are recorded here.
+**Why this file exists.** The consolidated register is the **immutable record of the audit** — it is not edited after the fact (handover §7: *"Touch `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/` — it is the audit's record"* is forbidden). The entry-gate review of 2026-08-11 nonetheless produced **row-level corrections** to that register. They are recorded here.
 
-**The program reads the register and this addendum together.** Where the two disagree, **this addendum wins** for the rows listed below; the register remains authoritative for everything else (row set, severities, evidence pointers, dedup ledger, launch relevance).
+**Which register.** *(Updated at entry gate round 3.)* The program's **contract-of-record** is the tracked, hash-verified snapshot [`ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md`](ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md) (source SHA-256 `04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540`). The live-session original `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md` is **untracked** — `docs/sessions/` is gitignored (`.gitignore:58`), so it resolves from no commit — and is cited below for **provenance only**. Round 3 ruled the live path UNFIT as a commit-scoped program input for exactly that reason. **Line mapping:** a citation written `00-CONSOLIDATED-REGISTER.md:N` is snapshot line **`N + 50`**.
+
+**The program reads the snapshot and this addendum together.** Where the two disagree, **this addendum wins** for the rows listed below; the register remains authoritative for everything else (row set, severities, evidence pointers, dedup ledger, launch relevance).
 
 **Provenance.** Entry gate round 1 = **CHANGES-REQUIRED**, independent Codex reviewer, HEAD `0c00cf526`. Verdict of record: [`docs/superpowers/reviews/2026-08-11-event-sourcing-entry-gate-verdict.md`](../superpowers/reviews/2026-08-11-event-sourcing-entry-gate-verdict.md). Every correction below was **re-verified against code by the orchestrator** before being written down.
 
@@ -26,7 +28,7 @@
 
 ### ES-76 — count corrected: **14 listed modules**, not "~13"
 
-Register §2.3 row ES-76 and §4 theme T8 both say *"~13 modules"* while the same row **lists 14**: Uom, Menu, Media, Admin, Contact, Coupon, Progression, Promotion, PlatformIntegration, Service, SupportAccess, DocumentIngestion, Notification, Income (`00-CONSOLIDATED-REGISTER.md:147`). Read as **"14 listed modules, unverified"**. Status is unchanged (SUSPECTED — needs a real mutation sweep, not a directory count).
+Register §2.3 row ES-76 and §4 theme T8 both say *"~13 modules"* while the same row **lists 14**: Uom, Menu, Media, Admin, Contact, Coupon, Progression, Promotion, PlatformIntegration, Service, SupportAccess, DocumentIngestion, Notification, Income ([`ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md:197`](ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md), = live-session `00-CONSOLIDATED-REGISTER.md:147`). Read as **"14 listed modules, unverified"**. Status is unchanged (SUSPECTED — needs a real mutation sweep, not a directory count).
 
 ### ES-84 — wording corrected (the float-cast half)
 

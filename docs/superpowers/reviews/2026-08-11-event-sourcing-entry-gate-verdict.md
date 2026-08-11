@@ -120,3 +120,19 @@ Round-1 findings: (1) ES-07 narrowing APPLIED-DEFECTIVE — detailed correction 
 Fresh-eye: [Low] D-17 overstates SAFE_DROP/CASH_CORRECTION as existing "only" in the authoring type union + engine allow-set — they also appear in the payload registry and engine validation branches; the narrower "no production caller" claim holds. [Low] Owner-question ordering: Q11 inserted before Q10.
 
 ENTRY GATE ROUND 2: CHANGES-REQUIRED
+
+---
+
+## Round 3 (2026-08-11, at 7569bd957)
+
+*Provenance: scoped final verification of the six round-2 edits by an independent Codex reviewer, verdict returned in-band (no file written by the run); persisted here verbatim by the orchestrator.*
+
+Six-edit check: (1) mission narrowing APPLIED-FAITHFUL; (2) ES-48 re-pointing APPLIED-DEFECTIVE solely because the cited register does not exist in the commit — git show 7569bd957:docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md fails (docs/sessions/ is gitignored; the program contract is not version-controlled); (3) verification classes APPLIED-DEFECTIVE — ES-43's contract contradictory (populate stored signature_* columns vs no fiscal_events rewrite; columns DB-frozen by 2026_05_14_100002_create_fiscal_events_immutability.php:70) and ES-80 (write-only operator_approvals retirement, ManagerPinController.php:117, OperatorApproval.php:25) fits neither class; ES-09 guard-fix and ES-67 data-repair assignments defensible; (4) Q11↔D-17 APPLIED-FAITHFUL; (5) D-17 wording APPLIED-FAITHFUL; (6) Q1–Q11 ordering APPLIED-FAITHFUL. Fresh-eye: none beyond rows 2-3. Fitness: handover FIT-WITH-CORRECTIONS; owner sheet, SV dossier, dossier 3 (committed state) FIT; register addendum FIT-WITH-CORRECTIONS; 00-CONSOLIDATED-REGISTER.md UNFIT as commit-scoped program input (absent from the tree). ENTRY GATE ROUND 3: CHANGES-REQUIRED.
+
+**Disposition (orchestrator, 2026-08-11).** All three residuals applied in the commit that carries this entry, each re-verified against code first:
+
+| # | Residual | Fix |
+|---|---|---|
+| 2 | Contract not version-controlled | Tracked verbatim snapshot `docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md` (source SHA-256 `04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540`, backing-section hashes in its header). It is now the **contract-of-record**; the `docs/sessions/` original stays the audit's working record and is cited as provenance only. Citations updated in handover §2 / the ES-48 paragraph / the register addendum, with the `N + 50` line-offset mapping recorded. `docs/sessions/` untouched. |
+| 3a | ES-43 contract contradictory | Re-classed to the **emission-class** shape and stated **FORWARD-ONLY**: `signature_*` populated at INSERT for new events only, sealed rows never touched — they are DB-frozen (`2026_05_14_100002_create_fiscal_events_immutability.php:71`, `:80`, `:96-100`, re-verified). V1-analog = signature present+valid on a new row; V3-analog = the verifier fails an absent/invalid signature; plus a no-pre-existing-row-changed assertion. Whole row stays gated on Q5 / D-11. |
+| 3b | ES-80 fits no class | Removed from the Lane-F dead-event-retirement mapping (it retires a **table**, not an event class) and added to §5's straggler footnote with the per-milestone contract-approval requirement. "Write-only" re-verified: sole writer `ManagerPinController.php:117`; zero readers — `OperatorApproval.php:25-56` declares only table/fillable/casts, and no other `app/`, route, test, POS or web reference reads `operator_approvals`. |
