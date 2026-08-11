@@ -249,6 +249,29 @@ final class ProvisioningRequiredPurposesV1
     }
 
     /**
+     * @param  list<array{purpose: SystemAccountPurpose, call_site: string, classification: string, gate_kind: ?string, evidence_citation: string}>  $entries
+     * @param  list<SystemAccountPurpose>  $purposes
+     */
+    public static function assertDynamicRequiredPurposes(array $entries, array $purposes): void
+    {
+        $byPurpose = [];
+        foreach ($entries as $entry) {
+            $byPurpose[$entry['purpose']->value] = $entry;
+        }
+
+        foreach ($purposes as $purpose) {
+            $entry = $byPurpose[$purpose->value] ?? null;
+            if ($entry === null
+                || $entry['classification'] !== self::REQUIRED
+                || ! str_starts_with($entry['evidence_citation'], 'DYNAMIC:')
+                || ! str_contains($entry['evidence_citation'], $purpose->name)
+            ) {
+                throw new LogicException("DYNAMIC-only purpose {$purpose->value} must remain REQUIRED with typed source evidence.");
+            }
+        }
+    }
+
+    /**
      * @return array{purpose: SystemAccountPurpose, call_site: string, classification: string, gate_kind: ?string, evidence_citation: string}
      */
     private static function entry(

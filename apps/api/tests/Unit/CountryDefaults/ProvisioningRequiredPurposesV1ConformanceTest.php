@@ -136,6 +136,47 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
         ProvisioningRequiredPurposesV1::assertConforms($fixture);
     }
 
+    public function test_each_dynamic_only_required_purpose_is_pinned_against_balanced_demotion(): void
+    {
+        $dynamicOnly = [
+            SystemAccountPurpose::GeneralExpense,
+            SystemAccountPurpose::SalesReturnsClearing,
+            SystemAccountPurpose::VoucherLiability,
+            SystemAccountPurpose::MarketingGoodwillExpense,
+            SystemAccountPurpose::PosTenderClearing,
+            SystemAccountPurpose::RoundingLossExpense,
+        ];
+
+        ProvisioningRequiredPurposesV1::assertDynamicRequiredPurposes(
+            ProvisioningRequiredPurposesV1::entries(),
+            $dynamicOnly,
+        );
+
+        foreach ($dynamicOnly as $demotedPurpose) {
+            $fixture = ProvisioningRequiredPurposesV1::entries();
+            foreach ($fixture as &$entry) {
+                if ($entry['purpose'] === $demotedPurpose) {
+                    $entry['classification'] = 'SOFT';
+                    $entry['call_site'] = 'NONE';
+                    $entry['evidence_citation'] = 'NONE:Mutation fixture.';
+                }
+                if ($entry['purpose'] === SystemAccountPurpose::OfficeExpense) {
+                    $entry['classification'] = 'REQUIRED';
+                    $entry['call_site'] = 'mutation fixture';
+                    $entry['evidence_citation'] = 'DYNAMIC:mutation fixture';
+                }
+            }
+            unset($entry);
+
+            try {
+                ProvisioningRequiredPurposesV1::assertDynamicRequiredPurposes($fixture, $dynamicOnly);
+                self::fail("Demoting {$demotedPurpose->value} must fail the direct DYNAMIC-required guard.");
+            } catch (LogicException $exception) {
+                self::assertStringContainsString($demotedPurpose->value, $exception->getMessage());
+            }
+        }
+    }
+
     public function test_every_evidence_citation_resolves_to_current_source_semantics(): void
     {
         foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
