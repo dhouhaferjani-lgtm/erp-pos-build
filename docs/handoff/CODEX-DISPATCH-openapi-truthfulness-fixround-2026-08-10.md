@@ -142,13 +142,21 @@ nullable `exception_class`, documented 500.
 
 ### §3-B — Round-3 gate findings — **FILL AT DISPATCH**
 
-> **VERIFY-AT-DISPATCH — this section is intentionally empty.** The independent
-> truthfulness gate round 3 has not been run. Paste the round-3 ranked findings here
-> before dispatching, in the same table shape as §3-A (severity, finding, evidence
-> citation, required closure shape). Apply the calibration rule: **any new systematic
-> class requires a mechanical auditor rule + red tests as part of its closure.**
-> If round 3 fails on a fourth successive systematic class, do not issue another fix
-> round without re-reading the lane's escalation rule in the handover.
+**Round 3 RUN 2026-08-11 — GATE VERDICT: FAIL.** Verdict of record:
+`docs/superpowers/reviews/2026-08-11-openapi-truthfulness-gate-verdict-round3.md`.
+Closed: R2-1/R2-2/R2-4/R2-5/R2-7. The work list below is R2-3 (partial), R2-6
+(partial), R3-1 (new systematic).
+
+| # | Sev | Finding | Evidence | Required shape of closure |
+|---|---|---|---|---|
+| **R2-3-residual** | **High** | Nullability auditor incomplete: register document-ingestion `extraction` + `error` and every directly-serialized field named in R2-3; make unresolved registered pointers FAIL CLOSED at `SerializedFieldNullabilityAuditor.php:51-54` (currently fails OPEN when a registered node disappears — proven by live admin `plan.description` removal probe). | `SerializedFieldNullabilityAuditor.php:51-54`; document-ingestion `extraction`/`error` fields unregistered | Red tests for both defect classes: (a) missing registration for directly-serialized fields, (b) fail-open on a disappearing registered pointer. Then register the outstanding R2-3 fields. |
+| **R2-6-residual** | **Medium** | Restore `min:0.01` on both split-validation number branches + non-negative string regex, per `MultiPaymentController.php:563-570`. Currently both branches admit -1, "-1.000", 0, "0.000" (schema-valid, runtime-rejected). | `tenant-full.json:55633-55708`; `MultiPaymentController.php:563-570` | Part of the R3-1 sweep — same auditor rule and remedy shape apply. |
+| **R3-1** | **High / SYSTEMATIC** | Runtime numeric bounds disappear on numeric-string branches — 67 composed schemas (all tenant surface). A JSON Schema `minimum`/`maximum` on the numeric branch does not constrain the alternate string branch; current string patterns admit numeric values runtime rejects (signed patterns on non-negative fields, no range). The split-validation replacement additionally drops `min:0.01` from the numeric branch itself. Affected set spans money, quantity, percentage, multiplier, duration, and threshold inputs — a systematic contract-generation defect, not isolated schema errors. Witnesses: `walk_in_buffer_hours_per_day` "-1.00"/"25.00" schema-valid/runtime-rejected; `earning_multiplier` "0.50" schema-valid/runtime-rejected; split-validation -1/"-1.000"/0/"0.000" schema-valid/runtime-rejected. | `tenant-full.json:120304-120338,120349-120383,134704-134730,55633-55708`; `CreateTierRequest.php:34-42`; `UpdateScheduleConfigRequest.php:24-30`; `MultiPaymentController.php:563-570`; generator cause `FullSurfaceRefiner.php:275-296,355-381`; auditor gap `StrictSchemaTruthAuditor.php:80-85` (no cross-branch bound-parity rule) | Red-first mechanical auditor for runtime-bound parity on number\|string inputs. Restore numeric-branch bounds incl. split `minimum: 0.01`. Encode equivalent string restrictions where representable; otherwise an explicit source-backed runtime-bounds deviation stating the unenforced bounds. Sweep all 67 affected request nodes + the 2 split fields; live current-document mutation tests at exact pointers. **Calibration rule: closure REQUIRES a red-first mechanical bound-parity auditor + live mutation tests at exact pointers.** |
+
+Escalation check performed: handover escalation rule is numeric-ceiling-specific;
+truthfulness findings do not count toward that counter. Fix round authorized. If a
+ROUND-4 gate surfaces another new unrelated systematic class, escalate to the owner
+with the thin-contract restart recommendation before any further fix round.
 
 ---
 
