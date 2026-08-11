@@ -27,9 +27,13 @@ owner_gates:
     question: "ES-43: unkeyed SHA-256 vs the NF525 RSA-2048/ECDSA-256 requirement — acceptable for the TN first tenant, deferred to the FR lane, or launch-blocking? (Handover Q5 / owner sheet D-11.) ES-43 is EXCLUDED from A0's scope until answered; if it defers to FR it leaves A0's exit scope entirely. Forward-only when it lands: signature_* populated at INSERT for NEW rows only, never on a sealed row."
     blocks_milestone: none
     status: open
+  # informational — conditional logic lives in the milestone text (M4).
+  # The harness treats a milestone `owner_gate:` field as an UNCONDITIONAL STOP
+  # (SELF-REVIEW-HARNESS.md step 4 / condition B), so this gate must NOT be wired
+  # onto M4 as a field: the permission is already CHOSEN (pos.operate_terminal).
   - id: ES-42-device-permission-grant
-    question: "ES-42: adding a can: gate to POST /pos/sync/fiscal-events is a LIVE DEVICE route. If no existing permission the device principal already holds fits, the grant (permission + role seeder + permission:cache-reset) is a policy/deploy choice, not an implementation one — STOP and ask rather than inventing it."
-    blocks_milestone: M4
+    question: "ES-42: adding a can: gate to POST /pos/sync/fiscal-events is a LIVE DEVICE route. The permission is LOCKED to the EXISTING pos.operate_terminal (seeded; already gates comparable POS write surfaces). This gate fires ONLY if M4's first check finds that the device principal does NOT hold pos.operate_terminal in the fixture — then a grant (new permission + role seeder + permission:cache-reset) becomes a policy/deploy choice: STOP blocked_owner rather than inventing it."
+    blocks_milestone: none
     status: conditional
 
 milestones:
@@ -42,7 +46,7 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M1
-    title: "ES-08 — extend fiscal:verify-event-chain: payload<->canonical_bytes, integrity_status (quarantined-but-intact must stop reporting verified), sealed coordinates, sequence_number contiguity, fleet-wide driver preserving the actor-anchored permission gate + tenant binding. Verifier-class contract: RED on T-a and T-b, green on clean, EACH new check individually demonstrated red."
+    title: "ES-08 — extend fiscal:verify-event-chain: payload<->canonical_bytes, integrity_status (quarantined-but-intact must stop reporting verified), sealed coordinates, sequence_number contiguity, + the MANIFEST-DRIVEN fleet driver (operator-supplied tenant->actor-id manifest; per listed tenant run the existing single-tenant verification with the actor gate and tenant binding preserved EXACTLY; missing/unauthorised tenants REPORTED LOUDLY with a non-zero aggregate exit, never silently skipped; NO service account or new identity model; terminal/context enumeration from the distinct (terminal_id, chain_context) pairs in fiscal_events within the bound tenant; unworkable manifest shape -> STOP condition C). Verifier-class contract: RED on T-a and T-b, green on clean, EACH new check individually demonstrated red."
     review_lenses: [fiscal-pos, treasury]
     status: pending
     fix_rounds: 0
@@ -50,7 +54,7 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M2
-    title: "ES-07 (NARROWED) — pos:verify-chains receipt arm reads fiscal-era rows under the correct hash shape (the whereNull carve-out is DELIBERATE: add an arm, do not delete the filter) + the pos_receipts.fiscal_hash <-> fiscal_events.current_hash mirror cross-check. The Z arm is NOT blind — out of scope beyond what the mirror requires. RED on T-c + tampered projected chain; negative control on an all-legacy tenant."
+    title: "ES-07 (NARROWED) — pos:verify-chains COVERAGE/REPORTING + the MIRROR. Defect (a): fiscal-era receipts are not counted, so a terminal whose receipts are all projected returns is_valid:true over a count of 0 and the fiscal arm's result is never surfaced per-arm. Defect (b): NO pos_receipts.fiscal_hash <-> fiscal_events.current_hash cross-check exists anywhere — add it as a new arm. ReceiptHashService::verifyTerminalChain() ALREADY self-partitions (fiscal arm canonical-hashes; legacy arm re-applies whereNull and pipe-hashes only fiscal_event_id IS NULL rows), so a canonical-bytes row can never reach a pipe recomputation — the implementer CHOOSES the mechanism (safe filter removal + per-arm reporting, or an explicit fiscal-era pass). The Z arm is NOT blind — out of scope beyond what the mirror requires. RED on T-c + tampered projected chain; per-arm counts must prove nonzero fiscal-era coverage; negative control on an all-legacy tenant."
     review_lenses: [fiscal-pos, treasury]
     status: pending
     fix_rounds: 0
@@ -58,7 +62,15 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M3
-    title: "ES-06 DETECTION half only (divergence on sealed rows detectable + demonstrated red; second-approver/correcting-event workflow is owner-gated D-8 -> blocked_owner if reached) + ES-16/ES-17 stragglers: implementer PROPOSES each row's verification contract, the inline reviewer APPROVES it at this milestone's review, THEN implementation."
+    title: "ES-06 DETECTION half only (divergence on sealed rows detectable + demonstrated red; second-approver/correcting-event workflow is owner-gated D-8 -> blocked_owner if reached) + the ES-16/ES-17 straggler contract PROPOSALS as a COMMITTED artifact at docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md (the harness reviews a committed range, so the proposal must be IN the diff the reviewer inspects). This milestone's bridge review approves/rejects THAT artifact. NO straggler implementation here."
+    review_lenses: [fiscal-pos, treasury]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3b
+    title: "ES-16/ES-17 straggler IMPLEMENTATION, strictly to the contracts approved at M3. Implementing beyond or against the approved contract is a milestone failure, not a style problem. Own bridge review."
     review_lenses: [fiscal-pos, treasury]
     status: pending
     fix_rounds: 0
@@ -66,9 +78,8 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M4
-    title: "Guard/constraint class — ES-09 (chain-head resolution scoped by company_id + chain_context at BOTH TerminalRegistrySnapshotService and VirtualAdminFiscalEventService, matching OutboxIngestor; stop the unconditional Verified/Parsed stamping) + ES-41 (PG-only immutability driver gate CONFIRMED; pending_seal->fiscalized branch SUSPECTED — verify before asserting) + ES-42 (can: gate, principal enumerated). Refusal contract each: red test drives the previously-accepted bad input, guard refuses, NOTHING persisted; green legitimate half in the same diff."
+    title: "Guard/constraint class — THREE DIFFERENT CONTRACTS, do not conflate. ES-09 = CORRECTNESS: chain-head resolution scoped by (company_id, chain_context) at BOTH TerminalRegistrySnapshotService and VirtualAdminFiscalEventService, matching OutboxIngestor's shape; before-fix RED demonstrates context-blind head resolution on a two-context terminal, after-fix GREEN = the two-context append SUCCEEDS with heads resolved per (company_id, chain_context) and no unconditional Verified/Parsed stamp. ES-41 = TRIGGER-PRESENCE regression scoped to its snapshot row (PG trigger presence asserted; the non-PG driver scope is DOCUMENTED, not 'fixed'; pending_seal->fiscalized branch SUSPECTED — verify before asserting). ES-42 = the two-sided REFUSAL contract, gated with the EXISTING pos.operate_terminal (LOCKED — no new permission, no reseed, no permission migration): FIRST verify the fixture's device principal holds pos.operate_terminal; if it does NOT, set status blocked_owner (gate ES-42-device-permission-grant) and STOP; otherwise proceed — unauthorized principal 403s and persists NOTHING, and the fixture device sync path still SUCCEEDS end-to-end."
     review_lenses: [fiscal-pos, treasury]
-    owner_gate: ES-42-device-permission-grant
     status: pending
     fix_rounds: 0
     commit: null

@@ -26,12 +26,27 @@ TDD red-first.
 > - **Resume semantics:** a fresh session resumes by reading the YAML + the newest register under
 >   `docs/handoff/reviews/sv-stage1/`. Never re-run a milestone whose `status: passed`.
 > - **STOP and escalate only at the three harness STOP conditions:** (A) fix rounds exhausted
->   (`max_fix_rounds: 5`) → `blocked_review`; (B) an owner gate — here **the SV-9 prerequisite check
->   (M3, see the CRITICAL SEQUENCING GUARD)** and **the device-Arabic question (M2)** →
->   `blocked_owner`; (C) an architecture contradiction → `blocked_architecture`. Set the YAML `status` +
->   `blockers` and end your run.
+>   (`max_fix_rounds: 5`) → `blocked_review`; (B) an owner gate — here **only** the SV-9 prerequisite
+>   check at M3, and **only if it actually fires** (see the CRITICAL SEQUENCING GUARD: a touch point
+>   genuinely requiring G-3 or a Stage-5 policy gate) → `blocked_owner`; (C) an architecture
+>   contradiction → `blocked_architecture`. Set the YAML `status` + `blockers` and end your run.
+> - **The device-Arabic question at M2 is NOT a stop.** It is an **informational** record: M2 ships
+>   `en` + `fr`, files the ticket, and **proceeds**. Nothing in this wave blocks on it.
+> - **Gate wiring, deliberate:** no milestone in the YAML carries an `owner_gate:` field. The harness
+>   reads that field as an **unconditional** STOP (harness step 4 / condition B), and both gates here are
+>   *conditional or informational*. The `owner_gates:` list is an **informational record**
+>   (`blocks_milestone: none`); the conditional logic lives in the milestone text — trust the milestone
+>   text, and stop only when its stated condition actually fires.
 > - **No clock.** Do not call `date`. Use `git rev-parse --short HEAD` as the `updated:` marker.
 > - Per-milestone registers go to `docs/handoff/reviews/sv-stage1/`. Branch NOT merged, NOT pushed.
+
+**Revision 2 (2026-08-11).** Brief-gate round 1 fixes, per
+`docs/superpowers/reviews/2026-08-11-es-briefs-gate-r1.md` (verdict CHANGES-REQUIRED, 9 findings):
+the harness gate wiring (no milestone carries an `owner_gate:` field — the ar-locale gate is
+**informational only** and never stops M2; the SV-9 prerequisite stops M3 only if the check actually
+fires), `treasury` added to **M5's lens set** (it gated M1), the **device-Arabic ticket path and
+minimum contents** pinned, and **SV-11's line-2 Stage-1 rendering contract** stated (cash-sales row
+only — no rounding placeholder, no reserved DOM slot).
 
 **Revision 1 (2026-08-11).** First dispatch of this lane. Stage 1 exists precisely because it is
 **independent**: it ships on its own, blocks nothing, and must not be delayed by the GL-flag flip
@@ -205,9 +220,17 @@ locale + RTL surface — **not "cheap translation-file work", and not SV-11's sc
 - **Ship `en` + `fr` in full** (the exact strings below), in parallel, through `t()` (rule 11 — no
   hardcoded strings).
 - **Do NOT create `apps/pos/src/locales/ar/`** or register a new language in this wave.
-- **Record the gap** as an owner gate (`sv11-arabic-device-locale`, blocks nothing) **and** a ticket, and
-  name it in the report. If a milestone finding tries to make Arabic a merge condition → STOP
-  `blocked_owner`.
+- **Record the gap** as an owner gate (`sv11-arabic-device-locale`) **and** a ticket at
+  **`docs/superpowers/tickets/2026-08-11-pos-device-arabic-locale.md`**, and name it in the report.
+  **Minimum ticket contents:** (i) there is **no `ar` tree** under `apps/pos/src/locales/` at
+  `BASE_SHA` — only `en/` and `fr/`; (ii) `apps/pos/src/lib/i18n.ts` registers **exactly those two**
+  languages (`lng: 'en'`, `fallbackLng: 'en'`, four namespaces); (iii) the **RTL implications** of
+  standing up device Arabic (layout direction, the POS touch surfaces, numeric/currency rendering) —
+  i.e. why this is a new surface rather than translation-file work; (iv) an explicit reference to the
+  owner gate `sv11-arabic-device-locale` as the decision that opens or closes a device-Arabic lane.
+- **THE ARABIC GATE NEVER STOPS THIS WAVE.** It is informational: ship `en` + `fr`, file the ticket,
+  proceed. If a milestone finding tries to make Arabic a merge condition, that finding is **out of
+  scope for Stage 1** — record it against the gate and continue; do **not** set `blocked_owner`.
 - If the wave touches an **`apps/web`** string surface (M3 does: `locales/{en,fr}/compliance.json`),
   **`apps/web` DOES have `ar`** — there, en/fr/ar run in parallel as normal.
 
@@ -276,7 +299,8 @@ M0  preflight — contract verify, rulings read, no production code      [fiscal
                 │
                 └─► M4  SV-10 — blind-mode leak audit (+ narrow fixes) [fiscal-pos, frontend-conventions]
                      │
-                     └─► M5  WHOLE-LANE GATE over the integrated branch [all lenses used above]
+                     └─► M5  WHOLE-LANE GATE over the integrated branch
+                             [fiscal-pos, treasury, frontend-conventions, tenancy-authz]
 ```
 
 ### M0 — Preflight (no production code)
@@ -328,8 +352,12 @@ Four additions, in the dossier's priority order, all through `t()` (rule 11), **
    | 5 | **Counted** | **Compté** |
    | 6 | **Over / Short / No difference** | **Excédent / Manquant / Aucun écart** |
 
-   **Line 2 is where SV-12's rounding decomposition will land** — reserve it structurally, but SV-12 is
-   **Stage 5 and out of scope**: do not compute or display a rounding component here.
+   **Line 2 — the Stage-1 rendering contract, stated so nobody ships dead DOM:** render **ONLY the
+   cash-sales row**. **No rounding placeholder, no reserved DOM slot, no empty container, no
+   `display:none` sibling.** SV-12's rounding decomposition will eventually land on this line, but SV-12
+   is **Stage 5 and explicitly out of scope**: the structural extension is **deferred to SV-12**, and
+   Stage 1 ships the single row exactly as specified. Do not compute or display a rounding component
+   here, and do not pre-build the shape that would hold one.
 4. **Wording:** keep **"Écart"** over "Différence" — the register must match the figure that triggers a
    mandatory written reason.
 
@@ -380,7 +408,8 @@ round-trip on a row-less company does not re-disable it**.
 ### M5 — Whole-lane gate
 
 Re-run the **full accumulated evidence** over the integrated branch and apply **every lens used in the
-wave** (`fiscal-pos`, `frontend-conventions`, `tenancy-authz`). Per the harness this is the last gate and
+wave** — `fiscal-pos`, **`treasury`** (it rides M1, whose diff is Treasury's config and listener
+docblock), `frontend-conventions`, `tenancy-authz`. Per the harness this is the last gate and
 is not a formality: it re-reads M1–M4 as one diff, checks that no Stage-2+ row was touched, that
 `TREASURY_SHIFT_VARIANCE_GL_ENABLED` is untouched, and that the deploy obligations are recorded.
 
@@ -437,7 +466,7 @@ is not a formality: it re-reads M1–M4 as one diff, checks that no Stage-2+ row
 | M2 | fiscal-pos | Are the strings **exactly** the dossier's? Is it presentation-only? Does the float-disclosure line stay hidden pre-commit under blind mode? |
 | M3 | fiscal-pos, frontend-conventions, tenancy-authz | Was the prerequisite check executed and recorded? Is the migration idempotent and self-guarding? Does the FE round-trip stop re-disabling it? Is the settings surface tenant-scoped and permission-gated as before? |
 | M4 | fiscal-pos, frontend-conventions | Does the audit enumerate render paths? Are the fixes inside the row? Was the existing defence left intact? |
-| M5 | fiscal-pos, frontend-conventions, tenancy-authz | Whole-branch: nothing from Stages 2–5, the flag untouched, evidence complete. |
+| M5 | fiscal-pos, **treasury**, frontend-conventions, tenancy-authz | Whole-branch: nothing from Stages 2–5, the flag untouched, evidence complete. (`treasury` is re-applied because it gated M1.) |
 
 *(The dossier's own reviewer profile for SV-9/SV-10 is `frontend-conventions-reviewer` +
 `tenancy-authz-reviewer`; `fiscal-pos` is carried across the wave because every surface here is POS
@@ -464,7 +493,9 @@ and the whole-lane register is read.
    tests + commands + **actual output**, decisions taken, deviations with rationale, concerns; plus the
    **R-6 guard outcome**, the **deploy obligations** (the SV-9 data migration runs unattended on the next
    `origin/dev` promotion — state what it changes and how to verify it per tenant), and every ticket
-   raised (at minimum: the device-Arabic gap, and any SV-10 leak larger than the row).
+   raised (at minimum: the device-Arabic gap at
+   `docs/superpowers/tickets/2026-08-11-pos-device-arabic-locale.md`, and any SV-10 leak larger than
+   the row).
 
 **Owner sheet for anything gated:** `docs/handoff/OWNER-QUESTIONS-es-remediation-2026-08-11.md`. Stage 1
 is designed to need **none** of it — if you land on **D-3/D-4/D-5/D-6/D-7/D-17**, you have left Stage 1:
@@ -475,6 +506,8 @@ STOP and name the item ID in `blockers:`.
 ## ❓ OPEN AT DISPATCH — one item
 
 **The base SHA.** Everything else is disposed: the rulings are the dossier's §1, the row texts its §2,
-the stage boundary its §3, the acceptance its §5.1. The two conditional escalations (**R-5** device
-Arabic, **R-6** SV-9 prerequisites) are modelled as owner gates in the YAML and are answered *by the
-implementer's check*, not by the implementer's judgement.
+the stage boundary its §3, the acceptance its §5.1. The two escalations are recorded in the YAML's
+`owner_gates:` list as **informational entries** (`blocks_milestone: none`) precisely so the harness does
+not read them as unconditional stops: **R-6** (SV-9 prerequisites) is answered *by the implementer's
+check* at M3 and stops the wave **only if the check actually fires**; **R-5** (device Arabic) **never**
+stops the wave — M2 ships `en` + `fr`, files the ticket, and proceeds.

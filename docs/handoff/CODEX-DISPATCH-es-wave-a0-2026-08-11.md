@@ -29,12 +29,27 @@ TDD red-first.
 >   `docs/handoff/reviews/es-wave-a0/`. Never re-run a milestone whose `status: passed`.
 > - **STOP and escalate only at the three harness STOP conditions:** (A) fix rounds exhausted
 >   (`max_fix_rounds: 5`) → `blocked_review`; (B) an owner gate (here: **D-8/Q1** ES-06 second-approver
->   workflow, **D-11/Q5** ES-43, and the ES-42 device-permission grant if it turns out to be a policy
->   choice) → `blocked_owner`; (C) an architecture contradiction (here: **R-3**, the fleet-wide driver
->   vs the command's documented "deliberately no fleet-wide mode") → `blocked_architecture`.
->   Set the YAML `status` + `blockers` and end your run.
+>   workflow, **D-11/Q5** ES-43, and — **only if M4's first check finds the device principal does not
+>   hold `pos.operate_terminal`** — the ES-42 grant) → `blocked_owner`; (C) an architecture
+>   contradiction (here: **R-3**, if the manifest-driven fleet driver cannot be built without violating
+>   the actor-anchored gate) → `blocked_architecture`. Set the YAML `status` + `blockers` and end your run.
+> - **Gate wiring, deliberate:** no milestone in the YAML carries an `owner_gate:` field. The harness
+>   reads that field as an **unconditional** STOP (harness step 4 / condition B), and every gate in this
+>   wave is *conditional*. The `owner_gates:` list is therefore an **informational record**
+>   (`blocks_milestone: none`); the conditional logic lives in the milestone text below — trust the
+>   milestone text, and stop only when its stated condition actually fires.
 > - **No clock.** Do not call `date`. Use `git rev-parse --short HEAD` as the `updated:` marker.
 > - Per-milestone registers go to `docs/handoff/reviews/es-wave-a0/`. Branch NOT merged, NOT pushed.
+
+**Revision 2 (2026-08-11).** Brief-gate round 1 fixes, per
+`docs/superpowers/reviews/2026-08-11-es-briefs-gate-r1.md` (verdict CHANGES-REQUIRED, 9 findings):
+the harness gate wiring (no milestone carries an `owner_gate:` field; conditionality lives in the
+milestone text), **R-2 rewritten** — the "false red" mechanism is disproven and ES-07 is a
+coverage/reporting defect plus a missing mirror, **R-3 rewritten** — the fleet driver is
+**manifest-driven** with no invented identity, **R-6/M4 rewritten** — ES-09 is a **correctness**
+contract and ES-41 a trigger-presence one, **M3 split into M3 + M3b** so the straggler contract
+proposals are a committed artifact the reviewer can inspect, and **ES-42's permission LOCKED** to the
+existing `pos.operate_terminal`.
 
 **Revision 1 (2026-08-11).** First dispatch of this lane. It follows the event-sourcing entry gate
 being **CLOSED at round 4** (`dev` @ `479afed98`); the register snapshot, the corrections addendum and
@@ -108,10 +123,10 @@ your verifiers until **M5's red-run evidence exists** (see the A0 EXIT RULE belo
 
 | Row | Class (§5) | This wave does |
 |---|---|---|
-| **ES-08** | verifier fix | **M1** — extend `fiscal:verify-event-chain`: `payload` ↔ `canonical_bytes`, `integrity_status`, sealed coordinates, `sequence_number` contiguity, fleet-wide driver |
-| **ES-07** *(narrowed)* | verifier fix | **M2** — `pos:verify-chains` **receipt** arm reads fiscal-era rows + the `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash` mirror cross-check |
+| **ES-08** | verifier fix | **M1** — extend `fiscal:verify-event-chain`: `payload` ↔ `canonical_bytes`, `integrity_status`, sealed coordinates, `sequence_number` contiguity, **manifest-driven** fleet driver |
+| **ES-07** *(narrowed)* | verifier fix | **M2** — `pos:verify-chains` **coverage/reporting** of fiscal-era receipts + the `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash` mirror cross-check |
 | **ES-06** | verifier fix (**detection half only**) | **M3** — divergence detection on sealed rows. The workflow / second-approver half is **owner-gated D-8** |
-| **ES-16**, **ES-17** | **none of the six classes** — stragglers | **M3** — you propose each row's contract; the inline reviewer approves it **at M3's review, before implementation** |
+| **ES-16**, **ES-17** | **none of the six classes** — stragglers | **M3** proposes each row's contract as a **committed artifact**, approved at M3's review; **M3b** implements the approved contract |
 | **ES-09** | guard/constraint | **M4** — chain-head resolution scoped by `company_id` + `chain_context`, both server-authoring services |
 | **ES-41** | guard/constraint | **M4** — per its snapshot row (`:174`) |
 | **ES-42** | guard/constraint | **M4** — per its snapshot row (`:175`); refusal contract per §5 |
@@ -129,7 +144,7 @@ signal, not an invitation: note it in the report and continue.
 |---|---|---|
 | **D-8** (= Handover **Q1**) | ES-06 second approver + correcting-fiscal-event design | **Detection ships either way.** The workflow half is OUT of this wave. If an M3 finding turns on the workflow shape → STOP `blocked_owner`. |
 | **D-11** (= Handover **Q5**) | ES-43 unkeyed SHA-256 vs NF525 signature | **ES-43 is EXCLUDED from A0's scope until answered.** Handover §5: *"Do not implement ahead of that ruling — if it defers to FR, ES-43 leaves A0's exit scope entirely."* |
-| **ES-42 permission grant** | *which* permission the ingestion route requires, and which principal holds it | See **R-4**. If the grant is a policy choice rather than a mechanical reuse of an existing permission + role, STOP `blocked_owner`. |
+| **ES-42 permission grant** | *which* permission the ingestion route requires, and which principal holds it | **DECIDED — `pos.operate_terminal`, an existing seeded permission (R-4).** The gate survives only as a conditional: if M4's first check finds the device principal does **not** hold it in the fixture, a grant becomes a policy choice → STOP `blocked_owner`. Otherwise this gate never fires. |
 
 **Not gates, and already ruled — do not re-litigate:** the ES-07 narrowing (addendum §1), the
 OK-BY-DESIGN list (handover §4.7), and the corrected loyalty rationale.
@@ -150,17 +165,41 @@ terminal `genesis_seed`.**
 - **Any A0 red-run fixture must tamper a RECEIPT-side row (or the missing mirror).** A tampered
   `z_session` chain already fails today — using it as your red fixture proves nothing about your diff.
 
-### R-2 🚨 THE RECEIPT CARVE-OUT IS DELIBERATE — do NOT just delete `whereNull('fiscal_event_id')`
-Verified in code at the base: the exclusion carries a documented rationale (Task 21 F1 round-2) —
-*"projection rows … have their authoritative integrity verified by `fiscal:verify-event-chain` … their
-`fiscal_hash` is the canonical-bytes SHA-256 from the fiscal event, **not** the legacy pipe-string
-SHA-256 this command recomputes"* (`VerifyPosChainCommand.php`, `verifyReceiptChain()` and
-`findReceiptChainBreak()` docblocks; the same carve-out at both sites).
-**Consequence:** dropping the filter feeds canonical-bytes-hashed rows into a pipe-string recomputation
-and manufactures a **false red** on a healthy tenant — the mirror image of the defect you are fixing.
-**The fix is an ADDITIONAL fiscal-era arm** (plus the mirror cross-check), leaving the legacy arm's hash
-shape intact. Both arms must report, and a terminal with only projected receipts must **stop** returning
-`is_valid: true` over a count of 0 (`:293-318`, `:337-346`).
+### R-2 🚨 ES-07 IS A **COVERAGE / REPORTING** DEFECT PLUS A MISSING MIRROR — and the "false red" story is WRONG
+**Read this before you design M2; an earlier revision of this brief got the mechanism backwards.**
+
+The carve-out's *rationale* is real and documented (Task 21 F1 round-2: *"projection rows … have their
+authoritative integrity verified by `fiscal:verify-event-chain` … their `fiscal_hash` is the
+canonical-bytes SHA-256 from the fiscal event, not the legacy pipe-string SHA-256 this command
+recomputes"* — the same docblock at both `verifyReceiptChain()` and `findReceiptChainBreak()`). But the
+inference that *broadening the count manufactures a false red* **does not survive the code**:
+
+- `VerifyPosChainCommand::verifyReceiptChain()` (`:293-323`) uses `whereNull('fiscal_event_id')` **only
+  to compute `$count`**; the actual verification delegates to
+  `ReceiptHashService::verifyTerminalChain()` (`:318`).
+- `verifyTerminalChain()` (`ReceiptHashService.php:178-213`) **self-partitions**: it runs
+  `verifyTerminalChainFiscalArm()` (`:234-252`) — which canonical-hashes `canonical_bytes` against
+  `current_hash` with genesis-seed linkage — and only then `verifyLegacyArm()` (`:334-398`), which
+  **re-applies `whereNull('fiscal_event_id')` itself** (`:355`) and dispatches per row on
+  `sealed_hash_algorithm`.
+- **Therefore a canonical-bytes row can never reach a pipe-string recomputation**, whatever the
+  command's own filter does.
+
+**The two real defects are:**
+- **(a) COVERAGE and REPORTING.** Fiscal-era receipts are not counted, so a terminal whose receipts are
+  all projected returns `is_valid: true` over a **count of 0** (`:310-316`), and the fiscal arm's result
+  is never surfaced per-arm in the command's output. "Success over zero rows" must end: fiscal-era rows
+  must be **counted** and their verification **reported per arm**.
+- **(b) THE MISSING MIRROR.** No `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash` comparison
+  exists anywhere in `VerifyPosChainCommand.php` or `ReceiptHashService::verifyTerminalChain()`. That
+  cross-layer control is a **new arm**.
+
+**The mechanism is YOURS to choose** — a safe removal of the command-level filter plus per-arm
+reporting, or an explicit fiscal-era pass — guided by the code reality above. There is **no mandate**
+to add a duplicate fiscal arm, and no "leave the filter alone" rule; what is mandated is that the
+counts, the per-arm reporting and the mirror are correct, and that nothing changes the **hash shape**
+any row is verified under. The red-run contract is unchanged: **T-c must go red**, and the per-arm
+counts must **prove nonzero fiscal-era coverage** (a zero-count arm proves nothing).
 
 ### R-3 🚨 "FLEET-WIDE DRIVER" vs THE COMMAND'S DOCUMENTED REFUSAL — reconcile, do not silently break
 ES-08 requires *"a fleet-wide driver"*. `VerifyEventChainCommand`'s own docblock says the opposite:
@@ -170,30 +209,56 @@ tenant, so 'verify every tenant with this actor' has no coherent meaning."* The 
 permission check is re-scoped to the actor's `tenant_id` inside a try/finally.
 - **The permission gate and the tenant binding are NOT negotiable.** Do not weaken `--actor-id`, do not
   turn `--tenant` back into a WHERE predicate (that is the 42P01 regression the cat-(b) wave fixed).
-- **Acceptable shape:** a driver that *iterates tenants and re-invokes the per-tenant verification under
-  each tenant's own binding*, resolving an authorised actor per tenant (or refusing that tenant loudly
-  and continuing with a non-zero aggregate exit) — the `TenantScopedCommand` iteration precedent.
-  A tenant that cannot be authorised must be **reported**, never silently skipped: a silent skip
-  re-creates exactly the "verified over zero rows" lie this lane exists to kill.
-- **If the driver cannot be built without violating the actor-anchored gate, that is STOP condition C**
-  (`blocked_architecture`) — cite both sources with `file:line`. Do not improvise a service account.
+  The gate is an actor row read **inside** the bound tenant, with the Spatie registrar re-scoped to
+  `$actor->tenant_id` in a try/finally (`VerifyEventChainCommand.php:198-260`); `--tenant`,
+  `--terminal`, `--chain-context` and `--actor-id` are all required today (`:68-100`).
+- **THE DRIVER IS MANIFEST-DRIVEN. This is the shape; do not design a different one.**
+  It accepts an **operator-supplied manifest (tenant → actor id)** at invocation. For each tenant
+  **listed in the manifest**, it runs the **existing single-tenant verification**, preserving the actor
+  gate exactly as designed — the same lookup, the same `can('fiscal.events.verify_chain')`, the same
+  try/finally re-scoping, under that tenant's own binding.
+- **Nothing is resolved implicitly and nothing is invented.** A tenant **missing from the manifest**, or
+  one whose supplied actor **fails authorization**, is **REPORTED LOUDLY in the output** and drives a
+  **non-zero aggregate exit** — never silently skipped. A silent skip re-creates exactly the "verified
+  over zero rows" lie this lane exists to kill. **No service account, no new identity model, no
+  "resolve an actor per tenant" heuristic** may be introduced.
+- **Terminal / context enumeration:** *within* a tenant, enumerate the chains from the **distinct
+  `(terminal_id, chain_context)` pairs present in `fiscal_events`**. State the enumeration source
+  explicitly in the milestone report — an unstated source is an unverifiable coverage claim.
+- **If the manifest shape proves unworkable during implementation** (it cannot be built without
+  violating the actor-anchored gate), that is **STOP condition C** (`blocked_architecture`) — cite both
+  sources with `file:line`. Do not improvise around it.
 
 ### R-4 🚨 ES-42's `can:` IS A LIVE DEVICE ROUTE — a permission alone can take the fleet offline
 `Route::post('/pos/sync/fiscal-events', …)` carries the module's middleware tuple but **no `can:`**,
 while its siblings in the same group do (`Fiscal/routes.php` — `best-effort-parse`,
 `resolve-parse-failure`, `refund-compensations`, `dead-lettered-projections` all carry one).
 This is the row. **But this endpoint is the POS devices' ingestion path.** Therefore:
-1. **Enumerate the principal** — establish, from code, what a POS device authenticates as and which
-   role/permissions that principal holds. *Enumerate; never read.*
-2. Prefer an **existing** permission the device principal already holds. If none exists, the fix needs a
-   permission + a role grant — which is a **seeder change plus a `permission:cache-reset` deploy step**
-   (the permission cache is tenant-blind) and, if it is a policy choice, an **owner gate → STOP**.
+
+1. **THE PERMISSION IS LOCKED: `pos.operate_terminal`. Do not choose, do not invent, do not reseed.**
+   It already exists in the seeder and is already granted to the roles a POS operator holds
+   (`RolesAndPermissionsSeeder.php:515-520`, `:590-597`, `:638-658` — manager and cashier both carry
+   it), and it already gates the **sibling device sync surface**: `ZReportSyncController.php:61` opens
+   with `Gate::authorize('pos.operate_terminal')`. Gating the fiscal-event ingestion route with the same
+   permission is a **mechanical reuse**, not a policy choice.
+2. **M4's FIRST action is to verify the principal, not to assume it.** The device principal is the
+   bearer identity `apps/pos` authenticates as — an ordinary tenant `User` holding a Sanctum token
+   (`apps/pos/src/lib/api.ts:61-80` sets `Authorization: Bearer <token>` + `X-Company-Id`;
+   `AuthController.php:291-310` mints it with `pos:*` abilities). **Prove, in the fixture, that this
+   principal holds `pos.operate_terminal` before adding the gate.** If it does **NOT**, a grant becomes
+   a policy + deploy choice → set `status: blocked_owner` (gate `ES-42-device-permission-grant`) and
+   STOP. If it does — which is the expectation — **proceed; do not stop.**
 3. **The refusal contract is two-sided and both halves are mandatory:** an authenticated tenant user
    **without** the permission gets `403` **and persists nothing** (no `fiscal_events` row, no quarantine
-   row); the **legitimate device caller still succeeds end-to-end**. A diff that ships only the 403 half
-   is a production outage waiting for the next deploy.
-4. Any permission/seeder addition is a **deploy obligation** — record it in the session report's deploy
-   section (rule: `origin/dev` auto-deploys staging and runs `tenants:migrate`).
+   row); the **legitimate device caller still succeeds end-to-end** — exercise the fixture through the
+   device sync path (`apps/pos/src/lib/sync/syncService.ts:406-440` posts to `/pos/sync/fiscal-events`)
+   and assert it **succeeds**. A diff that ships only the 403 half is a production outage waiting for
+   the next deploy.
+4. **Deploy note (record it, and record that it is empty):** reusing `pos.operate_terminal` needs **no
+   permission migration, no seeder change and no `permission:cache-reset`**. Say so explicitly in the
+   session report's deploy section — "nothing owed" is a deploy fact worth stating. *(Only if item 2
+   escalates does the seeder + tenant-blind cache-reset obligation appear, and then it is the owner's
+   call, not yours.)*
 
 ### R-5 ES-41 IS TWO CLAIMS WITH TWO CONFIDENCES — do not treat them as one
 Snapshot `:174` and the register's confidence line (`:102`): **CONFIRMED (driver gate) / SUSPECTED (seal
@@ -212,22 +277,35 @@ branch exploitable)**.
 - **Do not "fix" the driver gate by making the triggers run on SQLite.** The honest remedies are:
   make the untestable class *visible* (a `[PG]`-gated regression test that proves the trigger refuses),
   and/or make the driver gap explicit rather than implicit. Choose, justify, and pin it.
+- **The contract is TRIGGER PRESENCE, scoped to this row** — assert on PG that the trigger exists and
+  refuses; **document** the non-PG driver scope rather than claiming to have "fixed" it. Widening this
+  into a general immutability-enforcement redesign is scope creep (rule 4).
 
-### R-6 ES-09 IS TWO CALL SITES AND TWO DEFECTS — close both, at both
+### R-6 ES-09 IS A **CORRECTNESS** ROW, NOT A REFUSAL ROW — two call sites, two defects, close both
 Verified at the base: **both** `resolveChainPlacement()` implementations key the chain head on
-`(tenant_id, terminal_id)` only —
-`TerminalRegistrySnapshotService.php` (`resolveChainPlacement`) and
-`VirtualAdminFiscalEventService.php` (`resolveChainPlacement`) — while every other component is
-`(tenant, company, terminal, chain_context)`-scoped. The **correct contrast is `OutboxIngestor.php:173-179`**
-(snapshot `:132`) — read it before writing the fix and match its scoping, do not invent a third shape.
+`(tenant_id, terminal_id)` only — `TerminalRegistrySnapshotService.php:443-463` and
+`VirtualAdminFiscalEventService.php:372-388` — while every other component is
+`(tenant, company, terminal, chain_context)`-scoped. The **correct contrast is
+`OutboxIngestor.php:172-181`** (snapshot `:132`), which reads the prior row on
+`tenant_id + company_id + terminal_id + chain_context`: read it before writing the fix and match its
+scoping; do not invent a third shape. The **schema has enforced that shape since**
+`2026_05_24_100000_add_chain_context_to_fiscal_events.php:20-31` — the unique constraint is
+`(tenant_id, company_id, terminal_id, chain_context, sequence_number)`, and `chain_context` is
+CHECK-constrained to `operational | z_session | training_operational | training_z_session`.
 Second defect on the same row: both stamp `integrity_status = Verified` / `payload_parse_status = Parsed`
 **unconditionally**, skipping `verifyLinkage` / `verifyClock`. Live callers named by the row:
 `ACCOUNT_STATUS_CHANGED`, `DEPOSIT_RECEIPT`.
-- **Refusal contract (§5 guard class):** a red test that drives the previously-accepted bad input — a
-  two-context terminal (`z_session` + `operational`, i.e. **every v3 terminal**) where the unscoped
-  resolver picks a `previous_hash` from the wrong chain — asserting the guard now refuses **and that the
-  refused attempt persisted nothing**. Plus the green half: the legitimate single-context write still
-  succeeds, with an unchanged sequence/hash.
+- **The contract is CORRECTNESS, not refusal — do not write a "the guard now rejects it" test.**
+  Nothing here should end up refusing a legitimate write; the after-state is that a write which
+  previously resolved the **wrong** head now resolves the **right** one.
+  - **Before-fix RED:** on a fixture with a **two-context terminal** (`z_session` + `operational`, i.e.
+    **every v3 terminal**), demonstrate the **wrong / context-blind head resolution** — the unscoped
+    resolver picks a `previous_hash` (and a `sequence_number`) from the other context's chain.
+  - **After-fix GREEN:** a **two-context append SUCCEEDS**, with the head resolved per
+    `(company_id, chain_context)` on each context independently, each chain's sequence and linkage
+    intact — **and no unconditional `Verified` / `Parsed` stamp** (the verdicts are derived, not
+    assumed).
+  - A single-context fixture passes **vacuously** and is not evidence.
 - **Field occurrence is SUSPECTED** (snapshot `:102`) — the *defect* is CONFIRMED. Do not claim
   production rows are corrupted without a probe; if you run one, report the integer count.
 
@@ -236,10 +314,18 @@ Handover §5's footnote is explicit: rows that fit none of the six classes *"mus
 contract explicitly in its own milestone review and get it approved there"* — and names **ES-16** and
 **ES-17** among them (quarantine operator-workflow / read-surface gaps: no event, no verifier, no guard,
 no data to repair).
-**Mechanically, at M3:** (a) write the proposed contract for each row into the milestone's review input
-(what the fix must demonstrate, and what would falsify it); (b) run the review; (c) implement **only**
-the approved contract. A straggler implemented before its contract is approved is a **milestone failure**,
-not a style problem. Do **not** improvise a seventh class.
+**Mechanically — and the mechanism matters, because the harness reviews a COMMITTED RANGE
+(`--range <base_sha>..HEAD`), not a scratch buffer.** A proposal that lives only "in the review input"
+is invisible to the reviewer, and an approval arriving mid-milestone has nowhere to land. Therefore the
+flow is split across **two milestones**:
+- **M3** — write the proposed contract for each row (what the fix must demonstrate, and what would
+  falsify it) into a **committed document**: `docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md`.
+  The diff M3's reviewer inspects then *contains* the proposal, and **M3's bridge review approves or
+  rejects that artifact**. **No straggler implementation lands in M3.**
+- **M3b** — implement **only** the approved contracts, gated by M3b's own bridge review. If M3's review
+  rejected or amended a contract, M3b implements the amended one.
+A straggler implemented before its contract is approved is a **milestone failure**, not a style problem.
+Do **not** improvise a seventh class.
 Scope anchors: ES-16 = a `z_session_lifecycle` quarantine creates zero projection rows and appears in
 neither partition of `DeadLetteredProjectionsController` and is not resolvable by
 `ParseFailureResolutionService` (`OutboxIngestor.php:918-924`; `DeadLetteredProjectionsController.php:105-119`).
@@ -318,15 +404,17 @@ begins.
 ```
 M0  preflight — artifacts + fixtures only, no production code        [fiscal-pos + treasury]
  │
- └─► M1  ES-08 — fiscal:verify-event-chain + fleet-wide driver       [fiscal-pos + treasury]
+ └─► M1  ES-08 — fiscal:verify-event-chain + manifest fleet driver   [fiscal-pos + treasury]
       │
-      └─► M2  ES-07 (narrowed) — receipt arm + the mirror check      [fiscal-pos + treasury]
+      └─► M2  ES-07 (narrowed) — coverage/reporting + the mirror     [fiscal-pos + treasury]
            │
-           └─► M3  ES-06 detection half + ES-16/ES-17 stragglers     [fiscal-pos + treasury]
+           └─► M3  ES-06 detection + straggler contract PROPOSALS    [fiscal-pos + treasury]
                 │
-                └─► M4  ES-09 + ES-41 + ES-42 — the guard class      [fiscal-pos + treasury]
+                └─► M3b ES-16/ES-17 — implement the APPROVED contracts [fiscal-pos + treasury]
                      │
-                     └─► M5  ratchets + WHOLE-LANE GATE              [fiscal-pos + treasury]
+                     └─► M4  ES-09 + ES-41 + ES-42 — three contracts [fiscal-pos + treasury]
+                          │
+                          └─► M5  ratchets + WHOLE-LANE GATE         [fiscal-pos + treasury]
 ```
 
 ### M0 — Preflight (artifacts and fixtures only; no production code)
@@ -357,9 +445,12 @@ M0  preflight — artifacts + fixtures only, no production code        [fiscal-p
      `fiscal_events.current_hash` (handover §5 names this as a third tamper shape for the receipt arm).
    Each helper must be **proven to produce the intended divergence** (assert the fixture's own shape),
    or a "red" run later may be red for the wrong reason.
-5. **Read and record the narrowed ES-07 claim (R-1) and the carve-out rationale (R-2)** into M0's
-   artifact: the three ES-07 sub-claims with their addendum verdicts (2 STAND, 1 WITHDRAWN), and the
-   `file:line` of the deliberate receipt carve-out. This is the artefact the M0 reviewer checks.
+5. **Read and record the narrowed ES-07 claim (R-1) and the ES-07 partitioning reality (R-2)** into
+   M0's artifact: the three ES-07 sub-claims with their addendum verdicts (2 STAND, 1 WITHDRAWN); the
+   `file:line` of the receipt carve-out **and** of the self-partitioning in
+   `ReceiptHashService::verifyTerminalChain()` / `verifyTerminalChainFiscalArm()` / `verifyLegacyArm()`
+   that makes the "false red" story untrue; and the confirmed **absence** of any
+   `fiscal_hash` ↔ `current_hash` mirror comparison. This is the artefact the M0 reviewer checks.
 6. **Citation freshness sweep.** Every `file:line` this brief and the snapshot cite for your nine rows,
    re-derived at `BASE_SHA` into `old:line → new:line` + **the symbol it names** + a semantic anchor
    ("the `whereNull('fiscal_event_id')` predicate inside `verifyReceiptChain()`"). Line numbers are
@@ -375,7 +466,7 @@ Extend the command with the four checks the row names, plus the driver:
 | **`integrity_status`** | a **quarantined row with an intact hash must stop reporting verified** (snapshot `:131` names exactly this false-pass). |
 | **sealed coordinates** | re-validate the sealed coordinate set for each row rather than trusting the stored stamp. |
 | **`sequence_number` contiguity** | gaps are reported — today the walk asserts linkage, not contiguity. |
-| **fleet-wide driver** | per **R-3**. Non-zero aggregate exit on any tenant's failure; a tenant that cannot be authorised is **reported loudly**, never skipped silently. |
+| **manifest-driven fleet driver** | per **R-3**. An operator-supplied `tenant → actor id` manifest; per listed tenant, the **existing** single-tenant verification under that tenant's binding with the actor gate untouched. Non-zero aggregate exit on any tenant's failure; a tenant **missing from the manifest** or whose actor **fails authorization** is **reported loudly**, never skipped silently. **No service account, no new identity model.** State the terminal/context enumeration source (distinct `(terminal_id, chain_context)` pairs in `fiscal_events`). |
 
 **Verifier-class contract (§5) — all of it, in this diff:**
 - **RED** against **T-a** and **T-b**, **GREEN** on the clean equivalents. Both runs are part of the diff.
@@ -383,52 +474,85 @@ Extend the command with the four checks the row names, plus the driver:
   only it (R-11).
 - V1 `—`, V2 `—` (write the dashes; never leave the column blank — handover §5).
 - Preserve the existing exit-code contract (0 verified / 1 break-or-incident / 2 transient) and the
-  existing permission + tenant-binding behaviour (R-3). The **chain-walking logic is not being
-  redesigned**; you are adding checks to it.
+  existing permission + tenant-binding behaviour (`VerifyEventChainCommand.php:68-100`, `:198-260` —
+  R-3). The **chain-walking logic is not being redesigned**; you are adding checks to it.
 - `VerifyEventChainCommandTest.php` is the regression home; run **by path**.
 
-### M2 — ES-07 (narrowed): the receipt arm and the mirror
+### M2 — ES-07 (narrowed): coverage / reporting, and the mirror
 
-1. **A fiscal-era receipt arm** in `pos:verify-chains` that verifies projected receipts under the
-   *right* hash shape (R-2), so a terminal whose receipts are all projected can no longer return
-   `is_valid: true` over a count of 0 (`VerifyPosChainCommand.php:293-318`; same carve-out in
-   `findReceiptChainBreak()` `:337-346`).
-2. **The mirror cross-check** — `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash`. The addendum
-   confirms **no such comparison exists anywhere** in `VerifyPosChainCommand.php` or
+**Read R-2 first — it disproves the "false red" story an earlier revision told.**
+
+1. **COVERAGE + PER-ARM REPORTING.** Fiscal-era receipts must be **counted**, and their verification
+   **surfaced per arm** in the command's output, so a terminal whose receipts are all projected can no
+   longer return `is_valid: true` over a **count of 0** (`VerifyPosChainCommand.php:293-323`; the same
+   carve-out in `findReceiptChainBreak()` `:335-346`). **The mechanism is yours** — a safe removal of
+   the command-level `whereNull('fiscal_event_id')` plus per-arm reporting, or an explicit fiscal-era
+   pass. Whichever you choose, **no row's hash shape may change**: `verifyTerminalChain()` already
+   self-partitions (`ReceiptHashService.php:178-213`, `:234-252`, `:334-398`), and the legacy arm
+   re-applies the `fiscal_event_id IS NULL` predicate itself at `:355`.
+2. **The mirror cross-check** — `pos_receipts.fiscal_hash` ↔ `fiscal_events.current_hash`, as a **new
+   arm**. The addendum confirms **no such comparison exists anywhere** in `VerifyPosChainCommand.php` or
    `ReceiptHashService::verifyTerminalChain()`. This is the cross-layer control (rule 20's spirit:
    projections and their source-of-truth are two layers, and nothing was comparing them).
 3. **The Z arm is NOT blind (R-1)** — touch it only insofar as the mirror check requires. Any Z-arm line
    in the diff must be justified in the milestone report.
 
-**Red-run contract again:** RED on **T-c** (mirror disagreement) and on a tampered projected-receipt
-chain; GREEN on the clean equivalent; and a **negative control** — a tenant whose receipts are all
-*legacy* still verifies exactly as before (no behaviour change on the shape that already worked).
+**Red-run contract (unchanged):** RED on **T-c** (mirror disagreement) and on a tampered projected-receipt
+chain; GREEN on the clean equivalent; the reported **per-arm counts must prove nonzero fiscal-era
+coverage** (a zero-count arm proves nothing); and a **negative control** — a tenant whose receipts are
+all *legacy* still verifies exactly as before (no behaviour change on the shape that already worked).
 
-### M3 — ES-06 detection half + the ES-16 / ES-17 stragglers
+### M3 — ES-06 detection half + the straggler contract PROPOSALS
 
 **Order inside the milestone matters:**
 1. Implement **ES-06 detection** (R-9).
-2. **Write the proposed contracts for ES-16 and ES-17** (R-7) into the review input.
-3. **Run the M3 review.** The reviewer approves or rejects each proposed contract.
-4. **Then** implement ES-16/ES-17 to the approved contract, and re-run the review (that is a normal fix
-   round; increment `fix_rounds`).
+2. **Write the proposed contracts for ES-16 and ES-17** (R-7) into
+   **`docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md`** and **commit it** — the harness
+   reviews the committed range, so the proposal has to be *in the diff the reviewer inspects*. For each
+   row state what the fix must demonstrate and what would falsify it.
+3. **Run the M3 review.** It gates **both** the ES-06 detection work and the proposal artifact: the
+   reviewer approves, amends or rejects each proposed contract. Fix rounds behave normally.
+4. **No ES-16 / ES-17 implementation in this milestone.** That is M3b.
 
 If the ES-06 work reaches the second-approver / correcting-event question → **STOP `blocked_owner`**
 naming **D-8** exactly. Do not design the workflow "provisionally".
 
-### M4 — ES-09 + ES-41 + ES-42 (the guard / constraint class)
+### M3b — ES-16 / ES-17: implement the APPROVED contracts
 
-- **ES-09** per **R-6**: scope chain-head resolution by `company_id` + `chain_context` at **both**
-  services, match `OutboxIngestor`'s shape, and stop the unconditional `Verified` / `Parsed` stamping.
-- **ES-41** per **R-5**: confirmed driver-gate half, SUSPECTED seal-branch half verified before assertion.
-- **ES-42** per **R-4**: the `can:` gate, the principal enumeration, the two-sided refusal contract, and
-  the deploy obligation.
+Implement each straggler **strictly to the contract M3's review approved** (as amended there), then run
+M3b's own bridge review. Implementing beyond, or against, the approved contract is a **milestone
+failure**, not a style problem. If implementation reveals the approved contract is unachievable, that is
+a finding for M3b's review — amend and re-review; do not silently re-scope.
 
-**Refusal contract (§5), for each of the three:** a **red test that drives the previously-accepted bad
-input**, asserting the guard now refuses it, **plus a state assertion that the refused attempt persisted
-nothing** (no `fiscal_events` row, no quarantine row, no second write). The **green half — the legitimate
-caller still succeeds — is part of the same diff.** V1 `—`, V2 `—`, V3 only if a guard also changes a
-projection.
+### M4 — ES-09 + ES-41 + ES-42: **three different contracts — do not conflate them**
+
+Only ES-42 is a refusal. Writing one "the guard now rejects it" test shape across all three produces two
+wrong tests.
+
+- **ES-09 — CORRECTNESS contract** (per **R-6**). Scope chain-head resolution by `company_id` +
+  `chain_context` at **both** services (`TerminalRegistrySnapshotService.php:443-463`,
+  `VirtualAdminFiscalEventService.php:372-388`), matching `OutboxIngestor.php:172-181`, the shape the
+  schema has enforced since `2026_05_24_100000_add_chain_context_to_fiscal_events.php:20-31`; and stop
+  the unconditional `Verified` / `Parsed` stamping.
+  **Before-fix RED:** a fixture with a **two-context terminal** demonstrates the wrong / context-blind
+  head resolution. **After-fix GREEN:** the **two-context append SUCCEEDS**, heads resolved per
+  `(company_id, chain_context)`, each chain's sequence and linkage intact, and **no unconditional
+  `Verified` stamp**. A single-context fixture passes vacuously — it is not evidence.
+- **ES-41 — TRIGGER-PRESENCE regression, scoped to its snapshot row** (per **R-5**). Assert on **PG**
+  that the immutability trigger is present and refuses; the **non-PG driver scope is DOCUMENTED, not
+  "fixed"**. Confirmed driver-gate half; SUSPECTED seal-branch half **verified before assertion** — if
+  the sweep refutes it, say so and ship only the confirmed half. `[PG]` tests skip **loudly**.
+- **ES-42 — the two-sided REFUSAL contract** (per **R-4**), gated with the **existing, LOCKED**
+  `pos.operate_terminal`. **First**, verify in the fixture that the **device principal holds it**; if it
+  does not → `status: blocked_owner` (gate `ES-42-device-permission-grant`) and STOP; otherwise proceed.
+  Then: an authenticated tenant user **without** the permission gets `403` and **persists nothing** (no
+  `fiscal_events` row, no quarantine row, no second write), **and in the same diff** the fixture's
+  **device sync succeeds end-to-end** through the real client path
+  (`apps/pos/src/lib/sync/syncService.ts:406-440` → `POST /pos/sync/fiscal-events`).
+  **Deploy note:** reusing `pos.operate_terminal` requires **no permission migration, no seeder change,
+  no `permission:cache-reset`** — state that explicitly in the report.
+
+V1 `—`, V2 `—`, V3 only if a change also alters a projection.
 
 ### M5 — Program-wide ratchets + the WHOLE-LANE GATE
 
@@ -450,10 +574,11 @@ test is not evidence when green was the prior state.
 | Milestone | Code evidence | Artifact / non-code evidence | The evidence that is easy to fake, and its antidote |
 |---|---|---|---|
 | **M0** | none (no production code) | the contract digest **matching**, pasted; `BASE_SHA` == `HEAD`; the v3 fixture; the three tamper helpers **with self-assertions**; the ES-07 sub-claim table; the citation sweep with **unresolved = 0** | A prose "I built the fixtures" claim. **Antidote:** each tamper helper asserts the divergence it creates, and the reviewer re-derives **two citations of its choosing** and confirms the anchors. |
-| **M1** | red-run against **T-a** and **T-b**, green on clean; per-check discrimination, one fixture per new check; phpstan/pint; tests by path | the fleet-wide driver's tenant-iteration and its loud-refusal behaviour, described and tested | One coarse assertion standing in for five checks. **Antidote:** remove each check in turn and show the corresponding fixture goes green — i.e. **every check is individually load-bearing.** |
-| **M2** | red on **T-c** + a tampered projected chain; green on clean; **negative control** on an all-legacy tenant | a diff-line justification for **every** Z-arm line touched (R-1) | Deleting `whereNull(...)` and calling it fixed. **Antidote:** a test with **both** a legacy and a projected receipt on the same terminal, each verified under its own hash shape, both reported. |
-| **M3** | ES-06 detection red-first on the mutated-payload fixture | the **proposed** ES-16/ES-17 contracts, dated **before** their implementation commits | Implementing a straggler and back-filling its "contract". **Antidote:** the proposal commit precedes the implementation commit, and the reviewer's approval is in the register between them. |
-| **M4** | per row: red test on the bad input + **nothing persisted** + the green legitimate path | ES-42's principal enumeration (who calls the route, with what permission) and the deploy note; ES-41's SUSPECTED-half verdict with evidence | A 403 test with no "device still works" counterpart. **Antidote:** the green half is in the **same** diff, and for ES-09 the negative fixture is a **two-context terminal** — a single-context test passes vacuously. |
+| **M1** | red-run against **T-a** and **T-b**, green on clean; per-check discrimination, one fixture per new check; phpstan/pint; tests by path | the **manifest-driven** driver's per-tenant invocation, its loud reporting of missing/unauthorised tenants + non-zero aggregate exit, and the stated terminal/context enumeration source — described and tested | One coarse assertion standing in for five checks. **Antidote:** remove each check in turn and show the corresponding fixture goes green — i.e. **every check is individually load-bearing.** |
+| **M2** | red on **T-c** + a tampered projected chain; green on clean; **per-arm counts proving nonzero fiscal-era coverage**; **negative control** on an all-legacy tenant | a diff-line justification for **every** Z-arm line touched (R-1) | Broadening the count and calling it fixed while the output still reports one undifferentiated verdict. **Antidote:** a test with **both** a legacy and a projected receipt on the same terminal, each verified under its own hash shape, **both reported with nonzero counts**. |
+| **M3** | ES-06 detection red-first on the mutated-payload fixture | **`M3-straggler-contracts.md` COMMITTED in this milestone's range**, carrying both proposed contracts | Implementing a straggler and back-filling its "contract". **Antidote:** the proposal is a committed file in M3's diff, the reviewer's approval is in M3's register, and the implementation lives in a **later** milestone (M3b). |
+| **M3b** | ES-16/ES-17 implementation, red-first, to the approved contracts | a line-by-line mapping from each approved contract clause to the code/test that satisfies it | Implementing a *different*, easier contract. **Antidote:** the mapping cites the approved clause verbatim; anything amended is re-reviewed, not silently re-scoped. |
+| **M4** | **ES-09:** before-fix red on a **two-context** terminal (wrong head resolved) + after-fix green where the **two-context append SUCCEEDS** per `(company_id, chain_context)`; **ES-41:** `[PG]` trigger-presence test; **ES-42:** 403 + nothing persisted + the device path still succeeding | ES-42's principal check (does the device principal hold `pos.operate_terminal`?) and the **"no permission migration needed"** deploy note; ES-41's SUSPECTED-half verdict with evidence; the documented non-PG driver scope | Writing a refusal test for ES-09 (it is a **correctness** row — nothing should start refusing), or a 403 test with no "device still works" counterpart. **Antidote:** ES-09's after-state is a **successful** two-context append; ES-42's green half is in the **same** diff; a single-context ES-09 fixture passes vacuously. |
 | **M5** | both ratchets green on the branch **and demonstrated RED** on a deliberate violation (throwaway commit, reverted) | the whole-lane register; the **A0 exit statement** | A ratchet baselined by count. **Antidote:** the baseline is an **enumerated list of 14 named events** (and named projectors), each annotated with the register row that will delete it. |
 
 ---
@@ -502,10 +627,11 @@ test is not evidence when green was the prior state.
 | Milestone | Lenses | What the gate is really asking |
 |---|---|---|
 | M0 | fiscal-pos, treasury | Does the digest match? Do the tamper helpers actually tamper? Is the v3 fixture two-context? Is `unresolved = 0` real? |
-| M1 | fiscal-pos, treasury | Is every new check individually load-bearing? Does the driver preserve the actor-anchored gate (R-3)? |
-| M2 | fiscal-pos, treasury | Was the Z arm left alone (R-1)? Is the legacy hash shape intact (R-2)? Does the mirror check exist and fail? |
-| M3 | fiscal-pos, treasury | Was each straggler's contract approved **before** implementation (R-7)? Did ES-06 stop at detection (R-9)? |
-| M4 | fiscal-pos, treasury | Is the green half present for every refusal? Is ES-09's fixture two-context? Is ES-42's principal enumerated, not assumed (R-4)? |
+| M1 | fiscal-pos, treasury | Is every new check individually load-bearing? Is the driver **manifest-driven**, with the actor gate and tenant binding untouched, no invented identity, and the enumeration source stated (R-3)? |
+| M2 | fiscal-pos, treasury | Was the Z arm left alone (R-1)? Is every row still verified under its own hash shape? Do the **per-arm counts** prove nonzero fiscal-era coverage? Does the mirror check exist and fail (R-2)? |
+| M3 | fiscal-pos, treasury | Is `M3-straggler-contracts.md` **committed in this range** and reviewable? Did ES-06 stop at detection (R-9)? Is straggler implementation **absent** (it belongs to M3b)? |
+| M3b | fiscal-pos, treasury | Does the implementation match the contract **as approved at M3**, clause by clause (R-7)? |
+| M4 | fiscal-pos, treasury | Is ES-09 tested as **correctness** (two-context append succeeds) rather than as a refusal? Is ES-41 scoped to trigger presence with the non-PG gap documented? Was ES-42's device principal **verified** to hold `pos.operate_terminal`, and is the device-success half in the same diff (R-4)? |
 | M5 | fiscal-pos, treasury | Do the ratchets bite? Is the baseline enumerated? **Is the A0 exit statement true?** |
 
 Per the harness: every **P1** finding must be closed or explicitly ruled by an owner gate before the
@@ -523,11 +649,12 @@ and the whole-lane register is read.
 2. **`docs/handoff/progress/es-wave-a0.progress.yaml`** complete — every milestone `status`, `commit`,
    `verdict`, `last_verdict`, `fix_rounds`; wave `status` and `blockers` reflecting reality.
 3. **Review records** under `docs/handoff/reviews/es-wave-a0/` — one file per milestone per round
-   (`M<n>-round<r>.md`).
+   (`M<n>-round<r>.md`), **plus M3's `M3-straggler-contracts.md`** (the approved ES-16/ES-17 contracts).
 4. **A session report** at `docs/sessions/codex-es-wave-a0-report.md`: per milestone — files touched,
    tests + commands + **actual output**, decisions taken, deviations with rationale, concerns; plus
-   **the A0 exit statement (R-11)**, any **deploy obligations** (ES-42 permission/seeder +
-   `permission:cache-reset`), and any tickets raised. *(`docs/sessions/` is gitignored — that is the
+   **the A0 exit statement (R-11)**, the **deploy obligations** — which for ES-42 as scoped is
+   explicitly **none** (reusing `pos.operate_terminal` needs no permission migration, no seeder change,
+   no `permission:cache-reset`); state that rather than omitting it — and any tickets raised. *(`docs/sessions/` is gitignored — that is the
    correct home for the ephemeral report per CLAUDE rule 15; the durable evidence is the YAML + the
    registers, which are tracked.)*
 

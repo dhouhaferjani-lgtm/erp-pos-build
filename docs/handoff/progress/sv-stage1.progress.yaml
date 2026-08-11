@@ -20,12 +20,18 @@ owner_gates:
   - id: base-sha-pin
     question: "Confirm base_sha is the local dev tip and that the ES register snapshot digest matches 04760455… (M0 verifies both)."
     status: satisfiable_by_M0
+  # informational — conditional logic lives in the milestone text (M3).
+  # The harness treats a milestone `owner_gate:` field as an UNCONDITIONAL STOP
+  # (SELF-REVIEW-HARNESS.md step 4 / condition B), so this gate must NOT be wired
+  # onto M3 as a field: the honest expectation is that NO touch point needs G-3.
   - id: SV-9-blind-default-prerequisite
     question: "Handover §7 forbids flipping require_blind_cash_count defaults without the owner's pre-enable gate sequence (backfill command first), while SV dossier §3 places SV-9 in Stage 1 as independent and blocking nothing. The ruling 'ON everywhere' (OD:64/OD:70) and the Stage-1 placement STAND — but if any of SV-9's six touch points or its data migration genuinely requires G-3 (the backfill command) or another Stage-5 policy gate as a prerequisite, STOP and record blocked_owner naming the touch point. Verify; do not assume, do not work around, do not flip a default 'narrowly'."
-    blocks_milestone: M3
+    blocks_milestone: none
     status: conditional
+  # informational — conditional logic lives in the milestone text (M2).
+  # This gate NEVER stops the wave: M2 ships en+fr, files the ticket, proceeds.
   - id: sv11-arabic-device-locale
-    question: "SV-11 §5.1 asks for en+fr+ar keys and OD:76 runs en/fr/ar in parallel, but apps/pos ships only en and fr (apps/pos/src/locales/{en,fr}; lib/i18n.ts registers exactly two languages). Standing up an Arabic locale + RTL for the DEVICE app is a new surface, not cheap translation work, and not SV-11's scope. M2 ships en+fr; does the owner want a separate device-Arabic lane? (apps/web already has ar and is done in parallel at M3.)"
+    question: "SV-11 §5.1 asks for en+fr+ar keys and OD:76 runs en/fr/ar in parallel, but apps/pos ships only en and fr (apps/pos/src/locales/{en,fr}; lib/i18n.ts registers exactly two languages). Standing up an Arabic locale + RTL for the DEVICE app is a new surface, not cheap translation work, and not SV-11's scope. M2 ships en+fr and files the ticket; the OWNER later decides whether to open a separate device-Arabic lane. INFORMATIONAL ONLY — this never blocks a milestone. (apps/web already has ar and is done in parallel at M3.)"
     blocks_milestone: none
     status: open
 
@@ -47,18 +53,16 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M2
-    title: "SV-11 — count-screen copy, the EXACT dossier §2 strings: (1) always-visible whole-drawer instruction with the interpolated float, (2) float-disclosure line on expected (renders AFTER Commit Counts under blind mode), (3) 'No difference'/'Aucun écart' + the 6-line reveal decomposition (line 2 reserved for SV-12, which is OUT of scope), (4) keep 'Écart'. Through t(), en+fr in parallel; NO device ar tree (owner gate sv11-arabic-device-locale). Presentation only — no money recomputation, no parseFloat."
+    title: "SV-11 — count-screen copy, the EXACT dossier §2 strings: (1) always-visible whole-drawer instruction with the interpolated float, (2) float-disclosure line on expected (renders AFTER Commit Counts under blind mode), (3) 'No difference'/'Aucun écart' + the 6-line reveal decomposition — LINE 2 Stage-1 rendering contract: render ONLY the cash-sales row, NO rounding placeholder and NO reserved DOM slot; the structural extension is deferred explicitly to SV-12 (Stage 5, OUT of scope), (4) keep 'Écart'. Through t(), en+fr in parallel; NO device ar tree — ship en+fr, file docs/superpowers/tickets/2026-08-11-pos-device-arabic-locale.md, and PROCEED: the ar-locale gate is INFORMATIONAL ONLY and NEVER stops this milestone. Presentation only — no money recomputation, no parseFloat."
     review_lenses: [fiscal-pos]
-    owner_gate: sv11-arabic-device-locale
     status: pending
     fix_rounds: 0
     commit: null
     verdict: null
     last_verdict: null
   - id: M3
-    title: "SV-9 — blind counting ON everywhere. FIRST execute and RECORD the prerequisite check (owner gate SV-9-blind-default-prerequisite; STOP blocked_owner if any touch point genuinely needs G-3/Stage-5). Then the six touch points + the self-guarding data migration for rows persisted false by the one-off 2026-04-25 seed (unattended tenants:migrate; savepoint wrapper not bare catch; warning-level completion token). CompanyFraudSettingsVerticalDefaultsTest goes RED BY DESIGN and is rewritten — declare it. Acceptance: both verticals resolve true; persisted-false rows migrated; FE round-trip on a row-less company does NOT re-disable. apps/web strings en+fr+ar."
+    title: "SV-9 — blind counting ON everywhere. FIRST execute and RECORD the prerequisite check (R-6): walk each of the six touch points + the migration and ask whether it genuinely requires G-3 (the backfill command) or another Stage-5 policy gate. IF ANY touch point genuinely does, set status blocked_owner (gate SV-9-blind-default-prerequisite), name the touch point and prerequisite in blockers, and STOP; OTHERWISE proceed. Record the outcome EITHER WAY — a silent pass is not a check. Then the six touch points + the self-guarding data migration for rows persisted false by the one-off 2026-04-25 seed (unattended tenants:migrate; savepoint wrapper not bare catch; warning-level completion token). CompanyFraudSettingsVerticalDefaultsTest goes RED BY DESIGN and is rewritten — declare it. Acceptance: both verticals resolve true; persisted-false rows migrated; FE round-trip on a row-less company does NOT re-disable. apps/web strings en+fr+ar."
     review_lenses: [fiscal-pos, frontend-conventions, tenancy-authz]
-    owner_gate: SV-9-blind-default-prerequisite
     status: pending
     fix_rounds: 0
     commit: null
@@ -73,8 +77,8 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M5
-    title: "WHOLE-LANE GATE — re-run the full accumulated evidence over the integrated branch with every lens used in the wave. Paste git diff --name-only BASE_SHA..HEAD and prove the negative: no Stage 2-5 row (SV-2..SV-8, SV-12..SV-18), TREASURY_SHIFT_VARIANCE_GL_ENABLED untouched, no event added/renamed/retired, no Lane A0/A1 file."
-    review_lenses: [fiscal-pos, frontend-conventions, tenancy-authz]
+    title: "WHOLE-LANE GATE — re-run the full accumulated evidence over the integrated branch with EVERY lens used in the wave (treasury included: it rides M1's Treasury config + listener docblock rewrites). Paste git diff --name-only BASE_SHA..HEAD and prove the negative: no Stage 2-5 row (SV-2..SV-8, SV-12..SV-18), TREASURY_SHIFT_VARIANCE_GL_ENABLED untouched, no event added/renamed/retired, no Lane A0/A1 file."
+    review_lenses: [fiscal-pos, treasury, frontend-conventions, tenancy-authz]
     status: pending
     fix_rounds: 0
     commit: null
