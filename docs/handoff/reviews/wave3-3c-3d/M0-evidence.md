@@ -24,11 +24,11 @@ php scripts/wave3-citation-inventory.php docs/handoff/reviews/wave3-3c-3d/M0-cit
 Actual output:
 
 ```text
-N_extracted=256 N_mapped=256 relocated=15 unresolved=0 output=docs/handoff/reviews/wave3-3c-3d/M0-citation-inventory.csv
-csv_rows=256 extensionless=13 relocated=15 file_scope=0 comment_anchors=0
+N_extracted=256 N_mapped=256 unresolved=0 output=docs/handoff/reviews/wave3-3c-3d/M0-citation-inventory.csv
+csv_rows=256 extensionless=13 file_scope=0
 ```
 
-The extractor consumes the dispatch and the authoritative plan from its beginning through the end of §4. It extracts both `File.php:line` and extensionless `Class:line` forms, resolves each path, maps from the plan reference SHA where possible, and fails non-zero if the path, mapped line, real enclosing symbol, or classified executable assertion is absent. Comment/docblock fragments, file-scope fallbacks, and punctuation-only anchors are forbidden for code rows. Fifteen rows have the distinct `relocated` status: the two independently verified 3E extractions plus stale or comment-only citations carried to executable semantic successors. The complete row set is in `M0-citation-inventory.csv`; `scripts/tests/wave3-citation-inventory-test.php` pins the live corpus, four critical relocations, and the forbidden anchor classes.
+The extractor consumes the dispatch and the authoritative plan from its beginning through the end of §4. It extracts both `File.php:line` and extensionless `Class:line` forms, resolves each path, maps from the plan reference SHA where possible, relocates the two independently verified 3E extractions, and fails non-zero if the path, mapped line, real enclosing symbol, or classified semantic assertion is absent. File-scope fallbacks and punctuation-only anchors are forbidden. The complete row set is in `M0-citation-inventory.csv` and `scripts/tests/wave3-citation-inventory-test.php` pins the three failure classes.
 
 Known moved-anchor validation:
 
@@ -36,12 +36,6 @@ Known moved-anchor validation:
 |---|---|
 | POS projection's former `PosCoreReceiptProjection.php:456-458` | `apply()`'s rounding block ends at line 476 and its `DB::transaction` closure ends at line 477; the future flush belongs between those two boundaries. The mechanical row maps the old range to `475-477`. |
 | C-1's former `InvoiceController.php:761` transaction | `InvoiceController::confirmDeliveriesAndPost()` opens its root transaction at current line 803; its nested DN confirm is line 808 and invoice post is line 818. |
-
-### Bare continuation-citation register
-
-The dispatch also contains 13 bare ```:line``` continuations. They are not independently resolvable `file:line` citations, so the extractor does not guess a file from prose. Ten are bounded by a neighbouring explicit citation or method name and are covered by its mechanical row: `DeliveryNoteController :290-331`; `SalesOrderToDeliveryNoteConverter :257-266`; `DeliveredQuantityResolver :104` and `:201`; the already-recorded POS `:457 → :476/:477`; C-1 `:803`; and plan T23 `:3175-3185` under the explicit `plan-wave3.md:2291-2299` reference. Their current executable anchors are respectively controller transaction `308-331`, conversion guard `266-274`, predicate calls `104-106` and `201-203`, POS closure tail `476-477`, C-1 root `803`, and the plan's D-a acceptance block `3175-3185`.
-
-The remaining R3-2 trio is deliberately re-derived here because the dispatch marks it unrecoverably stale. Current order in `PosCoreReceiptProjection::apply()` is `writePayments()` at **457**, `redeemVouchers()` at **458**, `earnLoyaltyPoints()` at **466**, then `applyStockMovementForLines()` at **467**; the transaction closure ends at **477**. Thus the historical `:438`/`:458`/`:459` record is not used as a current address, and the future flush remains inside the closure after the stock call and rounding tail.
 
 ## D-28 caller sweep on the pinned tree
 
@@ -86,8 +80,6 @@ The C-2 depth discrepancy is actionable but not an architecture contradiction: t
 
 C-3 and C-5 also require endpoint-level composite posting tests and the structural boundary leak guard. They do not add a distinct reversed-resource pair beyond the ten above.
 
-C-5 is dismissed as a separate T11c pair by resource class, not by lane name: C-3 can hold an existing DN `documents` row before shared stock, while C-5 creates and later updates its own new DN row after shared stock. Those document rows cannot be the same row, so the frames share stock but no second contended resource from which an AB-BA cycle can be constructed. C-5 still receives its required composite and leak-boundary coverage.
-
 ## POS refund cost-basis ruling proposal (R-1)
 
 Adopt option (a): a POS refund/void re-entry uses the original sale movement's persisted `unit_cost`, never the live product WAC.
@@ -97,7 +89,7 @@ Semantic implementation anchor:
 1. Resolve the refund's `pos_receipts.original_receipt_id` from the refund receipt id already passed to `restockStock()`.
 2. Query original `stock_movements` by `reference_type = 'pos_receipt'`, `reference_id = original_receipt_id`, and the same `(product_id, variant_id, location_id)` grain.
 3. Drain original exits deterministically by `(occurred_at ASC, id ASC)` for the refunded quantity and compute a quantity-weighted unit cost at `COST_SCALE = 6`, using decimal-string math only.
-4. Never fall back to live WAC. The upstream `PosCoreReceiptProjection::assertOriginalReceiptResolvableForRefundOrVoid()` gate at `PosCoreReceiptProjection.php:617-655` already requires a resolvable original receipt. If that receipt has no attributable exit movement, emit a zero-cost row plus a warning and let D-b expose the missing basis; using current cost would silently reinstate the exact residual R-1 closes. The signed POS event is not refused after acceptance.
+4. Never fall back to live WAC. The upstream refund gate already requires a resolvable original receipt. If that receipt has no attributable exit movement, emit a zero-cost row plus a warning and let D-b expose the missing basis; using current cost would silently reinstate the exact residual R-1 closes. The signed POS event is not refused after acceptance.
 
 Distinguishing red-first test: project a sale at `10.000000`, move `products.cost_price` to `12.000000`, project its linked refund, then assert the POSReturn movement and inventory-entry JE both use `10.000000`. The competing live-WAC choice produces `12.000000` and makes the test red.
 
@@ -150,7 +142,7 @@ Integer result on this local sample: **0** across **14** tenant databases. Denom
 
 ## Goods-receipt D-f movement anchor
 
-The literal is established, not inferred: both free and paid GR movement calls pass `referenceType: 'Document'` and `referenceId: $purchaseOrder->id` at `GoodsReceiptService.php:576-577` and `625-626`; `WeightedAverageCostService::recordPurchase()` persists those arguments at lines `278-279`.
+The literal is established, not inferred: both free and paid GR movement calls pass `referenceType: 'Document'` and `referenceId: $purchaseOrder->id` at `GoodsReceiptService.php:576-578` and `625-627`; `WeightedAverageCostService::recordPurchase()` persists those arguments at lines `278-279`.
 
 The line grain is also established. `goods_receipt_lines` has unique nullable `movement_id` and `free_movement_id` links (`2026_07_04_100000_create_goods_receipts_tables.php:48-49,61-69`), and `GoodsReceiptService.php:701-702` writes the exact movements created for that receipt line. M3's anti-join must therefore:
 
@@ -182,8 +174,8 @@ The register is historical across the 3A/3B→3E integration, so moved consumers
 | 8 | `SalesOrderToDeliveryNoteConverter::hasPhysicalProducts()` line 572 | adopted, scoped form; the 3C one-line obligation is already present on the integrated base and must not be duplicated |
 | 9 | `DeliveredQuantityResolver::resolve()` line 104 | adopted, relation form |
 | 10 | `DeliveredQuantityResolver::unresolvedLocationProductIds()` line 201 | adopted, relation form |
-| 11 | `SalesOrderToDeliveryNoteConverter::copyLinesForFullDelivery()` lines 252-277 | deliberate non-adoption, twin A; the scoped lookup excludes a resolved non-physical product but deliberately retains an unresolvable product id. |
-| 12 | former `SalesOrderToInvoiceConverter` twin, now `DeliveryNoteFromDocumentFactory` lines 103-119 | deliberate non-adoption, twin B; the same scoped-lookup containment is preserved. Ship neither. |
+| 11 | `SalesOrderToDeliveryNoteConverter::copyLinesForFullDelivery()` lines 252-277 | deliberate non-adoption, twin A; resolved non-physical lines are excluded while unresolvable products remain. Shipping only one twin would break containment. |
+| 12 | former `SalesOrderToInvoiceConverter` twin, now `DeliveryNoteFromDocumentFactory` lines 103-119 | deliberate non-adoption, twin B; same relation-form behavior as twin A. Ship neither. |
 | 13 | `DeliveredQuantityResolver::priorReturnsPerTuple()` lines 502-521 | deliberate non-adoption: historical capacity ledger; mutable catalogue flags would un-net past returns, while current key consumption is fail-closed. |
 | 14 | `SalesOrderToInvoiceConverter::hasDeliveryNotesForPhysicalItems()` lines 317-345 | assigned to 3C: pure adoption onto the predicate; behavior-preserving scoped lookup. |
 | 15 | `SalesOrderToInvoiceConverter` three-way classifier lines 255-293 | assigned to 3C as a documented classifier; do not replace with a boolean predicate that cannot express `mixed`. |
@@ -192,8 +184,6 @@ The register is historical across the 3A/3B→3E integration, so moved consumers
 | 18 | 3E merge-gate site `DeliveryComplianceGate::hasPhysicalLines()` line 403 | off-branch row now executed and adopted on the integrated base; `PhysicalLinePredicateTest` drives it. |
 
 Count reconciliation: **18 total = 10 adopted register rows + 3 deliberate non-adoptions + 4 assigned-to-3C rows + 1 integrated off-branch merge-gate row**. Rows 1, 2, and 18 intentionally converge on current `DeliveryComplianceGate::hasPhysicalLines()` line 403 after 3E centralized two earlier consumers and the merge gate adopted the shared predicate; they remain separate historical register obligations. The duplicated current anchor at rows 8/16 is also intentional: row 8 is the 3A adopted-site history, while row 16 is the dispatch's carried 3C obligation and is recorded as already satisfied on the pinned integration base.
-
-Twin containment safety depends on the relation-form/scoped-form asymmetry. `PhysicalLinePredicate::forLine()` consumes the loaded relation and returns non-physical for a missing relation, while both conversion twins perform tenant/company-scoped product lookups and deliberately keep a line whose product id cannot be resolved. Adopting only one would silently drop that defensive line in one conversion path but retain it in the other. Shipping neither preserves the same fail-open containment at both document factories; resolving whether an unresolvable id should be copied is a separate data-integrity ruling, not safe predicate cleanup.
 
 ### NEW-3 mutable-flag exposure
 
@@ -215,5 +205,3 @@ The round-1 register is retained in `M0-round1.md`. Its required changes were ha
 - P3: the moved POS/C-1 anchors, D-19 convergence, original-cost no-fallback ruling, C-2 I-1 reason, and verbatim probe command are all recorded above.
 
 Fix-commit revert/replay evidence: reverting `5158f7432` produced `N_extracted=243` and the covering check exited 1 with `FAIL: missing extensionless citation SalesOrderToInvoiceConverter:334`. Reapplying the fix at `d2b5765e0` restored the 256-row green result.
-
-Round-2 P1-1 was reproduced red before the fix: the regression exited 255 at `DeliveredQuantityResolver:399-402`, whose stale mapping landed on a comment. The executable-only validator and relocations now produce 256/256 rows, 15 explicitly marked `relocated`, zero comment anchors, and zero unresolved rows. Round-2 P2-1 is closed by the continuation register and exact R3-2 ordering above. Its P3 evidence-tightening notes were also incorporated: distinct relocation status, C-5's resource-class dismissal, twin containment safety, the original-receipt gate citation, exact GR line ranges, and the live-corpus wording for the regression.
