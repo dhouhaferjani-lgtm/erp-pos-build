@@ -5,6 +5,39 @@ Milestone: M0 (artifacts and test fixtures only; no production code)
 
 ## Preflight
 
+### Amended dispatch-tip check and worktree re-pin (authoritative)
+
+The strict `HEAD == base_sha` prerequisite below was superseded on local `dev` by
+`a5520f23ca39209f5b517723037e9516808f2bca` because the administrative pin commit necessarily advances
+`dev`. Before replaying any wave commits, the amended three-part check was run against that exact local
+`dev` tip:
+
+| Check | Evidence |
+|---|---|
+| Reviewed content baseline | `df85d43f404a9e55fd29b0e3c7533852966652df` |
+| Current local `dev` dispatch tip | `a5520f23ca39209f5b517723037e9516808f2bca` (`harness: M0 base check = ancestor+digest+admin-only-delta (fixes self-referential pin equality)`) |
+| Baseline ancestry | PASS: `git merge-base --is-ancestor df85d43f404a9e55fd29b0e3c7533852966652df a5520f23ca39209f5b517723037e9516808f2bca` returned exit `0` |
+| Contract digest at dispatch tip | PASS: `git show a5520f23ca39209f5b517723037e9516808f2bca:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md \| tail -n +63 \| shasum -a 256` returned `04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540  -` |
+| Administrative-only baseline delta | PASS: `git diff --stat df85d43f404a9e55fd29b0e3c7533852966652df..a5520f23ca39209f5b517723037e9516808f2bca` reported 4 files changed, 62 insertions, 17 deletions, limited to the four paths listed below |
+| Worktree / branch re-pin | PASS: the existing unpushed `codex/es-wave-a0` commits were replayed onto `a5520f23ca39209f5b517723037e9516808f2bca`; `git merge-base --is-ancestor a5520f23ca39209f5b517723037e9516808f2bca HEAD` returned exit `0` |
+| Recovery point | `codex/es-wave-a0-pre-repin-0a6ab4ab3` preserves the pre-repin history |
+
+The administrative-only delta contained exactly:
+
+```text
+docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md
+docs/handoff/CODEX-DISPATCH-sv-stage1-2026-08-11.md
+docs/handoff/progress/es-wave-a0.progress.yaml
+docs/handoff/progress/sv-stage1.progress.yaml
+```
+
+Historical review registers below retain their original pre-repin commit identifiers. Their reviewed
+commits were replayed without content changes; the progress YAML records the corresponding current
+commit identifiers. The already-passed M0 and M1 gates were not rerun, consistent with the harness's
+resume rule.
+
+### Original first execution (historical; equality check superseded)
+
 | Check | Evidence |
 |---|---|
 | Worktree | `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0` |

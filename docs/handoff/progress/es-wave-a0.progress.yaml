@@ -19,7 +19,9 @@ max_fix_rounds: 5
 #   If any OTHER path appears in that diff, or check 1/2 fails: the base is contaminated — STOP, set
 #   status: blocked_precondition, request an orchestrator re-pin. Do NOT edit base_sha.
 base_sha: df85d43f404a9e55fd29b0e3c7533852966652df
-# Branch codex/es-wave-a0 in worktree .worktrees/es-wave-a0, created from base_sha off LOCAL dev.
+# Branch codex/es-wave-a0 in worktree .worktrees/es-wave-a0. On 2026-08-12 its existing unpushed
+# commits were replayed onto CURRENT local dev tip a5520f23ca39209f5b517723037e9516808f2bca;
+# base_sha remains the reviewed CONTENT baseline verified by the three-part M0 check.
 # Handback only: NOT merged, NOT pushed — the orchestrator merges after the wave completes.
 branch: codex/es-wave-a0
 
@@ -46,29 +48,29 @@ owner_gates:
 
 milestones:
   - id: M0
-    title: "Preflight — contract digest verify (abort on mismatch), HEAD==BASE_SHA, seeded two-context v3 tenant fixture, TAMPERED-FIXTURE toolkit (T-a payload-vs-canonical_bytes, T-b previous_hash from wrong chain_context, T-c fiscal_hash mirror) built on VerifyEventChainCommandTest/ParseFailureResumeTest, narrowed ES-07 claim + do-NOT-rewrite-the-Z-arm record, citation sweep (unresolved=0)"
+    title: "Preflight — contract digest verify (abort on mismatch), base ancestor + digest + administrative-only dispatch delta, seeded two-context v3 tenant fixture, TAMPERED-FIXTURE toolkit (T-a payload-vs-canonical_bytes, T-b previous_hash from wrong chain_context, T-c fiscal_hash mirror) built on VerifyEventChainCommandTest/ParseFailureResumeTest, narrowed ES-07 claim + do-NOT-rewrite-the-Z-arm record, citation sweep (unresolved=0)"
     review_lenses: [fiscal-pos, treasury]
     status: passed
     fix_rounds: 2
-    commit: bffba974a12f9ab47fa56e2141bce282cdab0c54
+    commit: a7b4ad43da7d295176622395dae17c2b93e25d1c
     verdict: docs/handoff/reviews/es-wave-a0/M0-round3.md
     last_verdict: ACCEPT
-    updated: 2e01e01ac
+    updated: 56d83003b2f50c7aed8379ce564c0b051fbb0d91
   - id: M1
     title: "ES-08 — extend fiscal:verify-event-chain: payload<->canonical_bytes, integrity_status (quarantined-but-intact must stop reporting verified), sealed coordinates, sequence_number contiguity, + the MANIFEST-DRIVEN fleet driver (operator-supplied tenant->actor-id manifest; per listed tenant run the existing single-tenant verification with the actor gate and tenant binding preserved EXACTLY; missing/unauthorised tenants REPORTED LOUDLY with a non-zero aggregate exit, never silently skipped; NO service account or new identity model; terminal/context enumeration from the distinct (terminal_id, chain_context) pairs in fiscal_events within the bound tenant; unworkable manifest shape -> STOP condition C). Verifier-class contract: RED on T-a and T-b, green on clean, EACH new check individually demonstrated red."
     review_lenses: [fiscal-pos, treasury]
     status: passed
     fix_rounds: 4
-    commit: 71f306c86
+    commit: 065cab23008e060ed7620ca02d9742fe2c43fe37
     verdict: docs/handoff/reviews/es-wave-a0/M1-round5.md
     last_verdict: ACCEPT
-    updated: 09b498749
+    updated: d8122d10676ed8e30a5f5a1b2c3916f153902b36
   - id: M2
     title: "ES-07 (NARROWED) — pos:verify-chains COVERAGE/REPORTING + the MIRROR. Defect (a): fiscal-era receipts are not counted, so a terminal whose receipts are all projected returns is_valid:true over a count of 0 and the fiscal arm's result is never surfaced per-arm. Defect (b): NO pos_receipts.fiscal_hash <-> fiscal_events.current_hash cross-check exists anywhere — add it as a new arm. ReceiptHashService::verifyTerminalChain() ALREADY self-partitions (fiscal arm canonical-hashes; legacy arm re-applies whereNull and pipe-hashes only fiscal_event_id IS NULL rows), so a canonical-bytes row can never reach a pipe recomputation — the implementer CHOOSES the mechanism (safe filter removal + per-arm reporting, or an explicit fiscal-era pass). The Z arm is NOT blind — out of scope beyond what the mirror requires. RED on T-c + tampered projected chain; per-arm counts must prove nonzero fiscal-era coverage; negative control on an all-legacy tenant."
     review_lenses: [fiscal-pos, treasury]
     status: blocked_architecture
     fix_rounds: 1
-    commit: 6a0e593c3
+    commit: 4fea617e02fe5ae87dbc7bb7b050f7a27ec29ef6
     verdict: docs/handoff/reviews/es-wave-a0/M2-round1.md
     last_verdict: CHANGES-REQUIRED
   - id: M3
