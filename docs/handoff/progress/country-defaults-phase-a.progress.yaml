@@ -61,11 +61,12 @@ milestones:
   - id: M4
     title: "Legacy golden exporter + bootstrap key-as-assertion data migration (drafts only) + country-defaults:verify global drift scan; report 27-REQUIRED + scope-dependent SalesStampDutyPayable results"
     review_lenses: [treasury, tenancy-authz]
-    status: review
+    status: passed
     fix_rounds: 0
     commit: 782a2a5a16337508ce63f6ec8994cf86b55dc0c8
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M4-round1.md
+    last_verdict: ACCEPT
+    updated: 3e1dd04c3
   - id: M5
     title: "Provisioning rewire: resolver 4-step algorithm, TemplateChartOfAccountsSeeder, full consumer inventory (incl. ExpenseCategoryProvisioningService), rollback semantics — behind COUNTRY_DEFAULTS_PROVISIONING_ENABLED (default false)"
     review_lenses: [treasury, tenancy-authz]
