@@ -55,8 +55,9 @@ milestones:
     status: review
     fix_rounds: 0
     commit: 5432fd56c5833acc19321fd99319bb900dbf6618
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M3-round1.md
+    last_verdict: CHANGES-REQUIRED
+    updated: 334590599
   - id: M4
     title: "Legacy golden exporter + bootstrap key-as-assertion data migration (drafts only) + country-defaults:verify global drift scan; report 27-REQUIRED + scope-dependent SalesStampDutyPayable results"
     review_lenses: [treasury, tenancy-authz]
