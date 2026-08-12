@@ -23,6 +23,11 @@ final class InventoryGlPostingViaBufferOnly implements Rule
 
     public function processNode(Node $node, Scope $scope): array
     {
+        if ($node->name instanceof Node\Identifier
+            && str_starts_with($node->name->toString(), 'postFor')) {
+            return [];
+        }
+
         if (! $node->name instanceof Node\Identifier
             || ! str_starts_with($node->name->toString(), 'postFor')) {
             return [];
