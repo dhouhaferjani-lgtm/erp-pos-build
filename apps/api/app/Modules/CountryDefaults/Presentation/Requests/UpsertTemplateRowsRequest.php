@@ -6,6 +6,7 @@ namespace App\Modules\CountryDefaults\Presentation\Requests;
 
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,7 +22,7 @@ final class UpsertTemplateRowsRequest extends FormRequest
         $this->merge(['id' => $this->route('id')]);
     }
 
-    /** @return array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\Rule|\Illuminate\Contracts\Validation\ValidationRule>> */
+    /** @return array<string, list<string|\Stringable|\Illuminate\Contracts\Validation\Rule|ValidationRule>> */
     public function rules(): array
     {
         return [
