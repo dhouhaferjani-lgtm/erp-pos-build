@@ -639,6 +639,41 @@ final class ReceiptChainRebuildTest extends TestCase
         $this->assertTrue($service->verifyTerminalChain($terminal));
     }
 
+    public function test_command_reports_zero_receipt_coverage_for_a_snapshot_only_fiscal_chain(): void
+    {
+        $canonicalBytes = '{"event":"terminal_registry_snapshot","sequence_number":1}';
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+        );
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $arms = $this->app->make(ReceiptHashService::class)->verifyTerminalChainArms($terminal);
+
+        $this->assertTrue($arms['fiscal_events']->isValid);
+        $this->assertSame(0, $arms['fiscal_events']->count);
+        $this->assertSame(1, $arms['fiscal_events']->inspectedCount);
+        $this->assertSame(0, $arms['projected_mirror']->count);
+
+        $this->artisanCommand('pos:verify-chains', [
+            '--terminal' => $this->terminalId,
+            '--type' => 'receipts',
+        ])
+            ->expectsTable(
+                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Break Point'],
+                [
+                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2713}", 0, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2713}", 0, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 0, '-'],
+                ],
+            )
+            ->expectsOutputToContain('All chains verified successfully.')
+            ->assertExitCode(0);
+    }
+
     public function test_mirror_disagreement_trips_only_the_projected_mirror_arm(): void
     {
         $event = $this->seedSingleFiscalEvent();
@@ -1001,6 +1036,7 @@ final class ReceiptChainRebuildTest extends TestCase
         string $canonicalBytes,
         string $previousHash,
         string $currentHash,
+        FiscalEventType $eventType = FiscalEventType::SALE_RECEIPT,
     ): string {
         $now = Carbon::now('UTC');
         $eventId = Str::uuid()->toString();
@@ -1010,7 +1046,7 @@ final class ReceiptChainRebuildTest extends TestCase
             'company_id' => $this->companyId,
             'terminal_id' => $this->terminalId,
             'operator_id' => $this->operatorId,
-            'event_type' => FiscalEventType::SALE_RECEIPT->value,
+            'event_type' => $eventType->value,
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $sequenceNumber,
