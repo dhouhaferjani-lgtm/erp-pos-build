@@ -52,11 +52,12 @@ milestones:
   - id: M3
     title: "defaults_editor role + EnsureCentralAdmin (central_admin alias) + route groups (minimal auth edit: only nested logout/me) + MFA feature flag + full API surface"
     review_lenses: [tenancy-authz]
-    status: review
+    status: passed
     fix_rounds: 1
     commit: 556b9771e2ea6f66d9ddd62250c91bb3fe407c35
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M3-round2.md
+    last_verdict: ACCEPT
+    updated: 87d4f24ee
   - id: M4
     title: "Legacy golden exporter + bootstrap key-as-assertion data migration (drafts only) + country-defaults:verify global drift scan; report 27-REQUIRED + scope-dependent SalesStampDutyPayable results"
     review_lenses: [treasury, tenancy-authz]

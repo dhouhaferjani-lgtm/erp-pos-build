@@ -1,5 +1,10 @@
 # Country defaults M3 P3 hardening
 
+- Accepted M3 deviation: `/editors` is structurally limited to `defaults_editor` accounts. Role
+  transition to or from `support_approver` is intentionally absent because it would let the new
+  lifecycle surface modify four-eyes approvers. Do not restore the brief's generic "role-change"
+  revocation path without a new owner/security ruling and dedicated support-access lifecycle design.
+
 - Make server-generated defaults-editor credentials demonstrably satisfy every shared
   `Password::defaults()` category on every generation, including guaranteed lower- and uppercase
   characters. `Str::password(24)` currently provides strong entropy and guarantees letters,
