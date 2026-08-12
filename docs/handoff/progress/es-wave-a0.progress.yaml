@@ -21,7 +21,7 @@ max_fix_rounds: 5
 base_sha: df85d43f404a9e55fd29b0e3c7533852966652df
 # Branch codex/es-wave-a0 in worktree .worktrees/es-wave-a0, created from base_sha off LOCAL dev.
 # Handback only: NOT merged, NOT pushed — the orchestrator merges after the wave completes.
-branch: null
+branch: codex/es-wave-a0
 
 owner_gates:
   - id: base-sha-pin
@@ -102,5 +102,5 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []

@@ -437,9 +437,245 @@ final class VerifyEventChainCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_seeded_v3_fixture_has_two_contexts_and_a_hash_mirrored_projected_receipt(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $schemaVersion = DB::table('pos_terminals')
+            ->where('id', $this->terminalId)
+            ->value('fiscal_schema_version');
+        $contexts = DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->orderBy('chain_context')
+            ->pluck('chain_context')
+            ->all();
+        $projectedReceipts = DB::table('pos_receipts')
+            ->where('terminal_id', $this->terminalId)
+            ->whereNotNull('fiscal_event_id')
+            ->count();
+        $mirrorMismatches = DB::table('pos_receipts as receipts')
+            ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+            ->where('receipts.terminal_id', $this->terminalId)
+            ->whereColumn('receipts.fiscal_hash', '!=', 'events.current_hash')
+            ->count();
+
+        $this->assertGreaterThanOrEqual(3, (int) $schemaVersion);
+        $this->assertSame(['operational', 'z_session'], $contexts);
+        $this->assertGreaterThan(0, $projectedReceipts);
+        $this->assertSame(0, $mirrorMismatches);
+    }
+
+    public function test_wrong_context_previous_hash_tamper_is_self_asserting(): void
+    {
+        $this->seedWrongContextPreviousHashTamper();
+    }
+
+    public function test_receipt_mirror_tamper_is_self_asserting(): void
+    {
+        $this->seedReceiptMirrorTamper();
+    }
+
     // =================================================================
     // Fixture helpers — CI-shaped seeders matching plan §2401 contract.
     // =================================================================
+
+    private function seedV3FiscalFixture(): void
+    {
+        DB::table('pos_terminals')
+            ->where('id', $this->terminalId)
+            ->update(['fiscal_schema_version' => 3]);
+
+        $operationalCanonicalBytes = '{"event":"v3_operational_receipt","sequence_number":1}';
+        $operationalHash = hash('sha256', $operationalCanonicalBytes);
+        $operationalEventId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $operationalCanonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: $operationalHash,
+            chainContext: 'operational',
+        );
+
+        $zSessionCanonicalBytes = '{"event":"v3_z_session","sequence_number":1}';
+        $zSessionEventId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $zSessionCanonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $zSessionCanonicalBytes),
+            chainContext: 'z_session',
+        );
+
+        $receiptId = $this->insertProjectedReceipt(
+            fiscalEventId: $operationalEventId,
+            fiscalHash: $operationalHash,
+            previousHash: $this->genesisSeed,
+            canonicalBytes: $operationalCanonicalBytes,
+            chainSequence: 1,
+        );
+
+        $this->assertTrue(Str::isUuid($operationalEventId));
+        $this->assertTrue(Str::isUuid($zSessionEventId));
+        $this->assertTrue(Str::isUuid($receiptId));
+        $this->assertGreaterThanOrEqual(
+            3,
+            (int) DB::table('pos_terminals')->where('id', $this->terminalId)->value('fiscal_schema_version'),
+        );
+        $this->assertSame(
+            ['operational', 'z_session'],
+            DB::table('fiscal_events')
+                ->where('terminal_id', $this->terminalId)
+                ->orderBy('chain_context')
+                ->pluck('chain_context')
+                ->all(),
+        );
+        $this->assertSame(
+            1,
+            DB::table('pos_receipts')
+                ->where('id', $receiptId)
+                ->whereNotNull('fiscal_event_id')
+                ->count(),
+        );
+        $this->assertSame(
+            0,
+            DB::table('pos_receipts as receipts')
+                ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+                ->where('receipts.id', $receiptId)
+                ->whereColumn('receipts.fiscal_hash', '!=', 'events.current_hash')
+                ->count(),
+        );
+    }
+
+    /**
+     * Seed T-b: an operational row whose hash is internally correct but whose
+     * previous_hash comes from the z_session head on the same terminal.
+     */
+    private function seedWrongContextPreviousHashTamper(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $operationalHead = (string) DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->where('chain_context', 'operational')
+            ->value('current_hash');
+        $zSessionHead = (string) DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->where('chain_context', 'z_session')
+            ->value('current_hash');
+        $canonicalBytes = '{"event":"wrong_context_link","sequence_number":2}';
+        $eventId = $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $zSessionHead,
+            currentHash: hash('sha256', $canonicalBytes),
+            chainContext: 'operational',
+        );
+
+        $row = DB::table('fiscal_events')->where('id', $eventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('operational', $row->chain_context);
+        $this->assertSame($zSessionHead, $row->previous_hash);
+        $this->assertNotSame($operationalHead, $row->previous_hash);
+        $this->assertSame(hash('sha256', (string) $row->canonical_bytes), $row->current_hash);
+    }
+
+    /**
+     * Seed T-c: a projected receipt whose immutable fiscal_hash differs from
+     * the referenced, internally valid fiscal event's current_hash.
+     */
+    private function seedReceiptMirrorTamper(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $operationalHead = (string) DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->where('chain_context', 'operational')
+            ->value('current_hash');
+        $canonicalBytes = '{"event":"receipt_mirror_tamper","sequence_number":2}';
+        $eventHash = hash('sha256', $canonicalBytes);
+        $eventId = $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $operationalHead,
+            currentHash: $eventHash,
+            chainContext: 'operational',
+        );
+        $receiptId = $this->insertProjectedReceipt(
+            fiscalEventId: $eventId,
+            fiscalHash: str_repeat('d', 64),
+            previousHash: $operationalHead,
+            canonicalBytes: $canonicalBytes,
+            chainSequence: 2,
+        );
+
+        $mirror = DB::table('pos_receipts as receipts')
+            ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+            ->where('receipts.id', $receiptId)
+            ->select([
+                'receipts.fiscal_event_id',
+                'receipts.fiscal_hash as receipt_hash',
+                'receipts.previous_hash as receipt_previous_hash',
+                'receipts.canonical_bytes as receipt_canonical_bytes',
+                'events.current_hash as event_hash',
+                'events.canonical_bytes as event_canonical_bytes',
+            ])
+            ->first();
+
+        $this->assertNotNull($mirror);
+        $previousReceiptHash = (string) DB::table('pos_receipts')
+            ->where('terminal_id', $this->terminalId)
+            ->where('chain_sequence', 1)
+            ->value('fiscal_hash');
+        $this->assertSame($eventId, $mirror->fiscal_event_id);
+        $this->assertSame(hash('sha256', (string) $mirror->event_canonical_bytes), $mirror->event_hash);
+        $this->assertSame($mirror->event_canonical_bytes, $mirror->receipt_canonical_bytes);
+        $this->assertSame($previousReceiptHash, $mirror->receipt_previous_hash);
+        $this->assertNotSame($mirror->event_hash, $mirror->receipt_hash);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', (string) $mirror->receipt_hash);
+    }
+
+    private function insertProjectedReceipt(
+        string $fiscalEventId,
+        string $fiscalHash,
+        string $previousHash,
+        string $canonicalBytes,
+        int $chainSequence,
+    ): string {
+        $receiptId = Str::uuid()->toString();
+        $now = Carbon::now('UTC');
+        DB::table('pos_receipts')->insert([
+            'id' => $receiptId,
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'location_id' => $this->locationId,
+            'terminal_id' => $this->terminalId,
+            'receipt_number' => 'M0-V3-'.Str::upper(Str::random(12)),
+            'receipt_type' => 'sale',
+            'chain_sequence' => $chainSequence,
+            'receipt_year' => (int) $now->format('Y'),
+            'fiscal_hash' => $fiscalHash,
+            'previous_hash' => $previousHash,
+            'vat_breakdown_hash' => hash('sha256', 'm0-vat-'.$chainSequence),
+            'payment_methods_hash' => hash('sha256', 'm0-payment-'.$chainSequence),
+            'posted_at' => $now,
+            'cashier_id' => $this->verifierUser->id,
+            'cashier_name' => 'M0 Fixture Cashier',
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '10.000',
+            'currency' => 'TND',
+            'fiscal_status' => 'fiscalized',
+            'invoice_type_code' => 'SALE',
+            'training_flag' => false,
+            'is_voided' => false,
+            'is_training' => false,
+            'canonical_bytes' => $canonicalBytes,
+            'fiscal_event_id' => $fiscalEventId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return $receiptId;
+    }
 
     /**
      * Seed `$length` consecutive `fiscal_events` rows for the test terminal.
@@ -579,10 +815,12 @@ final class VerifyEventChainCommandTest extends TestCase
         string $canonicalBytes,
         string $previousHash,
         string $currentHash,
-    ): void {
+        string $chainContext = 'operational',
+    ): string {
         $now = Carbon::now('UTC');
+        $eventId = Str::uuid()->toString();
         $row = [
-            'id' => Str::uuid()->toString(),
+            'id' => $eventId,
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
             'terminal_id' => $this->terminalId,
@@ -593,6 +831,7 @@ final class VerifyEventChainCommandTest extends TestCase
             'sequence_number' => $sequenceNumber,
             'event_time_device' => $now,
             'business_date' => $now->copy()->startOfDay(),
+            'chain_context' => $chainContext,
             'last_server_time_seen' => null,
             'server_received_at' => $now,
             'reference_event_id' => null,
@@ -614,5 +853,7 @@ final class VerifyEventChainCommandTest extends TestCase
         ];
 
         DB::table('fiscal_events')->insert($row);
+
+        return $eventId;
     }
 }

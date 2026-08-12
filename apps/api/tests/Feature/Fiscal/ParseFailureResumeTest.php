@@ -188,6 +188,11 @@ final class ParseFailureResumeTest extends TestCase
         Queue::assertPushed(ApplyFiscalEventProjectionJob::class, 1);
     }
 
+    public function test_payload_rewrite_tamper_is_self_asserting(): void
+    {
+        $this->seedPayloadRewriteTamper();
+    }
+
     public function test_crash_between_commit_and_enqueue_is_recoverable_without_rewriting_payload(): void
     {
         $event = $this->storeParseFailedFiscalEvent();
@@ -676,6 +681,30 @@ final class ParseFailureResumeTest extends TestCase
     // =================================================================
     // Helpers
     // =================================================================
+
+    /**
+     * Seed T-a through the real parse-resolution path: the sealed event keeps
+     * its canonical bytes/hash while its formerly failed payload is replaced.
+     */
+    private function seedPayloadRewriteTamper(): void
+    {
+        $event = $this->storeParseFailedFiscalEvent(eventVersion: 3);
+        $canonicalBytesBefore = (string) $event->canonical_bytes;
+        $currentHashBefore = (string) $event->current_hash;
+
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $this->correctedPayloadV3(), $this->resolverUser);
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('parsed', $row->payload_parse_status);
+        $this->assertSame('verified', $row->integrity_status);
+        $this->assertNotNull($row->payload);
+        $this->assertSame($canonicalBytesBefore, $row->canonical_bytes);
+        $this->assertSame($currentHashBefore, $row->current_hash);
+        $this->assertSame(hash('sha256', (string) $row->canonical_bytes), $row->current_hash);
+        $this->assertNotSame((string) $row->canonical_bytes, (string) $row->payload);
+    }
 
     /**
      * Insert a quarantined `canonical_parse_failure` event into
