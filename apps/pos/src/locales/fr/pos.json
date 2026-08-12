@@ -905,6 +905,9 @@
   },
   "cash_count": {
     "section_title": "Réconciliation de caisse",
+    "count_instruction": "Comptez tout l'argent présent dans le tiroir, y compris le fonds de caisse de {{amount}}.",
+    "expected_includes_float": "Le montant attendu inclut le fonds de caisse.",
+    "no_difference": "Aucun écart",
     "commit_counts": "Valider les comptages",
     "reason_label": "Motif de l'écart (requis)",
     "tender": "Mode de paiement",
@@ -915,6 +918,15 @@
     "electronic_marker": "✓ élec.",
     "entering_actual_for": "Saisie : {{name}}",
     "numpad_label": "Pavé de comptage",
+    "summary": {
+      "opening_float": "Fonds de caisse",
+      "cash_sales_net": "Ventes en espèces (net rendu monnaie)",
+      "drawer_movements": "Entrées / sorties d'espèces",
+      "expected_in_drawer": "Attendu en caisse",
+      "counted": "Compté",
+      "over": "Excédent",
+      "short": "Manquant"
+    },
     "manager_pin": {
       "section_title": "Autorisation responsable requise",
       "verified": "Autorisé par : {{name}}",

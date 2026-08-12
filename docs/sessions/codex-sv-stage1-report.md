@@ -396,3 +396,35 @@ Fresh PostgreSQL verification:
 Pint passed for every touched PHP file. The fix round is documentation/test-contract only; runtime money, authorization, event, and GL behavior remain unchanged.
 
 M1 round 2 accepted the milestone. M5 carries one close-before-merge report cleanup from that register: the G-2 block in the deploy-notes ticket is a verbatim historical reviewer quote, so the report must not claim every open-ruling phrase vanished; the prose following that quote must explicitly state that whole-drawer semantics now supersede the quoted question. M5 will also recheck the P3 hardening notes (split the monorepo-dependent client inventory from the always-on annotation test, tighten the device `@deprecated` regex, cross-reference the remaining deploy gates, and avoid calling the v2 branch literally unreachable).
+
+## M2 — SV-11 whole-drawer count-screen copy
+
+### Red/green evidence
+
+The rendered-output contract was added first. The red run had 9 component cases total, with the three new SV-11 cases failing because `cash-count-instruction`, `cash-count-reveal-summary`, and the locale keys did not exist; the six pre-existing cases passed. The implementation then made the same scoped command green:
+
+```text
+Test Files  4 passed (4)
+Tests       66 passed (66)
+```
+
+The four explicit files are `endOfDayPreview.test.ts`, `CashReconciliationSection.test.tsx`, `CashCountTable.test.tsx`, and `EndOfDayPreviewModal.test.tsx`. `pnpm typecheck` exits zero.
+
+### Presentation contract
+
+- The instruction above the count remains visible before and after blind commit, interpolating the already-formatted `opening_cash` string.
+- The float disclosure and six-line summary render only after commit in blind mode.
+- In non-blind mode, the float disclosure renders immediately beside the already-visible expected figure, even before a count is entered.
+- English and French rendered-output assertions pin the exact instruction, float disclosure, and all six reveal labels; the French test includes the exact `y compris le fonds de caisse` phrase. The locale contract separately pins `Écart`.
+- A balanced tender renders `No difference` / `Aucun écart` instead of a bare zero in both the tender table and reveal.
+- Line 2 contains only cash sales net of change. There is no rounding label, placeholder, reserved slot, empty container, or hidden sibling. Its structural extension remains deferred to SV-12.
+
+React does not recompute money. The existing preview aggregation now exposes the two already-computed terms as formatted decimal strings: `cash_sales_net` and `drawer_movements_net`. The existing `expected_cash` formula was regrouped as `opening + cashSalesNet + drawerNet` using the same decimal helpers; regression assertions pin cash-sales, drawer-movement, and expected totals. No UI `parseFloat` or `Number` conversion was introduced.
+
+### Device Arabic record
+
+The device still ships only `en` and `fr`. `docs/superpowers/tickets/2026-08-11-pos-device-arabic-locale.md` records the exact baseline locale tree, `i18n.ts` registration, four namespaces, RTL/touch/numeric implications, and informational owner gate `sv11-arabic-device-locale`. Per the dispatch, this does not stop M2.
+
+### React regression scan
+
+The first broad React Doctor invocation compared the whole long-lived wave branch with `main` and surfaced the repository's existing backlog. The correctly pinned `--scope changed --base HEAD` scan covered the uncommitted M2 files. It initially identified the enlarged reconciliation component; extracting `CashDrawerRevealSummary` removed that finding. The final changed-file scan reports no issues and exits zero.

@@ -69,6 +69,8 @@ describe('buildEndOfDayPreview', () => {
     expect(preview.net_sales).toBe('25.21');
     expect(preview.tax_amount).toBe('4.79');
     expect(preview.opening_cash).toBe('100.00');
+    expect(preview.cash_sales_net).toBe('10.00');
+    expect(preview.drawer_movements_net).toBe('0.00');
     // expected cash = 100 (opening) + 10 (CASH tendered only)
     expect(preview.expected_cash).toBe('110.00');
     expect(preview.variance).toBeNull();
@@ -263,6 +265,8 @@ describe('buildEndOfDayPreview — cash drawer movements (H2)', () => {
     );
 
     // opening 100 + net cash 50 + deposit 20 − payout 5 = 165.00
+    expect(preview.cash_sales_net).toBe('50.00');
+    expect(preview.drawer_movements_net).toBe('15.00');
     expect(preview.expected_cash).toBe('165.00');
   });
 });

@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CashCountTable } from './organisms/CashCountTable';
 import { ManagerPinPanel } from './molecules/ManagerPinPanel';
+import { CashDrawerRevealSummary } from './molecules/CashDrawerRevealSummary';
 import { bcsub, bccomp, bcformat } from '@/lib/decimal';
 import { getCurrencyDecimals } from '@/lib/currency';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
@@ -160,6 +161,13 @@ export function CashReconciliationSection({
     () => tenders.filter((tender) => tender.is_physical),
     [tenders],
   );
+  const cashTender = useMemo(
+    () => physicalTenders.find((tender) => tender.payment_method_code === 'CASH'),
+    [physicalTenders],
+  );
+  const cashVariance = cashTender
+    ? variances[cashTender.payment_method_id]
+    : undefined;
 
   // Aggregate severity — uses the signed-sum algorithm from cashCountValidation
   // (G12/D1 fix: sum all signed variances first, then classify the net deviation).
@@ -246,6 +254,14 @@ export function CashReconciliationSection({
         {t('cash_count.section_title', { defaultValue: 'Cash Reconciliation' })}
       </h3>
 
+      <p className="text-sm text-ink-muted" data-testid="cash-count-instruction">
+        {t('cash_count.count_instruction', {
+          amount: preview.opening_cash,
+          defaultValue:
+            'Count all the cash in the drawer, including the opening float of {{amount}}.',
+        })}
+      </p>
+
       <CashCountTable
         tenders={tenders}
         actuals={actuals}
@@ -267,6 +283,25 @@ export function CashReconciliationSection({
         >
           {t('cash_count.commit_counts', { defaultValue: 'Commit Counts' })}
         </button>
+      )}
+
+      {committed && (!cashTender || !cashVariance) && (
+        <p className="text-sm text-ink-muted">
+          {t('cash_count.expected_includes_float', {
+            defaultValue: 'Expected includes the opening float.',
+          })}
+        </p>
+      )}
+
+      {committed && cashTender && cashVariance && (
+        <CashDrawerRevealSummary
+          openingCash={preview.opening_cash}
+          cashSalesNet={preview.cash_sales_net}
+          drawerMovementsNet={preview.drawer_movements_net}
+          expectedCash={preview.expected_cash}
+          countedCash={actuals[cashTender.payment_method_id] ?? '—'}
+          variance={cashVariance}
+        />
       )}
 
       {committed && needsReason && (

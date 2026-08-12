@@ -93,6 +93,10 @@ export interface EndOfDayPreview {
   net_sales: string;
   tax_amount: string;
   opening_cash: string;
+  /** Cash receipts retained in the drawer, net of change and cash refunds. */
+  cash_sales_net: string;
+  /** Signed deposits, payouts, and cash account-payment movements. */
+  drawer_movements_net: string;
   expected_cash: string;
   variance: string | null;
   vat_breakdown: VatBreakdownItem[];
@@ -446,9 +450,14 @@ export async function buildEndOfDayPreview(
       cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact, scale);
     }
   }
-  const expectedCash = bcsub(
-    bcadd(bcsub(bcadd(openingCash, cashTenderedSum, scale), cashChangeDueSum, scale), drawerNet, scale),
+  const cashSalesNet = bcsub(
+    bcsub(cashTenderedSum, cashChangeDueSum, scale),
     cashRefundImpact,
+    scale,
+  );
+  const expectedCash = bcadd(
+    bcadd(openingCash, cashSalesNet, scale),
+    drawerNet,
     scale,
   );
 
@@ -476,6 +485,8 @@ export async function buildEndOfDayPreview(
     net_sales: bcformat(netSales, scale),
     tax_amount: bcformat(taxAmount, scale),
     opening_cash: bcformat(openingCash, scale),
+    cash_sales_net: bcformat(cashSalesNet, scale),
+    drawer_movements_net: bcformat(drawerNet, scale),
     expected_cash: bcformat(expectedCash, scale),
     variance: null,
     vat_breakdown: vatBreakdown,

@@ -905,6 +905,9 @@
   },
   "cash_count": {
     "section_title": "Cash Reconciliation",
+    "count_instruction": "Count all the cash in the drawer, including the opening float of {{amount}}.",
+    "expected_includes_float": "Expected includes the opening float.",
+    "no_difference": "No difference",
     "commit_counts": "Commit Counts",
     "reason_label": "Variance Reason (required)",
     "tender": "Tender",
@@ -915,6 +918,15 @@
     "electronic_marker": "✓ elec.",
     "entering_actual_for": "Entering: {{name}}",
     "numpad_label": "Cash count keypad",
+    "summary": {
+      "opening_float": "Opening float",
+      "cash_sales_net": "Cash sales (net of change)",
+      "drawer_movements": "Paid in / paid out",
+      "expected_in_drawer": "Expected in drawer",
+      "counted": "Counted",
+      "over": "Over",
+      "short": "Short"
+    },
     "manager_pin": {
       "section_title": "Manager Authorization Required",
       "verified": "Authorized by: {{name}}",

@@ -1,19 +1,41 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import {
   CashReconciliationSection,
   type CashReconciliationSectionProps,
   type CompanyFraudSettings,
 } from './CashReconciliationSection';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
+import enPos from '@/locales/en/pos.json';
+import frPos from '@/locales/fr/pos.json';
+
+const i18nTestState = vi.hoisted(() => ({ locale: 'en' as 'en' | 'fr' }));
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
   useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      (opts?.defaultValue as string) ?? key,
+    t: (key: string, opts?: Record<string, unknown>) => {
+      const french: Record<string, string> = {
+        'cash_count.count_instruction':
+          "Comptez tout l'argent présent dans le tiroir, y compris le fonds de caisse de {{amount}}.",
+        'cash_count.expected_includes_float':
+          'Le montant attendu inclut le fonds de caisse.',
+        'cash_count.summary.opening_float': 'Fonds de caisse',
+        'cash_count.summary.cash_sales_net':
+          'Ventes en espèces (net rendu monnaie)',
+        'cash_count.summary.drawer_movements': "Entrées / sorties d'espèces",
+        'cash_count.summary.expected_in_drawer': 'Attendu en caisse',
+        'cash_count.summary.counted': 'Compté',
+        'cash_count.no_difference': 'Aucun écart',
+      };
+      const value =
+        (i18nTestState.locale === 'fr' ? french[key] : undefined) ??
+        (opts?.defaultValue as string) ??
+        key;
+      return value.replace('{{amount}}', String(opts?.amount ?? ''));
+    },
   }),
 }));
 
@@ -52,6 +74,8 @@ function makePreview(
     net_sales: '84.03',
     tax_amount: '15.97',
     opening_cash: '50.00',
+    cash_sales_net: '50.00',
+    drawer_movements_net: '0.00',
     expected_cash: '100.00',
     variance: null,
     vat_breakdown: [],
@@ -112,6 +136,114 @@ async function enterActual(code: string, value: string) {
 describe('CashReconciliationSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    i18nTestState.locale = 'en';
+  });
+
+  describe('SV-11 — whole-drawer copy and reveal', () => {
+    it('shows the float disclosure immediately when counting is not blind', () => {
+      render(<CashReconciliationSection {...buildProps()} />);
+
+      expect(
+        screen.getByText('Expected includes the opening float.'),
+      ).toBeInTheDocument();
+    });
+
+    it('keeps the interpolated whole-drawer instruction visible before blind commit', () => {
+      render(
+        <CashReconciliationSection
+          {...buildProps({
+            fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId('cash-count-instruction')).toHaveTextContent(
+        'Count all the cash in the drawer, including the opening float of 50.00.',
+      );
+      expect(screen.queryByTestId('cash-count-reveal-summary')).not.toBeInTheDocument();
+      expect(screen.queryByText(/rounding/i)).not.toBeInTheDocument();
+    });
+
+    it('reveals the six-line decomposition after blind commit and names zero variance', async () => {
+      render(
+        <CashReconciliationSection
+          {...buildProps({
+            fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+          })}
+        />,
+      );
+
+      await act(async () => {
+        await enterActual('CASH', '100');
+      });
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+
+      const summary = await screen.findByTestId('cash-count-reveal-summary');
+      expect(summary).toHaveTextContent('Opening float50.00');
+      expect(summary).toHaveTextContent('Cash sales (net of change)50.00');
+      expect(summary).toHaveTextContent('Paid in / paid out0.00');
+      expect(summary).toHaveTextContent('Expected in drawer100.00');
+      expect(summary).toHaveTextContent('Counted100');
+      expect(summary).toHaveTextContent('No difference');
+      expect(screen.getByTestId('tender-variance-CASH')).toHaveTextContent(
+        'No difference',
+      );
+      expect(summary).toHaveTextContent('Expected includes the opening float.');
+      expect(within(summary).queryByText(/rounding/i)).not.toBeInTheDocument();
+    });
+
+    it('ships the exact English and French locale strings and keeps Écart', () => {
+      expect(enPos.cash_count.count_instruction).toBe(
+        'Count all the cash in the drawer, including the opening float of {{amount}}.',
+      );
+      expect(frPos.cash_count.count_instruction).toBe(
+        "Comptez tout l'argent présent dans le tiroir, y compris le fonds de caisse de {{amount}}.",
+      );
+      expect(enPos.cash_count.expected_includes_float).toBe(
+        'Expected includes the opening float.',
+      );
+      expect(frPos.cash_count.expected_includes_float).toBe(
+        'Le montant attendu inclut le fonds de caisse.',
+      );
+      expect(frPos.cash_count.no_difference).toBe('Aucun écart');
+      expect(frPos.cash_count.variance).toBe('Écart');
+    });
+
+    it('renders the exact French instruction, disclosure, and six-line reveal', async () => {
+      i18nTestState.locale = 'fr';
+      render(
+        <CashReconciliationSection
+          {...buildProps({
+            fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+          })}
+        />,
+      );
+
+      expect(screen.getByTestId('cash-count-instruction')).toHaveTextContent(
+        "Comptez tout l'argent présent dans le tiroir, y compris le fonds de caisse de 50.00.",
+      );
+      expect(
+        screen.queryByText('Le montant attendu inclut le fonds de caisse.'),
+      ).not.toBeInTheDocument();
+
+      await act(async () => {
+        await enterActual('CASH', '100');
+      });
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+
+      const summary = await screen.findByTestId('cash-count-reveal-summary');
+      expect(summary).toHaveTextContent(
+        'Le montant attendu inclut le fonds de caisse.',
+      );
+      expect(summary).toHaveTextContent('Fonds de caisse50.00');
+      expect(summary).toHaveTextContent(
+        'Ventes en espèces (net rendu monnaie)50.00',
+      );
+      expect(summary).toHaveTextContent("Entrées / sorties d'espèces0.00");
+      expect(summary).toHaveTextContent('Attendu en caisse100.00');
+      expect(summary).toHaveTextContent('Compté100');
+      expect(summary).toHaveTextContent('Aucun écart');
+    });
   });
 
   // ── E4: payment_method_name display ────────────────────────────────────────
