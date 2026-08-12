@@ -6,6 +6,7 @@ namespace App\Modules\POS\Domain\Services;
 
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\POS\Application\Services\Fiscal\V3\V3ReceiptHashComputer;
+use App\Modules\POS\Domain\DTOs\ReceiptChainArmVerificationResult;
 use App\Modules\POS\Domain\Enums\SealedHashAlgorithm;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
@@ -178,7 +179,7 @@ final class ReceiptHashService
      * Verify hash chain integrity for a terminal.
      *
      * **Phase 1 §5.0 D1 / §13 rebuild (Task 30).** The verifier now has
-     * two arms:
+     * three arms:
      *
      *   - **Authoritative arm — `fiscal_events`.** Walks every fiscal-events
      *     row for the terminal in `sequence_number` order, re-hashes the
@@ -196,20 +197,49 @@ final class ReceiptHashService
      *     original path — the legacy verifier survives until those rows
      *     age out (Task 25 / Task 31 retirement).
      *
-     * If BOTH arms are empty the chain is vacuously valid. If either arm
-     * detects a break the verifier returns false; both arms are
-     * independent so a clean fiscal_events chain alongside a tampered
+     *   - **Projected mirror arm.** Every receipt linked through
+     *     `fiscal_event_id` must mirror the referenced event's
+     *     `current_hash`. This is deliberately separate from the
+     *     authoritative canonical-bytes arm: one proves the event chain,
+     *     the other proves the projection still points at the same digest.
+     *
+     * If all three arms are empty the chain is vacuously valid. If any arm
+     * detects a break the verifier returns false; the arms are independent
+     * so a clean fiscal_events chain alongside a tampered
      * legacy row still fails.
      *
-     * @return bool True if both arms verify clean, false on any break.
+     * @return bool True if all arms verify clean, false on any break.
      */
     public function verifyTerminalChain(Terminal $terminal): bool
     {
-        if (! $this->verifyTerminalChainFiscalArm($terminal)) {
-            return false;
+        foreach ($this->verifyTerminalChainArms($terminal) as $arm) {
+            if (! $arm->isValid) {
+                return false;
+            }
         }
 
-        return $this->verifyLegacyArm($terminal);
+        return true;
+    }
+
+    /**
+     * Verify and diagnose each receipt-chain arm independently.
+     *
+     * The fixed keys are consumed by `pos:verify-chains` so operators see
+     * accurate coverage and a breakpoint for the arm that failed.
+     *
+     * @return array{
+     *     fiscal_events: ReceiptChainArmVerificationResult,
+     *     projected_mirror: ReceiptChainArmVerificationResult,
+     *     legacy: ReceiptChainArmVerificationResult
+     * }
+     */
+    public function verifyTerminalChainArms(Terminal $terminal): array
+    {
+        return [
+            'fiscal_events' => $this->inspectFiscalEventsArm($terminal),
+            'projected_mirror' => $this->inspectProjectedMirrorArm($terminal),
+            'legacy' => $this->verifyLegacyArm($terminal),
+        ];
     }
 
     /**
@@ -233,13 +263,18 @@ final class ReceiptHashService
      */
     public function verifyTerminalChainFiscalArm(Terminal $terminal): bool
     {
+        return $this->inspectFiscalEventsArm($terminal)->isValid;
+    }
+
+    private function inspectFiscalEventsArm(Terminal $terminal): ReceiptChainArmVerificationResult
+    {
         $rows = $this->db()->table('fiscal_events')
             ->where('terminal_id', $terminal->id)
             ->orderBy('sequence_number')
             ->get(['id', 'sequence_number', 'canonical_bytes', 'previous_hash', 'current_hash']);
 
         if ($rows->isEmpty()) {
-            return true;
+            return new ReceiptChainArmVerificationResult(true, 0);
         }
 
         $expectedPrevious = $terminal->genesis_seed;
@@ -258,7 +293,11 @@ final class ReceiptHashService
                     failureMode: 'hash_mismatch',
                 );
 
-                return false;
+                return new ReceiptChainArmVerificationResult(
+                    isValid: false,
+                    count: $rows->count(),
+                    breakPoint: sprintf('Event %s (sequence #%d, hash)', $row->id, $row->sequence_number),
+                );
             }
 
             // (2) Link check — previous_hash must equal the expected
@@ -285,7 +324,11 @@ final class ReceiptHashService
                     failureMode: 'genesis_seed_or_link_length_invalid',
                 );
 
-                return false;
+                return new ReceiptChainArmVerificationResult(
+                    isValid: false,
+                    count: $rows->count(),
+                    breakPoint: sprintf('Event %s (sequence #%d, link length)', $row->id, $row->sequence_number),
+                );
             }
 
             $storedPreviousHash = (string) $row->previous_hash;
@@ -298,13 +341,101 @@ final class ReceiptHashService
                     failureMode: 'linkage_broken',
                 );
 
-                return false;
+                return new ReceiptChainArmVerificationResult(
+                    isValid: false,
+                    count: $rows->count(),
+                    breakPoint: sprintf('Event %s (sequence #%d, link)', $row->id, $row->sequence_number),
+                );
             }
 
             $expectedPrevious = $storedCurrentHash;
         }
 
-        return true;
+        return new ReceiptChainArmVerificationResult(true, $rows->count());
+    }
+
+    /**
+     * Cross-layer projection control: the receipt's stored fiscal hash must
+     * equal the current hash on the exact event referenced by fiscal_event_id.
+     * A left join is intentional so a missing referenced row fails closed.
+     */
+    private function inspectProjectedMirrorArm(Terminal $terminal): ReceiptChainArmVerificationResult
+    {
+        $rows = $this->db()->table('pos_receipts as receipts')
+            ->leftJoin('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+            ->where('receipts.terminal_id', $terminal->id)
+            ->whereNotNull('receipts.fiscal_event_id')
+            ->orderBy('receipts.chain_sequence')
+            ->get([
+                'receipts.id as receipt_id',
+                'receipts.fiscal_event_id',
+                'receipts.fiscal_hash as receipt_hash',
+                'events.current_hash as event_hash',
+            ]);
+
+        foreach ($rows as $row) {
+            $receiptId = (string) $row->receipt_id;
+            $eventId = (string) $row->fiscal_event_id;
+            $receiptHash = $row->receipt_hash;
+            $eventHash = $row->event_hash;
+
+            if (! is_string($receiptHash) || $receiptHash === '') {
+                return $this->projectedMirrorFailure(
+                    terminal: $terminal,
+                    count: $rows->count(),
+                    receiptId: $receiptId,
+                    eventId: $eventId,
+                    failureMode: 'missing_receipt_hash',
+                    detail: 'missing receipt fiscal_hash',
+                );
+            }
+
+            if (! is_string($eventHash) || $eventHash === '') {
+                return $this->projectedMirrorFailure(
+                    terminal: $terminal,
+                    count: $rows->count(),
+                    receiptId: $receiptId,
+                    eventId: $eventId,
+                    failureMode: 'missing_referenced_event_hash',
+                    detail: 'missing event/current_hash',
+                );
+            }
+
+            if (! hash_equals(strtolower($eventHash), strtolower($receiptHash))) {
+                return $this->projectedMirrorFailure(
+                    terminal: $terminal,
+                    count: $rows->count(),
+                    receiptId: $receiptId,
+                    eventId: $eventId,
+                    failureMode: 'hash_mismatch',
+                    detail: 'hash mirror',
+                );
+            }
+        }
+
+        return new ReceiptChainArmVerificationResult(true, $rows->count());
+    }
+
+    private function projectedMirrorFailure(
+        Terminal $terminal,
+        int $count,
+        string $receiptId,
+        string $eventId,
+        string $failureMode,
+        string $detail,
+    ): ReceiptChainArmVerificationResult {
+        Log::error('receipt_chain_mirror_verification_failed', [
+            'terminal_id' => $terminal->id,
+            'receipt_id' => $receiptId,
+            'fiscal_event_id' => $eventId,
+            'failure_mode' => $failureMode,
+        ]);
+
+        return new ReceiptChainArmVerificationResult(
+            isValid: false,
+            count: $count,
+            breakPoint: sprintf('Receipt %s -> Event %s (%s)', $receiptId, $eventId, $detail),
+        );
     }
 
     /**
@@ -349,7 +480,7 @@ final class ReceiptHashService
      * unconditional behavior, preserved exactly); after backfill
      * completion, a remaining NULL is a genuine anomaly and fails closed.
      */
-    private function verifyLegacyArm(Terminal $terminal): bool
+    private function verifyLegacyArm(Terminal $terminal): ReceiptChainArmVerificationResult
     {
         $receipts = Receipt::where('terminal_id', $terminal->id)
             ->whereNull('fiscal_event_id')
@@ -359,27 +490,39 @@ final class ReceiptHashService
             ->get();
 
         if ($receipts->isEmpty()) {
-            return true;
+            return new ReceiptChainArmVerificationResult(true, 0);
         }
 
         $previousHash = null;
 
         foreach ($receipts as $receipt) {
             if ($receipt->previous_hash !== $previousHash) {
-                return false;
+                return new ReceiptChainArmVerificationResult(
+                    false,
+                    $receipts->count(),
+                    sprintf('Sequence #%d (link)', $receipt->chain_sequence),
+                );
             }
 
             $algorithm = $this->resolveSealedHashAlgorithm($receipt, $terminal);
             if ($algorithm === null) {
                 // §6.3: post-backfill-completion NULL is a genuine anomaly —
                 // fail closed rather than guess a format.
-                return false;
+                return new ReceiptChainArmVerificationResult(
+                    false,
+                    $receipts->count(),
+                    sprintf('Sequence #%d (sealed algorithm)', $receipt->chain_sequence),
+                );
             }
 
             $expectedHash = $this->computeHashForAlgorithm($receipt, $algorithm, $previousHash);
 
             if ($expectedHash !== $receipt->fiscal_hash) {
-                return false;
+                return new ReceiptChainArmVerificationResult(
+                    false,
+                    $receipts->count(),
+                    sprintf('Sequence #%d (hash)', $receipt->chain_sequence),
+                );
             }
 
             $previousHash = $receipt->fiscal_hash;
@@ -392,10 +535,14 @@ final class ReceiptHashService
         if ($previousHash !== $terminal->last_hash && $terminal->last_hash !== null) {
             // last_hash being non-null but mismatched is a legacy chain
             // tail mismatch.
-            return false;
+            return new ReceiptChainArmVerificationResult(
+                false,
+                $receipts->count(),
+                'Terminal last_hash mismatch',
+            );
         }
 
-        return true;
+        return new ReceiptChainArmVerificationResult(true, $receipts->count());
     }
 
     /**

@@ -6,8 +6,6 @@ namespace App\Modules\POS\Commands;
 
 use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\POS\Domain\Enums\FiscalStatus;
-use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Services\ZReportHashService;
 use App\Modules\POS\Domain\Terminal;
@@ -31,9 +29,9 @@ use Illuminate\Support\Collection;
  * still the default, but it is now produced by iterating the tenant directory
  * and opening each tenant's own database.
  *
- * The chain verification LOGIC is untouched — same fiscal-event projection
- * carve-out, same `ReceiptHashService` / `ZReportHashService` calls, same
- * table columns.
+ * Receipt verification is reported as three independently attributable arms:
+ * authoritative fiscal events, projected receipt/event hash mirrors, and
+ * legacy receipts. Z-report verification is unchanged.
  *
  * **Evidence shape.** Each tenant emits its own verdict line and its own
  * results table so an E-7 reviewer can attribute every row; the aggregate exit
@@ -143,18 +141,19 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                     $companyName = $terminal->company->name;
 
                     if ($type === 'all' || $type === 'receipts') {
-                        $result = $this->verifyReceiptChain($terminal);
-                        $rows[] = [
-                            'terminal_code' => $terminal->code,
-                            'company' => $companyName,
-                            'chain_type' => 'Receipts',
-                            'status' => $result['is_valid'] ? "\u{2713}" : "\u{2717}",
-                            'count' => $result['count'],
-                            'break_point' => $result['break_point'],
-                        ];
+                        foreach ($this->verifyReceiptChains($terminal) as $result) {
+                            $rows[] = [
+                                'terminal_code' => $terminal->code,
+                                'company' => $companyName,
+                                'chain_type' => $result['chain_type'],
+                                'status' => $result['is_valid'] ? "\u{2713}" : "\u{2717}",
+                                'count' => $result['count'],
+                                'break_point' => $result['break_point'],
+                            ];
 
-                        if (! $result['is_valid']) {
-                            $tenantFailed = true;
+                            if (! $result['is_valid']) {
+                                $tenantFailed = true;
+                            }
                         }
                     }
 
@@ -286,82 +285,31 @@ final class VerifyPosChainCommand extends TenantScopedCommand
     }
 
     /**
-     * Verify receipt chain for a terminal.
+     * Verify and report each receipt-chain arm for a terminal.
      *
-     * @return array{is_valid: bool, count: int, break_point: string}
+     * @return list<array{chain_type: string, is_valid: bool, count: int, break_point: string}>
      */
-    private function verifyReceiptChain(Terminal $terminal): array
+    private function verifyReceiptChains(Terminal $terminal): array
     {
-        // Phase 1 fiscal-event projection carve-out (Task 21 F1 round-2) —
-        // projection rows (fiscal_event_id IS NOT NULL) have their
-        // authoritative integrity verified by `fiscal:verify-event-chain`
-        // (Task 31). They are excluded from the legacy verifier because
-        // their `fiscal_hash` is the canonical-bytes SHA-256 from the
-        // fiscal event, not the legacy pipe-string SHA-256 this command
-        // recomputes. See `ReceiptHashService::verifyTerminalChain()`
-        // docblock for the full rationale.
-        $count = Receipt::where('terminal_id', $terminal->id)
-            ->whereNull('fiscal_event_id')
-            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
-            ->where('is_voided', false)
-            ->where('is_training', false)
-            ->count();
+        $arms = $this->receiptHashService->verifyTerminalChainArms($terminal);
+        $labels = [
+            'fiscal_events' => 'Receipts: Fiscal Events',
+            'projected_mirror' => 'Receipts: Projected Mirror',
+            'legacy' => 'Receipts: Legacy',
+        ];
+        $results = [];
 
-        if ($count === 0) {
-            return [
-                'is_valid' => true,
-                'count' => 0,
-                'break_point' => '-',
+        foreach ($labels as $key => $label) {
+            $arm = $arms[$key];
+            $results[] = [
+                'chain_type' => $label,
+                'is_valid' => $arm->isValid,
+                'count' => $arm->count,
+                'break_point' => $arm->breakPoint ?? '-',
             ];
         }
 
-        $isValid = $this->receiptHashService->verifyTerminalChain($terminal);
-
-        $breakPoint = '-';
-        if (! $isValid) {
-            $breakPoint = $this->findReceiptChainBreak($terminal);
-        }
-
-        return [
-            'is_valid' => $isValid,
-            'count' => $count,
-            'break_point' => $breakPoint,
-        ];
-    }
-
-    /**
-     * Find the receipt chain break point by iterating through receipts.
-     */
-    private function findReceiptChainBreak(Terminal $terminal): string
-    {
-        // Phase 1 fiscal-event projection carve-out (Task 21 F1 round-2).
-        // See `verifyReceiptChain()` and `ReceiptHashService::verifyTerminalChain()`
-        // docblocks for the full rationale.
-        $receipts = Receipt::where('terminal_id', $terminal->id)
-            ->whereNull('fiscal_event_id')
-            ->where('fiscal_status', FiscalStatus::Fiscalized->value)
-            ->where('is_voided', false)
-            ->where('is_training', false)
-            ->orderBy('chain_sequence')
-            ->get();
-
-        $previousHash = null;
-
-        foreach ($receipts as $receipt) {
-            if ($receipt->previous_hash !== $previousHash) {
-                return sprintf('Sequence #%d (link)', $receipt->chain_sequence);
-            }
-
-            $expectedHash = $this->receiptHashService->calculateHash($receipt, $previousHash);
-            if ($expectedHash !== $receipt->fiscal_hash) {
-                return sprintf('Sequence #%d (hash)', $receipt->chain_sequence);
-            }
-
-            $previousHash = $receipt->fiscal_hash;
-        }
-
-        // Chain data matches but terminal last_hash may be stale
-        return 'Terminal last_hash mismatch';
+        return $results;
     }
 
     /**
