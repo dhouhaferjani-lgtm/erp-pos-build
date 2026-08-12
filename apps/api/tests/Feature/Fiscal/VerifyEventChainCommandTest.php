@@ -13,6 +13,7 @@ use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -583,27 +584,55 @@ final class VerifyEventChainCommandTest extends TestCase
      */
     private function seedReceiptMirrorTamper(): void
     {
-        $this->seedV3FiscalFixture();
+        DB::table('pos_terminals')
+            ->where('id', $this->terminalId)
+            ->update(['fiscal_schema_version' => 3]);
 
-        $operationalHead = (string) DB::table('fiscal_events')
-            ->where('terminal_id', $this->terminalId)
-            ->where('chain_context', 'operational')
-            ->value('current_hash');
+        $firstCanonicalBytes = '{"event":"receipt_mirror_control","sequence_number":1}';
+        $firstHash = hash('sha256', $firstCanonicalBytes);
+        $firstEventId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $firstCanonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: $firstHash,
+            chainContext: 'operational',
+        );
+        $this->insertProjectedReceipt(
+            fiscalEventId: $firstEventId,
+            fiscalHash: $firstHash,
+            previousHash: $this->genesisSeed,
+            canonicalBytes: $firstCanonicalBytes,
+            chainSequence: 1,
+        );
+
         $canonicalBytes = '{"event":"receipt_mirror_tamper","sequence_number":2}';
         $eventHash = hash('sha256', $canonicalBytes);
         $eventId = $this->insertEvent(
             sequenceNumber: 2,
             canonicalBytes: $canonicalBytes,
-            previousHash: $operationalHead,
+            previousHash: $firstHash,
             currentHash: $eventHash,
             chainContext: 'operational',
         );
+
+        $terminal = Terminal::query()->findOrFail($this->terminalId);
+        $receiptHashService = $this->app->make(ReceiptHashService::class);
+        $this->assertTrue(
+            $receiptHashService->verifyTerminalChain($terminal),
+            'T-c clean control must pass the current receipt verifier before the mirror mismatch is introduced.',
+        );
+
         $receiptId = $this->insertProjectedReceipt(
             fiscalEventId: $eventId,
             fiscalHash: str_repeat('d', 64),
-            previousHash: $operationalHead,
+            previousHash: $firstHash,
             canonicalBytes: $canonicalBytes,
             chainSequence: 2,
+        );
+
+        $this->assertTrue(
+            $receiptHashService->verifyTerminalChain($terminal),
+            'The current receipt verifier must remain green when T-c adds only the missing mirror divergence.',
         );
 
         $mirror = DB::table('pos_receipts as receipts')
@@ -630,6 +659,14 @@ final class VerifyEventChainCommandTest extends TestCase
         $this->assertSame($previousReceiptHash, $mirror->receipt_previous_hash);
         $this->assertNotSame($mirror->event_hash, $mirror->receipt_hash);
         $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', (string) $mirror->receipt_hash);
+        $this->assertSame(
+            1,
+            DB::table('pos_receipts as receipts')
+                ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+                ->where('receipts.terminal_id', $this->terminalId)
+                ->whereColumn('receipts.fiscal_hash', '!=', 'events.current_hash')
+                ->count(),
+        );
     }
 
     private function insertProjectedReceipt(
