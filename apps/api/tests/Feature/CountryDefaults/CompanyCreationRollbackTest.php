@@ -21,6 +21,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Spatie\Permission\PermissionRegistrar;
+use Symfony\Component\HttpFoundation\Response;
 use Tests\Support\CountryDefaults\M4Fixtures;
 use Tests\TestCase;
 
@@ -68,7 +69,7 @@ final class CompanyCreationRollbackTest extends TestCase
             'currency' => 'TND',
             'locale' => 'en',
             'timezone' => 'UTC',
-        ])->assertUnprocessable()
+        ])->assertStatus(503)
             ->assertJsonPath('error.code', 'COUNTRY_DEFAULTS_PROVISIONING_UNAVAILABLE')
             ->assertJsonPath('error.message', 'Company setup is temporarily unavailable. Please try again later or contact support.')
             ->assertDontSee('template assignment');
@@ -96,7 +97,7 @@ final class CompanyCreationRollbackTest extends TestCase
             'locale' => 'en',
             'timezone' => 'UTC',
             'vertical' => Vertical::Retail->value,
-        ])->assertUnprocessable()
+        ])->assertStatus(503)
             ->assertJsonPath('error.code', 'COUNTRY_DEFAULTS_PROVISIONING_UNAVAILABLE')
             ->assertJsonPath('error.message', 'Company setup is temporarily unavailable. Please try again later or contact support.')
             ->assertDontSee('template assignment');
@@ -118,7 +119,7 @@ final class CompanyCreationRollbackTest extends TestCase
             'currency' => 'EUR',
             'locale' => 'fr',
             'timezone' => 'UTC',
-        ])->assertUnprocessable()
+        ])->assertStatus(503)
             ->assertJsonPath('error.code', 'COUNTRY_DEFAULTS_PROVISIONING_UNAVAILABLE')
             ->assertJsonPath('error.message', 'La création de l’entreprise est temporairement indisponible. Réessayez plus tard ou contactez le support.')
             ->assertDontSee('wildcard');
@@ -138,7 +139,7 @@ final class CompanyCreationRollbackTest extends TestCase
         [, $user] = $this->tenantUser();
 
         $this->postAdditionalCompany($user, 'Unpublished assignment')
-            ->assertUnprocessable()
+            ->assertStatus(503)
             ->assertJsonPath('error.code', 'COUNTRY_DEFAULTS_PROVISIONING_UNAVAILABLE')
             ->assertJsonPath('error.message', 'Company setup is temporarily unavailable. Please try again later or contact support.')
             ->assertDontSee('published template');
@@ -165,7 +166,7 @@ final class CompanyCreationRollbackTest extends TestCase
         [, $user] = $this->tenantUser();
 
         $this->postAdditionalCompany($user, 'Stale assignment')
-            ->assertUnprocessable()
+            ->assertStatus(503)
             ->assertJsonPath('error.code', 'COUNTRY_DEFAULTS_PROVISIONING_UNAVAILABLE')
             ->assertJsonPath('error.message', 'Company setup is temporarily unavailable. Please try again later or contact support.')
             ->assertDontSee('registry version');
@@ -202,6 +203,7 @@ final class CompanyCreationRollbackTest extends TestCase
         return [$tenant, $user];
     }
 
+    /** @return TestResponse<Response> */
     private function postAdditionalCompany(User $user, string $name): TestResponse
     {
         return $this->actingAs($user, 'sanctum')->postJson('/api/v1/companies', [

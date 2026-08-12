@@ -15,6 +15,7 @@ use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use LogicException;
 use RuntimeException;
 
 /**
@@ -55,6 +56,23 @@ class ChartOfAccountsService
             /** @var TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder $seeder */
             $seeder->run($company->id, $company->tenant_id);
         });
+    }
+
+    /**
+     * Preview the frozen existing-chart repair semantics without consulting templates.
+     *
+     * This seam is intentionally restricted to a caller-owned rollback transaction.
+     * Assigned templates are creation-only and must never be applied to an existing chart.
+     */
+    public function previewLegacyExistingChartRepair(Company $company): void
+    {
+        if (DB::connection()->transactionLevel() < 1) {
+            throw new LogicException('Legacy existing-chart preview requires an active rollback transaction.');
+        }
+
+        $seeder = $this->getSeederForCountry($company->country_code);
+        /** @var TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder $seeder */
+        $seeder->run($company->id, $company->tenant_id);
     }
 
     /**

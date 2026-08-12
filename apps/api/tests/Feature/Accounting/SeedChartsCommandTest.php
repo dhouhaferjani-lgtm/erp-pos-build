@@ -10,6 +10,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\CountryDefaults\Application\Services\CountryTemplateResolver;
 use App\Modules\CountryDefaults\Infrastructure\Seeders\TemplateChartOfAccountsSeeder;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Log;
@@ -17,10 +18,12 @@ use Illuminate\Testing\PendingCommand;
 use Mockery;
 use Mockery\LegacyMockInterface;
 use RuntimeException;
+use Tests\Support\CountryDefaults\M4Fixtures;
 use Tests\TestCase;
 
 final class SeedChartsCommandTest extends TestCase
 {
+    use M4Fixtures;
     use RefreshDatabase;
 
     /**
@@ -235,25 +238,42 @@ final class SeedChartsCommandTest extends TestCase
         self::assertSame($before, $account->refresh()->getAttributes());
     }
 
-    public function test_template_provisioning_allows_dry_run_inspection_without_writes(): void
+    public function test_template_provisioning_allows_legacy_dry_run_without_assignments_or_writes(): void
     {
         config()->set('country_defaults.provisioning_enabled', true);
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
-        $this->app->instance(ChartOfAccountsService::class, new class($this->app->make(CountryTemplateResolver::class), $this->app->make(TemplateChartOfAccountsSeeder::class)) extends ChartOfAccountsService
-        {
-            public function seedForCompany(Company $company): void
-            {
-                Account::factory()->create([
-                    'tenant_id' => $company->tenant_id,
-                    'company_id' => $company->id,
-                    'code' => 'DRY-RUN-ONLY',
-                ]);
-            }
-        });
 
         $this->command('accounting:seed-charts', ['--dry-run' => true])
-            ->expectsOutputToContain('[DRY-RUN] Chart provisioning: 1 created')
+            ->expectsOutputToContain('[DRY-RUN] Chart provisioning:')
+            ->assertSuccessful();
+
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+    }
+
+    public function test_template_provisioning_legacy_dry_run_ignores_stale_assignment_without_writes(): void
+    {
+        config()->set('country_defaults.provisioning_enabled', true);
+        $actor = $this->m4Actor();
+        $template = $this->m4Published('tn', 'TN', $actor);
+        $this->m4Assign('TN', $template, $actor);
+        $this->app->bind(CountryAccountingCapabilities::class, static fn (): CountryAccountingCapabilities => new class implements CountryAccountingCapabilities
+        {
+            public function supportsStampDuty(string $countryCode): bool
+            {
+                return true;
+            }
+
+            public function version(): string
+            {
+                return 'stale-preview-proof';
+            }
+        });
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+
+        $this->command('accounting:seed-charts', ['--dry-run' => true])
+            ->expectsOutputToContain('[DRY-RUN] Chart provisioning:')
             ->assertSuccessful();
 
         self::assertSame(0, Account::query()->where('company_id', $company->id)->count());

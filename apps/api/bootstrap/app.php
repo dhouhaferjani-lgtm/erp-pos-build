@@ -892,7 +892,7 @@ return Application::configure(basePath: dirname(__DIR__))
                         'code' => $e->publicCode(),
                         'message' => trans($e->translationKey()),
                     ],
-                ], 422);
+                ], 503);
             }
         });
 
