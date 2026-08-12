@@ -83,9 +83,18 @@ final class TemplateImmutabilityTest extends TestCase
         ]);
         self::assertNull($template->bootstrap_key);
 
-        DB::connection($template->getConnectionName())->transaction(
+        try {
+            DB::connection($template->getConnectionName())->transaction(
+                static fn (): bool => $template->forceFill(['bootstrap_key' => 'not.the.importer'])->save(),
+            );
+            self::fail('A bootstrap key may only be assigned by the bootstrap importer.');
+        } catch (LogicException $exception) {
+            self::assertStringContainsString('immutable', $exception->getMessage());
+        }
+
+        DB::connection($template->getConnectionName())->transaction(static fn (): mixed => AdminTemplate::withinBootstrapImport(
             static fn (): bool => $template->forceFill(['bootstrap_key' => 'coa.test.legacy-v1'])->save(),
-        );
+        ));
         try {
             DB::connection($template->getConnectionName())->transaction(
                 static fn (): bool => $template->forceFill(['bootstrap_key' => 'coa.changed'])->save(),
