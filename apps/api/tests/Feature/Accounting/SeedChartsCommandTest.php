@@ -7,6 +7,8 @@ namespace Tests\Feature\Accounting;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
+use App\Modules\CountryDefaults\Application\Services\CountryTemplateResolver;
+use App\Modules\CountryDefaults\Infrastructure\Seeders\TemplateChartOfAccountsSeeder;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
@@ -209,12 +211,36 @@ final class SeedChartsCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_template_provisioning_refuses_to_mutate_existing_company_charts(): void
+    {
+        config()->set('country_defaults.provisioning_enabled', true);
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $account = Account::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'EXISTING',
+            'name' => 'Operator-owned account',
+            'parent_id' => null,
+            'is_system' => false,
+        ]);
+
+        $before = $account->refresh()->getAttributes();
+
+        $this->command('accounting:seed-charts')
+            ->expectsOutputToContain('disabled while country-defaults template provisioning is enabled')
+            ->assertFailed();
+
+        self::assertSame(1, Account::query()->where('company_id', $company->id)->count());
+        self::assertSame($before, $account->refresh()->getAttributes());
+    }
+
     public function test_delegate_throw_fails_loud_and_aborts(): void
     {
         $tenant = Tenant::factory()->create();
         Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
 
-        $this->app->instance(ChartOfAccountsService::class, new class extends ChartOfAccountsService
+        $this->app->instance(ChartOfAccountsService::class, new class($this->app->make(CountryTemplateResolver::class), $this->app->make(TemplateChartOfAccountsSeeder::class)) extends ChartOfAccountsService
         {
             public function seedForCompany(Company $company): void
             {

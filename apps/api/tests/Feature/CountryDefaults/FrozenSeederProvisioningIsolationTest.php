@@ -18,6 +18,7 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
         yield 'registration' => ['app/Modules/Tenant/Application/Services/TenantInitializationService.php'];
         yield 'accounting service' => ['app/Modules/Accounting/Application/Services/ChartOfAccountsService.php'];
         yield 'additional company' => ['app/Modules/Company/Presentation/Controllers/CompanyController.php'];
+        yield 'existing-company seed command' => ['app/Console/Commands/SeedChartsCommand.php'];
         yield 'database seeder' => ['database/seeders/DatabaseSeeder.php'];
         yield 'demo tenant' => ['database/seeders/DemoTenantSeeder.php'];
         yield 'coffee shop' => ['database/seeders/CoffeeShopSeeder.php'];
@@ -40,13 +41,30 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
             self::assertStringContainsString('$this->templateSeeder->seed', $source);
         }
 
-        if (! str_ends_with($relativePath, 'DemoPharmacySeeder.php')) {
+        if (! str_ends_with($relativePath, 'DemoPharmacySeeder.php') && ! str_ends_with($relativePath, 'ParapharmacySeeder.php')) {
             self::assertStringContainsString(
                 'ChartOfAccountsService',
                 $source,
                 "{$relativePath} must route new-company chart creation through the activation-aware service.",
             );
         }
+    }
+
+    public function test_pharmacy_seeder_uses_template_backed_contract_with_country_parameter(): void
+    {
+        $contract = (string) file_get_contents(base_path('database/seeders/Contracts/ChartOfAccountsSeederContract.php'));
+        $implementation = (string) file_get_contents(base_path('database/seeders/CountryDefaultsChartOfAccountsSeeder.php'));
+        $base = (string) file_get_contents(base_path('database/seeders/ParapharmacySeeder.php'));
+        $tunisia = (string) file_get_contents(base_path('database/seeders/DemoPharmacySeeder.php'));
+
+        self::assertStringContainsString('implements ChartOfAccountsSeederContract', $implementation);
+        self::assertStringContainsString('ChartOfAccountsService', $implementation);
+        self::assertStringContainsString('CountryDefaultsChartOfAccountsSeeder', $base);
+        self::assertStringContainsString('$this->localeCountryCode()', $base);
+        self::assertStringContainsString("return 'FR';", $base);
+        self::assertStringContainsString("return 'TN';", $tunisia);
+        self::assertStringNotContainsString('class-string<ChartOfAccountsSeederContract>', $base.$tunisia);
+        self::assertStringContainsString('interface ChartOfAccountsSeederContract', $contract);
     }
 
     public function test_no_unapproved_production_file_imports_a_frozen_seeder(): void

@@ -16,7 +16,7 @@ use Throwable;
 /**
  * Productized replacement for the Phase-2 ad-hoc chart-provisioning tinker step
  * (docs/handoff/treasury-phase2-deploy-checklist.md §2). Re-runs the locale chart
- * seeder for every company of the CURRENT tenant by delegating to
+ * legacy seeder for every company of the CURRENT tenant by delegating to
  * {@see ChartOfAccountsService::seedForCompany()} — the single source of truth for
  * chart provisioning. The seeders are additive/idempotent: they add the
  * portfolio/fee accounts (cheques-to-collect, effects, discounted effects, bank
@@ -33,6 +33,8 @@ use Throwable;
  *   php artisan tenants:run accounting:seed-charts --tenants=<uuid>    # scope to one tenant
  *
  * Direct (already inside a bound tenant context): `php artisan accounting:seed-charts [--dry-run]`.
+ * This existing-company repair command fails closed when country-defaults template provisioning
+ * is enabled because assigned templates are creation-only and must never mutate a live chart.
  *
  * ## Operational contract
  *
@@ -77,6 +79,14 @@ final class SeedChartsCommand extends Command
         if (! Schema::hasTable('companies') || ! Schema::hasTable('accounts')) {
             $this->error(
                 'Tenant tables are unavailable. Run this command inside each tenant context (for example via tenants:run).',
+            );
+
+            return self::FAILURE;
+        }
+
+        if ((bool) config('country_defaults.provisioning_enabled', false)) {
+            $this->error(
+                'accounting:seed-charts is disabled while country-defaults template provisioning is enabled; templates apply only during new-company creation.',
             );
 
             return self::FAILURE;

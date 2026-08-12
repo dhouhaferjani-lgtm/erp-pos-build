@@ -20,6 +20,7 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
+use Database\Seeders\CountryDefaultsChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -51,6 +52,21 @@ final class ProvisioningFlagMatrixTest extends TestCase
         app(ChartOfAccountsService::class)->seedForCompany($company);
 
         self::assertSame('Template Equity', $this->accountName($company, '1000'));
+    }
+
+    public function test_country_parameterized_contract_consumer_uses_template_path(): void
+    {
+        $this->assignCustomWildcard('Contract Template Equity');
+        config(['country_defaults.provisioning_enabled' => true]);
+        [, $company] = $this->tenantCompanyUser('ZZ', 'template-contract');
+        $seeder = new CountryDefaultsChartOfAccountsSeeder(
+            app(ChartOfAccountsService::class),
+            'zz',
+        );
+
+        $seeder->run($company->id, $company->tenant_id);
+
+        self::assertSame('Contract Template Equity', $this->accountName($company, '1000'));
     }
 
     public function test_registration_path_uses_legacy_seeder_when_flag_is_false(): void

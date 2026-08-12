@@ -619,7 +619,12 @@ class ParapharmacySeeder extends Seeder
     protected function setupFinancialFoundation(Company $company): void
     {
         // Chart of accounts (legacy or assigned template, selected at call time).
-        $this->chartOfAccounts->seedForCompany($company);
+        $coaSeeder = new CountryDefaultsChartOfAccountsSeeder(
+            $this->chartOfAccounts,
+            $this->localeCountryCode(),
+        );
+        $coaSeeder->setCommand($this->command);
+        $coaSeeder->run($company->id, $company->tenant_id);
         $this->command->info('✓ Chart of Accounts (120 accounts)');
 
         // Payment methods

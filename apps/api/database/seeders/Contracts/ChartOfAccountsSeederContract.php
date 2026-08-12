@@ -4,23 +4,20 @@ declare(strict_types=1);
 
 namespace Database\Seeders\Contracts;
 
-use Database\Seeders\ParapharmacySeeder;
+use Database\Seeders\CountryDefaultsChartOfAccountsSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Database\Seeder;
 
 /**
  * Contract for locale-specific chart-of-accounts seeders.
  *
- * Every COA seeder returned by {@see ParapharmacySeeder::localeChartOfAccountsSeeder()}
- * (and its subclasses) must implement this interface so the caller can be
- * typed correctly without asserting a concrete class.
+ * Frozen locale seeders implement this for historical replay. Active demo
+ * provisioning uses {@see CountryDefaultsChartOfAccountsSeeder}, parameterized
+ * by country and delegated to the activation-aware provisioning service.
  *
  * Implementors must also extend {@see Seeder} (which
  * provides the `setCommand` implementation). The method is declared here
  * so PHPStan can verify the full call-site contract.
- *
- * Note: TunisiaChartOfAccountsSeeder must implement this interface when it is
- * wired in the Tunisia locale subclass (deferred to that task).
  */
 interface ChartOfAccountsSeederContract
 {
