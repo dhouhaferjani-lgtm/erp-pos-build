@@ -5,6 +5,7 @@ Source register:
 - `docs/handoff/reviews/country-defaults-phase-a/M6-round1.md`
 - `docs/handoff/reviews/country-defaults-phase-a/M6-round2.md`
 - `docs/handoff/reviews/country-defaults-phase-a/M6-round3.md`
+- `docs/handoff/reviews/country-defaults-phase-a/M6-round4.md`
 - M6 execution record: `docs/sessions/codex-country-defaults-phase-a-report.md`
 
 This ticket is the durable disposition for the M6 P3 and process notes that are broader than the
@@ -32,6 +33,18 @@ scoped adversarial-review UI fixes.
   report with a stable ordered accumulator so one preview can return all independent certification
   violations. Owner: country-defaults domain. Status: OPEN; the current singular report satisfies
   the milestone's persistent-panel contract but requires repeated fix/validate cycles.
+- **Round 4 #1 — non-422 preview status detail:** render the existing forbidden/not-found error
+  families for concurrent access revocation or deletion instead of the transient-unavailable copy.
+  Owner: country-defaults frontend. Status: OPEN; these states require a concurrent privilege or
+  lifecycle change and do not affect normal certification input.
+- **Round 4 #2 — debounce test timing:** remove the one-shot mock's dependence on all `TN,FR`
+  keystrokes arriving within 300 ms by using a persistent rejection after the initial blank-scope
+  preview. Owner: country-defaults frontend. Status: OPEN test hardening.
+- **Round 4 #3 — authoritative assignment option:** the currently assigned template is deliberately
+  displayed when it has drifted out of the eligible list so the select remains truthful. It cannot
+  be submitted as a change, is row-local, and the backend revalidates every repoint. Owner:
+  country-defaults frontend. Status: ACCEPTED EXCEPTION; future UI should render it as a disabled
+  current-value option to make the brief's “out-of-scope templates not offered” rule visually clear.
 
 ## Closed in the round-1 response
 

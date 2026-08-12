@@ -79,12 +79,12 @@ milestones:
   - id: M6
     title: "Admin FE (apps/web/src/features/admin/country-defaults/): templates list, editor grid, assignments, three-role shell, en+fr"
     review_lenses: [frontend-conventions, tenancy-authz]
-    status: review
+    status: passed
     fix_rounds: 3
     commit: cea196fb2
-    verdict: null
-    last_verdict: null
-    updated: cea196fb2
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M6-round4.md
+    last_verdict: ACCEPT
+    updated: 9909bdfd1
   - id: M7
     title: "Whole-branch integration gate + executable evidence manifest (all M1-M6 paths on PG + SQLite parity, static scopes, country-defaults:verify, route inventory, six branch-wide static assertions) — no new implementation; failure of any item blocks"
     review_lenses: [treasury, tenancy-authz, frontend-conventions]
