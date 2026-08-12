@@ -157,3 +157,38 @@ Acceptance contract:
 - cleanup failures are visible rather than swallowed as a green run;
 - normal teardown remains idempotent, and an induced-abort integration check or
   equivalent harness test demonstrates stale-resource reclamation.
+
+## FEV-OPS-08 — align the legacy timestamp comparison rationale
+
+**Owner:** Fiscal domain owner. **Current status:** OPEN, documentation-quality
+only. The verifier's legacy `event_time_device` branch is justified in PHP as a
+non-UTC connection/session compatibility rule, but both sanctioned authoring
+services and the supported app configuration currently pin UTC. Round-5 review
+could demonstrate neither a false green nor a false red, including with a
+`Europe/Paris` database default timezone.
+
+Acceptance contract:
+
+- the comment states the actual invariant the branch preserves, backed by a
+  regression that distinguishes it from the ordinary UTC-normalized path; or
+- the dead branch is removed after proving ordinary UTC normalization verifies
+  every sanctioned 14-key envelope shape;
+- sealed timestamps are never rewritten.
+
+## FEV-OPS-09 — rule the terminal state for resolved parse divergences
+
+**Owner:** Fiscal domain owner under owner decision D-8. **Current status:** OPEN.
+After `ParseFailureResolutionService` successfully resolves a
+`canonical_parse_failure`, the immutable canonical bytes still disagree with the
+new stored parsed payload. M1 intentionally detects that divergence, so the
+single-chain and fleet verifiers remain red even though the row is no longer
+quarantined. This is distinct from FEV-OPS-01's still-quarantined classes.
+
+Acceptance contract:
+
+- D-8 rules whether a second approver and a new correcting fiscal event are
+  required; no sealed row is rewritten in place;
+- the verifier distinguishes an active unresolved divergence from its approved,
+  auditable terminal state without hiding the original mismatch;
+- both pre-approval and approved-terminal-state behaviors have production-path
+  tests, and a genuine unapproved payload/canonical mismatch remains non-zero.
