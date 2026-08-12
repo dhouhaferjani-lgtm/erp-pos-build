@@ -47,9 +47,9 @@ milestones:
   - id: M0
     title: "Preflight — amended base check (base ancestor + contract digest at HEAD + administrative-only delta), read dossier §1 binding rulings (whole-drawer CONFIRMED, blind counting RULED ON everywhere, takings formula = dead code) + §2 rows SV-1/SV-9/SV-10/SV-11 in full + §3 Stage 1 + §5.1; citation inventory (unresolved=0); record the device-Arabic finding and the SV-9 six-touch-point prerequisite question list; declare the by-path regression set."
     review_lenses: [fiscal-pos]
-    status: in_progress
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 0b9df4c744798c5576ed340e5c1d3187d3484011
     verdict: null
     last_verdict: null
   - id: M1
