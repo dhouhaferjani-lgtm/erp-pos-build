@@ -123,7 +123,7 @@ The migration will additionally be checked for unattended `tenants:migrate` safe
 
 All commands are path-scoped. The full PHPUnit suite is forbidden.
 
-- API: the 15 explicit cash-count/fraud-settings/shift-variance files in the command below. No directory-wide PHPUnit invocation is claimed. `GenerateZReportWithCountsTest.php` covers the legacy count branch that M1 removes and the explicitly persisted blind-count setting M3 changes.
+- API: the 15 explicit cash-count/fraud-settings/shift-variance files in the core command below, plus the separately isolated 3-test `FiscalStatusFilterTest.php` guard on `buildExpectedPerMethod()`. No directory-wide PHPUnit invocation is claimed. `GenerateZReportWithCountsTest.php` covers the legacy count branch that M1 removes and the explicitly persisted blind-count setting M3 changes.
 - Device: the six explicit files in the command below, including the migration-v22 DDL and fraud-settings cache repository tests for M3's SQLite touch point.
 - Web: `src/features/compliance/components/CashDrawerControlsSection.test.tsx`; M3 will add the row-less `FraudSettingsPage` round-trip path.
 
@@ -184,6 +184,25 @@ pnpm vitest run \
   src/lib/db/repositories/__tests__/companyFraudSettingsCacheRepository.test.ts
 ```
 
+Literal M1 symbol guard command (fresh `autoerp_sv_stage1_m0r3_guard_test`; exit 0):
+
+```bash
+APP_ENV=testing LOG_LEVEL=warning \
+DB_HOST=127.0.0.1 DB_PORT=5432 \
+DB_DATABASE=autoerp_sv_stage1_m0r3_guard_test \
+DB_CENTRAL_DATABASE=autoerp_sv_stage1_m0r3_guard_test \
+DB_USERNAME=houssamr DB_PASSWORD='' \
+php artisan test -c phpunit-pgsql.xml \
+  tests/Feature/POS/FiscalStatusFilterTest.php
+```
+
+```text
+  Tests:    3 warnings (7 assertions)
+  Duration: 12.96s
+```
+
+The guard is isolated because one combined 16-file diagnostic run exhausted the local PostgreSQL server's lock table (`SQLSTATE[53200]: out of shared memory; increase max_locks_per_transaction`) late in `GenerateZReportWithCountsTest`; the following `25P02` was the aborted-transaction consequence, not the root error. The unchanged 15-file core and the newly added guard are each green on fresh dedicated databases. No application or test code was changed to mask host-capacity noise.
+
 Literal current web baseline command (exit 0):
 
 ```bash
@@ -200,6 +219,12 @@ There is no PHPUnit `--exclude` switch in the literal command because every incl
 The API command exits zero, but every test is marked WARN because `apps/api/.env` is absent in the linked worktree and `vlucas/phpdotenv` emits `file_get_contents(.../apps/api/.env): Failed to open stream` from `tests/TestCase.php:26`. This is test-environment noise, not source-inventory noise, and the baseline is not claimed pristine. The command explicitly sets `APP_ENV=testing` and `LOG_LEVEL=warning`; `TREASURY_SHIFT_VARIANCE_GL_ENABLED` remains unset and `config/treasury.php` therefore supplies its false default. Other environment-driven settings use their PHPUnit/process/framework defaults.
 
 For M3, the migration test will continue to force `LOG_LEVEL=warning` and will spy on the logging facade to assert that the exact completion token and changed/skipped counts are sent through `Log::warning()`. That proves warning-level visibility directly rather than inferring it from the default logging threshold. Test failures and assertion counts remain the regression signal; WARN-count deltas are not used because the missing `.env` marks every case WARN.
+
+### Forward work discovered during M0 review
+
+- M1's enumerated consumer grep must include and repair the stale production comment at `apps/api/app/Modules/Accounting/Application/Services/Reports/SalesReportService.php:258-259`, which hard-codes a line range into `buildExpectedPerMethod()`.
+- M3 must update the retired vertical-split docblock at `apps/api/app/Modules/Compliance/Application/Services/CompanyFraudSettingsService.php:22-25` when both verticals become blind-by-default.
+- The dispatch brief's amended M0 admin allowlist describes the dispatch-time comparison only. Required post-dispatch evidence under `docs/handoff/reviews/sv-stage1/` and `docs/sessions/` is not reclassified as baseline contamination; every subsequent review still independently verifies that the branch delta contains no production path before M1.
 
 An intentionally broader candidate run also exposed two pre-existing out-of-scope reds, neither caused by this branch:
 
