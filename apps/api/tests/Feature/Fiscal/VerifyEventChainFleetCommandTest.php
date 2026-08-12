@@ -62,6 +62,16 @@ final class VerifyEventChainFleetCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_empty_directory_and_empty_manifest_fail_instead_of_reporting_a_zero_work_success(): void
+    {
+        $manifest = $this->writeRawManifest('{}');
+
+        $this->artisan('fiscal:verify-event-chain-fleet', ['--manifest' => $manifest])
+            ->expectsOutputToContain('central tenant directory and manifest contain no tenants')
+            ->doesntExpectOutputToContain('0 tenant(s), 0 chain(s), no failures')
+            ->assertExitCode(1);
+    }
+
     public function test_directory_tenant_missing_from_manifest_is_reported_and_fails_aggregate(): void
     {
         $listed = $this->createTenantChain('listed');

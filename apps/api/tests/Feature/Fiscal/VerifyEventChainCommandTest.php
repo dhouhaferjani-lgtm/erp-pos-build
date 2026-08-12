@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Services\TerminalRegistrySnapshotService;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -13,16 +14,22 @@ use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
+use App\Modules\Partner\Domain\Enums\CustomerCategory;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Application\Services\VirtualAdminFiscalEventService;
 use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Testing\PendingCommand;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Helpers\Fiscal\GoldenFixtureBuilder;
 use Tests\TestCase;
 use Tests\Traits\ReadsCanonicalBytes;
 
@@ -145,6 +152,167 @@ final class VerifyEventChainCommandTest extends TestCase
         ])
             ->expectsOutputToContain('chain verified')
             ->assertExitCode(0);
+    }
+
+    public function test_verifies_the_existing_server_authored_snapshot_envelope(): void
+    {
+        $event = $this->app->make(TerminalRegistrySnapshotService::class)->emitInitialSnapshot(
+            tenantId: $this->tenantId,
+            companyId: $this->companyId,
+            terminalId: $this->terminalId,
+            operatorId: $this->verifierUser->id,
+        );
+
+        $this->assertStringNotContainsString('"chain_context"', $this->stringifyCanonicalBytes($event->canonical_bytes));
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
+    public function test_verifies_the_existing_virtual_admin_server_authored_envelopes(): void
+    {
+        $partner = Partner::factory()->customer()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'customer_category' => CustomerCategory::Business,
+            'account_status' => CustomerAccountStatus::Active,
+            'account_status_version' => 1,
+        ]);
+        $service = $this->app->make(VirtualAdminFiscalEventService::class);
+        $first = $service->appendAccountStatusChanged(
+            partner: $partner,
+            oldStatus: CustomerAccountStatus::Active,
+            newStatus: CustomerAccountStatus::Suspended,
+            actorUserId: $this->verifierUser->id,
+            reason: 'Verifier compatibility fixture',
+        );
+        $second = $service->appendDepositReceipt(
+            partner: $partner,
+            actorUserId: $this->verifierUser->id,
+            actorName: $this->verifierUser->name,
+            currencyCode: 'TND',
+            amount: '10.000',
+            methodCode: 'cash',
+            repositoryId: null,
+            notes: null,
+        );
+
+        $this->assertStringNotContainsString('"chain_context"', $this->stringifyCanonicalBytes($first->canonical_bytes));
+        $this->assertStringNotContainsString('"chain_context"', $this->stringifyCanonicalBytes($second->canonical_bytes));
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $first->terminal_id,
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
+    public function test_missing_chain_context_remains_a_failure_for_device_authored_events(): void
+    {
+        $payload = $this->chainBreakPayload('device-authored omission');
+        $envelope = json_decode($this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+        ), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($envelope);
+        unset($envelope['chain_context']);
+        $canonicalBytes = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $payload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('envelope_field_missing:chain_context')
+            ->assertExitCode(1);
+    }
+
+    public function test_legacy_server_compatibility_rejects_an_extra_envelope_field(): void
+    {
+        $first = $this->app->make(TerminalRegistrySnapshotService::class)->emitInitialSnapshot(
+            tenantId: $this->tenantId,
+            companyId: $this->companyId,
+            terminalId: $this->terminalId,
+            operatorId: $this->verifierUser->id,
+        );
+        $envelope = json_decode($this->stringifyCanonicalBytes($first->canonical_bytes), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($envelope);
+        $envelope['sequence_number'] = 2;
+        $envelope['previous_hash'] = $first->current_hash;
+        $envelope['unexpected'] = 'must fail closed';
+        ksort($envelope);
+        $canonicalBytes = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $first->current_hash,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $envelope['payload'],
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+            eventTimeDevice: str_replace(['T', 'Z'], [' ', ''], (string) $envelope['event_time_device']),
+            businessDate: (string) $envelope['business_date'],
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('envelope_field_missing:chain_context')
+            ->assertExitCode(1);
+    }
+
+    public function test_legacy_server_compatibility_still_checks_every_sealed_coordinate(): void
+    {
+        $first = $this->app->make(TerminalRegistrySnapshotService::class)->emitInitialSnapshot(
+            tenantId: $this->tenantId,
+            companyId: $this->companyId,
+            terminalId: $this->terminalId,
+            operatorId: $this->verifierUser->id,
+        );
+        $envelope = json_decode($this->stringifyCanonicalBytes($first->canonical_bytes), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($envelope);
+        $envelope['company_id'] = Str::uuid()->toString();
+        $envelope['sequence_number'] = 2;
+        $envelope['previous_hash'] = $first->current_hash;
+        ksort($envelope);
+        $canonicalBytes = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $first->current_hash,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $envelope['payload'],
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+            eventTimeDevice: str_replace(['T', 'Z'], [' ', ''], (string) $envelope['event_time_device']),
+            businessDate: (string) $envelope['business_date'],
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('sealed coordinate company_id mismatch')
+            ->assertExitCode(1);
     }
 
     public function test_fails_with_break_point_on_a_tampered_fixture(): void
@@ -475,6 +643,40 @@ final class VerifyEventChainCommandTest extends TestCase
         );
     }
 
+    public function test_seeded_v3_operational_context_is_a_clean_verifier_control(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--chain-context' => 'operational',
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
+    public function test_seeded_v3_z_session_context_is_a_clean_verifier_control(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--chain-context' => 'z_session',
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
     public function test_wrong_context_previous_hash_tamper_is_self_asserting(): void
     {
         $this->seedWrongContextPreviousHashTamper();
@@ -683,9 +885,22 @@ final class VerifyEventChainCommandTest extends TestCase
     {
         $this->seedWrongContextPreviousHashTamper();
 
-        $this->runVerifier()
-            ->expectsOutputToContain('previous_hash linkage mismatch')
-            ->assertExitCode(1);
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--chain-context' => 'operational',
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertSame(1, substr_count($output, 'CHAIN BREAK at sequence_number'));
+        $this->assertStringContainsString('previous_hash linkage mismatch', $output);
+        $this->assertStringContainsString('1 chain incidents, 0 quarantine incidents', $output);
+        $this->assertStringNotContainsString('sealed coordinates could not be derived', $output);
+        $this->assertStringNotContainsString('payload does not semantically match', $output);
+        $this->assertStringNotContainsString('current_hash mismatch', $output);
     }
 
     // =================================================================
@@ -698,7 +913,14 @@ final class VerifyEventChainCommandTest extends TestCase
             ->where('id', $this->terminalId)
             ->update(['fiscal_schema_version' => 3]);
 
-        $operationalCanonicalBytes = '{"event":"v3_operational_receipt","sequence_number":1}';
+        $operationalPayload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $operationalCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $operationalPayload,
+            eventType: FiscalEventType::SALE_RECEIPT,
+            chainContext: 'operational',
+        );
         $operationalHash = hash('sha256', $operationalCanonicalBytes);
         $operationalEventId = $this->insertEvent(
             sequenceNumber: 1,
@@ -706,15 +928,46 @@ final class VerifyEventChainCommandTest extends TestCase
             previousHash: $this->genesisSeed,
             currentHash: $operationalHash,
             chainContext: 'operational',
+            payload: $operationalPayload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::SALE_RECEIPT,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
-        $zSessionCanonicalBytes = '{"event":"v3_z_session","sequence_number":1}';
+        $zSessionPayload = [
+            'business_date' => '2026-08-12',
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'opened_at_device' => '2026-08-12T07:00:00.000Z',
+            'opening_float_amount' => '100.000',
+            'operator_id' => $this->operatorId,
+            'operator_name' => 'M1 Fixture Operator',
+            'session_id' => '00000000-0000-4000-8000-000000000101',
+            'shift_id' => '00000000-0000-4000-8000-000000000102',
+            'shift_number' => 1,
+            'terminal_id' => $this->terminalId,
+            'terminal_label' => 'M1 Fixture Terminal',
+            'training_flag' => false,
+        ];
+        $zSessionCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $zSessionPayload,
+            eventType: FiscalEventType::SESSION_OPEN,
+            chainContext: 'z_session',
+        );
         $zSessionEventId = $this->insertEvent(
             sequenceNumber: 1,
             canonicalBytes: $zSessionCanonicalBytes,
             previousHash: $this->genesisSeed,
             currentHash: hash('sha256', $zSessionCanonicalBytes),
             chainContext: 'z_session',
+            payload: $zSessionPayload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::SESSION_OPEN,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
         $receiptId = $this->insertProjectedReceipt(
@@ -773,13 +1026,25 @@ final class VerifyEventChainCommandTest extends TestCase
             ->where('terminal_id', $this->terminalId)
             ->where('chain_context', 'z_session')
             ->value('current_hash');
-        $canonicalBytes = '{"event":"wrong_context_link","sequence_number":2}';
+        $payload = $this->chainBreakPayload('wrong context link');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 2,
+            previousHash: $zSessionHead,
+            payload: $payload,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            chainContext: 'operational',
+        );
         $eventId = $this->insertEvent(
             sequenceNumber: 2,
             canonicalBytes: $canonicalBytes,
             previousHash: $zSessionHead,
             currentHash: hash('sha256', $canonicalBytes),
             chainContext: 'operational',
+            payload: $payload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
         $row = DB::table('fiscal_events')->where('id', $eventId)->first();
@@ -1159,13 +1424,15 @@ final class VerifyEventChainCommandTest extends TestCase
         string $previousHash,
         array $payload,
         array $overrides = [],
+        FiscalEventType $eventType = FiscalEventType::CHAIN_BREAK_DETECTED,
+        string $chainContext = 'operational',
     ): string {
         $fields = array_merge([
             'business_date' => '2026-08-12',
-            'chain_context' => 'operational',
+            'chain_context' => $chainContext,
             'company_id' => $this->companyId,
             'event_time_device' => '2026-08-12T07:00:00Z',
-            'event_type' => FiscalEventType::CHAIN_BREAK_DETECTED->value,
+            'event_type' => $eventType->value,
             'event_version' => 1,
             'operator_id' => $this->operatorId,
             'payload' => $payload,

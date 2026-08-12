@@ -64,6 +64,12 @@ final class VerifyEventChainFleetCommand extends AuthorizedFiscalChainCommand
         $directorySet = array_fill_keys($directoryTenantIds, true);
         $manifestTenantIds = array_keys($manifest);
 
+        if ($directoryTenantIds === [] && $manifestTenantIds === []) {
+            $this->error('Fleet verification refused: central tenant directory and manifest contain no tenants; nothing was verified.');
+
+            return self::FAILURE;
+        }
+
         $hasFailure = false;
         foreach (array_diff($directoryTenantIds, $manifestTenantIds) as $tenantId) {
             $this->error(sprintf('TENANT %s: MISSING FROM MANIFEST — no actor was supplied; nothing was verified.', $tenantId));

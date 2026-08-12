@@ -6,9 +6,14 @@ namespace App\Modules\Fiscal\Infrastructure\Commands;
 
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
+use App\Modules\Fiscal\Application\DTOs\ParseResult;
+use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Fiscal\Application\Services\StrictCanonicalParser;
+use App\Modules\Fiscal\Domain\DTOs\DepositReceiptPayload;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
+use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Tenant\Domain\Tenant;
@@ -90,6 +95,30 @@ use Throwable;
  */
 final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
 {
+    /**
+     * Exact legacy server-authored envelope shape. These services shipped
+     * canonical bytes before `chain_context` became a sealed envelope field.
+     * No device-authored type and no other omission is compatible.
+     *
+     * @var list<string>
+     */
+    private const LEGACY_SERVER_ENVELOPE_KEYS = [
+        'business_date',
+        'company_id',
+        'event_time_device',
+        'event_type',
+        'event_version',
+        'operator_id',
+        'payload',
+        'previous_hash',
+        'reference_document_id',
+        'reference_event_id',
+        'sequence_number',
+        'signature_version',
+        'tenant_id',
+        'terminal_id',
+    ];
+
     /** @var string */
     protected $signature = 'fiscal:verify-event-chain '.
         '{--tenant= : tenant_id of the chain to verify (required)} '.
@@ -107,6 +136,7 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
         private readonly FiscalIntegrityProvider $integrityProvider,
         PermissionRegistrar $permissionRegistrar,
         private readonly StrictCanonicalParser $canonicalParser,
+        private readonly FiscalPayloadConstraintValidator $payloadValidator,
     ) {
         parent::__construct($companyContext, $permissionRegistrar);
     }
@@ -335,9 +365,12 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
                 'chain_context',
                 'reference_event_id',
                 'reference_document_id',
+                'source_event_class',
+                'source_event_id',
                 'canonical_bytes',
                 'previous_hash',
                 'current_hash',
+                'signature_status',
                 'integrity_status',
                 'payload',
                 'payload_parse_status',
@@ -400,7 +433,7 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
             // still pending. Projection status controls only the semantic
             // comparison against the mutable `payload` column; it cannot
             // weaken verification of the sealed coordinates.
-            $parsed = $this->canonicalParser->parse($canonicalBytes, $row->event_type);
+            $parsed = $this->parseCanonicalForVerification($canonicalBytes, $row);
 
             if (! $parsed->ok || $parsed->envelope === null) {
                 $incidents[] = sprintf(
@@ -471,6 +504,121 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
     }
 
     /**
+     * Preserve strict parser semantics while recognizing the one historical
+     * production shape authored by three server-side services. The original
+     * envelope is returned so the coordinate comparison checks only values
+     * that were actually sealed; the synthetic context exists solely to run
+     * the current DTO/key-set/constraint parser over the legacy bytes.
+     */
+    private function parseCanonicalForVerification(string $canonicalBytes, FiscalEvent $row): ParseResult
+    {
+        $strict = $this->canonicalParser->parse($canonicalBytes, $row->event_type);
+        if ($strict->failureReason !== 'envelope_field_missing:chain_context'
+            || ! $this->isSanctionedLegacyServerRow($row)) {
+            return $strict;
+        }
+
+        try {
+            $legacyEnvelope = json_decode($canonicalBytes, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return $strict;
+        }
+
+        if (! is_array($legacyEnvelope) || array_is_list($legacyEnvelope)) {
+            return $strict;
+        }
+
+        $actualKeys = array_keys($legacyEnvelope);
+        sort($actualKeys);
+        if ($actualKeys !== self::LEGACY_SERVER_ENVELOPE_KEYS) {
+            return $strict;
+        }
+
+        $syntheticEnvelope = $legacyEnvelope;
+        $syntheticEnvelope['chain_context'] = $row->chain_context;
+        ksort($syntheticEnvelope);
+        $syntheticBytes = json_encode($syntheticEnvelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $validated = $this->canonicalParser->parse($syntheticBytes, $row->event_type);
+
+        if (! $validated->ok || $validated->payload === null) {
+            if (! $this->validateLegacyDepositReceipt($row, $syntheticEnvelope, $validated)) {
+                return $strict;
+            }
+
+            /** @var array<string, mixed> $payload */
+            $payload = $syntheticEnvelope['payload'];
+
+            return ParseResult::ok($payload, $legacyEnvelope);
+        }
+
+        return ParseResult::ok($validated->payload, $legacyEnvelope);
+    }
+
+    /**
+     * `DEPOSIT_RECEIPT` is server-only and is intentionally absent from the
+     * device parser's operational event allowlist. Apply its current DTO and
+     * constraint validators directly rather than weakening that device gate.
+     *
+     * @param  array<string, mixed>  $syntheticEnvelope
+     */
+    private function validateLegacyDepositReceipt(
+        FiscalEvent $row,
+        array $syntheticEnvelope,
+        ParseResult $validated,
+    ): bool {
+        if ($row->event_type !== FiscalEventType::DEPOSIT_RECEIPT
+            || $validated->failureReason !== 'envelope_chain_context_event_type_mismatch:event_type=DEPOSIT_RECEIPT,chain_context=operational') {
+            return false;
+        }
+
+        $payload = $syntheticEnvelope['payload'] ?? null;
+        if (! is_array($payload) || array_is_list($payload)) {
+            return false;
+        }
+
+        try {
+            DepositReceiptPayload::fromArray($payload);
+            $keySetError = $this->payloadValidator->validatePayloadKeySet(
+                FiscalEventType::DEPOSIT_RECEIPT,
+                $payload,
+                'operational',
+                1,
+            );
+            if ($keySetError !== null) {
+                return false;
+            }
+            $this->payloadValidator->validatePerEventConstraints(
+                FiscalEventType::DEPOSIT_RECEIPT,
+                $payload,
+                'operational',
+                1,
+            );
+        } catch (Throwable) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function isSanctionedLegacyServerRow(FiscalEvent $row): bool
+    {
+        return in_array($row->event_type, [
+            FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+            FiscalEventType::ACCOUNT_STATUS_CHANGED,
+            FiscalEventType::DEPOSIT_RECEIPT,
+        ], true)
+            && $row->event_version === 1
+            && $row->chain_context === 'operational'
+            && $row->signature_status === SignatureStatus::NotRequired
+            && $row->integrity_status === IntegrityStatus::Verified
+            && $row->payload_parse_status === PayloadParseStatus::Parsed
+            && $row->reference_event_id === null
+            && $row->reference_document_id === null
+            && $row->source_event_class === null
+            && $row->source_event_id === null;
+    }
+
+    /**
      * Compare JSON-object semantics without treating object key order as data.
      *
      * @param  array<string, mixed>  $stored
@@ -506,11 +654,20 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
      */
     private function sealedCoordinateMismatches(FiscalEvent $row, array $sealedEnvelope): array
     {
+        $isLegacyServerEnvelope = ! array_key_exists('chain_context', $sealedEnvelope);
         $storedCoordinates = [
             'business_date' => $row->business_date->format('Y-m-d'),
             'chain_context' => $row->chain_context,
             'company_id' => $row->company_id,
-            'event_time_device' => $row->event_time_device->utc()->format('Y-m-d\\TH:i:s\\Z'),
+            // The legacy server services passed a UTC Carbon to a timestampTz
+            // connection whose session timezone may be non-UTC. Eloquent
+            // serialized the wall clock without an offset, so the historical
+            // row retains the sealed wall time with the connection offset.
+            // Compare that exact authored representation only on the narrowly
+            // identified legacy path; current/device envelopes compare instants.
+            'event_time_device' => $isLegacyServerEnvelope
+                ? $row->event_time_device->format('Y-m-d\\TH:i:s\\Z')
+                : $row->event_time_device->utc()->format('Y-m-d\\TH:i:s\\Z'),
             'event_type' => $row->event_type->value,
             'event_version' => $row->event_version,
             'operator_id' => $row->operator_id,
@@ -525,6 +682,10 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
 
         $mismatches = [];
         foreach ($storedCoordinates as $field => $storedValue) {
+            if (! array_key_exists($field, $sealedEnvelope)) {
+                continue;
+            }
+
             $sealedValue = $sealedEnvelope[$field] ?? null;
             if ($storedValue !== $sealedValue) {
                 $mismatches[] = sprintf(
