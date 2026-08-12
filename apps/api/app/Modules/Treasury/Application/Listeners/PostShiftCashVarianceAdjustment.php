@@ -67,13 +67,14 @@ use Throwable;
  * `createPosToleranceWriteoffEntry`). It is NOT double counted here, and the
  * reason is structural rather than defensive: every 658/758 writer books
  * Dr 658 / **Cr ProductRevenue** (or the AR-side B2B mirror) and NONE touches a
- * cash account, while both expected-cash bases — the server's
- * `SUM(pos_receipt_payments.amount) − change_due` and the device's own
- * `cashTendered − change_due` term — are TENDERED-based, i.e. the cash that
- * physically entered the drawer. The tolerance is therefore already netted out
- * of "expected", and an honest count of a shift that wrote one off is BALANCED.
+ * cash account. On the live device path, the receipt term in the whole-drawer
+ * expected balance is `cashTendered − change_due`: the cash that physically
+ * entered the drawer. The tolerance is therefore already netted out of
+ * "expected", and an honest count of a shift that wrote one off is BALANCED.
+ * The retired schema-v2 server helper reached the same tolerance conclusion,
+ * but it is not a live expected-cash basis and must not define policy.
  *
- * That is the whole substantive answer, and it holds on both bases. The device's
+ * That is the whole substantive answer on the live basis. The device's
  * LEGACY fallback — which attributes `receipt.total` when a receipt carries no
  * per-payment breakdown, inflating expected by exactly the shortfall — is
  * covered by an additional BELT:

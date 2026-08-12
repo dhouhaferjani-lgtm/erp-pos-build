@@ -374,3 +374,23 @@ PHPUnit-only references were also enumerated: the new reflection contract plus `
 The config block, listener `SHIPS DISABLED` docblock, and G-1 deploy note now state the real gate: whole-drawer semantics are settled, but opening float and drawer operations remain unbooked in Treasury (SV-3/SV-4), so the flag stays off. The ticket preserves the historical schema/business-meaning distinction and the fourth-reader warning. The stale hard-coded line reference in `SalesReportService` and a second internal helper name were removed without altering behavior.
 
 `TREASURY_SHIFT_VARIANCE_GL_ENABLED` remains false by default. `CashDrawerService::calculateExpectedCash()` is byte-untouched. No event, posting shape, or Stage-2+ behavior changed.
+
+### M1 review fix round 1
+
+The first review found that the retired premise still appeared in the listener's double-count explanation, the sibling legacy-close and kill-switch tickets, and two regression-test docblocks; it also required the missing-join/fourth-reader history in the code annotation because the helper was retained. The fix round:
+
+- rewrites the listener to reason from the live device whole-drawer receipt term and explicitly labels the schema-v2 helper retired;
+- collapses the sibling legacy-close ticket's open takings/whole-drawer fork to the settled whole-drawer ruling and the real SV-3/SV-4 prerequisite;
+- updates the kill-switch-window ticket and test docblocks so none present the takings-only helper as a live drawer basis;
+- adds the missing-join/fourth-reader explanation to the annotation and pins both phrases in the retirement contract test;
+- names the deprecated compatibility symbol in the Sales report's row-fan-out cross-reference; and
+- skips the shipped-client portion of the contract honestly when an API-only checkout lacks the sibling web/device apps.
+
+The multi-line stale-premise scan over the required artifacts, all `2026-08-08-g3-*` tickets, and the two test mirrors returned no match for the refuted premise or open owner-ruling language.
+
+Fresh PostgreSQL verification:
+
+- chokepoint, unreachability, pending-seal, and Treasury trigger paths: 15 cases, 8815 assertions, exit 0;
+- `GenerateZReportWithCountsTest.php`: 13 cases, 84 assertions, exit 0.
+
+Pint passed for every touched PHP file. The fix round is documentation/test-contract only; runtime money, authorization, event, and GL behavior remain unchanged.

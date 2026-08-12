@@ -514,6 +514,9 @@ final class ReportGenerationService
      * @deprecated This is a takings-only server-authoring surface with no shipped client.
      *             Production is whole-drawer via the device. Retained only for the
      *             unreachable schema-v2 compatibility branch and its regression tests.
+     *             Opening cash is shift-level, not per-tender: accurate schema, false
+     *             business meaning. The defect is a missing join, not a wrong doctrine.
+     *             This is the fourth reader to reach it; this annotation stops a fifth.
      */
     private function buildExpectedPerMethod(Shift $shift, array $inputs): array
     {

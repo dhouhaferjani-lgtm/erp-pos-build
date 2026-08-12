@@ -57,10 +57,10 @@ milestones:
     title: "SV-1 — bury the takings-only formula (delete-with-branch OR @deprecated annotation, justified by an ENUMERATED grep-proof of consumers + a removal test) and correct the THREE artefacts that cite it as policy: config/treasury.php shift_variance_gl_enabled comment block, PostShiftCashVarianceAdjustment 'SHIPS DISABLED' docblock, ticket 2026-08-08-g3-shift-variance-gl-deploy-notes.md §G-1 — each stating the REAL gate (float + drawer ops unbooked, SV-3/SV-4). Preserve the historical note (R16 §1.3). Do NOT touch CashDrawerService::calculateExpectedCash()."
     review_lenses: [fiscal-pos, treasury]
     status: review
-    fix_rounds: 0
+    fix_rounds: 1
     commit: 2b16848902f5410c86dbe743b1608f0d09cac77c
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/sv-stage1/M1-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M2
     title: "SV-11 — count-screen copy, the EXACT dossier §2 strings: (1) always-visible whole-drawer instruction with the interpolated float, (2) float-disclosure line on expected (renders AFTER Commit Counts under blind mode), (3) 'No difference'/'Aucun écart' + the 6-line reveal decomposition — LINE 2 Stage-1 rendering contract: render ONLY the cash-sales row, NO rounding placeholder and NO reserved DOM slot; the structural extension is deferred explicitly to SV-12 (Stage 5, OUT of scope), (4) keep 'Écart'. Through t(), en+fr in parallel; NO device ar tree — ship en+fr, file docs/superpowers/tickets/2026-08-11-pos-device-arabic-locale.md, and PROCEED: the ar-locale gate is INFORMATIONAL ONLY and NEVER stops this milestone. Presentation only — no money recomputation, no parseFloat."
     review_lenses: [fiscal-pos]

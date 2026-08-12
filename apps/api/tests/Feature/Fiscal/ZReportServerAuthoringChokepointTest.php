@@ -22,10 +22,19 @@ final class ZReportServerAuthoringChokepointTest extends TestCase
         $this->assertStringContainsString('@deprecated', $docblock);
         $this->assertStringContainsString('takings-only', $docblock);
         $this->assertStringContainsString('Production is whole-drawer via the device', $docblock);
+        $this->assertStringContainsString('The defect is a missing join, not a wrong doctrine', $docblock);
+        $this->assertStringContainsString('this annotation stops a fifth', $docblock);
 
         $repoRoot = dirname(base_path(), 2);
-        $webClient = $this->read($repoRoot.'/apps/web/src/features/pos/api/shiftApi.ts');
-        $deviceClient = $this->read($repoRoot.'/apps/pos/src/api/reportApi.ts');
+        $webClientPath = $repoRoot.'/apps/web/src/features/pos/api/shiftApi.ts';
+        $deviceClientPath = $repoRoot.'/apps/pos/src/api/reportApi.ts';
+
+        if (! is_file($webClientPath) || ! is_file($deviceClientPath)) {
+            $this->markTestSkipped('Shipped-client inventory requires the monorepo web and device apps.');
+        }
+
+        $webClient = $this->read($webClientPath);
+        $deviceClient = $this->read($deviceClientPath);
 
         $this->assertMatchesRegularExpression(
             '/export interface ZReportData\s*\{\s*terminal_id: string\s*\}/s',

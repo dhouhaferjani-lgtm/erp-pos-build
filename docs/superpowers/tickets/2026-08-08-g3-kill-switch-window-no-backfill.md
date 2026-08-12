@@ -27,8 +27,8 @@ then flag ON, device re-syncs the SAME Z → HTTP 200 {"status":"duplicate"}
 after enable+replay                     → docs=0 movements=0
 ```
 
-Why it bites: the lane ships DISABLED pending an owner ruling on POS count semantics that is not
-yet scheduled, so **every shift closed between merge and enable is permanently without its
+Why it bites: the lane ships DISABLED until Treasury represents the opening float and drawer
+operations in the whole-drawer basis (SV-3/SV-4), so **every shift closed between merge and enable is permanently without its
 658/758 leg**. `pos_shifts.variance` is stamped and the fraud alert fires (that half is ungated —
 see the deploy note), so the tenant has a recorded variance with no ledger counterpart: exactly
 the document-per-action defect this lane exists to remove, reintroduced by its own safety gate.
