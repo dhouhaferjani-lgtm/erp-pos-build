@@ -123,7 +123,7 @@ The migration will additionally be checked for unattended `tenants:migrate` safe
 
 All commands are path-scoped. The full PHPUnit suite is forbidden.
 
-- API: the 15 explicit cash-count/fraud-settings/shift-variance files in the core command below, plus the separately isolated 3-test `FiscalStatusFilterTest.php` guard on `buildExpectedPerMethod()`. No directory-wide PHPUnit invocation is claimed. `GenerateZReportWithCountsTest.php` covers the legacy count branch that M1 removes and the explicitly persisted blind-count setting M3 changes.
+- API: 23 explicit cash-count/fraud-settings/fiscal-hash/shift-variance files across the resource-scoped commands below. This is a declared file-level narrowing from the dispatch's suite-directory wording: a directory-wide run would include hundreds of unrelated fiscal, POS, and Treasury tests plus known broken neighbors, while Stage 1 changes only the enumerated symbols and payload surfaces. The narrowing is based on searches for `cash_counts`, `buildExpectedPerMethod`, `expected_per_method`, `require_blind_cash_count`, and the named Stage-1 classes; every matching covering file found for the M1 removal branch is included below. `GenerateZReportWithCountsTest.php` covers the legacy branch itself, and `FiscalStatusFilterTest.php` pins its pending-seal semantics.
 - Device: the six explicit files in the command below, including the migration-v22 DDL and fraud-settings cache repository tests for M3's SQLite touch point.
 - Web: `src/features/compliance/components/CashDrawerControlsSection.test.tsx`; M3 will add the row-less `FraudSettingsPage` round-trip path.
 
@@ -132,7 +132,9 @@ Baseline results:
 ```text
 [PG 127.0.0.1:5432, fresh dedicated autoerp_sv_stage1_m0r2_test]
 Scoped API regression command: exit 0
-Test cases: 63
+Aggregate declared API baseline: 108 test cases, 9302 assertions across four resource-scoped commands
+
+Core command:
 
   Tests:    63 warnings (9117 assertions)
   Duration: 57.80s
@@ -201,7 +203,49 @@ php artisan test -c phpunit-pgsql.xml \
   Duration: 12.96s
 ```
 
-The guard is isolated because one combined 16-file diagnostic run exhausted the local PostgreSQL server's lock table (`SQLSTATE[53200]: out of shared memory; increase max_locks_per_transaction`) late in `GenerateZReportWithCountsTest`; the following `25P02` was the aborted-transaction consequence, not the root error. The unchanged 15-file core and the newly added guard are each green on fresh dedicated databases. No application or test code was changed to mask host-capacity noise.
+One combined 16-file diagnostic run observed a transient PostgreSQL lock-table exhaustion (`SQLSTATE[53200]: out of shared memory`) under concurrent host load; the following `25P02` was the aborted-transaction consequence. The round-4 reviewer later reproduced the combined 16-file set green (66 cases / 9124 assertions), so this is recorded as a one-off observation, not a standing limit or justification for future narrowing. The separately recorded fresh-database commands are green, and no application or test code was changed to mask host-capacity noise.
+
+Literal six-file fiscal/request/persistence expansion (fresh `autoerp_sv_stage1_m0r4_six_test`; exit 0):
+
+```bash
+APP_ENV=testing LOG_LEVEL=warning \
+DB_HOST=127.0.0.1 DB_PORT=5432 \
+DB_DATABASE=autoerp_sv_stage1_m0r4_six_test \
+DB_CENTRAL_DATABASE=autoerp_sv_stage1_m0r4_six_test \
+DB_USERNAME=houssamr DB_PASSWORD='' \
+php artisan test -c phpunit-pgsql.xml \
+  tests/Feature/POS/ZReportSyncControllerSchema2Test.php \
+  tests/Feature/POS/GenerateZReportEndToEndTest.php \
+  tests/Feature/POS/GenerateZReportRequestValidationTest.php \
+  tests/Feature/POS/HashGoldenByteTest.php \
+  tests/Integration/POS/HashGoldenByteTest.php \
+  tests/Unit/POS/HashInputScale4EquivalenceTest.php
+```
+
+```text
+  Tests:    41 warnings (174 assertions)
+  Duration: 68.49s
+```
+
+Literal cross-tenant `cash_counts.payment_method_id` guard (fresh `autoerp_sv_stage1_m0r4_tenant_guard_test`; exit 0):
+
+```bash
+APP_ENV=testing LOG_LEVEL=warning \
+DB_HOST=127.0.0.1 DB_PORT=5432 \
+DB_DATABASE=autoerp_sv_stage1_m0r4_tenant_guard_test \
+DB_CENTRAL_DATABASE=autoerp_sv_stage1_m0r4_tenant_guard_test \
+DB_USERNAME=houssamr DB_PASSWORD='' \
+php artisan test -c phpunit-pgsql.xml \
+  tests/Feature/POS/PosStabilizationTenantIsolationTest.php \
+  --filter test_generate_z_report_refuses_cross_tenant_payment_method_id_in_cash_counts
+```
+
+```text
+  Tests:    1 warning (4 assertions)
+  Duration: 33.23s
+```
+
+The full tenant-isolation file has five unrelated PostgreSQL fixture failures in order-management cases: helper lines 1557/1704 write string values such as `SHIFT-B-jqsY` into the integer `pos_shifts.shift_number` column. The exact Stage-1 cash-count tenant guard above is green and is the only test in that broad file selected by the M1 payload search.
 
 Literal current web baseline command (exit 0):
 
@@ -209,10 +253,11 @@ Literal current web baseline command (exit 0):
 pnpm vitest run src/features/compliance/components/CashDrawerControlsSection.test.tsx
 ```
 
-The scoped command intentionally omits exactly these two known-broken neighboring files from the broader candidate run:
+The scoped commands intentionally omit these known-broken neighboring tests from green claims:
 
 - `tests/Unit/POS/CashCountValidationServiceTest.php` — stale 8-argument `FraudSettingsDTO` construction versus the current 11-argument contract.
 - `tests/Feature/Treasury/ShiftCashVarianceAdjustmentTest.php` — a PostgreSQL fixture directly updates the trigger-protected repository balance.
+- Five order-management methods in `tests/Feature/POS/PosStabilizationTenantIsolationTest.php` — stale string `shift_number` fixtures conflict with the PostgreSQL integer schema. The Stage-1 cash-count tenant method is included explicitly and passes.
 
 There is no PHPUnit `--exclude` switch in the literal command because every included file is named explicitly; the two omissions above are therefore mechanically visible rather than hidden by a directory-wide selection.
 
@@ -237,5 +282,6 @@ Those files are not weakened or repaired in Stage 1. Relevant passing Treasury t
 
 - `docs/handoff/progress/sv-stage1.progress.yaml`
 - `docs/sessions/codex-sv-stage1-report.md`
+- `docs/handoff/reviews/sv-stage1/M0-round*.md` (reviewer-generated registers)
 
 No production code changed.
