@@ -165,3 +165,28 @@ voucher trace was correctly absent from the selection. The diagnostic aggregate 
 to existing manifest-anchor formatting, local PHP/PostgreSQL timezone mismatch, two refund-chain
 arithmetic assertions, and the unprovisioned `iziposcentral` test database. The required red paths
 were immediately rerun by path and reproduced `53 -> 79` for T16d and `13 -> 34` for T16e.
+
+### M1 adversarial round 4 remediation
+
+Round 4 found that V-10's unconditional factory refusal had escaped the guided endpoint into the
+legacy SO converter. The factory now takes an explicit guided-only strict-FEFO option: the SO path
+retains its historical unbatched fallback (`8 passed, 51 assertions`), while guided delivery remains
+loud, localized, and atomic (`12 passed, 48 assertions`). The red-first SO regression returned 422
+and the fixed path returns 201 with one complete Draft DN.
+
+The return-cost resolver/DTO moved to Inventory Domain, removing M1's new Domain-to-Application
+deptrac edge. The ratchet still reports base drift (`116` vs baseline `99`) but no M1 resolver
+violation; the touched-file JSON report contains only the pre-existing WAC edge in ReturnNoteService.
+Return-basis persistence now replaces by line id in one payload write and uses QuantityScale; the
+seeded-duplicate red was three rows and the fixed result is two (`3 passed, 24 assertions`).
+
+T11e now has its own rule test and fixtures, is wired into CI, and has a committed mutation/replay:
+`7bfc5ae61` suppressed direct-call diagnostics and failed the test; `b55614da0` restored it and passed
+`2 tests (2 assertions)`. The full rule directory passes `10/10`. The voucher trace skips loudly on
+SQLite, the rollback listener avoids resolving the GL graph for unrelated root rollbacks, and the
+full seam passes `22 tests (91 assertions)`. Lock sensitivity remains `11 passed (126 assertions)`;
+the amended production reds remain 53→79 and 13→34.
+
+The required directory regression run also reproduced two errors in untouched
+`GoodsReceiptDataTest`/`GoodsReceiptData.php`; full-tree PHPStan retains two untouched scale findings.
+They are explicitly base drift, while touched-file PHPStan is clean.

@@ -441,6 +441,10 @@ final class PosReturnScrapWriteOffTest extends TestCase
     #[DataProvider('t11cScrapPairs')]
     public function test_t11c_scrap_company_advisory_is_terminal_to_the_full_inventory_loop(string $pair): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('[PG] T11c scrap lock-order traces require PostgreSQL advisory locks.');
+        }
+
         $firstProduct = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,

@@ -151,7 +151,7 @@ and a green rerun:
 | Task | Red mutation | Red consequence | Replay | Green result |
 |---|---|---|---|---|
 | T11 | `6ab4cb163` | Entry dispatch produced `inventory_exit` | `ea0658233` | entry dispatch `1 passed (6)` |
-| T11e | `43bc692ff` | I-2 overlap fixture produced no diagnostic | `8654aeda8` | rule test `2 passed (2)` |
+| T11e | `7bfc5ae61` | a direct `postForExit` fixture produced no diagnostic | `b55614da0` | buffer-only rule `2 passed (2)` |
 | T12 | `2ad32b56f` | `inventory_entry` mapped to Cash, not Misc | `059e003fd` | mapping `1 passed (6)` |
 | T13 | `7ffda98ff` | duplicate reached raw `23505`, losing named precheck | `f129c5879` | precheck `1 passed (2)` |
 | T15a | `d0cce02c0` | attributable exits mislabeled `current_cost` | `c150cfc0d` | resolver/payload `2 passed (19)` |
@@ -192,3 +192,35 @@ take it, rolls back to that savepoint, then proves the second connection can tak
 transaction remains open. PostgreSQL therefore releases a transaction-scoped advisory acquired
 inside an aborted subtransaction. The buffer design does not rely on that behavior: its explicit
 `mark()` / `rollbackTo()` still discards savepoint-local contexts.
+
+## Round-4 final-fix evidence
+
+- V-10 is now scoped to the guided invoice endpoint by an explicit
+  `requireCompleteFefoAllocation` factory option. The existing SO-to-invoice caller retains its
+  pre-M1 unbatched fallback and completes atomically; its new HTTP regression passes `1 test (6
+  assertions)`. The full converter suite passes `8 tests (51 assertions)`, while the guided suite
+  still passes `12 tests (48 assertions)` including en/fr typed refusals and zero residue.
+- `ReturnCostBasisResolver` and its DTO moved from Inventory Application to Inventory Domain, so the
+  M1-added `ReturnNoteService -> ReturnCostBasisResolver` Domain-to-Application violation is gone.
+  The deptrac aggregate improved from the review's 117 to 116 violations; the command still fails on
+  pre-existing baseline drift, and the only remaining violation in an M1-touched consumer is the
+  already-shipped `ReturnNoteService -> WeightedAverageCostService` dependency. No M1 resolver
+  dependency appears in the JSON report.
+- `InventoryGlPostingViaBufferOnlyTest` now has direct-call and enqueue-only fixtures and runs both
+  locally and in CI. Mutation `7bfc5ae61` bypassed every `postFor*` call and made the diagnostic test
+  fail; restore `b55614da0` returned it to `2 passed (2 assertions)`. The complete PHPStan-rule
+  directory passes `10 tests (10 assertions)` and `.github/workflows/ci.yml` now executes that
+  directory in both the regular backend job and manual full-backend partition.
+- Both ruled-red production trace methods loudly skip their two cases on SQLite with a `[PG]`
+  reason, then reproduce their four cause-specific failures on PostgreSQL. The stale contention
+  docblock now names the dedicated voucher trace class.
+- The root-rollback listener first checks whether the scoped buffer was resolved, avoiding eager GL
+  graph construction for unrelated rollbacks. The new negative test proves an unrelated root rollback
+  leaves the buffer unresolved; the complete PostgreSQL seam is `22 passed (91 assertions)`.
+- Return-basis payload rows are keyed by `line_id` and written once after the loop. A seeded stale row
+  for one of two lines is replaced instead of appended; the resolver/confirm suite passes `3 tests
+  (24 assertions)`. New quantity normalization uses `QuantityScale`.
+- The touched-file PHPStan run is clean. The declared `tests/Unit/Inventory` directory still exposes
+  two base-tree errors in `GoodsReceiptDataTest` (`GoodsReceiptData.php:73`, null relation name); neither
+  file is changed in this range. Full-tree PHPStan likewise retains two untouched hard-coded scale
+  findings. Both are recorded rather than expanded into M1.
