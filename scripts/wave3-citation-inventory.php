@@ -415,7 +415,11 @@ function applyRelocation(string $citedFile, string $lineSpec, string $resolved, 
         ],
         // T25f moved the scoped product-copy twin into the shared factory.
         'SalesOrderToInvoiceConverter:525-540' => [
-            'apps/api/app/Modules/Document/Domain/Services/DeliveryNoteFromDocumentFactory.php', 111, 118,
+            'apps/api/app/Modules/Document/Domain/Services/DeliveryNoteFromDocumentFactory.php', 115, 118,
+        ],
+        // T15a replaced the dead landed_unit_cost branch with movement-keyed resolution.
+        'ReturnNoteService.php:698-712' => [
+            'apps/api/app/Modules/Inventory/Domain/Services/ReturnCostBasisResolver.php', 35, 61,
         ],
         // Integrated 3A/3B semantic successors whose code shape intentionally changed.
         'SalesOrderToDeliveryNoteConverter:566' => [
@@ -458,6 +462,7 @@ function relocationExpectation(string $citedFile, string $lineSpec): ?array
         'DocumentPostingService.php:623-624' => ['evaluate()', 'linkedDeliveryNoteIdsFor'],
         'DocumentPostingService.php:626-630' => ['evaluate()', 'if ($noteIds === [])'],
         'SalesOrderToInvoiceConverter:525-540' => ['createDraftFrom()', '$product = Product::query()'],
+        'ReturnNoteService.php:698-712' => ['resolveForReturnLine()', '$sourceId = $line->document->source_document_id'],
         'SalesOrderToDeliveryNoteConverter:566' => ['hasPhysicalProducts()', 'PhysicalLinePredicate::forLine'],
         'DeliveryNoteService.php:243' => ['issueStock()', 'PhysicalLinePredicate::physicalProductFor'],
         'SalesOrderService.php:118' => ['confirmAndReserveStock()', 'PhysicalLinePredicate::physicalProductFor'],
