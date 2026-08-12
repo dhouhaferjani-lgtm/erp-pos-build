@@ -71,11 +71,10 @@ milestones:
     title: "Provisioning rewire: resolver 4-step algorithm, TemplateChartOfAccountsSeeder, full consumer inventory (incl. ExpenseCategoryProvisioningService), rollback semantics — behind COUNTRY_DEFAULTS_PROVISIONING_ENABLED (default false)"
     review_lenses: [treasury, tenancy-authz]
     status: review
-    fix_rounds: 3
-    commit: dde4ba7325744337d66f2263ffe318936932599f
-    verdict: docs/handoff/reviews/country-defaults-phase-a/M5-round4.md
-    last_verdict: CHANGES-REQUIRED
-    updated: cfb0b71e5
+    fix_rounds: 4
+    commit: 7320b13157ed6b9c9e42038e9a3e171fe4c94cd0
+    verdict: null
+    last_verdict: null
   - id: M6
     title: "Admin FE (apps/web/src/features/admin/country-defaults/): templates list, editor grid, assignments, three-role shell, en+fr"
     review_lenses: [frontend-conventions, tenancy-authz]
