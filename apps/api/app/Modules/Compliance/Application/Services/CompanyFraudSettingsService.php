@@ -17,9 +17,8 @@ final class CompanyFraudSettingsService
      * Ensure a CompanyFraudSettings row exists for the given company.
      *
      * Returns the existing row if one is already present. Otherwise creates
-     * one with vertical-aware defaults: Otospex companies (automotive) get
-     * blind cash counting enabled; IziPOS companies (retail / all others)
-     * get it disabled.
+     * one with the shared defaults. Blind cash counting is enabled for every
+     * vertical; the vertical-aware entry point remains for caller compatibility.
      */
     public function ensureForCompany(int|string $companyId): CompanyFraudSettings
     {

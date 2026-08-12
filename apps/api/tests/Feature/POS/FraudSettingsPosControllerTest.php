@@ -92,7 +92,7 @@ final class FraudSettingsPosControllerTest extends TestCase
         $this->assertSame('20.0000', $data['cashVarianceOverHard']);
         $this->assertSame('1.0000', $data['cashVarianceUnderSoft']);
         $this->assertSame('20.0000', $data['cashVarianceUnderHard']);
-        $this->assertFalse($data['requireBlindCashCount']);
+        $this->assertTrue($data['requireBlindCashCount']);
         $this->assertTrue($data['requireManagerPinAboveHard']);
         $this->assertSame('none', $data['cashVarianceEmailSeverity']);
     }

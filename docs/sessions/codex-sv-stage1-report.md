@@ -459,3 +459,29 @@ The conditional owner gate does not fire. Each required touch point was walked b
 | Device SQLite cache default | No | Governs pre-first-sync concealment behavior only; server sync still overwrites the cached setting. |
 
 G-3 backfills Treasury opening float and drawer-operation accounting during a disabled GL window. None of these count-screen concealment settings consumes that accounting data or enables `TREASURY_SHIFT_VARIANCE_GL_ENABLED`. The dossier's independent Stage-1 placement therefore permits M3 to proceed.
+
+### Red-first evidence
+
+- The explicitly declared red-by-design retail test was renamed from “disabled” to “enabled” and failed because the persisted setting remained false. The resolver no-row and admin/POS controller default assertions were likewise changed to true before production changes.
+- The real-SQLite v22 test failed with `dflt_value` `0` instead of `1`.
+- After the web store mocks were corrected to exercise the page, the row-less round-trip test reached submission and failed because `require_blind_cash_count` was `undefined`, not true. The earlier `getState is not a function` failure was scaffolding-only and is not counted as behavioral evidence.
+- The new migration contract did not exist at red time. Its green contract seeds one false and one true row, proves `changed=1/skipped=1`, reruns the migration, and proves `changed=0/skipped=2`; a separate case drops the table and proves the schema guard completes with `changed=0/skipped=0 schema=missing`.
+
+### Implementation and deploy shape
+
+- `CompanyFraudSettings` model attributes and `getDefaults()` are true; `defaultsForVertical()` now returns that shared policy for automotive and retail.
+- The historical tenant column default and one-off seed documentation now match the all-vertical ruling.
+- The new settings-only migration updates persisted false rows, changes the database default to true, and emits the distinct warning token `SV-9 BLIND COUNT BACKFILL COMPLETE:` with tenant, changed, and skipped counts. It has table/column guards, a forward-only no-op down, and no catch: its single guarded update remains inside migration transaction handling and genuine errors fail loudly.
+- The web initial state, row normalization, and control fallback all use true, so an omitted row-less value cannot be submitted as false/undefined. The save-path test proves the mutation payload contains true.
+- The device cache schema default is 1 for pre-first-sync operation. Repository sync behavior remains unchanged, so a later persisted server value still wins.
+- Web English and French strings remain intact, and the new Arabic compliance bundle supplies and registers the blind-count label. Direct locale assertions cover all three.
+
+Deployment instructions and the warning-token grep contract are recorded in `docs/superpowers/tickets/2026-08-12-sv9-blind-count-default-deploy.md`.
+
+### Green evidence
+
+- Focused PostgreSQL acceptance run: 18 cases / 67 assertions, exit 0.
+- Expanded PostgreSQL settings/controller regression: 31 cases / 199 assertions, exit 0. An earlier pass caught one stale POS-controller false assertion; it was rewritten to the ruled true default before this clean run.
+- Web: `FraudSettingsPage.test.tsx` + `CashDrawerControlsSection.test.tsx`, 10/10; typecheck green.
+- Device: migration v22, cache repository, fraud-settings API, reconciliation, and preview modal, 58/58; after correcting a test-only TypeScript row shape, POS typecheck and v22's 8 cases are green.
+- Pint passes on all touched PHP files. Changed-file React Doctor scans the two web implementation files with no issues (score 93); focused ESLint has no errors, only pre-existing warnings in the edited legacy files.

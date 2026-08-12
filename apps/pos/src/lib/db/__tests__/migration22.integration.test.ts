@@ -71,7 +71,7 @@ d('Migration v22 — cash_counting_feature schema', () => {
   });
 
   it('applies cleanly to a fresh DB — company_fraud_settings_cache table exists with correct columns', async () => {
-    const cols = await adapter.select<{ name: string; type: string }[]>(
+    const cols = await adapter.select<{ name: string; type: string; dflt_value: string | null }[]>(
       'PRAGMA table_info(company_fraud_settings_cache)',
     );
 
@@ -86,6 +86,9 @@ d('Migration v22 — cash_counting_feature schema', () => {
     expect(byName['require_manager_pin_above_hard']).toBe('INTEGER');
     expect(byName['cash_variance_email_severity']).toBe('TEXT');
     expect(byName['refreshed_at']).toBe('TEXT');
+    expect(
+      cols.find((column) => column.name === 'require_blind_cash_count')?.dflt_value,
+    ).toBe('1');
   });
 
   it('applies cleanly to a fresh DB — z_reports new columns exist', async () => {

@@ -55,7 +55,7 @@ class CompanyFraudSettings extends Model
         'cash_variance_over_hard' => '20.0000',
         'cash_variance_under_soft' => '1.0000',
         'cash_variance_under_hard' => '20.0000',
-        'require_blind_cash_count' => false,
+        'require_blind_cash_count' => true,
         'require_manager_pin_above_hard' => true,
         'cash_variance_email_severity' => 'none',
         'offline_refund_count_ceiling' => self::DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
@@ -176,7 +176,7 @@ class CompanyFraudSettings extends Model
             'cash_variance_over_hard' => '20.0000',
             'cash_variance_under_soft' => '1.0000',
             'cash_variance_under_hard' => '20.0000',
-            'require_blind_cash_count' => false,
+            'require_blind_cash_count' => true,
             'require_manager_pin_above_hard' => true,
             'cash_variance_email_severity' => 'none',
             'offline_refund_count_ceiling' => self::DEFAULT_OFFLINE_REFUND_COUNT_CEILING,
@@ -188,18 +188,14 @@ class CompanyFraudSettings extends Model
     /**
      * Return creation defaults tuned for a specific vertical.
      *
-     * Otospex (automotive) companies get blind cash counting enabled by
-     * default. IziPOS (retail / all others) get it disabled. Threshold
-     * amounts are identical across verticals and currencies (stored at
-     * scale 4 to accommodate both EUR and TND).
+     * Blind cash counting is enabled for every vertical. Threshold amounts
+     * remain identical across verticals and currencies (stored at scale 4 to
+     * accommodate both EUR and TND).
      *
      * @return array{abandoned_draft_threshold: int, time_window_days: int, alert_enabled: bool, auto_trigger_counting: bool, auto_restrict_access: bool, cash_variance_over_soft: string, cash_variance_over_hard: string, cash_variance_under_soft: string, cash_variance_under_hard: string, require_blind_cash_count: bool, require_manager_pin_above_hard: bool, cash_variance_email_severity: string, offline_refund_count_ceiling: int, offline_refund_value_ceiling: string, online_required_refund_threshold: string}
      */
-    public static function defaultsForVertical(bool $isAutomotive): array
+    public static function defaultsForVertical(bool $_isAutomotive): array
     {
-        $defaults = self::getDefaults();
-        $defaults['require_blind_cash_count'] = $isAutomotive;
-
-        return $defaults;
+        return self::getDefaults();
     }
 }

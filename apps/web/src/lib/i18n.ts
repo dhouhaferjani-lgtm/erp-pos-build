@@ -149,6 +149,7 @@ import arTreasury from '../locales/ar/treasury.json'
 import arSettings from '../locales/ar/settings.json'
 import arReplenishment from '../locales/ar/replenishment.json'
 import arSupportAccess from '../locales/ar/support-access.json'
+import arCompliance from '../locales/ar/compliance.json'
 
 export const languages = [
   { code: 'en', name: 'English', dir: 'ltr' },
@@ -397,7 +398,18 @@ const resources = {
     crm: enCrm,
     'parts-catalog': arPartsCatalog,
     loyalty: enLoyalty,
-    compliance: enCompliance,
+    compliance: {
+      ...enCompliance,
+      ...arCompliance,
+      fraudSettings: {
+        ...enCompliance.fraudSettings,
+        ...arCompliance.fraudSettings,
+        cashControls: {
+          ...enCompliance.fraudSettings.cashControls,
+          ...arCompliance.fraudSettings.cashControls,
+        },
+      },
+    },
     withholding: enWithholding,
     marketing: enMarketing,
     countries: enCountries,
