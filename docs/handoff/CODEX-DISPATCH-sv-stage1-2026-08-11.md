@@ -93,8 +93,21 @@ git -C <repo> log -1 --format='%H %ci %s' dev   # → paste verbatim
 git -C <repo> status --porcelain                # → your worktree MUST be clean
 ```
 
-`BASE_SHA` goes into the YAML, M0's report header, and the session report. **M0 verifies
-`HEAD == BASE_SHA` before any code.**
+`BASE_SHA` goes into the YAML, M0's report header, and the session report.
+
+**M0 base check (replaces strict equality — the pin commit itself advances dev, so equality can
+never hold): create the worktree/branch from the CURRENT local dev tip. Then verify ALL THREE:**
+1. **`base_sha` is an ancestor of `HEAD`** — `git merge-base --is-ancestor <base_sha> HEAD`.
+2. **The contract digest verifies at `HEAD`** —
+   `git show HEAD:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | tail -n +63 | shasum -a 256`
+   == `04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540`.
+3. **`git diff --stat <base_sha>..HEAD` touches ONLY administrative paths** —
+   `docs/handoff/progress/*.progress.yaml`, `docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md`,
+   `docs/handoff/CODEX-DISPATCH-sv-stage1-2026-08-11.md`, `docs/superpowers/reviews/*`. If any OTHER
+   path appears in that diff, the base is **contaminated**: STOP, set `blocked_precondition`, request
+   an orchestrator re-pin.
+
+`base_sha` remains the reviewed **CONTENT baseline**: `df85d43f404a9e55fd29b0e3c7533852966652df`.
 
 ### 3. WORKTREE
 
@@ -305,7 +318,9 @@ M0  preflight — contract verify, rulings read, no production code      [fiscal
 
 ### M0 — Preflight (no production code)
 
-1. **Contract digest** (HARD PREREQUISITES §1); `HEAD == BASE_SHA`; clean tree; worktree + branch created.
+1. **Contract digest** (HARD PREREQUISITES §1); **the M0 base check** (HARD PREREQUISITES §2 —
+   ancestor + digest + admin-only delta, NOT strict `HEAD == BASE_SHA` equality); clean tree;
+   worktree + branch created.
 2. **Read and record**: dossier **§1 binding rulings** (whole-drawer CONFIRMED · blind counting RULED ON
    everywhere · takings formula = dead code) and **§2 rows SV-1 / SV-9 / SV-10 / SV-11 in full**, plus
    §3 Stage 1 and §5.1's four rows. The artefact is a short citation inventory: for every `file:line`

@@ -103,7 +103,20 @@ git -C <repo> status --porcelain                # → your worktree MUST be clea
 ```
 
 `BASE_SHA` is quoted in the YAML (`base_sha:`), in M0's report header, and in the session report.
-**M0 verifies `HEAD == BASE_SHA` before writing any code.**
+
+**M0 base check (replaces strict equality — the pin commit itself advances dev, so equality can
+never hold): create the worktree/branch from the CURRENT local dev tip. Then verify ALL THREE:**
+1. **`base_sha` is an ancestor of `HEAD`** — `git merge-base --is-ancestor <base_sha> HEAD`.
+2. **The contract digest verifies at `HEAD`** —
+   `git show HEAD:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | tail -n +63 | shasum -a 256`
+   == `04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540`.
+3. **`git diff --stat <base_sha>..HEAD` touches ONLY administrative paths** —
+   `docs/handoff/progress/*.progress.yaml`, `docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md`,
+   `docs/handoff/CODEX-DISPATCH-sv-stage1-2026-08-11.md`, `docs/superpowers/reviews/*`. If any OTHER
+   path appears in that diff, the base is **contaminated**: STOP, set `blocked_precondition`, request
+   an orchestrator re-pin.
+
+`base_sha` remains the reviewed **CONTENT baseline**: `df85d43f404a9e55fd29b0e3c7533852966652df`.
 
 ### 3. WORKTREE
 
@@ -420,7 +433,8 @@ M0  preflight — artifacts + fixtures only, no production code        [fiscal-p
 ### M0 — Preflight (artifacts and fixtures only; no production code)
 
 1. **Contract digest** — the command in HARD PREREQUISITES §1. Mismatch ⇒ abort the wave.
-2. **`HEAD == BASE_SHA`**, tree clean, worktree correct, branch created.
+2. **The M0 base check (HARD PREREQUISITES §2 — ancestor + digest + admin-only delta, NOT strict
+   `HEAD == BASE_SHA` equality)**, tree clean, worktree correct, branch created.
 3. **Seeded v3 tenant fixture.** A0's own deliverable per handover §3 (and A1's entry criterion is
    *"A0's verifiers merged and green on a seeded v3 tenant"* — you build what A1 will stand on).
    Requirements: a tenant with a `fiscal_schema_version >= 3` terminal carrying **both** chain contexts

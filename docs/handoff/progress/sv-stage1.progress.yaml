@@ -7,12 +7,18 @@ review_register: docs/handoff/reviews/sv-stage1/
 reviewer_model: opus
 max_fix_rounds: 5
 
-# PIN AT DISPATCH. base_sha = local dev tip at dispatch. M0 verifies HEAD == base_sha AND the
-# sibling ES contract digest:
-#   git show <base_sha>:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | tail -n +63 | shasum -a 256
-#   expected 04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540 — mismatch ABORTS the wave.
-# — pinned 2026-08-11 by orchestrator; M0 aborts if worktree HEAD != base_sha, so if local dev
-# advances before dispatch, ask the orchestrator to re-pin
+# PIN AT DISPATCH. base_sha = REVIEWED CONTENT BASELINE, NOT a strict HEAD-equality pin — the pin
+# commit itself advances dev, so HEAD == base_sha can never hold.
+# M0 base check (ancestor + sibling ES contract digest + admin-only delta) verifies ALL THREE at HEAD:
+#   1. base_sha is an ancestor of HEAD: git merge-base --is-ancestor <base_sha> HEAD
+#   2. contract digest verifies at HEAD:
+#        git show HEAD:docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md | tail -n +63 | shasum -a 256
+#        expected 04760455ac3f80b96502884e9efc2a8f00c35785d2126a9f9786d96d97e20540
+#   3. git diff --stat base_sha..HEAD touches ONLY administrative paths:
+#        docs/handoff/progress/*.progress.yaml, docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md,
+#        docs/handoff/CODEX-DISPATCH-sv-stage1-2026-08-11.md, docs/superpowers/reviews/*
+#   If any OTHER path appears in that diff, or check 1/2 fails: the base is contaminated — STOP, set
+#   status: blocked_precondition, request an orchestrator re-pin. Do NOT edit base_sha.
 base_sha: df85d43f404a9e55fd29b0e3c7533852966652df
 # Branch codex/sv-stage1 in worktree .worktrees/sv-stage1, created from base_sha off LOCAL dev.
 # Handback only: NOT merged, NOT pushed — the orchestrator merges after the wave completes.
@@ -20,7 +26,7 @@ branch: null
 
 owner_gates:
   - id: base-sha-pin
-    question: "Confirm base_sha is the local dev tip and that the ES register snapshot digest matches 04760455… (M0 verifies both)."
+    question: "Confirm base_sha is an ancestor content baseline, digest verifies at HEAD, and base_sha..HEAD is administrative-only — M0 verifies all three."
     status: satisfiable_by_M0
   # informational — conditional logic lives in the milestone text (M3).
   # The harness treats a milestone `owner_gate:` field as an UNCONDITIONAL STOP
