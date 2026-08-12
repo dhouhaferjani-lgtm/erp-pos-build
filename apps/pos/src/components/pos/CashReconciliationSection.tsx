@@ -299,7 +299,7 @@ export function CashReconciliationSection({
           cashSalesNet={preview.cash_sales_net}
           drawerMovementsNet={preview.drawer_movements_net}
           expectedCash={preview.expected_cash}
-          countedCash={actuals[cashTender.payment_method_id] ?? '—'}
+          countedCash={bcformat(actuals[cashTender.payment_method_id] ?? '0', scale)}
           variance={cashVariance}
         />
       )}

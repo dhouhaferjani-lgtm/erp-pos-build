@@ -28,6 +28,8 @@ vi.mock('react-i18next', () => ({
         'cash_count.summary.drawer_movements': "Entrées / sorties d'espèces",
         'cash_count.summary.expected_in_drawer': 'Attendu en caisse',
         'cash_count.summary.counted': 'Compté',
+        'cash_count.summary.over': 'Excédent',
+        'cash_count.summary.short': 'Manquant',
         'cash_count.no_difference': 'Aucun écart',
       };
       const value =
@@ -183,7 +185,7 @@ describe('CashReconciliationSection', () => {
       expect(summary).toHaveTextContent('Cash sales (net of change)50.00');
       expect(summary).toHaveTextContent('Paid in / paid out0.00');
       expect(summary).toHaveTextContent('Expected in drawer100.00');
-      expect(summary).toHaveTextContent('Counted100');
+      expect(summary).toHaveTextContent('Counted100.00');
       expect(summary).toHaveTextContent('No difference');
       expect(screen.getByTestId('tender-variance-CASH')).toHaveTextContent(
         'No difference',
@@ -241,8 +243,33 @@ describe('CashReconciliationSection', () => {
       );
       expect(summary).toHaveTextContent("Entrées / sorties d'espèces0.00");
       expect(summary).toHaveTextContent('Attendu en caisse100.00');
-      expect(summary).toHaveTextContent('Compté100');
+      expect(summary).toHaveTextContent('Compté100.00');
       expect(summary).toHaveTextContent('Aucun écart');
+    });
+
+    it.each([
+      { locale: 'en' as const, actual: '106', label: 'Over', amount: '6.00' },
+      { locale: 'en' as const, actual: '94', label: 'Short', amount: '6.00' },
+      { locale: 'fr' as const, actual: '106', label: 'Excédent', amount: '6.00' },
+      { locale: 'fr' as const, actual: '94', label: 'Manquant', amount: '6.00' },
+    ])('renders $label for a $locale variance', async ({ locale, actual, label, amount }) => {
+      i18nTestState.locale = locale;
+      render(
+        <CashReconciliationSection
+          {...buildProps({
+            fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+          })}
+        />,
+      );
+
+      await act(async () => {
+        await enterActual('CASH', actual);
+      });
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+
+      expect(await screen.findByTestId('cash-count-reveal-summary')).toHaveTextContent(
+        `${label}${amount}`,
+      );
     });
   });
 

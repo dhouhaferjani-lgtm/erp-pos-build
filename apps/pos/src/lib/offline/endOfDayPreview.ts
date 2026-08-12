@@ -455,9 +455,11 @@ export async function buildEndOfDayPreview(
     cashRefundImpact,
     scale,
   );
-  const expectedCash = bcadd(
-    bcadd(openingCash, cashSalesNet, scale),
-    drawerNet,
+  // Preserve the established rounding boundaries byte-for-byte. The display
+  // decomposition above must not alter the authoritative expected figure.
+  const expectedCash = bcsub(
+    bcadd(bcsub(bcadd(openingCash, cashTenderedSum, scale), cashChangeDueSum, scale), drawerNet, scale),
+    cashRefundImpact,
     scale,
   );
 

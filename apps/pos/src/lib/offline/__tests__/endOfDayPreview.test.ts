@@ -276,6 +276,32 @@ describe('buildEndOfDayPreview — review fixes (refunds, training, legacy fallb
     vi.clearAllMocks();
   });
 
+  it('preserves the established expected-cash rounding boundaries while exposing display terms', async () => {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      const s = String(sql);
+      if (s.includes('offline_receipts')) {
+        return [{
+          id: 'fractional', total: '10.00', subtotal: '10.00', tax_amount: '0',
+          change_due: '0.005', payment_method_id: 'pm-cash',
+          payments_json: JSON.stringify([{ method_code: 'CASH', amount: '10.005' }]),
+          lines: '[]', created_at: '2026-06-10 10:00:00', receipt_kind: 'sale',
+          cash_rounding_adjustment: null, tolerance_shortfall: null,
+        }] as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as never[];
+      }
+      return [] as never[];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '100.00', 'EUR',
+    );
+
+    expect(preview.cash_sales_net).toBe('10.00');
+    expect(preview.expected_cash).toBe('110.01');
+  });
+
   it('subtracts cash refund impact from expected_cash so the preview matches the signed Z (v3-refund-chain-integration §7.3a: refund impact now rides IN offline_receipts as a receipt_kind=refund row, not the deleted local_refund_records mechanism)', async () => {
     vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
       const s = sql as string;

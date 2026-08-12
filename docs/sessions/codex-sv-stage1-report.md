@@ -401,25 +401,25 @@ M1 round 2 accepted the milestone. M5 carries one close-before-merge report clea
 
 ### Red/green evidence
 
-The rendered-output contract was added first. The red run had 9 component cases total, with the three new SV-11 cases failing because `cash-count-instruction`, `cash-count-reveal-summary`, and the locale keys did not exist; the six pre-existing cases passed. The implementation then made the same scoped command green:
+The initial rendered-output contract was added first. Its red run had 9 component cases total, with the first three SV-11 cases failing because `cash-count-instruction`, `cash-count-reveal-summary`, and the locale keys did not exist; the six pre-existing cases passed. Two additional rendered cases were added during the same implementation pass. The full five-case surface and two preview-field assertions were then proved non-vacuous together by the 7-failure revert-replay below.
 
 ```text
 Test Files  4 passed (4)
 Tests       66 passed (66)
 ```
 
-The four explicit files are `endOfDayPreview.test.ts`, `CashReconciliationSection.test.tsx`, `CashCountTable.test.tsx`, and `EndOfDayPreviewModal.test.tsx`. `pnpm typecheck` exits zero.
+The initial four explicit files were `endOfDayPreview.test.ts`, `CashReconciliationSection.test.tsx`, `CashCountTable.test.tsx`, and `EndOfDayPreviewModal.test.tsx`. M2 review expanded the declared formula regression set with `cashTenderedFormula.test.ts` and `refundReportingEndToEnd.test.ts`; the current six-file run is 75/75. `pnpm typecheck` exits zero.
 
 ### Presentation contract
 
 - The instruction above the count remains visible before and after blind commit, interpolating the already-formatted `opening_cash` string.
 - The float disclosure and six-line summary render only after commit in blind mode.
 - In non-blind mode, the float disclosure renders immediately beside the already-visible expected figure, even before a count is entered.
-- English and French rendered-output assertions pin the exact instruction, float disclosure, and all six reveal labels; the French test includes the exact `y compris le fonds de caisse` phrase. The locale contract separately pins `Écart`.
+- English and French rendered-output assertions pin the exact instruction, float disclosure, all six reveal lines, and every line-6 variant (`Over`, `Short`, `No difference`, `Excédent`, `Manquant`, `Aucun écart`); the French test includes the exact `y compris le fonds de caisse` phrase. The locale contract separately pins `Écart`.
 - A balanced tender renders `No difference` / `Aucun écart` instead of a bare zero in both the tender table and reveal.
 - Line 2 contains only cash sales net of change. There is no rounding label, placeholder, reserved slot, empty container, or hidden sibling. Its structural extension remains deferred to SV-12.
 
-React does not recompute money. The existing preview aggregation now exposes the two already-computed terms as formatted decimal strings: `cash_sales_net` and `drawer_movements_net`. The existing `expected_cash` formula was regrouped as `opening + cashSalesNet + drawerNet` using the same decimal helpers; regression assertions pin cash-sales, drawer-movement, and expected totals. No UI `parseFloat` or `Number` conversion was introduced.
+React does not recompute money. The existing preview aggregation now exposes the two already-computed terms as formatted decimal strings: `cash_sales_net` and `drawer_movements_net`. The established `expected_cash` expression and its rounding boundaries remain byte-for-byte intact; a fractional-input regression pins the intentionally different display-term and authoritative-expected rounding results. No UI `parseFloat` or `Number` conversion was introduced, and the Counted display uses the existing decimal formatter.
 
 ### Device Arabic record
 
@@ -432,3 +432,9 @@ The first broad React Doctor invocation compared the whole long-lived wave branc
 ### Revert-replay
 
 After implementation commit `54e1341b6`, the exact production/locales patch was reversed while the new tests stayed in place. The focused component and preview run failed 7 of 33 cases: the whole-drawer instruction, disclosure/reveal, locale keys, named zero, and exposed preview terms all disappeared as intended. Reapplying that same non-empty patch restored 33/33 green and a clean tree. An initial command used invalid `pnpm --dir` argument ordering and did not run tests; it was discarded before the valid red run above.
+
+### M2 review fix round 1
+
+Round 1 found that exposing the display decomposition had also regrouped the authoritative `expected_cash` expression. Because decimal helpers round at each supplied scale, that presentation-only refactor could move a cent for fractional source strings. The original expression is restored exactly, while `cash_sales_net` remains a separate display field; a regression fixture pins `cash_sales_net = 10.00` and the legacy expected result `110.01` for the reviewer's fractional example.
+
+The same fix round adds rendered English and French over/short cases, formats Counted at currency scale, replaces the undefined `bg-surface-subtle` class with `bg-surface-raised`, and expands the formula regression run to the two previously omitted suites. The reviewer-noted refund/account-payment label breadth is recorded but not changed because the six labels are exact dossier copy; the line values still decompose the authoritative expected figure.

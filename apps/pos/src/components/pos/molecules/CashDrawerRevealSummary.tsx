@@ -30,7 +30,7 @@ export function CashDrawerRevealSummary({
 
   return (
     <div
-      className="space-y-2 rounded-ctl border border-border-subtle bg-surface-subtle p-3"
+      className="space-y-2 rounded-ctl border border-border-subtle bg-surface-raised p-3"
       data-testid="cash-count-reveal-summary"
     >
       <p className="text-sm text-ink-muted">
