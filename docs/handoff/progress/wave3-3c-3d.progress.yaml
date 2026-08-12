@@ -49,8 +49,8 @@ milestones:
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
     status: review
-    fix_rounds: 0
-    commit: f848dab3942d0a68304592a0fd2c7e33fcf14ed4
+    fix_rounds: 1
+    commit: 28a2d854b209d5fbadd25523b749def23d7ef460
     verdict: docs/handoff/reviews/wave3-3c-3d/M2-round1.md
     last_verdict: CHANGES-REQUIRED
   - id: M3
