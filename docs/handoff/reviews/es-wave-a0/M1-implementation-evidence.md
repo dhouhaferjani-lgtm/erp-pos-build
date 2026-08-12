@@ -410,12 +410,12 @@ findings`). No M4 chain-head logic, projection, migration, event class, or
 controller-owned progress-YAML review field changed. Version/projection impact:
 V1 `—`; V2 `—`; V3 `—`.
 
-### P1 — sanctioned legacy server envelopes
+### P1 — sanctioned server-authored envelopes (ongoing compatibility)
 
 The general `StrictCanonicalParser` remains strict. The verifier recognizes the
-historical 14-key server envelope only after the strict parse fails with exactly
-`envelope_field_missing:chain_context`, and only when all of these independently
-stored path coordinates match:
+currently emitted 14-key server envelope only after the strict parse fails with
+exactly `envelope_field_missing:chain_context`, and only when all of these
+independently stored path coordinates match:
 
 - event type is exactly `TERMINAL_REGISTRY_SNAPSHOT`,
   `ACCOUNT_STATUS_CHANGED`, or `DEPOSIT_RECEIPT`;
@@ -432,7 +432,7 @@ allowlist, so that one type is validated through `DepositReceiptPayload` plus th
 same shared key-set and per-event constraint validator instead of weakening the
 device gate. The returned envelope remains the original legacy object: every
 coordinate that was actually sealed is compared, while the absent context is not
-invented as sealed data. The legacy services' timestampTz wall representation is
+invented as sealed data. The ongoing services' timestampTz wall representation is
 compared only on this exact path; current/device envelopes continue to compare UTC
 instants.
 
@@ -466,6 +466,13 @@ Durable follow-ups live in
 - `FEV-OPS-02` assigns the Fiscal platform/operations owner measurement,
   bounded-walk, checkpoint, resume, and incomplete-coverage semantics for large
   fleets.
+- `FEV-OPS-03` discloses and assigns the quarantine-only terminal/context
+  coverage hole created by the brief-pinned `fiscal_events` enumeration source.
+- `FEV-OPS-04` assigns the fleet boundary's collapsed transient exit semantics.
+- `FEV-OPS-05` records that all three server builders still omit
+  `chain_context` for new rows and owns the forward-only builder migration.
+- `FEV-OPS-06` assigns the existing-context/zero-event success semantics.
+- `FEV-OPS-07` assigns abnormal-termination cleanup for the physical-DB test.
 
 The fleet driver now refuses the empty-directory plus empty-object-manifest case
 instead of reporting a successful zero-work run. A PostgreSQL-only acceptance
@@ -731,3 +738,61 @@ reported the identical 116 violations and identical category vector
 `21/41/1/18/29/4/2` against the existing 99 baseline. The ratchet command remains
 red on the repository's pre-existing 17-edge baseline drift, but this M1 range's
 deptrac violation delta is exactly zero.
+
+## Adversarial review round 4 — final docs-only disclosure closure
+
+This round changes documentation only. No production or test file changed and no
+suite was rerun. The controller-owned progress YAML was not edited; its M1
+`commit:` remains `71f306c86`, the last behavioral commit.
+
+### P2 — quarantine-only fleet targets are not enumerated
+
+The fleet target query remains exactly the brief-pinned source:
+
+```sql
+SELECT DISTINCT terminal_id, chain_context
+FROM fiscal_events
+WHERE tenant_id = :bound_tenant
+```
+
+That source is not complete for unresolved incidents. A malformed envelope can
+land only in `fiscal_event_quarantine`, with no corresponding event row. Exact
+false-green scenario: the first `z_session` envelope for terminal T is malformed,
+creating one unresolved quarantine row at `(T, z_session)` and no event row for
+that pair; `(T, operational)` does have events. The fleet enumerates only the
+operational pair, prints `TENANT X: VERIFIED 1 chain(s)` plus
+`fleet chain verification completed: 1 tenant(s), 1 chain(s), no failures`, and
+exits 0. Direct single-chain verification of `T/z_session` would report the
+quarantine, so the defect is specifically fleet target coverage.
+
+This limitation is now durably disclosed as `FEV-OPS-03`, owned by the Fiscal
+platform owner with Fiscal domain sign-off. Its acceptance contract requires a
+deduplicated union (or equivalently complete target source), non-zero aggregate
+for quarantine-only pairs, an explicit resolved-row policy, preservation of the
+actor/tenant/child-delegation boundaries, and a regression for the exact first
+malformed `z_session` scenario. M1 does not implement that union because the
+brief explicitly pins enumeration to `fiscal_events`.
+
+### P3 — bounded follow-ups
+
+- **Fleet transient exit collapse:** `FEV-OPS-04` records that a child exit 2 is
+  currently collapsed to fleet exit 1 and requires a ruled mixed-result
+  precedence plus automation-visible retry semantics.
+- **Ongoing server envelope omission:** `FEV-OPS-05` corrects the historical-only
+  framing. The compatibility gate is shape-based, and all three current builders
+  continue to omit `chain_context` for every new snapshot, account-status, and
+  deposit-receipt row. The ticket owns a forward-only builder migration while
+  preserving already sealed 14-key rows and coordinating with M4 rather than
+  changing chain-head behavior in M1. The inaccurate historical wording in PHP
+  comments is explicitly identified; PHP was not changed in this docs-only round.
+- **Empty existing context:** `FEV-OPS-06` records the pre-existing, honest but
+  potentially checklist-ambiguous exit 0 message over `0 events walked`, while
+  preserving the fact that unresolved quarantine incidents still fail.
+- **Physical-DB test crash leak:** `FEV-OPS-07` records the plausible,
+  unreproduced SIGKILL/OOM/fatal cleanup gap and requires run-scoped discovery,
+  safe stale-resource reclamation, visible cleanup failure, and an induced-abort
+  or equivalent harness check.
+
+Reviewer round-4 P3 finding 3 (the progress-YAML behavioral SHA) is controller
+owned and already reads `71f306c86`; this implementation made no YAML edit.
+Version/projection impact remains V1 `—`; V2 `—`; V3 `—`.
