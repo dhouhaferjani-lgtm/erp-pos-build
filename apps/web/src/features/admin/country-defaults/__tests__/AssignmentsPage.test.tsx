@@ -120,6 +120,14 @@ describe('AssignmentsPage', () => {
     expect(screen.getByText('You do not have permission to load eligible template options. Current assignments remain visible.')).toBeInTheDocument()
   })
 
+  it('hides catalog metadata when the assignment matrix cannot load', async () => {
+    vi.mocked(countryDefaultsApi.listAssignments).mockRejectedValue(apiError(500))
+    renderPage()
+
+    expect(await screen.findByText('Country assignments could not be loaded. Try again.')).toBeInTheDocument()
+    expect(screen.queryByText('Country catalog —')).not.toBeInTheDocument()
+  })
+
   it('keeps the confirmation open and shows a localized assignment failure', async () => {
     const user = userEvent.setup()
     vi.mocked(countryDefaultsApi.assignTemplate).mockRejectedValue(apiError(500))

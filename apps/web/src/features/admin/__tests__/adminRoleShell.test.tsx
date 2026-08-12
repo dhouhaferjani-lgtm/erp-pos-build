@@ -44,10 +44,10 @@ describe('three-role admin shell', () => {
   })
 
   it.each([
-    ['super_admin', '/admin/dashboard'],
-    ['defaults_editor', '/admin/country-defaults'],
-    ['support_approver', '/admin/support-access'],
-  ] as const)('lands %s on its permitted home', (role, expectedHome) => {
+    ['super_admin', '/admin/dashboard', 'Dashboard home'],
+    ['defaults_editor', '/admin/country-defaults', 'Defaults home'],
+    ['support_approver', '/admin/support-access', 'Support home'],
+  ] as const)('lands %s on its permitted home', (role, expectedHome, expectedText) => {
     expect(homeForAdminRole(role)).toBe(expectedHome)
     authenticate(role)
     render(
@@ -60,7 +60,7 @@ describe('three-role admin shell', () => {
         </Routes>
       </MemoryRouter>
     )
-    expect(screen.getByText(/home$/)).toBeInTheDocument()
+    expect(screen.getByText(expectedText)).toBeInTheDocument()
   })
 
   it.each([

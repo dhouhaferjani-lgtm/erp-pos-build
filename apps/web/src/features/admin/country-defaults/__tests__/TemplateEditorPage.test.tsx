@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -187,6 +187,27 @@ describe('TemplateEditorPage', () => {
     expect(screen.queryByText('Changes required')).not.toBeInTheDocument()
   })
 
+  it('debounces complete scopes and never validates incomplete scope prefixes', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await waitFor(() => { expect(countryDefaultsApi.validateTemplate).toHaveBeenCalledWith('template-1', '') })
+    await screen.findByDisplayValue('5312')
+    vi.mocked(countryDefaultsApi.validateTemplate).mockClear()
+    await user.click(screen.getByRole('button', { name: 'Publish' }))
+    const scope = screen.getByLabelText('Certified jurisdictions')
+
+    await user.type(scope, 'T')
+    await new Promise((resolve) => { setTimeout(resolve, 400) })
+    expect(countryDefaultsApi.validateTemplate).not.toHaveBeenCalled()
+    expect(screen.queryByText('Validation is temporarily unavailable. Try again.')).not.toBeInTheDocument()
+
+    await user.type(scope, 'N')
+    expect(countryDefaultsApi.validateTemplate).not.toHaveBeenCalled()
+    await waitFor(() => { expect(countryDefaultsApi.validateTemplate).toHaveBeenCalledTimes(1) })
+    expect(countryDefaultsApi.validateTemplate).toHaveBeenCalledWith('template-1', 'TN')
+  })
+
   it('keeps publish errors handled and visible inside the modal', async () => {
     const user = userEvent.setup()
     vi.mocked(countryDefaultsApi.publishTemplate).mockRejectedValue(apiError(422))
@@ -222,6 +243,44 @@ describe('TemplateEditorPage', () => {
     const submitted = vi.mocked(countryDefaultsApi.saveTemplateRows).mock.calls[0][1]
     expect(submitted.at(-1)).toMatchObject({ code: '703', name: 'New revenue', sort_order: 3 })
     expect(submitted.at(-1)).not.toHaveProperty('id')
+  })
+
+  it('gives blank rows distinct accessible identities and omits blank parent options', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByDisplayValue('5312')
+    await user.click(screen.getByRole('button', { name: 'Add account' }))
+    await user.click(screen.getByRole('button', { name: 'Add account' }))
+
+    expect(screen.getByRole('textbox', { name: 'Account code New account 4' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Account code New account 5' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete account New account 4' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete account New account 5' })).toBeInTheDocument()
+    for (const row of screen.getAllByRole('row').slice(1)) {
+      const parent = within(row).getAllByRole('combobox')[1]
+      expect(within(parent).getAllByRole('option', { name: 'None' })).toHaveLength(1)
+    }
+  })
+
+  it('clears a row validation error as soon as that row is edited', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    const editableCode = await screen.findByDisplayValue('701')
+    await user.clear(editableCode)
+    await user.click(screen.getByRole('button', { name: 'Save rows' }))
+    expect(screen.getByText('Account code is required.')).toBeInTheDocument()
+
+    await user.type(editableCode, '701')
+    expect(screen.queryByText('Account code is required.')).not.toBeInTheDocument()
+  })
+
+  it('does not offer a metadata save action when metadata is not editable', async () => {
+    renderPage()
+
+    await screen.findByDisplayValue('5312')
+    expect(screen.queryByRole('button', { name: 'Save details' })).not.toBeInTheDocument()
   })
 
   it('has exhaustive generated purpose labels in English and French', () => {

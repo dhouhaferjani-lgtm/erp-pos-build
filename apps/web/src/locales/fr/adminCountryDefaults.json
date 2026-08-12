@@ -68,7 +68,7 @@
     "grid": {
       "title": "Définition des comptes", "subtitle": "Modifiez la hiérarchie de provisionnement. Les comptes d’instrument protégés restent verrouillés.",
       "add": "Ajouter un compte", "tableLabel": "Grille des comptes du modèle", "protected": "Protégé", "protectedAria": "Compte protégé {{code}}",
-      "codeAria": "Code du compte {{code}}", "systemAria": "Compte système {{code}}", "deleteAria": "Supprimer le compte {{code}}",
+      "codeAria": "Code du compte {{code}}", "systemAria": "Compte système {{code}}", "deleteAria": "Supprimer le compte {{code}}", "newRowIdentity": "Nouveau compte {{number}}",
       "columns": { "code": "Code", "name": "Nom", "type": "Type", "parent": "Parent", "purpose": "Finalité", "system": "Système", "actions": "Actions" }
     },
     "validation": { "codeRequired": "Le code du compte est obligatoire.", "nameRequired": "Le nom du compte est obligatoire.", "parentMissing": "Le code parent doit exister dans ce modèle." }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
@@ -9,7 +9,7 @@ import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal/Modal'
 import { borderColors, semanticColorTokens, textColors, tokens } from '@/lib/designTokens'
-import { publishTemplate, saveTemplateRows, updateTemplate, validateTemplate } from '../api/countryDefaultsApi'
+import { publishTemplate, saveTemplateRows, validateTemplate } from '../api/countryDefaultsApi'
 import { useCountryDefaultsMutation, useTemplate } from '../hooks/useCountryDefaults'
 import type { TemplateAccount, TemplateAccountSaveRow } from '../types'
 import { countryDefaultsErrorKey } from '../lib/apiError'
@@ -17,6 +17,13 @@ import { countryDefaultsErrorKey } from '../lib/apiError'
 interface PublishFields {
   standardRef: string
   scope: string
+}
+
+const VALIDATION_DEBOUNCE_MS = 300
+const COMPLETE_SCOPE_PATTERN = /^(?:\*|[A-Za-z]{2})(?:\s*,\s*(?:\*|[A-Za-z]{2}))*$/
+
+function normalizeScope(scope: string): string {
+  return scope.split(',').map((country) => country.trim()).filter(Boolean).join(',')
 }
 
 function isAccountType(value: string, choices: readonly string[]): value is TemplateAccount['type'] {
@@ -62,15 +69,29 @@ export function TemplateEditorPage() {
   const [gridErrors, setGridErrors] = useState<Record<string, string>>({})
   const publishForm = useForm<PublishFields>({ defaultValues: { standardRef: '', scope: '' } })
   const scope = useWatch({ control: publishForm.control, name: 'scope' })
+  const [validationScope, setValidationScope] = useState<string | null>('')
+  useEffect(() => {
+    const trimmedScope = scope.trim()
+    if (trimmedScope === '') {
+      setValidationScope('')
+      return
+    }
+    if (!COMPLETE_SCOPE_PATTERN.test(trimmedScope)) {
+      setValidationScope(null)
+      return
+    }
+    const timeout = setTimeout(() => {
+      setValidationScope(normalizeScope(trimmedScope))
+    }, VALIDATION_DEBOUNCE_MS)
+    return () => { clearTimeout(timeout) }
+  }, [scope])
   const validation = useQuery({
-    queryKey: ['admin', 'country-defaults', 'templates', templateId, 'validation', scope],
-    queryFn: () => validateTemplate(templateId, scope),
-    enabled: templateId !== '',
+    queryKey: ['admin', 'country-defaults', 'templates', templateId, 'validation', validationScope],
+    queryFn: () => validateTemplate(templateId, validationScope ?? ''),
+    enabled: templateId !== '' && validationScope !== null,
+    retry: false,
   })
   const saveRows = useCountryDefaultsMutation((nextRows: TemplateAccountSaveRow[]) => saveTemplateRows(templateId, nextRows))
-  const saveMetadata = useCountryDefaultsMutation((name: string) => updateTemplate(templateId, {
-    name, description: templateQuery.data?.description ?? null, standard_ref: templateQuery.data?.standard_ref ?? null,
-  }))
   const publish = useCountryDefaultsMutation((fields: PublishFields) => publishTemplate(templateId, {
     standard_ref: fields.standardRef.trim(),
     certified_country_codes: fields.scope.split(',').map((country) => country.trim().toUpperCase()).filter(Boolean),
@@ -80,6 +101,11 @@ export function TemplateEditorPage() {
   const rowCodes = rowCodeSet(rows)
   const updateRow = (id: string, patch: Partial<TemplateAccount>) => {
     setRowEdits((current) => (current ?? rows).map((row) => row.id === id ? { ...row, ...patch } : row))
+    setGridErrors((current) => {
+      if (!(id in current)) return current
+      const { [id]: _removed, ...remaining } = current
+      return remaining
+    })
   }
   const handleSaveRows = () => {
     const errors: Record<string, string> = {}
@@ -136,13 +162,14 @@ export function TemplateEditorPage() {
                 {['code', 'name', 'type', 'parent', 'purpose', 'system', 'actions'].map((column) => <th className={`px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide ${textColors.disabled}`} key={column}>{t(`editor.grid.columns.${column}`)}</th>)}
               </tr></thead>
               <tbody className={`divide-y ${borderColors.divideDefault}`}>
-                {rows.map((row) => {
+                {rows.map((row, rowIndex) => {
                   const protectedTitle = row.protection_source === null ? undefined : t(`protection.${row.protection_source}`, { defaultValue: t('protection.unknown') })
                   const disabled = locked || row.is_protected
+                  const rowIdentity = row.code.trim() || t('editor.grid.newRowIdentity', { number: rowIndex + 1 })
                   return <tr className={row.is_protected ? semanticColorTokens.intent.warning.bgSubtleAlpha : tokens.table.rowHover} key={row.id}>
                     <td className="w-32 px-3 py-2 align-top">
                       <div>
-                        <Input aria-describedby={row.is_protected ? `protected-${row.id}` : undefined} aria-label={t('editor.grid.codeAria', { code: row.code })} disabled={disabled} error={row.id in gridErrors} value={row.code} onChange={(event) => { updateRow(row.id, { code: event.target.value }) }} />
+                        <Input aria-describedby={row.is_protected ? `protected-${row.id}` : undefined} aria-label={t('editor.grid.codeAria', { code: rowIdentity })} disabled={disabled} error={row.id in gridErrors} value={row.code} onChange={(event) => { updateRow(row.id, { code: event.target.value }) }} />
                         {row.is_protected && <span className={`mt-1 flex items-center gap-1 text-xs ${semanticColorTokens.intent.warning.textStrong}`}><LockKeyhole className="h-3 w-3" />{t('editor.grid.protected')}</span>}
                         {row.is_protected && protectedTitle !== undefined && <p className={`mt-1 text-xs ${textColors.tertiary}`} id={`protected-${row.id}`}>{protectedTitle}</p>}
                         {row.id in gridErrors && <p className={tokens.helperText.error}>{gridErrors[row.id]}</p>}
@@ -150,17 +177,17 @@ export function TemplateEditorPage() {
                     </td>
                     <td className="min-w-56 px-3 py-2 align-top"><Input disabled={disabled} value={row.name} onChange={(event) => { updateRow(row.id, { name: event.target.value }) }} /></td>
                     <td className="w-40 px-3 py-2 align-top"><Select disabled={disabled} value={row.type} onChange={(event) => { if (isAccountType(event.target.value, template.account_types)) updateRow(row.id, { type: event.target.value }) }}>{template.account_types.map((type) => <option value={type} key={type}>{t(`accountTypes.${type}`)}</option>)}</Select></td>
-                    <td className="w-36 px-3 py-2 align-top"><Select disabled={disabled} value={row.parent_code ?? ''} onChange={(event) => { updateRow(row.id, { parent_code: event.target.value || null }) }}><option value="">{t('common.none')}</option>{rows.map((candidate) => candidate.id === row.id ? null : <option value={candidate.code} key={candidate.id}>{candidate.code}</option>)}</Select></td>
+                    <td className="w-36 px-3 py-2 align-top"><Select disabled={disabled} value={row.parent_code ?? ''} onChange={(event) => { updateRow(row.id, { parent_code: event.target.value || null }) }}><option value="">{t('common.none')}</option>{rows.map((candidate) => candidate.id === row.id || candidate.code.trim() === '' ? null : <option value={candidate.code} key={candidate.id}>{candidate.code}</option>)}</Select></td>
                     <td className="min-w-52 px-3 py-2 align-top"><Select disabled={disabled} value={row.system_purpose ?? ''} onChange={(event) => { const purpose = event.target.value; if (purpose === '' || isSystemPurpose(purpose, template.system_account_purposes)) updateRow(row.id, { system_purpose: purpose || null }) }}><option value="">{t('common.none')}</option>{template.system_account_purposes.map((purpose) => <option value={purpose} key={purpose}>{t(`purposes.${purpose}`)}</option>)}</Select></td>
-                    <td className="px-3 py-4 text-center align-top"><Checkbox aria-label={t('editor.grid.systemAria', { code: row.code })} disabled={disabled} checked={row.is_system} onChange={(event) => { updateRow(row.id, { is_system: event.target.checked }) }} /></td>
-                    <td className="px-3 py-3 align-top">{!disabled && <Button variant="ghost" size="sm" aria-label={t('editor.grid.deleteAria', { code: row.code })} onClick={() => { setRowEdits((current) => (current ?? rows).filter((candidate) => candidate.id !== row.id)) }}><Trash2 className="h-4 w-4" /></Button>}</td>
+                    <td className="px-3 py-4 text-center align-top"><Checkbox aria-label={t('editor.grid.systemAria', { code: rowIdentity })} disabled={disabled} checked={row.is_system} onChange={(event) => { updateRow(row.id, { is_system: event.target.checked }) }} /></td>
+                    <td className="px-3 py-3 align-top">{!disabled && <Button variant="ghost" size="sm" aria-label={t('editor.grid.deleteAria', { code: rowIdentity })} onClick={() => { setRowEdits((current) => (current ?? rows).filter((candidate) => candidate.id !== row.id)) }}><Trash2 className="h-4 w-4" /></Button>}</td>
                   </tr>
                 })}
               </tbody>
             </DataTable>
             </div>
-            {(saveRows.error ?? saveMetadata.error) !== null && <div role="alert" className={`m-4 ${tokens.alert.error}`}>{t(countryDefaultsErrorKey(saveRows.error ?? saveMetadata.error))}</div>}
-            {!locked && <div className={`flex justify-end gap-3 border-t p-4 ${borderColors.light}`}><Button variant="secondary" onClick={() => { saveMetadata.mutate(template.name) }}>{t('editor.saveMetadata')}</Button><Button onClick={handleSaveRows}>{t('editor.saveRows')}</Button></div>}
+            {saveRows.error !== null && <div role="alert" className={`m-4 ${tokens.alert.error}`}>{t(countryDefaultsErrorKey(saveRows.error))}</div>}
+            {!locked && <div className={`flex justify-end border-t p-4 ${borderColors.light}`}><Button onClick={handleSaveRows}>{t('editor.saveRows')}</Button></div>}
           </section>
 
           <aside aria-label={t('validation.title')} className={`${tokens.card.base} self-start xl:sticky xl:top-6`}>

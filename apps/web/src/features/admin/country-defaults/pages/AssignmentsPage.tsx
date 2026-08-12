@@ -69,7 +69,7 @@ export function AssignmentsPage() {
         {!assignments.isError && <p className={`text-sm ${textColors.tertiary}`}>{t('assignments.count', { count: assignments.data?.data.length ?? 0 })}</p>}
         {assignments.isError && <div role="alert" className={tokens.alert.error}>{t('assignments.loadError')}</div>}
         {templates.isError && <div role="alert" className={tokens.alert.error}>{t(countryDefaultsErrorStatus(templates.error) === 403 ? 'assignments.templatesForbidden' : 'assignments.templatesLoadError')}</div>}
-        <div className={tokens.alert.info}>{t('assignments.catalogVersion', { version: assignments.data?.meta.catalog_version ?? '—' })}</div>
+        {!assignments.isError && <div className={tokens.alert.info}>{t('assignments.catalogVersion', { version: assignments.data?.meta.catalog_version ?? '—' })}</div>}
         {!assignments.isError && <div className={`overflow-hidden rounded-xl border ${borderColors.light}`}>
           <DataTable columns={columns} data={assignments.data?.data ?? []} keyExtractor={(row) => row.country_code} isLoading={assignments.isLoading} emptyTitle={t('assignments.empty')} ariaLabel={t('assignments.tableLabel')} />
         </div>}

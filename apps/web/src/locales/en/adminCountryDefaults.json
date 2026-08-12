@@ -68,7 +68,7 @@
     "grid": {
       "title": "Account definition", "subtitle": "Edit the provisioning hierarchy. Protected instrument rows remain locked.",
       "add": "Add account", "tableLabel": "Template account grid", "protected": "Protected", "protectedAria": "Protected account {{code}}",
-      "codeAria": "Account code {{code}}", "systemAria": "System account {{code}}", "deleteAria": "Delete account {{code}}",
+      "codeAria": "Account code {{code}}", "systemAria": "System account {{code}}", "deleteAria": "Delete account {{code}}", "newRowIdentity": "New account {{number}}",
       "columns": { "code": "Code", "name": "Name", "type": "Type", "parent": "Parent", "purpose": "Purpose", "system": "System", "actions": "Actions" }
     },
     "validation": { "codeRequired": "Account code is required.", "nameRequired": "Account name is required.", "parentMissing": "The parent code must exist in this template." }
