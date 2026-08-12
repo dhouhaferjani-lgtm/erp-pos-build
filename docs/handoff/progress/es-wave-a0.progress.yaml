@@ -57,7 +57,7 @@ milestones:
   - id: M1
     title: "ES-08 — extend fiscal:verify-event-chain: payload<->canonical_bytes, integrity_status (quarantined-but-intact must stop reporting verified), sealed coordinates, sequence_number contiguity, + the MANIFEST-DRIVEN fleet driver (operator-supplied tenant->actor-id manifest; per listed tenant run the existing single-tenant verification with the actor gate and tenant binding preserved EXACTLY; missing/unauthorised tenants REPORTED LOUDLY with a non-zero aggregate exit, never silently skipped; NO service account or new identity model; terminal/context enumeration from the distinct (terminal_id, chain_context) pairs in fiscal_events within the bound tenant; unworkable manifest shape -> STOP condition C). Verifier-class contract: RED on T-a and T-b, green on clean, EACH new check individually demonstrated red."
     review_lenses: [fiscal-pos, treasury]
-    status: in_progress
+    status: review
     fix_rounds: 4
     commit: 71f306c86
     verdict: docs/handoff/reviews/es-wave-a0/M1-round4.md
