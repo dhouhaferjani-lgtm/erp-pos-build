@@ -75,10 +75,10 @@ milestones:
     title: "SV-9 — blind counting ON everywhere. FIRST execute and RECORD the prerequisite check (R-6): walk each of the six touch points + the migration and ask whether it genuinely requires G-3 (the backfill command) or another Stage-5 policy gate. IF ANY touch point genuinely does, set status blocked_owner (gate SV-9-blind-default-prerequisite), name the touch point and prerequisite in blockers, and STOP; OTHERWISE proceed. Record the outcome EITHER WAY — a silent pass is not a check. Then the six touch points + the self-guarding data migration for rows persisted false by the one-off 2026-04-25 seed (unattended tenants:migrate; savepoint wrapper not bare catch; warning-level completion token). CompanyFraudSettingsVerticalDefaultsTest goes RED BY DESIGN and is rewritten — declare it. Acceptance: both verticals resolve true; persisted-false rows migrated; FE round-trip on a row-less company does NOT re-disable. apps/web strings en+fr+ar."
     review_lenses: [fiscal-pos, frontend-conventions, tenancy-authz]
     status: review
-    fix_rounds: 0
+    fix_rounds: 1
     commit: b73a353f5ae0301b0310ff7578005d09ab20e9d9
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/sv-stage1/M3-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M4
     title: "SV-10 — blind-mode leak audit: READ-ONLY audit of the enumerated surfaces (EndOfDayPreviewModal defended card, CashReconciliationSection severity/reason prompts, CashCountTable reveal gate, any sibling rendering a variance-derived value pre-commit), findings to a file in docs/handoff/reviews/sv-stage1/. Fixes ONLY for leaks in-scope per the row (expected/variance MAGNITUDE disclosed before Commit Counts under blind mode); anything larger -> ticket + report. Do not weaken the existing defence."
     review_lenses: [fiscal-pos, frontend-conventions]
