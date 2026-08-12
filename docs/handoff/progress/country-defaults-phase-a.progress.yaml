@@ -61,9 +61,9 @@ milestones:
   - id: M4
     title: "Legacy golden exporter + bootstrap key-as-assertion data migration (drafts only) + country-defaults:verify global drift scan; report 27-REQUIRED + scope-dependent SalesStampDutyPayable results"
     review_lenses: [treasury, tenancy-authz]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 782a2a5a16337508ce63f6ec8994cf86b55dc0c8
     verdict: null
     last_verdict: null
   - id: M5
