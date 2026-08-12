@@ -8,6 +8,9 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\ValueObjects\ReservationSettings;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\MovementGlContext;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
+use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
@@ -32,6 +35,7 @@ use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Application\Services\RestockPolicyResolver;
 use App\Modules\Product\Domain\Enums\RestockPolicy;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Application\DTOs\RefundAllocation;
 use App\Modules\Treasury\Domain\Enums\ProrationStrategy;
 use App\Modules\Treasury\Domain\Services\PaymentRefundService;
@@ -40,6 +44,8 @@ use App\Modules\Voucher\Application\Services\VoucherIssuanceService;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\ConcurrencyFault;
+use App\Shared\Domain\CurrencyScale;
+use Carbon\CarbonInterface;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -86,6 +92,7 @@ final class ReceiptReturnService
         private readonly RestockPolicyResolver $restockPolicyResolver,
         private readonly LegacyCorrectionGuard $legacyCorrectionGuard,
         private readonly ReturnScrapWriteOffService $returnScrapWriteOffService,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     private function scale(): int
@@ -278,6 +285,7 @@ final class ReceiptReturnService
             /** @var Company $company */
             $company = $terminal->company ?? Company::findOrFail($terminal->company_id);
             $currency = $company->currency ?? 'TND';
+            $originalIsHistorical = $this->originalReceiptPredatesInventoryGlCutover($originalReceipt->id);
 
             [$receiptLines, $vatAggregates, $subtotal, $totalTax, $totalDiscount, $total] =
                 $this->computeReturnTotals($validatedLines, $currency);
@@ -431,6 +439,16 @@ final class ReceiptReturnService
                 $qty = $returnLine['quantity'];
                 /** @var numeric-string $alreadyReturnedQty */
                 $alreadyReturnedQty = $returnLine['already_returned'];
+                $saleMovementBasis = $this->originalSaleMovementUnitCost(
+                    tenantId: $terminal->tenant_id,
+                    companyId: $companyId,
+                    originalReceiptId: $originalReceipt->id,
+                    productId: $originalLine->product_id,
+                    variantId: $originalLine->variant_id,
+                );
+                $originalUnitCost = $saleMovementBasis['found']
+                    ? $saleMovementBasis['unit_cost']
+                    : $this->receiptLineUnitCost($originalLine);
 
                 if ($disposition === ReturnLineDisposition::Scrap) {
                     // The scrap PAIR (receive back, then destroy) is ATOMIC and
@@ -446,6 +464,9 @@ final class ReceiptReturnService
                         currencyCode: $draft->currency,
                         cashierId: $cashier->id,
                         variantId: $originalLine->variant_id,
+                        entryDate: $draft->posted_at,
+                        unitCost: $originalUnitCost,
+                        isHistorical: $originalIsHistorical,
                     );
 
                     continue;
@@ -471,6 +492,10 @@ final class ReceiptReturnService
                     returnReceiptId: $draft->id,
                     cashierId: $cashier->id,
                     variantId: $originalLine->variant_id,
+                    currencyCode: $draft->currency,
+                    entryDate: $draft->posted_at,
+                    unitCost: $originalUnitCost,
+                    isHistorical: $originalIsHistorical,
                 );
 
                 $this->restoreBatchAllocations(
@@ -485,6 +510,19 @@ final class ReceiptReturnService
             // Step 12: Seal via ReceiptFinalizationService (chain advance happens here)
             // ─────────────────────────────────────────────────────────────────
             $sealed = $this->finalizationService->finalize($draft);
+
+            try {
+                $this->glBuffer->flushIfOutermost(contained: true);
+            } catch (\Throwable $e) {
+                if (ConcurrencyFault::isRetryable($e)) {
+                    throw $e;
+                }
+
+                Log::error('ReceiptReturnService: inventory GL batch failed; every inventory entry for the return was discarded', [
+                    'return_receipt_id' => $draft->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             /** @var Receipt */
             return $sealed->fresh([
@@ -1252,6 +1290,10 @@ final class ReceiptReturnService
      *
      * @param  numeric-string  $quantity
      */
+    /**
+     * @param  numeric-string  $quantity
+     * @param  numeric-string|null  $unitCost
+     */
     private function restoreStock(
         string $tenantId,
         string $companyId,
@@ -1260,6 +1302,10 @@ final class ReceiptReturnService
         string $quantity,
         string $returnReceiptId,
         string $cashierId,
+        string $currencyCode,
+        ?CarbonInterface $entryDate,
+        ?string $unitCost = null,
+        bool $isHistorical = false,
         ?string $variantId = null,
     ): void {
         $stockLevel = $this->resolveStockLevelForUpdate($productId, $locationId, $companyId, $variantId);
@@ -1283,7 +1329,9 @@ final class ReceiptReturnService
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
 
-        StockMovement::create([
+        $resolvedUnitCost = $this->resolveReturnUnitCost($tenantId, $companyId, $productId, $unitCost);
+
+        $movement = StockMovement::create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
@@ -1295,16 +1343,39 @@ final class ReceiptReturnService
             'quantity' => $quantity,
             'quantity_before' => $quantityBefore,
             'quantity_after' => $quantityAfter,
+            'unit_cost' => CurrencyScale::bcformat($resolvedUnitCost, 6),
+            'total_cost' => CurrencyScale::bcformat(
+                bcmul($quantity, $resolvedUnitCost, 6), // precision-ok: inventory cost product at COST_SCALE
+                6,
+            ),
             'reference' => 'POS Return',
             'reference_type' => 'pos_receipt_return',
             'reference_id' => $returnReceiptId,
             'notes' => "Stock returned via POS return (return receipt: {$returnReceiptId})",
             'user_id' => $cashierId,
-            'is_historical' => false,
+            'is_historical' => $isHistorical,
             // Server-side return processing time — no device event time exists
             // in this flow (the device authors refunds via the projection path).
             'occurred_at' => now(),
         ]);
+
+        $occurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
+        $this->glBuffer->enqueue(new MovementGlContext(
+            kind: MovementGlKind::Entry,
+            movementId: $movement->id,
+            companyId: $movement->company_id,
+            currencyCode: $currencyCode,
+            reason: $movement->reason ?? throw new \LogicException('POS return movement is missing its GL reason.'),
+            quantityBefore: (string) $movement->quantity_before,
+            quantityAfter: (string) $movement->quantity_after,
+            unitCost: (string) ($movement->unit_cost ?? '0'),
+            sourceType: $movement->reference_type,
+            sourceId: $movement->reference_id,
+            occurredAt: \DateTimeImmutable::createFromInterface($occurredAt),
+            entryDate: \DateTimeImmutable::createFromInterface($entryDate ?? now()),
+            postedByUserId: $cashierId,
+            isHistorical: (bool) $movement->is_historical,
+        ));
     }
 
     /**
@@ -1364,6 +1435,10 @@ final class ReceiptReturnService
      *
      * @param  numeric-string  $quantity
      */
+    /**
+     * @param  numeric-string  $quantity
+     * @param  numeric-string|null  $unitCost
+     */
     private function applyScrapPair(
         string $tenantId,
         string $companyId,
@@ -1375,6 +1450,9 @@ final class ReceiptReturnService
         string $currencyCode,
         string $cashierId,
         ?string $variantId = null,
+        ?CarbonInterface $entryDate = null,
+        ?string $unitCost = null,
+        bool $isHistorical = false,
     ): void {
         // No stock_levels row at all (service / non-inventory item): both legs are
         // no-ops by construction — `restoreStock` logs and skips, and there is
@@ -1391,10 +1469,13 @@ final class ReceiptReturnService
             return;
         }
 
+        $marker = $this->glBuffer->mark();
+
         try {
             DB::transaction(function () use (
                 $tenantId, $companyId, $locationId, $productId, $quantity,
-                $returnReceiptId, $returnReceiptNumber, $currencyCode, $cashierId, $variantId,
+                $returnReceiptId, $returnReceiptNumber, $currencyCode, $cashierId, $variantId, $entryDate,
+                $unitCost, $isHistorical,
             ): void {
                 $this->restoreStock(
                     tenantId: $tenantId,
@@ -1405,6 +1486,10 @@ final class ReceiptReturnService
                     returnReceiptId: $returnReceiptId,
                     cashierId: $cashierId,
                     variantId: $variantId,
+                    currencyCode: $currencyCode,
+                    entryDate: $entryDate,
+                    unitCost: $unitCost,
+                    isHistorical: $isHistorical,
                 );
 
                 $this->returnScrapWriteOffService->writeOff(
@@ -1418,9 +1503,14 @@ final class ReceiptReturnService
                     currencyCode: $currencyCode,
                     cashierId: $cashierId,
                     variantId: $variantId,
+                    entryDate: $entryDate,
+                    unitCost: $unitCost,
+                    isHistorical: $isHistorical,
                 );
             });
         } catch (\Throwable $e) {
+            $this->glBuffer->rollbackTo($marker);
+
             // A deadlock / serialization failure / aborted transaction is a
             // RETRYABLE INFRASTRUCTURE fault, not a domain outcome. Laravel does
             // not issue ROLLBACK TO SAVEPOINT for a nested concurrency error, so
@@ -1439,6 +1529,89 @@ final class ReceiptReturnService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /** @return numeric-string|null */
+    private function receiptLineUnitCost(ReceiptLine $line): ?string
+    {
+        if ($line->unit_cost === null) {
+            return null;
+        }
+
+        return (string) $line->unit_cost;
+    }
+
+    /** @return array{found: bool, unit_cost: numeric-string|null} */
+    private function originalSaleMovementUnitCost(
+        string $tenantId,
+        string $companyId,
+        string $originalReceiptId,
+        string $productId,
+        ?string $variantId,
+    ): array {
+        $query = StockMovement::query()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->where('reference_type', 'pos_receipt')
+            ->where('reference_id', $originalReceiptId)
+            ->where('product_id', $productId)
+            ->where('reason', MovementReason::POSSale);
+
+        $variantId === null
+            ? $query->whereNull('variant_id')
+            : $query->where('variant_id', $variantId);
+
+        $movement = $query
+            ->orderBy('occurred_at')
+            ->orderBy('id')
+            ->first();
+        if ($movement === null) {
+            return ['found' => false, 'unit_cost' => null];
+        }
+
+        return [
+            'found' => true,
+            'unit_cost' => $movement->unit_cost === null ? null : (string) $movement->unit_cost,
+        ];
+    }
+
+    /**
+     * @param  numeric-string|null  $unitCost
+     * @return numeric-string
+     */
+    private function resolveReturnUnitCost(
+        string $tenantId,
+        string $companyId,
+        string $productId,
+        ?string $unitCost,
+    ): string {
+        if ($unitCost !== null) {
+            return $unitCost;
+        }
+
+        $product = Product::query()
+            ->withTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
+            ->findOrFail($productId);
+
+        $resolved = $product->resolveMovementUnitCost();
+        if (! is_numeric($resolved)) {
+            throw new \LogicException('Resolved POS return unit cost must be numeric.');
+        }
+
+        return $resolved;
+    }
+
+    private function originalReceiptPredatesInventoryGlCutover(string $receiptId): bool
+    {
+        $receipt = Receipt::query()
+            ->selectRaw('CASE WHEN pos_receipts.created_at < companies.inventory_gl_cutover_at THEN 1 ELSE 0 END AS gl_is_historical')
+            ->join('companies', 'companies.id', '=', 'pos_receipts.company_id')
+            ->where('pos_receipts.id', $receiptId)
+            ->firstOrFail();
+
+        return (int) $receipt->getAttribute('gl_is_historical') === 1;
     }
 
     /**

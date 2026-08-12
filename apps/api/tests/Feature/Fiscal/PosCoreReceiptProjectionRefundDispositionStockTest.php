@@ -10,6 +10,9 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\PeriodStatus;
+use App\Modules\Company\Domain\FiscalPeriod;
+use App\Modules\Company\Domain\FiscalYear;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -23,6 +26,7 @@ use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Product\Domain\Product;
@@ -30,7 +34,10 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 /**
@@ -50,6 +57,12 @@ use Tests\TestCase;
 final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** @return list<string> */
+    protected function connectionsToTransact(): array
+    {
+        return [];
+    }
 
     private string $tenantId;
 
@@ -113,6 +126,37 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         self::assertSame('7.0000', $stockLevel->quantity);
     }
 
+    public function test_post_cutover_pos_sale_and_return_movements_never_have_a_null_unit_cost(): void
+    {
+        $this->seedWriteOffAccounts();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '1.234568',
+        ]);
+        $this->seedStockLevel($product->id, '10.0000');
+
+        $sale = $this->v4SaleEvent($product->id, '2.000', sequenceNumber: 1);
+        $this->project($sale);
+        $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'restock', sequenceNumber: 2);
+        $this->project($refund);
+
+        $population = StockMovement::query()
+            ->where('stock_movements.company_id', $this->companyId)
+            ->whereIn('stock_movements.reason', [MovementReason::POSSale, MovementReason::POSReturn])
+            ->count();
+        self::assertSame(2, $population, 'the null-cost ratchet must exercise both live POS movement kinds');
+
+        $nullCostCount = StockMovement::query()
+            ->join('companies', 'companies.id', '=', 'stock_movements.company_id')
+            ->where('stock_movements.company_id', $this->companyId)
+            ->whereIn('stock_movements.reason', [MovementReason::POSSale, MovementReason::POSReturn])
+            ->whereColumn('stock_movements.created_at', '>=', 'companies.inventory_gl_cutover_at')
+            ->whereNull('stock_movements.unit_cost')
+            ->count();
+        self::assertSame(0, $nullCostCount);
+    }
+
     /**
      * DPA V10 — the v4 device-refund projection must produce the SAME two-leg
      * SCRAP outcome as the interactive server return path: restore (+qty,
@@ -132,17 +176,27 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         ]);
         $stockLevel = $this->seedStockLevel($product->id, '10.0000');
 
-        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1);
+        $sale = $this->v4SaleEvent($product->id, '2.000', sequenceNumber: 1);
         $this->project($sale);
+        $saleReceipt = Receipt::query()->where('fiscal_event_id', $sale->id)->sole();
+        self::assertSame(
+            '3.0000',
+            (string) ReceiptLine::query()->where('receipt_id', $saleReceipt->id)->sole()->unit_cost,
+            'the projected receipt line must persist the same immutable sale cost used by interactive returns',
+        );
         $stockLevel->refresh();
-        self::assertSame('5.0000', $stockLevel->quantity);
+        self::assertSame('8.0000', $stockLevel->quantity);
+
+        // R-1: the refund must reverse the cost captured by the original sale,
+        // not the live WAC at projection time.
+        $product->update(['cost_price' => '12.000000']);
 
         $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
         $this->project($refund);
 
         // Net sellable quantity unchanged — the two legs cancel.
         $stockLevel->refresh();
-        self::assertSame('5.0000', $stockLevel->quantity, 'scrap nets to zero sellable change');
+        self::assertSame('8.0000', $stockLevel->quantity, 'scrap nets to zero sellable change');
 
         // Leg 1 — restore.
         self::assertSame(1, StockMovement::query()
@@ -156,6 +210,11 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             ->where('reason', MovementReason::WriteOff->value)
             ->sole();
 
+        $restore = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSReturn->value)
+            ->sole();
+        self::assertSame('3.000000', (string) $restore->unit_cost);
         self::assertSame('3.000000', (string) $writeOff->unit_cost);
         self::assertSame('6.000000', (string) $writeOff->total_cost);
         self::assertSame(
@@ -188,6 +247,20 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         self::assertSame(JournalEntryStatus::Posted, $entry->status);
         self::assertNotNull($entry->posted_at);
         self::assertNotNull($entry->fiscal_hash);
+
+        $movementEntries = JournalEntry::query()
+            ->whereIn('source_type', ['inventory_exit', 'inventory_entry', 'batch_write_off'])
+            ->whereIn('source_id', StockMovement::query()->where('product_id', $product->id)->pluck('id'))
+            ->with('lines')
+            ->get();
+        self::assertEqualsCanonicalizing(
+            ['inventory_exit', 'inventory_entry', 'batch_write_off'],
+            $movementEntries->pluck('source_type')->all(),
+        );
+        foreach ($movementEntries as $movementEntry) {
+            self::assertSame(0, bccomp('6.000', (string) $movementEntry->lines->sum('debit'), 3));
+            self::assertSame(0, bccomp('6.000', (string) $movementEntry->lines->sum('credit'), 3));
+        }
     }
 
     /**
@@ -229,6 +302,52 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         self::assertSame(1, JournalEntry::query()
             ->where('company_id', $this->companyId)
             ->where('source_type', 'batch_write_off')
+            ->count());
+    }
+
+    public function test_refund_of_a_sale_created_before_cutover_does_not_book_a_one_sided_inventory_entry(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+        $this->seedStockLevel($product->id, '10.0000');
+        $sale = $this->v4SaleEvent($product->id, '2.000', sequenceNumber: 1);
+        $this->project($sale);
+
+        $saleReceipt = Receipt::query()->where('fiscal_event_id', $sale->id)->sole();
+        $saleMovement = StockMovement::query()
+            ->where('reference_id', $saleReceipt->id)
+            ->where('reason', MovementReason::POSSale)
+            ->sole();
+        $company = Company::query()->findOrFail($this->companyId);
+        $company->getConnection()->table('stock_movements')->where('id', $saleMovement->id)->update([
+            'created_at' => DB::raw("CURRENT_TIMESTAMP - INTERVAL '3 hours'"),
+            'unit_cost' => null,
+            'total_cost' => null,
+        ]);
+        $company->getConnection()->table('companies')->where('id', $this->companyId)->update([
+            'inventory_gl_cutover_at' => DB::raw("CURRENT_TIMESTAMP - INTERVAL '2 hours'"),
+        ]);
+        self::assertSame(0, JournalEntry::query()
+            ->where('source_type', 'inventory_exit')
+            ->where('source_id', $saleMovement->id)
+            ->count());
+        $this->seedWriteOffAccounts();
+
+        $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'restock', sequenceNumber: 2);
+        $this->project($refund);
+
+        $refundReceipt = Receipt::query()->where('fiscal_event_id', $refund->id)->sole();
+        $returnMovement = StockMovement::query()
+            ->where('reference_id', $refundReceipt->id)
+            ->where('reason', MovementReason::POSReturn)
+            ->sole();
+        self::assertTrue((bool) $returnMovement->is_historical);
+        self::assertSame(0, JournalEntry::query()
+            ->where('source_type', 'inventory_entry')
+            ->where('source_id', $returnMovement->id)
             ->count());
     }
 
@@ -373,6 +492,93 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             ->count());
     }
 
+    /** @return iterable<string, array{string}> */
+    public static function containedGlFailures(): iterable
+    {
+        yield 'closed fiscal period' => ['closed-period'];
+        yield 'movement direction contradiction' => ['direction'];
+        yield 'journal insert QueryException' => ['query'];
+    }
+
+    /** @return iterable<string, array{string}> */
+    public static function nonFatalInventoryGlPolicies(): iterable
+    {
+        yield 'periodic valuation' => ['periodic'];
+        yield 'missing movement accounts' => ['missing-accounts'];
+    }
+
+    #[DataProvider('nonFatalInventoryGlPolicies')]
+    public function test_pos_sale_projection_survives_non_fatal_inventory_gl_policy(string $policy): void
+    {
+        if ($policy === 'periodic') {
+            Company::query()->findOrFail($this->companyId)->update([
+                'inventory_valuation_mode' => 'periodic',
+            ]);
+        }
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+        $this->seedStockLevel($product->id, '10.0000');
+        $sale = $this->v4SaleEvent($product->id, '2.000', sequenceNumber: 1);
+
+        $this->project($sale);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $sale->id)->sole();
+        $movement = StockMovement::query()->where('reference_id', $receipt->id)->sole();
+        self::assertSame(0, JournalEntry::query()
+            ->where('source_type', 'inventory_exit')
+            ->where('source_id', $movement->id)
+            ->count());
+    }
+
+    #[DataProvider('containedGlFailures')]
+    public function test_scrap_inventory_gl_failure_is_contained_for_the_complete_receipt(string $mechanism): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('[PG] contained GL failure mechanisms require PostgreSQL.');
+        }
+
+        $this->seedWriteOffAccounts();
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'cost_price' => '3.000000',
+        ]);
+        $stockLevel = $this->seedStockLevel($product->id, '10.0000');
+        $sale = $this->v4SaleEvent($product->id, '2.000', sequenceNumber: 1);
+        $this->project($sale);
+        self::assertSame(1, JournalEntry::query()
+            ->where('company_id', $this->companyId)
+            ->where('source_type', 'inventory_exit')
+            ->count());
+
+        $cleanup = $this->installContainedGlFailure($mechanism);
+        try {
+            $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
+            $this->project($refund);
+        } finally {
+            $cleanup();
+        }
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $refund->id)->sole();
+        $movementIds = StockMovement::query()->where('reference_id', $receipt->id)->pluck('id');
+
+        self::assertCount(2, $movementIds, 'stock truth survives a contained accounting failure');
+        self::assertSame(0, JournalEntry::query()
+            ->whereIn('source_type', ['inventory_entry', 'batch_write_off'])
+            ->whereIn('source_id', $movementIds)
+            ->count(), 'the receipt GL batch must be all-or-none');
+        self::assertSame(1, JournalEntry::query()
+            ->where('company_id', $this->companyId)
+            ->where('source_type', 'inventory_exit')
+            ->count());
+        $stockLevel->refresh();
+        self::assertSame('8.0000', (string) $stockLevel->quantity);
+    }
+
     // =================================================================
     // Helpers
     // =================================================================
@@ -404,6 +610,62 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             'system_purpose' => SystemAccountPurpose::Inventory,
             'is_active' => true,
         ]);
+    }
+
+    /** @return \Closure(): void */
+    private function installContainedGlFailure(string $mechanism): \Closure
+    {
+        if ($mechanism === 'closed-period') {
+            FiscalPeriod::query()->where('company_id', $this->companyId)->delete();
+            FiscalYear::query()->where('company_id', $this->companyId)->delete();
+            $year = FiscalYear::query()->create([
+                'company_id' => $this->companyId,
+                'name' => '2026',
+                'start_date' => '2026-01-01',
+                'end_date' => '2026-12-31',
+            ]);
+            FiscalPeriod::query()->create([
+                'fiscal_year_id' => $year->id,
+                'company_id' => $this->companyId,
+                'name' => 'August 2026',
+                'period_number' => 8,
+                'start_date' => '2026-08-01',
+                'end_date' => '2026-08-31',
+                'status' => PeriodStatus::Closed,
+                'closed_at' => now(),
+            ]);
+
+            return static function (): void {};
+        }
+
+        if ($mechanism === 'direction') {
+            $eventName = 'eloquent.created: '.StockMovement::class;
+            $companyId = $this->companyId;
+            Event::listen($eventName, static function (StockMovement $movement) use ($companyId): void {
+                if ($movement->company_id !== $companyId || $movement->reason !== MovementReason::POSReturn) {
+                    return;
+                }
+
+                // Mutate the just-created model instance before the projection
+                // snapshots it into the GL context. The database row and stock
+                // truth stay valid; only the posting context reaches rung 6.
+                $movement->quantity_after = bcsub((string) $movement->quantity_before, '1.0000', 4);
+            });
+
+            return static function () use ($eventName): void {
+                Event::forget($eventName);
+            };
+        }
+
+        if ($mechanism === 'query') {
+            DB::statement("ALTER TABLE journal_entries ADD CONSTRAINT w3_m2_reject_inventory_return_gl CHECK (source_type NOT IN ('inventory_entry', 'batch_write_off')) NOT VALID");
+
+            return static function (): void {
+                DB::statement('ALTER TABLE journal_entries DROP CONSTRAINT IF EXISTS w3_m2_reject_inventory_return_gl');
+            };
+        }
+
+        throw new \InvalidArgumentException("Unknown contained GL failure mechanism: {$mechanism}");
     }
 
     private function seedStockLevel(string $productId, string $quantity): StockLevel

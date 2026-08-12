@@ -21,7 +21,10 @@ use App\Modules\Fiscal\Domain\Exceptions\RefundQuantityExceededException;
 use App\Modules\Fiscal\Domain\Exceptions\TrainingOriginalRefundRefusedException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\MovementGlContext;
 use App\Modules\Inventory\Application\Services\CountingBlockService;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
+use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\InventoryCounting;
@@ -193,6 +196,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         private readonly PosPaymentPolicyResolver $posPaymentPolicyResolver,
         private readonly RestockPolicyResolver $restockPolicyResolver,
         private readonly ReturnScrapWriteOffService $returnScrapWriteOffService,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     public function name(): string
@@ -452,10 +456,15 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 return;
             }
 
-            $this->writeLines($receiptId, $event, $view, $originalReceiptId);
+            $lineUnitCosts = $this->writeLines(
+                $receiptId,
+                $event,
+                $view,
+                $receiptTypeEnum,
+                $originalReceiptId,
+            );
             $this->writeVatBreakdown($receiptId, $view);
             $this->writePayments($receiptId, $event, $view);
-            $this->redeemVouchers($receiptId, $event, $view, $receiptTypeEnum);
             // Spec §4.5 consumer matrix: loyalty earns on the SALE VALUE
             // (total − adj), never on the rounded amount collected. On v1/v2
             // there is no adjustment, so the base stays the projected total.
@@ -464,7 +473,22 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 : $totalNorm;
 
             $this->earnLoyaltyPoints($receiptId, $event, $view, $payload, $receiptTypeEnum, $earnBase);
-            $this->applyStockMovementForLines($receiptId, $event, $terminal, $view, $receiptTypeEnum);
+            $this->applyStockMovementForLines(
+                $receiptId,
+                $event,
+                $terminal,
+                $view,
+                $receiptTypeEnum,
+                $payload->currencyCode,
+                $postedAt,
+                $originalReceiptId,
+                $lineUnitCosts,
+            );
+
+            // Voucher redemption reaches the company GL advisory. It is
+            // independent of stock projection and therefore belongs after the
+            // final inventory lock, with its entry bytes and date unchanged.
+            $this->redeemVouchers($receiptId, $event, $view, $receiptTypeEnum);
 
             // Drift telemetry only — and only for a receipt that actually
             // rounded. A zero adjustment signed no denomination, so there is
@@ -473,6 +497,20 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             if ($roundingAdjustmentNorm !== null
                 && bccomp($roundingAdjustmentNorm, '0', self::SCALE) !== 0) {
                 $this->reconcileRoundingPolicySafely($event, $roundingDenominationNorm);
+            }
+
+            try {
+                $this->glBuffer->flushIfOutermost(contained: true);
+            } catch (\Throwable $e) {
+                if (ConcurrencyFault::isRetryable($e)) {
+                    throw $e;
+                }
+
+                Log::error('PosCoreReceiptProjection: inventory GL batch failed; every inventory entry for the receipt was discarded', [
+                    'fiscal_event_id' => $event->id,
+                    'receipt_id' => $receiptId,
+                    'error' => $e->getMessage(),
+                ]);
             }
         });
     }
@@ -1130,8 +1168,14 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * calculateAlreadyReturnedQuantities()` `original_line_id`-keyed
      * lookup, exactly like a legacy-authored return line already does.
      */
-    private function writeLines(string $receiptId, FiscalEvent $event, SaleReceiptCanonicalView $view, ?string $originalReceiptId = null): void
-    {
+    /** @return array<int, numeric-string|null> */
+    private function writeLines(
+        string $receiptId,
+        FiscalEvent $event,
+        SaleReceiptCanonicalView $view,
+        ReceiptType $receiptType,
+        ?string $originalReceiptId = null,
+    ): array {
         // review round-2 CRITICAL 1(c) — SHARED resolution with
         // assertRefundQuantityWithinCap() via resolveOriginalLineForReference()
         // so original_line_id is NEVER silently null on a v4 refund: every
@@ -1153,6 +1197,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         }
 
         $lineNumber = 1;
+        $lineUnitCosts = [];
         foreach ($view->lineItems as $index => $line) {
             // pos_receipt_lines.product_id is a foreign key to `products`
             // with `nullable()->restrictOnDelete()`. The canonical
@@ -1177,6 +1222,19 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $variantFk = $productFk !== null && $line->variantId !== null
                 ? $this->resolveVariantFk($event->tenant_id, $productFk, $line->variantId)
                 : null;
+            $lineUnitCost = null;
+            if ($receiptType === ReceiptType::Sale && $productFk !== null) {
+                if (! is_numeric($line->quantity)) {
+                    throw new \LogicException('Canonical POS line quantity must be numeric.');
+                }
+                $lineUnitCost = $this->movementCostSnapshot(
+                    $event->tenant_id,
+                    $event->company_id,
+                    $line->productId,
+                    $line->quantity,
+                )['unit_cost'];
+            }
+            $lineUnitCosts[$index] = $lineUnitCost;
 
             ReceiptLine::query()->create([
                 'id' => Str::uuid()->toString(),
@@ -1192,6 +1250,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'quantity' => $line->quantity,
                 'unit' => 'pc',
                 'unit_price' => $line->unitPrice,
+                'unit_cost' => $lineUnitCost,
                 'line_total' => $line->lineSubtotal,
                 'tax_rate' => $line->vatRate,
                 'tax_amount' => $line->lineVat,
@@ -1200,6 +1259,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'original_line_id' => $originalLineIdByIndex[$index] ?? null,
             ]);
         }
+
+        return $lineUnitCosts;
     }
 
     /**
@@ -1541,6 +1602,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * product-level), idempotency (the whole `apply()` is guarded by the
      * `fiscal_event_id` probe + `INSERT … ON CONFLICT DO NOTHING`), and scale-4
      * bcmath precision; neither touches `CompanyContext` (rule 20).
+     *
+     * @param  array<int, numeric-string|null>  $lineUnitCosts
      */
     private function applyStockMovementForLines(
         string $receiptId,
@@ -1548,14 +1611,35 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         Terminal $terminal,
         SaleReceiptCanonicalView $view,
         ReceiptType $receiptType,
+        string $currencyCode,
+        CarbonInterface $entryDate,
+        ?string $originalReceiptId,
+        array $lineUnitCosts,
     ): void {
         if ($receiptType === ReceiptType::Return) {
-            $this->restockForLines($receiptId, $event, $terminal, $view);
+            $this->restockForLines(
+                $receiptId,
+                $event,
+                $terminal,
+                $view,
+                $currencyCode,
+                $entryDate,
+                $originalReceiptId,
+            );
 
             return;
         }
 
-        $this->decrementStockForLines($receiptId, $event, $terminal, $view, $receiptType);
+        $this->decrementStockForLines(
+            $receiptId,
+            $event,
+            $terminal,
+            $view,
+            $receiptType,
+            $currencyCode,
+            $entryDate,
+            $lineUnitCosts,
+        );
 
         // Live inventory counting task C2: a signed sale can never be rejected
         // server-side (device-SoT). If it arrives against an ACTIVE
@@ -1661,6 +1745,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * so a variant line hits the variant-scoped `stock_levels` row and writes
      * `variant_id` onto the `stock_movements` row. Non-variant lines pass null
      * and keep the product-level (`variant_id IS NULL`) behaviour.
+     *
+     * @param  array<int, numeric-string|null>  $lineUnitCosts
      */
     private function decrementStockForLines(
         string $receiptId,
@@ -1668,6 +1754,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         Terminal $terminal,
         SaleReceiptCanonicalView $view,
         ReceiptType $receiptType,
+        string $currencyCode,
+        CarbonInterface $entryDate,
+        array $lineUnitCosts,
     ): void {
         // Phase 0 fast-follow (return-disposition spec §5.1): a REFUND/VOID-via-
         // SALE_RECEIPT maps to ReceiptType::Return and must NOT decrement stock
@@ -1677,7 +1766,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             return;
         }
 
-        foreach ($view->lineItems as $line) {
+        foreach ($view->lineItems as $index => $line) {
             $productId = $line->productId;
             // Skip stock decrement when the canonical product_id is not a
             // local FK (non-UUID snapshot, deleted product, etc.). The
@@ -1703,6 +1792,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // later); the replay must order by when the sale happened, not
                 // when the server inserted the row.
                 occurredAt: $event->event_time_device,
+                currencyCode: $currencyCode,
+                entryDate: $entryDate,
+                unitCost: $lineUnitCosts[$index] ?? null,
             );
         }
     }
@@ -1796,6 +1888,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $quantity,
         string $receiptId,
         string $cashierId,
+        string $currencyCode,
+        CarbonInterface $entryDate,
+        ?string $unitCost,
         ?string $variantId = null,
         ?CarbonInterface $occurredAt = null,
     ): void {
@@ -1856,9 +1951,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
 
-        $cost = $this->movementCostSnapshot($tenantId, $companyId, $productId, $qty);
+        $cost = $unitCost === null
+            ? $this->movementCostSnapshot($tenantId, $companyId, $productId, $qty)
+            : $this->movementCostFromUnitCost($unitCost, $qty);
 
-        StockMovement::query()->create([
+        $movementOccurredAt = $occurredAt ?? now();
+        $movement = StockMovement::query()->create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
@@ -1882,9 +1980,13 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'reference_id' => $receiptId,
             'notes' => "Stock issued via PosCoreReceiptProjection (receipt: {$receiptId})",
             'user_id' => $cashierId,
+            // Every projection row is server-created after deploy. Device time
+            // belongs only in occurred_at and never suppresses queued COGS.
             'is_historical' => false,
-            'occurred_at' => $occurredAt ?? now(),
+            'occurred_at' => $movementOccurredAt,
         ]);
+
+        $this->enqueuePosMovement($movement, MovementGlKind::Exit, $currencyCode, $entryDate, $cashierId);
     }
 
     /**
@@ -1932,6 +2034,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         FiscalEvent $event,
         Terminal $terminal,
         SaleReceiptCanonicalView $view,
+        string $currencyCode,
+        CarbonInterface $entryDate,
+        ?string $originalReceiptId,
     ): void {
         $originalLineReferences = $view->originalLineReferences();
 
@@ -1940,6 +2045,18 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             if ($productId === '' || ! Str::isUuid($productId)) {
                 continue;
             }
+
+            // R-1 adopts the original-sale basis: a refund reverses the cost
+            // persisted by the sale projection even if live WAC has moved.
+            $originalSale = $originalReceiptId === null
+                ? ['unit_cost' => null, 'is_historical' => false]
+                : $this->originalPosSaleBasis(
+                    $event->tenant_id,
+                    $event->company_id,
+                    $originalReceiptId,
+                    $productId,
+                    $line->variantId,
+                );
 
             if ($originalLineReferences !== null) {
                 $reference = $originalLineReferences[$index] ?? null;
@@ -1959,6 +2076,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                             productId: $productId,
                             quantity: $line->quantity,
                             variantId: $line->variantId,
+                            entryDate: $entryDate,
+                            unitCost: $originalSale['unit_cost'],
+                            isHistorical: $originalSale['is_historical'],
                         );
 
                         continue;
@@ -1991,6 +2111,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 variantId: $line->variantId,
                 // occurred_at = DEVICE event time of the refund/void event.
                 occurredAt: $event->event_time_device,
+                currencyCode: $currencyCode,
+                entryDate: $entryDate,
+                unitCost: $originalSale['unit_cost'],
+                isHistorical: $originalSale['is_historical'],
             );
         }
     }
@@ -2040,6 +2164,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $productId,
         string $quantity,
         ?string $variantId,
+        CarbonInterface $entryDate,
+        ?string $unitCost,
+        bool $isHistorical,
     ): void {
         // Canonical `line_items[].quantity` is a positive decimal magnitude
         // (enforced by FiscalPayloadConstraintValidator's quantity regex) —
@@ -2065,8 +2192,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             return;
         }
 
+        $marker = $this->glBuffer->mark();
+
         try {
-            DB::transaction(function () use ($receiptId, $event, $terminal, $view, $productId, $quantity, $qty, $variantId): void {
+            DB::transaction(function () use ($receiptId, $event, $terminal, $view, $productId, $quantity, $qty, $variantId, $entryDate, $unitCost, $isHistorical): void {
                 $this->restockStock(
                     tenantId: $event->tenant_id,
                     companyId: $event->company_id,
@@ -2077,6 +2206,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                     cashierId: $event->operator_id,
                     variantId: $variantId,
                     occurredAt: $event->event_time_device,
+                    currencyCode: $view->payload->currencyCode,
+                    entryDate: $entryDate,
+                    unitCost: $unitCost,
+                    isHistorical: $isHistorical,
                 );
 
                 $this->returnScrapWriteOffService->writeOff(
@@ -2091,9 +2224,14 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                     cashierId: $event->operator_id,
                     variantId: $variantId,
                     occurredAt: $event->event_time_device,
+                    entryDate: $entryDate,
+                    unitCost: $unitCost,
+                    isHistorical: $isHistorical,
                 );
             });
         } catch (\Throwable $e) {
+            $this->glBuffer->rollbackTo($marker);
+
             // Gate C2: a retryable concurrency fault is NOT the projector
             // rejecting a signed event — it is infrastructure, and the job's own
             // retry is the correct handling. Swallowing it silently loses the
@@ -2156,8 +2294,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $quantity,
         string $receiptId,
         string $cashierId,
+        string $currencyCode,
+        CarbonInterface $entryDate,
+        bool $isHistorical,
         ?string $variantId = null,
         ?CarbonInterface $occurredAt = null,
+        ?string $unitCost = null,
     ): void {
         $stockLevelQuery = StockLevel::query()
             ->where('product_id', $productId)
@@ -2199,9 +2341,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $stockLevel->quantity = $quantityAfter;
         $stockLevel->save();
 
-        $cost = $this->movementCostSnapshot($tenantId, $companyId, $productId, $qty);
+        $cost = $unitCost === null
+            ? $this->movementCostSnapshot($tenantId, $companyId, $productId, $qty)
+            : $this->movementCostFromUnitCost($unitCost, $qty);
 
-        StockMovement::query()->create([
+        $movementOccurredAt = $occurredAt ?? now();
+        $movement = StockMovement::query()->create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
@@ -2221,9 +2366,120 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             'reference_id' => $receiptId,
             'notes' => "Stock restocked via PosCoreReceiptProjection refund/void (receipt: {$receiptId})",
             'user_id' => $cashierId,
-            'is_historical' => false,
-            'occurred_at' => $occurredAt ?? now(),
+            'is_historical' => $isHistorical,
+            'occurred_at' => $movementOccurredAt,
         ]);
+
+        $this->enqueuePosMovement($movement, MovementGlKind::Entry, $currencyCode, $entryDate, $cashierId);
+    }
+
+    /**
+     * Resolve the immutable cost captured by the original POS sale movement.
+     * Duplicate product lines share the same sale-time snapshot, so product +
+     * variant grain is sufficient even though movements do not carry line ids.
+     */
+    /** @return array{unit_cost: ?string, is_historical: bool} */
+    private function originalPosSaleBasis(
+        string $tenantId,
+        string $companyId,
+        string $originalReceiptId,
+        string $productId,
+        ?string $variantId,
+    ): array {
+        $query = StockMovement::query()
+            ->select('stock_movements.*')
+            ->selectRaw('CASE WHEN stock_movements.created_at < companies.inventory_gl_cutover_at THEN 1 ELSE 0 END AS gl_is_historical')
+            ->join('companies', 'companies.id', '=', 'stock_movements.company_id')
+            ->where('stock_movements.tenant_id', $tenantId)
+            ->where('stock_movements.company_id', $companyId)
+            ->where('stock_movements.reference_type', 'pos_receipt')
+            ->where('stock_movements.reference_id', $originalReceiptId)
+            ->where('stock_movements.product_id', $productId)
+            ->where('stock_movements.reason', MovementReason::POSSale);
+
+        $variantId === null
+            ? $query->whereNull('stock_movements.variant_id')
+            : $query->where('stock_movements.variant_id', $variantId);
+
+        $movement = $query
+            ->orderBy('stock_movements.occurred_at')
+            ->orderBy('stock_movements.id')
+            ->first();
+        if ($movement === null) {
+            Log::warning('PosCoreReceiptProjection: original POS sale cost was unavailable; refund falls back to current cost', [
+                'original_receipt_id' => $originalReceiptId,
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+            ]);
+
+            return ['unit_cost' => null, 'is_historical' => false];
+        }
+
+        $isHistorical = (int) $movement->getAttribute('gl_is_historical') === 1;
+        if ($movement->unit_cost === null) {
+            Log::warning('PosCoreReceiptProjection: original POS sale cost was unavailable; refund falls back to current cost', [
+                'original_receipt_id' => $originalReceiptId,
+                'product_id' => $productId,
+                'variant_id' => $variantId,
+            ]);
+
+            return ['unit_cost' => null, 'is_historical' => $isHistorical];
+        }
+
+        return [
+            'unit_cost' => (string) $movement->unit_cost,
+            // Compare in PostgreSQL because created_at is timestamp while the
+            // company watermark is timestamptz; PHP casts erase that distinction.
+            'is_historical' => $isHistorical,
+        ];
+    }
+
+    /**
+     * @param  numeric-string  $quantity
+     * @return array{unit_cost: numeric-string, total_cost: numeric-string}
+     */
+    private function movementCostFromUnitCost(string $unitCost, string $quantity): array
+    {
+        if (! is_numeric($unitCost)) {
+            throw new \LogicException('Original POS movement unit_cost must be numeric.');
+        }
+
+        /** @var numeric-string $normalizedUnitCost */
+        $normalizedUnitCost = bcadd($unitCost, '0', self::COST_SCALE);
+        /** @var numeric-string $absoluteQuantity */
+        $absoluteQuantity = bccomp($quantity, '0', 4) < 0
+            ? bcmul($quantity, '-1', 4)
+            : $quantity;
+        /** @var numeric-string $totalCost */
+        $totalCost = bcmul($normalizedUnitCost, $absoluteQuantity, self::COST_SCALE);
+
+        return ['unit_cost' => $normalizedUnitCost, 'total_cost' => $totalCost];
+    }
+
+    private function enqueuePosMovement(
+        StockMovement $movement,
+        MovementGlKind $kind,
+        string $currencyCode,
+        CarbonInterface $entryDate,
+        string $cashierId,
+    ): void {
+        $occurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
+        $this->glBuffer->enqueue(new MovementGlContext(
+            kind: $kind,
+            movementId: $movement->id,
+            companyId: $movement->company_id,
+            currencyCode: $currencyCode,
+            reason: $movement->reason ?? throw new \LogicException('POS movement is missing its GL reason.'),
+            quantityBefore: (string) $movement->quantity_before,
+            quantityAfter: (string) $movement->quantity_after,
+            unitCost: (string) ($movement->unit_cost ?? '0'),
+            sourceType: $movement->reference_type,
+            sourceId: $movement->reference_id,
+            occurredAt: \DateTimeImmutable::createFromInterface($occurredAt),
+            entryDate: \DateTimeImmutable::createFromInterface($entryDate),
+            postedByUserId: $cashierId,
+            isHistorical: (bool) $movement->is_historical,
+        ));
     }
 
     /**

@@ -17,7 +17,10 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
+use App\Modules\Inventory\Application\DTOs\MovementGlContext;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Inventory\Domain\Services\ReturnCostBasisResolver;
@@ -73,6 +76,7 @@ final class ReturnNoteService
         private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
         private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
         private readonly ReturnCostBasisResolver $returnCostBasisResolver,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     /**
@@ -529,8 +533,11 @@ final class ReturnNoteService
      * @throws \DomainException If return note cannot be confirmed
      * @throws ReturnPeriodLockedException If `document_date` falls in a locked period
      */
-    public function confirmWithin(Document $returnNote, ?string $actorId = null): Document
-    {
+    public function confirmWithin(
+        Document $returnNote,
+        ?string $actorId = null,
+        ?InventoryGlPostingBuffer $rootBuffer = null,
+    ): Document {
         if ($returnNote->type !== DocumentType::ReturnNote) {
             throw new \DomainException(
                 'Only return notes can be confirmed with this service.'
@@ -558,19 +565,28 @@ final class ReturnNoteService
             (string) $returnNote->document_number,
         );
 
-        $this->confirmWithFiscalChain($returnNote, $actorId);
+        $buffer = $rootBuffer ?? $this->glBuffer;
+        $this->confirmWithFiscalChain($returnNote, $actorId, $buffer);
 
         $returnNote->refresh();
+        /** @var Document $confirmed */
+        $confirmed = $returnNote->load(['lines']);
 
-        /** @var Document */
-        return $returnNote->load(['lines']);
+        // Writer tail: at depth one this posts in the same transaction; at a
+        // composite savepoint it deliberately defers to the registered root.
+        $buffer->flushIfOutermost();
+
+        return $confirmed;
     }
 
     /**
      * Confirm a return note with full fiscal hash chain compliance.
      */
-    private function confirmWithFiscalChain(Document $returnNote, ?string $actorId = null): void
-    {
+    private function confirmWithFiscalChain(
+        Document $returnNote,
+        ?string $actorId,
+        InventoryGlPostingBuffer $buffer,
+    ): void {
         // Acquire lock and get previous return note in chain
         $previousDoc = Document::where('company_id', $returnNote->company_id)
             ->where('type', DocumentType::ReturnNote)
@@ -588,7 +604,7 @@ final class ReturnNoteService
         $confirmedAt = now();
 
         // Receive stock back for each line
-        $this->receiveStockBack($returnNote);
+        $this->receiveStockBack($returnNote, $actorId, $buffer);
 
         // Calculate and snapshot taxes BEFORE sealing. The sealed fiscal hash
         // must cover the final, tax-adjusted total — and PostgreSQL's
@@ -653,8 +669,11 @@ final class ReturnNoteService
      * When a return note is confirmed, we need to record stock receipt
      * for all lines with physical products.
      */
-    private function receiveStockBack(Document $returnNote): void
-    {
+    private function receiveStockBack(
+        Document $returnNote,
+        ?string $actorId,
+        InventoryGlPostingBuffer $buffer,
+    ): void {
         $payload = $returnNote->payload ?? [];
         $existingRecords = is_array($payload['return_cost_basis'] ?? null)
             ? $payload['return_cost_basis']
@@ -701,7 +720,7 @@ final class ReturnNoteService
             $basis = $this->returnCostBasisResolver->resolveForReturnLine($line, (string) $line->quantity);
 
             // Receive stock back using WAC service with audit trail
-            $this->wacService->recordReturn(
+            $movement = $this->wacService->recordReturn(
                 product: $product,
                 location: $location,
                 quantity: CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
@@ -710,6 +729,24 @@ final class ReturnNoteService
                 referenceType: StockMovementReferenceType::Document,
                 referenceId: $returnNote->id
             );
+
+            $occurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
+            $buffer->enqueue(new MovementGlContext(
+                kind: MovementGlKind::Entry,
+                movementId: $movement->id,
+                companyId: $movement->company_id,
+                currencyCode: (string) $returnNote->currency,
+                reason: $movement->reason ?? throw new \LogicException('Return movement is missing its GL reason.'),
+                quantityBefore: (string) $movement->quantity_before,
+                quantityAfter: (string) $movement->quantity_after,
+                unitCost: (string) ($movement->unit_cost ?? '0'),
+                sourceType: $movement->reference_type,
+                sourceId: $movement->reference_id,
+                occurredAt: \DateTimeImmutable::createFromInterface($occurredAt),
+                entryDate: new \DateTimeImmutable('now'),
+                postedByUserId: $actorId ?? (auth()->id() !== null ? (string) auth()->id() : null),
+                isHistorical: (bool) $movement->is_historical,
+            ));
 
             $recordsByLineId[$line->id] = [
                 'line_id' => $line->id,

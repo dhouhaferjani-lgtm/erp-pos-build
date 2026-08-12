@@ -35,6 +35,10 @@ final class InventoryGlLockOrderContentionTest extends TestCase
         yield 'pair 4 — counting listener x GR (PO is Received before GL)' => ['counting_x_goods-receipt-received'];
         yield 'pair 5 — POS projection x GR (PO is Received before GL)' => ['pos-projection_x_goods-receipt-received'];
         yield 'pair 6 — multi-DN composite x invoice post' => ['multi-dn-composite_x_invoice-post'];
+        yield 'pair 7 — POS refund scrap x DN confirm' => ['pos-refund-scrap_x_dn-confirm'];
+        yield 'pair 8 — POS refund scrap x POS sale' => ['pos-refund-scrap_x_pos-sale'];
+        yield 'pair 9 — voucher POS sale x DN confirm' => ['voucher-pos-sale_x_dn-confirm'];
+        yield 'pair 10 — voucher POS sale x POS sale' => ['voucher-pos-sale_x_pos-sale'];
     }
 
     /** @return iterable<string, array{string, string}> */
@@ -47,7 +51,7 @@ final class InventoryGlLockOrderContentionTest extends TestCase
     }
 
     #[DataProvider('greenPairs')]
-    public function test_pairs_one_to_six_have_no_deadlock_with_terminal_company_advisory(string $pair): void
+    public function test_all_ten_pairs_have_zero_40p01_with_terminal_company_advisory(string $pair): void
     {
         $this->requirePostgresRuntime();
 

@@ -21,7 +21,10 @@ final class InventoryGlPostingBuffer
 
     private bool $leakAlarmRegistered = false;
 
-    public function __construct(private readonly InventoryGlPostingService $posting) {}
+    public function __construct(
+        private readonly InventoryGlPostingService $posting,
+        private readonly bool $preserveLeaksForBoundaryGuard = false,
+    ) {}
 
     public function mark(): int
     {
@@ -50,7 +53,7 @@ final class InventoryGlPostingBuffer
     /**
      * @return list<JournalEntry|null>
      */
-    public function flushIfOutermost(): array
+    public function flushIfOutermost(bool $contained = false): array
     {
         $level = DB::transactionLevel();
 
@@ -67,17 +70,26 @@ final class InventoryGlPostingBuffer
         $pending = $this->contexts;
         $this->reset();
 
-        $posted = [];
-        foreach ($pending as $ctx) {
-            $posted[] = match ($ctx->kind) {
-                MovementGlKind::Exit => $this->posting->postForExit($ctx),
-                MovementGlKind::Entry => $this->posting->postForEntry($ctx),
-                MovementGlKind::CountCorrection => $this->posting->postForCountCorrection($ctx),
-                MovementGlKind::BatchWriteOff => $this->posting->postForBatchWriteOff($ctx),
-            };
-        }
+        $post = function () use ($pending): array {
+            $posted = [];
+            foreach ($pending as $ctx) {
+                $posted[] = match ($ctx->kind) {
+                    MovementGlKind::Exit => $this->posting->postForExit($ctx),
+                    MovementGlKind::Entry => $this->posting->postForEntry($ctx),
+                    MovementGlKind::CountCorrection => $this->posting->postForCountCorrection($ctx),
+                    MovementGlKind::BatchWriteOff => $this->posting->postForBatchWriteOff($ctx),
+                };
+            }
 
-        return $posted;
+            return $posted;
+        };
+
+        // POS projections consume already-signed fiscal events. Their GL leg is
+        // best-effort but all-or-none for the receipt, so post the complete
+        // batch in one savepoint and let the caller contain non-retryable
+        // failures. Interactive document writers use the default propagating
+        // mode so a posting failure rolls back movement + seal together.
+        return $contained ? DB::transaction($post) : $post();
     }
 
     public function reset(): void
@@ -98,6 +110,10 @@ final class InventoryGlPostingBuffer
                 Log::critical('Inventory GL posting buffer leaked past the root transaction; no entries were posted.', [
                     'pending_contexts' => count($this->contexts),
                 ]);
+
+                if ($this->preserveLeaksForBoundaryGuard) {
+                    return;
+                }
             }
 
             $this->reset();

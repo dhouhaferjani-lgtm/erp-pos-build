@@ -5,70 +5,54 @@ declare(strict_types=1);
 namespace Tests\Feature\Inventory;
 
 use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\InvoicePosted;
+use App\Modules\Document\Domain\Services\DeliveryNoteService;
+use App\Modules\Document\Domain\Services\ReturnNoteService;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockMovement;
-use App\Modules\Inventory\Listeners\PostCOGSOnInvoice;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
-use App\Modules\Product\Domain\Product;
+use App\Modules\POS\Domain\Receipt;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Tests\TestCase;
 use Tests\Traits\BuildsPosSaleReceiptEvents;
 use Tests\Traits\BuildsWave3ExitFixtures;
 
 /**
- * DPA Wave 3 · sub-wave 3A · **T1 — characterisation**.
- *
- * Pins TODAY's COGS/exit behaviour, BEFORE Wave 3 relocates COGS from the
- * invoice to the stock exit. Six facts (plan §4 T1 a–f):
- *
- *  (a) posting an invoice with physical lines creates exactly ONE
- *      `source_type='cogs'` journal entry keyed on the INVOICE id;
- *  (b) a delivery-note confirm creates a stock movement with `reason IS NULL`
- *      — **inverted by T2** (see the test's own note);
- *  (c) the two LIVE POS writers create movements with `unit_cost IS NULL`
- *      — ✅ **INVERTED BY T5**;
- *  (d) a return-note confirm creates NO journal entry at all (§0.16 — the RN-GL
- *      leg is greenfield);
- *  (e) a service-only invoice creates no COGS entry;
- *  (f) a zero-cost product is silently skipped (`PostCOGSOnInvoice:145-152`).
- *
- * ## The `DB::afterCommit` mechanism — MEASURED, not assumed
- *
- * `InvoicePosted` is dispatched from `DB::afterCommit(...)`
- * (`DocumentPostingService::postWithFiscalChain`), so this suite only means
- * anything if those callbacks actually fire under the test harness.
- *
- * Plan §0b.9 (fiscal I-8) states they never do under `RefreshDatabase`, citing
- * `Illuminate\Database\DatabaseTransactionsManager::afterCommitCallbacksShouldBeExecuted()`
- * (`$level === 0`) against the level-1 test transaction, and therefore mandates
- * `connectionsToTransact() === []`. **That is false on this tree.**
- * `RefreshDatabase::beginDatabaseTransaction()` installs
- * `Illuminate\Foundation\Testing\DatabaseTransactionsManager` — a TEST-ONLY
- * subclass whose override returns `$level === 1`
- * (`vendor/laravel/framework/src/Illuminate/Foundation/Testing/DatabaseTransactionsManager.php:56-59`,
- * Laravel 12.58.0), precisely so `afterCommit` fires inside the wrapping test
- * transaction. Measured both ways on PostgreSQL: identical results.
- *
- * This class therefore keeps the DEFAULT transactional `RefreshDatabase` — full
- * per-test isolation, no leaked rows — and proves the mechanism instead of
- * asserting it: `test_a_characterisation_that_cannot_see_the_listener_is_worthless()`
- * runs FIRST and de-registers only `PostCOGSOnInvoice`; the COGS entry must then
- * disappear while the invoice's own GL entry survives. Per the plan's acceptance
- * criterion, a characterisation that cannot detect the listener's absence is not
- * a characterisation.
+ * Wave-3 COGS cutover characterization on real PostgreSQL root transactions.
+ * Pins the retired invoice trigger, movement-keyed DN/RN/POS entries, original
+ * return costs, terminal advisory order, rollback, and the cutover watermark.
  */
 final class CogsRelocationCharacterisationTest extends TestCase
 {
     use BuildsPosSaleReceiptEvents;
     use BuildsWave3ExitFixtures;
     use RefreshDatabase;
+
+    /**
+     * Inventory GL flushes are defined against the real application root
+     * transaction. Laravel's test-only wrapper would make every writer appear
+     * nested and intentionally defer forever, so this cutover suite observes
+     * real root depths and commits.
+     *
+     * @return list<string>
+     */
+    protected function connectionsToTransact(): array
+    {
+        return [];
+    }
 
     protected function setUp(): void
     {
@@ -83,14 +67,13 @@ final class CogsRelocationCharacterisationTest extends TestCase
     // listener's removal is proving nothing.
     // =================================================================
 
-    public function test_a_characterisation_that_cannot_see_the_listener_is_worthless(): void
+    public function test_invoice_posted_has_no_legacy_cogs_listener_and_revenue_still_posts(): void
     {
-        $removed = $this->deregisterCogsListener();
-        self::assertSame(
-            1,
-            $removed,
-            'PostCOGSOnInvoice must be registered on InvoicePosted exactly once '
-            .'(InventoryServiceProvider:77) — otherwise the rest of this suite is vacuous.',
+        $listeners = Event::getRawListeners()[InvoicePosted::class] ?? [];
+        self::assertNotContains(
+            'App\\Modules\\Inventory\\Listeners\\PostCOGSOnInvoice',
+            $listeners,
+            'The invoice-keyed legacy COGS listener must be retired by the cutover.',
         );
 
         $product = $this->physicalProduct(costPrice: '50.000000');
@@ -99,8 +82,7 @@ final class CogsRelocationCharacterisationTest extends TestCase
         self::assertSame(
             0,
             $this->journalEntryCount($invoice->id, 'cogs'),
-            'With PostCOGSOnInvoice de-registered there must be NO cogs entry — '
-            .'if one appears, the fixture is not driving the listener at all.',
+            'Invoice posting must not create the retired invoice-keyed COGS entry.',
         );
 
         // …and the fixture is genuinely alive: the OTHER InvoicePosted listener
@@ -114,43 +96,20 @@ final class CogsRelocationCharacterisationTest extends TestCase
     }
 
     // =================================================================
-    // (a) one COGS entry, keyed on the invoice id
+    // (a) invoice-keyed COGS is retired
     // =================================================================
 
-    public function test_a_posted_invoice_with_physical_lines_creates_exactly_one_cogs_entry_keyed_on_the_invoice(): void
+    public function test_a_posted_invoice_with_physical_lines_creates_no_invoice_keyed_cogs_entry(): void
     {
         $product = $this->physicalProduct(costPrice: '50.000000');
         $invoice = $this->postedInvoiceFor($product, quantity: '10.0000');
 
-        self::assertSame(1, $this->journalEntryCount($invoice->id, 'cogs'));
-
-        /** @var JournalEntry $cogs */
-        $cogs = JournalEntry::query()
-            ->where('source_id', $invoice->id)
-            ->where('source_type', 'cogs')
-            ->with('lines')
-            ->firstOrFail();
-
-        // The POSTED LEDGER is the assertion surface: two lines, COGS debited
-        // and Inventory credited for 10 x 50.
-        self::assertSame(2, $cogs->lines->count());
-
-        $debit = $cogs->lines->firstWhere(
-            fn ($line): bool => bccomp($this->numericString($line->debit), '0', 3) > 0,
-        );
-        $credit = $cogs->lines->firstWhere(
-            fn ($line): bool => bccomp($this->numericString($line->credit), '0', 3) > 0,
-        );
-        self::assertNotNull($debit);
-        self::assertNotNull($credit);
-        self::assertSame(0, bccomp($this->numericString($debit->debit), '500', 3), 'COGS debit is 10 x 50');
-        self::assertSame(0, bccomp($this->numericString($credit->credit), '500', 3), 'Inventory credit is 10 x 50');
-        self::assertSame('603', $this->accountCode($debit->account_id), 'FR CostOfGoodsSold purpose account');
-        self::assertSame('37', $this->accountCode($credit->account_id), 'FR Inventory purpose account');
+        self::assertSame(0, $this->journalEntryCount($invoice->id, 'cogs'));
+        self::assertSame(1, $this->journalEntryCount($invoice->id, AccountingService::DOCUMENT_SOURCE_TYPE));
     }
 
     // =================================================================
-    // (b) a DN confirm writes a movement with NO reason
+    // (b) DN confirm posts movement-keyed COGS
     // =================================================================
 
     public function test_a_delivery_note_confirm_creates_a_classified_stock_movement(): void
@@ -174,10 +133,11 @@ final class CogsRelocationCharacterisationTest extends TestCase
         self::assertSame(MovementReason::Delivery, $movement->reason);
         self::assertSame('Document', $movement->reference_type);
         self::assertSame(0, bccomp($this->numericString($movement->quantity), '-10', 4), 'sale magnitude is negative');
+        self::assertSame(1, $this->journalEntryCount($movement->id, 'inventory_exit'));
     }
 
     // =================================================================
-    // (c) both LIVE POS writers leave unit_cost NULL
+    // (c) both live POS writers are costed and post movement-keyed GL
     // =================================================================
 
     public function test_the_two_live_pos_writers_create_costed_movements(): void
@@ -205,9 +165,15 @@ final class CogsRelocationCharacterisationTest extends TestCase
         $this->app->make(PosCoreReceiptProjection::class)->apply($refund);
 
         /** @var StockMovement $saleMovement */
-        $saleMovement = StockMovement::query()->where('reason', 'pos_sale')->firstOrFail();
+        $saleMovement = StockMovement::query()
+            ->where('company_id', $this->companyId)
+            ->where('reason', 'pos_sale')
+            ->firstOrFail();
         /** @var StockMovement $returnMovement */
-        $returnMovement = StockMovement::query()->where('reason', 'pos_return')->firstOrFail();
+        $returnMovement = StockMovement::query()
+            ->where('company_id', $this->companyId)
+            ->where('reason', 'pos_return')
+            ->firstOrFail();
 
         self::assertSame('7.500000', $this->numericString($saleMovement->unit_cost));
         self::assertSame('15.000000', $this->numericString($saleMovement->total_cost));
@@ -217,36 +183,210 @@ final class CogsRelocationCharacterisationTest extends TestCase
         // Both already carry the classification Wave 3 depends on.
         self::assertSame('pos_receipt', $saleMovement->reference_type);
         self::assertSame('pos_receipt', $returnMovement->reference_type);
+        self::assertSame(1, $this->journalEntryCount($saleMovement->id, 'inventory_exit'));
+        self::assertSame(1, $this->journalEntryCount($returnMovement->id, 'inventory_entry'));
+
+        $saleInventoryEntry = JournalEntry::query()
+            ->where('source_type', 'inventory_exit')
+            ->where('source_id', $saleMovement->id)
+            ->sole();
+        $saleReceipt = Receipt::query()->findOrFail($saleMovement->reference_id);
+        self::assertSame(
+            $saleReceipt->posted_at->toDateString(),
+            $saleInventoryEntry->entry_date->toDateString(),
+            'inventory_exit retains the same receipt.posted_at basis used by pos_receipt GL',
+        );
     }
 
     // =================================================================
-    // (d) an RN confirm posts nothing to the ledger
+    // (d) RN confirm posts a movement-keyed inventory entry
     // =================================================================
 
-    public function test_a_return_note_confirm_creates_no_journal_entry(): void
+    public function test_a_return_note_confirm_creates_a_movement_keyed_inventory_entry(): void
     {
         $product = $this->physicalProduct(costPrice: '50.000000');
         $this->seedStock($product->id, '100.0000');
 
-        $before = JournalEntry::query()->where('company_id', $this->companyId)->count();
-
         $returnNote = $this->confirmedReturnNoteFor($product, quantity: '4.0000');
 
-        self::assertSame(
-            0,
-            JournalEntry::query()->where('source_id', $returnNote->id)->count(),
-            'RN-GL is greenfield in Wave 3 (§0.16) — nothing is posted today.',
-        );
-        self::assertSame(
-            $before,
-            JournalEntry::query()->where('company_id', $this->companyId)->count(),
-            'An RN confirm must not post ANY journal entry today.',
-        );
+        /** @var StockMovement $movement */
+        $movement = StockMovement::query()->where('reference_id', $returnNote->id)->sole();
+        self::assertSame(1, $this->journalEntryCount($movement->id, 'inventory_entry'));
+    }
 
-        // The stock DID come back — the movement exists without a ledger twin.
-        self::assertSame(
+    public function test_t11c_pair_one_delivery_writer_posts_only_after_its_inventory_loop(): void
+    {
+        $product = $this->physicalProduct(costPrice: '8.000000');
+        $this->seedStock($product->id, '20.0000');
+
+        $this->assertCompanyAdvisoryIsTerminal(
+            fn (): Document => $this->confirmedDeliveryNoteFor($product, quantity: '2.0000'),
+        );
+    }
+
+    public function test_t11c_pair_two_return_writer_posts_only_after_its_inventory_loop(): void
+    {
+        $product = $this->physicalProduct(costPrice: '8.000000');
+        $this->seedStock($product->id, '20.0000');
+
+        $this->assertCompanyAdvisoryIsTerminal(
+            fn (): Document => $this->confirmedReturnNoteFor($product, quantity: '2.0000'),
+        );
+    }
+
+    public function test_t11c_pair_three_pos_writer_posts_only_after_its_inventory_loop(): void
+    {
+        $product = $this->physicalProduct(costPrice: '8.000000');
+        $this->seedStock($product->id, '20.0000');
+        $sale = $this->posSaleReceiptEvent(productId: $product->id, variantId: null, quantity: '2');
+
+        $this->assertCompanyAdvisoryIsTerminal(function () use ($sale): void {
+            app(CompanyContext::class)->clear();
+            $this->app->make(PosCoreReceiptProjection::class)->apply($sale);
+        });
+    }
+
+    public function test_delivery_third_line_gl_failure_rolls_back_movements_seal_and_chain_sequence(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('[PG] the mid-flush failure probe uses a PostgreSQL trigger.');
+        }
+
+        $product = $this->physicalProduct(costPrice: '8.000000');
+        $this->seedStock($product->id, '20.0000');
+        $deliveryNote = $this->draftDocument(DocumentType::DeliveryNote, $product, '1.0000', 'DN-ROLLBACK');
+        foreach ([2, 3] as $lineNumber) {
+            $deliveryNote->lines()->create([
+                'line_number' => $lineNumber,
+                'product_id' => $product->id,
+                'location_id' => $this->locationId,
+                'description' => $product->name,
+                'quantity' => '1.0000',
+                'unit_price' => '100.00',
+                'tax_rate' => 0,
+                'line_total' => '100.00',
+            ]);
+        }
+        $deliveryNote->update(['total' => '300.00']);
+        $deliveryNote = $deliveryNote->fresh(['lines']);
+
+        DB::unprepared(<<<'SQL'
+            CREATE OR REPLACE FUNCTION w3_m2_reject_third_inventory_exit() RETURNS trigger AS $$
+            BEGIN
+                IF NEW.source_type = 'inventory_exit'
+                   AND (SELECT count(*) FROM journal_entries
+                        WHERE company_id = NEW.company_id AND source_type = 'inventory_exit') >= 2 THEN
+                    RAISE EXCEPTION 'w3 m2 induced third inventory exit failure' USING ERRCODE = '23514';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            CREATE TRIGGER w3_m2_reject_third_inventory_exit
+            BEFORE INSERT ON journal_entries
+            FOR EACH ROW EXECUTE FUNCTION w3_m2_reject_third_inventory_exit();
+            SQL);
+
+        try {
+            $this->app->make(DeliveryNoteService::class)->confirm($deliveryNote);
+            self::fail('The third movement GL insert should fail.');
+        } catch (QueryException $e) {
+            self::assertSame('23514', $e->getCode());
+        } finally {
+            DB::unprepared('DROP TRIGGER IF EXISTS w3_m2_reject_third_inventory_exit ON journal_entries; DROP FUNCTION IF EXISTS w3_m2_reject_third_inventory_exit();');
+        }
+
+        $deliveryNote->refresh();
+        self::assertSame(DocumentStatus::Draft, $deliveryNote->status);
+        self::assertNull($deliveryNote->fiscal_hash);
+        self::assertNull($deliveryNote->chain_sequence);
+        self::assertSame(0, StockMovement::query()->where('reference_id', $deliveryNote->id)->count());
+
+        $confirmed = $this->app->make(DeliveryNoteService::class)->confirm($deliveryNote->fresh(['lines']));
+        self::assertSame(1, $confirmed->chain_sequence);
+        self::assertSame(3, StockMovement::query()->where('reference_id', $deliveryNote->id)->count());
+    }
+
+    public function test_delivery_without_inventory_accounts_still_confirms_and_warns(): void
+    {
+        Account::query()
+            ->where('company_id', $this->companyId)
+            ->whereIn('system_purpose', [
+                SystemAccountPurpose::CostOfGoodsSold,
+                SystemAccountPurpose::Inventory,
+            ])
+            ->delete();
+        Log::spy();
+
+        $product = $this->physicalProduct(costPrice: '8.000000');
+        $this->seedStock($product->id, '20.0000');
+        $confirmed = $this->confirmedDeliveryNoteFor($product, quantity: '2.0000');
+        $movement = StockMovement::query()->where('reference_id', $confirmed->id)->sole();
+
+        self::assertSame(DocumentStatus::Confirmed, $confirmed->status);
+        self::assertSame(0, $this->journalEntryCount($movement->id, 'inventory_exit'));
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message): bool => str_contains($message, 'GL accounts are not mapped'),
+        )->once();
+    }
+
+    public function test_return_entry_uses_the_delivery_time_cost_after_live_wac_moves(): void
+    {
+        $product = $this->physicalProduct(costPrice: '3.000000');
+        $invoice = $this->postedInvoiceFor($product, quantity: '4.0000');
+        $product->update(['cost_price' => '12.000000']);
+
+        $returnNote = $this->draftDocument(DocumentType::ReturnNote, $product, '2.0000', 'RN-COST');
+        $returnNote->update(['source_document_id' => $invoice->id]);
+        $confirmed = $this->app->make(ReturnNoteService::class)->confirm($returnNote->fresh(['lines']));
+
+        $movement = StockMovement::query()->where('reference_id', $confirmed->id)->sole();
+        self::assertSame('3.000000', (string) $movement->unit_cost);
+        $entry = JournalEntry::query()
+            ->where('source_type', 'inventory_entry')
+            ->where('source_id', $movement->id)
+            ->with('lines')
+            ->sole();
+        self::assertSame(0, bccomp('6.000', (string) $entry->lines->sum('debit'), 3));
+        self::assertSame(0, bccomp('6.000', (string) $entry->lines->sum('credit'), 3));
+
+        $basis = $confirmed->payload['return_cost_basis'][0] ?? null;
+        self::assertSame('exit_movement', $basis['source'] ?? null);
+        self::assertSame('3.000000', $basis['unit_cost'] ?? null);
+        self::assertNotEmpty($basis['movement_ids'] ?? []);
+    }
+
+    public function test_pre_cutover_device_event_replayed_after_cutover_posts_cogs_by_server_creation_time(): void
+    {
+        $product = $this->physicalProduct(costPrice: '8.000000');
+        $this->seedStock($product->id, '20.0000');
+        $sale = $this->posSaleReceiptEvent(productId: $product->id, variantId: null, quantity: '2');
+        Company::query()->findOrFail($this->companyId)->update([
+            'inventory_gl_cutover_at' => $sale->event_time_device->copy()->addMinute(),
+        ]);
+
+        app(CompanyContext::class)->clear();
+        $this->app->make(PosCoreReceiptProjection::class)->apply($sale);
+
+        $movement = StockMovement::query()
+            ->where('company_id', $this->companyId)
+            ->where('reason', MovementReason::POSSale)
+            ->sole();
+        self::assertFalse((bool) $movement->is_historical);
+        self::assertSame(1, $this->journalEntryCount($movement->id, 'inventory_exit'));
+    }
+
+    public function test_new_company_cutover_watermark_matches_its_creation_instant(): void
+    {
+        $company = Company::query()->findOrFail($this->companyId);
+
+        self::assertNotNull($company->inventory_gl_cutover_at);
+        $deltaSeconds = DB::table('companies')
+            ->where('id', $company->id)
+            ->selectRaw('abs(extract(epoch from (inventory_gl_cutover_at - created_at))) AS delta_seconds')
+            ->value('delta_seconds');
+        self::assertLessThanOrEqual(
             1,
-            StockMovement::query()->where('reference_id', $returnNote->id)->count(),
+            (float) $deltaSeconds,
         );
     }
 
@@ -269,7 +409,7 @@ final class CogsRelocationCharacterisationTest extends TestCase
     }
 
     // =================================================================
-    // (f) zero-cost physical product → silently skipped
+    // (f) zero-cost movement changes stock but posts no zero-value GL
     // =================================================================
 
     public function test_a_zero_cost_product_is_silently_skipped(): void
@@ -277,47 +417,19 @@ final class CogsRelocationCharacterisationTest extends TestCase
         $product = $this->physicalProduct(costPrice: '0.000000');
 
         $invoice = $this->postedInvoiceFor($product, quantity: '5.0000');
+        $movement = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::Delivery)
+            ->sole();
 
-        self::assertSame(
-            0,
-            $this->journalEntryCount($invoice->id, 'cogs'),
-            'A zero-cost line is dropped by extractPhysicalProductLines and the '
-            .'whole entry is skipped — silently, with only a debug log.',
-        );
+        self::assertSame(0, $this->journalEntryCount($invoice->id, 'cogs'));
+        self::assertSame(0, $this->journalEntryCount($movement->id, 'inventory_exit'));
         self::assertSame(DocumentStatus::Posted, $invoice->fresh()?->status);
     }
 
     // =================================================================
     // Helpers
     // =================================================================
-
-    /**
-     * De-register ONLY `PostCOGSOnInvoice` from `InvoicePosted`, keeping every
-     * other listener registered.
-     *
-     * @return int how many `PostCOGSOnInvoice` registrations were removed
-     */
-    private function deregisterCogsListener(): int
-    {
-        /** @var array<string, list<mixed>> $raw */
-        $raw = Event::getRawListeners();
-        $listeners = $raw[InvoicePosted::class] ?? [];
-
-        Event::forget(InvoicePosted::class);
-
-        $removed = 0;
-        foreach ($listeners as $listener) {
-            if ($listener === PostCOGSOnInvoice::class) {
-                $removed++;
-
-                continue;
-            }
-
-            Event::listen(InvoicePosted::class, $listener);
-        }
-
-        return $removed;
-    }
 
     private function journalEntryCount(string $sourceId, string $sourceType): int
     {
@@ -327,11 +439,32 @@ final class CogsRelocationCharacterisationTest extends TestCase
             ->count();
     }
 
-    private function accountCode(string $accountId): string
+    private function assertCompanyAdvisoryIsTerminal(callable $writer): void
     {
-        /** @var object{code: string} $row */
-        $row = DB::table('accounts')->where('id', $accountId)->first(['code']);
+        /** @var list<array{sql: string, bindings: array<int, mixed>}> $trace */
+        $trace = [];
+        DB::listen(static function (QueryExecuted $query) use (&$trace): void {
+            $trace[] = ['sql' => strtolower($query->sql), 'bindings' => array_values($query->bindings)];
+        });
 
-        return $row->code;
+        $writer();
+
+        $firstCompanyAdvisory = null;
+        $lastInventoryStatement = null;
+        foreach ($trace as $index => $query) {
+            if ($firstCompanyAdvisory === null
+                && str_contains($query['sql'], 'pg_advisory_xact_lock(hashtextextended')
+                && ($query['bindings'][0] ?? null) === $this->companyId) {
+                $firstCompanyAdvisory = $index;
+            }
+            if (str_contains($query['sql'], '"stock_levels"')
+                || str_contains($query['sql'], '"stock_movements"')) {
+                $lastInventoryStatement = $index;
+            }
+        }
+
+        self::assertNotNull($firstCompanyAdvisory, 'production writer did not reach movement-keyed GL');
+        self::assertNotNull($lastInventoryStatement, 'production writer did not reach inventory persistence');
+        self::assertGreaterThan($lastInventoryStatement, $firstCompanyAdvisory);
     }
 }

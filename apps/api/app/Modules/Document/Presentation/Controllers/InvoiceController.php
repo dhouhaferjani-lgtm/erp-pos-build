@@ -28,6 +28,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
@@ -80,6 +81,7 @@ class InvoiceController extends Controller
         private readonly DocumentLineTaxResolver $lineTaxResolver,
         private readonly DeliveryComplianceGate $deliveryComplianceGate,
         private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     private function scale(): int
@@ -805,7 +807,7 @@ class InvoiceController extends Controller
 
                 // Confirm each draft DN (issues stock, adds to fiscal chain)
                 foreach ($draftDns as $dn) {
-                    $confirmed = $this->deliveryNoteService->confirm($dn);
+                    $confirmed = $this->deliveryNoteService->confirm($dn, $this->glBuffer);
                     $confirmedDns[] = [
                         'id' => $confirmed->id,
                         'number' => $confirmed->document_number,
@@ -817,7 +819,7 @@ class InvoiceController extends Controller
                 // Post the invoice (adds to fiscal chain)
                 $postedInvoice = $this->postingService->post($documentModel);
 
-                return response()->json([
+                $response = response()->json([
                     'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),
                     'meta' => [
                         'timestamp' => now()->toIso8601String(),
@@ -826,6 +828,11 @@ class InvoiceController extends Controller
                         'confirmed_delivery_notes' => $confirmedDns,
                     ],
                 ]);
+
+                // C-1 root tail: every nested DN deferred its contexts here.
+                $this->glBuffer->flushIfOutermost();
+
+                return $response;
             });
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
@@ -1014,6 +1021,11 @@ class InvoiceController extends Controller
                 $notePayload['invoice_id'] = $postedInvoice->id;
                 $notePayload['invoiced_via'] = 'pre_post_delivery';
                 $confirmed->update(['payload' => $notePayload]);
+
+                // C-5 owns this root transaction. DeliveryNoteService's nested
+                // frame only enqueues, so the guided endpoint must flush after
+                // its last inventory lock and before the root commits.
+                $this->glBuffer->flushIfOutermost();
 
                 return response()->json([
                     'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),

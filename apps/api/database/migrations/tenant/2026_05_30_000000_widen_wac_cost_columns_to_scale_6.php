@@ -21,9 +21,11 @@ use Illuminate\Support\Facades\DB;
  *
  * SCOPE: only the cost-carrying columns. Journal columns (journal_lines.debit/credit)
  * stay at the currency scale 3 — COGS is rounded at the posting boundary before it
- * lands there. Quantity columns are untouched. pos_receipt_lines.unit_cost is left
- * at (15,4): on a POS receipt line it is the recorded unit PRICE-side cost snapshot,
- * not the perpetual WAC carried on the product, so it is not widened here.
+ * lands there. Quantity columns are untouched. pos_receipt_lines.unit_cost is an
+ * immutable sale-time WAC snapshot for interactive returns, but its legacy (15,4)
+ * shape is not authoritative for six-decimal reversal cost. The original sale's
+ * stock_movements.unit_cost remains the authoritative cost ledger and is widened
+ * here; the receipt-line snapshot remains a compatibility fallback only.
  *
  * PostgreSQL pads existing values with trailing zeros (1.240 → 1.240000) — no data
  * loss. SQLite is type-agnostic for decimals, so this is a no-op there (test DB).
@@ -77,9 +79,7 @@ return new class extends Migration
                 $alterParts[] = "ALTER COLUMN {$column} TYPE decimal({$precision}, {$scale})";
             }
 
-            if ($alterParts !== []) {
-                DB::statement("ALTER TABLE {$table} ".implode(', ', $alterParts));
-            }
+            DB::statement("ALTER TABLE {$table} ".implode(', ', $alterParts));
         }
     }
 
@@ -99,9 +99,7 @@ return new class extends Migration
                 $alterParts[] = "ALTER COLUMN {$column} TYPE decimal(12, ".self::PREVIOUS_SCALE.')';
             }
 
-            if ($alterParts !== []) {
-                DB::statement("ALTER TABLE {$table} ".implode(', ', $alterParts));
-            }
+            DB::statement("ALTER TABLE {$table} ".implode(', ', $alterParts));
         }
     }
 };

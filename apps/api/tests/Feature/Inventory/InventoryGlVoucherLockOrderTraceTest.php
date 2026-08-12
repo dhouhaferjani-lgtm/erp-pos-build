@@ -7,6 +7,7 @@ namespace Tests\Feature\Inventory;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -22,7 +23,9 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Voucher;
+use App\Modules\Voucher\Domain\VoucherLedger;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +42,12 @@ final class InventoryGlVoucherLockOrderTraceTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** @return list<string> */
+    protected function connectionsToTransact(): array
+    {
+        return [];
+    }
+
     private string $tenantId;
 
     private string $companyId;
@@ -48,6 +57,8 @@ final class InventoryGlVoucherLockOrderTraceTest extends TestCase
     private string $terminalId;
 
     private string $operatorId;
+
+    private string $voucherCode;
 
     protected function setUp(): void
     {
@@ -99,10 +110,11 @@ final class InventoryGlVoucherLockOrderTraceTest extends TestCase
             'system_purpose' => SystemAccountPurpose::PosTenderClearing,
             'is_active' => true,
         ]);
+        $this->voucherCode = 'T11C-'.Str::upper(Str::random(12));
         Voucher::factory()->forTerminal($terminal)->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
-            'code' => 'T11C-VOUCHER',
+            'code' => $this->voucherCode,
             'currency' => 'EUR',
             'initial_balance' => '50.00',
             'current_balance' => '50.00',
@@ -166,6 +178,30 @@ final class InventoryGlVoucherLockOrderTraceTest extends TestCase
             "{$pair}: T16e missing — production redeemed the voucher and acquired company GL before stock projection. "
             ."first_company_advisory={$firstCompanyAdvisory}, last_inventory={$lastInventoryStatement}",
         );
+
+        // T16e is a statement move only: pin the shipped voucher row and GL
+        // bytes, including the voucher service's existing server-date basis.
+        $voucher = Voucher::query()->where('code', $this->voucherCode)->sole();
+        $ledger = VoucherLedger::query()
+            ->where('voucher_id', $voucher->id)
+            ->where('event', VoucherEvent::Redeemed)
+            ->sole();
+        self::assertSame('-10.00000', (string) $ledger->amount);
+        self::assertSame('EUR', $ledger->currency);
+        self::assertSame($this->terminalId, $ledger->terminal_id);
+        self::assertSame($this->operatorId, $ledger->user_id);
+        self::assertSame('40.00000', (string) $voucher->fresh()?->current_balance);
+
+        $entry = JournalEntry::query()->whereKey($ledger->gl_journal_entry_id)->with('lines')->sole();
+        self::assertSame('voucher_ledger', $entry->source_type);
+        self::assertSame($ledger->id, $entry->source_id);
+        self::assertSame($ledger->occurred_at->toDateString(), $entry->entry_date->toDateString());
+        self::assertSame(0, bccomp('10.000', (string) $entry->lines->sum('debit'), 3));
+        self::assertSame(0, bccomp('10.000', (string) $entry->lines->sum('credit'), 3));
+
+        app(PosCoreReceiptProjection::class)->apply($sale);
+        self::assertSame(1, VoucherLedger::query()->where('voucher_id', $voucher->id)->where('event', VoucherEvent::Redeemed)->count());
+        self::assertSame(1, JournalEntry::query()->where('source_type', 'voucher_ledger')->where('source_id', $ledger->id)->count());
     }
 
     private function saleEvent(string $productId): FiscalEvent
@@ -208,7 +244,7 @@ final class InventoryGlVoucherLockOrderTraceTest extends TestCase
                 'amount' => '10.00',
                 'foreign_currency_amount' => null,
                 'foreign_currency_code' => null,
-                'instrument_serial' => 'T11C-VOUCHER',
+                'instrument_serial' => $this->voucherCode,
                 'instrument_type' => 'store_voucher',
                 'method_code' => 'STORE_VOUCHER',
             ]],

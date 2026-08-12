@@ -56,6 +56,12 @@ final class PosReturnScrapWriteOffTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** @return list<string> */
+    protected function connectionsToTransact(): array
+    {
+        return [];
+    }
+
     private ReceiptReturnService $service;
 
     private Tenant $tenant;
@@ -117,7 +123,6 @@ final class PosReturnScrapWriteOffTest extends TestCase
             ->where('product_id', $product->id)
             ->where('reason', MovementReason::WriteOff->value)
             ->sole();
-
         // COST_SCALE = 6 on both cost columns (StockAdjustmentService contract).
         self::assertNotNull($writeOff->unit_cost, 'scrap write-off must carry unit_cost');
         self::assertNotNull($writeOff->total_cost, 'scrap write-off must carry total_cost');
@@ -142,7 +147,6 @@ final class PosReturnScrapWriteOffTest extends TestCase
             ->where('product_id', $product->id)
             ->where('reason', MovementReason::WriteOff->value)
             ->sole();
-
         self::assertSame(
             StockMovementReferenceType::PosReceiptReturnScrap->value,
             $writeOff->reference_type,
@@ -171,6 +175,10 @@ final class PosReturnScrapWriteOffTest extends TestCase
             ->where('product_id', $product->id)
             ->where('reason', MovementReason::WriteOff->value)
             ->sole();
+        $restore = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSReturn->value)
+            ->sole();
 
         /** @var JournalEntry $entry */
         $entry = JournalEntry::query()
@@ -191,6 +199,18 @@ final class PosReturnScrapWriteOffTest extends TestCase
         self::assertNotNull($credit, 'Cr Inventory line missing');
         self::assertSame('5.000', (string) $debit->debit);
         self::assertSame('5.000', (string) $credit->credit);
+
+        $restoreEntry = JournalEntry::query()
+            ->where('company_id', $this->company->id)
+            ->where('source_type', 'inventory_entry')
+            ->where('source_id', $restore->id)
+            ->with('lines')
+            ->sole();
+        $restoreInventory = $restoreEntry->lines->firstWhere('account_id', $inventoryAccountId);
+        $restoreCogs = $restoreEntry->lines->firstWhere('account_id', $cogsAccountId);
+        self::assertSame('5.000', (string) $restoreInventory?->debit);
+        self::assertSame('5.000', (string) $restoreCogs?->credit);
+        self::assertSame($entry->entry_date->toDateString(), $restoreEntry->entry_date->toDateString());
     }
 
     // =========================================================================
@@ -391,7 +411,7 @@ final class PosReturnScrapWriteOffTest extends TestCase
         self::assertSame('5.000', $this->postedSum($this->accountId(SystemAccountPurpose::Inventory), 'credit'));
     }
 
-    public function test_non_scrap_restock_return_writes_no_write_off_and_no_journal_entry(): void
+    public function test_non_scrap_restock_has_no_write_off_and_reverses_the_original_sale_cost(): void
     {
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -400,7 +420,11 @@ final class PosReturnScrapWriteOffTest extends TestCase
         ]);
         $stock = $this->createStockLevel($product->id, '10.0000');
         $sale = $this->createReceipt();
-        $line = $this->createProductLine($sale, $product, ['quantity' => '2.000']);
+        $line = $this->createProductLine($sale, $product, [
+            'quantity' => '2.000',
+            'unit_cost' => '2.5000',
+        ]);
+        $product->update(['cost_price' => '12.000000']);
 
         $this->service->processReturn(
             originalReceiptId: $sale->id,
@@ -425,6 +449,18 @@ final class PosReturnScrapWriteOffTest extends TestCase
             ->where('company_id', $this->company->id)
             ->where('source_type', 'batch_write_off')
             ->count());
+        $restore = StockMovement::query()
+            ->where('product_id', $product->id)
+            ->where('reason', MovementReason::POSReturn)
+            ->sole();
+        self::assertSame('2.500000', (string) $restore->unit_cost);
+        $entry = JournalEntry::query()
+            ->where('source_type', 'inventory_entry')
+            ->where('source_id', $restore->id)
+            ->with('lines')
+            ->sole();
+        self::assertSame(0, bccomp('5.000', (string) $entry->lines->sum('debit'), 3));
+        self::assertSame(0, bccomp('5.000', (string) $entry->lines->sum('credit'), 3));
     }
 
     // =========================================================================

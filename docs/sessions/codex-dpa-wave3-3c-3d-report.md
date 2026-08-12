@@ -190,3 +190,41 @@ the amended production reds remain 53→79 and 13→34.
 The required directory regression run also reproduced two errors in untouched
 `GoodsReceiptDataTest`/`GoodsReceiptData.php`; full-tree PHPStan retains two untouched scale findings.
 They are explicitly base drift, while touched-file PHPStan is clean.
+
+## M2 — atomic inventory-movement COGS cutover
+
+M2 delivers T14–T17: DN, RN, and both live POS writers now capture movement
+costs and defer movement-keyed inventory GL to the owning root tail; projected
+and interactive refund/scrap paths use the original sale movement basis;
+voucher posting occurs after stock projection; the invoice-keyed legacy COGS
+listener is removed. The cutover is controlled by the company watermark and
+includes the unattended-safe migration and NULL-cost ratchet.
+
+The final scoped remediation is authorized by
+`docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-18-m2-stop-a.md`.
+R-1 uses the original `POSSale` movement at receipt + product + variant grain,
+falling back to the receipt line only if no movement exists. Its non-representable
+`1.234568` fixture failed under the receipt-line interpretation (`1.234600`) and
+passes under the ruled movement interpretation. Guard 4 now runs for every
+request/job and gates only on `DB::transactionLevel() === 0`; all six-suite
+opt-ins were deleted.
+
+Fresh ruling regression evidence, isolated by transaction model, is 69 tests /
+310 assertions for the six real-root suites and 41 tests / 218 assertions for
+the three wrapper suites: 110 tests / 528 assertions total. The complete Goods
+Receipt ordering suite separately passes 12 tests / 42 assertions. The D-13
+NULL-cost ratchet passes and fails when the sale movement is mutated to NULL.
+Round-8 revert/replay restores the R-1 and three boundary failures, proving the
+new green state is caused by the scoped implementation.
+
+The hardened T11c gate uses the ruling's compositional interpretation. Real
+terminal traces cover DN, RN, POS sale, interactive scrap, voucher projection,
+GR, and the multi-DN/invoice composite root; the evidence register maps those
+traces across all ten pairs. The pair-salt harness is scaffold only.
+
+Deptrac reports 127 violations versus 116 recorded at M1 and baseline 99. The
+exact +11 M2 delta is the planned Domain-to-Inventory-Application buffer seam:
+Delivery Note +6, Refund +1, Return Note +4. No baseline was changed. P3-6,
+P3-8, P3-9, and P3-10 have dedicated tickets; P3-10 explicitly requires the
+non-vacuous per-tenant duplicate-count check before promotion. No workflow file
+was modified.

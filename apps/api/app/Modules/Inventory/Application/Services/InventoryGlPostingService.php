@@ -87,8 +87,21 @@ final class InventoryGlPostingService
 
     public function postForBatchWriteOff(MovementGlContext $ctx): ?JournalEntry
     {
+        if ($ctx->isHistorical) {
+            return null;
+        }
+
         if ($ctx->batchNumber === null || $ctx->productId === null) {
             throw new \InvalidArgumentException('Batch write-off GL context requires batchNumber and productId.');
+        }
+
+        if (! $this->gl->hasInventoryWriteOffAccounts($ctx->companyId)) {
+            Log::warning('Inventory write-off movement exists but its COGS/Inventory accounts are not mapped.', [
+                'company_id' => $ctx->companyId,
+                'movement_id' => $ctx->movementId,
+            ]);
+
+            return null;
         }
 
         $amount = $this->amount($ctx);

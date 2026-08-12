@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\POS\Application\Services;
 
-use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
+use App\Modules\Inventory\Application\DTOs\MovementGlContext;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
+use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\POS\Domain\Exceptions\ScrapWriteOffUnresolvableException;
 use App\Modules\Product\Domain\Product;
-use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
@@ -37,8 +37,7 @@ use Illuminate\Support\Facades\Log;
  *
  *   cost-resolved `StockAdjustmentService::issue()`  (persists unit_cost/total_cost
  *   at COST_SCALE=6, emits StockMovementRecorded/V2, stamps the DPA S0 document
- *   linkage) + `GeneralLedgerService::createInventoryWriteOffEntry()` keyed on the
- *   movement id (Dr COGS / Cr Inventory).
+ *   linkage) + a buffered movement-keyed Dr COGS / Cr Inventory entry.
  *
  * THE PAIR IS ATOMIC — IT NEVER DECLINES QUIETLY (gate C1)
  *
@@ -63,15 +62,14 @@ use Illuminate\Support\Facades\Log;
  *
  * Both callers reach this service from contexts where `CompanyContext` may be
  * unbound (the v4 fiscal projection runs in a queue worker), so the currency is
- * an explicit REQUIRED parameter and every scale resolution goes through
- * `getScale($currencyCode)` — never a bare no-arg `getScale()`.
+ * an explicit REQUIRED parameter. The terminal posting seam resolves its scale
+ * from that explicit code — never from a no-arg CompanyContext lookup.
  */
 final class ReturnScrapWriteOffService
 {
     public function __construct(
         private readonly StockAdjustmentService $stockAdjustmentService,
-        private readonly GeneralLedgerService $glService,
-        private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     /**
@@ -97,6 +95,9 @@ final class ReturnScrapWriteOffService
         string $cashierId,
         ?string $variantId = null,
         ?CarbonInterface $occurredAt = null,
+        ?CarbonInterface $entryDate = null,
+        ?string $unitCost = null,
+        bool $isHistorical = false,
     ): StockMovement {
         // The movement and its journal entry are ONE unit of work: a costed
         // destruction whose GL leg failed is the very defect V10 exists to fix.
@@ -105,7 +106,7 @@ final class ReturnScrapWriteOffService
         return DB::transaction(function () use (
             $tenantId, $companyId, $locationId, $productId, $quantity,
             $returnReceiptId, $returnReceiptNumber, $currencyCode, $cashierId,
-            $variantId, $occurredAt,
+            $variantId, $occurredAt, $entryDate, $unitCost, $isHistorical,
         ): StockMovement {
             // SoftDeletes on Product means an archived product is unresolvable.
             // THROW — never return null (gate C1): the caller's re-entry leg has
@@ -130,19 +131,17 @@ final class ReturnScrapWriteOffService
             // Snapshotting it onto the movement is what lets a later correction
             // recover the ORIGINAL cost instead of recomputing from a since-changed
             // average.
-            /** @var numeric-string $unitCost */
-            $unitCost = $product->resolveMovementUnitCost();
+            /** @var numeric-string $resolvedUnitCost */
+            $resolvedUnitCost = $unitCost ?? $product->resolveMovementUnitCost();
 
-            $scale = $this->scaleResolver->getScale($currencyCode);
-
-            if (bccomp($unitCost, '0', $scale) <= 0) {
+            if (bccomp($resolvedUnitCost, '0', 6) <= 0) { // precision-ok: stock_movements.unit_cost is fixed COST_SCALE=6
                 // Not fatal — the destruction still has to be RECORDED — but a
                 // zero-valued write-off posts no journal entry, so it must never
                 // look like a successful value relief (gate inv-M3).
                 Log::warning('ReturnScrapWriteOffService: resolved unit cost is non-positive; the scrap movement will carry no value and NO journal entry will be posted', [
                     'product_id' => $productId,
                     'return_receipt_id' => $returnReceiptId,
-                    'unit_cost' => $unitCost,
+                    'unit_cost' => $resolvedUnitCost,
                 ]);
             }
 
@@ -155,75 +154,43 @@ final class ReturnScrapWriteOffService
                 expectedCompanyId: $companyId,
                 variantId: $variantId,
                 reason: MovementReason::WriteOff,
-                unitCost: $unitCost,
+                unitCost: $resolvedUnitCost,
                 referenceType: StockMovementReferenceType::PosReceiptReturnScrap,
                 referenceId: $returnReceiptId,
                 occurredAt: $occurredAt,
             );
 
-            // Round HALF-UP ONCE at the GL posting boundary (rule 19). bcmul alone
-            // truncates, which biases every scrap toward UNDER-relieving Inventory
-            // (qty 3 x 1.6666 -> 4.999 instead of 5.000); the movement's own
-            // total_cost keeps the full COST_SCALE=6 precision. Same discipline as
-            // createCOGSEntry, which computes at working precision then bcrounds.
-            $working = $scale + 6;
-            /** @var numeric-string $amount */
-            $amount = CurrencyScale::bcround(bcmul($quantity, $unitCost, $working), $scale);
-
-            // Only the "chart of accounts not configured for this company" case is
-            // tolerated — an accounting-setup gap must not refuse a customer's
-            // refund. It is checked UP FRONT rather than caught, because
-            // `Account::findByPurposeOrFail` throws a bare RuntimeException and a
-            // catch would also swallow ModelNotFound / QueryException /
-            // ClosedFiscalPeriod — exactly the silent no-GL hole gates M4 + I7
-            // flagged. Everything else propagates and rolls the pair back.
-            if (! $this->glService->hasInventoryWriteOffAccounts($companyId)) {
-                Log::warning('ReturnScrapWriteOffService: company has no COGS/Inventory system accounts; the scrap movement is recorded WITHOUT a journal entry (inventory value stays on the balance sheet until the chart of accounts is configured)', [
-                    'company_id' => $companyId,
-                    'return_receipt_id' => $returnReceiptId,
-                    'movement_id' => $movement->id,
-                    'amount' => $amount,
-                ]);
-
-                return $movement;
+            if ((bool) $movement->is_historical !== $isHistorical) {
+                $movement->is_historical = $isHistorical;
+                $movement->save();
             }
 
-            $this->glService->createInventoryWriteOffEntry(
-                companyId: $companyId,
-                // The `batchNumber` parameter is the free-text source label the GL
-                // narrative interpolates; a POS scrap has no lot, so it carries the
-                // return receipt number instead. `source_type` stays
-                // 'batch_write_off' deliberately — that is the canonical inventory
-                // write-off coordinate the reversal machinery looks up.
-                //
-                // NOTE (gate C3): a POS scrap is NOT reversible through
-                // ReverseWriteOffService — it is undone by correcting the return.
-                // That service refuses this reference_type explicitly.
+            $movementOccurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
+            $this->glBuffer->enqueue(new MovementGlContext(
+                kind: MovementGlKind::BatchWriteOff,
+                movementId: $movement->id,
+                companyId: $movement->company_id,
+                currencyCode: $currencyCode,
+                reason: MovementReason::WriteOff,
+                quantityBefore: (string) $movement->quantity_before,
+                quantityAfter: (string) $movement->quantity_after,
+                unitCost: (string) ($movement->unit_cost ?? '0'),
+                sourceType: $movement->reference_type,
+                sourceId: $movement->reference_id,
+                occurredAt: \DateTimeImmutable::createFromInterface($movementOccurredAt),
+                entryDate: \DateTimeImmutable::createFromInterface($entryDate ?? $occurredAt ?? now()),
+                postedByUserId: $cashierId,
+                isHistorical: (bool) $movement->is_historical,
+                // The free-text batch label, source coordinate and all posting
+                // arguments are byte-identical to V10; only the timing moved.
+                // POS scrap remains non-reversible through ReverseWriteOffService.
                 batchNumber: "POS-SCRAP {$returnReceiptNumber}",
                 productId: $productId,
-                amount: $amount,
-                reason: MovementReason::WriteOff,
-                movementId: $movement->id,
-                postedByUserId: $cashierId,
-                currencyCode: $currencyCode,
-                // Seal INSIDE this transaction (gate I1). The default afterCommit
-                // path would post from a Horizon worker in autocommit, where the
-                // per-company chain advisory lock is a no-op (duplicate
-                // chain_sequence) and a post-commit throw would leave the entry
-                // Draft forever — invisible to every trial balance.
-                postSynchronously: true,
-            );
+            ));
 
-            // ── GL ORDERING DEPENDENCY (gate inv-I1) ──────────────────────────
-            // This posting is economically correct TODAY only because two other
-            // postings are absent, and they must land TOGETHER or this breaks:
-            //   * POS COGS-at-exit (a POS sale currently posts no COGS) — landing
-            //     it alone relieves Inventory TWICE for the same units.
-            //   * A GL leg for the RE-ENTRY movement (MovementReason::POSReturn
-            //     already declares requiresGLEntry() === true) — landing it alone
-            //     nets the pair to zero GL while the subledger dropped qty x WAC.
-            // Recorded at program level in the DPA register; do not land either
-            // lane without revisiting this site.
+            // Post-Wave-3 three-entry arithmetic: sale exit relieves Inventory,
+            // return entry restores it, and this write-off relieves it again.
+            // The T16 net assertion pins the final Dr COGS / Cr Inventory once.
 
             return $movement;
         });

@@ -23,10 +23,15 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Exceptions\UnsupportedValuationModeException;
 use App\Modules\Inventory\Domain\InventoryGlSourceTypes;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Contracts\Queue\Job;
 use Illuminate\Database\Events\TransactionRolledBack;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\QueryException;
+use Illuminate\Foundation\Http\Events\RequestHandled;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Queue\Events\JobProcessed;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -47,6 +52,7 @@ final class InventoryGlPostingSeamTest extends TestCase
                 'Inventory GL seam tests require PostgreSQL and real root commits; in-memory SQLite cannot persist the schema when connectionsToTransact() is empty.',
             );
         }
+
     }
 
     /**
@@ -306,6 +312,13 @@ final class InventoryGlPostingSeamTest extends TestCase
         });
 
         Log::shouldHaveReceived('critical')->once();
+        $this->assertFalse($buffer->isEmpty());
+        try {
+            event(new RequestHandled(Request::create('/nested-leak'), new Response));
+            self::fail('The test-only request boundary must reject the leaked root context.');
+        } catch (\LogicException $e) {
+            self::assertSame('Inventory GL posting buffer leaked at request boundary.', $e->getMessage());
+        }
         $this->assertTrue($buffer->isEmpty());
     }
 
@@ -354,6 +367,29 @@ final class InventoryGlPostingSeamTest extends TestCase
         $this->assertSame([], DB::getQueryLog());
         $buffer->reset();
         DB::disableQueryLog();
+    }
+
+    public function test_request_boundary_guard_fails_on_an_unflushed_scoped_buffer(): void
+    {
+        $buffer = app(InventoryGlPostingBuffer::class);
+        $buffer->enqueue($this->context('company-id', movementId: '25252525-2525-4525-8525-252525252525'));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Inventory GL posting buffer leaked at request boundary.');
+
+        event(new RequestHandled(Request::create('/boundary-probe'), new Response));
+    }
+
+    public function test_job_boundary_guard_fails_on_an_unflushed_scoped_buffer(): void
+    {
+        $buffer = app(InventoryGlPostingBuffer::class);
+        $buffer->enqueue($this->context('company-id', movementId: '26262626-2626-4626-8626-262626262626'));
+
+        $this->expectException(\LogicException::class);
+        $this->expectExceptionMessage('Inventory GL posting buffer leaked at job-success boundary.');
+
+        $job = \Mockery::mock(Job::class)->shouldIgnoreMissing();
+        event(new JobProcessed('sync', $job));
     }
 
     public function test_unrelated_root_rollback_does_not_construct_the_inventory_gl_buffer(): void
@@ -457,6 +493,23 @@ final class InventoryGlPostingSeamTest extends TestCase
         $posted = $this->flush($this->context(
             'company-without-a-row',
             movementId: '55555555-5555-4555-8555-555555555555',
+            isHistorical: true,
+        ));
+
+        $this->assertSame([null], $posted);
+        Log::shouldNotHaveReceived('warning');
+        Log::shouldNotHaveReceived('error');
+    }
+
+    public function test_historical_batch_write_off_stops_before_argument_or_account_lookup(): void
+    {
+        Log::spy();
+
+        $posted = $this->flush($this->context(
+            'company-without-a-row',
+            movementId: '56565656-5656-4565-8565-565656565656',
+            kind: MovementGlKind::BatchWriteOff,
+            reason: MovementReason::WriteOff,
             isHistorical: true,
         ));
 

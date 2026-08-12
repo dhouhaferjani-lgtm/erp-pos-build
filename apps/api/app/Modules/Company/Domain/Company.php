@@ -20,6 +20,7 @@ use App\Modules\SmartPrompts\Domain\Enums\SmartPromptsVariant;
 use App\Modules\Taxation\Domain\Enums\CompanyTaxStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Carbon\Carbon;
+use Carbon\CarbonImmutable;
 use Database\Factories\CompanyFactory;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -109,6 +110,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property InventoryValuationMode|null $inventory_valuation_mode Company override for the
  *                                                                 inventory valuation system. NULL = inherit the country default; resolve through
  *                                                                 `InventoryValuationModeResolver`, never by reading this column directly.
+ * @property CarbonImmutable $inventory_gl_cutover_at COGS-at-exit detector watermark
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
  * @property bool $allow_below_cost_sales Whether below-cost sales are allowed
@@ -142,6 +144,10 @@ class Company extends Model
             if ($company->fiscal_chain_seed === null) {
                 $company->fiscal_chain_seed = bin2hex(random_bytes(32));
             }
+
+            // New companies start on the movement-keyed GL regime at their
+            // creation instant. The deploy migration backfills existing rows.
+            $company->inventory_gl_cutover_at ??= CarbonImmutable::now('UTC');
         });
 
         static::created(function (Company $company): void {
@@ -272,6 +278,7 @@ class Company extends Model
         'closed_at',
         'inventory_costing_method',
         'inventory_valuation_mode',
+        'inventory_gl_cutover_at',
         'default_target_margin',
         'default_minimum_margin',
         'allow_below_cost_sales',
@@ -325,6 +332,7 @@ class Company extends Model
             'status' => CompanyStatus::class,
             'tax_status' => CompanyTaxStatus::class,
             'inventory_valuation_mode' => InventoryValuationMode::class,
+            'inventory_gl_cutover_at' => 'immutable_datetime',
             'allow_below_cost_sales' => 'boolean',
             'default_max_discount_percent' => 'decimal:2',
             'discount_floor_mode' => DiscountFloorMode::class,

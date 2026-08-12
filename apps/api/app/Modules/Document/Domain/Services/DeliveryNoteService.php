@@ -13,8 +13,11 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\DeliveryNoteConfirmed;
+use App\Modules\Inventory\Application\DTOs\MovementGlContext;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Application\Services\StockReservationService;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\Enums\ReleaseReason;
 use App\Modules\Inventory\Domain\Enums\ReservationSource;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
@@ -53,6 +56,7 @@ final class DeliveryNoteService
         private readonly WeightedAverageCostService $wacService,
         private readonly TaxCalculationService $taxCalculationService,
         private readonly BatchStockService $batchStockService,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     /**
@@ -65,7 +69,7 @@ final class DeliveryNoteService
      *
      * @throws \DomainException If delivery note cannot be confirmed
      */
-    public function confirm(Document $deliveryNote): Document
+    public function confirm(Document $deliveryNote, ?InventoryGlPostingBuffer $rootBuffer = null): Document
     {
         if ($deliveryNote->type !== DocumentType::DeliveryNote) {
             throw new \DomainException(
@@ -85,8 +89,8 @@ final class DeliveryNoteService
             );
         }
 
-        return DB::transaction(function () use ($deliveryNote): Document {
-            $this->confirmWithFiscalChain($deliveryNote);
+        return DB::transaction(function () use ($deliveryNote, $rootBuffer): Document {
+            $this->confirmWithFiscalChain($deliveryNote, $rootBuffer ?? $this->glBuffer);
 
             /** @var Document */
             return $deliveryNote->fresh(['lines']);
@@ -96,7 +100,7 @@ final class DeliveryNoteService
     /**
      * Confirm a delivery note with full fiscal hash chain compliance.
      */
-    private function confirmWithFiscalChain(Document $deliveryNote): void
+    private function confirmWithFiscalChain(Document $deliveryNote, InventoryGlPostingBuffer $buffer): void
     {
         // Acquire lock and get previous delivery note in chain
         $previousDoc = Document::where('company_id', $deliveryNote->company_id)
@@ -118,7 +122,7 @@ final class DeliveryNoteService
         $this->releaseSourceReservations($deliveryNote);
 
         // Issue stock for all product lines
-        $this->issueStock($deliveryNote);
+        $this->issueStock($deliveryNote, $buffer);
 
         // Set quantity_delivered on each line to match quantity (full delivery)
         foreach ($deliveryNote->lines as $line) {
@@ -163,6 +167,11 @@ final class DeliveryNoteService
 
         // Dispatch the fiscal event for audit log
         $this->dispatchConfirmedEvent($deliveryNote, $confirmedAt->toIso8601String());
+
+        // Terminal GL phase. Nested callers defer to their registered root
+        // frame; standalone confirms propagate a posting failure so stock,
+        // seal and chain sequence roll back together.
+        $buffer->flushIfOutermost();
     }
 
     /**
@@ -247,7 +256,7 @@ final class DeliveryNoteService
      * This actually decreases stock levels by calling the WAC service
      * to record sales and update inventory quantities.
      */
-    private function issueStock(Document $deliveryNote): void
+    private function issueStock(Document $deliveryNote, InventoryGlPostingBuffer $buffer): void
     {
         foreach ($deliveryNote->lines as $line) {
             // D-19 / T4: ONE physical predicate. The former guard read the
@@ -285,6 +294,24 @@ final class DeliveryNoteService
                     movementId: $movement->id,
                 );
             }
+
+            $occurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
+            $buffer->enqueue(new MovementGlContext(
+                kind: MovementGlKind::Exit,
+                movementId: $movement->id,
+                companyId: $movement->company_id,
+                currencyCode: (string) $deliveryNote->currency,
+                reason: $movement->reason ?? throw new \LogicException('Delivery movement is missing its GL reason.'),
+                quantityBefore: (string) $movement->quantity_before,
+                quantityAfter: (string) $movement->quantity_after,
+                unitCost: (string) ($movement->unit_cost ?? '0'),
+                sourceType: $movement->reference_type,
+                sourceId: $movement->reference_id,
+                occurredAt: \DateTimeImmutable::createFromInterface($occurredAt),
+                entryDate: new \DateTimeImmutable('now'),
+                postedByUserId: auth()->id() !== null ? (string) auth()->id() : null,
+                isHistorical: (bool) $movement->is_historical,
+            ));
         }
     }
 }
