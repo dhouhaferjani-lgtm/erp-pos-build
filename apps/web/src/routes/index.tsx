@@ -6,6 +6,8 @@ import { RequirePermission } from '../components/auth'
 import { ModuleGuard } from '../components/guards'
 import { LoadingSpinner } from '../components/atoms/Spinner'
 import { DashboardLanding } from './DashboardLanding'
+import { AdminIndexRedirect, RequireAdminRole } from '../features/admin/components/AdminRoleGuard'
+import { countryDefaultsRoles, fullAdminRoles, supportAccessRoles } from '../features/admin/lib/adminRolePolicy'
 
 // Lazy loaded pages
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
@@ -30,6 +32,9 @@ const AdminVerticalsPage = lazy(() => import('../features/admin/pages/VerticalsP
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout').then((m) => ({ default: m.AdminLayout })))
 const RequireAdminAuth = lazy(() => import('../features/admin/components/RequireAdminAuth').then((m) => ({ default: m.RequireAdminAuth })))
 const AdminSupportAccessPage = lazy(() => import('../features/support-access/pages/AdminSupportAccessPage').then((m) => ({ default: m.AdminSupportAccessPage })))
+const CountryDefaultsTemplateListPage = lazy(() => import('../features/admin/country-defaults/pages/TemplateListPage').then((m) => ({ default: m.TemplateListPage })))
+const CountryDefaultsTemplateEditorPage = lazy(() => import('../features/admin/country-defaults/pages/TemplateEditorPage').then((m) => ({ default: m.TemplateEditorPage })))
+const CountryDefaultsAssignmentsPage = lazy(() => import('../features/admin/country-defaults/pages/AssignmentsPage').then((m) => ({ default: m.AssignmentsPage })))
 const TenantSupportAccessPage = lazy(() => import('../features/support-access/pages/TenantSupportAccessPage').then((m) => ({ default: m.TenantSupportAccessPage })))
 
 // Sales module
@@ -417,7 +422,8 @@ export function AppRoutes() {
           </SuspenseWrapper>
         }
       >
-        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+        <Route index element={<AdminIndexRedirect />} />
+        <Route element={<RequireAdminRole allow={fullAdminRoles} />}>
         <Route
           path="dashboard"
           element={
@@ -426,6 +432,8 @@ export function AppRoutes() {
             </SuspenseWrapper>
           }
         />
+        </Route>
+        <Route element={<RequireAdminRole allow={supportAccessRoles} />}>
         <Route
           path="support-access"
           element={
@@ -434,6 +442,8 @@ export function AppRoutes() {
             </SuspenseWrapper>
           }
         />
+        </Route>
+        <Route element={<RequireAdminRole allow={fullAdminRoles} />}>
         <Route
           path="tenants"
           element={
@@ -506,6 +516,12 @@ export function AppRoutes() {
             </SuspenseWrapper>
           }
         />
+        </Route>
+        <Route element={<RequireAdminRole allow={countryDefaultsRoles} />}>
+          <Route path="country-defaults" element={<SuspenseWrapper><CountryDefaultsTemplateListPage /></SuspenseWrapper>} />
+          <Route path="country-defaults/templates/:templateId" element={<SuspenseWrapper><CountryDefaultsTemplateEditorPage /></SuspenseWrapper>} />
+          <Route path="country-defaults/assignments" element={<SuspenseWrapper><CountryDefaultsAssignmentsPage /></SuspenseWrapper>} />
+        </Route>
       </Route>
 
       {/* Company Onboarding (full-page without layout) */}

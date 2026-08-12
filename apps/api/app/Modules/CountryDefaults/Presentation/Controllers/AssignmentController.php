@@ -6,6 +6,8 @@ namespace App\Modules\CountryDefaults\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
+use App\Modules\CountryDefaults\Application\DTOs\AssignmentMatrixRowData;
+use App\Modules\CountryDefaults\Application\DTOs\TemplateSummaryData;
 use App\Modules\CountryDefaults\Application\Services\StaticCountryCatalogProvider;
 use App\Modules\CountryDefaults\Application\Services\TemplateAssignmentService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
@@ -41,15 +43,15 @@ final class AssignmentController extends Controller
                 $country['name'] = trans('country_defaults.catalog.generic_fallback');
             }
             $assignment = $assignments->get($country['country_code']);
-            $matrix[] = [
-                ...$country,
-                'domain' => $domain->value,
-                'assignment_id' => $assignment?->id,
-                'template_id' => $assignment?->template_id,
-                'template' => $assignment === null
-                    ? null
-                    : (new CountryTemplateAssignmentResource($assignment))->resolve($request)['template'],
-            ];
+            $matrix[] = (new AssignmentMatrixRowData(
+                country_code: $country['country_code'],
+                name: $country['name'],
+                pinned: $country['pinned'],
+                domain: $domain,
+                assignment_id: $assignment?->id,
+                template_id: $assignment?->template_id,
+                template: $assignment === null ? null : TemplateSummaryData::fromNullableModel($assignment->template),
+            ))->toArray();
         }
 
         return response()->json([

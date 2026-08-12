@@ -1,0 +1,73 @@
+import { useState } from 'react'
+import { Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
+import { Pin, RefreshCw, X } from 'lucide-react'
+import { Button, Select } from '@/components/atoms'
+import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
+import { PageHeader } from '@/components/molecules/PageHeader'
+import { borderColors, textColors, tokens } from '@/lib/designTokens'
+import { assignTemplate } from '../api/countryDefaultsApi'
+import { useAssignments, useCountryDefaultsMutation, useTemplates } from '../hooks/useCountryDefaults'
+import type { AssignmentMatrixRow, TemplateDomain } from '../types'
+
+export function AssignmentsPage() {
+  const { t } = useTranslation('adminCountryDefaults')
+  const domain: TemplateDomain = 'chart_of_accounts'
+  const assignments = useAssignments(domain)
+  const templates = useTemplates(domain)
+  const [selected, setSelected] = useState<Partial<Record<string, string>>>({})
+  const [confirmCountry, setConfirmCountry] = useState<string | null>(null)
+  const assign = useCountryDefaultsMutation(
+    (countryCode: string) => assignTemplate(countryCode, { domain, template_id: selected[countryCode] ?? '' }),
+  )
+  const availableFor = (countryCode: string) => (templates.data ?? []).filter((template) => {
+    if (template.status !== 'published') return false
+    const scope = template.certified_country_codes ?? []
+    return countryCode === '*' ? scope.length === 1 && scope[0] === '*' : scope.includes(countryCode)
+  })
+  const columns: DataTableColumn<AssignmentMatrixRow>[] = [
+    {
+      key: 'country', header: t('assignments.columns.country'), render: (row) => (
+        <div className="flex items-center gap-2">
+          {row.pinned && <Pin aria-label={t('assignments.pinnedAria')} className={`h-4 w-4 ${textColors.brand}`} />}
+          <div><p className={`font-medium ${textColors.primary}`}>{row.name}</p><p className={`font-mono text-xs ${textColors.tertiary}`}>{row.country_code}</p></div>
+        </div>
+      ),
+    },
+    {
+      key: 'template', header: t('assignments.columns.template'), render: (row) => (
+        <Select aria-label={t('assignments.templateAria', { country: row.country_code })} value={selected[row.country_code] ?? row.template_id} onChange={(event) => { setSelected((current) => ({ ...current, [row.country_code]: event.target.value })) }}>
+          <option value="">{t('assignments.unassigned')}</option>
+          {availableFor(row.country_code).map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
+        </Select>
+      ),
+    },
+    {
+      key: 'action', header: t('assignments.columns.action'), render: (row) => {
+        const candidate = selected[row.country_code]
+        return <Button size="sm" variant="secondary" disabled={candidate === undefined || candidate === row.template_id} onClick={() => { setConfirmCountry(row.country_code) }}><RefreshCw className="mr-1 h-4 w-4" />{t('assignments.repoint', { country: row.country_code })}</Button>
+      },
+    },
+  ]
+
+  return (
+    <div className="p-8">
+      <div className="mx-auto max-w-6xl space-y-6">
+        <PageHeader title={t('assignments.title')} subtitle={t('assignments.subtitle')} breadcrumb={<Link className={`text-sm ${textColors.brand} hover:underline`} to="/admin/country-defaults">{t('assignments.back')}</Link>} />
+        <div className={tokens.alert.info}>{t('assignments.catalogVersion', { version: assignments.data?.meta.catalog_version ?? '—' })}</div>
+        <div className={`overflow-hidden rounded-xl border ${borderColors.light}`}>
+          <DataTable columns={columns} data={assignments.data?.data ?? []} keyExtractor={(row) => row.country_code} isLoading={assignments.isLoading} emptyTitle={t('assignments.empty')} ariaLabel={t('assignments.tableLabel')} />
+        </div>
+      </div>
+
+      {confirmCountry !== null && <dialog aria-labelledby="assignment-confirm-title" className={tokens.modal.backdrop} open>
+        <section className={tokens.modal.container}>
+          <div className={tokens.modal.header}><h2 className={tokens.modal.title} id="assignment-confirm-title">{t('assignments.confirmTitle', { country: confirmCountry })}</h2><Button variant="ghost" size="sm" aria-label={t('common.close')} onClick={() => { setConfirmCountry(null) }}><X className="h-4 w-4" /></Button></div>
+          <p className={tokens.alert.warning}>{t('assignments.newCompaniesOnly')}</p>
+          <p className={`mt-4 text-sm ${textColors.tertiary}`}>{t('assignments.confirmDescription')}</p>
+          <div className={tokens.modal.footer}><Button variant="secondary" onClick={() => { setConfirmCountry(null) }}>{t('common.cancel')}</Button><Button onClick={() => { const country = confirmCountry; void assign.mutateAsync(country).then(() => { setConfirmCountry(null) }) }}>{t('assignments.confirm')}</Button></div>
+        </section>
+      </dialog>}
+    </div>
+  )
+}

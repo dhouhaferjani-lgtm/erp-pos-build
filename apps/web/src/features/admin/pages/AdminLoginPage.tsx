@@ -5,8 +5,12 @@ import { Shield, Loader2 } from 'lucide-react'
 import { loginSuperAdmin } from '../api'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 import { colorClasses } from '@/lib/designTokens'
+import { useTranslation } from 'react-i18next'
+import { homeForAdminRole } from '../lib/adminRolePolicy'
+import { Button, Input } from '@/components/atoms'
 
 export function AdminLoginPage() {
+  const { t } = useTranslation('adminCountryDefaults')
   const navigate = useNavigate()
   const setAuth = useAdminAuthStore((state) => state.setAuth)
   const [email, setEmail] = useState('')
@@ -27,10 +31,10 @@ export function AdminLoginPage() {
         },
         data.token
       )
-      navigate('/admin/dashboard')
+      void navigate(homeForAdminRole(data.admin.role))
     },
     onError: (err: Error) => {
-      setError(err.message || 'Invalid credentials')
+      setError(err.message || t('shell.invalidCredentials'))
     },
   })
 
@@ -48,10 +52,10 @@ export function AdminLoginPage() {
             <Shield className="h-10 w-10 text-white" />
           </div>
           <h2 className="mt-6 text-3xl font-bold text-white">
-            Super Admin Portal
+            {t('shell.portalTitle')}
           </h2>
           <p className={`mt-2 text-sm ${colorClasses.textGray400}`}>
-            Sign in to access the administration panel
+            {t('shell.portalSubtitle')}
           </p>
         </div>
 
@@ -65,9 +69,9 @@ export function AdminLoginPage() {
           <div className="space-y-4">
             <div>
               <label htmlFor="email" className={`block text-sm font-medium ${colorClasses.textGray300}`}>
-                Email address
+                {t('shell.email')}
               </label>
-              <input
+              <Input
                 id="email"
                 name="email"
                 type="email"
@@ -76,15 +80,15 @@ export function AdminLoginPage() {
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); }}
                 className={`mt-1 block w-full rounded-lg border ${colorClasses.borderGray600} ${colorClasses.bgGray800} px-4 py-3 text-white ${colorClasses.placeholderGray400} ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
-                placeholder="superadmin@mecanospex.com"
+                placeholder={t('shell.emailPlaceholder')}
               />
             </div>
 
             <div>
               <label htmlFor="password" className={`block text-sm font-medium ${colorClasses.textGray300}`}>
-                Password
+                {t('shell.password')}
               </label>
-              <input
+              <Input
                 id="password"
                 name="password"
                 type="password"
@@ -93,25 +97,25 @@ export function AdminLoginPage() {
                 value={password}
                 onChange={(e) => { setPassword(e.target.value); }}
                 className={`mt-1 block w-full rounded-lg border ${colorClasses.borderGray600} ${colorClasses.bgGray800} px-4 py-3 text-white ${colorClasses.placeholderGray400} ${colorClasses.focusBorderBlue500} focus:outline-none focus:ring-1 ${colorClasses.focusRingBlue500}`}
-                placeholder="Enter your password"
+                placeholder={t('shell.passwordPlaceholder')}
               />
             </div>
           </div>
 
-          <button
+          <Button
             type="submit"
             disabled={loginMutation.isPending}
-            className={`w-full flex justify-center items-center gap-2 rounded-lg ${colorClasses.bgBlue600} px-4 py-3 text-sm font-semibold text-white ${colorClasses.hoverBgBlue700} focus:outline-none focus:ring-2 ${colorClasses.focusRingBlue500} focus:ring-offset-2 focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed`}
+            className="w-full gap-2"
           >
             {loginMutation.isPending ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Signing in...
+                {t('shell.signingIn')}
               </>
             ) : (
-              'Sign in'
+              t('shell.signIn')
             )}
-          </button>
+          </Button>
         </form>
 
         <div className="text-center">
@@ -119,7 +123,7 @@ export function AdminLoginPage() {
             href="/login"
             className={`text-sm ${colorClasses.textGray400} ${colorClasses.hoverTextGray300}`}
           >
-            &larr; Back to regular login
+            &larr; {t('shell.backToLogin')}
           </a>
         </div>
       </div>

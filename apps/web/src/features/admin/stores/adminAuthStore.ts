@@ -1,11 +1,13 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
+export type AdminRole = App.Models.Enums.SuperAdminRole
+
 interface SuperAdmin {
   id: string
   email: string
   name: string
-  role: 'super_admin' | 'support_approver'
+  role: AdminRole
 }
 
 /**

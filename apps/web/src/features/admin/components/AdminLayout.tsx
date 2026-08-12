@@ -1,23 +1,27 @@
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity, UserCheck, Layers, Headphones } from 'lucide-react'
+import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity, UserCheck, Layers, Headphones, BookOpenCheck, ListTree } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { logoutSuperAdmin } from '../api'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 import { colorClasses } from '@/lib/designTokens'
 
-const navigation = [
-  { name: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard },
-  { name: 'Tenants', href: '/admin/tenants', icon: Users },
-  { name: 'Verticals', href: '/admin/verticals', icon: Layers },
-  { name: 'Company Owners', href: '/admin/company-owners', icon: UserCheck },
-  { name: 'Billing', href: '/admin/billing', icon: CreditCard },
-  { name: 'Monitoring', href: '/admin/monitoring', icon: Activity },
-  { name: 'Audit Logs', href: '/admin/audit-logs', icon: FileText },
-  { labelKey: 'supportAccess.navigation', href: '/admin/support-access', icon: Headphones },
+import type { AdminRole } from '../stores/adminAuthStore'
+
+const navigation: { labelKey: string; href: string; icon: typeof Shield; roles: readonly AdminRole[] }[] = [
+  { labelKey: 'shell.navigation.dashboard', href: '/admin/dashboard', icon: LayoutDashboard, roles: ['super_admin'] },
+  { labelKey: 'shell.navigation.tenants', href: '/admin/tenants', icon: Users, roles: ['super_admin'] },
+  { labelKey: 'shell.navigation.verticals', href: '/admin/verticals', icon: Layers, roles: ['super_admin'] },
+  { labelKey: 'shell.navigation.companyOwners', href: '/admin/company-owners', icon: UserCheck, roles: ['super_admin'] },
+  { labelKey: 'shell.navigation.billing', href: '/admin/billing', icon: CreditCard, roles: ['super_admin'] },
+  { labelKey: 'shell.navigation.monitoring', href: '/admin/monitoring', icon: Activity, roles: ['super_admin'] },
+  { labelKey: 'shell.navigation.auditLogs', href: '/admin/audit-logs', icon: FileText, roles: ['super_admin'] },
+  { labelKey: 'navigation.templates', href: '/admin/country-defaults', icon: BookOpenCheck, roles: ['super_admin', 'defaults_editor'] },
+  { labelKey: 'navigation.assignments', href: '/admin/country-defaults/assignments', icon: ListTree, roles: ['super_admin', 'defaults_editor'] },
+  { labelKey: 'shell.navigation.supportAccess', href: '/admin/support-access', icon: Headphones, roles: ['super_admin', 'support_approver'] },
 ]
 
 export function AdminLayout() {
-  const { t } = useTranslation('admin')
+  const { t } = useTranslation('adminCountryDefaults')
   const location = useLocation()
   const navigate = useNavigate()
   const { admin, logout } = useAdminAuthStore()
@@ -29,7 +33,7 @@ export function AdminLayout() {
       // Token may already be expired/revoked — local logout regardless.
     }
     logout()
-    navigate('/admin/login')
+    void navigate('/admin/login')
   }
 
   return (
@@ -42,8 +46,8 @@ export function AdminLayout() {
             <Shield className="h-6 w-6 text-white" />
           </div>
           <div>
-            <span className="text-lg font-bold text-white">Admin</span>
-            <p className={`text-xs ${colorClasses.textGray400}`}>Super Admin Panel</p>
+            <span className="text-lg font-bold text-white">{t('shell.brand')}</span>
+            <p className={`text-xs ${colorClasses.textGray400}`}>{t('shell.panel')}</p>
           </div>
         </div>
 
@@ -51,6 +55,7 @@ export function AdminLayout() {
         <nav className="flex-1 px-3 py-4">
           <ul className="space-y-1">
             {navigation.map((item) => {
+              if (admin === null || !item.roles.includes(admin.role)) return null
               const isActive = location.pathname === item.href
               return (
                 <li key={item.href}>
@@ -63,7 +68,7 @@ export function AdminLayout() {
                     }`}
                   >
                     <item.icon className="h-5 w-5" />
-                    {'labelKey' in item ? t(item.labelKey) : item.name}
+                    {t(item.labelKey)}
                   </Link>
                 </li>
               )
@@ -81,7 +86,7 @@ export function AdminLayout() {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white truncate">
-                {admin?.name ?? 'Admin'}
+                {admin?.name ?? t('shell.adminFallback')}
               </p>
               <p className={`text-xs ${colorClasses.textGray400} truncate`}>
                 {admin?.email ?? ''}
@@ -93,7 +98,7 @@ export function AdminLayout() {
             className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${colorClasses.textGray300} ${colorClasses.hoverBgGray700} hover:text-white transition-colors`}
           >
             <LogOut className="h-4 w-4" />
-            Sign out
+            {t('shell.signOut')}
           </button>
         </div>
       </aside>

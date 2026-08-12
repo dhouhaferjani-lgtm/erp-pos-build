@@ -2,7 +2,7 @@ export interface AdminAuthResponse {
   id: string
   email: string
   name: string
-  role: 'super_admin' | 'support_approver'
+  role: App.Models.Enums.SuperAdminRole
 }
 
 export interface AdminDashboardStats {

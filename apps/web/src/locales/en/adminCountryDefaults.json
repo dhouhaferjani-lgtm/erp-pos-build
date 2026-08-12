@@ -1,0 +1,44 @@
+{
+  "eyebrow": "Certified provisioning controls",
+  "navigation": { "templates": "Country defaults", "assignments": "Assignments" },
+  "shell": {
+    "brand": "Admin", "panel": "Central admin panel", "portalTitle": "Central admin portal", "portalSubtitle": "Sign in to the administration panel",
+    "email": "Email address", "emailPlaceholder": "admin@example.com", "password": "Password", "passwordPlaceholder": "Enter your password",
+    "signIn": "Sign in", "signingIn": "Signing in…", "signOut": "Sign out",
+    "backToLogin": "Back to regular login", "invalidCredentials": "Invalid credentials", "adminFallback": "Admin",
+    "navigation": { "dashboard": "Dashboard", "tenants": "Tenants", "verticals": "Verticals", "companyOwners": "Company owners", "billing": "Billing", "monitoring": "Monitoring", "auditLogs": "Audit logs", "supportAccess": "Support access" }
+  },
+  "common": { "domain": "Domain", "none": "None", "loading": "Loading…", "notCertified": "Not certified", "cancel": "Cancel", "close": "Close" },
+  "domains": { "chart_of_accounts": "Chart of accounts" },
+  "status": { "draft": "Draft", "published": "Published", "archived": "Archived" },
+  "accountTypes": { "asset": "Asset", "liability": "Liability", "equity": "Equity", "revenue": "Revenue", "expense": "Expense" },
+  "templates": {
+    "title": "Accounting templates", "subtitle": "Review versioned charts, their jurisdiction scope, and certification trail.",
+    "tableLabel": "Country default templates", "empty": "No templates in this domain.", "edit": "Edit template",
+    "clone": "Clone", "cloneName": "{{name}} — copy", "archive": "Archive", "count_one": "{{count}} template", "count_many": "{{count}} templates",
+    "columns": { "template": "Template", "status": "Status", "certification": "Certification", "actions": "Actions" }
+  },
+  "editor": {
+    "back": "Back to templates", "eyebrow": "Template workbench", "loadError": "The template could not be loaded.",
+    "publish": "Publish", "published": "Published content hash", "saveMetadata": "Save details", "saveRows": "Save rows",
+    "grid": {
+      "title": "Account definition", "subtitle": "Edit the provisioning hierarchy. Protected instrument rows remain locked.",
+      "add": "Add account", "tableLabel": "Template account grid", "protected": "Protected", "protectedAria": "Protected account {{code}}",
+      "codeAria": "Account code {{code}}", "systemAria": "System account {{code}}", "deleteAria": "Delete account {{code}}",
+      "columns": { "code": "Code", "name": "Name", "type": "Type", "parent": "Parent", "purpose": "Purpose", "system": "System", "actions": "Actions" }
+    },
+    "validation": { "codeRequired": "Account code is required.", "nameRequired": "Account name is required.", "parentMissing": "The parent code must exist in this template." }
+  },
+  "validation": { "title": "Validation", "subtitle": "Certification checks remain visible while you edit.", "checking": "Checking template…", "valid": "Ready to certify", "invalid": "Changes required" },
+  "publish": { "title": "Certify and publish", "description": "Publishing locks this version and records the declared jurisdiction scope.", "standard": "Accounting standard", "scope": "Certified jurisdictions", "scopePlaceholder": "TN or *", "scopeHelp": "Enter comma-separated ISO codes, or * by itself.", "confirm": "Confirm publish", "close": "Close publish dialog" },
+  "protection": { "treasury_instrument_literal": "Treasury resolves this account by literal code.", "expense_category_demo_consumer": "Demo expense categories resolve this account by literal code." },
+  "assignments": {
+    "back": "Back to templates", "title": "Country assignments", "subtitle": "Point each jurisdiction at a published template certified for that exact scope.",
+    "catalogVersion": "Country catalog {{version}}", "tableLabel": "Country template assignments", "empty": "No countries are available.",
+    "pinnedAria": "Pinned wildcard assignment", "templateAria": "Template for {{country}}", "unassigned": "Unassigned",
+    "repoint": "Re-point {{country}}", "confirmTitle": "Re-point {{country}}?", "newCompaniesOnly": "This affects newly created companies only.",
+    "confirmDescription": "Existing company accounts are never changed by this assignment.", "confirm": "Confirm re-point",
+    "count_one": "{{count}} assignment", "count_many": "{{count}} assignments",
+    "columns": { "country": "Country", "template": "Assigned template", "action": "Action" }
+  }
+}

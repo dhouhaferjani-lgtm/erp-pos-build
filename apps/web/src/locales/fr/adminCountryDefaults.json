@@ -1,0 +1,44 @@
+{
+  "eyebrow": "Contrôles de provisionnement certifiés",
+  "navigation": { "templates": "Paramètres pays", "assignments": "Affectations" },
+  "shell": {
+    "brand": "Admin", "panel": "Panneau d’administration central", "portalTitle": "Portail d’administration central", "portalSubtitle": "Connectez-vous au panneau d’administration",
+    "email": "Adresse e-mail", "emailPlaceholder": "admin@example.com", "password": "Mot de passe", "passwordPlaceholder": "Saisissez votre mot de passe",
+    "signIn": "Se connecter", "signingIn": "Connexion…", "signOut": "Se déconnecter",
+    "backToLogin": "Retour à la connexion habituelle", "invalidCredentials": "Identifiants invalides", "adminFallback": "Administrateur",
+    "navigation": { "dashboard": "Tableau de bord", "tenants": "Locataires", "verticals": "Verticales", "companyOwners": "Propriétaires d’entreprise", "billing": "Facturation", "monitoring": "Supervision", "auditLogs": "Journaux d’audit", "supportAccess": "Accès support" }
+  },
+  "common": { "domain": "Domaine", "none": "Aucun", "loading": "Chargement…", "notCertified": "Non certifié", "cancel": "Annuler", "close": "Fermer" },
+  "domains": { "chart_of_accounts": "Plan comptable" },
+  "status": { "draft": "Brouillon", "published": "Publié", "archived": "Archivé" },
+  "accountTypes": { "asset": "Actif", "liability": "Passif", "equity": "Capitaux propres", "revenue": "Produit", "expense": "Charge" },
+  "templates": {
+    "title": "Modèles comptables", "subtitle": "Examinez les plans versionnés, leur périmètre juridictionnel et leur certification.",
+    "tableLabel": "Modèles de paramètres pays", "empty": "Aucun modèle dans ce domaine.", "edit": "Modifier le modèle",
+    "clone": "Cloner", "cloneName": "{{name}} — copie", "archive": "Archiver", "count_one": "{{count}} modèle", "count_many": "{{count}} modèles",
+    "columns": { "template": "Modèle", "status": "Statut", "certification": "Certification", "actions": "Actions" }
+  },
+  "editor": {
+    "back": "Retour aux modèles", "eyebrow": "Atelier du modèle", "loadError": "Impossible de charger le modèle.",
+    "publish": "Publier", "published": "Empreinte du contenu publié", "saveMetadata": "Enregistrer les détails", "saveRows": "Enregistrer les lignes",
+    "grid": {
+      "title": "Définition des comptes", "subtitle": "Modifiez la hiérarchie de provisionnement. Les comptes d’instrument protégés restent verrouillés.",
+      "add": "Ajouter un compte", "tableLabel": "Grille des comptes du modèle", "protected": "Protégé", "protectedAria": "Compte protégé {{code}}",
+      "codeAria": "Code du compte {{code}}", "systemAria": "Compte système {{code}}", "deleteAria": "Supprimer le compte {{code}}",
+      "columns": { "code": "Code", "name": "Nom", "type": "Type", "parent": "Parent", "purpose": "Finalité", "system": "Système", "actions": "Actions" }
+    },
+    "validation": { "codeRequired": "Le code du compte est obligatoire.", "nameRequired": "Le nom du compte est obligatoire.", "parentMissing": "Le code parent doit exister dans ce modèle." }
+  },
+  "validation": { "title": "Validation", "subtitle": "Les contrôles de certification restent visibles pendant la modification.", "checking": "Contrôle du modèle…", "valid": "Prêt à certifier", "invalid": "Modifications requises" },
+  "publish": { "title": "Certifier et publier", "description": "La publication verrouille cette version et enregistre le périmètre juridictionnel déclaré.", "standard": "Norme comptable", "scope": "Juridictions certifiées", "scopePlaceholder": "TN ou *", "scopeHelp": "Saisissez des codes ISO séparés par des virgules, ou * seul.", "confirm": "Confirmer la publication", "close": "Fermer la fenêtre de publication" },
+  "protection": { "treasury_instrument_literal": "La trésorerie résout ce compte par son code littéral.", "expense_category_demo_consumer": "Les catégories de dépenses de démonstration résolvent ce compte par son code littéral." },
+  "assignments": {
+    "back": "Retour aux modèles", "title": "Affectations par pays", "subtitle": "Associez chaque juridiction à un modèle publié et certifié pour ce périmètre exact.",
+    "catalogVersion": "Catalogue pays {{version}}", "tableLabel": "Affectations des modèles par pays", "empty": "Aucun pays disponible.",
+    "pinnedAria": "Affectation générique épinglée", "templateAria": "Modèle pour {{country}}", "unassigned": "Non affecté",
+    "repoint": "Réaffecter {{country}}", "confirmTitle": "Réaffecter {{country}} ?", "newCompaniesOnly": "Cela concerne uniquement les entreprises nouvellement créées.",
+    "confirmDescription": "Les comptes des entreprises existantes ne sont jamais modifiés par cette affectation.", "confirm": "Confirmer la réaffectation",
+    "count_one": "{{count}} affectation", "count_many": "{{count}} affectations",
+    "columns": { "country": "Pays", "template": "Modèle affecté", "action": "Action" }
+  }
+}
