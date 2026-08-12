@@ -477,28 +477,249 @@ the parent's enumeration binding ends.
 ### Commit-level replay
 
 `71f306c86` was reverted with `--no-commit`; all three current test files were
-restored from the commit before execution. On real PostgreSQL:
+restored from the commit before execution. These are the exact preparation
+commands:
 
-- the snapshot and virtual-admin clean controls failed exactly on
-  `envelope_field_missing:chain_context` (2 failed, device negative control
-  passed; 3 tests / 8 assertions);
-- the empty fleet regression failed because production returned exit 0
-  (1 test / 4 assertions).
+```bash
+git revert --no-commit 71f306c86
+git restore --source=HEAD -- apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php apps/api/tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php apps/api/tests/Feature/Fiscal/VerifyEventChainFleetCommandDbPerTenantTest.php
+git status --short
+```
 
-The revert was aborted and the commit restored. This is a behavioral-commit
-revert replay with current tests retained, not a test-only baseline replay.
+The status output showed reverted production/docs staged while the three current
+test paths remained present (`MM` for the two pre-existing files and staged-delete
+plus untracked-current-copy for the new DB-per-tenant file). The exact PostgreSQL
+replay command for the server-envelope behavior was:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_m1r1_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_m1r1_test DB_USERNAME=houssamr DB_PASSWORD='' ./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(verifies_the_existing_server_authored_snapshot_envelope|verifies_the_existing_virtual_admin_server_authored_envelopes|missing_chain_context_remains_a_failure_for_device_authored_events)/' > /tmp/es-wave-m1r1-replay-command.txt 2>&1; replay_status=$?; sed -n '1,220p' /tmp/es-wave-m1r1-replay-command.txt; echo "REPLAY_EXIT=$replay_status"; exit $replay_status
+```
+
+Retained raw output (`/tmp/es-wave-m1r1-replay-command.txt`):
+
+```text
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.15
+Configuration: /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0/apps/api/phpunit-pgsql.xml
+
+FF.                                                                 3 / 3 (100%)
+
+Time: 00:13.574, Memory: 151.00 MB
+
+There were 2 failures:
+
+1) Tests\Feature\Fiscal\VerifyEventChainCommandTest::test_verifies_the_existing_server_authored_snapshot_envelope
+CHAIN BREAK at sequence_number 1 (id 25afd1fe-1381-4b8e-ba33-98ad22196177): sealed coordinates could not be derived from canonical_bytes (envelope_field_missing:chain_context)
+CHAIN BREAK at sequence_number 1 (id 25afd1fe-1381-4b8e-ba33-98ad22196177): payload does not semantically match canonical_bytes — canonical payload could not be derived (envelope_field_missing:chain_context)
+chain NOT verified — terminal 019ff5a9-2ee5-71b2-8fb9-e87e005c354a, tenant eb2737ee-b81d-4b85-a90f-9b542392f3c5, context operational: 2 chain incidents, 0 quarantine incidents.
+
+Failed asserting that 1 is identical to 0.
+
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0/apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:176
+
+2) Tests\Feature\Fiscal\VerifyEventChainCommandTest::test_verifies_the_existing_virtual_admin_server_authored_envelopes
+CHAIN BREAK at sequence_number 1 (id 0e6210fa-c3de-425d-a2d3-93f64bb9c4e2): sealed coordinates could not be derived from canonical_bytes (envelope_field_missing:chain_context)
+CHAIN BREAK at sequence_number 1 (id 0e6210fa-c3de-425d-a2d3-93f64bb9c4e2): payload does not semantically match canonical_bytes — canonical payload could not be derived (envelope_field_missing:chain_context)
+CHAIN BREAK at sequence_number 2 (id 189dc582-bb12-4f18-b126-c544e846fed2): sealed coordinates could not be derived from canonical_bytes (envelope_field_missing:chain_context)
+CHAIN BREAK at sequence_number 2 (id 189dc582-bb12-4f18-b126-c544e846fed2): payload does not semantically match canonical_bytes — canonical payload could not be derived (envelope_field_missing:chain_context)
+chain NOT verified — terminal 019ff5a9-3772-7324-a37f-00b7ba1d5a7b, tenant 602a13fd-b60e-47b0-a8d8-48dd8be79424, context operational: 4 chain incidents, 0 quarantine incidents.
+
+Failed asserting that 1 is identical to 0.
+
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0/apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:219
+
+FAILURES!
+Tests: 3, Assertions: 8, Failures: 2.
+REPLAY_EXIT=1
+```
+
+The device-authored missing-context negative control is the `.` in `FF.` and
+therefore remained green while both sanctioned production paths went red.
+
+The exact zero-work fleet replay command was:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_m1r1_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_m1r1_test DB_USERNAME=houssamr DB_PASSWORD='' ./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php --filter=test_empty_directory_and_empty_manifest_fail_instead_of_reporting_a_zero_work_success > /tmp/es-wave-m1r1-replay-fleet.txt 2>&1; replay_status=$?; sed -n '1,180p' /tmp/es-wave-m1r1-replay-fleet.txt; echo "REPLAY_EXIT=$replay_status"; exit $replay_status
+```
+
+Retained raw output (`/tmp/es-wave-m1r1-replay-fleet.txt`):
+
+```text
+PHPUnit 11.5.55 by Sebastian Bergmann and contributors.
+
+Runtime:       PHP 8.4.15
+Configuration: /Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0/apps/api/phpunit-pgsql.xml
+
+F                                                                   1 / 1 (100%)
+
+Time: 00:12.435, Memory: 137.00 MB
+
+There was 1 failure:
+
+1) Tests\Feature\Fiscal\VerifyEventChainFleetCommandTest::test_empty_directory_and_empty_manifest_fail_instead_of_reporting_a_zero_work_success
+Expected status code 1 but received 0.
+Failed asserting that 0 matches expected 1.
+
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0/apps/api/vendor/laravel/framework/src/Illuminate/Testing/PendingCommand.php:463
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0/apps/api/vendor/laravel/framework/src/Illuminate/Testing/PendingCommand.php:675
+/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/es-wave-a0/apps/api/tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php:72
+
+FAILURES!
+Tests: 1, Assertions: 4, Failures: 1.
+REPLAY_EXIT=1
+```
+
+An initial `git revert --abort` refused because the deliberately retained tests
+differed from the revert index. The exact successful restore sequence was:
+
+```bash
+git restore --source=HEAD --staged --worktree -- apps/api/app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php apps/api/app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainFleetCommand.php apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php apps/api/tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php apps/api/tests/Feature/Fiscal/VerifyEventChainFleetCommandDbPerTenantTest.php docs/superpowers/tickets/2026-08-12-fiscal-event-chain-verifier-operability-followups.md
+git revert --abort
+git status --short
+git rev-parse --short=9 HEAD
+```
+
+Raw restore output was `71f306c86`; `git status --short` emitted no lines. This
+is a behavioral-commit revert replay with current tests retained, not a
+test-only baseline replay.
 
 ### Fresh final serial PostgreSQL paths
 
 The dedicated `autoerp_es_wave_a0_m1r1_test` database had zero active sessions,
 was dropped/recreated, and these exact paths ran serially:
 
-```text
-VerifyEventChainCommandTest.php:                    33 passed, 136 assertions, 68.24s
-VerifyEventChainFleetCommandTest.php:               12 passed,  58 assertions, 30.97s
-VerifyEventChainFleetCommandDbPerTenantTest.php:      1 passed,   8 assertions,  8.72s
-ParseFailureResumeTest.php:                         21 passed, 110 assertions, 37.17s
+```bash
+psql -h 127.0.0.1 -p 5432 -U houssamr -d postgres -Atc "select count(*) from pg_stat_activity where datname = 'autoerp_es_wave_a0_m1r1_test';"
+dropdb -h 127.0.0.1 -p 5432 -U houssamr autoerp_es_wave_a0_m1r1_test && createdb -h 127.0.0.1 -p 5432 -U houssamr autoerp_es_wave_a0_m1r1_test
 ```
+
+The session query returned `0`; drop/create emitted no output and exited 0.
+
+Exact restored-green command path:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_m1r1_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_m1r1_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php > /tmp/es-wave-m1r1-final-command.txt 2>&1; test_status=$?; sed -n '1,260p' /tmp/es-wave-m1r1-final-command.txt; echo "FINAL_EXIT=$test_status"; exit $test_status
+```
+
+Retained raw result:
+
+```text
+   PASS  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+  ✓ passes on a valid seeded chain                                      12.66s
+  ✓ verifies the existing server authored snapshot envelope              1.83s
+  ✓ verifies the existing virtual admin server authored envelopes        1.00s
+  ✓ missing chain context remains a failure for device authored events   1.25s
+  ✓ legacy server compatibility rejects an extra envelope field          1.63s
+  ✓ legacy server compatibility still checks every sealed coordinate     1.22s
+  ✓ fails with break point on a tampered fixture                         1.01s
+  ✓ fails as incident on a seeded sequence conflict                      1.35s
+  ✓ command is permission gated                                          1.40s
+  ✓ fails when first event previous hash does not match genesis seed     1.19s
+  ✓ fails when break is at last sequence                                 3.45s
+  ✓ quarantine incident is reported alongside valid chain                3.95s
+  ✓ from sequence skips earlier break                                    1.16s
+  ✓ empty chain is a clean pass                                          2.02s
+  ✓ permission check is scoped to actor tenant not request team          2.13s
+  ✓ unknown actor id is rejected                                         2.40s
+  ✓ missing tenant or terminal option is rejected                        3.33s
+  ✓ an unknown tenant fails loudly instead of reporting a verified chai… 1.63s
+  ✓ a chain is not verified from another tenants binding                 1.85s
+  ✓ an actor from another tenant cannot authorise a run against this te… 2.01s
+  ✓ seeded v3 fixture has two contexts and a hash mirrored projected re… 2.39s
+  ✓ seeded v3 operational context is a clean verifier control            1.27s
+  ✓ seeded v3 z session context is a clean verifier control              0.93s
+  ✓ wrong context previous hash tamper is self asserting                 1.16s
+  ✓ receipt mirror tamper is self asserting                              1.18s
+  ✓ fails when parsed payload diverges from canonical bytes              1.41s
+  ✓ passes when parsed payload semantically matches canonical bytes      0.96s
+  ✓ fails when an internally hash valid row is not verified              1.12s
+  ✓ fails when a stored coordinate disagrees with its sealed value       1.24s
+  ✓ fails when pending row stored coordinate disagrees with its sealed…  1.42s
+  ✓ passes when pending row sealed coordinates match                     3.62s
+  ✓ fails when sequence numbers are not contiguous even if hash linkage… 1.57s
+  ✓ wrong context previous hash tamper is reported by the existing cont… 1.41s
+
+  Tests:    33 passed (136 assertions)
+  Duration: 68.24s
+```
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_m1r1_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_m1r1_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php > /tmp/es-wave-m1r1-final-fleet.txt 2>&1; test_status=$?; sed -n '1,240p' /tmp/es-wave-m1r1-final-fleet.txt; echo "FINAL_EXIT=$test_status"; exit $test_status
+```
+
+Retained raw result:
+
+```text
+   PASS  Tests\Feature\Fiscal\VerifyEventChainFleetCommandTest
+  ✓ clean multi tenant manifest verifies every tenant with per tenant…  16.18s
+  ✓ empty directory and empty manifest fail instead of reporting a zero… 1.10s
+  ✓ directory tenant missing from manifest is reported and fails aggreg… 1.39s
+  ✓ unknown manifest tenant is reported and fails aggregate              2.50s
+  ✓ manifest tenant with no fiscal event pairs fails loudly instead of…  1.27s
+  ✓ unauthorized actor is reported by the existing actor gate            0.93s
+  ✓ missing actor is rejected before chain targets are enumerated        0.86s
+  ✓ actor from another tenant cannot authorize manifest entry            1.17s
+  ✓ malformed json manifest is rejected before any chain is verified     0.96s
+  ✓ malformed manifest entry is rejected before any chain is verified    0.89s
+  ✓ one broken chain fails aggregate while other tenants still run       2.50s
+  ✓ enumerates distinct terminal and context pairs present in fiscal ev… 1.03s
+
+  Tests:    12 passed (58 assertions)
+  Duration: 30.97s
+```
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_m1r1_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_m1r1_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainFleetCommandDbPerTenantTest.php > /tmp/es-wave-m1r1-final-dbper.txt 2>&1; test_status=$?; sed -n '1,180p' /tmp/es-wave-m1r1-final-dbper.txt; echo "FINAL_EXIT=$test_status"; exit $test_status
+```
+
+Retained raw output:
+
+```text
+   PASS  Tests\Feature\Fiscal\VerifyEventChainFleetCommandDbPerTenantTest
+  ✓ fleet enumeration and child verification rebind the physical tenant… 8.66s
+
+  Tests:    1 passed (8 assertions)
+  Duration: 8.72s
+FINAL_EXIT=0
+```
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_m1r1_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_m1r1_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/ParseFailureResumeTest.php > /tmp/es-wave-m1r1-final-parse.txt 2>&1; test_status=$?; sed -n '1,260p' /tmp/es-wave-m1r1-final-parse.txt; echo "FINAL_EXIT=$test_status"; exit $test_status
+```
+
+Retained raw result:
+
+```text
+   PASS  Tests\Feature\Fiscal\ParseFailureResumeTest
+  ✓ resolution writes payload flips status and creates projection rows… 11.43s
+  ✓ payload rewrite tamper is self asserting                             1.28s
+  ✓ event chain verifier rejects the real parse resolution payload dive… 1.09s
+  ✓ crash between commit and enqueue is recoverable without rewriting p… 1.14s
+  ✓ command is idempotent and safe to rerun                              1.18s
+  ✓ command is permission gated                                          1.06s
+  ✓ resolution rejects non quarantined row with typed throw              1.24s
+  ✓ resolution rejects invalid corrected payload and row stays parse fa… 1.78s
+  ✓ command is noop on still parse failed row                            1.93s
+  ✓ command does not redispatch running applied or dead lettered rows    1.53s
+  ✓ resolver rejects payload with extra top level key via strict parser  1.29s
+  ✓ resolver accepts a corrected v3 payload carrying the cash rounding…  1.17s
+  ✓ resolver rejects the same v3 payload on a version two event          1.21s
+  ✓ resolver rejects a v3 event whose correction omits the rounding key… 1.26s
+  ✓ resolver rejects money field with wrong currency scale               1.21s
+  ✓ resolver rejects payload line with associative array shape           1.04s
+  ✓ command permission check is scoped to actor tenant not request team  1.10s
+  ✓ command returns exit code 2 on per row resolver failure              1.74s
+  ✓ command filters by tenant when tenant option provided                1.52s
+  ✓ command requires the tenant option                                   0.99s
+  ✓ command fails loudly for a tenant absent from the directory          0.90s
+
+  Tests:    21 passed (110 assertions)
+  Duration: 37.17s
+```
+
+The `/tmp` transcripts retain each individual test line as well as the raw
+summaries above; no suite was rerun for this evidence-only correction.
 
 Pint `--test` passed on the five touched PHP paths. PHPStan level 8 passed on
 the two touched production commands. The existing console-classification
