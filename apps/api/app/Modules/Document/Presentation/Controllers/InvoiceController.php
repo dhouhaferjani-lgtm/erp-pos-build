@@ -974,6 +974,7 @@ class InvoiceController extends Controller
                     partner: $partner,
                     location: $location,
                     notes: 'Created from invoice '.$documentModel->document_number.' before posting',
+                    requireCompleteFefoAllocation: true,
                 );
 
                 // 2 — 🚨 LINKAGE. Without this the invoice re-post is refused

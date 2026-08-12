@@ -53,6 +53,10 @@ final class InventoryGlVoucherLockOrderTraceTest extends TestCase
     {
         parent::setUp();
 
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('[PG] T11c voucher lock-order traces require PostgreSQL advisory locks.');
+        }
+
         $tenant = Tenant::factory()->create();
         $this->tenantId = $tenant->id;
         $company = Company::factory()->create(['tenant_id' => $tenant->id]);

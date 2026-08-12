@@ -98,6 +98,10 @@ class InventoryServiceProvider extends ServiceProvider
                 return;
             }
 
+            if (! $this->app->resolved(InventoryGlPostingBuffer::class)) {
+                return;
+            }
+
             $buffer = $this->app->make(InventoryGlPostingBuffer::class);
             if (! $buffer->isEmpty()) {
                 Log::warning('Discarding inventory GL contexts after root transaction rollback.');

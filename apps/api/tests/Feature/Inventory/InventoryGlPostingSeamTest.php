@@ -356,6 +356,15 @@ final class InventoryGlPostingSeamTest extends TestCase
         DB::disableQueryLog();
     }
 
+    public function test_unrelated_root_rollback_does_not_construct_the_inventory_gl_buffer(): void
+    {
+        $this->assertFalse(app()->resolved(InventoryGlPostingBuffer::class));
+
+        event(new TransactionRolledBack(DB::connection()));
+
+        $this->assertFalse(app()->resolved(InventoryGlPostingBuffer::class));
+    }
+
     public function test_rollback_on_a_non_default_connection_does_not_discard_tenant_contexts(): void
     {
         $buffer = app(InventoryGlPostingBuffer::class);

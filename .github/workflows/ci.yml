@@ -274,6 +274,9 @@ jobs:
       - name: Run unit tests
         run: php artisan test --testsuite=Unit --coverage-clover=coverage.xml
 
+      - name: PHPStan rule regression suite
+        run: ./vendor/bin/phpunit tests/PHPStan
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -314,6 +317,7 @@ jobs:
             "${feature_paths[@]}"
             tests/Integration
             tests/Architecture
+            tests/PHPStan
           )
           status=0
           for test_path in "${test_paths[@]}"; do

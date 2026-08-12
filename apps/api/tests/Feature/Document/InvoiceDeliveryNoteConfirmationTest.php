@@ -173,6 +173,27 @@ class InvoiceDeliveryNoteConfirmationTest extends TestCase
         $this->assertNull($deliveryNote->fiscal_hash, 'Draft DN should not have fiscal hash');
     }
 
+    public function test_order_conversion_keeps_legacy_unbatched_fallback_when_fefo_cannot_fulfil(): void
+    {
+        $this->product->update(['requires_batch_tracking' => true]);
+        $order = $this->createConfirmedSalesOrder();
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
+
+        $response->assertCreated();
+        $deliveryNote = Document::query()
+            ->where('type', DocumentType::DeliveryNote)
+            ->where('source_document_id', $order->id)
+            ->sole();
+
+        $this->assertSame(DocumentStatus::Draft, $deliveryNote->status);
+        $this->assertCount(1, $deliveryNote->lines);
+        $this->assertNull($deliveryNote->lines->sole()->batch_id);
+        $this->assertSame('2.0000', (string) $deliveryNote->lines->sole()->quantity);
+        $this->assertSame('2.0000', (string) $order->lines()->sole()->fresh()->quantity_delivered);
+    }
+
     /**
      * Test: Cannot post invoice when delivery notes are still in draft status.
      *

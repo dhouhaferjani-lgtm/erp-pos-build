@@ -20,7 +20,7 @@ use Tests\TestCase;
  *
  * Pairs 1-6 encode the post-T5b / D-28 target order and must stay green. The
  * production-driven red arms for pairs 7-10 live beside their real writers in
- * PosReturnScrapWriteOffTest and PosCoreReceiptProjectionRefundDispositionStockTest.
+ * PosReturnScrapWriteOffTest and InventoryGlVoucherLockOrderTraceTest.
  * This file retains their two-sided PostgreSQL sensitivity control: reversing
  * the observed production order must still be capable of producing 40P01.
  */

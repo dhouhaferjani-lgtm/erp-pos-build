@@ -17,16 +17,17 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
-use App\Modules\Inventory\Application\Services\ReturnCostBasisResolver;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
+use App\Modules\Inventory\Domain\Services\ReturnCostBasisResolver;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use App\Shared\Domain\QuantityScale;
 use App\Shared\Exceptions\ReturnPeriodLockedException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -654,6 +655,17 @@ final class ReturnNoteService
      */
     private function receiveStockBack(Document $returnNote): void
     {
+        $payload = $returnNote->payload ?? [];
+        $existingRecords = is_array($payload['return_cost_basis'] ?? null)
+            ? $payload['return_cost_basis']
+            : [];
+        $recordsByLineId = [];
+        foreach ($existingRecords as $record) {
+            if (is_array($record) && is_string($record['line_id'] ?? null)) {
+                $recordsByLineId[$record['line_id']] = $record;
+            }
+        }
+
         foreach ($returnNote->lines as $line) {
             // D-19 / T4: ONE physical predicate (was the phantom `is_service`).
             $product = PhysicalLinePredicate::physicalProductFor($line);
@@ -699,19 +711,22 @@ final class ReturnNoteService
                 referenceId: $returnNote->id
             );
 
-            $payload = $returnNote->payload ?? [];
-            $records = is_array($payload['return_cost_basis'] ?? null) ? $payload['return_cost_basis'] : [];
-            $records[] = [
+            $recordsByLineId[$line->id] = [
                 'line_id' => $line->id,
                 'product_id' => $line->product_id,
-                'quantity' => CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
+                'quantity' => QuantityScale::round(
+                    (string) $line->quantity,
+                    QuantityScale::SCALE,
+                    QuantityScale::HALF_UP,
+                ),
                 'unit_cost' => $basis->unitCost,
                 'source' => $basis->source,
                 'movement_ids' => $basis->movementIds,
             ];
-            $payload['return_cost_basis'] = $records;
-            $returnNote->update(['payload' => $payload]);
         }
+
+        $payload['return_cost_basis'] = array_values($recordsByLineId);
+        $returnNote->update(['payload' => $payload]);
     }
 
     /**

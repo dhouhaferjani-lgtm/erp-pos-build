@@ -52,11 +52,13 @@ final class DeliveryNoteFromDocumentFactory
     /**
      * Copy the source's PHYSICAL lines onto a new draft delivery note.
      *
-     * Batch-tracked products are split FEFO into one line per batch. Failure is
-     * a typed refusal: the guided path must never silently flatten a batch-
-     * tracked line. The operator can confirm delivery manually with a batch.
+     * Batch-tracked products are split FEFO into one line per batch. The guided
+     * invoice path opts into a typed refusal because it must never silently
+     * flatten a batch-tracked line. The legacy SO-to-invoice converter retains
+     * its disclosed unbatched fallback until the wider redesign ticket lands.
      *
      * @param  bool  $autoCreated  marks the note batch-confirmable from the guided modal
+     * @param  bool  $requireCompleteFefoAllocation  refuse rather than use the legacy unbatched fallback
      */
     public function createDraftFrom(
         Document $source,
@@ -64,6 +66,7 @@ final class DeliveryNoteFromDocumentFactory
         Location $location,
         string $notes,
         bool $autoCreated = true,
+        bool $requireCompleteFefoAllocation = false,
     ): Document {
         // Rule 19: scale comes from the DOCUMENT's currency, never from an
         // implicit CompanyContext — this factory is reachable from paths with no
@@ -156,7 +159,7 @@ final class DeliveryNoteFromDocumentFactory
                             'location_id' => $line->location_id,
                         ]);
                     }
-                } else {
+                } elseif ($requireCompleteFefoAllocation) {
                     Log::warning('FEFO allocation failed for guided delivery; refusing silent unbatched fallback.', [
                         'product_id' => $line->product_id,
                         'quantity' => $line->quantity,
@@ -164,6 +167,14 @@ final class DeliveryNoteFromDocumentFactory
                     ]);
 
                     throw GuidedDeliveryCannotBeGeneratedException::fefoAllocationFailed();
+                } else {
+                    Log::warning('FEFO allocation failed during order conversion; retaining legacy unbatched fallback.', [
+                        'product_id' => $line->product_id,
+                        'quantity' => $line->quantity,
+                        'shortfall' => $result->shortfall,
+                    ]);
+                    $dnLineNumber++;
+                    $this->copyLine($delivery, $line, $dnLineNumber);
                 }
             } else {
                 $dnLineNumber++;

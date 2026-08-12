@@ -2,31 +2,30 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Inventory\Application\Services;
+namespace App\Modules\Inventory\Domain\Services;
 
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\DeliveredQuantityResolver;
-use App\Modules\Inventory\Application\DTOs\ReturnCostBasis;
+use App\Modules\Inventory\Domain\DTOs\ReturnCostBasis;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Attributes a return-note line to the original DN exit movements. POS returns
- * deliberately do not use this resolver: their references are pos_receipt rows
- * and the POS projector restores from its own movement-cost snapshot.
+ * Attributes a return-note line to immutable DN exit movements. Catalogue flags
+ * and current product data never decide which historical exits qualify.
+ * POS returns deliberately use their own movement-cost snapshot instead.
  */
 final class ReturnCostBasisResolver
 {
     private const COST_SCALE = 6;
 
-    private const QUANTITY_SCALE = 4;
-
-    private const WORKING_SCALE = self::COST_SCALE + self::QUANTITY_SCALE;
+    private const WORKING_SCALE = self::COST_SCALE + QuantityScale::SCALE;
 
     public function __construct(private readonly DeliveredQuantityResolver $deliveredQuantityResolver) {}
 
@@ -61,19 +60,19 @@ final class ReturnCostBasisResolver
                 ->orderBy('id')
                 ->get();
 
-        $remaining = CurrencyScale::bcformatStrict($returnedQty, self::QUANTITY_SCALE);
+        $remaining = QuantityScale::round($returnedQty, QuantityScale::SCALE, QuantityScale::HALF_UP);
         $drawnTotal = '0.0000';
         $accumulated = '0.0000000000';
         $movementIds = [];
 
         foreach ($candidates as $movement) {
-            if (bccomp($remaining, '0', self::QUANTITY_SCALE) <= 0) {
+            if (bccomp($remaining, '0', QuantityScale::SCALE) <= 0) {
                 break;
             }
 
             $available = $movement->absoluteDeltaForRow();
-            $drawn = bccomp($available, $remaining, self::QUANTITY_SCALE) < 0 ? $available : $remaining;
-            if (bccomp($drawn, '0', self::QUANTITY_SCALE) <= 0) {
+            $drawn = bccomp($available, $remaining, QuantityScale::SCALE) < 0 ? $available : $remaining;
+            if (bccomp($drawn, '0', QuantityScale::SCALE) <= 0) {
                 continue;
             }
 
@@ -83,12 +82,12 @@ final class ReturnCostBasisResolver
                 bcmul($unitCost, $drawn, self::WORKING_SCALE),
                 self::WORKING_SCALE,
             );
-            $drawnTotal = bcadd($drawnTotal, $drawn, self::QUANTITY_SCALE);
-            $remaining = bcsub($remaining, $drawn, self::QUANTITY_SCALE);
+            $drawnTotal = bcadd($drawnTotal, $drawn, QuantityScale::SCALE);
+            $remaining = bcsub($remaining, $drawn, QuantityScale::SCALE);
             $movementIds[] = $movement->id;
         }
 
-        if (bccomp($drawnTotal, '0', self::QUANTITY_SCALE) > 0) {
+        if (bccomp($drawnTotal, '0', QuantityScale::SCALE) > 0) {
             return new ReturnCostBasis(
                 unitCost: CurrencyScale::bcround(
                     bcdiv($accumulated, $drawnTotal, self::WORKING_SCALE),

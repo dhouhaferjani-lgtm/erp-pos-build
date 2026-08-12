@@ -8,8 +8,8 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Services\ReturnNoteService;
-use App\Modules\Inventory\Application\DTOs\ReturnCostBasis;
-use App\Modules\Inventory\Application\Services\ReturnCostBasisResolver;
+use App\Modules\Inventory\Domain\DTOs\ReturnCostBasis;
+use App\Modules\Inventory\Domain\Services\ReturnCostBasisResolver;
 use App\Modules\Inventory\Domain\StockMovement;
 use Database\Seeders\CountryDocumentSettingsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -91,6 +91,17 @@ final class ReturnCostBasisResolverTest extends TestCase
             $this->dpPhysicalLine('0.5000'),
             $this->dpPhysicalLine('0.5000'),
         ]);
+        $firstLineId = $return->lines()->orderBy('line_number')->value('id');
+        $return->update(['payload' => [
+            'return_cost_basis' => [[
+                'line_id' => $firstLineId,
+                'product_id' => $this->dpProduct->id,
+                'quantity' => '99.0000',
+                'unit_cost' => '99.000000',
+                'source' => ReturnCostBasis::SOURCE_CURRENT_COST,
+                'movement_ids' => [],
+            ]],
+        ]]);
 
         $confirmed = app(ReturnNoteService::class)->confirm($return);
 
@@ -98,6 +109,7 @@ final class ReturnCostBasisResolverTest extends TestCase
         $this->assertIsArray($records);
         $this->assertCount(2, $records);
         $this->assertSame($confirmed->lines->pluck('id')->all(), array_column($records, 'line_id'));
+        $this->assertCount(2, array_unique(array_column($records, 'line_id')));
         foreach ($records as $record) {
             $this->assertSame($this->dpProduct->id, $record['product_id']);
             $this->assertSame('0.5000', $record['quantity']);

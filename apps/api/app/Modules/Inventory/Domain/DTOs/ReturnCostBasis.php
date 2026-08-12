@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Modules\Inventory\Application\DTOs;
+namespace App\Modules\Inventory\Domain\DTOs;
 
 final readonly class ReturnCostBasis
 {
