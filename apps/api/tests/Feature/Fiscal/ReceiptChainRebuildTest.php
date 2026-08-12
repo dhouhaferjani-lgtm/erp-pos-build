@@ -12,6 +12,7 @@ use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
+use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\Nf525DataProvider;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -662,6 +663,45 @@ final class ReceiptChainRebuildTest extends TestCase
         $this->assertFalse($service->verifyTerminalChain($terminal));
     }
 
+    public function test_projected_mirror_arm_includes_voided_and_training_receipts(): void
+    {
+        $firstEvent = $this->seedSingleFiscalEvent();
+        $voidingUser = User::factory()->create(['tenant_id' => $this->tenantId]);
+        $this->seedProjectionReceiptLinkedTo(
+            event: $firstEvent,
+            isVoided: true,
+            voidedBy: (string) $voidingUser->id,
+        );
+
+        $canonicalBytes = '{"event":"training_mirror","sequence_number":2}';
+        $secondEvent = [
+            'id' => $this->insertEvent(
+                sequenceNumber: 2,
+                canonicalBytes: $canonicalBytes,
+                previousHash: $firstEvent['current_hash'],
+                currentHash: hash('sha256', $canonicalBytes),
+            ),
+            'canonical_bytes' => $canonicalBytes,
+            'current_hash' => hash('sha256', $canonicalBytes),
+        ];
+        $trainingReceipt = $this->seedProjectionReceiptLinkedTo(
+            event: $secondEvent,
+            fiscalHash: str_repeat('d', 64),
+            chainSequence: 2,
+            previousHash: $firstEvent['current_hash'],
+            isTraining: true,
+        );
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $arms = $this->app->make(ReceiptHashService::class)->verifyTerminalChainArms($terminal);
+
+        $this->assertTrue($arms['fiscal_events']->isValid);
+        $this->assertSame(2, $arms['fiscal_events']->count);
+        $this->assertFalse($arms['projected_mirror']->isValid);
+        $this->assertSame(2, $arms['projected_mirror']->count);
+        $this->assertStringContainsString((string) $trainingReceipt->id, (string) $arms['projected_mirror']->breakPoint);
+    }
+
     public function test_internally_hash_valid_projected_chain_link_tamper_trips_only_fiscal_events_arm(): void
     {
         $firstEvent = $this->seedSingleFiscalEvent();
@@ -1069,6 +1109,9 @@ final class ReceiptChainRebuildTest extends TestCase
         ?string $fiscalHash = null,
         int $chainSequence = 1,
         ?string $previousHash = null,
+        bool $isVoided = false,
+        bool $isTraining = false,
+        ?string $voidedBy = null,
     ): Receipt {
         return Receipt::factory()->create([
             'tenant_id' => $this->tenantId,
@@ -1077,8 +1120,10 @@ final class ReceiptChainRebuildTest extends TestCase
             'terminal_id' => $this->terminalId,
             'receipt_type' => ReceiptType::Sale,
             'fiscal_status' => FiscalStatus::Fiscalized->value,
-            'is_voided' => false,
-            'is_training' => false,
+            'is_voided' => $isVoided,
+            'voided_at' => $isVoided ? Carbon::now('UTC') : null,
+            'voided_by' => $voidedBy,
+            'is_training' => $isTraining,
             'fiscal_event_id' => $event['id'],
             'fiscal_hash' => $fiscalHash ?? $event['current_hash'],
             'previous_hash' => $previousHash ?? $this->genesisSeed,
