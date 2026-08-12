@@ -45,7 +45,7 @@ No non-administrative path occurs in the baseline-to-dispatch delta.
 
 ### Binding rulings and stage boundary
 
-- Whole-drawer counting is confirmed. The cashier counts everything physically in the drawer. Variance is counted total minus opening float plus net cash movements; takings are derived and displayed, not counted.
+- Whole-drawer counting is confirmed. The cashier counts everything physically in the drawer. Variance is counted total minus expected, where expected equals opening float plus net cash movements: `variance = counted total − (opening float + net cash movements)`. Takings are derived and displayed, not counted.
 - Blind counting is ruled on everywhere, meaning both the Otospex/mechanic and IziPOS/retail verticals.
 - `ReportGenerationService::buildExpectedPerMethod()` is takings-only dead code. It must be buried and must not be used to reinterpret production count semantics.
 - Stage 1 contains exactly SV-1, SV-9, SV-10, and SV-11. It ships independently of the GL-flag prerequisites.
@@ -124,17 +124,15 @@ The migration will additionally be checked for unattended `tenants:migrate` safe
 All commands are path-scoped. The full PHPUnit suite is forbidden.
 
 - API: 23 explicit cash-count/fraud-settings/fiscal-hash/shift-variance files across the resource-scoped commands below. This is a declared file-level narrowing from the dispatch's suite-directory wording: a directory-wide run would include hundreds of unrelated fiscal, POS, and Treasury tests plus known broken neighbors, while Stage 1 changes only the enumerated symbols and payload surfaces. The narrowing is based on searches for `cash_counts`, `buildExpectedPerMethod`, `expected_per_method`, `require_blind_cash_count`, and the named Stage-1 classes; every matching covering file found for the M1 removal branch is included below. `GenerateZReportWithCountsTest.php` covers the legacy branch itself, and `FiscalStatusFilterTest.php` pins its pending-seal semantics.
-- Device: the six explicit files in the command below, including the migration-v22 DDL and fraud-settings cache repository tests for M3's SQLite touch point.
+- Device: eight explicit files across the commands below. The search basis is `require_blind_cash_count|requireBlindCashCount|blindCount|isBlind` plus the named M2/M4 presentation components and `endOfDayPreview`; every matching test file is included. This covers the migration-v22 DDL, fraud-settings cache/API mapping, device-authored `report_data.cash_counts` and `blindCountUsed`, and reveal presentation.
 - Web: `src/features/compliance/components/CashDrawerControlsSection.test.tsx`; M3 will add the row-less `FraudSettingsPage` round-trip path.
 
 Baseline results:
 
 ```text
-[PG 127.0.0.1:5432, fresh dedicated autoerp_sv_stage1_m0r2_test]
-Scoped API regression command: exit 0
-Aggregate declared API baseline: 108 test cases, 9302 assertions across four resource-scoped commands
+Aggregate declared API baseline: 108 test cases, 9302 assertions across four resource-scoped PostgreSQL commands
 
-Core command:
+Core command on fresh dedicated `autoerp_sv_stage1_m0r2_test`:
 
   Tests:    63 warnings (9117 assertions)
   Duration: 57.80s
@@ -142,6 +140,10 @@ Core command:
 Device Vitest:
 Test Files  6 passed (6)
 Tests       74 passed (74)
+
+Device payload/API expansion:
+Test Files  2 passed (2)
+Tests       40 passed (40)
 
 Web Vitest:
 Test Files  1 passed (1)
@@ -184,6 +186,19 @@ pnpm vitest run \
   src/components/pos/EndOfDayPreviewModal.test.tsx \
   src/lib/db/__tests__/migration22.integration.test.ts \
   src/lib/db/repositories/__tests__/companyFraudSettingsCacheRepository.test.ts
+```
+
+Literal device payload/API expansion (exit 0):
+
+```bash
+pnpm vitest run \
+  src/lib/offline/__tests__/zReportService.test.ts \
+  src/api/__tests__/fraudSettingsApi.test.ts
+```
+
+```text
+Test Files  2 passed (2)
+Tests       40 passed (40)
 ```
 
 Literal M1 symbol guard command (fresh `autoerp_sv_stage1_m0r3_guard_test`; exit 0):
@@ -268,6 +283,7 @@ For M3, the migration test will continue to force `LOG_LEVEL=warning` and will s
 ### Forward work discovered during M0 review
 
 - M1's enumerated consumer grep must include and repair the stale production comment at `apps/api/app/Modules/Accounting/Application/Services/Reports/SalesReportService.php:258-259`, which hard-codes a line range into `buildExpectedPerMethod()`.
+- M1 deletion must distinguish the 233-311 legacy cash-count branch from the private takings-only formula it calls. That branch also contains `buildTransactionCountsPerMethod()`, variance-reason and manager-PIN orchestration, the cross-tenant/permission `assertManagerCanOverride()` guard, and sealed hash-input keys `schema_version`, `cash_counts`, `variance_summary`, and `tolerance_summary`. Delete only the dead server-authoring branch after its existing behavior tests turn red as expected; do not move or reinterpret those keys on live device/sync paths.
 - M3 must update the retired vertical-split docblock at `apps/api/app/Modules/Compliance/Application/Services/CompanyFraudSettingsService.php:22-25` when both verticals become blind-by-default.
 - The dispatch brief's amended M0 admin allowlist describes the dispatch-time comparison only. Required post-dispatch evidence under `docs/handoff/reviews/sv-stage1/` and `docs/sessions/` is not reclassified as baseline contamination; every subsequent review still independently verifies that the branch delta contains no production path before M1.
 

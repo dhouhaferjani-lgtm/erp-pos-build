@@ -48,9 +48,9 @@ milestones:
     title: "Preflight — amended base check (base ancestor + contract digest at HEAD + administrative-only delta), read dossier §1 binding rulings (whole-drawer CONFIRMED, blind counting RULED ON everywhere, takings formula = dead code) + §2 rows SV-1/SV-9/SV-10/SV-11 in full + §3 Stage 1 + §5.1; citation inventory (unresolved=0); record the device-Arabic finding and the SV-9 six-touch-point prerequisite question list; declare the by-path regression set."
     review_lenses: [fiscal-pos]
     status: review
-    fix_rounds: 4
+    fix_rounds: 5
     commit: 7975125e797eecb35a200902490f80172576295a
-    verdict: docs/handoff/reviews/sv-stage1/M0-round4.md
+    verdict: docs/handoff/reviews/sv-stage1/M0-round5.md
     last_verdict: CHANGES-REQUIRED
   - id: M1
     title: "SV-1 — bury the takings-only formula (delete-with-branch OR @deprecated annotation, justified by an ENUMERATED grep-proof of consumers + a removal test) and correct the THREE artefacts that cite it as policy: config/treasury.php shift_variance_gl_enabled comment block, PostShiftCashVarianceAdjustment 'SHIPS DISABLED' docblock, ticket 2026-08-08-g3-shift-variance-gl-deploy-notes.md §G-1 — each stating the REAL gate (float + drawer ops unbooked, SV-3/SV-4). Preserve the historical note (R16 §1.3). Do NOT touch CashDrawerService::calculateExpectedCash()."
