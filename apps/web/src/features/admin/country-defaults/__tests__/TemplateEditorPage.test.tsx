@@ -15,7 +15,6 @@ vi.mock('../api/countryDefaultsApi', () => ({
   getTemplate: vi.fn(),
   publishTemplate: vi.fn(),
   saveTemplateRows: vi.fn(),
-  updateTemplate: vi.fn(),
   validateTemplate: vi.fn(),
 }))
 
@@ -187,6 +186,21 @@ describe('TemplateEditorPage', () => {
     expect(screen.queryByText('Changes required')).not.toBeInTheDocument()
   })
 
+  it('explains timbre and wildcard scope rules when validation rejects TN,FR', async () => {
+    const user = userEvent.setup()
+    vi.mocked(countryDefaultsApi.validateTemplate)
+      .mockResolvedValueOnce({ valid: false, scope: [], errors: [] })
+      .mockRejectedValueOnce(apiError(422))
+    renderPage()
+
+    await screen.findByDisplayValue('5312')
+    await user.click(screen.getByRole('button', { name: 'Publish' }))
+    await user.type(screen.getByLabelText('Certified jurisdictions'), 'TN,FR')
+
+    expect(await screen.findByText('Exact scopes cannot mix countries that require fiscal timbre accounts with countries that do not. The wildcard (*) must be used alone.')).toBeInTheDocument()
+    expect(screen.queryByText('Validation is temporarily unavailable. Try again.')).not.toBeInTheDocument()
+  })
+
   it('debounces complete scopes and never validates incomplete scope prefixes', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -206,6 +220,19 @@ describe('TemplateEditorPage', () => {
     expect(countryDefaultsApi.validateTemplate).not.toHaveBeenCalled()
     await waitFor(() => { expect(countryDefaultsApi.validateTemplate).toHaveBeenCalledTimes(1) })
     expect(countryDefaultsApi.validateTemplate).toHaveBeenCalledWith('template-1', 'TN')
+  })
+
+  it('keeps an incomplete-scope hint visible after the publish dialog closes', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findByDisplayValue('5312')
+    await user.click(screen.getByRole('button', { name: 'Publish' }))
+    await user.type(screen.getByLabelText('Certified jurisdictions'), 'T')
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.getByText('Finish entering two-letter country codes, or clear the scope to validate the whole template.')).toBeInTheDocument()
+    expect(countryDefaultsApi.validateTemplate).not.toHaveBeenCalledWith('template-1', 'T')
   })
 
   it('keeps publish errors handled and visible inside the modal', async () => {
@@ -276,6 +303,23 @@ describe('TemplateEditorPage', () => {
     expect(screen.queryByText('Account code is required.')).not.toBeInTheDocument()
   })
 
+  it('clears a deleted row error before a row identity is reused', async () => {
+    const user = userEvent.setup()
+    const uuid = '00000000-0000-4000-8000-000000000001'
+    const randomUuid = vi.spyOn(crypto, 'randomUUID').mockReturnValue(uuid)
+    renderPage()
+
+    await screen.findByDisplayValue('5312')
+    await user.click(screen.getByRole('button', { name: 'Add account' }))
+    await user.click(screen.getByRole('button', { name: 'Save rows' }))
+    expect(screen.getByText('Account code is required.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Delete account New account 4' }))
+    await user.click(screen.getByRole('button', { name: 'Add account' }))
+
+    expect(screen.queryByText('Account code is required.')).not.toBeInTheDocument()
+    randomUuid.mockRestore()
+  })
+
   it('does not offer a metadata save action when metadata is not editable', async () => {
     renderPage()
 
@@ -301,6 +345,7 @@ describe('TemplateEditorPage', () => {
     vi.mocked(countryDefaultsApi.getTemplate)
       .mockResolvedValueOnce(template)
       .mockResolvedValue(normalized)
+    vi.mocked(countryDefaultsApi.getTemplate).mockClear()
     vi.mocked(countryDefaultsApi.saveTemplateRows).mockResolvedValue(normalized)
     renderPage()
 
@@ -311,6 +356,7 @@ describe('TemplateEditorPage', () => {
 
     expect(await screen.findByDisplayValue('Server normalized sales')).toBeInTheDocument()
     expect(screen.queryByDisplayValue('Local sales')).not.toBeInTheDocument()
+    expect(countryDefaultsApi.getTemplate).toHaveBeenCalledTimes(2)
   })
 
   it('uses a localized fallback for an unknown protection source', async () => {

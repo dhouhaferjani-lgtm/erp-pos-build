@@ -74,7 +74,7 @@
     "validation": { "codeRequired": "Le code du compte est obligatoire.", "nameRequired": "Le nom du compte est obligatoire.", "parentMissing": "Le code parent doit exister dans ce modèle." }
   },
   "validation": {
-    "title": "Validation", "subtitle": "Les contrôles de certification restent visibles pendant la modification.", "checking": "Contrôle du modèle…", "valid": "Prêt à certifier", "invalid": "Modifications requises", "unavailable": "La validation est temporairement indisponible. Réessayez.",
+    "title": "Validation", "subtitle": "Les contrôles de certification restent visibles pendant la modification.", "checking": "Contrôle du modèle…", "valid": "Prêt à certifier", "invalid": "Modifications requises", "incompleteScope": "Terminez la saisie des codes pays à deux lettres, ou effacez le périmètre pour valider tout le modèle.", "scopeRejected": "Un périmètre exact ne peut pas mélanger des pays qui exigent des comptes de timbre fiscal avec ceux qui ne les exigent pas. Le joker (*) doit être utilisé seul.", "unavailable": "La validation est temporairement indisponible. Réessayez.",
     "errors": {
       "account_rows_required": "Ajoutez au moins une ligne de compte.",
       "row_fields_required": "Chaque ligne doit comporter un code et un nom.",

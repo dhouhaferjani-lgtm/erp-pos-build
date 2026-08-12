@@ -12,7 +12,7 @@ import { borderColors, semanticColorTokens, textColors, tokens } from '@/lib/des
 import { publishTemplate, saveTemplateRows, validateTemplate } from '../api/countryDefaultsApi'
 import { useCountryDefaultsMutation, useTemplate } from '../hooks/useCountryDefaults'
 import type { TemplateAccount, TemplateAccountSaveRow } from '../types'
-import { countryDefaultsErrorKey } from '../lib/apiError'
+import { countryDefaultsErrorKey, countryDefaultsErrorStatus } from '../lib/apiError'
 
 interface PublishFields {
   standardRef: string
@@ -117,13 +117,17 @@ export function TemplateEditorPage() {
     setGridErrors(errors)
     if (Object.keys(errors).length === 0) {
       saveRows.mutate(rows.map(rowForSave), {
-        onSuccess: () => {
-          void templateQuery.refetch().then((refreshed) => {
-            if (refreshed.data !== undefined) setRowEdits(null)
-          })
-        },
+        onSuccess: () => { setRowEdits(null) },
       })
     }
+  }
+  const deleteRow = (id: string) => {
+    setRowEdits((current) => (current ?? rows).filter((candidate) => candidate.id !== id))
+    setGridErrors((current) => {
+      if (!(id in current)) return current
+      const { [id]: _removed, ...remaining } = current
+      return remaining
+    })
   }
   const submitPublish = publishForm.handleSubmit((fields) => {
     publish.mutate(fields, {
@@ -180,7 +184,7 @@ export function TemplateEditorPage() {
                     <td className="w-36 px-3 py-2 align-top"><Select disabled={disabled} value={row.parent_code ?? ''} onChange={(event) => { updateRow(row.id, { parent_code: event.target.value || null }) }}><option value="">{t('common.none')}</option>{rows.map((candidate) => candidate.id === row.id || candidate.code.trim() === '' ? null : <option value={candidate.code} key={candidate.id}>{candidate.code}</option>)}</Select></td>
                     <td className="min-w-52 px-3 py-2 align-top"><Select disabled={disabled} value={row.system_purpose ?? ''} onChange={(event) => { const purpose = event.target.value; if (purpose === '' || isSystemPurpose(purpose, template.system_account_purposes)) updateRow(row.id, { system_purpose: purpose || null }) }}><option value="">{t('common.none')}</option>{template.system_account_purposes.map((purpose) => <option value={purpose} key={purpose}>{t(`purposes.${purpose}`)}</option>)}</Select></td>
                     <td className="px-3 py-4 text-center align-top"><Checkbox aria-label={t('editor.grid.systemAria', { code: rowIdentity })} disabled={disabled} checked={row.is_system} onChange={(event) => { updateRow(row.id, { is_system: event.target.checked }) }} /></td>
-                    <td className="px-3 py-3 align-top">{!disabled && <Button variant="ghost" size="sm" aria-label={t('editor.grid.deleteAria', { code: rowIdentity })} onClick={() => { setRowEdits((current) => (current ?? rows).filter((candidate) => candidate.id !== row.id)) }}><Trash2 className="h-4 w-4" /></Button>}</td>
+                    <td className="px-3 py-3 align-top">{!disabled && <Button variant="ghost" size="sm" aria-label={t('editor.grid.deleteAria', { code: rowIdentity })} onClick={() => { deleteRow(row.id) }}><Trash2 className="h-4 w-4" /></Button>}</td>
                   </tr>
                 })}
               </tbody>
@@ -193,8 +197,9 @@ export function TemplateEditorPage() {
           <aside aria-label={t('validation.title')} className={`${tokens.card.base} self-start xl:sticky xl:top-6`}>
             <h2 className={tokens.heading.section}>{t('validation.title')}</h2>
             <p className={`mt-2 text-sm ${textColors.tertiary}`}>{t('validation.subtitle')}</p>
+            {validationScope === null && <div className={`mt-4 ${tokens.alert.info}`}>{t('validation.incompleteScope')}</div>}
             {validation.isLoading && <div className={`mt-4 ${tokens.alert.info}`}>{t('validation.checking')}</div>}
-            {validation.isError && <div role="alert" className={`mt-4 ${tokens.alert.error}`}>{t('validation.unavailable')}</div>}
+            {validation.isError && <div role="alert" className={`mt-4 ${tokens.alert.error}`}>{t(countryDefaultsErrorStatus(validation.error) === 422 ? 'validation.scopeRejected' : 'validation.unavailable')}</div>}
             {validation.data !== undefined && <div className={`mt-4 ${validation.data.valid ? tokens.alert.success : tokens.alert.warning}`}>
               {validation.data.valid ? t('validation.valid') : t('validation.invalid')}
             </div>}

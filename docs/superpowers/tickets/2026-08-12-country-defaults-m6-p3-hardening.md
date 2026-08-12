@@ -4,6 +4,7 @@ Source register:
 
 - `docs/handoff/reviews/country-defaults-phase-a/M6-round1.md`
 - `docs/handoff/reviews/country-defaults-phase-a/M6-round2.md`
+- `docs/handoff/reviews/country-defaults-phase-a/M6-round3.md`
 - M6 execution record: `docs/sessions/codex-country-defaults-phase-a-report.md`
 
 This ticket is the durable disposition for the M6 P3 and process notes that are broader than the
@@ -43,3 +44,14 @@ scoped adversarial-review UI fixes.
   feature namespace explicitly, preserving Arabic support-access copy.
 - Canonical modals, actual plural counts, post-save row-edit reset, and localized unknown protection
   sources are implemented in the M6 UI.
+
+## Closed in the round-3 response
+
+- A validation-preview 422 is a permanent scope rejection with explicit localized timbre and
+  wildcard guidance; transport failures retain the temporary-unavailable message.
+- The persistent panel shows a localized incomplete-scope hint, including after Publish is closed.
+- The unused frontend `updateTemplate` export and its test double are removed. The backend metadata
+  endpoint remains available to non-M6 consumers; metadata editing is not an M6 deliverable.
+- Row-save completion relies on the mutation hook's awaited query invalidation before releasing
+  local edits, producing one post-save GET rather than an explicit second refetch.
+- Deleting a row removes its keyed grid error, including when a generated row identity is reused.

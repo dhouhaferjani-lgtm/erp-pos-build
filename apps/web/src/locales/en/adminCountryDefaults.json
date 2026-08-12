@@ -74,7 +74,7 @@
     "validation": { "codeRequired": "Account code is required.", "nameRequired": "Account name is required.", "parentMissing": "The parent code must exist in this template." }
   },
   "validation": {
-    "title": "Validation", "subtitle": "Certification checks remain visible while you edit.", "checking": "Checking template…", "valid": "Ready to certify", "invalid": "Changes required", "unavailable": "Validation is temporarily unavailable. Try again.",
+    "title": "Validation", "subtitle": "Certification checks remain visible while you edit.", "checking": "Checking template…", "valid": "Ready to certify", "invalid": "Changes required", "incompleteScope": "Finish entering two-letter country codes, or clear the scope to validate the whole template.", "scopeRejected": "Exact scopes cannot mix countries that require fiscal timbre accounts with countries that do not. The wildcard (*) must be used alone.", "unavailable": "Validation is temporarily unavailable. Try again.",
     "errors": {
       "account_rows_required": "Add at least one account row.",
       "row_fields_required": "Every row needs a code and a name.",

@@ -26,13 +26,6 @@ export function archiveTemplate(id: string): Promise<CountryDefaultTemplate> {
   return adminApiPost(`${root}/templates/${id}/archive`)
 }
 
-export function updateTemplate(
-  id: string,
-  payload: { name: string; description: string | null; standard_ref: string | null },
-): Promise<CountryDefaultTemplate> {
-  return adminApiPut(`${root}/templates/${id}`, payload)
-}
-
 export function saveTemplateRows(id: string, rows: TemplateAccountSaveRow[]): Promise<CountryDefaultTemplate> {
   return adminApiPut(`${root}/templates/${id}/rows`, { rows })
 }
