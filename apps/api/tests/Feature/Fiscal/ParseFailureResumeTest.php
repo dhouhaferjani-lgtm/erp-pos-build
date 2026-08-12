@@ -195,6 +195,20 @@ final class ParseFailureResumeTest extends TestCase
         $this->seedPayloadRewriteTamper();
     }
 
+    public function test_event_chain_verifier_rejects_the_real_parse_resolution_payload_divergence(): void
+    {
+        $this->seedPayloadRewriteTamper();
+        $this->resolverUser->givePermissionTo('fiscal.events.verify_chain');
+
+        $this->artisan('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->resolverUser->id,
+        ])
+            ->expectsOutputToContain('payload does not semantically match canonical_bytes')
+            ->assertExitCode(1);
+    }
+
     public function test_crash_between_commit_and_enqueue_is_recoverable_without_rewriting_payload(): void
     {
         $event = $this->storeParseFailedFiscalEvent();
