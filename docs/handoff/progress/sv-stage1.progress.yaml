@@ -57,7 +57,7 @@ milestones:
     title: "SV-1 — bury the takings-only formula (delete-with-branch OR @deprecated annotation, justified by an ENUMERATED grep-proof of consumers + a removal test) and correct the THREE artefacts that cite it as policy: config/treasury.php shift_variance_gl_enabled comment block, PostShiftCashVarianceAdjustment 'SHIPS DISABLED' docblock, ticket 2026-08-08-g3-shift-variance-gl-deploy-notes.md §G-1 — each stating the REAL gate (float + drawer ops unbooked, SV-3/SV-4). Preserve the historical note (R16 §1.3). Do NOT touch CashDrawerService::calculateExpectedCash()."
     review_lenses: [fiscal-pos, treasury]
     status: passed
-    fix_rounds: 1
+    fix_rounds: 2
     commit: 0059f56c8c710be94417e4d4178045094a3e9171
     verdict: docs/handoff/reviews/sv-stage1/M1-round2.md
     last_verdict: ACCEPT
@@ -77,7 +77,7 @@ milestones:
     status: review
     fix_rounds: 1
     commit: b73a353f5ae0301b0310ff7578005d09ab20e9d9
-    verdict: docs/handoff/reviews/sv-stage1/M3-round1.md
+    verdict: docs/handoff/reviews/sv-stage1/M3-round2.md
     last_verdict: CHANGES-REQUIRED
   - id: M4
     title: "SV-10 — blind-mode leak audit: READ-ONLY audit of the enumerated surfaces (EndOfDayPreviewModal defended card, CashReconciliationSection severity/reason prompts, CashCountTable reveal gate, any sibling rendering a variance-derived value pre-commit), findings to a file in docs/handoff/reviews/sv-stage1/. Fixes ONLY for leaks in-scope per the row (expected/variance MAGNITUDE disclosed before Commit Counts under blind mode); anything larger -> ticket + report. Do not weaken the existing defence."
