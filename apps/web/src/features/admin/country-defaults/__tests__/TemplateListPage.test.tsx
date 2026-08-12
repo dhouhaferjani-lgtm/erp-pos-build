@@ -50,6 +50,10 @@ describe('TemplateListPage', () => {
     expect(screen.getByText('Published')).toBeInTheDocument()
     expect(screen.getByText('TN')).toBeInTheDocument()
     expect(screen.getByText('NC 41-2026')).toBeInTheDocument()
+    expect(screen.getByText('5cbeef')).toBeInTheDocument()
+    expect(screen.getByText('2026-08-11')).toBeInTheDocument()
+    expect(screen.getByText('admin-1')).toBeInTheDocument()
+    expect(screen.getByText('2026-08-11T10:00:00Z')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Edit template' })).toHaveAttribute(
       'href',
       '/admin/country-defaults/templates/template-1'

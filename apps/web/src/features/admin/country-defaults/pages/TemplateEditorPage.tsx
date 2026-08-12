@@ -10,7 +10,7 @@ import { PageHeader } from '@/components/molecules/PageHeader'
 import { borderColors, semanticColorTokens, textColors, tokens } from '@/lib/designTokens'
 import { publishTemplate, saveTemplateRows, updateTemplate, validateTemplate } from '../api/countryDefaultsApi'
 import { useCountryDefaultsMutation, useTemplate } from '../hooks/useCountryDefaults'
-import type { TemplateAccount } from '../types'
+import type { TemplateAccount, TemplateAccountSaveRow } from '../types'
 
 interface PublishFields {
   standardRef: string
@@ -27,10 +27,19 @@ function isSystemPurpose(value: string, choices: readonly string[]): value is No
 
 function blankRow(sortOrder: number): TemplateAccount {
   return {
-    id: crypto.randomUUID(), code: '', name: '', type: 'asset', parent_code: null,
+    id: `new:${crypto.randomUUID()}`, code: '', name: '', type: 'asset', parent_code: null,
     system_purpose: null, is_system: false, sort_order: sortOrder,
     is_protected: false, protection_source: null,
   }
+}
+
+function nextSortOrder(rows: readonly TemplateAccount[]): number {
+  return Math.max(-1, ...rows.map((row) => row.sort_order)) + 1
+}
+
+function rowForSave(row: TemplateAccount): TemplateAccountSaveRow {
+  const { id, is_protected: _protected, protection_source: _source, ...payload } = row
+  return id.startsWith('new:') ? payload : { ...payload, id }
 }
 
 function rowCodeSet(rows: readonly TemplateAccount[]): Set<string> {
@@ -56,7 +65,7 @@ export function TemplateEditorPage() {
     queryFn: () => validateTemplate(templateId, scope),
     enabled: templateId !== '',
   })
-  const saveRows = useCountryDefaultsMutation((nextRows: TemplateAccount[]) => saveTemplateRows(templateId, nextRows))
+  const saveRows = useCountryDefaultsMutation((nextRows: TemplateAccountSaveRow[]) => saveTemplateRows(templateId, nextRows))
   const saveMetadata = useCountryDefaultsMutation((name: string) => updateTemplate(templateId, {
     name, description: templateQuery.data?.description ?? null, standard_ref: templateQuery.data?.standard_ref ?? null,
   }))
@@ -78,7 +87,7 @@ export function TemplateEditorPage() {
       else if (row.parent_code !== null && row.parent_code !== '' && !rowCodes.has(row.parent_code)) errors[row.id] = t('editor.validation.parentMissing')
     })
     setGridErrors(errors)
-    if (Object.keys(errors).length === 0) saveRows.mutate(rows)
+    if (Object.keys(errors).length === 0) saveRows.mutate(rows.map(rowForSave))
   }
   const submitPublish = publishForm.handleSubmit(async (fields) => {
     const result = await publish.mutateAsync(fields)
@@ -105,8 +114,9 @@ export function TemplateEditorPage() {
                 <h2 className={tokens.heading.section}>{t('editor.grid.title')}</h2>
                 <p className={`mt-1 text-sm ${textColors.tertiary}`}>{t('editor.grid.subtitle')}</p>
               </div>
-              {!locked && <Button variant="secondary" size="sm" onClick={() => { setRowEdits((current) => { const source = current ?? rows; return [...source, blankRow(source.length)] }) }}><Plus className="mr-1 h-4 w-4" />{t('editor.grid.add')}</Button>}
+              {!locked && <Button variant="secondary" size="sm" onClick={() => { setRowEdits((current) => { const source = current ?? rows; return [...source, blankRow(nextSortOrder(source))] }) }}><Plus className="mr-1 h-4 w-4" />{t('editor.grid.add')}</Button>}
             </div>
+            <div className="overflow-x-auto">
             <DataTable className="min-w-[1100px]" aria-label={t('editor.grid.tableLabel')}>
               <thead className={tokens.table.header}><tr>
                 {['code', 'name', 'type', 'parent', 'purpose', 'system', 'actions'].map((column) => <th className={`px-3 py-3 text-left text-xs font-semibold uppercase tracking-wide ${textColors.disabled}`} key={column}>{t(`editor.grid.columns.${column}`)}</th>)}
@@ -117,22 +127,24 @@ export function TemplateEditorPage() {
                   const disabled = locked || row.is_protected
                   return <tr className={row.is_protected ? semanticColorTokens.intent.warning.bgSubtleAlpha : tokens.table.rowHover} key={row.id}>
                     <td className="w-32 px-3 py-2 align-top">
-                      <div aria-label={row.is_protected ? t('editor.grid.protectedAria', { code: row.code }) : undefined} title={protectedTitle}>
-                        <Input aria-label={t('editor.grid.codeAria', { code: row.code })} disabled={disabled} error={row.id in gridErrors} value={row.code} onChange={(event) => { updateRow(row.id, { code: event.target.value }) }} />
+                      <div>
+                        <Input aria-describedby={row.is_protected ? `protected-${row.id}` : undefined} aria-label={t('editor.grid.codeAria', { code: row.code })} disabled={disabled} error={row.id in gridErrors} value={row.code} onChange={(event) => { updateRow(row.id, { code: event.target.value }) }} />
                         {row.is_protected && <span className={`mt-1 flex items-center gap-1 text-xs ${semanticColorTokens.intent.warning.textStrong}`}><LockKeyhole className="h-3 w-3" />{t('editor.grid.protected')}</span>}
+                        {row.is_protected && protectedTitle !== undefined && <p className={`mt-1 text-xs ${textColors.tertiary}`} id={`protected-${row.id}`}>{protectedTitle}</p>}
                         {row.id in gridErrors && <p className={tokens.helperText.error}>{gridErrors[row.id]}</p>}
                       </div>
                     </td>
                     <td className="min-w-56 px-3 py-2 align-top"><Input disabled={disabled} value={row.name} onChange={(event) => { updateRow(row.id, { name: event.target.value }) }} /></td>
                     <td className="w-40 px-3 py-2 align-top"><Select disabled={disabled} value={row.type} onChange={(event) => { if (isAccountType(event.target.value, template.account_types)) updateRow(row.id, { type: event.target.value }) }}>{template.account_types.map((type) => <option value={type} key={type}>{t(`accountTypes.${type}`)}</option>)}</Select></td>
                     <td className="w-36 px-3 py-2 align-top"><Select disabled={disabled} value={row.parent_code ?? ''} onChange={(event) => { updateRow(row.id, { parent_code: event.target.value || null }) }}><option value="">{t('common.none')}</option>{rows.map((candidate) => candidate.id === row.id ? null : <option value={candidate.code} key={candidate.id}>{candidate.code}</option>)}</Select></td>
-                    <td className="min-w-52 px-3 py-2 align-top"><Select disabled={disabled} value={row.system_purpose ?? ''} onChange={(event) => { const purpose = event.target.value; if (purpose === '' || isSystemPurpose(purpose, template.system_account_purposes)) updateRow(row.id, { system_purpose: purpose || null }) }}><option value="">{t('common.none')}</option>{template.system_account_purposes.map((purpose) => <option value={purpose} key={purpose}>{t(`purposes.${purpose}`, { defaultValue: purpose })}</option>)}</Select></td>
+                    <td className="min-w-52 px-3 py-2 align-top"><Select disabled={disabled} value={row.system_purpose ?? ''} onChange={(event) => { const purpose = event.target.value; if (purpose === '' || isSystemPurpose(purpose, template.system_account_purposes)) updateRow(row.id, { system_purpose: purpose || null }) }}><option value="">{t('common.none')}</option>{template.system_account_purposes.map((purpose) => <option value={purpose} key={purpose}>{t(`purposes.${purpose}`)}</option>)}</Select></td>
                     <td className="px-3 py-4 text-center align-top"><Checkbox aria-label={t('editor.grid.systemAria', { code: row.code })} disabled={disabled} checked={row.is_system} onChange={(event) => { updateRow(row.id, { is_system: event.target.checked }) }} /></td>
                     <td className="px-3 py-3 align-top">{!disabled && <Button variant="ghost" size="sm" aria-label={t('editor.grid.deleteAria', { code: row.code })} onClick={() => { setRowEdits((current) => (current ?? rows).filter((candidate) => candidate.id !== row.id)) }}><Trash2 className="h-4 w-4" /></Button>}</td>
                   </tr>
                 })}
               </tbody>
             </DataTable>
+            </div>
             {!locked && <div className={`flex justify-end gap-3 border-t p-4 ${borderColors.light}`}><Button variant="secondary" onClick={() => { saveMetadata.mutate(template.name) }}>{t('editor.saveMetadata')}</Button><Button onClick={handleSaveRows}>{t('editor.saveRows')}</Button></div>}
           </section>
 
@@ -143,7 +155,14 @@ export function TemplateEditorPage() {
               {validation.isLoading ? t('validation.checking') : validation.data?.valid === true ? t('validation.valid') : t('validation.invalid')}
             </div>
             <ul className={`mt-4 space-y-2 text-sm ${textColors.secondary}`}>
-              {(validation.data?.errors ?? []).map((error) => <li className={`border-l-2 pl-3 ${semanticColorTokens.intent.danger.borderStrong}`} key={error}>{error}</li>)}
+              {(validation.data?.errors ?? []).map((error) => {
+                const parameters = { ...error.parameters }
+                const purpose = parameters['purpose']
+                if (Object.hasOwn(parameters, 'purpose') && isSystemPurpose(purpose, template.system_account_purposes)) {
+                  parameters['purpose'] = t(`purposes.${purpose}`)
+                }
+                return <li className={`border-l-2 pl-3 ${semanticColorTokens.intent.danger.borderStrong}`} key={`${error.code}:${JSON.stringify(error.parameters)}`}>{t(`validation.errors.${error.code}`, { ...parameters, defaultValue: t('validation.errors.validation_failed') })}</li>
+              })}
             </ul>
           </aside>
         </div>

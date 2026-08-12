@@ -6,6 +6,8 @@ namespace Tests\Feature\CountryDefaults;
 
 use App\Models\SuperAdmin;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\CountryDefaults\Application\DTOs\AssignmentMatrixData;
+use App\Modules\CountryDefaults\Application\DTOs\AssignmentMatrixMetaData;
 use App\Modules\CountryDefaults\Application\Services\TemplateAssignmentService;
 use App\Modules\CountryDefaults\Application\Services\TemplatePublishingService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
@@ -27,6 +29,19 @@ use Throwable;
 final class AssignmentApiEndpointTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_assignment_matrix_wire_contract_is_a_typed_envelope(): void
+    {
+        $matrix = new AssignmentMatrixData(
+            data: [],
+            meta: new AssignmentMatrixMetaData(catalog_version: 'catalog-v1'),
+        );
+
+        self::assertSame([
+            'data' => [],
+            'meta' => ['catalog_version' => 'catalog-v1'],
+        ], $matrix->toArray());
+    }
 
     /** @return list<string|null> */
     protected function connectionsToTransact(): array

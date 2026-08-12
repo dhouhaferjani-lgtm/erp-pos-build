@@ -2,22 +2,23 @@ import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Shield, LayoutDashboard, Users, FileText, LogOut, CreditCard, Activity, UserCheck, Layers, Headphones, BookOpenCheck, ListTree } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { logoutSuperAdmin } from '../api'
+import { adminRoutePolicies } from '../lib/adminRolePolicy'
 import { useAdminAuthStore } from '../stores/adminAuthStore'
 import { colorClasses } from '@/lib/designTokens'
 
 import type { AdminRole } from '../stores/adminAuthStore'
 
 const navigation: { labelKey: string; href: string; icon: typeof Shield; roles: readonly AdminRole[] }[] = [
-  { labelKey: 'shell.navigation.dashboard', href: '/admin/dashboard', icon: LayoutDashboard, roles: ['super_admin'] },
-  { labelKey: 'shell.navigation.tenants', href: '/admin/tenants', icon: Users, roles: ['super_admin'] },
-  { labelKey: 'shell.navigation.verticals', href: '/admin/verticals', icon: Layers, roles: ['super_admin'] },
-  { labelKey: 'shell.navigation.companyOwners', href: '/admin/company-owners', icon: UserCheck, roles: ['super_admin'] },
-  { labelKey: 'shell.navigation.billing', href: '/admin/billing', icon: CreditCard, roles: ['super_admin'] },
-  { labelKey: 'shell.navigation.monitoring', href: '/admin/monitoring', icon: Activity, roles: ['super_admin'] },
-  { labelKey: 'shell.navigation.auditLogs', href: '/admin/audit-logs', icon: FileText, roles: ['super_admin'] },
-  { labelKey: 'navigation.templates', href: '/admin/country-defaults', icon: BookOpenCheck, roles: ['super_admin', 'defaults_editor'] },
-  { labelKey: 'navigation.assignments', href: '/admin/country-defaults/assignments', icon: ListTree, roles: ['super_admin', 'defaults_editor'] },
-  { labelKey: 'shell.navigation.supportAccess', href: '/admin/support-access', icon: Headphones, roles: ['super_admin', 'support_approver'] },
+  { labelKey: 'shell.navigation.dashboard', icon: LayoutDashboard, ...adminRoutePolicies.dashboard },
+  { labelKey: 'shell.navigation.tenants', icon: Users, ...adminRoutePolicies.tenants },
+  { labelKey: 'shell.navigation.verticals', icon: Layers, ...adminRoutePolicies.verticals },
+  { labelKey: 'shell.navigation.companyOwners', icon: UserCheck, ...adminRoutePolicies.companyOwners },
+  { labelKey: 'shell.navigation.billing', icon: CreditCard, ...adminRoutePolicies.billing },
+  { labelKey: 'shell.navigation.monitoring', icon: Activity, ...adminRoutePolicies.monitoring },
+  { labelKey: 'shell.navigation.auditLogs', icon: FileText, ...adminRoutePolicies.auditLogs },
+  { labelKey: 'navigation.templates', icon: BookOpenCheck, ...adminRoutePolicies.countryDefaults },
+  { labelKey: 'navigation.assignments', icon: ListTree, ...adminRoutePolicies.countryDefaultAssignments },
+  { labelKey: 'shell.navigation.supportAccess', icon: Headphones, ...adminRoutePolicies.supportAccess },
 ]
 
 export function AdminLayout() {
@@ -81,7 +82,7 @@ export function AdminLayout() {
           <div className="flex items-center gap-3 mb-3">
             <div className={`flex h-10 w-10 items-center justify-center rounded-full ${colorClasses.bgGray600}`}>
               <span className="text-sm font-medium text-white">
-                {admin?.name?.charAt(0).toUpperCase() ?? 'A'}
+                {admin?.name.charAt(0).toUpperCase() ?? 'A'}
               </span>
             </div>
             <div className="flex-1 min-w-0">

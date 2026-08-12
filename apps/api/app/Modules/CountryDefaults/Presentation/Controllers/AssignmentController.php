@@ -6,6 +6,8 @@ namespace App\Modules\CountryDefaults\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
+use App\Modules\CountryDefaults\Application\DTOs\AssignmentMatrixData;
+use App\Modules\CountryDefaults\Application\DTOs\AssignmentMatrixMetaData;
 use App\Modules\CountryDefaults\Application\DTOs\AssignmentMatrixRowData;
 use App\Modules\CountryDefaults\Application\DTOs\TemplateSummaryData;
 use App\Modules\CountryDefaults\Application\Services\StaticCountryCatalogProvider;
@@ -43,7 +45,7 @@ final class AssignmentController extends Controller
                 $country['name'] = trans('country_defaults.catalog.generic_fallback');
             }
             $assignment = $assignments->get($country['country_code']);
-            $matrix[] = (new AssignmentMatrixRowData(
+            $matrix[] = new AssignmentMatrixRowData(
                 country_code: $country['country_code'],
                 name: $country['name'],
                 pinned: $country['pinned'],
@@ -51,13 +53,17 @@ final class AssignmentController extends Controller
                 assignment_id: $assignment?->id,
                 template_id: $assignment?->template_id,
                 template: $assignment === null ? null : TemplateSummaryData::fromNullableModel($assignment->template),
-            ))->toArray();
+            );
         }
 
-        return response()->json([
-            'data' => $matrix,
-            'meta' => ['catalog_version' => StaticCountryCatalogProvider::VERSION],
-        ]);
+        $payload = new AssignmentMatrixData(
+            data: $matrix,
+            meta: new AssignmentMatrixMetaData(
+                catalog_version: StaticCountryCatalogProvider::VERSION,
+            ),
+        );
+
+        return response()->json($payload->toArray());
     }
 
     #[CrossTenantRoute(reason: 'Assigns or re-points one central country/domain row through the locked audited lifecycle service.')]

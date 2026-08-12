@@ -1,9 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdminIndexRedirect, RequireAdminRole } from '../components/AdminRoleGuard'
-import { homeForAdminRole } from '../lib/adminRolePolicy'
+import { adminRoutePolicies, canAccessAdminRoute, homeForAdminRole } from '../lib/adminRolePolicy'
 import { AdminLayout } from '../components/AdminLayout'
 import { AdminLoginPage } from '../pages/AdminLoginPage'
 import { useAdminAuthStore, type AdminRole } from '../stores/adminAuthStore'
@@ -70,52 +70,44 @@ describe('three-role admin shell', () => {
     await waitFor(() => { expect(screen.getByText('Role login home')).toBeInTheDocument() })
   })
 
-  it.each([
-    ['super_admin', '/admin/dashboard', 'Dashboard route'],
-    ['defaults_editor', '/admin/country-defaults', 'Defaults route'],
-    ['support_approver', '/admin/support-access', 'Support route'],
-  ] as const)('allows %s on %s', (role, path, page) => {
+  it('declares the complete protected admin route inventory and exact role matrix', () => {
+    expect(Object.values(adminRoutePolicies).map((policy) => policy.path)).toEqual([
+      'dashboard', 'support-access', 'tenants', 'company-owners', 'verticals', 'audit-logs',
+      'billing', 'billing/subscriptions', 'billing/invoices', 'billing/payments', 'monitoring',
+      'country-defaults', 'country-defaults/templates/:templateId', 'country-defaults/assignments',
+    ])
+    expect(Object.values(adminRoutePolicies).filter((policy) => canAccessAdminRoute(policy, 'super_admin')).length).toBe(14)
+    expect(Object.values(adminRoutePolicies).filter((policy) => canAccessAdminRoute(policy, 'defaults_editor')).map((policy) => policy.path)).toEqual([
+      'country-defaults', 'country-defaults/templates/:templateId', 'country-defaults/assignments',
+    ])
+    expect(Object.values(adminRoutePolicies).filter((policy) => canAccessAdminRoute(policy, 'support_approver')).map((policy) => policy.path)).toEqual([
+      'support-access',
+    ])
+  })
+
+  it.each(['super_admin', 'defaults_editor', 'support_approver'] as const)('enforces every production route policy for %s', (role) => {
     authenticate(role)
-    render(
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route
-            path={path}
-            element={
-              <RequireAdminRole allow={role === 'super_admin' ? ['super_admin'] : ['super_admin', role]}>
-                <div>{page}</div>
-              </RequireAdminRole>
-            }
-          />
-        </Routes>
-      </MemoryRouter>
-    )
-    expect(screen.getByText(page)).toBeInTheDocument()
+    for (const [routeName, policy] of Object.entries(adminRoutePolicies)) {
+      const page = `${routeName} route`
+      const view = render(
+        <MemoryRouter initialEntries={[policy.testHref]}>
+          <Routes>
+            <Route path={policy.href} element={<RequireAdminRole allow={policy.roles}><div>{page}</div></RequireAdminRole>} />
+            <Route path={homeForAdminRole(role)} element={<div>Permitted home</div>} />
+          </Routes>
+        </MemoryRouter>
+      )
+      if (canAccessAdminRoute(policy, role)) expect(screen.getByText(page)).toBeInTheDocument()
+      else expect(screen.getByText('Permitted home')).toBeInTheDocument()
+      view.unmount()
+    }
   })
 
   it.each([
-    ['defaults_editor', '/admin/dashboard', 'Dashboard route'],
-    ['support_approver', '/admin/country-defaults', 'Defaults route'],
-    ['defaults_editor', '/admin/support-access', 'Support route'],
-  ] as const)('redirects %s away from forbidden direct URL %s', (role, path, page) => {
-    authenticate(role)
-    render(
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path={path} element={<RequireAdminRole allow={['super_admin']}><div>{page}</div></RequireAdminRole>} />
-          <Route path={homeForAdminRole(role)} element={<div>Permitted home</div>} />
-        </Routes>
-      </MemoryRouter>
-    )
-    expect(screen.queryByText(page)).not.toBeInTheDocument()
-    expect(screen.getByText('Permitted home')).toBeInTheDocument()
-  })
-
-  it.each([
-    ['super_admin', ['Dashboard', 'Country defaults', 'Support access']],
-    ['defaults_editor', ['Country defaults']],
+    ['super_admin', ['Dashboard', 'Tenants', 'Verticals', 'Company owners', 'Billing', 'Monitoring', 'Audit logs', 'Country defaults', 'Assignments', 'Support access']],
+    ['defaults_editor', ['Country defaults', 'Assignments']],
     ['support_approver', ['Support access']],
-  ] as const)('filters navigation for %s', (role, visibleLabels) => {
+  ] as const)('filters navigation exactly for %s', (role, visibleLabels) => {
     authenticate(role)
     render(
       <MemoryRouter>
@@ -125,12 +117,6 @@ describe('three-role admin shell', () => {
       </MemoryRouter>
     )
     const navigation = screen.getByRole('navigation')
-    for (const label of visibleLabels) {
-      expect(navigation).toHaveTextContent(label)
-    }
-    if (role !== 'super_admin') {
-      expect(navigation).not.toHaveTextContent('Tenants')
-      expect(navigation).not.toHaveTextContent('Billing')
-    }
+    expect(within(navigation).getAllByRole('link').map((link) => link.textContent.trim())).toEqual(visibleLabels)
   })
 })

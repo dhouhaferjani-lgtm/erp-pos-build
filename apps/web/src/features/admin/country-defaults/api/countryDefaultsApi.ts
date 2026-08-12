@@ -2,7 +2,7 @@ import { adminApiGet, adminApiGetPaginated, adminApiPost, adminApiPut } from '@/
 import type {
   AssignmentMatrix,
   CountryDefaultTemplate,
-  TemplateAccount,
+  TemplateAccountSaveRow,
   TemplateDomain,
   TemplateSummary,
   ValidationReport,
@@ -33,10 +33,8 @@ export function updateTemplate(
   return adminApiPut(`${root}/templates/${id}`, payload)
 }
 
-export function saveTemplateRows(id: string, rows: TemplateAccount[]): Promise<CountryDefaultTemplate> {
-  return adminApiPut(`${root}/templates/${id}/rows`, {
-    rows: rows.map(({ is_protected: _locked, protection_source: _source, ...row }) => row),
-  })
+export function saveTemplateRows(id: string, rows: TemplateAccountSaveRow[]): Promise<CountryDefaultTemplate> {
+  return adminApiPut(`${root}/templates/${id}/rows`, { rows })
 }
 
 export function validateTemplate(id: string, scope: string): Promise<ValidationReport> {

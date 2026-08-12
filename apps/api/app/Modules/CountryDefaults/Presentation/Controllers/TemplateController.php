@@ -6,6 +6,8 @@ namespace App\Modules\CountryDefaults\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\SuperAdmin;
+use App\Modules\CountryDefaults\Application\DTOs\TemplateValidationErrorData;
+use App\Modules\CountryDefaults\Application\DTOs\TemplateValidationReportData;
 use App\Modules\CountryDefaults\Application\Services\TemplatePublishingService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
@@ -130,13 +132,13 @@ final class TemplateController extends Controller
                 $this->publishing->validateAccounts($accounts, $scope);
             }
         } catch (DomainException $exception) {
-            $errors[] = $exception->getMessage();
+            $errors[] = $this->validationError($exception);
         }
-        $report = new TemplateValidationReportResource([
-            'valid' => $errors === [],
-            'scope' => array_map('strtoupper', $scopeCodes),
-            'errors' => $errors,
-        ]);
+        $report = new TemplateValidationReportResource(new TemplateValidationReportData(
+            valid: $errors === [],
+            scope: array_map('strtoupper', $scopeCodes),
+            errors: $errors,
+        ));
 
         return response()->json(['data' => $report->resolve($request)]);
     }
@@ -183,6 +185,43 @@ final class TemplateController extends Controller
             'code' => $code,
             'message' => $message,
         ]], $status);
+    }
+
+    private function validationError(DomainException $exception): TemplateValidationErrorData
+    {
+        $message = $exception->getMessage();
+        $exactCode = match ($message) {
+            'A template must contain account rows.' => 'account_rows_required',
+            'Template rows must have nonblank code and name.' => 'row_fields_required',
+            'Template account hierarchy contains a cycle or unresolved parent.' => 'hierarchy_invalid',
+            default => null,
+        };
+        if ($exactCode !== null) {
+            return new TemplateValidationErrorData($exactCode, []);
+        }
+
+        $patterns = [
+            '/^Duplicate template account code (.+)\.$/' => ['duplicate_account_code', 'code'],
+            '/^Duplicate template sort_order (.+)\.$/' => ['duplicate_sort_order', 'sort_order'],
+            '/^Duplicate system purpose (.+)\.$/' => ['duplicate_system_purpose', 'purpose'],
+            '/^Purpose (.+) does not have its expected account type\.$/' => ['purpose_account_type_mismatch', 'purpose'],
+            '/^Purpose (.+) requires is_system=true\.$/' => ['purpose_requires_system', 'purpose'],
+            '/^Template account (.+) cannot reference itself as parent\.$/' => ['self_parent', 'code'],
+            '/^Parent (.+) does not resolve inside the template\.$/' => ['parent_missing', 'parent'],
+            '/^Missing REQUIRED purpose (.+)\.$/' => ['missing_required_purpose', 'purpose'],
+            '/^Missing scope-required purpose (.+)\.$/' => ['missing_scope_purpose', 'purpose'],
+            '/^Non-timbre scope forbids purpose (.+) to protect absorber selection\.$/' => ['scope_forbids_purpose', 'purpose'],
+            '/^Missing protected account code (.+)\.$/' => ['missing_protected_account', 'code'],
+            '/^Protected account (.+) has the wrong type\.$/' => ['protected_account_type', 'code'],
+            '/^Protected account (.+) requires is_system=true\.$/' => ['protected_account_requires_system', 'code'],
+        ];
+        foreach ($patterns as $pattern => [$code, $parameter]) {
+            if (preg_match($pattern, $message, $matches) === 1) {
+                return new TemplateValidationErrorData($code, [$parameter => $matches[1]]);
+            }
+        }
+
+        return new TemplateValidationErrorData('validation_failed', []);
     }
 
     private function actor(Request $request): SuperAdmin

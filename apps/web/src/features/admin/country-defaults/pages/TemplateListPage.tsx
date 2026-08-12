@@ -45,6 +45,16 @@ export function TemplateListPage() {
           <div className="flex flex-wrap gap-1">
             {(template.certified_country_codes ?? []).map((country) => <span className={`${tokens.badge.base} ${tokens.badge.outline}`} key={country}>{country}</span>)}
           </div>
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 text-xs">
+            <dt className={textColors.tertiary}>{t('templates.certification.hash')}</dt>
+            <dd className="break-all font-mono">{template.content_hash ?? '—'}</dd>
+            <dt className={textColors.tertiary}>{t('templates.certification.version')}</dt>
+            <dd>{template.capability_registry_version ?? '—'}</dd>
+            <dt className={textColors.tertiary}>{t('templates.certification.by')}</dt>
+            <dd className="break-all">{template.certified_by ?? '—'}</dd>
+            <dt className={textColors.tertiary}>{t('templates.certification.at')}</dt>
+            <dd>{template.published_at ?? '—'}</dd>
+          </dl>
         </div>
       ),
     },

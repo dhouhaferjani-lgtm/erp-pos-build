@@ -6,14 +6,8 @@ export type TemplateDomain = App.Modules.CountryDefaults.Domain.Enums.TemplateDo
 export type TemplateStatus = App.Modules.CountryDefaults.Domain.Enums.TemplateStatus
 export type AccountType = App.Modules.Accounting.Domain.Enums.AccountType
 export type SystemAccountPurpose = App.Modules.Accounting.Domain.Enums.SystemAccountPurpose
-
-export interface ValidationReport {
-  valid: boolean
-  scope: string[]
-  errors: string[]
-}
-
-export interface AssignmentMatrix {
-  data: AssignmentMatrixRow[]
-  meta: { catalog_version: string }
+export type ValidationReport = App.Modules.CountryDefaults.Application.DTOs.TemplateValidationReportData
+export type AssignmentMatrix = App.Modules.CountryDefaults.Application.DTOs.AssignmentMatrixData
+export type TemplateAccountSaveRow = Omit<TemplateAccount, 'id' | 'is_protected' | 'protection_source'> & {
+  id?: string
 }

@@ -628,6 +628,13 @@ declare namespace App.Modules.Contact.Domain.Enums {
 export type Gender = 'male' | 'female' | 'other';
 }
 declare namespace App.Modules.CountryDefaults.Application.DTOs {
+export type AssignmentMatrixData = {
+data: Array<App.Modules.CountryDefaults.Application.DTOs.AssignmentMatrixRowData>;
+meta: App.Modules.CountryDefaults.Application.DTOs.AssignmentMatrixMetaData;
+};
+export type AssignmentMatrixMetaData = {
+catalog_version: string;
+};
 export type AssignmentMatrixRowData = {
 country_code: string;
 name: string;
@@ -689,6 +696,15 @@ capability_registry_version: string | null;
 certified_by: string | null;
 published_at: string | null;
 cloned_from_id: string | null;
+};
+export type TemplateValidationErrorData = {
+code: string;
+parameters: Record<string, string>;
+};
+export type TemplateValidationReportData = {
+valid: boolean;
+scope: Array<string>;
+errors: Array<App.Modules.CountryDefaults.Application.DTOs.TemplateValidationErrorData>;
 };
 }
 declare namespace App.Modules.CountryDefaults.Domain.Enums {

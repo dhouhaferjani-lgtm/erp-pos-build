@@ -7,6 +7,8 @@ namespace Tests\Feature\CountryDefaults;
 use App\Models\AdminAuditLog;
 use App\Models\SuperAdmin;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\CountryDefaults\Application\DTOs\TemplateValidationErrorData;
+use App\Modules\CountryDefaults\Application\DTOs\TemplateValidationReportData;
 use App\Modules\CountryDefaults\Domain\Registries\ProtectedAccountCodeRegistry;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
@@ -21,6 +23,27 @@ use Tests\TestCase;
 final class TemplateApiEndpointTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_validation_report_wire_contract_uses_stable_codes_and_context(): void
+    {
+        $report = new TemplateValidationReportData(
+            valid: false,
+            scope: ['TN'],
+            errors: [new TemplateValidationErrorData(
+                code: 'missing_required_purpose',
+                parameters: ['purpose' => 'supplier_payable'],
+            )],
+        );
+
+        self::assertSame([
+            'valid' => false,
+            'scope' => ['TN'],
+            'errors' => [[
+                'code' => 'missing_required_purpose',
+                'parameters' => ['purpose' => 'supplier_payable'],
+            ]],
+        ], $report->toArray());
+    }
 
     public function test_template_api_exercises_draft_rows_validation_publish_clone_archive_and_delete_lifecycle(): void
     {
@@ -140,7 +163,8 @@ final class TemplateApiEndpointTest extends TestCase
             ->getJson("/api/v1/admin/country-defaults/templates/{$draft}/validation")
             ->assertOk()
             ->assertJsonPath('data.valid', false)
-            ->assertJsonPath('data.errors.0', 'A template must contain account rows.');
+            ->assertJsonPath('data.errors.0.code', 'account_rows_required')
+            ->assertJsonPath('data.errors.0.parameters', []);
 
         $this->actingAs($actor, 'sanctum-admin')
             ->getJson("/api/v1/admin/country-defaults/templates/{$draft}/validation?scope=TN,FR")

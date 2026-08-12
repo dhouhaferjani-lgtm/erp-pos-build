@@ -67,6 +67,7 @@ describe('AssignmentsPage', () => {
     const picker = screen.getByLabelText('Template for TN')
     expect(picker).toHaveTextContent('PCN Tunisia 2026')
     expect(picker).not.toHaveTextContent('PCG France 2026')
+    expect(screen.queryByRole('option', { name: 'Unassigned' })).not.toBeInTheDocument()
   })
 
   it('requires confirmation that re-pointing affects newly created companies only', async () => {

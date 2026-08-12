@@ -18,7 +18,9 @@ export function AssignmentsPage() {
   const [selected, setSelected] = useState<Partial<Record<string, string>>>({})
   const [confirmCountry, setConfirmCountry] = useState<string | null>(null)
   const assign = useCountryDefaultsMutation(
-    (countryCode: string) => assignTemplate(countryCode, { domain, template_id: selected[countryCode] ?? '' }),
+    ({ countryCode, templateId }: { countryCode: string; templateId: string }) => (
+      assignTemplate(countryCode, { domain, template_id: templateId })
+    ),
   )
   const availableFor = (countryCode: string) => (templates.data ?? []).filter((template) => {
     if (template.status !== 'published') return false
@@ -36,8 +38,8 @@ export function AssignmentsPage() {
     },
     {
       key: 'template', header: t('assignments.columns.template'), render: (row) => (
-        <Select aria-label={t('assignments.templateAria', { country: row.country_code })} value={selected[row.country_code] ?? row.template_id} onChange={(event) => { setSelected((current) => ({ ...current, [row.country_code]: event.target.value })) }}>
-          <option value="">{t('assignments.unassigned')}</option>
+        <Select aria-label={t('assignments.templateAria', { country: row.country_code })} value={selected[row.country_code] ?? row.template_id ?? ''} onChange={(event) => { setSelected((current) => ({ ...current, [row.country_code]: event.target.value })) }}>
+          {row.template_id === null && <option disabled value="">{t('assignments.selectTemplate')}</option>}
           {availableFor(row.country_code).map((template) => <option value={template.id} key={template.id}>{template.name}</option>)}
         </Select>
       ),
@@ -45,7 +47,7 @@ export function AssignmentsPage() {
     {
       key: 'action', header: t('assignments.columns.action'), render: (row) => {
         const candidate = selected[row.country_code]
-        return <Button size="sm" variant="secondary" disabled={candidate === undefined || candidate === row.template_id} onClick={() => { setConfirmCountry(row.country_code) }}><RefreshCw className="mr-1 h-4 w-4" />{t('assignments.repoint', { country: row.country_code })}</Button>
+        return <Button size="sm" variant="secondary" disabled={candidate === undefined || candidate === '' || candidate === row.template_id} onClick={() => { setConfirmCountry(row.country_code) }}><RefreshCw className="mr-1 h-4 w-4" />{t('assignments.repoint', { country: row.country_code })}</Button>
       },
     },
   ]
@@ -65,7 +67,7 @@ export function AssignmentsPage() {
           <div className={tokens.modal.header}><h2 className={tokens.modal.title} id="assignment-confirm-title">{t('assignments.confirmTitle', { country: confirmCountry })}</h2><Button variant="ghost" size="sm" aria-label={t('common.close')} onClick={() => { setConfirmCountry(null) }}><X className="h-4 w-4" /></Button></div>
           <p className={tokens.alert.warning}>{t('assignments.newCompaniesOnly')}</p>
           <p className={`mt-4 text-sm ${textColors.tertiary}`}>{t('assignments.confirmDescription')}</p>
-          <div className={tokens.modal.footer}><Button variant="secondary" onClick={() => { setConfirmCountry(null) }}>{t('common.cancel')}</Button><Button onClick={() => { const country = confirmCountry; void assign.mutateAsync(country).then(() => { setConfirmCountry(null) }) }}>{t('assignments.confirm')}</Button></div>
+          <div className={tokens.modal.footer}><Button variant="secondary" onClick={() => { setConfirmCountry(null) }}>{t('common.cancel')}</Button><Button disabled={selected[confirmCountry] === undefined || selected[confirmCountry] === ''} onClick={() => { const templateId = selected[confirmCountry]; if (templateId !== undefined && templateId !== '') void assign.mutateAsync({ countryCode: confirmCountry, templateId }).then(() => { setConfirmCountry(null) }) }}>{t('assignments.confirm')}</Button></div>
         </section>
       </dialog>}
     </div>
