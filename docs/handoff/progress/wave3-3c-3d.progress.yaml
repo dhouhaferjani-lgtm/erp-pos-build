@@ -39,16 +39,16 @@ milestones:
     # M1 exit: ten-pair suite exists; pairs 1-6 GREEN; pairs 7-10 RED-with-captured-evidence
     # (red-before half of the brief's acceptance). M2 exit hardened: all ten pairs GREEN
     # post-cutover is a hard gate item. Atomic cutover membership unchanged. Resume M1.
-    status: review
+    status: passed
     fix_rounds: 4
-    commit: 3087c3bbf791179bcba0fbf5db11a1d264a5e4b9
-    verdict: docs/handoff/reviews/wave3-3c-3d/M1-round4.md
-    last_verdict: CHANGES-REQUIRED
-    updated: 3087c3bbf
+    commit: 05633c91638a6543cc267a5ea2919b2bd5e2735b
+    verdict: docs/handoff/reviews/wave3-3c-3d/M1-round5.md
+    last_verdict: ACCEPT
+    updated: 05633c916
   - id: M2
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
-    status: pending
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
