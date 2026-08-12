@@ -123,34 +123,36 @@ The migration will additionally be checked for unattended `tenants:migrate` safe
 
 All commands are path-scoped. The full PHPUnit suite is forbidden.
 
-- API: the 14 explicit cash-count/fraud-settings/shift-variance files in the command below. No directory-wide PHPUnit invocation is claimed.
-- Device: `src/lib/offline/__tests__/endOfDayPreview.test.ts`, `src/components/pos/CashReconciliationSection.test.tsx`, `src/components/pos/organisms/CashCountTable.test.tsx`, `src/components/pos/EndOfDayPreviewModal.test.tsx`.
+- API: the 15 explicit cash-count/fraud-settings/shift-variance files in the command below. No directory-wide PHPUnit invocation is claimed. `GenerateZReportWithCountsTest.php` covers the legacy count branch that M1 removes and the explicitly persisted blind-count setting M3 changes.
+- Device: the six explicit files in the command below, including the migration-v22 DDL and fraud-settings cache repository tests for M3's SQLite touch point.
 - Web: `src/features/compliance/components/CashDrawerControlsSection.test.tsx`; M3 will add the row-less `FraudSettingsPage` round-trip path.
 
 Baseline results:
 
 ```text
-[PG 127.0.0.1:5432, dedicated autoerp_sv_stage1_test]
+[PG 127.0.0.1:5432, fresh dedicated autoerp_sv_stage1_m0r2_test]
 Scoped API regression command: exit 0
-Test cases: 50 (independently counted with the same path list and `--list-tests`)
-PHPUnit summary: 50 warnings (9033 assertions)
-Duration: 42.78s
+Test cases: 63
+
+  Tests:    63 warnings (9117 assertions)
+  Duration: 57.80s
 
 Device Vitest:
-Test Files  4 passed (4)
-Tests       61 passed (61)
+Test Files  6 passed (6)
+Tests       74 passed (74)
 
 Web Vitest:
 Test Files  1 passed (1)
 Tests       8 passed (8)
 ```
 
-Literal API baseline command (rerun during M0 review fix round 1 against fresh database `autoerp_sv_stage1_m0r1_test`; exit 0, 50 test cases, 9033 assertions, 39.17s):
+Literal current API baseline command (M0 review fix round 2; exit 0):
 
 ```bash
+APP_ENV=testing LOG_LEVEL=warning \
 DB_HOST=127.0.0.1 DB_PORT=5432 \
-DB_DATABASE=autoerp_sv_stage1_m0r1_test \
-DB_CENTRAL_DATABASE=autoerp_sv_stage1_m0r1_test \
+DB_DATABASE=autoerp_sv_stage1_m0r2_test \
+DB_CENTRAL_DATABASE=autoerp_sv_stage1_m0r2_test \
 DB_USERNAME=houssamr DB_PASSWORD='' \
 php artisan test -c phpunit-pgsql.xml \
   tests/Feature/Fiscal/ZReportServerAuthoringChokepointTest.php \
@@ -159,6 +161,7 @@ php artisan test -c phpunit-pgsql.xml \
   tests/Feature/POS/CashCountToleranceVarianceRegressionTest.php \
   tests/Feature/POS/FraudSettingsPosControllerContractTest.php \
   tests/Feature/POS/FraudSettingsPosControllerTest.php \
+  tests/Feature/POS/GenerateZReportWithCountsTest.php \
   tests/Unit/POS/FraudSettingsResolverTest.php \
   tests/Unit/POS/CashCountInputDTOTest.php \
   tests/Unit/Compliance/CompanyFraudSettingsCashControlsTest.php \
@@ -169,6 +172,24 @@ php artisan test -c phpunit-pgsql.xml \
   tests/Feature/Treasury/ShiftCashVarianceTriggerPathsTest.php
 ```
 
+Literal current device baseline command (exit 0):
+
+```bash
+pnpm vitest run \
+  src/lib/offline/__tests__/endOfDayPreview.test.ts \
+  src/components/pos/CashReconciliationSection.test.tsx \
+  src/components/pos/organisms/CashCountTable.test.tsx \
+  src/components/pos/EndOfDayPreviewModal.test.tsx \
+  src/lib/db/__tests__/migration22.integration.test.ts \
+  src/lib/db/repositories/__tests__/companyFraudSettingsCacheRepository.test.ts
+```
+
+Literal current web baseline command (exit 0):
+
+```bash
+pnpm vitest run src/features/compliance/components/CashDrawerControlsSection.test.tsx
+```
+
 The scoped command intentionally omits exactly these two known-broken neighboring files from the broader candidate run:
 
 - `tests/Unit/POS/CashCountValidationServiceTest.php` — stale 8-argument `FraudSettingsDTO` construction versus the current 11-argument contract.
@@ -176,7 +197,9 @@ The scoped command intentionally omits exactly these two known-broken neighborin
 
 There is no PHPUnit `--exclude` switch in the literal command because every included file is named explicitly; the two omissions above are therefore mechanically visible rather than hidden by a directory-wide selection.
 
-The API command exits zero but the baseline emits existing PHPUnit warnings from repository source-inventory `file_get_contents(...)` checks when run from a linked worktree. These warnings are recorded and are not claimed pristine.
+The API command exits zero, but every test is marked WARN because `apps/api/.env` is absent in the linked worktree and `vlucas/phpdotenv` emits `file_get_contents(.../apps/api/.env): Failed to open stream` from `tests/TestCase.php:26`. This is test-environment noise, not source-inventory noise, and the baseline is not claimed pristine. The command explicitly sets `APP_ENV=testing` and `LOG_LEVEL=warning`; `TREASURY_SHIFT_VARIANCE_GL_ENABLED` remains unset and `config/treasury.php` therefore supplies its false default. Other environment-driven settings use their PHPUnit/process/framework defaults.
+
+For M3, the migration test will continue to force `LOG_LEVEL=warning` and will spy on the logging facade to assert that the exact completion token and changed/skipped counts are sent through `Log::warning()`. That proves warning-level visibility directly rather than inferring it from the default logging threshold. Test failures and assertion counts remain the regression signal; WARN-count deltas are not used because the missing `.env` marks every case WARN.
 
 An intentionally broader candidate run also exposed two pre-existing out-of-scope reds, neither caused by this branch:
 
