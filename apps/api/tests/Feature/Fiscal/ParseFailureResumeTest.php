@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\ReadsCanonicalBytes;
 
 /**
  * Task 24 — Parse-failure resume contract (spec v7 §7.5, §15.2).
@@ -79,6 +80,7 @@ use Tests\TestCase;
  */
 final class ParseFailureResumeTest extends TestCase
 {
+    use ReadsCanonicalBytes;
     use RefreshDatabase;
 
     private string $tenantId;
@@ -782,29 +784,6 @@ final class ParseFailureResumeTest extends TestCase
             ->max('sequence_number');
 
         return is_numeric($max) ? ((int) $max) + 1 : 1;
-    }
-
-    /**
-     * PostgreSQL returns BYTEA columns as stream resources while SQLite
-     * returns BLOBs as strings. Normalize both shapes for test assertions.
-     */
-    private function stringifyCanonicalBytes(mixed $value): string
-    {
-        if (is_string($value)) {
-            return $value;
-        }
-
-        if (is_resource($value)) {
-            $contents = stream_get_contents($value);
-
-            if ($contents === false) {
-                self::fail('Unable to read canonical_bytes stream.');
-            }
-
-            return $contents;
-        }
-
-        return (string) $value;
     }
 
     /**

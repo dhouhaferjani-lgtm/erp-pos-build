@@ -37,20 +37,50 @@ Tests:    20 passed (94 assertions)
 Duration: 28.55s
 ```
 
+### Harness fix round 2 — PostgreSQL and formatting evidence
+
+The shared test-support trait refactor was verified serially with the same explicit PG configuration:
+
+```text
+$ cd apps/api && ./vendor/bin/pint tests/Traits/ReadsCanonicalBytes.php tests/Feature/Fiscal/VerifyEventChainCommandTest.php tests/Feature/Fiscal/ParseFailureResumeTest.php
+{"result":"fixed","files":[{"path":"tests\/Feature\/Fiscal\/VerifyEventChainCommandTest.php","fixers":["class_attributes_separation","ordered_traits"]},{"path":"tests\/Feature\/Fiscal\/ParseFailureResumeTest.php","fixers":["ordered_traits","braces_position","single_line_empty_body"]}]}
+
+$ cd apps/api && ./vendor/bin/pint --test tests/Traits/ReadsCanonicalBytes.php tests/Feature/Fiscal/VerifyEventChainCommandTest.php tests/Feature/Fiscal/ParseFailureResumeTest.php
+{"result":"pass"}
+
+$ APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php
+
+PASS  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+Tests:    18 passed (68 assertions)
+Duration: 31.91s
+
+$ APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test -c phpunit-pgsql.xml tests/Feature/Fiscal/ParseFailureResumeTest.php
+
+PASS  Tests\Feature\Fiscal\ParseFailureResumeTest
+Tests:    20 passed (94 assertions)
+Duration: 31.17s
+```
+
 ## Seeded v3 fixture and tamper toolkit
 
 The fixture extensions remain test-local and build on the two prescribed Fiscal feature-test files.
 
 | Shape | Helper and test anchor | Self-asserted contract |
 |---|---|---|
-| Seeded v3 tenant fixture | `VerifyEventChainCommandTest::seedV3FiscalFixture()` at `apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:488`; contract test at `:441` | terminal `fiscal_schema_version >= 3`; valid UUID event/receipt ids; exactly `operational` and `z_session` contexts on the same terminal; projected receipt has non-null `fiscal_event_id`; join reports zero `fiscal_hash`/`current_hash` mismatches; current `ReceiptHashService` failure on the context-flattened sequence stream is characterized explicitly |
-| T-a payload rewrite | `ParseFailureResumeTest::seedPayloadRewriteTamper()` at `apps/api/tests/Feature/Fiscal/ParseFailureResumeTest.php:689`; contract test at `:191` | drives the real `ParseFailureResolutionService::resolve()` path on a sealed v3 parse-failed row; payload becomes parsed/verified and non-null while resource-safely decoded `canonical_bytes` and `current_hash` remain byte-for-byte unchanged; independently decoded frozen semantics are exactly `['a' => 2]`, while corrected persisted semantics carry subtotal `10.02`, rounding `-0.02`/`0.05`, and product `prod-default` with no `a` key; `current_hash` still hashes the frozen bytes |
-| T-b wrong context head | `VerifyEventChainCommandTest::seedWrongContextPreviousHashTamper()` at `apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:557`; contract test at `:474` | affected row is `operational`; its `previous_hash` equals the same terminal's `z_session` head and differs from the operational head; its `current_hash` still equals SHA-256 of its own resource-safely decoded `canonical_bytes` |
-| T-c mirror mismatch | `VerifyEventChainCommandTest::seedReceiptMirrorTamper()` at `apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:591`; contract test at `:479` | isolated single-context fixture; the current `ReceiptHashService::verifyTerminalChain()` path is asserted green immediately before and after the mismatching receipt insert; receipt references the intended internally valid fiscal event and resource-safely mirrors its canonical bytes; its receipt-chain `previous_hash` matches the prior receipt; exactly one valid 64-hex `fiscal_hash` disagrees with its event's `current_hash` |
+| Seeded v3 tenant fixture | `VerifyEventChainCommandTest::seedV3FiscalFixture()` at `apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:492`; contract test at `:443` | terminal `fiscal_schema_version >= 3`; valid UUID event/receipt ids; exactly `operational` and `z_session` contexts on the same terminal; projected receipt has non-null `fiscal_event_id`; join reports zero `fiscal_hash`/`current_hash` mismatches; current `ReceiptHashService` failure on the context-flattened sequence stream is characterized explicitly as an unfixed defect, not desired behavior |
+| T-a payload rewrite | `ParseFailureResumeTest::seedPayloadRewriteTamper()` at `apps/api/tests/Feature/Fiscal/ParseFailureResumeTest.php:691`; contract test at `:193` | drives the real `ParseFailureResolutionService::resolve()` path on a sealed v3 parse-failed row; payload becomes parsed/verified and non-null while resource-safely decoded `canonical_bytes` and `current_hash` remain byte-for-byte unchanged; independently decoded frozen semantics are exactly `['a' => 2]`, while corrected persisted semantics carry subtotal `10.02`, rounding `-0.02`/`0.05`, and product `prod-default` with no `a` key; `current_hash` still hashes the frozen bytes |
+| T-b wrong context head | `VerifyEventChainCommandTest::seedWrongContextPreviousHashTamper()` at `apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:561`; contract test at `:478` | affected row is `operational`; its `previous_hash` equals the same terminal's `z_session` head and differs from the operational head; its `current_hash` still equals SHA-256 of its own resource-safely decoded `canonical_bytes` |
+| T-c mirror mismatch | `VerifyEventChainCommandTest::seedReceiptMirrorTamper()` at `apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php:595`; contract test at `:483` | isolated single-context fixture; the current `ReceiptHashService::verifyTerminalChain()` path is asserted green immediately before and after the mismatching receipt insert; receipt references the intended internally valid fiscal event and resource-safely mirrors its canonical bytes; its receipt-chain `previous_hash` matches the prior receipt; exactly one valid 64-hex `fiscal_hash` disagrees with its event's `current_hash` |
 
 T-a uses the production resolution workflow. T-b and T-c use direct test-only INSERTs because PostgreSQL immutability triggers correctly prohibit rewriting sealed chain coordinates and receipt hashes after insertion; insertion is therefore the honest way to construct deliberately invalid persisted history without weakening production enforcement.
 
+Both test files share the single-purpose test-only `Tests\Traits\ReadsCanonicalBytes` utility at `apps/api/tests/Traits/ReadsCanonicalBytes.php:7-30`; it preserves strings, consumes PostgreSQL BYTEA resources through `stream_get_contents()`, and fails explicitly when a stream read fails.
+
 The clean v3 fixture intentionally contains `operational` sequence 1 and `z_session` sequence 1 on one terminal. `ReceiptHashService::verifyTerminalChainFiscalArm()` currently selects every fiscal event for the terminal, orders only by `sequence_number`, and carries one expected head across the result. It does not partition by `chain_context`. Consequently, the second sequence-1 row presents genesis rather than the first row's hash and the existing service returns false with `linkage_broken`. The fixture test now characterizes this current failure explicitly so it cannot drift silently. T-c is intentionally single-context because its sole divergence must be the absent receipt/event hash-mirror comparison, not this known context-flattening behavior.
+
+### Concern / unregistered production defect (scope signal)
+
+`ReceiptHashService::verifyTerminalChainFiscalArm()` context flattening is an **UNREGISTERED PRODUCTION DEFECT / scope signal**, not a behavior M0 plans to fix: its context-blind terminal stream at `apps/api/app/Modules/POS/Domain/Services/ReceiptHashService.php:236-239` carries one head across contexts at `:245,:304`; the live `Nf525DataProvider::verifyReceiptChain()` caller delegates to this arm at `apps/api/app/Modules/POS/Application/Services/Nf525DataProvider.php:341-405`, including the live endpoint note at `:343-345` and delegation at `:398`; and the consolidated register states at `docs/handoff/ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md:132` that every v3 terminal has `z_session` plus `operational` contexts. This makes a false linkage failure reachable on the normal v3 shape. Consequently, M2's green-on-clean clause and A1's seeded-v3 entry criterion cannot honestly use the required two-context fixture until this defect is resolved in an explicitly authorized milestone or formally re-scoped; it remains a concern/ticket for orchestration and is not absorbed into M0's no-production-code scope.
 
 T-b is already detected by `VerifyEventChainCommand::walkChain()`: that query is scoped by `chain_context`, so its operational sequence-2 row is compared with the operational head and reports `previous_hash linkage mismatch`. M1 must treat this as an existing check, not claim T-b's RED as evidence of a newly added check.
 

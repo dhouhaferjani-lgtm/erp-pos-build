@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
+use Tests\Traits\ReadsCanonicalBytes;
 
 /**
  * Task 31 — `fiscal:verify-event-chain` command (plan §2397–2458, spec §12).
@@ -66,6 +67,7 @@ use Tests\TestCase;
  */
 final class VerifyEventChainCommandTest extends TestCase
 {
+    use ReadsCanonicalBytes;
     use RefreshDatabase;
 
     private string $tenantId;
@@ -464,10 +466,12 @@ final class VerifyEventChainCommandTest extends TestCase
         $this->assertSame(['operational', 'z_session'], $contexts);
         $this->assertGreaterThan(0, $projectedReceipts);
         $this->assertSame(0, $mirrorMismatches);
+        // Characterization of the unfixed, unregistered production defect
+        // recorded in M0-preflight-evidence.md; false is not the desired contract.
         $this->assertFalse(
             $this->app->make(ReceiptHashService::class)
                 ->verifyTerminalChain(Terminal::query()->findOrFail($this->terminalId)),
-            'The current receipt fiscal arm walks both contexts as one sequence stream; the second sequence-1 row must expose that known linkage failure.',
+            'Characterization only: the unfixed receipt fiscal arm currently flattens both contexts and reports a false linkage failure.',
         );
     }
 
@@ -900,28 +904,5 @@ final class VerifyEventChainCommandTest extends TestCase
         DB::table('fiscal_events')->insert($row);
 
         return $eventId;
-    }
-
-    /**
-     * PostgreSQL returns BYTEA columns as stream resources while SQLite
-     * returns BLOBs as strings. Normalize both shapes for test assertions.
-     */
-    private function stringifyCanonicalBytes(mixed $value): string
-    {
-        if (is_string($value)) {
-            return $value;
-        }
-
-        if (is_resource($value)) {
-            $contents = stream_get_contents($value);
-
-            if ($contents === false) {
-                self::fail('Unable to read canonical_bytes stream.');
-            }
-
-            return $contents;
-        }
-
-        return (string) $value;
     }
 }
