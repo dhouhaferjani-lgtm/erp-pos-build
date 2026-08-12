@@ -49,7 +49,7 @@ milestones:
     review_lenses: [fiscal-pos]
     status: review
     fix_rounds: 3
-    commit: 370ae9701becdab75db11dedb3cb3742a1ec3f28
+    commit: 6bdf52e53271d4ee6145bba29f0940a4e4c7b989
     verdict: docs/handoff/reviews/sv-stage1/M0-round3.md
     last_verdict: CHANGES-REQUIRED
   - id: M1
