@@ -9,6 +9,7 @@ use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\ParapharmacySeeder;
 use Database\Seeders\TunisianParapharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -33,6 +34,7 @@ final class SeededProductsHaveTaxRateTest extends TestCase
      * product must carry the French standard rate (20.00) because the seeder's
      * calculatePricing() was fixed in T15 to emit 20.00 for all categories.
      */
+    #[Group('historical-compat')]
     public function test_parapharmacy_seeder_products_all_have_fr_tax_rate(): void
     {
         $this->artisan('db:seed', ['--class' => ParapharmacySeeder::class, '--force' => true])
@@ -65,6 +67,7 @@ final class SeededProductsHaveTaxRateTest extends TestCase
      *
      * Requires DatabaseSeeder to run first (creates active tenant + countries).
      */
+    #[Group('historical-compat')]
     public function test_tunisian_parapharmacy_seeder_products_all_have_tn_tax_rate(): void
     {
         // TunisianParapharmacySeeder attaches to the first active tenant, which

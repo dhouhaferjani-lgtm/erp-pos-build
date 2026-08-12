@@ -11,6 +11,7 @@ use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\ParapharmacySeeder;
 use Database\Seeders\TunisianParapharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -35,6 +36,7 @@ final class DemoSeedersTaxTest extends TestCase
      * 5 TVA configuration rows (TVA 20%, 10%, 5.5%, 2.1%, 0%) + set the
      * company default FK.
      */
+    #[Group('historical-compat')]
     public function test_parapharmacy_seeder_provisions_fr_tax(): void
     {
         $this->artisan('db:seed', ['--class' => ParapharmacySeeder::class, '--force' => true])
@@ -58,6 +60,7 @@ final class DemoSeedersTaxTest extends TestCase
      * at least 4 TaxConfiguration rows for TN (standard VAT, reduced, zero, stamp)
      * + set the company default FK.
      */
+    #[Group('historical-compat')]
     public function test_coffeeshop_seeder_provisions_tn_tax(): void
     {
         $this->artisan('db:seed', ['--class' => CoffeeShopSeeder::class, '--force' => true])
@@ -84,6 +87,7 @@ final class DemoSeedersTaxTest extends TestCase
      * which also seeds countries), so we run DatabaseSeeder first to establish
      * the base environment.
      */
+    #[Group('historical-compat')]
     public function test_tunisian_parapharmacy_seeder_provisions_tn_tax(): void
     {
         // TunisianParapharmacySeeder attaches to the first active tenant, which

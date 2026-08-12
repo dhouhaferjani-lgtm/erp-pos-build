@@ -58,7 +58,6 @@ use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Domain\CurrencyScale;
-use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -73,7 +72,7 @@ use Spatie\Permission\Models\Role;
  * tenant slug `demo-pharmacy-tn`.
  *
  * Task 2 scope: tenant + company (TN/TND) + central warehouse (WH-01) +
- * Tunisia COA (via {@see TunisiaChartOfAccountsSeeder}) + Tunisia tax config
+ * Tunisia COA (through the provisioning service) + Tunisia tax config
  * (VAT 19/13/7 + stamp duties via {@see TunisiaTaxConfigurationSeeder}).
  *
  * Task 3 scope: extends {@see createCompanyWithLocation()} to add 4 POS shops
@@ -102,14 +101,6 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
     protected function localeCurrency(): string
     {
         return 'TND';
-    }
-
-    /**
-     * @return class-string<ChartOfAccountsSeederContract>
-     */
-    protected function localeChartOfAccountsSeeder(): string
-    {
-        return TunisiaChartOfAccountsSeeder::class;
     }
 
     protected function localeDefaultVatRate(): float
@@ -344,8 +335,7 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
      *   3. Creates the company + warehouse via our overridden
      *      {@see createCompanyWithLocation()} (TN identity), populating
      *      {@see $company}, {@see $location}, and {@see $shops}.
-     *   4. Calls {@see setupFinancialFoundation()} which invokes the Tunisia
-     *      COA seeder via {@see localeChartOfAccountsSeeder()}.
+     *   4. Calls {@see setupFinancialFoundation()} through country-aware COA provisioning.
      *   5. Provisions company tax via {@see CompanyTaxProvisioningService}.
      *   6. Seeds products, partners, stock, and users.
      *

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\BatchExpiry\Application\Services\BatchStockService;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
@@ -37,7 +38,6 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Uom\Domain\Entities\Unit;
 use App\Shared\Domain\Enums\SkinType;
-use Database\Seeders\Contracts\ChartOfAccountsSeederContract;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Bus;
@@ -105,6 +105,7 @@ class ParapharmacySeeder extends Seeder
     public function __construct(
         private readonly ProgramBootstrapService $loyaltyBootstrap,
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
+        private readonly ChartOfAccountsService $chartOfAccounts,
     ) {}
 
     protected function loyaltyBootstrap(): ProgramBootstrapService
@@ -150,16 +151,6 @@ class ParapharmacySeeder extends Seeder
     protected function localeCurrency(): string
     {
         return 'EUR';
-    }
-
-    /**
-     * FQCN of the chart-of-accounts seeder to call during financial setup.
-     *
-     * @return class-string<ChartOfAccountsSeederContract>
-     */
-    protected function localeChartOfAccountsSeeder(): string
-    {
-        return FranceChartOfAccountsSeeder::class;
     }
 
     /**
@@ -627,12 +618,8 @@ class ParapharmacySeeder extends Seeder
      */
     protected function setupFinancialFoundation(Company $company): void
     {
-        // Chart of accounts (locale-specific seeder, France default)
-        $coaSeederClass = $this->localeChartOfAccountsSeeder();
-        /** @var ChartOfAccountsSeederContract $coaSeeder */
-        $coaSeeder = new $coaSeederClass;
-        $coaSeeder->setCommand($this->command);
-        $coaSeeder->run($company->id, $company->tenant_id);
+        // Chart of accounts (legacy or assigned template, selected at call time).
+        $this->chartOfAccounts->seedForCompany($company);
         $this->command->info('✓ Chart of Accounts (120 accounts)');
 
         // Payment methods
@@ -970,7 +957,6 @@ class ParapharmacySeeder extends Seeder
             'name' => $productName,
             'sku' => $sku,
             'barcode' => $barcode,
-            'is_physical' => true,
             'purchase_price' => $cost,
             // cost_price is the WAC field read by MarginService and
             // PostCOGSOnInvoice; without it margin/COGS compute against a null
@@ -1027,6 +1013,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign ingredients to a product based on category.
+     *
+     * @param  Collection<int, Ingredient>  $ingredients
      */
     private function assignIngredients(
         Product $product,
@@ -1067,6 +1055,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign certifications to a product based on category.
+     *
+     * @param  Collection<int, Certification>  $certifications
      */
     private function assignCertifications(
         Product $product,
@@ -1111,6 +1101,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign health claims to a product based on category.
+     *
+     * @param  Collection<int, HealthClaim>  $healthClaims
      */
     private function assignHealthClaims(
         Product $product,
@@ -1154,6 +1146,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign key components to a product based on dosage form.
+     *
+     * @param  Collection<int, KeyComponent>  $keyComponents
      */
     private function assignKeyComponents(
         Product $product,
@@ -1285,6 +1279,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Seed stock levels for 90% of products.
+     *
+     * @param  Collection<int, Product>  $products
      */
     protected function seedStockLevels(
         Company $company,
@@ -1300,6 +1296,9 @@ class ParapharmacySeeder extends Seeder
             }
 
             $metadata = $product->parapharmacyMetadata;
+            if ($metadata === null) {
+                continue;
+            }
             $quantity = match ($metadata->category) {
                 ParapharmacyCategory::Supplement => rand(50, 200),
                 ParapharmacyCategory::Cosmetic => rand(50, 150),

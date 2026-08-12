@@ -31,7 +31,6 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class CompanyController extends Controller
 {
@@ -154,21 +153,15 @@ class CompanyController extends Controller
             }
 
             // 5. Seed chart of accounts based on country
-            try {
-                $this->chartOfAccountsService->seedForCompany($company);
-            } catch (\RuntimeException $e) {
-                // Log warning but don't fail company creation
-                // Country might not have a seeder yet
-                Log::warning("Could not seed COA for company {$company->id}: ".$e->getMessage());
-            }
+            $this->chartOfAccountsService->seedForCompany($company);
 
             // 5.5. Seed the country's default expense categories.
             // Gate finding I-2 (register G-3): this second-company path seeded
             // the chart but no expense categories, so every expense on a
             // non-first company fell to the GeneralExpense catch-all. Must run
             // AFTER step 5 (categories link to class-6 accounts) and is
-            // idempotent (firstOrCreate); it inserts nothing when the chart
-            // above could not be seeded.
+            // idempotent (firstOrCreate). COA failure now aborts this transaction,
+            // so the former chart-absent no-op branch is unreachable.
             $this->expenseCategoryProvisioning->provisionForCompany($company);
 
             // 6. Provision country tax configurations and set company default tax

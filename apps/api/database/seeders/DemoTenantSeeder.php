@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -83,6 +84,7 @@ class DemoTenantSeeder extends Seeder
 {
     public function __construct(
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
+        private readonly ChartOfAccountsService $chartOfAccounts,
     ) {}
 
     /**
@@ -219,9 +221,7 @@ class DemoTenantSeeder extends Seeder
         // Tunisia COA must exist before accounting-linked seed paths run.
         // Guarded on company_id so a re-seed doesn't duplicate the chart.
         if (DB::table('accounts')->where('company_id', $company->id)->doesntExist()) {
-            $coaSeeder = new TunisiaChartOfAccountsSeeder;
-            $coaSeeder->setCommand($this->command);
-            $coaSeeder->run($company->id, $tenant->id);
+            $this->chartOfAccounts->seedForCompany($company);
         }
 
         // Provision tax configurations if countries is already seeded

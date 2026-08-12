@@ -6,7 +6,6 @@ namespace App\Console\Commands;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use Database\Seeders\FranceChartOfAccountsSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Facades\Schema;
@@ -17,7 +16,7 @@ use Illuminate\Support\Str;
  * gained in the document-per-action seeder-gap lane (register E-1 / H-5 / G-4).
  *
  * The chart of accounts is written ONCE, at company provisioning, by
- * {@see FranceChartOfAccountsSeeder} and its siblings — and
+ * the frozen country chart seeders — and
  * those seeders never rewrite an existing row. A chart created before a purpose
  * was added therefore stays broken forever unless a backfill promotes it, which
  * is exactly what {@see BackfillTolerancePurposesCommand} exists for; this

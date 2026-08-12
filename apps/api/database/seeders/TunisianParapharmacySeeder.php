@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -44,8 +45,10 @@ class TunisianParapharmacySeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(CompanyTaxProvisioningService $companyTaxProvisioning): void
-    {
+    public function run(
+        CompanyTaxProvisioningService $companyTaxProvisioning,
+        ChartOfAccountsService $chartOfAccounts,
+    ): void {
         $this->command->info('==============================================');
         $this->command->info('TUNISIAN PARAPHARMACY SEEDER');
         $this->command->info('==============================================');
@@ -70,9 +73,7 @@ class TunisianParapharmacySeeder extends Seeder
 
         if (! $accountsExist) {
             $this->command->info('Creating Tunisian chart of accounts...');
-            $tunisiaSeeder = new TunisiaChartOfAccountsSeeder;
-            $tunisiaSeeder->setCommand($this->command);
-            $tunisiaSeeder->run($company->id, $tenant->id);
+            $chartOfAccounts->seedForCompany($company);
         } else {
             $this->command->info('Chart of accounts already exists - skipping');
         }
@@ -461,7 +462,6 @@ class TunisianParapharmacySeeder extends Seeder
                 'sku' => 'PARA-'.strtoupper(Str::ascii(mb_substr(str_replace(' ', '', $productData['name']), 0, 8))).rand(10, 99),
                 'name' => $productData['name'],
                 'description' => 'Produit parapharmaceutique de qualité - '.$productData['name'],
-                'is_physical' => true,
                 'unit' => 'pièce',
                 // TND (scale 3). Canonical numeric strings via bcmath — no float.
                 'sale_price' => CurrencyScale::bcformat($productData['price'], 3),
