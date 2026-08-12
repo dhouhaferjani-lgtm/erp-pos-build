@@ -52,9 +52,9 @@ milestones:
   - id: M3
     title: "defaults_editor role + EnsureCentralAdmin (central_admin alias) + route groups (minimal auth edit: only nested logout/me) + MFA feature flag + full API surface"
     review_lenses: [tenancy-authz]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 5432fd56c5833acc19321fd99319bb900dbf6618
     verdict: null
     last_verdict: null
   - id: M4
