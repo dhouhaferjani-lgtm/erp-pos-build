@@ -428,3 +428,7 @@ The device still ships only `en` and `fr`. `docs/superpowers/tickets/2026-08-11-
 ### React regression scan
 
 The first broad React Doctor invocation compared the whole long-lived wave branch with `main` and surfaced the repository's existing backlog. The correctly pinned `--scope changed --base HEAD` scan covered the uncommitted M2 files. It initially identified the enlarged reconciliation component; extracting `CashDrawerRevealSummary` removed that finding. The final changed-file scan reports no issues and exits zero.
+
+### Revert-replay
+
+After implementation commit `54e1341b6`, the exact production/locales patch was reversed while the new tests stayed in place. The focused component and preview run failed 7 of 33 cases: the whole-drawer instruction, disclosure/reveal, locale keys, named zero, and exposed preview terms all disappeared as intended. Reapplying that same non-empty patch restored 33/33 green and a clean tree. An initial command used invalid `pnpm --dir` argument ordering and did not run tests; it was discarded before the valid red run above.
