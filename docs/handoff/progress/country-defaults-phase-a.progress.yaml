@@ -82,9 +82,9 @@ milestones:
     status: review
     fix_rounds: 2
     commit: 1918e3e75c4bdb30085955da841bd16e07d00451
-    verdict: null
-    last_verdict: null
-    updated: 1918e3e75
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M6-round3.md
+    last_verdict: CHANGES-REQUIRED
+    updated: 7217e4382
   - id: M7
     title: "Whole-branch integration gate + executable evidence manifest (all M1-M6 paths on PG + SQLite parity, static scopes, country-defaults:verify, route inventory, six branch-wide static assertions) — no new implementation; failure of any item blocks"
     review_lenses: [treasury, tenancy-authz, frontend-conventions]
