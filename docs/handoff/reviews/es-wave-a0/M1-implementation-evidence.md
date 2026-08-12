@@ -402,3 +402,111 @@ Tests: 1 failed (1 assertions)
 ```
 
 Neither fiscal verifier appears. Architecture delta: **zero**.
+
+## Round-1 review closure — 2026-08-12
+
+Behavioral commit: `71f306c86` (`Phase 0.1.9: Close M1 verifier review
+findings`). No M4 chain-head logic, projection, migration, event class, or
+controller-owned progress-YAML review field changed. Version/projection impact:
+V1 `—`; V2 `—`; V3 `—`.
+
+### P1 — sanctioned legacy server envelopes
+
+The general `StrictCanonicalParser` remains strict. The verifier recognizes the
+historical 14-key server envelope only after the strict parse fails with exactly
+`envelope_field_missing:chain_context`, and only when all of these independently
+stored path coordinates match:
+
+- event type is exactly `TERMINAL_REGISTRY_SNAPSHOT`,
+  `ACCOUNT_STATUS_CHANGED`, or `DEPOSIT_RECEIPT`;
+- event version 1, operational row context, `not_required` signature,
+  `verified` integrity, parsed payload;
+- null reference and source-event coordinates; and
+- the decoded object has exactly the legacy key set (current envelope set minus
+  `chain_context`), with no other missing or extra field.
+
+The current parser is then run on a synthetic operational context so its DTO,
+version, key-set, shape, and constraint checks still apply. `DEPOSIT_RECEIPT` is
+server-only and intentionally absent from the device parser's operational type
+allowlist, so that one type is validated through `DepositReceiptPayload` plus the
+same shared key-set and per-event constraint validator instead of weakening the
+device gate. The returned envelope remains the original legacy object: every
+coordinate that was actually sealed is compared, while the absent context is not
+invented as sealed data. The legacy services' timestampTz wall representation is
+compared only on this exact path; current/device envelopes continue to compare UTC
+instants.
+
+Production-path tests author real snapshot, account-status, and deposit-receipt
+events and now verify them cleanly. Negative controls prove a device-authored
+missing context still fails, a sanctioned type with an extra envelope field still
+fails, and a sanctioned legacy envelope with a divergent sealed `company_id` still
+reports the coordinate mismatch.
+
+### P1/P2 — honest v3 controls and isolated T-b
+
+The v3 two-context fixture no longer inserts placeholder JSON. Its operational
+row is a parseable v1 `SALE_RECEIPT` using the golden payload, and its z-session
+row is a parseable `SESSION_OPEN`; both use matching stored payload/status and
+sealed coordinates. Separate clean verifier controls pass for `operational` and
+`z_session`.
+
+T-b now adds one internally hash-valid, parseable operational row whose only
+divergence is that `previous_hash` comes from the z-session head. Its assertion
+pins exactly one `CHAIN BREAK` line, the linkage message, and summary
+`1 chain incidents, 0 quarantine incidents`; it rejects parser, payload, and
+current-hash contamination.
+
+### P2/P3 — operability scope and fleet binding
+
+Durable follow-ups live in
+`docs/superpowers/tickets/2026-08-12-fiscal-event-chain-verifier-operability-followups.md`:
+
+- `FEV-OPS-01` assigns the Fiscal domain owner the policy decision and acceptance
+  contract for quarantine classes with no current remediation path.
+- `FEV-OPS-02` assigns the Fiscal platform/operations owner measurement,
+  bounded-walk, checkpoint, resume, and incomplete-coverage semantics for large
+  fleets.
+
+The fleet driver now refuses the empty-directory plus empty-object-manifest case
+instead of reporting a successful zero-work run. A PostgreSQL-only acceptance
+test provisions and migrates a physical tenant database, seeds its actor and chain
+only inside that database, proves the event is absent from central, and drives the
+fleet enumerator plus child command. The child succeeds only by re-binding after
+the parent's enumeration binding ends.
+
+### Commit-level replay
+
+`71f306c86` was reverted with `--no-commit`; all three current test files were
+restored from the commit before execution. On real PostgreSQL:
+
+- the snapshot and virtual-admin clean controls failed exactly on
+  `envelope_field_missing:chain_context` (2 failed, device negative control
+  passed; 3 tests / 8 assertions);
+- the empty fleet regression failed because production returned exit 0
+  (1 test / 4 assertions).
+
+The revert was aborted and the commit restored. This is a behavioral-commit
+revert replay with current tests retained, not a test-only baseline replay.
+
+### Fresh final serial PostgreSQL paths
+
+The dedicated `autoerp_es_wave_a0_m1r1_test` database had zero active sessions,
+was dropped/recreated, and these exact paths ran serially:
+
+```text
+VerifyEventChainCommandTest.php:                    33 passed, 136 assertions, 68.24s
+VerifyEventChainFleetCommandTest.php:               12 passed,  58 assertions, 30.97s
+VerifyEventChainFleetCommandDbPerTenantTest.php:      1 passed,   8 assertions,  8.72s
+ParseFailureResumeTest.php:                         21 passed, 110 assertions, 37.17s
+```
+
+Pint `--test` passed on the five touched PHP paths. PHPStan level 8 passed on
+the two touched production commands. The existing console-classification
+architecture test still reports the same eleven unrelated classes documented
+above; neither fiscal verifier appears, so this diff's delta remains zero.
+
+Deptrac was run at M1 test baseline `03e11782e` and at `71f306c86`. Both runs
+reported the identical 116 violations and identical category vector
+`21/41/1/18/29/4/2` against the existing 99 baseline. The ratchet command remains
+red on the repository's pre-existing 17-edge baseline drift, but this M1 range's
+deptrac violation delta is exactly zero.
