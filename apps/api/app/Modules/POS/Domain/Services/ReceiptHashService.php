@@ -225,7 +225,9 @@ final class ReceiptHashService
      * Verify and diagnose each receipt-chain arm independently.
      *
      * The fixed keys are consumed by `pos:verify-chains` so operators see
-     * accurate coverage and a breakpoint for the arm that failed.
+     * accurate receipt coverage and a breakpoint for the arm that failed.
+     * The fiscal arm's `inspectedCount` remains the full terminal event walk;
+     * its displayed `count` is only events linked from projected receipts.
      *
      * @return array{
      *     fiscal_events: ReceiptChainArmVerificationResult,
@@ -268,15 +270,28 @@ final class ReceiptHashService
 
     private function inspectFiscalEventsArm(Terminal $terminal): ReceiptChainArmVerificationResult
     {
-        $rows = $this->db()->table('fiscal_events')
-            ->where('terminal_id', $terminal->id)
-            ->orderBy('sequence_number')
-            ->get(['id', 'sequence_number', 'canonical_bytes', 'previous_hash', 'current_hash']);
+        $rows = $this->db()->table('fiscal_events as events')
+            ->leftJoin('pos_receipts as receipts', 'receipts.fiscal_event_id', '=', 'events.id')
+            ->where('events.terminal_id', $terminal->id)
+            ->orderBy('events.sequence_number')
+            ->get([
+                'events.id',
+                'events.sequence_number',
+                'events.canonical_bytes',
+                'events.previous_hash',
+                'events.current_hash',
+                'receipts.id as projected_receipt_id',
+                'receipts.terminal_id as receipt_terminal_id',
+            ]);
 
         if ($rows->isEmpty()) {
             return new ReceiptChainArmVerificationResult(true, 0);
         }
 
+        $receiptCoverageCount = $rows
+            ->filter(fn (\stdClass $row): bool => $row->projected_receipt_id !== null
+                && (string) $row->receipt_terminal_id === (string) $terminal->id)
+            ->count();
         $expectedPrevious = $terminal->genesis_seed;
 
         foreach ($rows as $row) {
@@ -295,8 +310,9 @@ final class ReceiptHashService
 
                 return new ReceiptChainArmVerificationResult(
                     isValid: false,
-                    count: $rows->count(),
+                    count: $receiptCoverageCount,
                     breakPoint: sprintf('Event %s (sequence #%d, hash)', $row->id, $row->sequence_number),
+                    inspectedCount: $rows->count(),
                 );
             }
 
@@ -326,8 +342,9 @@ final class ReceiptHashService
 
                 return new ReceiptChainArmVerificationResult(
                     isValid: false,
-                    count: $rows->count(),
+                    count: $receiptCoverageCount,
                     breakPoint: sprintf('Event %s (sequence #%d, link length)', $row->id, $row->sequence_number),
+                    inspectedCount: $rows->count(),
                 );
             }
 
@@ -343,15 +360,20 @@ final class ReceiptHashService
 
                 return new ReceiptChainArmVerificationResult(
                     isValid: false,
-                    count: $rows->count(),
+                    count: $receiptCoverageCount,
                     breakPoint: sprintf('Event %s (sequence #%d, link)', $row->id, $row->sequence_number),
+                    inspectedCount: $rows->count(),
                 );
             }
 
             $expectedPrevious = $storedCurrentHash;
         }
 
-        return new ReceiptChainArmVerificationResult(true, $rows->count());
+        return new ReceiptChainArmVerificationResult(
+            isValid: true,
+            count: $receiptCoverageCount,
+            inspectedCount: $rows->count(),
+        );
     }
 
     /**
