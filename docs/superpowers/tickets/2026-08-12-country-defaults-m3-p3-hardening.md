@@ -11,3 +11,6 @@
   display names while preserving the pinned catalog version and generic-fallback translation.
 - Add bounded pagination to the template and defaults-editor index endpoints, including stable
   ordering and response metadata, before the M6 UI begins consuming an unbounded collection.
+- Replace raw `DomainException` text in the live template-validation report with stable translated
+  rule identifiers and structured parameters, so the M6 UI never renders internal English-only
+  validation details.

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\CountryDefaults;
 
+use App\Models\AdminAuditLog;
 use App\Models\SuperAdmin;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\CountryDefaults\Domain\Registries\ProtectedAccountCodeRegistry;
@@ -14,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
+use PDOException;
 use Tests\TestCase;
 
 final class TemplateApiEndpointTest extends TestCase
@@ -199,6 +201,79 @@ final class TemplateApiEndpointTest extends TestCase
         } finally {
             $this->removeUnrelatedTemplateRowFailure($connection->getDriverName());
         }
+    }
+
+    public function test_sqlite_shaped_audit_foreign_key_failure_is_rethrown_from_row_update(): void
+    {
+        $actor = $this->admin();
+        $draft = $this->actingAs($actor, 'sanctum-admin')->postJson('/api/v1/admin/country-defaults/templates', [
+            'domain' => 'chart_of_accounts',
+            'name' => 'Audit foreign-key probe',
+        ])->assertCreated()->json('data.id');
+        self::assertIsString($draft);
+        AdminAuditLog::creating(static function (): never {
+            $previous = new PDOException('FOREIGN KEY constraint failed', 23000);
+            $previous->errorInfo = ['23000', 19, 'FOREIGN KEY constraint failed'];
+
+            throw new QueryException(
+                'sqlite',
+                'insert into "admin_audit_logs" ("super_admin_id") values (?)',
+                ['missing-admin'],
+                $previous,
+            );
+        });
+        $this->withoutExceptionHandling();
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('FOREIGN KEY constraint failed');
+        $this->actingAs($actor, 'sanctum-admin')->putJson("/api/v1/admin/country-defaults/templates/{$draft}/rows", [
+            'rows' => [[
+                'code' => '1000',
+                'name' => 'Audit foreign-key probe',
+                'type' => 'asset',
+                'parent_code' => null,
+                'system_purpose' => null,
+                'is_system' => false,
+                'sort_order' => 1,
+            ]],
+        ]);
+    }
+
+    public function test_sqlite_unique_constraint_requires_an_exact_template_row_column_list(): void
+    {
+        $actor = $this->admin();
+        $draft = $this->actingAs($actor, 'sanctum-admin')->postJson('/api/v1/admin/country-defaults/templates', [
+            'domain' => 'chart_of_accounts',
+            'name' => 'Unique signature probe',
+        ])->assertCreated()->json('data.id');
+        self::assertIsString($draft);
+        AdminAuditLog::creating(static function (): never {
+            $message = 'UNIQUE constraint failed: admin_template_accounts.template_id, admin_template_accounts.code_shadow';
+            $previous = new PDOException($message, 23000);
+            $previous->errorInfo = ['23000', 19, $message];
+
+            throw new QueryException(
+                'sqlite',
+                'insert into "admin_audit_logs" ("super_admin_id") values (?)',
+                ['missing-admin'],
+                $previous,
+            );
+        });
+        $this->withoutExceptionHandling();
+
+        $this->expectException(QueryException::class);
+        $this->expectExceptionMessage('admin_template_accounts.code_shadow');
+        $this->actingAs($actor, 'sanctum-admin')->putJson("/api/v1/admin/country-defaults/templates/{$draft}/rows", [
+            'rows' => [[
+                'code' => '1000',
+                'name' => 'Unique signature probe',
+                'type' => 'asset',
+                'parent_code' => null,
+                'system_purpose' => null,
+                'is_system' => false,
+                'sort_order' => 1,
+            ]],
+        ]);
     }
 
     /** @return list<array<string, bool|int|string|null>> */

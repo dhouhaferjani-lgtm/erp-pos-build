@@ -228,7 +228,27 @@ final class TemplateRowController extends Controller
             return false;
         }
 
-        return str_contains($message, 'UNIQUE constraint failed: admin_template_accounts.template_id')
-            || str_contains($message, 'FOREIGN KEY constraint failed');
+        $sqliteUniqueColumns = [
+            'admin_template_accounts.template_id, admin_template_accounts.code',
+            'admin_template_accounts.template_id, admin_template_accounts.system_purpose',
+            'admin_template_accounts.template_id, admin_template_accounts.sort_order',
+        ];
+        foreach ($sqliteUniqueColumns as $columns) {
+            if (preg_match(
+                '/UNIQUE constraint failed: '.preg_quote($columns, '/').'(?![A-Za-z0-9_.,])/',
+                $message,
+            ) === 1) {
+                return true;
+            }
+        }
+
+        if (! str_contains($message, 'FOREIGN KEY constraint failed')) {
+            return false;
+        }
+
+        return preg_match(
+            '/^(?:insert\s+into|update|delete\s+from)\s+["`]?admin_template_accounts["`]?\b/i',
+            ltrim($exception->getSql()),
+        ) === 1;
     }
 }
