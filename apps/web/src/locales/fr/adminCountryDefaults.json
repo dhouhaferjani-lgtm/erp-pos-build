@@ -57,8 +57,8 @@
   },
   "templates": {
     "title": "Modèles comptables", "subtitle": "Examinez les plans versionnés, leur périmètre juridictionnel et leur certification.",
-    "tableLabel": "Modèles de paramètres pays", "empty": "Aucun modèle dans ce domaine.", "edit": "Modifier le modèle",
-    "clone": "Cloner", "cloneName": "{{name}} — copie", "archive": "Archiver", "count_one": "{{count}} modèle", "count_many": "{{count}} modèles",
+    "tableLabel": "Modèles de paramètres pays", "empty": "Aucun modèle dans ce domaine.", "loadError": "Impossible de charger la bibliothèque de modèles. Réessayez.", "edit": "Modifier le modèle",
+    "clone": "Cloner", "cloneName": "{{name}} — copie", "archive": "Archiver", "count_one": "{{count}} modèle", "count_other": "{{count}} modèles", "count_many": "{{count}} modèles",
     "columns": { "template": "Modèle", "status": "Statut", "certification": "Certification", "actions": "Actions" },
     "certification": { "hash": "Empreinte", "version": "Registre", "by": "Certifié par", "at": "Publié le" }
   },
@@ -74,7 +74,7 @@
     "validation": { "codeRequired": "Le code du compte est obligatoire.", "nameRequired": "Le nom du compte est obligatoire.", "parentMissing": "Le code parent doit exister dans ce modèle." }
   },
   "validation": {
-    "title": "Validation", "subtitle": "Les contrôles de certification restent visibles pendant la modification.", "checking": "Contrôle du modèle…", "valid": "Prêt à certifier", "invalid": "Modifications requises",
+    "title": "Validation", "subtitle": "Les contrôles de certification restent visibles pendant la modification.", "checking": "Contrôle du modèle…", "valid": "Prêt à certifier", "invalid": "Modifications requises", "unavailable": "La validation est temporairement indisponible. Réessayez.",
     "errors": {
       "account_rows_required": "Ajoutez au moins une ligne de compte.",
       "row_fields_required": "Chaque ligne doit comporter un code et un nom.",
@@ -96,14 +96,22 @@
     }
   },
   "publish": { "title": "Certifier et publier", "description": "La publication verrouille cette version et enregistre le périmètre juridictionnel déclaré.", "standard": "Norme comptable", "scope": "Juridictions certifiées", "scopePlaceholder": "TN ou *", "scopeHelp": "Saisissez des codes ISO séparés par des virgules, ou * seul.", "confirm": "Confirmer la publication", "close": "Fermer la fenêtre de publication" },
-  "protection": { "treasury_instrument_literal": "La trésorerie résout ce compte par son code littéral.", "expense_category_demo_consumer": "Les catégories de dépenses de démonstration résolvent ce compte par son code littéral." },
+  "protection": { "treasury_instrument_literal": "La trésorerie résout ce compte par son code littéral.", "expense_category_demo_consumer": "Les catégories de dépenses de démonstration résolvent ce compte par son code littéral.", "unknown": "Ce compte est protégé par une dépendance de la plateforme." },
+  "errors": {
+    "forbidden": "Vous n’avez pas l’autorisation d’effectuer cette demande.",
+    "conflict": "La demande est incompatible avec le cycle de vie actuel du modèle.",
+    "validation": "Vérifiez les valeurs saisies et les règles de certification.",
+    "server": "Le serveur n’a pas pu traiter la demande. Réessayez.",
+    "generic": "La demande n’a pas pu être traitée. Réessayez."
+  },
   "assignments": {
     "back": "Retour aux modèles", "title": "Affectations par pays", "subtitle": "Associez chaque juridiction à un modèle publié et certifié pour ce périmètre exact.",
-    "catalogVersion": "Catalogue pays {{version}}", "tableLabel": "Affectations des modèles par pays", "empty": "Aucun pays disponible.",
+    "catalogVersion": "Catalogue pays {{version}}", "tableLabel": "Affectations des modèles par pays", "empty": "Aucun pays disponible.", "loadError": "Impossible de charger les affectations par pays. Réessayez.",
+    "templatesForbidden": "Vous n’avez pas l’autorisation de charger les modèles admissibles. Les affectations actuelles restent visibles.", "templatesLoadError": "Impossible de charger les modèles admissibles. Les affectations actuelles restent visibles.",
     "pinnedAria": "Affectation générique épinglée", "templateAria": "Modèle pour {{country}}", "selectTemplate": "Sélectionner un modèle publié",
     "repoint": "Réaffecter {{country}}", "confirmTitle": "Réaffecter {{country}} ?", "newCompaniesOnly": "Cela concerne uniquement les entreprises nouvellement créées.",
     "confirmDescription": "Les comptes des entreprises existantes ne sont jamais modifiés par cette affectation.", "confirm": "Confirmer la réaffectation",
-    "count_one": "{{count}} affectation", "count_many": "{{count}} affectations",
+    "count_one": "{{count}} affectation", "count_other": "{{count}} affectations", "count_many": "{{count}} affectations",
     "columns": { "country": "Pays", "template": "Modèle affecté", "action": "Action" }
   }
 }

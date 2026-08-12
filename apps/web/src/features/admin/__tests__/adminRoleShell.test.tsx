@@ -8,6 +8,7 @@ import { AdminLayout } from '../components/AdminLayout'
 import { AdminLoginPage } from '../pages/AdminLoginPage'
 import { useAdminAuthStore, type AdminRole } from '../stores/adminAuthStore'
 import { loginSuperAdmin } from '../api'
+import i18n from '@/lib/i18n'
 
 vi.mock('../api', () => ({ loginSuperAdmin: vi.fn(), logoutSuperAdmin: vi.fn() }))
 
@@ -22,9 +23,24 @@ function authenticate(role: AdminRole) {
 }
 
 describe('three-role admin shell', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('en')
     useAdminAuthStore.getState().logout()
     vi.mocked(loginSuperAdmin).mockReset()
+  })
+
+  it('keeps shared support navigation translated in Arabic', async () => {
+    await i18n.changeLanguage('ar')
+    authenticate('support_approver')
+    render(
+      <MemoryRouter>
+        <QueryClientProvider client={new QueryClient()}>
+          <AdminLayout />
+        </QueryClientProvider>
+      </MemoryRouter>
+    )
+
+    expect(screen.getByRole('link', { name: 'وصول الدعم' })).toBeInTheDocument()
   })
 
   it.each([

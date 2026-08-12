@@ -3,11 +3,13 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { AxiosError, AxiosHeaders, type AxiosResponse } from 'axios'
 import { TemplateEditorPage } from '../pages/TemplateEditorPage'
 import * as countryDefaultsApi from '../api/countryDefaultsApi'
 import enCountryDefaults from '@/locales/en/adminCountryDefaults.json'
 import frCountryDefaults from '@/locales/fr/adminCountryDefaults.json'
 import type { CountryDefaultTemplate, SystemAccountPurpose } from '../types'
+import { adminApi } from '@/features/admin/lib/adminApi'
 
 vi.mock('../api/countryDefaultsApi', () => ({
   getTemplate: vi.fn(),
@@ -74,6 +76,17 @@ const template = {
   account_types: ['asset', 'liability', 'equity', 'revenue', 'expense'] as const,
   system_account_purposes: ['cash', 'product_revenue', 'supplier_payable'] as const,
 } satisfies CountryDefaultTemplate
+
+function apiError(status: number): AxiosError {
+  const response: AxiosResponse = {
+    status,
+    statusText: String(status),
+    data: {},
+    headers: {},
+    config: { headers: new AxiosHeaders() },
+  }
+  return new AxiosError(`Request failed with status code ${status}`, undefined, undefined, undefined, response)
+}
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -146,6 +159,49 @@ describe('TemplateEditorPage', () => {
     expect(await screen.findByText('sha256-certified')).toBeInTheDocument()
   })
 
+  it('omits an empty validation scope and normalizes human comma spacing at the API boundary', async () => {
+    const get = vi.spyOn(adminApi, 'get').mockResolvedValue({
+      data: { data: { valid: true, scope: [], errors: [] } },
+    })
+    const actualApi = await vi.importActual<typeof import('../api/countryDefaultsApi')>('../api/countryDefaultsApi')
+
+    await actualApi.validateTemplate('template-1', '   ')
+    expect(get).toHaveBeenLastCalledWith(
+      '/admin/country-defaults/templates/template-1/validation',
+      { params: undefined },
+    )
+
+    await actualApi.validateTemplate('template-1', ' TN,  FR ')
+    expect(get).toHaveBeenLastCalledWith(
+      '/admin/country-defaults/templates/template-1/validation',
+      { params: { scope: 'TN,FR' } },
+    )
+    get.mockRestore()
+  })
+
+  it('distinguishes validation transport errors from an invalid template', async () => {
+    vi.mocked(countryDefaultsApi.validateTemplate).mockRejectedValue(apiError(500))
+    renderPage()
+
+    expect(await screen.findByText('Validation is temporarily unavailable. Try again.')).toBeInTheDocument()
+    expect(screen.queryByText('Changes required')).not.toBeInTheDocument()
+  })
+
+  it('keeps publish errors handled and visible inside the modal', async () => {
+    const user = userEvent.setup()
+    vi.mocked(countryDefaultsApi.publishTemplate).mockRejectedValue(apiError(422))
+    renderPage()
+
+    await screen.findByDisplayValue('5312')
+    await user.click(screen.getByRole('button', { name: 'Publish' }))
+    await user.type(screen.getByLabelText('Accounting standard'), 'NC 41-2026')
+    await user.type(screen.getByLabelText('Certified jurisdictions'), 'TN')
+    await user.click(screen.getByRole('button', { name: 'Confirm publish' }))
+
+    expect(await screen.findByText('Review the submitted values and certification rules.')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Certify and publish' })).toBeInTheDocument()
+  })
+
   it('adds and saves a collision-safe new row without sending a fabricated backend id', async () => {
     const user = userEvent.setup()
     vi.mocked(countryDefaultsApi.saveTemplateRows).mockResolvedValue(template)
@@ -175,5 +231,37 @@ describe('TemplateEditorPage', () => {
     expect(Object.keys(frLabels).sort()).toEqual(Object.keys(enLabels).sort())
     expect(Object.values(enLabels)).not.toContain('supplier_payable')
     expect(Object.values(frLabels)).not.toContain('supplier_payable')
+  })
+
+  it('refetches server-normalized rows and releases local edits after save', async () => {
+    const user = userEvent.setup()
+    const normalized = {
+      ...template,
+      rows: template.rows.map((row) => row.id === 'row-2' ? { ...row, name: 'Server normalized sales' } : row),
+    }
+    vi.mocked(countryDefaultsApi.getTemplate)
+      .mockResolvedValueOnce(template)
+      .mockResolvedValue(normalized)
+    vi.mocked(countryDefaultsApi.saveTemplateRows).mockResolvedValue(normalized)
+    renderPage()
+
+    const name = await screen.findByDisplayValue('Sales')
+    await user.clear(name)
+    await user.type(name, 'Local sales')
+    await user.click(screen.getByRole('button', { name: 'Save rows' }))
+
+    expect(await screen.findByDisplayValue('Server normalized sales')).toBeInTheDocument()
+    expect(screen.queryByDisplayValue('Local sales')).not.toBeInTheDocument()
+  })
+
+  it('uses a localized fallback for an unknown protection source', async () => {
+    vi.mocked(countryDefaultsApi.getTemplate).mockResolvedValue({
+      ...template,
+      rows: [{ ...template.rows[0], protection_source: 'future_protection_source' }],
+    })
+    renderPage()
+
+    expect(await screen.findByText('This account is protected by a platform dependency.')).toBeInTheDocument()
+    expect(screen.queryByText('protection.future_protection_source')).not.toBeInTheDocument()
   })
 })

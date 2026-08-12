@@ -167,10 +167,15 @@ final class TemplateApiEndpointTest extends TestCase
             ->assertJsonPath('data.errors.0.parameters', []);
 
         $this->actingAs($actor, 'sanctum-admin')
-            ->getJson("/api/v1/admin/country-defaults/templates/{$draft}/validation?scope=TN,FR")
+            ->getJson("/api/v1/admin/country-defaults/templates/{$draft}/validation?scope=")
+            ->assertOk()
+            ->assertJsonPath('data.scope', []);
+
+        $this->actingAs($actor, 'sanctum-admin')
+            ->getJson("/api/v1/admin/country-defaults/templates/{$draft}/validation?scope=TN,%20FR")
             ->assertUnprocessable()
             ->assertJsonPath('error.code', 'VALIDATION_ERROR')
-            ->assertJsonStructure(['error' => ['errors' => ['scope']]]);
+            ->assertJsonPath('error.errors.scope.0', 'Exact certification scope cannot mix timbre and non-timbre countries.');
     }
 
     public function test_unexpected_template_logic_exception_is_not_mislabeled_as_lifecycle_conflict(): void

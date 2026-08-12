@@ -38,7 +38,11 @@ export function saveTemplateRows(id: string, rows: TemplateAccountSaveRow[]): Pr
 }
 
 export function validateTemplate(id: string, scope: string): Promise<ValidationReport> {
-  return adminApiGet(`${root}/templates/${id}/validation`, { scope })
+  const normalizedScope = scope.split(',').map((country) => country.trim()).filter(Boolean).join(',')
+  return adminApiGet(
+    `${root}/templates/${id}/validation`,
+    normalizedScope === '' ? undefined : { scope: normalizedScope },
+  )
 }
 
 export function publishTemplate(

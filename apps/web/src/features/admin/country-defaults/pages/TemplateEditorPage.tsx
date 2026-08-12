@@ -2,15 +2,17 @@ import { useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { Link, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { LockKeyhole, Plus, ShieldCheck, Trash2, X } from 'lucide-react'
+import { LockKeyhole, Plus, ShieldCheck, Trash2 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Checkbox, Input, Select } from '@/components/atoms'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeader } from '@/components/molecules/PageHeader'
+import { Modal, ModalContent, ModalFooter } from '@/components/organisms/Modal/Modal'
 import { borderColors, semanticColorTokens, textColors, tokens } from '@/lib/designTokens'
 import { publishTemplate, saveTemplateRows, updateTemplate, validateTemplate } from '../api/countryDefaultsApi'
 import { useCountryDefaultsMutation, useTemplate } from '../hooks/useCountryDefaults'
 import type { TemplateAccount, TemplateAccountSaveRow } from '../types'
+import { countryDefaultsErrorKey } from '../lib/apiError'
 
 interface PublishFields {
   standardRef: string
@@ -87,25 +89,37 @@ export function TemplateEditorPage() {
       else if (row.parent_code !== null && row.parent_code !== '' && !rowCodes.has(row.parent_code)) errors[row.id] = t('editor.validation.parentMissing')
     })
     setGridErrors(errors)
-    if (Object.keys(errors).length === 0) saveRows.mutate(rows.map(rowForSave))
+    if (Object.keys(errors).length === 0) {
+      saveRows.mutate(rows.map(rowForSave), {
+        onSuccess: () => {
+          void templateQuery.refetch().then((refreshed) => {
+            if (refreshed.data !== undefined) setRowEdits(null)
+          })
+        },
+      })
+    }
   }
-  const submitPublish = publishForm.handleSubmit(async (fields) => {
-    const result = await publish.mutateAsync(fields)
-    setPublishedHash(result.content_hash)
-    setShowPublish(false)
+  const submitPublish = publishForm.handleSubmit((fields) => {
+    publish.mutate(fields, {
+      onSuccess: (result) => {
+        setPublishedHash(result.content_hash)
+        setShowPublish(false)
+      },
+    })
   })
 
   if (templateQuery.isLoading) return <div className={`p-8 ${textColors.tertiary}`}>{t('common.loading')}</div>
-  if (templateQuery.data === undefined) return <div className={`p-8 ${textColors.error}`}>{t('editor.loadError')}</div>
+  if (templateQuery.data === undefined) return <div role="alert" className={`p-8 ${textColors.error}`}>{t('editor.loadError')}</div>
   const template = templateQuery.data
   const locked = template.status !== 'draft'
 
   return (
     <div className="p-8">
       <div className="mx-auto max-w-[96rem] space-y-6">
-        <PageHeader title={template.name} breadcrumb={<Link className={`text-sm ${textColors.brand} hover:underline`} to="/admin/country-defaults">{t('editor.back')}</Link>} actions={!locked ? <Button onClick={() => { setShowPublish(true) }}><ShieldCheck className="mr-2 h-4 w-4" />{t('editor.publish')}</Button> : undefined} />
+        <PageHeader title={template.name} breadcrumb={<Link className={`text-sm ${textColors.brand} hover:underline`} to="/admin/country-defaults">{t('editor.back')}</Link>} actions={!locked ? <Button onClick={() => { publish.reset(); setShowPublish(true) }}><ShieldCheck className="mr-2 h-4 w-4" />{t('editor.publish')}</Button> : undefined} />
 
         {publishedHash !== null && <div className={tokens.alert.success}><p>{t('editor.published')}</p><code className="mt-1 block break-all font-mono">{publishedHash}</code></div>}
+        {templateQuery.isError && <div role="alert" className={tokens.alert.error}>{t(countryDefaultsErrorKey(templateQuery.error))}</div>}
 
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
           <section className={`overflow-hidden rounded-xl border ${borderColors.light} ${semanticColorTokens.surface.base}`}>
@@ -123,7 +137,7 @@ export function TemplateEditorPage() {
               </tr></thead>
               <tbody className={`divide-y ${borderColors.divideDefault}`}>
                 {rows.map((row) => {
-                  const protectedTitle = row.protection_source === null ? undefined : t(`protection.${row.protection_source}`)
+                  const protectedTitle = row.protection_source === null ? undefined : t(`protection.${row.protection_source}`, { defaultValue: t('protection.unknown') })
                   const disabled = locked || row.is_protected
                   return <tr className={row.is_protected ? semanticColorTokens.intent.warning.bgSubtleAlpha : tokens.table.rowHover} key={row.id}>
                     <td className="w-32 px-3 py-2 align-top">
@@ -145,15 +159,18 @@ export function TemplateEditorPage() {
               </tbody>
             </DataTable>
             </div>
+            {(saveRows.error ?? saveMetadata.error) !== null && <div role="alert" className={`m-4 ${tokens.alert.error}`}>{t(countryDefaultsErrorKey(saveRows.error ?? saveMetadata.error))}</div>}
             {!locked && <div className={`flex justify-end gap-3 border-t p-4 ${borderColors.light}`}><Button variant="secondary" onClick={() => { saveMetadata.mutate(template.name) }}>{t('editor.saveMetadata')}</Button><Button onClick={handleSaveRows}>{t('editor.saveRows')}</Button></div>}
           </section>
 
           <aside aria-label={t('validation.title')} className={`${tokens.card.base} self-start xl:sticky xl:top-6`}>
             <h2 className={tokens.heading.section}>{t('validation.title')}</h2>
             <p className={`mt-2 text-sm ${textColors.tertiary}`}>{t('validation.subtitle')}</p>
-            <div className={`mt-4 ${validation.data?.valid === true ? tokens.alert.success : tokens.alert.warning}`}>
-              {validation.isLoading ? t('validation.checking') : validation.data?.valid === true ? t('validation.valid') : t('validation.invalid')}
-            </div>
+            {validation.isLoading && <div className={`mt-4 ${tokens.alert.info}`}>{t('validation.checking')}</div>}
+            {validation.isError && <div role="alert" className={`mt-4 ${tokens.alert.error}`}>{t('validation.unavailable')}</div>}
+            {validation.data !== undefined && <div className={`mt-4 ${validation.data.valid ? tokens.alert.success : tokens.alert.warning}`}>
+              {validation.data.valid ? t('validation.valid') : t('validation.invalid')}
+            </div>}
             <ul className={`mt-4 space-y-2 text-sm ${textColors.secondary}`}>
               {(validation.data?.errors ?? []).map((error) => {
                 const parameters = { ...error.parameters }
@@ -168,18 +185,20 @@ export function TemplateEditorPage() {
         </div>
       </div>
 
-      {showPublish && <dialog aria-labelledby="publish-template-title" className={tokens.modal.backdrop} open>
-        <form className={tokens.modal.container} onSubmit={(event) => { void submitPublish(event) }}>
-          <div className={tokens.modal.header}><h2 className={tokens.modal.title} id="publish-template-title">{t('publish.title')}</h2><Button variant="ghost" size="sm" aria-label={t('publish.close')} onClick={() => { setShowPublish(false) }} type="button"><X className="h-4 w-4" /></Button></div>
+      <Modal isOpen={showPublish} onClose={() => { setShowPublish(false) }} title={t('publish.title')}>
+        <form onSubmit={(event) => { void submitPublish(event) }}>
+          <ModalContent>
           <p className={`text-sm ${textColors.tertiary}`}>{t('publish.description')}</p>
           <label className={`mt-5 ${tokens.label.base}`} htmlFor="standard-ref">{t('publish.standard')}</label>
           <Input id="standard-ref" {...publishForm.register('standardRef', { required: true })} />
           <label className={`mt-4 ${tokens.label.base}`} htmlFor="certified-scope">{t('publish.scope')}</label>
           <Input id="certified-scope" placeholder={t('publish.scopePlaceholder')} {...publishForm.register('scope', { required: true })} />
           <p className={tokens.helperText.base}>{t('publish.scopeHelp')}</p>
-          <div className={tokens.modal.footer}><Button variant="secondary" type="button" onClick={() => { setShowPublish(false) }}>{t('common.cancel')}</Button><Button type="submit" disabled={publish.isPending}>{t('publish.confirm')}</Button></div>
+          {publish.error !== null && <div role="alert" className={tokens.alert.error}>{t(countryDefaultsErrorKey(publish.error))}</div>}
+          </ModalContent>
+          <ModalFooter><Button variant="secondary" type="button" onClick={() => { setShowPublish(false) }}>{t('common.cancel')}</Button><Button type="submit" disabled={publish.isPending}>{t('publish.confirm')}</Button></ModalFooter>
         </form>
-      </dialog>}
+      </Modal>
     </div>
   )
 }

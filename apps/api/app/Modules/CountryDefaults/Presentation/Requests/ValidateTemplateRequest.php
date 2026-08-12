@@ -21,7 +21,14 @@ final class ValidateTemplateRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge(['id' => $this->route('id')]);
+        $scope = $this->input('scope');
+        $normalizedScope = is_string($scope)
+            ? implode(',', array_map('trim', explode(',', $scope)))
+            : $scope;
+        $this->merge([
+            'id' => $this->route('id'),
+            'scope' => $normalizedScope === '' ? null : $normalizedScope,
+        ]);
     }
 
     /** @return array<string, list<string|\Stringable|Rule|ValidationRule>> */
@@ -29,7 +36,7 @@ final class ValidateTemplateRequest extends FormRequest
     {
         return [
             'id' => ['required', 'uuid'],
-            'scope' => ['sometimes', 'string', 'regex:/^(?:\*|[A-Za-z]{2})(?:,(?:\*|[A-Za-z]{2}))*$/'],
+            'scope' => ['sometimes', 'nullable', 'string', 'regex:/^(?:\*|[A-Za-z]{2})(?:,(?:\*|[A-Za-z]{2}))*$/'],
         ];
     }
 

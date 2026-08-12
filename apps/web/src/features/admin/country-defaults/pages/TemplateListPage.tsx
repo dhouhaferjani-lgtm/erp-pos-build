@@ -9,6 +9,7 @@ import { borderColors, semanticColorTokens, textColors, tokens } from '@/lib/des
 import { archiveTemplate, cloneTemplate } from '../api/countryDefaultsApi'
 import { useCountryDefaultsMutation, useTemplates } from '../hooks/useCountryDefaults'
 import type { TemplateDomain, TemplateSummary } from '../types'
+import { countryDefaultsErrorKey } from '../lib/apiError'
 
 export function TemplateListPage() {
   const { t } = useTranslation('adminCountryDefaults')
@@ -18,6 +19,7 @@ export function TemplateListPage() {
     (template: TemplateSummary) => cloneTemplate(template.id, t('templates.cloneName', { name: template.name })),
   )
   const archive = useCountryDefaultsMutation((template: TemplateSummary) => archiveTemplate(template.id))
+  const mutationError = archive.error ?? clone.error
   const columns: DataTableColumn<TemplateSummary>[] = [
     {
       key: 'template',
@@ -64,7 +66,7 @@ export function TemplateListPage() {
       render: (template) => (
         <div className="flex gap-2">
           <Button size="sm" variant="secondary" onClick={() => { clone.mutate(template) }}><Copy className="mr-1 h-4 w-4" />{t('templates.clone')}</Button>
-          <Button size="sm" variant="dangerOutline" disabled={template.status === 'archived'} onClick={() => { archive.mutate(template) }}><Archive className="mr-1 h-4 w-4" />{t('templates.archive')}</Button>
+          <Button size="sm" variant="dangerOutline" disabled={template.status !== 'published'} onClick={() => { archive.mutate(template) }}><Archive className="mr-1 h-4 w-4" />{t('templates.archive')}</Button>
         </div>
       ),
     },
@@ -79,15 +81,18 @@ export function TemplateListPage() {
           breadcrumb={<p className={`text-xs font-semibold uppercase tracking-[0.18em] ${textColors.brand}`}>{t('eyebrow')}</p>}
           actions={<Link className={`${tokens.button.base} ${tokens.button.secondary} ${tokens.button.sizes.md}`} to="/admin/country-defaults/assignments">{t('navigation.assignments')}</Link>}
         />
+        {!templates.isError && <p className={`text-sm ${textColors.tertiary}`}>{t('templates.count', { count: templates.data?.length ?? 0 })}</p>}
+        {templates.isError && <div role="alert" className={tokens.alert.error}>{t('templates.loadError')}</div>}
+        {mutationError !== null && <div role="alert" className={tokens.alert.error}>{t(countryDefaultsErrorKey(mutationError))}</div>}
         <section className={tokens.card.base}>
           <label className={`block max-w-sm ${tokens.label.base}`} htmlFor="template-domain">{t('common.domain')}</label>
           <Select id="template-domain" value={domain} onChange={(event) => { if (event.target.value === 'chart_of_accounts') setDomain(event.target.value) }}>
             <option value="chart_of_accounts">{t('domains.chart_of_accounts')}</option>
           </Select>
         </section>
-        <div className={`overflow-hidden rounded-xl border ${borderColors.light} ${semanticColorTokens.surface.base}`}>
+        {!templates.isError && <div className={`overflow-hidden rounded-xl border ${borderColors.light} ${semanticColorTokens.surface.base}`}>
           <DataTable columns={columns} data={templates.data ?? []} keyExtractor={(template) => template.id} isLoading={templates.isLoading} emptyTitle={t('templates.empty')} ariaLabel={t('templates.tableLabel')} />
-        </div>
+        </div>}
       </div>
     </div>
   )

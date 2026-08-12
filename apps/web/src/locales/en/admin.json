@@ -3,6 +3,13 @@
     "defaultsTitle": "Default modules",
     "defaultsHint": "Included with the {{vertical}} vertical — always on, cannot be toggled."
   },
+  "shell": {
+    "brand": "Admin", "panel": "Central admin panel", "portalTitle": "Central admin portal", "portalSubtitle": "Sign in to the administration panel",
+    "email": "Email address", "emailPlaceholder": "admin@example.com", "password": "Password", "passwordPlaceholder": "Enter your password",
+    "signIn": "Sign in", "signingIn": "Signing in…", "signOut": "Sign out",
+    "backToLogin": "Back to regular login", "invalidCredentials": "Invalid credentials", "adminFallback": "Admin",
+    "navigation": { "dashboard": "Dashboard", "tenants": "Tenants", "verticals": "Verticals", "companyOwners": "Company owners", "billing": "Billing", "monitoring": "Monitoring", "auditLogs": "Audit logs" }
+  },
   "verticals": {
     "title": "Vertical Configuration",
     "loading": "Loading verticals...",

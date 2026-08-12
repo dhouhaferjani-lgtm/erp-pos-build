@@ -57,8 +57,8 @@
   },
   "templates": {
     "title": "Accounting templates", "subtitle": "Review versioned charts, their jurisdiction scope, and certification trail.",
-    "tableLabel": "Country default templates", "empty": "No templates in this domain.", "edit": "Edit template",
-    "clone": "Clone", "cloneName": "{{name}} — copy", "archive": "Archive", "count_one": "{{count}} template", "count_many": "{{count}} templates",
+    "tableLabel": "Country default templates", "empty": "No templates in this domain.", "loadError": "The template library could not be loaded. Try again.", "edit": "Edit template",
+    "clone": "Clone", "cloneName": "{{name}} — copy", "archive": "Archive", "count_one": "{{count}} template", "count_other": "{{count}} templates", "count_many": "{{count}} templates",
     "columns": { "template": "Template", "status": "Status", "certification": "Certification", "actions": "Actions" },
     "certification": { "hash": "Hash", "version": "Registry", "by": "Certified by", "at": "Published at" }
   },
@@ -74,7 +74,7 @@
     "validation": { "codeRequired": "Account code is required.", "nameRequired": "Account name is required.", "parentMissing": "The parent code must exist in this template." }
   },
   "validation": {
-    "title": "Validation", "subtitle": "Certification checks remain visible while you edit.", "checking": "Checking template…", "valid": "Ready to certify", "invalid": "Changes required",
+    "title": "Validation", "subtitle": "Certification checks remain visible while you edit.", "checking": "Checking template…", "valid": "Ready to certify", "invalid": "Changes required", "unavailable": "Validation is temporarily unavailable. Try again.",
     "errors": {
       "account_rows_required": "Add at least one account row.",
       "row_fields_required": "Every row needs a code and a name.",
@@ -96,14 +96,22 @@
     }
   },
   "publish": { "title": "Certify and publish", "description": "Publishing locks this version and records the declared jurisdiction scope.", "standard": "Accounting standard", "scope": "Certified jurisdictions", "scopePlaceholder": "TN or *", "scopeHelp": "Enter comma-separated ISO codes, or * by itself.", "confirm": "Confirm publish", "close": "Close publish dialog" },
-  "protection": { "treasury_instrument_literal": "Treasury resolves this account by literal code.", "expense_category_demo_consumer": "Demo expense categories resolve this account by literal code." },
+  "protection": { "treasury_instrument_literal": "Treasury resolves this account by literal code.", "expense_category_demo_consumer": "Demo expense categories resolve this account by literal code.", "unknown": "This account is protected by a platform dependency." },
+  "errors": {
+    "forbidden": "You do not have permission to complete this request.",
+    "conflict": "The request conflicts with the current template lifecycle.",
+    "validation": "Review the submitted values and certification rules.",
+    "server": "The server could not complete the request. Try again.",
+    "generic": "The request could not be completed. Try again."
+  },
   "assignments": {
     "back": "Back to templates", "title": "Country assignments", "subtitle": "Point each jurisdiction at a published template certified for that exact scope.",
-    "catalogVersion": "Country catalog {{version}}", "tableLabel": "Country template assignments", "empty": "No countries are available.",
+    "catalogVersion": "Country catalog {{version}}", "tableLabel": "Country template assignments", "empty": "No countries are available.", "loadError": "Country assignments could not be loaded. Try again.",
+    "templatesForbidden": "You do not have permission to load eligible template options. Current assignments remain visible.", "templatesLoadError": "Eligible template options could not be loaded. Current assignments remain visible.",
     "pinnedAria": "Pinned wildcard assignment", "templateAria": "Template for {{country}}", "selectTemplate": "Select a published template",
     "repoint": "Re-point {{country}}", "confirmTitle": "Re-point {{country}}?", "newCompaniesOnly": "This affects newly created companies only.",
     "confirmDescription": "Existing company accounts are never changed by this assignment.", "confirm": "Confirm re-point",
-    "count_one": "{{count}} assignment", "count_many": "{{count}} assignments",
+    "count_one": "{{count}} assignment", "count_other": "{{count}} assignments", "count_many": "{{count}} assignments",
     "columns": { "country": "Country", "template": "Assigned template", "action": "Action" }
   }
 }

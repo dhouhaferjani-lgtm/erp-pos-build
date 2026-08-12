@@ -8,7 +8,7 @@ import { colorClasses } from '@/lib/designTokens'
 
 import type { AdminRole } from '../stores/adminAuthStore'
 
-const navigation: { labelKey: string; href: string; icon: typeof Shield; roles: readonly AdminRole[] }[] = [
+const navigation: { labelKey: string; href: string; icon: typeof Shield; roles: readonly AdminRole[]; defaultsFeature?: boolean }[] = [
   { labelKey: 'shell.navigation.dashboard', icon: LayoutDashboard, ...adminRoutePolicies.dashboard },
   { labelKey: 'shell.navigation.tenants', icon: Users, ...adminRoutePolicies.tenants },
   { labelKey: 'shell.navigation.verticals', icon: Layers, ...adminRoutePolicies.verticals },
@@ -16,13 +16,14 @@ const navigation: { labelKey: string; href: string; icon: typeof Shield; roles: 
   { labelKey: 'shell.navigation.billing', icon: CreditCard, ...adminRoutePolicies.billing },
   { labelKey: 'shell.navigation.monitoring', icon: Activity, ...adminRoutePolicies.monitoring },
   { labelKey: 'shell.navigation.auditLogs', icon: FileText, ...adminRoutePolicies.auditLogs },
-  { labelKey: 'navigation.templates', icon: BookOpenCheck, ...adminRoutePolicies.countryDefaults },
-  { labelKey: 'navigation.assignments', icon: ListTree, ...adminRoutePolicies.countryDefaultAssignments },
-  { labelKey: 'shell.navigation.supportAccess', icon: Headphones, ...adminRoutePolicies.supportAccess },
+  { labelKey: 'navigation.templates', icon: BookOpenCheck, defaultsFeature: true, ...adminRoutePolicies.countryDefaults },
+  { labelKey: 'navigation.assignments', icon: ListTree, defaultsFeature: true, ...adminRoutePolicies.countryDefaultAssignments },
+  { labelKey: 'supportAccess.navigation', icon: Headphones, ...adminRoutePolicies.supportAccess },
 ]
 
 export function AdminLayout() {
-  const { t } = useTranslation('adminCountryDefaults')
+  const { t } = useTranslation('admin')
+  const { t: tDefaults } = useTranslation('adminCountryDefaults')
   const location = useLocation()
   const navigate = useNavigate()
   const { admin, logout } = useAdminAuthStore()
@@ -69,7 +70,7 @@ export function AdminLayout() {
                     }`}
                   >
                     <item.icon className="h-5 w-5" />
-                    {t(item.labelKey)}
+                    {item.defaultsFeature === true ? tDefaults(item.labelKey) : t(item.labelKey)}
                   </Link>
                 </li>
               )

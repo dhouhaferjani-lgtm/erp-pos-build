@@ -10,7 +10,7 @@ import { homeForAdminRole } from '../lib/adminRolePolicy'
 import { Button, Input } from '@/components/atoms'
 
 export function AdminLoginPage() {
-  const { t } = useTranslation('adminCountryDefaults')
+  const { t } = useTranslation('admin')
   const navigate = useNavigate()
   const setAuth = useAdminAuthStore((state) => state.setAuth)
   const [email, setEmail] = useState('')
