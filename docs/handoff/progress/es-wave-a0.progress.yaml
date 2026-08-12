@@ -48,9 +48,9 @@ milestones:
   - id: M0
     title: "Preflight — contract digest verify (abort on mismatch), HEAD==BASE_SHA, seeded two-context v3 tenant fixture, TAMPERED-FIXTURE toolkit (T-a payload-vs-canonical_bytes, T-b previous_hash from wrong chain_context, T-c fiscal_hash mirror) built on VerifyEventChainCommandTest/ParseFailureResumeTest, narrowed ES-07 claim + do-NOT-rewrite-the-Z-arm record, citation sweep (unresolved=0)"
     review_lenses: [fiscal-pos, treasury]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: f566eec9f56b54e28323a92ecd3067561e3c6f0f
     verdict: null
     last_verdict: null
   - id: M1
