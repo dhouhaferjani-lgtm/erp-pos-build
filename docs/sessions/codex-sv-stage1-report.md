@@ -493,3 +493,5 @@ After commit `b73a353f5`, only the nine M3 production/default/migration/locale f
 M3 review round 1 was a bridge tool error: the Claude invocation exited nonzero with an empty stderr/register. Per the self-review harness it is recorded fail-closed as CHANGES-REQUIRED and consumes one fix round. No implementation finding was emitted, so no speculative code change was made before round 2.
 
 M3 review round 2 failed identically at the bridge layer with an empty error register. It is likewise recorded fail-closed and consumes the second fix round; the locally installed Claude CLI still responds at version 2.1.228.
+
+M3 review round 3 also failed before producing reviewer content. It is recorded fail-closed and consumes the third fix round; no application changes are inferred from an empty tool-error register.
