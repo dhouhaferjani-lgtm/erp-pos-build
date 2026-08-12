@@ -73,8 +73,9 @@ milestones:
     status: review
     fix_rounds: 3
     commit: dde4ba7325744337d66f2263ffe318936932599f
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M5-round4.md
+    last_verdict: CHANGES-REQUIRED
+    updated: cfb0b71e5
   - id: M6
     title: "Admin FE (apps/web/src/features/admin/country-defaults/): templates list, editor grid, assignments, three-role shell, en+fr"
     review_lenses: [frontend-conventions, tenancy-authz]
