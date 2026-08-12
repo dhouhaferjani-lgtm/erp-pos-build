@@ -485,3 +485,7 @@ Deployment instructions and the warning-token grep contract are recorded in `doc
 - Web: `FraudSettingsPage.test.tsx` + `CashDrawerControlsSection.test.tsx`, 10/10; typecheck green.
 - Device: migration v22, cache repository, fraud-settings API, reconciliation, and preview modal, 58/58; after correcting a test-only TypeScript row shape, POS typecheck and v22's 8 cases are green.
 - Pint passes on all touched PHP files. Changed-file React Doctor scans the two web implementation files with no issues (score 93); focused ESLint has no errors, only pre-existing warnings in the edited legacy files.
+
+### Revert-replay
+
+After commit `b73a353f5`, only the nine M3 production/default/migration/locale files were reversed while the new and rewritten tests remained. PostgreSQL failed four of ten selected cases (retail default false, resolver no-row false, and both missing-migration cases); the web suite failed to resolve the removed Arabic compliance bundle; and SQLite reported default `0` instead of `1`. Reapplying the exact patch restored the tree, and the web page test plus typecheck reran green. This replay proves the policy, data migration, device default, and locale evidence depend on the implementation rather than test weakening.
