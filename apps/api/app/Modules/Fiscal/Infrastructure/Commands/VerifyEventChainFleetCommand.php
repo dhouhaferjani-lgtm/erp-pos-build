@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Infrastructure\Commands;
 
-use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Str;
+use Spatie\Permission\PermissionRegistrar;
 use stdClass;
 use Throwable;
 
@@ -18,12 +18,13 @@ use Throwable;
  *
  * The manifest is a JSON object mapping each central-directory tenant UUID to
  * the UUID of an actor inside that tenant. No actor is inferred or shared
- * across tenants. Chain targets are enumerated, while that tenant is bound,
+ * across tenants. The shared actor gate runs while that tenant is bound and
+ * before any `fiscal_events` target query. Authorized targets are enumerated
  * exclusively from the distinct `(terminal_id, chain_context)` pairs present
- * in its `fiscal_events` table. Each target is then delegated to the existing
- * single-chain command, preserving its tenant binding and actor gate exactly.
+ * in that tenant's `fiscal_events` table. Each target is then delegated to the
+ * existing single-chain command, which re-applies the same shared gate.
  */
-final class VerifyEventChainFleetCommand extends TenantScopedCommand
+final class VerifyEventChainFleetCommand extends AuthorizedFiscalChainCommand
 {
     /** @var string */
     protected $signature = 'fiscal:verify-event-chain-fleet
@@ -36,8 +37,9 @@ final class VerifyEventChainFleetCommand extends TenantScopedCommand
         CompanyContext $companyContext,
         private readonly DatabaseManager $databaseManager,
         private readonly Filesystem $filesystem,
+        PermissionRegistrar $permissionRegistrar,
     ) {
-        parent::__construct($companyContext);
+        parent::__construct($companyContext, $permissionRegistrar);
     }
 
     protected function executeCommand(): int
@@ -83,10 +85,16 @@ final class VerifyEventChainFleetCommand extends TenantScopedCommand
             $tenantsProcessed++;
             /** @var list<array{terminal_id: string, chain_context: string}> $targets */
             $targets = [];
+            $authorizationExit = null;
 
             $enumerationExit = $this->forEachTenantNarrowed(
                 $tenantId,
-                function (Tenant $tenant) use (&$targets): int {
+                function (Tenant $tenant) use ($actorId, &$authorizationExit, &$targets): int {
+                    $authorizationExit = $this->authorizeBoundTenantActor($actorId, $tenant->id);
+                    if ($authorizationExit !== self::SUCCESS) {
+                        return $authorizationExit;
+                    }
+
                     $rows = $this->databaseManager->connection()
                         ->table('fiscal_events')
                         ->where('tenant_id', $tenant->id)
@@ -117,7 +125,13 @@ final class VerifyEventChainFleetCommand extends TenantScopedCommand
             );
 
             if ($this->failIfTenantFilterUnvisited($tenantId) !== null || $enumerationExit !== self::SUCCESS) {
-                $this->error(sprintf('TENANT %s: FAILED — chain target enumeration did not complete.', $tenantId));
+                $failureReason = match ($authorizationExit) {
+                    self::FAILURE => 'actor authorization refused verification before chain target enumeration',
+                    2 => 'actor authorization could not be evaluated because of a transient failure',
+                    self::SUCCESS => 'chain target enumeration did not complete',
+                    default => 'tenant binding failed before actor authorization could run',
+                };
+                $this->error(sprintf('TENANT %s: FAILED — %s.', $tenantId, $failureReason));
                 $hasFailure = true;
 
                 continue;

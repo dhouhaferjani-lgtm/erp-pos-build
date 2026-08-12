@@ -202,13 +202,20 @@ final class VerifyEventChainCommandTest extends TestCase
     public function test_fails_when_first_event_previous_hash_does_not_match_genesis_seed(): void
     {
         // Seed one event whose previous_hash is NOT the genesis seed.
-        $canonicalBytes = '{"event":"seq1"}';
         $bogusGenesis = str_repeat('b', 64);
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $bogusGenesis,
+            payload: $this->chainBreakPayload('bogus genesis link'),
+        );
         $this->insertEvent(
             sequenceNumber: 1,
             canonicalBytes: $canonicalBytes,
             previousHash: $bogusGenesis,
             currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
         $this->artisan('fiscal:verify-event-chain', [
@@ -216,15 +223,7 @@ final class VerifyEventChainCommandTest extends TestCase
             '--terminal' => $this->terminalId,
             '--actor-id' => $this->verifierUser->id,
         ])
-            ->expectsOutputToContain('sequence_number 1')
-            // Symfony wraps long single lines across multiple
-            // OutputStyle writeln calls when a TTY width is detected,
-            // so substring assertions across the wrap boundary can be
-            // flaky. The sequence_number 1 check above pins the
-            // structural contract (the break is reported at the right
-            // sequence); the wrapped tail of the message names the
-            // genesis-seed mismatch as documented in the command
-            // docblock.
+            ->expectsOutputToContain('previous_hash linkage mismatch')
             ->assertExitCode(1);
     }
 
@@ -546,7 +545,11 @@ final class VerifyEventChainCommandTest extends TestCase
 
     public function test_fails_when_an_internally_hash_valid_row_is_not_verified(): void
     {
-        $canonicalBytes = '{"event":"quarantined_but_hash_valid"}';
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $this->chainBreakPayload('quarantined but hash valid'),
+        );
         $this->insertEvent(
             sequenceNumber: 1,
             canonicalBytes: $canonicalBytes,
@@ -554,6 +557,9 @@ final class VerifyEventChainCommandTest extends TestCase
             currentHash: hash('sha256', $canonicalBytes),
             integrityStatus: IntegrityStatus::Quarantined,
             integrityExceptionClass: IntegrityExceptionClass::TimeAnomaly,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
         $this->runVerifier()
@@ -588,23 +594,84 @@ final class VerifyEventChainCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_fails_when_pending_row_stored_coordinate_disagrees_with_its_sealed_value(): void
+    {
+        $payload = $this->chainBreakPayload('pending coordinate mismatch');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+            overrides: ['company_id' => Str::uuid()->toString()],
+        );
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('sealed coordinate company_id mismatch')
+            ->assertExitCode(1);
+    }
+
+    public function test_passes_when_pending_row_sealed_coordinates_match(): void
+    {
+        $payload = $this->chainBreakPayload('pending coordinate control');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+        );
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()->assertExitCode(0);
+    }
+
     public function test_fails_when_sequence_numbers_are_not_contiguous_even_if_hash_linkage_is_valid(): void
     {
-        $firstCanonicalBytes = '{"event":"sequence_1"}';
+        $firstCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $this->chainBreakPayload('sequence 1'),
+        );
         $firstHash = hash('sha256', $firstCanonicalBytes);
         $this->insertEvent(
             sequenceNumber: 1,
             canonicalBytes: $firstCanonicalBytes,
             previousHash: $this->genesisSeed,
             currentHash: $firstHash,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
-        $thirdCanonicalBytes = '{"event":"sequence_3"}';
+        $thirdCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 3,
+            previousHash: $firstHash,
+            payload: $this->chainBreakPayload('sequence 3'),
+        );
         $this->insertEvent(
             sequenceNumber: 3,
             canonicalBytes: $thirdCanonicalBytes,
             previousHash: $firstHash,
             currentHash: hash('sha256', $thirdCanonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
         $this->runVerifier()
@@ -873,9 +940,10 @@ final class VerifyEventChainCommandTest extends TestCase
     {
         $previousHash = $this->genesisSeed;
         for ($seq = 1; $seq <= $length; $seq++) {
-            $canonicalBytes = json_encode(
-                ['event' => 'seq'.$seq, 'sequence_number' => $seq],
-                JSON_THROW_ON_ERROR,
+            $canonicalBytes = $this->canonicalEnvelope(
+                sequenceNumber: $seq,
+                previousHash: $previousHash,
+                payload: $this->chainBreakPayload('valid chain fixture '.$seq),
             );
             $currentHash = hash('sha256', $canonicalBytes);
 
@@ -884,6 +952,9 @@ final class VerifyEventChainCommandTest extends TestCase
                 canonicalBytes: $canonicalBytes,
                 previousHash: $previousHash,
                 currentHash: $currentHash,
+                eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+                eventTimeDevice: '2026-08-12T07:00:00Z',
+                businessDate: '2026-08-12',
             );
 
             $previousHash = $currentHash;
@@ -906,9 +977,10 @@ final class VerifyEventChainCommandTest extends TestCase
     {
         $previousHash = $this->genesisSeed;
         for ($seq = 1; $seq <= $totalLength; $seq++) {
-            $canonicalBytes = json_encode(
-                ['event' => 'seq'.$seq, 'sequence_number' => $seq],
-                JSON_THROW_ON_ERROR,
+            $canonicalBytes = $this->canonicalEnvelope(
+                sequenceNumber: $seq,
+                previousHash: $previousHash,
+                payload: $this->chainBreakPayload('tampered chain fixture '.$seq),
             );
 
             if ($seq === $atSequence) {
@@ -925,6 +997,9 @@ final class VerifyEventChainCommandTest extends TestCase
                 canonicalBytes: $canonicalBytes,
                 previousHash: $previousHash,
                 currentHash: $currentHash,
+                eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+                eventTimeDevice: '2026-08-12T07:00:00Z',
+                businessDate: '2026-08-12',
             );
 
             // The next row chains off whatever current_hash was stored

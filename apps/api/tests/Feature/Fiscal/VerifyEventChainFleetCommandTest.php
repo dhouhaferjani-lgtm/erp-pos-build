@@ -113,7 +113,23 @@ final class VerifyEventChainFleetCommandTest extends TestCase
                 'Actor %s lacks the fiscal.events.verify_chain permission',
                 $fixture['actor']->id,
             ))
-            ->expectsOutputToContain(sprintf('TENANT %s: FAILED', $fixture['tenant']->id))
+            ->doesntExpectOutputToContain('enumerated')
+            ->doesntExpectOutputToContain(sprintf('terminal=%s', $fixture['terminal']->id))
+            ->expectsOutputToContain('0 chain(s) invoked')
+            ->assertExitCode(1);
+    }
+
+    public function test_missing_actor_is_rejected_before_chain_targets_are_enumerated(): void
+    {
+        $fixture = $this->createTenantChain('missing-actor');
+        $missingActorId = Str::uuid()->toString();
+        $manifest = $this->writeManifest([$fixture['tenant']->id => $missingActorId]);
+
+        $this->artisan('fiscal:verify-event-chain-fleet', ['--manifest' => $manifest])
+            ->expectsOutputToContain(sprintf('Unknown actor user id %s', $missingActorId))
+            ->doesntExpectOutputToContain('enumerated')
+            ->doesntExpectOutputToContain(sprintf('terminal=%s', $fixture['terminal']->id))
+            ->expectsOutputToContain('0 chain(s) invoked')
             ->assertExitCode(1);
     }
 
@@ -263,24 +279,70 @@ final class VerifyEventChainFleetCommandTest extends TestCase
         string $genesisSeed,
         bool $validHash = true,
     ): void {
-        $canonicalBytes = json_encode([
+        $operatorId = Str::uuid()->toString();
+        $eventTimeDevice = '2026-08-12T07:00:00Z';
+        $isZSession = in_array($chainContext, ['z_session', 'training_z_session'], true);
+        $eventType = $isZSession
+            ? FiscalEventType::SESSION_OPEN
+            : FiscalEventType::CHAIN_BREAK_DETECTED;
+        $payload = $isZSession
+            ? [
+                'business_date' => '2026-08-12',
+                'currency_code' => 'TND',
+                'currency_scale' => 3,
+                'opened_at_device' => '2026-08-12T07:00:00.000Z',
+                'opening_float_amount' => '100.000',
+                'operator_id' => $operatorId,
+                'operator_name' => 'Fleet Operator',
+                'session_id' => Str::uuid()->toString(),
+                'shift_id' => Str::uuid()->toString(),
+                'shift_number' => 1,
+                'terminal_id' => $terminalId,
+                'terminal_label' => 'Fleet Terminal',
+                'training_flag' => $chainContext === 'training_z_session',
+            ]
+            : [
+                'last_good_hash' => str_repeat('b', 64),
+                'last_good_sequence' => 0,
+                'offending_record_reference' => [
+                    'observed_previous_hash' => $genesisSeed,
+                    'sequence_number' => 1,
+                    'terminal_id' => $terminalId,
+                ],
+                'reason' => 'fleet fixture',
+            ];
+        $canonicalEnvelope = [
+            'business_date' => '2026-08-12',
             'chain_context' => $chainContext,
-            'event' => 'fleet_fixture',
+            'company_id' => $companyId,
+            'event_time_device' => $eventTimeDevice,
+            'event_type' => $eventType->value,
+            'event_version' => 1,
+            'operator_id' => $operatorId,
+            'payload' => $payload,
+            'previous_hash' => $genesisSeed,
+            'reference_document_id' => null,
+            'reference_event_id' => null,
+            'sequence_number' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'tenant_id' => $tenantId,
             'terminal_id' => $terminalId,
-        ], JSON_THROW_ON_ERROR);
+        ];
+        ksort($canonicalEnvelope);
+        $canonicalBytes = json_encode($canonicalEnvelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
 
         DB::table('fiscal_events')->insert([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $tenantId,
             'company_id' => $companyId,
             'terminal_id' => $terminalId,
-            'operator_id' => Str::uuid()->toString(),
-            'event_type' => FiscalEventType::SALE_RECEIPT->value,
+            'operator_id' => $operatorId,
+            'event_type' => $eventType->value,
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => 1,
-            'event_time_device' => Carbon::now('UTC'),
-            'business_date' => Carbon::now('UTC')->startOfDay(),
+            'event_time_device' => $eventTimeDevice,
+            'business_date' => '2026-08-12',
             'chain_context' => $chainContext,
             'last_server_time_seen' => null,
             'server_received_at' => Carbon::now('UTC'),

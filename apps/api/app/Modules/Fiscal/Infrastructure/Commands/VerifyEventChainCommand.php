@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Infrastructure\Commands;
 
-use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
 use App\Modules\Fiscal\Application\Services\StrictCanonicalParser;
@@ -12,7 +11,6 @@ use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
-use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use Illuminate\Database\ConnectionInterface;
@@ -89,10 +87,8 @@ use Throwable;
  * `fiscal:verify-event-chain-fleet`, whose explicit tenant-to-actor manifest
  * delegates every enumerated chain back to this command without weakening the
  * actor gate or tenant binding.
- *
- * The chain-walking LOGIC is untouched.
  */
-final class VerifyEventChainCommand extends TenantScopedCommand
+final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
 {
     /** @var string */
     protected $signature = 'fiscal:verify-event-chain '.
@@ -109,10 +105,10 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         CompanyContext $companyContext,
         private readonly DatabaseManager $databaseManager,
         private readonly FiscalIntegrityProvider $integrityProvider,
-        private readonly PermissionRegistrar $permissionRegistrar,
+        PermissionRegistrar $permissionRegistrar,
         private readonly StrictCanonicalParser $canonicalParser,
     ) {
-        parent::__construct($companyContext);
+        parent::__construct($companyContext, $permissionRegistrar);
     }
 
     /**
@@ -209,62 +205,9 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         string $chainContext,
         int $fromSequence,
     ): int {
-        // ---- Permission gate (Task 24 standing pattern) ----
-        // `users` is a TENANT table: this lookup only resolves once tenancy is
-        // bound, which is why it now lives here rather than at the top of the
-        // command.
-        //
-        // The `tenant_id` predicate is redundant under database-per-tenant and
-        // load-bearing in single-schema compatibility mode, exactly like every
-        // other query in this closure (2026-08-05 wave-2 review, tenancy R3).
-        // Without it an actor belonging to tenant B resolved for a `--tenant=A`
-        // run, and `setPermissionsTeamId($actor->tenant_id)` below then
-        // evaluated `can()` against B's team — B's roles authorising chain
-        // verification over A's rows.
-        //
-        // M3 (2026-08-05 fiscal review): the lookup is a DB query, and a query
-        // fault here escapes into `forEachTenant()`'s continue-on-throw handler,
-        // which scores it FAILURE (1) — "validation error" in this command's
-        // contract. A DB outage is not a validation error; it is the transient
-        // condition exit 2 exists for and an operator should retry.
-        try {
-            $actor = User::query()->where('tenant_id', $tenantId)->find($actorId);
-        } catch (Throwable $e) {
-            Log::critical('VerifyEventChainCommand: actor lookup failed; cannot evaluate the permission gate.', [
-                'actor_id' => $actorId,
-                'tenant_id' => $tenantId,
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ]);
-            $this->error('Could not read the actor for the permission gate (transient failure); re-run to retry.');
-
-            return 2;
-        }
-
-        if ($actor === null) {
-            $this->error(sprintf('Unknown actor user id %s.', $actorId));
-
-            return self::FAILURE;
-        }
-
-        // Re-scope the Spatie registrar to the actor's tenant before
-        // checking `can()`. Mirrors EnqueueResolvedEventProjectionsCommand
-        // (Task 24 R2 — T24-P1). Always restored in finally per the
-        // Task 18 F1 / Task 23 R3-F2 try/finally discipline.
-        $previousTeamId = $this->permissionRegistrar->getPermissionsTeamId();
-        try {
-            $this->permissionRegistrar->setPermissionsTeamId($actor->tenant_id);
-
-            if (! $actor->can('fiscal.events.verify_chain')) {
-                $this->error(sprintf(
-                    'Actor %s lacks the fiscal.events.verify_chain permission.',
-                    $actorId,
-                ));
-
-                return self::FAILURE;
-            }
-        } finally {
-            $this->permissionRegistrar->setPermissionsTeamId($previousTeamId);
+        $authorizationExit = $this->authorizeBoundTenantActor($actorId, $tenantId);
+        if ($authorizationExit !== self::SUCCESS) {
+            return $authorizationExit;
         }
 
         // ---- Walk the chain ----
@@ -452,35 +395,45 @@ final class VerifyEventChainCommand extends TenantScopedCommand
                 );
             }
 
-            // (4) For parsed rows, independently derive the envelope and
-            // payload semantics from frozen canonical bytes. The parse result
-            // is also the only trustworthy source for re-validating the sealed
-            // coordinate set below.
-            if ($row->payload_parse_status === PayloadParseStatus::Parsed) {
-                $parsed = $this->canonicalParser->parse($canonicalBytes, $row->event_type);
+            // (4) Independently derive the envelope from frozen canonical
+            // bytes for every row, including rows whose projection payload is
+            // still pending. Projection status controls only the semantic
+            // comparison against the mutable `payload` column; it cannot
+            // weaken verification of the sealed coordinates.
+            $parsed = $this->canonicalParser->parse($canonicalBytes, $row->event_type);
 
-                if (! $parsed->ok || $parsed->payload === null || $parsed->envelope === null) {
+            if (! $parsed->ok || $parsed->envelope === null) {
+                $incidents[] = sprintf(
+                    'CHAIN BREAK at sequence_number %d (id %s): sealed coordinates could not be derived from canonical_bytes (%s)',
+                    $row->sequence_number,
+                    $row->id,
+                    $parsed->failureReason ?? 'unknown parse failure',
+                );
+
+                if ($row->payload_parse_status === PayloadParseStatus::Parsed) {
                     $incidents[] = sprintf(
                         'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes — canonical payload could not be derived (%s)',
                         $row->sequence_number,
                         $row->id,
                         $parsed->failureReason ?? 'unknown parse failure',
                     );
-                } else {
-                    if (! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $parsed->payload)) {
+                }
+            } else {
+                foreach ($this->sealedCoordinateMismatches($row, $parsed->envelope) as $mismatch) {
+                    $incidents[] = sprintf(
+                        'CHAIN BREAK at sequence_number %d (id %s): sealed coordinate %s',
+                        $row->sequence_number,
+                        $row->id,
+                        $mismatch,
+                    );
+                }
+
+                if ($row->payload_parse_status === PayloadParseStatus::Parsed) {
+                    if ($parsed->payload === null || ! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $parsed->payload)) {
                         $incidents[] = sprintf(
                             'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes',
                             $row->sequence_number,
                             $row->id,
-                        );
-                    }
-
-                    foreach ($this->sealedCoordinateMismatches($row, $parsed->envelope) as $mismatch) {
-                        $incidents[] = sprintf(
-                            'CHAIN BREAK at sequence_number %d (id %s): sealed coordinate %s',
-                            $row->sequence_number,
-                            $row->id,
-                            $mismatch,
                         );
                     }
                 }
@@ -519,8 +472,7 @@ final class VerifyEventChainCommand extends TenantScopedCommand
 
     /**
      * Compare JSON-object semantics without treating object key order as data.
-     */
-    /**
+     *
      * @param  array<string, mixed>  $stored
      * @param  array<string, mixed>  $sealed
      */
