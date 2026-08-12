@@ -66,11 +66,11 @@ milestones:
   - id: M2
     title: "ES-07 (NARROWED) — pos:verify-chains COVERAGE/REPORTING + the MIRROR. Defect (a): fiscal-era receipts are not counted, so a terminal whose receipts are all projected returns is_valid:true over a count of 0 and the fiscal arm's result is never surfaced per-arm. Defect (b): NO pos_receipts.fiscal_hash <-> fiscal_events.current_hash cross-check exists anywhere — add it as a new arm. ReceiptHashService::verifyTerminalChain() ALREADY self-partitions (fiscal arm canonical-hashes; legacy arm re-applies whereNull and pipe-hashes only fiscal_event_id IS NULL rows), so a canonical-bytes row can never reach a pipe recomputation — the implementer CHOOSES the mechanism (safe filter removal + per-arm reporting, or an explicit fiscal-era pass). The Z arm is NOT blind — out of scope beyond what the mirror requires. RED on T-c + tampered projected chain; per-arm counts must prove nonzero fiscal-era coverage; negative control on an all-legacy tenant."
     review_lenses: [fiscal-pos, treasury]
-    status: review
-    fix_rounds: 0
+    status: blocked_architecture
+    fix_rounds: 1
     commit: 6a0e593c3
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/es-wave-a0/M2-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M3
     title: "ES-06 DETECTION half only (divergence on sealed rows detectable + demonstrated red; second-approver/correcting-event workflow is owner-gated D-8 -> blocked_owner if reached) + the ES-16/ES-17 straggler contract PROPOSALS as a COMMITTED artifact at docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md (the harness reviews a committed range, so the proposal must be IN the diff the reviewer inspects). This milestone's bridge review approves/rejects THAT artifact. NO straggler implementation here."
     review_lenses: [fiscal-pos, treasury]
@@ -104,5 +104,8 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
-blockers: []
+status: blocked_architecture      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers:
+  - "STOP C — M2's clean fiscal-era receipt-verification contract (dispatch M2, docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md:481-503) now necessarily invokes ReceiptHashService::verifyTerminalChainFiscalArm(), but the accepted M0 evidence records that this arm flattens operational + z_session into one sequence stream and cannot verify the required normal v3 two-context shape (docs/handoff/reviews/es-wave-a0/M0-preflight-evidence.md:79-83)."
+  - "The needed context partition is not authorized in M2 and overlaps the later ES-09/context correctness allocation (dispatch M4, docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md:525-542). Opus M2 round 1 therefore requires either an explicit re-scope/owner ruling or permission to move the ReceiptHashService context-partition fix into M2; see docs/handoff/reviews/es-wave-a0/M2-round1.md finding 2."
+  - "M2-round1 finding 1 also requires restoring pending_seal exclusion, and findings 3-4 require reporting/controller evidence fixes; these are bounded but intentionally not continued after STOP C was reached."
