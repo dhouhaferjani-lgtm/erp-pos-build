@@ -8,6 +8,7 @@ use App\Models\SuperAdmin;
 use App\Modules\CountryDefaults\Application\Services\TemplatePublishingService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
+use App\Modules\CountryDefaults\Infrastructure\Import\LegacyCoaBootstrapImporter;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
 use DomainException;
@@ -442,6 +443,12 @@ final class TemplateImmutabilityTest extends TestCase
             $connection->table('country_template_assignments')->delete();
             $connection->table('admin_template_accounts')->delete();
             $connection->table('admin_templates')->delete();
+            app(LegacyCoaBootstrapImporter::class)->importAll();
+            self::assertSame(
+                3,
+                $connection->table('admin_templates')->whereNotNull('bootstrap_key')->count(),
+                'Out-of-transaction guard cleanup must restore migration-owned bootstrap fixtures.',
+            );
             while ($connection->transactionLevel() < $initialLevel) {
                 $connection->beginTransaction();
             }
