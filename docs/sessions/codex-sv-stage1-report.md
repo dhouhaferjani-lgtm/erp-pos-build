@@ -442,3 +442,20 @@ The same fix round adds rendered English and French over/short cases, formats Co
 Fix-round revert-replay reversed the three production files while retaining all fix tests. Three of 38 cases failed: the fractional expected value returned to `110.00`, and English/French Counted returned to raw `100`. The four over/short parameter cases remained green because their locale/default-value coverage already exercises production branches introduced in the main M2 commit. Replaying the production patch restored 38/38. A root-level `pnpm vitest` attempt could not resolve the workspace binary and was discarded; the valid run executed from `apps/pos`.
 
 M2 round 2 accepted the milestone. M5 carries the accepted P3s: pin all seven summary values directly from both locale JSON files; record that separately rounded display line 2 can differ by one minor unit from the byte-preserved authoritative expected value for structurally possible sub-scale input (no live writer found); and retain the owner-facing notes about exact dossier labels being narrower than refund/account-payment contents and the instruction's muted presentation.
+
+## M3 — SV-9 blind counting on everywhere
+
+### R-6 prerequisite guard outcome
+
+The conditional owner gate does not fire. Each required touch point was walked before the first M3 code commit:
+
+| Touch point | G-3 / Stage-5 prerequisite? | Reason |
+|---|---|---|
+| Backend model attributes and `getDefaults()` | No | Supplies creation/no-row count-screen policy only; it neither reads nor writes Treasury state. |
+| `defaultsForVertical()` and vertical tests | No | Removes the retired vertical split in the same settings default; no posting or backfill dependency. |
+| Persisted-false settings migration | No | Updates only `company_fraud_settings.require_blind_cash_count`; it does not touch shifts, receipts, fiscal rows, repositories, accounts, or the GL flag. |
+| Historical schema column default | No | Governs newly inserted settings rows at the database boundary only. |
+| Web initial state and row-less fallback | No | Prevents the admin form from round-tripping an absent value back to false; it is presentation/settings transport. |
+| Device SQLite cache default | No | Governs pre-first-sync concealment behavior only; server sync still overwrites the cached setting. |
+
+G-3 backfills Treasury opening float and drawer-operation accounting during a disabled GL window. None of these count-screen concealment settings consumes that accounting data or enables `TREASURY_SHIFT_VARIANCE_GL_ENABLED`. The dossier's independent Stage-1 placement therefore permits M3 to proceed.
