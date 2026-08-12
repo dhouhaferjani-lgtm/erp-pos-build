@@ -113,10 +113,33 @@ Important issues and returned **Ready**.
 
 ### Load-bearing disable proofs
 
-Each temporary one-line disable was restored before the next command. These
-are the exact PostgreSQL commands and relevant raw terminal output.
+Each temporary one-line disable and restore was performed with the
+`apply_patch` tool, not a retained shell command. The exact source transitions
+are recorded below. No dedicated `git diff --exit-code`/clean-diff command was
+run after each individual restore, so none is claimed. After all restores, the
+full working diff was inspected and `git diff --check` passed before the final
+suites and commit. Post-commit, this documentation-only round also ran:
+
+```bash
+git show a43a9a3e7:apps/api/app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php | rg -n 'false &&|foreach \(\[\] as' || true
+git show a43a9a3e7:apps/api/app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainFleetCommand.php | rg -n 'false &&' || true
+git status --porcelain=v1
+```
+
+The raw output was empty: the committed production files contain none of the
+temporary disable forms and the worktree was clean before this evidence edit.
+This is a final-state check, not retroactive per-proof clean-diff evidence.
 
 Payload semantic comparison:
+
+- Temporary manual `apply_patch` in
+  `VerifyEventChainCommand::walkChain()`: changed
+  `if ($parsed->payload === null || ! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $parsed->payload))`
+  to
+  `if (false && ($parsed->payload === null || ! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $parsed->payload)))`,
+  disabling only the incident branch.
+- Restore manual `apply_patch`: removed that `false &&` prefix and restored the
+  original conditional exactly before the next proof.
 
 ```bash
 APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_parsed_payload_diverges_from_canonical_bytes|passes_when_parsed_payload_semantically_matches_canonical_bytes)/'
@@ -132,6 +155,13 @@ Tests: 1 failed, 1 passed (3 assertions)
 
 Integrity status:
 
+- Temporary manual `apply_patch` in
+  `VerifyEventChainCommand::walkChain()`: changed
+  `if ($row->integrity_status !== IntegrityStatus::Verified)` to
+  `if (false && $row->integrity_status !== IntegrityStatus::Verified)`.
+- Restore manual `apply_patch`: removed the `false &&` prefix and restored the
+  original status conditional before the next proof.
+
 ```bash
 APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_an_internally_hash_valid_row_is_not_verified|passes_on_a_valid_seeded_chain)/'
 ```
@@ -145,6 +175,16 @@ Tests: 1 failed, 1 passed (4 assertions)
 ```
 
 Sealed coordinates, including `pending`:
+
+- Temporary manual `apply_patch` in
+  `VerifyEventChainCommand::walkChain()`: replaced
+  `foreach ($this->sealedCoordinateMismatches($row, $parsed->envelope) as $mismatch)`
+  with `foreach ([] as $mismatch)`, disabling only emission of sealed-coordinate
+  incidents for both parsed and pending rows.
+- Restore manual `apply_patch`: replaced `foreach ([] as $mismatch)` with the
+  original
+  `foreach ($this->sealedCoordinateMismatches($row, $parsed->envelope) as $mismatch)`
+  iteration before the next proof.
 
 ```bash
 APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_a_stored_coordinate_disagrees_with_its_sealed_value|passes_when_parsed_payload_semantically_matches_canonical_bytes|fails_when_pending_row_stored_coordinate_disagrees_with_its_sealed_value|passes_when_pending_row_sealed_coordinates_match)/'
@@ -162,6 +202,13 @@ Tests: 2 failed, 2 passed (6 assertions)
 
 Sequence contiguity:
 
+- Temporary manual `apply_patch` in
+  `VerifyEventChainCommand::walkChain()`: changed
+  `if ($row->sequence_number !== $expectedSequence)` to
+  `if (false && $row->sequence_number !== $expectedSequence)`.
+- Restore manual `apply_patch`: removed the `false &&` prefix and restored the
+  original gap conditional before the next proof.
+
 ```bash
 APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_sequence_numbers_are_not_contiguous_even_if_hash_linkage_is_valid|passes_on_a_valid_seeded_chain)/'
 ```
@@ -176,6 +223,15 @@ Tests: 1 failed, 1 passed (4 assertions)
 
 Fleet pre-enumeration authorization short-circuit:
 
+- Temporary manual `apply_patch` in the bound-tenant closure of
+  `VerifyEventChainFleetCommand::executeCommand()`: changed
+  `if ($authorizationExit !== self::SUCCESS)` to
+  `if (false && $authorizationExit !== self::SUCCESS)`. This allowed the
+  target query to run after the shared gate returned failure, reproducing the
+  count/coordinate exposure that the new tests forbid.
+- Restore manual `apply_patch`: removed the `false &&` prefix and restored the
+  pre-enumeration short-circuit before final verification.
+
 ```bash
 APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php --filter='/test_(unauthorized_actor_is_reported_by_the_existing_actor_gate|missing_actor_is_rejected_before_chain_targets_are_enumerated)/'
 ```
@@ -188,11 +244,16 @@ Output does not contain "0 chain(s) invoked". (both cases)
 Tests: 2 failed (14 assertions)
 ```
 
-### Behavioral baseline replay
+### Pre-implementation/test-only baseline replay (not a commit revert)
 
-The post-review commit no longer cleanly reverts `76ec7c7e7` because the same
-files have follow-up edits. The behavior was therefore replayed at its exact
-test-only parent `03e11782e` in a disposable detached worktree:
+This section is deliberately **not** commit-level revert/restore evidence for
+round-one commit `a43a9a3e7`. No `git revert` of `a43a9a3e7` was performed.
+The post-review files overlap the earlier behavioral commit `76ec7c7e7`; an
+attempted `git revert --no-commit 76ec7c7e7` in a disposable worktree conflicted
+and was immediately aborted without running tests, so it is not evidence.
+
+The retained round-one evidence below is a pre-implementation baseline replay
+at the exact test-only commit `03e11782e` in a disposable detached worktree:
 
 ```bash
 git checkout --detach 03e11782e
@@ -210,6 +271,15 @@ FAIL  Tests\Feature\Fiscal\VerifyEventChainCommandTest
 Expected status code 1 but received 0. (all four tamper cases)
 Tests: 4 failed, 2 warnings (11 assertions)
 ```
+
+Explicit deviation: the original M1 behavioral commit `76ec7c7e7` had a true
+`git revert --no-commit` / restore replay, recorded earlier in this document.
+Round-one commit `a43a9a3e7` did not receive its own commit-level revert replay.
+Its load-bearing evidence is instead the red-first focused tests, the five
+individual temporary-disable proofs above, the pre-implementation baseline
+replay, the architecture base/HEAD comparison, and the final green paths. This
+evidence does not claim those are equivalent to a commit-level revert/restore
+operation.
 
 ### Final dedicated PostgreSQL paths
 
