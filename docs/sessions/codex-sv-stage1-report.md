@@ -367,6 +367,7 @@ PHPUnit-only references were also enumerated: the new reflection contract plus `
 - Red: the new annotation/no-shipped-client contract failed because the reflection docblock did not contain `@deprecated` (1 failed, 2 assertions).
 - Green on fresh PostgreSQL database `autoerp_sv_stage1_m1_green2_test`: `ZReportServerAuthoringChokepointTest.php`, `ServerReportAuthoringUnreachabilityTest.php`, and `FiscalStatusFilterTest.php` — 10 cases, 8790 assertions, exit 0.
 - The first green attempt caught a test-only regex defect: TypeScript omits semicolons in that interface. The assertion was corrected to match the actual source style and rerun green; no production change was made for that failure.
+- Revert-replay after commit `2d7503018`: reversing only the five implementation/artifact files while retaining the new contract test reproduced the missing-`@deprecated` failure (exit 1, 2 assertions); replaying the exact non-empty patch restored a clean tree. The first replay command used root-relative pathspecs from `apps/api` and therefore produced no patch; that invalid attempt was discarded before the validated root-level replay.
 
 ### Artefact correction and scope fence
 
