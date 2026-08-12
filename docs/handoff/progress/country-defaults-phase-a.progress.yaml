@@ -79,9 +79,9 @@ milestones:
   - id: M6
     title: "Admin FE (apps/web/src/features/admin/country-defaults/): templates list, editor grid, assignments, three-role shell, en+fr"
     review_lenses: [frontend-conventions, tenancy-authz]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 92ac4768eb09e1258858afdb10ca5c3e241436bc
     verdict: null
     last_verdict: null
   - id: M7
