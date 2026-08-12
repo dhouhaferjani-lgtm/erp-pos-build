@@ -12,7 +12,9 @@ changing its 0/1/2 single-chain contract:
 | sealed coordinate set | frozen `company_id` differs from stored row | matching parsed envelope fixture | disabling only coordinate comparison made that fixture exit 0 while the matching parsed fixture remained green |
 | `sequence_number` contiguity | sequence 1 links directly to sequence 3 with valid hashes/linkage | existing valid seeded chain | disabling only the gap check made the gap fixture exit 0 while the valid chain remained green |
 
-The sealed coordinate set compared for every successfully parsed row is:
+Canonical bytes are strictly parsed for every row, regardless of
+`payload_parse_status`. When an envelope is derivable, the sealed coordinate
+set compared is:
 `business_date`, `chain_context`, `company_id`, `event_time_device`,
 `event_type`, `event_version`, `operator_id`, `previous_hash`,
 `reference_document_id`, `reference_event_id`, `sequence_number`,
@@ -38,16 +40,20 @@ WHERE tenant_id = :bound_tenant
 ORDER BY terminal_id, chain_context
 ```
 
-Every enumerated target is delegated to the existing
+The manifest actor is authorized inside bound tenancy before this query runs.
+The shared gate performs the tenant-qualified user lookup,
+`can('fiscal.events.verify_chain')`, and Spatie team re-scope/restoration.
+Unauthorized or missing actors therefore expose neither target counts nor
+terminal/context coordinates and invoke zero chains. Every authorized target
+is delegated to the existing
 `fiscal:verify-event-chain` command with that manifest tenant, terminal,
-context, and supplied actor. Therefore the actor lookup inside the bound
-tenant, `can('fiscal.events.verify_chain')`, Spatie team re-scope/restoration,
-and tenant binding remain owned by the existing command unchanged. There is no
+context, and supplied actor; the same shared gate is applied again. There is no
 service account, identity model, or implicit actor resolution. Zero-pair
 tenants fail loudly rather than being reported as verified over zero chains.
 
 Driver coverage: clean multi-tenant success; missing directory tenant; unknown
-manifest tenant; unauthorized actor; cross-tenant actor; malformed JSON;
+manifest tenant; unauthorized actor before enumeration; missing actor before
+enumeration; cross-tenant actor; malformed JSON;
 malformed entry; one broken tenant with continued clean-tenant execution and
 aggregate non-zero; per-tenant output; zero-data refusal; and distinct
 terminal/context enumeration.
@@ -75,14 +81,14 @@ No stale test process/session remained. The controller-authorized disposable
 database `autoerp_es_wave_a0_test` was dropped with `FORCE`, recreated, and the
 exact paths were rerun serially:
 
-- `VerifyEventChainCommandTest.php`: **24 passed, 92 assertions**.
-- `VerifyEventChainFleetCommandTest.php`: **10 passed, 46 assertions**.
+- `VerifyEventChainCommandTest.php`: **26 passed, 95 assertions**.
+- `VerifyEventChainFleetCommandTest.php`: **11 passed, 54 assertions**.
 - `ParseFailureResumeTest.php`: **21 passed, 110 assertions**.
 
 Formatting and static analysis:
 
 - Pint `--test` on all six touched PHP files: pass.
-- PHPStan level 8 on all three touched production files: no errors.
+- PHPStan level 8 on the four production paths in scope: no errors.
 - `ConsoleCommandTenantContextTest.php`: known baseline red. At test-only
   commit `03e11782e` and implementation HEAD it reports the identical eleven
   pre-existing unclassified commands. `VerifyEventChainFleetCommand` adds no
@@ -98,3 +104,190 @@ V3 `—`
 
 No event class, migration, signature assertion, receipt mirror, POS Z arm,
 parse-resolution workflow, or fiscal emission was changed in M1.
+
+## Fix round 1 — exact command and output record
+
+Implementation commit: `a43a9a3e7` (`Phase 0.1.3: Close M1 verification
+review findings`). The completion-review follow-up found no Critical or
+Important issues and returned **Ready**.
+
+### Load-bearing disable proofs
+
+Each temporary one-line disable was restored before the next command. These
+are the exact PostgreSQL commands and relevant raw terminal output.
+
+Payload semantic comparison:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_parsed_payload_diverges_from_canonical_bytes|passes_when_parsed_payload_semantically_matches_canonical_bytes)/'
+```
+
+```text
+FAIL  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+⨯ fails when parsed payload diverges from canonical bytes
+✓ passes when parsed payload semantically matches canonical bytes
+Expected status code 1 but received 0.
+Tests: 1 failed, 1 passed (3 assertions)
+```
+
+Integrity status:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_an_internally_hash_valid_row_is_not_verified|passes_on_a_valid_seeded_chain)/'
+```
+
+```text
+FAIL  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+✓ passes on a valid seeded chain
+⨯ fails when an internally hash valid row is not verified
+Expected status code 1 but received 0.
+Tests: 1 failed, 1 passed (4 assertions)
+```
+
+Sealed coordinates, including `pending`:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_a_stored_coordinate_disagrees_with_its_sealed_value|passes_when_parsed_payload_semantically_matches_canonical_bytes|fails_when_pending_row_stored_coordinate_disagrees_with_its_sealed_value|passes_when_pending_row_sealed_coordinates_match)/'
+```
+
+```text
+FAIL  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+✓ passes when parsed payload semantically matches canonical bytes
+⨯ fails when a stored coordinate disagrees with its sealed value
+⨯ fails when pending row stored coordinate disagrees with its sealed value
+✓ passes when pending row sealed coordinates match
+Expected status code 1 but received 0. (both mismatch cases)
+Tests: 2 failed, 2 passed (6 assertions)
+```
+
+Sequence contiguity:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_sequence_numbers_are_not_contiguous_even_if_hash_linkage_is_valid|passes_on_a_valid_seeded_chain)/'
+```
+
+```text
+FAIL  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+✓ passes on a valid seeded chain
+⨯ fails when sequence numbers are not contiguous even if hash linkage is valid
+Expected status code 1 but received 0.
+Tests: 1 failed, 1 passed (4 assertions)
+```
+
+Fleet pre-enumeration authorization short-circuit:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php --filter='/test_(unauthorized_actor_is_reported_by_the_existing_actor_gate|missing_actor_is_rejected_before_chain_targets_are_enumerated)/'
+```
+
+```text
+FAIL  Tests\Feature\Fiscal\VerifyEventChainFleetCommandTest
+⨯ unauthorized actor is reported by the existing actor gate
+⨯ missing actor is rejected before chain targets are enumerated
+Output does not contain "0 chain(s) invoked". (both cases)
+Tests: 2 failed (14 assertions)
+```
+
+### Behavioral baseline replay
+
+The post-review commit no longer cleanly reverts `76ec7c7e7` because the same
+files have follow-up edits. The behavior was therefore replayed at its exact
+test-only parent `03e11782e` in a disposable detached worktree:
+
+```bash
+git checkout --detach 03e11782e
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php --filter='/test_(fails_when_parsed_payload_diverges_from_canonical_bytes|passes_when_parsed_payload_semantically_matches_canonical_bytes|fails_when_an_internally_hash_valid_row_is_not_verified|fails_when_a_stored_coordinate_disagrees_with_its_sealed_value|fails_when_sequence_numbers_are_not_contiguous_even_if_hash_linkage_is_valid|passes_on_a_valid_seeded_chain)/'
+```
+
+```text
+FAIL  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+! passes on a valid seeded chain (warning only)
+⨯ fails when parsed payload diverges from canonical bytes
+! passes when parsed payload semantically matches canonical bytes (warning only)
+⨯ fails when an internally hash valid row is not verified
+⨯ fails when a stored coordinate disagrees with its sealed value
+⨯ fails when sequence numbers are not contiguous even if hash linkage is valid
+Expected status code 1 but received 0. (all four tamper cases)
+Tests: 4 failed, 2 warnings (11 assertions)
+```
+
+### Final dedicated PostgreSQL paths
+
+After a repeated `RefreshDatabase` cycle reproduced `SQLSTATE[53200]` at test
+25, `pg_stat_activity` showed no sessions for the disposable database. Only
+`autoerp_es_wave_a0_test` was force-dropped/recreated, then the paths were run
+once serially:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php
+```
+
+```text
+PASS  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+Tests: 26 passed (95 assertions)
+Duration: 131.26s
+```
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php
+```
+
+```text
+PASS  Tests\Feature\Fiscal\VerifyEventChainFleetCommandTest
+Tests: 11 passed (54 assertions)
+Duration: 82.14s
+```
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/ParseFailureResumeTest.php
+```
+
+```text
+PASS  Tests\Feature\Fiscal\ParseFailureResumeTest
+Tests: 21 passed (110 assertions)
+Duration: 145.75s
+```
+
+### Formatting, static analysis, and architecture delta
+
+```bash
+./vendor/bin/pint --test app/Modules/Fiscal/Infrastructure/Commands/AuthorizedFiscalChainCommand.php app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainFleetCommand.php tests/Feature/Fiscal/VerifyEventChainCommandTest.php tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php tests/Feature/Fiscal/ParseFailureResumeTest.php
+```
+
+```text
+{"result":"pass"}
+```
+
+```bash
+./vendor/bin/phpstan analyse --level=8 --no-progress app/Modules/Fiscal/Infrastructure/Commands/AuthorizedFiscalChainCommand.php app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainFleetCommand.php app/Modules/Fiscal/Providers/FiscalServiceProvider.php
+```
+
+```text
+Note: Using configuration file .../apps/api/phpstan.neon.
+[OK] No errors
+```
+
+The exact architecture command was run at both `03e11782e` and `a43a9a3e7`:
+
+```bash
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Architecture/ConsoleCommandTenantContextTest.php
+```
+
+Both emitted the identical raw eleven-class list:
+
+```text
+App\Console\Commands\ScanPercentScaleDrift
+App\Console\Commands\ExportFrontendPermissionsMap
+App\Console\Commands\ConfigureMethodRepositoryRoutingCommand
+App\Console\Commands\BackfillPayableInstrumentAccountsCommand
+App\Console\Commands\BackfillTaxDetailsCommand
+App\Modules\Product\Presentation\Console\RunEnrichmentCommand
+App\Modules\Treasury\Presentation\Console\BackfillLocationAttributionCommand
+App\Modules\Company\Presentation\Console\BackfillMembershipsCommand
+App\Modules\SupportAccess\Presentation\Console\VerifyImpersonationAuditCommand
+App\Modules\SupportAccess\Presentation\Console\ExpireSupportAccessCommand
+App\Modules\SupportAccess\Presentation\Console\ReconcileImpersonationAuditCommand
+Tests: 1 failed (1 assertions)
+```
+
+Neither fiscal verifier appears. Architecture delta: **zero**.
