@@ -88,12 +88,14 @@ The `old` column is the citation printed in the dispatch/dossier. The `resolved`
 | SV-9/SV-10 | `apps/pos/src/components/pos/organisms/CashCountTable.tsx` | `64-65 → 64-65` | `showExpected` and `showVariance` reveal only when non-blind or committed. |
 | SV-9 | `apps/api/tests/Unit/Compliance/CompanyFraudSettingsVerticalDefaultsTest.php` | `53 → 53` | Retail false assertion is explicitly red-by-design for M3. |
 | SV-10 | `apps/pos/src/components/pos/EndOfDayPreviewModal.tsx` | `239-262 → 240-262` | Security comment and `!cashCountEnabled` guard suppress the legacy expected-cash card. |
-| SV-10 | `apps/pos/src/components/pos/CashReconciliationSection.tsx` | `137,165-180 → 137-157,164-184` | Per-tender variance magnitude and signed aggregate severity derivations to audit by render path. |
+| SV-10 | `apps/pos/src/components/pos/CashReconciliationSection.tsx` | `137,165-180 → 137-157,164-188` | Per-tender variance magnitude and signed aggregate severity derivations to audit by render path. |
 | SV-11 | `apps/pos/src/locales/{en,fr}/pos.json` | `cash_count.* → object begins 906; expected/actual/variance 912-914` | Device translation namespace and existing Écart wording. |
 | SV-11 | `apps/pos/src/components/pos/EndOfDayPreviewModal.tsx` | `252-260 → 252-260` | Existing non-blind opening and expected figures. |
 | SV-11 | `apps/pos/src/lib/offline/endOfDayPreview.ts` | named symbol → `EndOfDayPreview` 90-113; formula 406-480 | Existing presentation inputs: opening cash, net cash sales, drawer net, and expected cash; UI must not recompute them. |
 
-Unresolved citations: **0**.
+Unresolved citations: **0** (in-repository scope).
+
+The SV-9 dossier note also names `project_live_counting_completion_lane.md:40`, a memory-directory reference that is not present in this repository. It cannot be resolved from the dispatched tree and is not counted as an in-repository citation.
 
 ### Device Arabic finding
 
@@ -121,7 +123,7 @@ The migration will additionally be checked for unattended `tenants:migrate` safe
 
 All commands are path-scoped. The full PHPUnit suite is forbidden.
 
-- API: `tests/Feature/Fiscal/`, `tests/Feature/POS/`, `tests/Unit/POS/`, `tests/Unit/Compliance/`, `tests/Feature/Compliance/`, and `tests/Feature/Treasury/` limited to the named cash-count/fraud-settings/shift-variance paths in the command record below.
+- API: the 14 explicit cash-count/fraud-settings/shift-variance files in the command below. No directory-wide PHPUnit invocation is claimed.
 - Device: `src/lib/offline/__tests__/endOfDayPreview.test.ts`, `src/components/pos/CashReconciliationSection.test.tsx`, `src/components/pos/organisms/CashCountTable.test.tsx`, `src/components/pos/EndOfDayPreviewModal.test.tsx`.
 - Web: `src/features/compliance/components/CashDrawerControlsSection.test.tsx`; M3 will add the row-less `FraudSettingsPage` round-trip path.
 
@@ -130,7 +132,8 @@ Baseline results:
 ```text
 [PG 127.0.0.1:5432, dedicated autoerp_sv_stage1_test]
 Scoped API regression command: exit 0
-Tests: 50 warnings (9033 assertions)
+Test cases: 50 (independently counted with the same path list and `--list-tests`)
+PHPUnit summary: 50 warnings (9033 assertions)
 Duration: 42.78s
 
 Device Vitest:
@@ -141,6 +144,37 @@ Web Vitest:
 Test Files  1 passed (1)
 Tests       8 passed (8)
 ```
+
+Literal API baseline command (rerun during M0 review fix round 1 against fresh database `autoerp_sv_stage1_m0r1_test`; exit 0, 50 test cases, 9033 assertions, 39.17s):
+
+```bash
+DB_HOST=127.0.0.1 DB_PORT=5432 \
+DB_DATABASE=autoerp_sv_stage1_m0r1_test \
+DB_CENTRAL_DATABASE=autoerp_sv_stage1_m0r1_test \
+DB_USERNAME=houssamr DB_PASSWORD='' \
+php artisan test -c phpunit-pgsql.xml \
+  tests/Feature/Fiscal/ZReportServerAuthoringChokepointTest.php \
+  tests/Feature/Fiscal/ZReportServerAuthoringDispositionTest.php \
+  tests/Feature/POS/ServerReportAuthoringUnreachabilityTest.php \
+  tests/Feature/POS/CashCountToleranceVarianceRegressionTest.php \
+  tests/Feature/POS/FraudSettingsPosControllerContractTest.php \
+  tests/Feature/POS/FraudSettingsPosControllerTest.php \
+  tests/Unit/POS/FraudSettingsResolverTest.php \
+  tests/Unit/POS/CashCountInputDTOTest.php \
+  tests/Unit/Compliance/CompanyFraudSettingsCashControlsTest.php \
+  tests/Unit/Compliance/CompanyFraudSettingsVerticalDefaultsTest.php \
+  tests/Feature/Compliance/FraudSettingsControllerCashControlsTest.php \
+  tests/Feature/Compliance/FraudSettingsControllerContractTest.php \
+  tests/Feature/Treasury/ShiftCashVarianceOfflineDevicePayloadTest.php \
+  tests/Feature/Treasury/ShiftCashVarianceTriggerPathsTest.php
+```
+
+The scoped command intentionally omits exactly these two known-broken neighboring files from the broader candidate run:
+
+- `tests/Unit/POS/CashCountValidationServiceTest.php` — stale 8-argument `FraudSettingsDTO` construction versus the current 11-argument contract.
+- `tests/Feature/Treasury/ShiftCashVarianceAdjustmentTest.php` — a PostgreSQL fixture directly updates the trigger-protected repository balance.
+
+There is no PHPUnit `--exclude` switch in the literal command because every included file is named explicitly; the two omissions above are therefore mechanically visible rather than hidden by a directory-wide selection.
 
 The API command exits zero but the baseline emits existing PHPUnit warnings from repository source-inventory `file_get_contents(...)` checks when run from a linked worktree. These warnings are recorded and are not claimed pristine.
 
