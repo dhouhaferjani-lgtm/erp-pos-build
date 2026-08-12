@@ -497,3 +497,5 @@ M3 review round 2 failed identically at the bridge layer with an empty error reg
 M3 review round 3 also failed before producing reviewer content. It is recorded fail-closed and consumes the third fix round; no application changes are inferred from an empty tool-error register.
 
 M3 review round 4 repeated the same empty bridge failure. It is recorded fail-closed and consumes the fourth fix round.
+
+M3 review round 5 again failed at invocation with an empty register. It consumes the fifth and final allowed fix round; the harness permits one terminal round-6 attempt, as in M0.
