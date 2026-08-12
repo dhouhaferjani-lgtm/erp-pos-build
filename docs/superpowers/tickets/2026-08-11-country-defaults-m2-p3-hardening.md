@@ -18,6 +18,10 @@ but should remain visible until closed or deliberately retired.
 - M5 gate: the authoritative resolver must never fall back to the wildcard assignment for a timbre
   country. If no exact assignment exists for a timbre country, resolution must throw; a wildcard
   template structurally cannot carry `SalesStampDutyPayable` and is not a safe fallback.
+- M3/API gate: translate the unique-key loser in a concurrent first-time assignment race into a
+  typed domain conflict instead of exposing PostgreSQL `23505`/a query exception as a 500. The
+  database constraint already preserves atomicity; the missing contract is stable conflict
+  semantics at the HTTP boundary.
 
 The migration `hasTable` note is closed as convention-conformant: Laravel's migration repository
 provides reapplication idempotence and the empty PostgreSQL scratch migration proof is green.

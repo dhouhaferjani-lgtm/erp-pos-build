@@ -13,13 +13,16 @@ use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
 use App\Modules\CountryDefaults\Domain\Registries\ProtectedAccountCodeRegistry;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
+use App\Modules\CountryDefaults\Domain\ValueObjects\CertificationScope;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
+use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class TemplatePublishGateTest extends TestCase
@@ -188,6 +191,44 @@ final class TemplatePublishGateTest extends TestCase
         $this->assertPublishFails($template, ['FR'], 'itself', $actor);
     }
 
+    public function test_public_validator_normalizes_numeric_self_parent_values_before_comparison(): void
+    {
+        $account = new AdminTemplateAccount([
+            'code' => '70',
+            'name' => 'Numeric self parent',
+            'type' => AccountType::Asset,
+            'parent_code' => 70,
+            'system_purpose' => null,
+            'is_system' => false,
+            'sort_order' => 1,
+        ]);
+        $scope = new CertificationScope(['FR'], app(CountryAccountingCapabilities::class));
+
+        try {
+            app(TemplatePublishingService::class)->validateAccounts([$account], $scope);
+            self::fail('Numeric and numeric-string self-parent values must compare as the same account code.');
+        } catch (DomainException $exception) {
+            self::assertStringContainsString('itself', $exception->getMessage());
+        }
+    }
+
+    #[DataProvider('multiRowCycleLengths')]
+    public function test_publish_rejects_a_multi_row_parent_cycle(int $cycleLength): void
+    {
+        $actor = $this->actor();
+        $template = $this->validDraft(['FR']);
+        $this->createParentCycle($template, $cycleLength);
+
+        $this->assertPublishFails($template, ['FR'], 'cycle', $actor);
+    }
+
+    /** @return iterable<string, array{int}> */
+    public static function multiRowCycleLengths(): iterable
+    {
+        yield 'two rows' => [2];
+        yield 'three rows' => [3];
+    }
+
     public function test_blank_standard_reference_and_non_draft_status_are_rejected_after_lock(): void
     {
         $actor = $this->actor();
@@ -340,6 +381,17 @@ final class TemplatePublishGateTest extends TestCase
         }
 
         return $template;
+    }
+
+    private function createParentCycle(AdminTemplate $template, int $cycleLength): void
+    {
+        $rows = array_values($template->accounts()->orderBy('sort_order')->limit($cycleLength)->get()->all());
+        foreach ($rows as $index => $row) {
+            $parent = $rows[($index + 1) % $cycleLength];
+            DB::connection($template->getConnectionName())->table('admin_template_accounts')
+                ->where('id', $row->id)
+                ->update(['parent_code' => $parent->code]);
+        }
     }
 
     private function actor(): SuperAdmin

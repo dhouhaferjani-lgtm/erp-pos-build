@@ -280,13 +280,14 @@ final class TemplatePublishingService
         }
 
         foreach ($accounts as $account) {
-            if ($account->parent_code === $account->code) {
+            if ($account->parent_code !== null && (string) $account->parent_code === (string) $account->code) {
                 throw new DomainException("Template account {$account->code} cannot reference itself as parent.");
             }
             if ($account->parent_code !== null && ! isset($byCode[$account->parent_code])) {
                 throw new DomainException("Parent {$account->parent_code} does not resolve inside the template.");
             }
         }
+        $this->cloneInsertionOrder($accounts);
 
         foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
             if ($entry['classification'] === 'REQUIRED' && ! isset($byPurpose[$entry['purpose']->value])) {

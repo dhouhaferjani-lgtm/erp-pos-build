@@ -22,6 +22,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 final class TemplateAssignmentServiceTest extends TestCase
@@ -258,6 +259,38 @@ final class TemplateAssignmentServiceTest extends TestCase
         self::assertDatabaseMissing('country_template_assignments', ['country_code' => 'FR']);
     }
 
+    #[DataProvider('multiRowCycleLengths')]
+    public function test_assignment_rejects_a_multi_row_parent_cycle_during_structural_revalidation(int $cycleLength): void
+    {
+        $actor = $this->actor();
+        $template = $this->published('FR', $actor);
+        $this->createParentCycle($template, $cycleLength);
+        DB::connection($template->getConnectionName())->table('admin_templates')
+            ->where('id', $template->id)
+            ->update(['content_hash' => $this->canonicalHash($template)]);
+
+        try {
+            app(TemplateAssignmentService::class)->assign(
+                'FR',
+                TemplateDomain::ChartOfAccounts,
+                $template->id,
+                $actor,
+            );
+            self::fail('Assignment must revalidate and reject a multi-row parent cycle.');
+        } catch (DomainException $exception) {
+            self::assertStringContainsString('cycle', $exception->getMessage());
+        }
+
+        self::assertDatabaseMissing('country_template_assignments', ['country_code' => 'FR']);
+    }
+
+    /** @return iterable<string, array{int}> */
+    public static function multiRowCycleLengths(): iterable
+    {
+        yield 'two rows' => [2];
+        yield 'three rows' => [3];
+    }
+
     private function published(string $country, SuperAdmin $actor): AdminTemplate
     {
         $template = AdminTemplate::query()->create([
@@ -309,6 +342,17 @@ final class TemplateAssignmentServiceTest extends TestCase
         ])->all();
 
         return app(CanonicalCoaSerializer::class)->hash(array_values($rows));
+    }
+
+    private function createParentCycle(AdminTemplate $template, int $cycleLength): void
+    {
+        $rows = array_values($template->accounts()->orderBy('sort_order')->limit($cycleLength)->get()->all());
+        foreach ($rows as $index => $row) {
+            $parent = $rows[($index + 1) % $cycleLength];
+            DB::connection($template->getConnectionName())->table('admin_template_accounts')
+                ->where('id', $row->id)
+                ->update(['parent_code' => $parent->code]);
+        }
     }
 
     private function actor(): SuperAdmin
