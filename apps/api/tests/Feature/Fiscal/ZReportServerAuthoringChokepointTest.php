@@ -4,13 +4,39 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\POS\Application\Services\ReportGenerationService;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use ReflectionMethod;
 use SplFileInfo;
 use Tests\TestCase;
 
 final class ZReportServerAuthoringChokepointTest extends TestCase
 {
+    public function test_takings_only_expected_per_method_surface_is_deprecated_and_has_no_shipped_client(): void
+    {
+        $method = new ReflectionMethod(ReportGenerationService::class, 'buildExpectedPerMethod');
+        $docblock = $method->getDocComment();
+
+        $this->assertIsString($docblock);
+        $this->assertStringContainsString('@deprecated', $docblock);
+        $this->assertStringContainsString('takings-only', $docblock);
+        $this->assertStringContainsString('Production is whole-drawer via the device', $docblock);
+
+        $repoRoot = dirname(base_path(), 2);
+        $webClient = $this->read($repoRoot.'/apps/web/src/features/pos/api/shiftApi.ts');
+        $deviceClient = $this->read($repoRoot.'/apps/pos/src/api/reportApi.ts');
+
+        $this->assertMatchesRegularExpression(
+            '/export interface ZReportData\s*\{\s*terminal_id: string\s*\}/s',
+            $webClient,
+        );
+        $this->assertMatchesRegularExpression(
+            '/@deprecated[\s\S]*?generateZReportServer\(terminalId: string\)[\s\S]*?\{ terminal_id: terminalId \}/',
+            $deviceClient,
+        );
+    }
+
     public function test_z_report_generation_call_sites_are_known_and_cutover_guarded(): void
     {
         $this->assertSame([

@@ -42,14 +42,12 @@ use Throwable;
  * journal entry + one movement, cross-linked, in one transaction.
  *
  * ── SHIPS DISABLED (gate finding I1) ─────────────────────────────────────────
- * `treasury.shift_variance_gl_enabled` defaults to FALSE. The lane's own report
- * asks for an owner ruling on POS count semantics (does a cashier count the
- * takings, or the whole drawer including the opening float?) before this books
- * real money — `ReportGenerationService::buildExpectedPerMethod()` sums receipt
- * payments only, so a whole-drawer count would post the float to 658/758 on
- * every close, forever. Shipping enabled while asking that question would have
- * contradicted the report. The flag is the kill switch: no code deploy needed
- * to stop it, and nothing at all runs while it is off.
+ * `treasury.shift_variance_gl_enabled` defaults to FALSE. POS count semantics
+ * are settled as whole-drawer, but Treasury does not yet book the opening float
+ * or mid-shift drawer operations that form the expected balance (SV-3/SV-4).
+ * Enabling this variance leg first would create a cash/GL mismatch. The flag is
+ * the kill switch: no code deploy is needed to stop it, and nothing at all runs
+ * while it is off.
  *
  * ── ONE NUMBER (gate finding C1/I2) ──────────────────────────────────────────
  * The amount booked is `CashCountRecorded::$aggregateVariance` — byte-for-byte

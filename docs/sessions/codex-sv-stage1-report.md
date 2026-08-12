@@ -302,3 +302,74 @@ Those files are not weakened or repaired in Stage 1. Relevant passing Treasury t
 - `docs/handoff/reviews/sv-stage1/M0-round*.md` (reviewer-generated registers)
 
 No production code changed.
+
+## M1 — SV-1 takings-only retirement
+
+### Retirement choice
+
+M1 uses the permitted `@deprecated` shape rather than deleting the 233-311 branch. The enumeration shows that the private formula has one production call site, inside the nullable legacy server cash-count branch, while that branch also owns manager authorization and sealed hash-input fields. Both shipped server-authoring clients omit `cash_counts`, and schema-v3 terminals are rejected before the branch. Retaining the compatibility branch avoids deleting unrelated permission and hash behavior; the annotation states that the helper is takings-only, has no shipped client, and production is whole-drawer via the device.
+
+### Enumerated grep proof
+
+Commands use the required literal include and extended-regex forms, print one line after every match, and end with known-match controls proving the syntax:
+
+```bash
+grep -R -n -E -A1 --include='*.php' 'buildExpectedPerMethod' apps/api/app apps/api/tests
+grep -R -n -E -A1 --include='*.php' 'cash_counts' \
+  apps/api/app/Modules/POS/Presentation/Requests/GenerateZReportRequest.php \
+  apps/api/app/Modules/POS/Presentation/Controllers/ReportController.php
+grep -n -E -A1 --include='*.ts' --include='*.tsx' \
+  'ZReportData|generateZReportServer|cash_counts' \
+  apps/web/src/features/pos/api/shiftApi.ts apps/pos/src/api/reportApi.ts
+```
+
+Actual production symbol output:
+
+```text
+apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php:234:                $expectedPerMethod = $this->buildExpectedPerMethod($shift, $cashCountInputs);
+apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php-235-                $transactionCounts = $this->buildTransactionCountsPerMethod($shift, $cashCountInputs);
+--
+apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php:518:    private function buildExpectedPerMethod(Shift $shift, array $inputs): array
+apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php-519-    {
+```
+
+Actual request/client output:
+
+```text
+apps/api/app/Modules/POS/Presentation/Requests/GenerateZReportRequest.php:61:            'cash_counts' => 'nullable|array',
+apps/api/app/Modules/POS/Presentation/Requests/GenerateZReportRequest.php-62-            // api.pos-stabilization.029 — payment_methods (T+C).
+--
+apps/api/app/Modules/POS/Presentation/Controllers/ReportController.php:138:            // Build cash-count input DTOs when cash_counts is present (non-empty array).
+apps/api/app/Modules/POS/Presentation/Controllers/ReportController.php-139-            $cashCountInputs = null;
+apps/web/src/features/pos/api/shiftApi.ts:68:export interface ZReportData {
+apps/web/src/features/pos/api/shiftApi.ts-69-  terminal_id: string
+--
+apps/web/src/features/pos/api/shiftApi.ts:108:export async function generateZReport(data: ZReportData): Promise<void> {
+apps/web/src/features/pos/api/shiftApi.ts-109-  return apiPost<void>('/pos/reports/z', data)
+--
+apps/pos/src/api/reportApi.ts:245:export async function generateZReportServer(terminalId: string): Promise<ZReportResponse> {
+apps/pos/src/api/reportApi.ts-246-  return apiPost<ZReportResponse>('/pos/reports/z', { terminal_id: terminalId });
+```
+
+The wider device matches at `reportApi.ts:81` and `:204` are the live offline-report sync payload, not calls to deprecated `generateZReportServer()`; they must retain device-authored `cash_counts`.
+
+Known-match controls returned:
+
+```text
+apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php:234:                $expectedPerMethod = $this->buildExpectedPerMethod($shift, $cashCountInputs);
+245:export async function generateZReportServer(terminalId: string): Promise<ZReportResponse> {
+```
+
+PHPUnit-only references were also enumerated: the new reflection contract plus `FiscalStatusFilterTest`, `GenerateZReportWithCountsTest`, and two Treasury regression comments. No second executable production caller exists.
+
+### Red/green evidence
+
+- Red: the new annotation/no-shipped-client contract failed because the reflection docblock did not contain `@deprecated` (1 failed, 2 assertions).
+- Green on fresh PostgreSQL database `autoerp_sv_stage1_m1_green2_test`: `ZReportServerAuthoringChokepointTest.php`, `ServerReportAuthoringUnreachabilityTest.php`, and `FiscalStatusFilterTest.php` — 10 cases, 8790 assertions, exit 0.
+- The first green attempt caught a test-only regex defect: TypeScript omits semicolons in that interface. The assertion was corrected to match the actual source style and rerun green; no production change was made for that failure.
+
+### Artefact correction and scope fence
+
+The config block, listener `SHIPS DISABLED` docblock, and G-1 deploy note now state the real gate: whole-drawer semantics are settled, but opening float and drawer operations remain unbooked in Treasury (SV-3/SV-4), so the flag stays off. The ticket preserves the historical schema/business-meaning distinction and the fourth-reader warning. The stale hard-coded line reference in `SalesReportService` and a second internal helper name were removed without altering behavior.
+
+`TREASURY_SHIFT_VARIANCE_GL_ENABLED` remains false by default. `CashDrawerService::calculateExpectedCash()` is byte-untouched. No event, posting shape, or Stage-2+ behavior changed.
