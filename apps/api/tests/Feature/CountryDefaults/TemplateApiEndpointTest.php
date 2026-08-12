@@ -8,8 +8,12 @@ use App\Models\SuperAdmin;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\CountryDefaults\Domain\Registries\ProtectedAccountCodeRegistry;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
+use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use LogicException;
 use Tests\TestCase;
 
 final class TemplateApiEndpointTest extends TestCase
@@ -121,6 +125,82 @@ final class TemplateApiEndpointTest extends TestCase
         ])->assertUnprocessable()->assertJsonPath('error.code', 'TEMPLATE_VALIDATION_FAILED');
     }
 
+    public function test_validation_report_exposes_the_failed_rule_and_rejects_invalid_scope_algebra(): void
+    {
+        $actor = $this->admin();
+        $draft = $this->actingAs($actor, 'sanctum-admin')->postJson('/api/v1/admin/country-defaults/templates', [
+            'domain' => 'chart_of_accounts',
+            'name' => 'Invalid preview',
+        ])->assertCreated()->json('data.id');
+        self::assertIsString($draft);
+
+        $this->actingAs($actor, 'sanctum-admin')
+            ->getJson("/api/v1/admin/country-defaults/templates/{$draft}/validation")
+            ->assertOk()
+            ->assertJsonPath('data.valid', false)
+            ->assertJsonPath('data.errors.0', 'A template must contain account rows.');
+
+        $this->actingAs($actor, 'sanctum-admin')
+            ->getJson("/api/v1/admin/country-defaults/templates/{$draft}/validation?scope=TN,FR")
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['scope']]]);
+    }
+
+    public function test_unexpected_template_logic_exception_is_not_mislabeled_as_lifecycle_conflict(): void
+    {
+        $actor = $this->admin();
+        $draft = $this->actingAs($actor, 'sanctum-admin')->postJson('/api/v1/admin/country-defaults/templates', [
+            'domain' => 'chart_of_accounts',
+            'name' => 'Invariant probe',
+        ])->assertCreated()->json('data.id');
+        self::assertIsString($draft);
+        AdminTemplate::updating(static function (AdminTemplate $template) use ($draft): void {
+            if ($template->id === $draft) {
+                throw new LogicException('country_defaults_unexpected_logic_failure');
+            }
+        });
+        $this->withoutExceptionHandling();
+
+        $this->expectException(LogicException::class);
+        $this->expectExceptionMessage('country_defaults_unexpected_logic_failure');
+        $this->actingAs($actor, 'sanctum-admin')->putJson("/api/v1/admin/country-defaults/templates/{$draft}", [
+            'name' => 'Must not be reported as conflict',
+        ]);
+    }
+
+    public function test_unrelated_template_row_query_exception_is_rethrown(): void
+    {
+        $actor = $this->admin();
+        $draft = $this->actingAs($actor, 'sanctum-admin')->postJson('/api/v1/admin/country-defaults/templates', [
+            'domain' => 'chart_of_accounts',
+            'name' => 'Row infrastructure probe',
+        ])->assertCreated()->json('data.id');
+        self::assertIsString($draft);
+        $connection = DB::connection((new AdminTemplate)->getConnectionName());
+        $this->installUnrelatedTemplateRowFailure($connection->getDriverName());
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->actingAs($actor, 'sanctum-admin')->putJson("/api/v1/admin/country-defaults/templates/{$draft}/rows", [
+                'rows' => [[
+                    'code' => '1000',
+                    'name' => 'Infrastructure probe',
+                    'type' => 'asset',
+                    'parent_code' => null,
+                    'system_purpose' => null,
+                    'is_system' => false,
+                    'sort_order' => 1,
+                ]],
+            ]);
+            self::fail('An unrelated template-row storage failure must propagate as QueryException.');
+        } catch (QueryException $exception) {
+            self::assertStringContainsString('country_defaults_rows_unrelated_failure', $exception->getMessage());
+        } finally {
+            $this->removeUnrelatedTemplateRowFailure($connection->getDriverName());
+        }
+    }
+
     /** @return list<array<string, bool|int|string|null>> */
     private function validRows(string $countryCode): array
     {
@@ -164,5 +244,39 @@ final class TemplateApiEndpointTest extends TestCase
             'role' => 'super_admin',
             'is_active' => true,
         ]);
+    }
+
+    private function installUnrelatedTemplateRowFailure(string $driver): void
+    {
+        if ($driver === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+                CREATE FUNCTION country_defaults_rows_unrelated_failure() RETURNS trigger AS $$
+                BEGIN
+                    RAISE EXCEPTION 'country_defaults_rows_unrelated_failure' USING ERRCODE = '57014';
+                END;
+                $$ LANGUAGE plpgsql;
+                CREATE TRIGGER country_defaults_rows_unrelated_failure
+                BEFORE INSERT ON admin_template_accounts
+                FOR EACH ROW EXECUTE FUNCTION country_defaults_rows_unrelated_failure();
+                SQL);
+
+            return;
+        }
+
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER country_defaults_rows_unrelated_failure
+            BEFORE INSERT ON admin_template_accounts
+            BEGIN
+                SELECT RAISE(ABORT, 'country_defaults_rows_unrelated_failure');
+            END;
+            SQL);
+    }
+
+    private function removeUnrelatedTemplateRowFailure(string $driver): void
+    {
+        DB::unprepared('DROP TRIGGER IF EXISTS country_defaults_rows_unrelated_failure'.($driver === 'pgsql' ? ' ON admin_template_accounts' : ''));
+        if ($driver === 'pgsql') {
+            DB::unprepared('DROP FUNCTION IF EXISTS country_defaults_rows_unrelated_failure()');
+        }
     }
 }

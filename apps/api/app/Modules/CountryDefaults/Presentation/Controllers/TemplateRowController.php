@@ -14,8 +14,8 @@ use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
 use App\Modules\CountryDefaults\Presentation\Requests\UpsertTemplateRowsRequest;
 use App\Modules\CountryDefaults\Presentation\Resources\TemplateResource;
-use App\Shared\Architecture\CrossTenantRoute;
 use App\Services\AdminAuditService;
+use App\Shared\Architecture\CrossTenantRoute;
 use DomainException;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\QueryException;
@@ -43,7 +43,16 @@ final class TemplateRowController extends Controller
             $template = $this->replaceDraftRows($request->validated('id'), $rows, $actor);
 
             return response()->json(['data' => (new TemplateResource($template->load('accounts')))->resolve($request)]);
-        } catch (DomainException|LogicException|QueryException $exception) {
+        } catch (DomainException) {
+            return response()->json(['error' => [
+                'code' => 'TEMPLATE_ROWS_CONFLICT',
+                'message' => trans('country_defaults.errors.template_conflict'),
+            ]], 409);
+        } catch (QueryException $exception) {
+            if (! $this->isTemplateRowConstraintConflict($exception)) {
+                throw $exception;
+            }
+
             return response()->json(['error' => [
                 'code' => 'TEMPLATE_ROWS_CONFLICT',
                 'message' => trans('country_defaults.errors.template_conflict'),
@@ -193,5 +202,33 @@ final class TemplateRowController extends Controller
     private function centralConnection(): ConnectionInterface
     {
         return DB::connection((new AdminTemplate)->getConnectionName());
+    }
+
+    private function isTemplateRowConstraintConflict(QueryException $exception): bool
+    {
+        $message = $exception->getMessage();
+        $sqlState = $exception->errorInfo[0] ?? $exception->getCode();
+        $constraints = [
+            'admin_template_accounts_template_code_unique',
+            'admin_template_accounts_template_purpose_unique',
+            'admin_template_accounts_template_sort_unique',
+            'admin_template_accounts_parent_fk',
+        ];
+        if (in_array($sqlState, ['23505', '23503'], true)) {
+            foreach ($constraints as $constraint) {
+                if (str_contains($message, $constraint)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if ($sqlState !== '23000') {
+            return false;
+        }
+
+        return str_contains($message, 'UNIQUE constraint failed: admin_template_accounts.template_id')
+            || str_contains($message, 'FOREIGN KEY constraint failed');
     }
 }

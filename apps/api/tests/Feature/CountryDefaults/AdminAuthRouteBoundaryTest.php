@@ -23,6 +23,9 @@ final class AdminAuthRouteBoundaryTest extends TestCase
     #[DataProvider('centralAdminRoles')]
     public function test_every_active_central_admin_role_can_read_profile_and_logout(string $role): void
     {
+        if ($role === 'defaults_editor') {
+            config(['country_defaults.external_editors_enabled' => true]);
+        }
         $admin = $this->admin($role);
         $token = $admin->createToken('route-boundary', ['super-admin'])->plainTextToken;
 

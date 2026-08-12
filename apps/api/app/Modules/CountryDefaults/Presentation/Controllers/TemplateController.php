@@ -129,8 +129,8 @@ final class TemplateController extends Controller
                 $scope = new CertificationScope($scopeCodes, $this->capabilities);
                 $this->publishing->validateAccounts($accounts, $scope);
             }
-        } catch (DomainException|\InvalidArgumentException $exception) {
-            $errors[] = trans('country_defaults.errors.template_validation_detail');
+        } catch (DomainException $exception) {
+            $errors[] = $exception->getMessage();
         }
         $report = new TemplateValidationReportResource([
             'valid' => $errors === [],
@@ -172,7 +172,7 @@ final class TemplateController extends Controller
     {
         try {
             return $operation();
-        } catch (DomainException|LogicException $exception) {
+        } catch (DomainException) {
             return $this->problem('TEMPLATE_CONFLICT', trans('country_defaults.errors.template_conflict'), 409);
         }
     }

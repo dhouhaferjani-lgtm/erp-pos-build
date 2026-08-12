@@ -37,6 +37,26 @@ final class DefaultsEditorLoginFlagTest extends TestCase
         ])->assertOk()->assertJsonPath('data.admin.role', 'defaults_editor');
     }
 
+    public function test_disabling_flag_immediately_denies_existing_defaults_editor_token_at_every_central_boundary(): void
+    {
+        config(['country_defaults.external_editors_enabled' => true]);
+        $admin = $this->admin('defaults_editor');
+        $token = $this->postJson('/api/v1/admin/auth/login', [
+            'email' => $admin->email,
+            'password' => 'secret-password',
+        ])->assertOk()->json('data.token');
+        self::assertIsString($token);
+
+        config(['country_defaults.external_editors_enabled' => false]);
+
+        $this->withToken($token)->getJson('/api/v1/admin/country-defaults/templates?domain=chart_of_accounts')
+            ->assertForbidden()->assertJsonPath('error.code', 'EXTERNAL_EDITORS_DISABLED');
+        $this->withToken($token)->getJson('/api/v1/admin/auth/me')
+            ->assertForbidden()->assertJsonPath('error.code', 'EXTERNAL_EDITORS_DISABLED');
+        $this->withToken($token)->postJson('/api/v1/admin/auth/logout')
+            ->assertForbidden()->assertJsonPath('error.code', 'EXTERNAL_EDITORS_DISABLED');
+    }
+
     private function admin(string $role): SuperAdmin
     {
         return SuperAdmin::query()->create([

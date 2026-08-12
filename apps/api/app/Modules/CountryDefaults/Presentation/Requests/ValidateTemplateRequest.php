@@ -4,9 +4,13 @@ declare(strict_types=1);
 
 namespace App\Modules\CountryDefaults\Presentation\Requests;
 
+use App\Modules\CountryDefaults\Domain\ValueObjects\CertificationScope;
+use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use Illuminate\Contracts\Validation\Rule;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use InvalidArgumentException;
 
 final class ValidateTemplateRequest extends FormRequest
 {
@@ -27,5 +31,22 @@ final class ValidateTemplateRequest extends FormRequest
             'id' => ['required', 'uuid'],
             'scope' => ['sometimes', 'string', 'regex:/^(?:\*|[A-Za-z]{2})(?:,(?:\*|[A-Za-z]{2}))*$/'],
         ];
+    }
+
+    /** @return list<callable(Validator): void> */
+    public function after(CountryAccountingCapabilities $capabilities): array
+    {
+        return [function (Validator $validator) use ($capabilities): void {
+            $scope = $this->input('scope');
+            if (! is_string($scope) || $validator->errors()->has('scope')) {
+                return;
+            }
+
+            try {
+                new CertificationScope(array_map('trim', explode(',', $scope)), $capabilities);
+            } catch (InvalidArgumentException $exception) {
+                $validator->errors()->add('scope', $exception->getMessage());
+            }
+        }];
     }
 }

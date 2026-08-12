@@ -55,6 +55,7 @@ final class CentralAdminRouteInventoryTest extends TestCase
     public function test_defaults_editor_is_denied_from_every_admin_route_except_explicit_central_admin_allowances(): void
     {
         $this->withoutMiddleware(ThrottleRequests::class);
+        config(['country_defaults.external_editors_enabled' => true]);
         $editor = $this->admin('defaults_editor');
         $routes = collect(RouteFacade::getRoutes()->getRoutes())
             ->filter(static fn (Route $route): bool => str_starts_with($route->uri(), 'api/v1/admin/'))

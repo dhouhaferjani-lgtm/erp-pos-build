@@ -12,8 +12,8 @@ use App\Modules\CountryDefaults\Presentation\Requests\ListDefaultsEditorsRequest
 use App\Modules\CountryDefaults\Presentation\Requests\ResetDefaultsEditorCredentialsRequest;
 use App\Modules\CountryDefaults\Presentation\Requests\UpdateDefaultsEditorRequest;
 use App\Modules\CountryDefaults\Presentation\Resources\DefaultsEditorResource;
-use App\Shared\Architecture\CrossTenantRoute;
 use App\Services\AdminAuditService;
+use App\Shared\Architecture\CrossTenantRoute;
 use DomainException;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Database\QueryException;
@@ -32,7 +32,7 @@ final class DefaultsEditorController extends Controller
     public function index(ListDefaultsEditorsRequest $request): JsonResponse
     {
         $editors = SuperAdmin::query()
-            ->where('role', '!=', SuperAdminRole::SuperAdmin->value)
+            ->where('role', SuperAdminRole::DefaultsEditor->value)
             ->orderBy('email')
             ->get();
 
@@ -99,7 +99,16 @@ final class DefaultsEditorController extends Controller
     {
         try {
             return $operation();
-        } catch (DomainException|QueryException $exception) {
+        } catch (DomainException) {
+            return response()->json(['error' => [
+                'code' => 'EDITOR_CONFLICT',
+                'message' => trans('country_defaults.errors.editor_conflict'),
+            ]], 409);
+        } catch (QueryException $exception) {
+            if (! $this->isEditorUniqueConflict($exception)) {
+                throw $exception;
+            }
+
             return response()->json(['error' => [
                 'code' => 'EDITOR_CONFLICT',
                 'message' => trans('country_defaults.errors.editor_conflict'),
@@ -147,22 +156,21 @@ final class DefaultsEditorController extends Controller
     private function updateEditor(string $editorId, array $attributes, SuperAdmin $actor): SuperAdmin
     {
         return $this->centralConnection()->transaction(function () use ($editorId, $attributes, $actor): SuperAdmin {
-            $editor = SuperAdmin::query()->lockForUpdate()->findOrFail($editorId);
-            if ($editor->role === SuperAdminRole::SuperAdmin->value) {
-                throw new DomainException('The editor lifecycle cannot modify a super-admin account.');
-            }
+            $editor = SuperAdmin::query()
+                ->where('role', SuperAdminRole::DefaultsEditor->value)
+                ->lockForUpdate()
+                ->findOrFail($editorId);
             $before = ['name' => $editor->name, 'role' => $editor->role, 'is_active' => $editor->is_active];
             $editor->fill($attributes);
-            $roleChanged = $editor->isDirty('role');
             $disabled = $editor->isDirty('is_active') && $editor->is_active === false;
             $enabled = $editor->isDirty('is_active') && $editor->is_active === true;
             $editor->save();
-            if ($roleChanged || $disabled) {
+            if ($disabled) {
                 $editor->tokens()->delete();
             }
-            $action = $roleChanged
-                ? 'country_defaults.editor.role_changed'
-                : ($disabled ? 'country_defaults.editor.disabled' : ($enabled ? 'country_defaults.editor.enabled' : 'country_defaults.editor.updated'));
+            $action = $disabled
+                ? 'country_defaults.editor.disabled'
+                : ($enabled ? 'country_defaults.editor.enabled' : 'country_defaults.editor.updated');
             $this->audit->log(
                 admin: $actor,
                 action: $action,
@@ -181,10 +189,10 @@ final class DefaultsEditorController extends Controller
     {
         $credential = $password ?? Str::password(24, symbols: true);
         $editor = $this->centralConnection()->transaction(function () use ($editorId, $credential, $actor): SuperAdmin {
-            $editor = SuperAdmin::query()->lockForUpdate()->findOrFail($editorId);
-            if ($editor->role === SuperAdminRole::SuperAdmin->value) {
-                throw new DomainException('The editor lifecycle cannot reset a super-admin account.');
-            }
+            $editor = SuperAdmin::query()
+                ->where('role', SuperAdminRole::DefaultsEditor->value)
+                ->lockForUpdate()
+                ->findOrFail($editorId);
             $editor->forceFill(['password' => Hash::make($credential)])->save();
             $editor->tokens()->delete();
             $this->audit->log(
@@ -204,5 +212,18 @@ final class DefaultsEditorController extends Controller
     private function centralConnection(): ConnectionInterface
     {
         return DB::connection((new SuperAdmin)->getConnectionName());
+    }
+
+    private function isEditorUniqueConflict(QueryException $exception): bool
+    {
+        $message = $exception->getMessage();
+        $sqlState = $exception->errorInfo[0] ?? $exception->getCode();
+        if ($sqlState === '23505') {
+            return str_contains($message, 'super_admins_email_unique');
+        }
+
+        return $sqlState === '23000'
+            && str_contains($message, 'UNIQUE constraint failed')
+            && str_contains($message, 'super_admins.email');
     }
 }
