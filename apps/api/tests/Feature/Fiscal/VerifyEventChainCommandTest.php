@@ -1108,9 +1108,9 @@ final class VerifyEventChainCommandTest extends TestCase
             chainSequence: 2,
         );
 
-        $this->assertTrue(
+        $this->assertFalse(
             $receiptHashService->verifyTerminalChain($terminal),
-            'The current receipt verifier must remain green when T-c adds only the missing mirror divergence.',
+            'The receipt verifier must fail when T-c adds the projected receipt/event mirror divergence.',
         );
 
         $mirror = DB::table('pos_receipts as receipts')
