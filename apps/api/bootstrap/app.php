@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\CompanyContextMiddleware;
 use App\Http\Middleware\CrossTenantContext;
+use App\Http\Middleware\EnsureCentralAdmin;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\RequireAnyPermission;
 use App\Http\Middleware\RequireCentralAdminRole;
@@ -104,6 +105,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Register middleware aliases
         $middleware->alias([
             'super_admin' => EnsureSuperAdmin::class,
+            'central_admin' => EnsureCentralAdmin::class,
             'central_admin_role' => RequireCentralAdminRole::class,
             'validate.location.access' => ValidateLocationAccess::class,
             'module' => RequireModule::class,

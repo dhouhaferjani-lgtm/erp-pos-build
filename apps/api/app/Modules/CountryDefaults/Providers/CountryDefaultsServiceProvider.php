@@ -14,4 +14,9 @@ final class CountryDefaultsServiceProvider extends ServiceProvider
     {
         $this->app->bind(CountryAccountingCapabilities::class, CountryAccountingCapabilitiesService::class);
     }
+
+    public function boot(): void
+    {
+        $this->loadRoutesFrom(__DIR__.'/../Presentation/routes.php');
+    }
 }

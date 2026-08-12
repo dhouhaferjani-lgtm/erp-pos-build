@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Enums\SuperAdminRole;
 use App\Models\SuperAdmin;
 use App\Shared\Architecture\CrossTenantRoute;
 use Illuminate\Http\JsonResponse;
@@ -33,6 +34,13 @@ class SuperAdminAuthController extends Controller
         if (! $admin->is_active) {
             throw ValidationException::withMessages([
                 'email' => ['This account has been deactivated.'],
+            ]);
+        }
+
+        if ($admin->role === SuperAdminRole::DefaultsEditor->value
+            && ! config('country_defaults.external_editors_enabled', false)) {
+            throw ValidationException::withMessages([
+                'email' => [trans('country_defaults.auth.external_editors_disabled')],
             ]);
         }
 

@@ -8,4 +8,5 @@ enum SuperAdminRole: string
 {
     case SuperAdmin = 'super_admin';
     case SupportApprover = 'support_approver';
+    case DefaultsEditor = 'defaults_editor';
 }
