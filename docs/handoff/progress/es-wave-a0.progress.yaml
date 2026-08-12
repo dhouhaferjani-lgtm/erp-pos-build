@@ -48,9 +48,9 @@ milestones:
   - id: M0
     title: "Preflight — contract digest verify (abort on mismatch), HEAD==BASE_SHA, seeded two-context v3 tenant fixture, TAMPERED-FIXTURE toolkit (T-a payload-vs-canonical_bytes, T-b previous_hash from wrong chain_context, T-c fiscal_hash mirror) built on VerifyEventChainCommandTest/ParseFailureResumeTest, narrowed ES-07 claim + do-NOT-rewrite-the-Z-arm record, citation sweep (unresolved=0)"
     review_lenses: [fiscal-pos, treasury]
-    status: in_progress
+    status: review
     fix_rounds: 2
-    commit: 3cf7bf8a488a4d1aae6ec9b950929b5a9ca3a78e
+    commit: bffba974a12f9ab47fa56e2141bce282cdab0c54
     verdict: docs/handoff/reviews/es-wave-a0/M0-round2.md
     last_verdict: CHANGES-REQUIRED
   - id: M1
