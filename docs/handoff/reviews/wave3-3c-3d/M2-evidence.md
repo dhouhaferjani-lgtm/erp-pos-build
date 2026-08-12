@@ -116,6 +116,14 @@ Targeted changed-production PHPStan: [OK] No errors
 Pint + git diff --check: pass
 ```
 
+The round-three fix commit was revert-replayed with
+`git revert --no-commit 55e03c025` while retaining its covering tests. On the
+required PostgreSQL port 5432, the replay produced the four expected behavioral
+failures: projected receipt cost was null, the legacy null-cost refund was not
+historical, C-5 leaked its buffered movement at the request boundary, and a
+wrapper-transaction guided request again false-failed at that boundary. After
+capturing the failures, `git revert --abort` restored the clean fix tree.
+
 ## PostgreSQL by-path acceptance
 
 All database evidence ran against the isolated PostgreSQL database
