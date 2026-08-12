@@ -76,6 +76,10 @@ final class TemplateApiEndpointTest extends TestCase
 
         $this->actingAs($actor, 'sanctum-admin')->getJson("/api/v1/admin/country-defaults/templates/{$id}/validation?scope=FR")
             ->assertOk()->assertJsonPath('data.valid', true);
+        $this->actingAs($actor, 'sanctum-admin')->getJson("/api/v1/admin/country-defaults/templates/{$id}/validation")
+            ->assertOk()
+            ->assertJsonPath('data.valid', true)
+            ->assertJsonPath('data.scope', []);
 
         $this->actingAs($actor, 'sanctum-admin')->postJson("/api/v1/admin/country-defaults/templates/{$id}/publish", [
             'standard_ref' => 'PCG 2026',

@@ -242,6 +242,18 @@ final class TemplatePublishingService
      */
     public function validateAccounts(array $accounts, CertificationScope $scope): void
     {
+        $this->validateAccountRows($accounts, $scope);
+    }
+
+    /** @param list<AdminTemplateAccount> $accounts */
+    public function validateAccountsWithoutScope(array $accounts): void
+    {
+        $this->validateAccountRows($accounts, null);
+    }
+
+    /** @param list<AdminTemplateAccount> $accounts */
+    private function validateAccountRows(array $accounts, ?CertificationScope $scope): void
+    {
         if ($accounts === []) {
             throw new DomainException('A template must contain account rows.');
         }
@@ -295,25 +307,27 @@ final class TemplatePublishingService
             }
         }
 
-        $stampPurpose = SystemAccountPurpose::SalesStampDutyPayable->value;
-        if ($scope->includesTimbreCountry() && ! isset($byPurpose[$stampPurpose])) {
-            throw new DomainException("Missing scope-required purpose {$stampPurpose}.");
-        }
-        if (! $scope->includesTimbreCountry() && isset($byPurpose[$stampPurpose])) {
-            throw new DomainException("Non-timbre scope forbids purpose {$stampPurpose} to protect absorber selection.");
-        }
+        if ($scope !== null) {
+            $stampPurpose = SystemAccountPurpose::SalesStampDutyPayable->value;
+            if ($scope->includesTimbreCountry() && ! isset($byPurpose[$stampPurpose])) {
+                throw new DomainException("Missing scope-required purpose {$stampPurpose}.");
+            }
+            if (! $scope->includesTimbreCountry() && isset($byPurpose[$stampPurpose])) {
+                throw new DomainException("Non-timbre scope forbids purpose {$stampPurpose} to protect absorber selection.");
+            }
 
-        foreach ($scope->countryCodes() as $countryCode) {
-            foreach (ProtectedAccountCodeRegistry::forCountry($countryCode) as $protected) {
-                $account = $byCode[$protected['code']] ?? null;
-                if ($account === null) {
-                    throw new DomainException("Missing protected account code {$protected['code']}.");
-                }
-                if ($account->type->value !== $protected['expected_type']) {
-                    throw new DomainException("Protected account {$protected['code']} has the wrong type.");
-                }
-                if ($protected['requires_system'] && ! $account->is_system) {
-                    throw new DomainException("Protected account {$protected['code']} requires is_system=true.");
+            foreach ($scope->countryCodes() as $countryCode) {
+                foreach (ProtectedAccountCodeRegistry::forCountry($countryCode) as $protected) {
+                    $account = $byCode[$protected['code']] ?? null;
+                    if ($account === null) {
+                        throw new DomainException("Missing protected account code {$protected['code']}.");
+                    }
+                    if ($account->type->value !== $protected['expected_type']) {
+                        throw new DomainException("Protected account {$protected['code']} has the wrong type.");
+                    }
+                    if ($protected['requires_system'] && ! $account->is_system) {
+                        throw new DomainException("Protected account {$protected['code']} requires is_system=true.");
+                    }
                 }
             }
         }

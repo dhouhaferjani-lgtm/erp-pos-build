@@ -6,6 +6,7 @@ namespace Tests\Feature\CountryDefaults;
 
 use App\Models\SuperAdmin;
 use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\CountryDefaults\Application\Services\TemplateAssignmentService;
 use App\Modules\CountryDefaults\Application\Services\TemplatePublishingService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
@@ -13,14 +14,36 @@ use App\Modules\CountryDefaults\Domain\Registries\ProtectedAccountCodeRegistry;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
+use App\Modules\CountryDefaults\Infrastructure\Models\CountryTemplateAssignment;
+use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use LogicException;
 use Tests\TestCase;
+use Throwable;
 
 final class AssignmentApiEndpointTest extends TestCase
 {
     use RefreshDatabase;
+
+    /** @return list<string|null> */
+    protected function connectionsToTransact(): array
+    {
+        return DB::getDriverName() === 'pgsql' ? [] : [config('database.default')];
+    }
+
+    protected function tearDown(): void
+    {
+        if (DB::getDriverName() === 'pgsql') {
+            DB::connection((new CountryTemplateAssignment)->getConnectionName())
+                ->table('country_template_assignments')
+                ->delete();
+        }
+
+        parent::tearDown();
+    }
 
     public function test_assignment_api_returns_country_matrix_normalizes_and_repoints(): void
     {
@@ -85,6 +108,59 @@ final class AssignmentApiEndpointTest extends TestCase
         ])->assertConflict();
     }
 
+    public function test_postgresql_concurrent_first_assignment_unique_loser_is_a_typed_conflict(): void
+    {
+        $this->requirePostgreSqlConcurrency();
+        $actor = $this->admin();
+        $template = $this->published('FR', $actor);
+        [$parent, $child] = $this->socketPair();
+        $pid = pcntl_fork();
+        self::assertGreaterThanOrEqual(0, $pid);
+        if ($pid === 0) {
+            fclose($parent);
+            $this->runPausedFirstAssignmentChild($child, $template->id, $actor->id);
+        }
+
+        fclose($child);
+        self::assertSame("assignment-template-locked\n", fgets($parent));
+        $response = $this->actingAs($actor, 'sanctum-admin')->putJson('/api/v1/admin/country-defaults/assignments/FR', [
+            'domain' => 'chart_of_accounts',
+            'template_id' => $template->id,
+        ]);
+        $childMessage = stream_get_contents($parent);
+        fclose($parent);
+        pcntl_waitpid($pid, $status);
+
+        self::assertSame('', $childMessage);
+        self::assertSame(0, pcntl_wexitstatus($status));
+        $response->assertConflict()->assertJsonPath('error.code', 'ASSIGNMENT_CONFLICT');
+        self::assertSame(1, CountryTemplateAssignment::query()
+            ->where('country_code', 'FR')
+            ->where('domain', TemplateDomain::ChartOfAccounts->value)
+            ->count());
+    }
+
+    public function test_unrelated_assignment_query_exception_is_rethrown(): void
+    {
+        $actor = $this->admin();
+        $template = $this->published('FR', $actor);
+        $connection = DB::connection((new CountryTemplateAssignment)->getConnectionName());
+        $this->installUnrelatedAssignmentFailure($connection->getDriverName());
+        $this->withoutExceptionHandling();
+
+        try {
+            $this->actingAs($actor, 'sanctum-admin')->putJson('/api/v1/admin/country-defaults/assignments/FR', [
+                'domain' => 'chart_of_accounts',
+                'template_id' => $template->id,
+            ]);
+            self::fail('An unrelated assignment storage failure must propagate as QueryException.');
+        } catch (QueryException $exception) {
+            self::assertStringContainsString('country_defaults_unrelated_failure', $exception->getMessage());
+        } finally {
+            $this->removeUnrelatedAssignmentFailure($connection->getDriverName());
+        }
+    }
+
     private function published(string $scope, SuperAdmin $actor): AdminTemplate
     {
         $template = AdminTemplate::query()->create([
@@ -135,5 +211,114 @@ final class AssignmentApiEndpointTest extends TestCase
             'role' => 'super_admin',
             'is_active' => true,
         ]);
+    }
+
+    /** @return array{resource, resource} */
+    private function socketPair(): array
+    {
+        $sockets = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+        self::assertNotFalse($sockets);
+
+        return [$sockets[0], $sockets[1]];
+    }
+
+    private function requirePostgreSqlConcurrency(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            self::markTestSkipped('The first-assignment unique-loser proof requires PostgreSQL row locks.');
+        }
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('The first-assignment unique-loser proof requires ext-pcntl.');
+        }
+    }
+
+    private function resetChildConnection(): void
+    {
+        DB::purge((new CountryTemplateAssignment)->getConnectionName());
+    }
+
+    private function runPausedFirstAssignmentChild(mixed $socket, string $templateId, string $actorId): never
+    {
+        try {
+            $this->resetChildConnection();
+            $delegate = app(CountryAccountingCapabilities::class);
+            $this->app->instance(CountryAccountingCapabilities::class, new class($delegate, $socket) implements CountryAccountingCapabilities
+            {
+                private bool $paused = false;
+
+                public function __construct(
+                    private readonly CountryAccountingCapabilities $delegate,
+                    private readonly mixed $socket,
+                ) {}
+
+                public function supportsStampDuty(string $countryCode): bool
+                {
+                    return $this->delegate->supportsStampDuty($countryCode);
+                }
+
+                public function version(): string
+                {
+                    if (! $this->paused) {
+                        if (! is_resource($this->socket)) {
+                            throw new LogicException('Race socket is unavailable.');
+                        }
+                        $this->paused = true;
+                        fwrite($this->socket, "assignment-template-locked\n");
+                        usleep(500_000);
+                    }
+
+                    return $this->delegate->version();
+                }
+            });
+            $actor = SuperAdmin::query()->findOrFail($actorId);
+            app(TemplateAssignmentService::class)->assign(
+                'FR',
+                TemplateDomain::ChartOfAccounts,
+                $templateId,
+                $actor,
+            );
+            fclose($socket);
+            exit(0);
+        } catch (Throwable $exception) {
+            if (is_resource($socket)) {
+                fwrite($socket, 'error:'.$exception->getMessage());
+                fclose($socket);
+            }
+            exit(1);
+        }
+    }
+
+    private function installUnrelatedAssignmentFailure(string $driver): void
+    {
+        if ($driver === 'pgsql') {
+            DB::unprepared(<<<'SQL'
+                CREATE FUNCTION country_defaults_unrelated_failure() RETURNS trigger AS $$
+                BEGIN
+                    RAISE EXCEPTION 'country_defaults_unrelated_failure' USING ERRCODE = '23503';
+                END;
+                $$ LANGUAGE plpgsql;
+                CREATE TRIGGER country_defaults_unrelated_failure
+                BEFORE INSERT ON country_template_assignments
+                FOR EACH ROW EXECUTE FUNCTION country_defaults_unrelated_failure();
+                SQL);
+
+            return;
+        }
+
+        DB::unprepared(<<<'SQL'
+            CREATE TRIGGER country_defaults_unrelated_failure
+            BEFORE INSERT ON country_template_assignments
+            BEGIN
+                SELECT RAISE(ABORT, 'country_defaults_unrelated_failure');
+            END;
+            SQL);
+    }
+
+    private function removeUnrelatedAssignmentFailure(string $driver): void
+    {
+        DB::unprepared('DROP TRIGGER IF EXISTS country_defaults_unrelated_failure'.($driver === 'pgsql' ? ' ON country_template_assignments' : ''));
+        if ($driver === 'pgsql') {
+            DB::unprepared('DROP FUNCTION IF EXISTS country_defaults_unrelated_failure()');
+        }
     }
 }

@@ -21,9 +21,9 @@ use App\Modules\CountryDefaults\Presentation\Requests\ValidateTemplateRequest;
 use App\Modules\CountryDefaults\Presentation\Resources\TemplateResource;
 use App\Modules\CountryDefaults\Presentation\Resources\TemplateSummaryResource;
 use App\Modules\CountryDefaults\Presentation\Resources\TemplateValidationReportResource;
+use App\Services\AdminAuditService;
 use App\Shared\Architecture\CrossTenantRoute;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
-use App\Services\AdminAuditService;
 use DomainException;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\JsonResponse;
@@ -112,15 +112,23 @@ final class TemplateController extends Controller
     #[CrossTenantRoute(reason: 'Runs central certification validation against locked template rows without reading tenant data.')]
     public function validation(ValidateTemplateRequest $request): JsonResponse
     {
-        $scopeCodes = array_values(array_filter(array_map('trim', explode(',', $request->validated('scope')))));
+        $scopeInput = $request->validated('scope');
+        $scopeCodes = is_string($scopeInput)
+            ? array_values(array_filter(array_map('trim', explode(',', $scopeInput))))
+            : [];
         $errors = [];
         try {
-            $scope = new CertificationScope($scopeCodes, $this->capabilities);
             $template = AdminTemplate::query()->with('accounts')->findOrFail($request->validated('id'));
             if (! $template instanceof AdminTemplate) {
                 throw new LogicException('Country Defaults template lookup did not resolve a model.');
             }
-            $this->publishing->validateAccounts(array_values($template->accounts()->get()->all()), $scope);
+            $accounts = array_values($template->accounts()->get()->all());
+            if ($scopeCodes === []) {
+                $this->publishing->validateAccountsWithoutScope($accounts);
+            } else {
+                $scope = new CertificationScope($scopeCodes, $this->capabilities);
+                $this->publishing->validateAccounts($accounts, $scope);
+            }
         } catch (DomainException|\InvalidArgumentException $exception) {
             $errors[] = trans('country_defaults.errors.template_validation_detail');
         }

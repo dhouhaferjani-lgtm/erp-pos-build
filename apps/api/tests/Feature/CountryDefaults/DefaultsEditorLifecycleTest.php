@@ -53,7 +53,9 @@ final class DefaultsEditorLifecycleTest extends TestCase
         $reset->assertOk();
         $credential = $reset->json('meta.generated_credential');
         self::assertIsString($credential);
-        self::assertTrue(Hash::check($credential, $editor->fresh()->password));
+        $freshEditor = $editor->fresh();
+        self::assertInstanceOf(SuperAdmin::class, $freshEditor);
+        self::assertTrue(Hash::check($credential, $freshEditor->password));
         self::assertCount(0, $editor->tokens()->get());
 
         self::assertDatabaseHas('admin_audit_logs', ['action' => 'country_defaults.editor.created', 'entity_id' => $editor->id]);
@@ -99,6 +101,34 @@ final class DefaultsEditorLifecycleTest extends TestCase
 
         self::assertContains((new SuperAdmin)->getConnectionName(), $queries);
         self::assertNotContains('central.super_admins', $queries);
+    }
+
+    public function test_create_and_reset_reject_passwords_below_the_shared_privileged_policy(): void
+    {
+        $actor = $this->admin('super_admin');
+
+        $this->actingAs($actor, 'sanctum-admin')->postJson('/api/v1/admin/country-defaults/editors', [
+            'name' => 'Weak password editor',
+            'email' => 'weak-password@example.test',
+            'password' => 'abcdefghijkl',
+        ])->assertUnprocessable()->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['password']]]);
+        self::assertDatabaseMissing('super_admins', ['email' => 'weak-password@example.test']);
+
+        $editor = $this->admin('defaults_editor');
+        $originalPassword = $editor->password;
+        $this->actingAs($actor, 'sanctum-admin')->postJson("/api/v1/admin/country-defaults/editors/{$editor->id}/reset-credentials", [
+            'password' => 'abcdefghijkl',
+        ])->assertUnprocessable()->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['error' => ['errors' => ['password']]]);
+
+        $freshEditor = $editor->fresh();
+        self::assertInstanceOf(SuperAdmin::class, $freshEditor);
+        self::assertSame($originalPassword, $freshEditor->password);
+        self::assertDatabaseMissing('admin_audit_logs', [
+            'action' => 'country_defaults.editor.credentials_reset',
+            'entity_id' => $editor->id,
+        ]);
     }
 
     private function admin(string $role): SuperAdmin

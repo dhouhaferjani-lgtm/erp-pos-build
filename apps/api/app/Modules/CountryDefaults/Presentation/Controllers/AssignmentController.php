@@ -75,11 +75,34 @@ final class AssignmentController extends Controller
             );
 
             return response()->json(['data' => (new CountryTemplateAssignmentResource($assignment->load('template')))->resolve($request)]);
-        } catch (DomainException|QueryException $exception) {
+        } catch (DomainException) {
+            return response()->json(['error' => [
+                'code' => 'ASSIGNMENT_CONFLICT',
+                'message' => trans('country_defaults.errors.assignment_conflict'),
+            ]], 409);
+        } catch (QueryException $exception) {
+            if (! $this->isAssignmentUniqueConflict($exception)) {
+                throw $exception;
+            }
+
             return response()->json(['error' => [
                 'code' => 'ASSIGNMENT_CONFLICT',
                 'message' => trans('country_defaults.errors.assignment_conflict'),
             ]], 409);
         }
+    }
+
+    private function isAssignmentUniqueConflict(QueryException $exception): bool
+    {
+        $message = $exception->getMessage();
+        $sqlState = $exception->errorInfo[0] ?? $exception->getCode();
+        if ($sqlState === '23505') {
+            return str_contains($message, 'country_template_assignments_country_domain_unique');
+        }
+
+        return $sqlState === '23000'
+            && str_contains($message, 'UNIQUE constraint failed')
+            && str_contains($message, 'country_template_assignments.country_code')
+            && str_contains($message, 'country_template_assignments.domain');
     }
 }
