@@ -68,6 +68,10 @@ terminal/context enumeration.
 - Behavioral-commit revert replay: reverting `76ec7c7e7` without committing
   produced the same four verifier failures (4 failed, 20 passed); restoring the
   commit returned the touched paths to green.
+- Review-fix revert replay: in a disposable worktree at `00a604961`, reverting
+  production changes from `a43a9a3e7` while retaining its current tests made
+  the pending-row sealed-coordinate regression fail (1 failed, 25 passed);
+  restoring the worktree returned the path to 26 passed.
 - Per-check load-bearing disable proofs are summarized in the table above;
   each run included its clean control and only the named tamper failed its
   expected-exit assertion.
@@ -244,13 +248,56 @@ Output does not contain "0 chain(s) invoked". (both cases)
 Tests: 2 failed (14 assertions)
 ```
 
-### Pre-implementation/test-only baseline replay (not a commit revert)
+### Review-fix commit revert/restore replay
 
-This section is deliberately **not** commit-level revert/restore evidence for
-round-one commit `a43a9a3e7`. No `git revert` of `a43a9a3e7` was performed.
-The post-review files overlap the earlier behavioral commit `76ec7c7e7`; an
-attempted `git revert --no-commit 76ec7c7e7` in a disposable worktree conflicted
-and was immediately aborted without running tests, so it is not evidence.
+Commit `a43a9a3e7` was replayed in disposable worktree
+`/tmp/es-wave-m1-replay-a43a9a3e7` at `00a604961`. Its production changes were
+reverted without committing, while its current test changes were restored from
+HEAD so the covering tests remained present:
+
+```bash
+git -C /tmp/es-wave-m1-replay-a43a9a3e7 revert --no-commit a43a9a3e7
+git -C /tmp/es-wave-m1-replay-a43a9a3e7 restore --source=HEAD -- apps/api/tests/Feature/Fiscal/VerifyEventChainCommandTest.php apps/api/tests/Feature/Fiscal/VerifyEventChainFleetCommandTest.php
+dropdb --if-exists --force autoerp_es_wave_a0_test
+createdb autoerp_es_wave_a0_test
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php
+```
+
+```text
+FAIL  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+Expected status code 1 but received 0.
+at tests/Feature/Fiscal/VerifyEventChainCommandTest.php:619
+Tests: 1 failed, 25 passed (95 assertions)
+Duration: 118.26s
+```
+
+The failure is the review-fix regression: without `a43a9a3e7`, a pending row
+whose stored company coordinate disagrees with its sealed canonical coordinate
+is accepted. The production and test files were then restored to HEAD and the
+same path rerun against a freshly recreated disposable database:
+
+```bash
+git restore --staged --worktree .
+dropdb --if-exists --force autoerp_es_wave_a0_test
+createdb autoerp_es_wave_a0_test
+APP_ENV=testing APP_KEY='base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=' DB_CONNECTION=pgsql DB_HOST=127.0.0.1 DB_PORT=5432 DB_DATABASE=autoerp_es_wave_a0_test DB_CENTRAL_DATABASE=autoerp_es_wave_a0_test DB_USERNAME=houssamr DB_PASSWORD='' php artisan test --no-ansi -c phpunit-pgsql.xml tests/Feature/Fiscal/VerifyEventChainCommandTest.php
+```
+
+```text
+PASS  Tests\Feature\Fiscal\VerifyEventChainCommandTest
+Tests: 26 passed (95 assertions)
+Duration: 44.95s
+```
+
+An earlier attempt accidentally overlapped two invocations of this same path
+and deadlocked during `RefreshDatabase`; it is discarded as infrastructure
+noise and not used as behavioral evidence. Before the serial replay above,
+only the dedicated disposable database was force-dropped and recreated.
+
+### Pre-implementation/test-only baseline replay (supplementary)
+
+The retained evidence below is supplementary pre-implementation baseline
+evidence. It is not used as a substitute for the commit-level replay above.
 
 The retained round-one evidence below is a pre-implementation baseline replay
 at the exact test-only commit `03e11782e` in a disposable detached worktree:
@@ -272,14 +319,8 @@ Expected status code 1 but received 0. (all four tamper cases)
 Tests: 4 failed, 2 warnings (11 assertions)
 ```
 
-Explicit deviation: the original M1 behavioral commit `76ec7c7e7` had a true
-`git revert --no-commit` / restore replay, recorded earlier in this document.
-Round-one commit `a43a9a3e7` did not receive its own commit-level revert replay.
-Its load-bearing evidence is instead the red-first focused tests, the five
-individual temporary-disable proofs above, the pre-implementation baseline
-replay, the architecture base/HEAD comparison, and the final green paths. This
-evidence does not claim those are equivalent to a commit-level revert/restore
-operation.
+Both behavioral commits now have true revert/restore replays: `76ec7c7e7` as
+recorded earlier, and `a43a9a3e7` in the disposable-worktree replay above.
 
 ### Final dedicated PostgreSQL paths
 
