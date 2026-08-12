@@ -39,6 +39,7 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
             self::assertStringContainsString("config('country_defaults.provisioning_enabled'", $source);
             self::assertStringContainsString('$this->templateResolver->resolve', $source);
             self::assertStringContainsString('$this->templateSeeder->seed', $source);
+            self::assertStringNotContainsString('previewLegacyExistingChartRepair', $source);
         }
 
         if (! str_ends_with($relativePath, 'DemoPharmacySeeder.php') && ! str_ends_with($relativePath, 'ParapharmacySeeder.php')) {
@@ -71,6 +72,7 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
     {
         $allowed = [
             'app/Modules/Accounting/Application/Services/ChartOfAccountsService.php',
+            'app/Modules/Accounting/Application/Services/LegacyExistingChartRepairPreviewer.php',
             'app/Modules/CountryDefaults/Infrastructure/Export/LegacyCoaGoldenExporter.php',
             'database/migrations/tenant/2026_03_23_300000_fix_existing_tunisian_companies_tax_setup.php',
             'database/seeders/FranceChartOfAccountsSeeder.php',
@@ -107,8 +109,12 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
         self::assertContains('TunisiaChartOfAccountsSeeder', $names);
     }
 
-    public function test_frozen_seeder_tests_are_explicitly_labeled_historical_compat(): void
+    public function test_frozen_seeder_tests_use_non_excludable_fixture_marker_or_true_historical_label(): void
     {
+        $historicalCompatFiles = [
+            'tests/Feature/Seeders/DemoSeedersTaxTest.php',
+            'tests/Feature/Seeders/SeededProductsHaveTaxRateTest.php',
+        ];
         $violations = [];
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path('tests')));
         foreach ($iterator as $file) {
@@ -120,13 +126,20 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
                 continue;
             }
             $source = (string) file_get_contents($file->getPathname());
-            if (array_intersect($this->frozenClasses(), $this->codeNames($source)) !== []
-                && ! str_contains($source, "Group('historical-compat')")) {
-                $violations[] = $relative;
+            if (array_intersect($this->frozenClasses(), $this->codeNames($source)) === []) {
+                continue;
+            }
+            $fixtureMarked = str_contains($source, 'UsesFrozenSeederFixture');
+            $historicalMarked = str_contains($source, "Group('historical-compat')");
+            if (! $fixtureMarked && (! in_array($relative, $historicalCompatFiles, true) || ! $historicalMarked)) {
+                $violations[] = "{$relative}:missing fixture marker";
+            }
+            if ($historicalMarked && ! in_array($relative, $historicalCompatFiles, true)) {
+                $violations[] = "{$relative}:misleading historical label";
             }
         }
 
-        self::assertSame([], $violations, 'Frozen-seeder tests must be explicitly labeled historical-compat.');
+        self::assertSame([], $violations, 'Frozen-seeder fixture tests must use the semantic marker; historical labels are reserved for true compatibility suites.');
     }
 
     /** @return list<string> */

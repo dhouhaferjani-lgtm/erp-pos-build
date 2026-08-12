@@ -8,11 +8,11 @@ use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\Attributes\Group;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 
-#[Group('historical-compat')]
+#[UsesFrozenSeederFixture]
 final class FrozenSeederDocblockTest extends TestCase
 {
     private const MARKER = '@deprecated compatibility artifact; frozen at 7d85232cc';

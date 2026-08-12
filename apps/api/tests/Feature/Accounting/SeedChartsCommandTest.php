@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\LegacyExistingChartRepairPreviewer;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
 use App\Modules\CountryDefaults\Application\Services\CountryTemplateResolver;
@@ -13,6 +14,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\PendingCommand;
 use Mockery;
@@ -245,6 +247,8 @@ final class SeedChartsCommandTest extends TestCase
         $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
 
         $this->command('accounting:seed-charts', ['--dry-run' => true])
+            ->expectsOutputToContain('[LEGACY-ONLY PREVIEW]')
+            ->expectsOutputToContain('[NOT ASSIGNED-TEMPLATE PARITY]')
             ->expectsOutputToContain('[DRY-RUN] Chart provisioning:')
             ->assertSuccessful();
 
@@ -273,8 +277,29 @@ final class SeedChartsCommandTest extends TestCase
         $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
 
         $this->command('accounting:seed-charts', ['--dry-run' => true])
+            ->expectsOutputToContain('[LEGACY-ONLY PREVIEW]')
+            ->expectsOutputToContain('[NOT ASSIGNED-TEMPLATE PARITY]')
             ->expectsOutputToContain('[DRY-RUN] Chart provisioning:')
             ->assertSuccessful();
+
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+    }
+
+    public function test_legacy_preview_collaborator_never_commits_with_or_without_caller_transaction(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $previewer = app(LegacyExistingChartRepairPreviewer::class);
+
+        [$created] = $previewer->preview($company);
+        self::assertGreaterThan(0, $created);
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+
+        DB::transaction(function () use ($previewer, $company): void {
+            [$nestedCreated] = $previewer->preview($company);
+            self::assertGreaterThan(0, $nestedCreated);
+            self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+        });
 
         self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
     }

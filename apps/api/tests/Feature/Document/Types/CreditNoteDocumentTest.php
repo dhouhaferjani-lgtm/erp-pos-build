@@ -22,11 +22,11 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
-#[Group('historical-compat')]
+#[UsesFrozenSeederFixture]
 class CreditNoteDocumentTest extends TestCase
 {
     use RefreshDatabase;

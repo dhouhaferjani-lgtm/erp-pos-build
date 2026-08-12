@@ -24,11 +24,11 @@ use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
-#[Group('historical-compat')]
+#[UsesFrozenSeederFixture]
 class InvoiceDocumentTest extends TestCase
 {
     use RefreshDatabase;

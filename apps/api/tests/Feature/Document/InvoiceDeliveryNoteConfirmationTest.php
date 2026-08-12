@@ -26,8 +26,8 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
 /**
@@ -39,7 +39,7 @@ use Tests\TestCase;
  * @see SalesOrderToInvoiceConverter
  * @see InvoiceController::confirmDeliveriesAndPost()
  */
-#[Group('historical-compat')]
+#[UsesFrozenSeederFixture]
 class InvoiceDeliveryNoteConfirmationTest extends TestCase
 {
     use RefreshDatabase;

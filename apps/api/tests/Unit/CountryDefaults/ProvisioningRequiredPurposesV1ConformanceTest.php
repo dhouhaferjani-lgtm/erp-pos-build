@@ -29,13 +29,13 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\ParserFactory;
-use PHPUnit\Framework\Attributes\Group;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
-#[Group('historical-compat')]
+#[UsesFrozenSeederFixture]
 final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
 {
     use RefreshDatabase;
