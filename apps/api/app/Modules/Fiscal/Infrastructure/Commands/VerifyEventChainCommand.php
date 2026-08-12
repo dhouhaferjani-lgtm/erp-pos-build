@@ -7,6 +7,9 @@ namespace App\Modules\Fiscal\Infrastructure\Commands;
 use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
+use App\Modules\Fiscal\Application\Services\StrictCanonicalParser;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
+use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Identity\Domain\User;
@@ -80,9 +83,12 @@ use Throwable;
  * binding — `users` is a tenant table, so the gate itself was unreadable from
  * central.
  *
- * There is deliberately no fleet-wide mode: the gate is anchored on an actor
- * who exists in exactly one tenant, so "verify every tenant with this actor"
- * has no coherent meaning.
+ * This command deliberately remains single-chain: the gate is anchored on an
+ * actor who exists in exactly one tenant, so "verify every tenant with this
+ * actor" has no coherent meaning. Fleet coverage is provided separately by
+ * `fiscal:verify-event-chain-fleet`, whose explicit tenant-to-actor manifest
+ * delegates every enumerated chain back to this command without weakening the
+ * actor gate or tenant binding.
  *
  * The chain-walking LOGIC is untouched.
  */
@@ -104,6 +110,7 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         private readonly DatabaseManager $databaseManager,
         private readonly FiscalIntegrityProvider $integrityProvider,
         private readonly PermissionRegistrar $permissionRegistrar,
+        private readonly StrictCanonicalParser $canonicalParser,
     ) {
         parent::__construct($companyContext);
     }
@@ -372,10 +379,25 @@ final class VerifyEventChainCommand extends TenantScopedCommand
             ->orderBy('sequence_number')
             ->get([
                 'id',
+                'tenant_id',
+                'company_id',
+                'terminal_id',
+                'operator_id',
+                'event_type',
+                'event_version',
+                'signature_version',
                 'sequence_number',
+                'event_time_device',
+                'business_date',
+                'chain_context',
+                'reference_event_id',
+                'reference_document_id',
                 'canonical_bytes',
                 'previous_hash',
                 'current_hash',
+                'integrity_status',
+                'payload',
+                'payload_parse_status',
             ]);
 
         $this->lastWalkedCount = $rows->count();
@@ -389,9 +411,24 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         // terminal's `genesis_seed`. Otherwise it must equal the
         // `current_hash` of the row at (fromSequence - 1).
         $expectedPrevious = $this->resolveExpectedPreviousHash($tenantId, $terminalId, $chainContext, $fromSequence);
+        $expectedSequence = $fromSequence;
 
         foreach ($rows as $row) {
-            // (1) Re-hash check.
+            // (1) Sequence coordinates are independently contiguous. Hash
+            // linkage alone cannot prove this: rows 1 and 3 can link cleanly
+            // while sequence 2 is absent.
+            if ($row->sequence_number !== $expectedSequence) {
+                $incidents[] = sprintf(
+                    'CHAIN BREAK at sequence_number %d (id %s): sequence_number gap — expected %d, stored %d',
+                    $row->sequence_number,
+                    $row->id,
+                    $expectedSequence,
+                    $row->sequence_number,
+                );
+            }
+            $expectedSequence = $row->sequence_number + 1;
+
+            // (2) Re-hash check.
             $canonicalBytes = $this->stringifyCanonicalBytes($row->canonical_bytes);
             $rehashed = $this->integrityProvider->computeHash($canonicalBytes);
             if (! hash_equals(strtolower($rehashed), strtolower($row->current_hash))) {
@@ -404,7 +441,52 @@ final class VerifyEventChainCommand extends TenantScopedCommand
                 );
             }
 
-            // (2) Link check — previous_hash must equal the expected
+            // (3) A row that was quarantined or otherwise not verified is an
+            // incident even when its byte hash and linkage remain intact.
+            if ($row->integrity_status !== IntegrityStatus::Verified) {
+                $incidents[] = sprintf(
+                    'CHAIN BREAK at sequence_number %d (id %s): integrity_status is %s, expected verified',
+                    $row->sequence_number,
+                    $row->id,
+                    $row->integrity_status->value,
+                );
+            }
+
+            // (4) For parsed rows, independently derive the envelope and
+            // payload semantics from frozen canonical bytes. The parse result
+            // is also the only trustworthy source for re-validating the sealed
+            // coordinate set below.
+            if ($row->payload_parse_status === PayloadParseStatus::Parsed) {
+                $parsed = $this->canonicalParser->parse($canonicalBytes, $row->event_type);
+
+                if (! $parsed->ok || $parsed->payload === null || $parsed->envelope === null) {
+                    $incidents[] = sprintf(
+                        'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes — canonical payload could not be derived (%s)',
+                        $row->sequence_number,
+                        $row->id,
+                        $parsed->failureReason ?? 'unknown parse failure',
+                    );
+                } else {
+                    if (! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $parsed->payload)) {
+                        $incidents[] = sprintf(
+                            'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes',
+                            $row->sequence_number,
+                            $row->id,
+                        );
+                    }
+
+                    foreach ($this->sealedCoordinateMismatches($row, $parsed->envelope) as $mismatch) {
+                        $incidents[] = sprintf(
+                            'CHAIN BREAK at sequence_number %d (id %s): sealed coordinate %s',
+                            $row->sequence_number,
+                            $row->id,
+                            $mismatch,
+                        );
+                    }
+                }
+            }
+
+            // (5) Link check — previous_hash must equal the expected
             // chain head. The expected head is either the terminal's
             // genesis seed (first event) or the prior row's
             // `current_hash`.
@@ -433,6 +515,89 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         }
 
         return $incidents;
+    }
+
+    /**
+     * Compare JSON-object semantics without treating object key order as data.
+     */
+    /**
+     * @param  array<string, mixed>  $stored
+     * @param  array<string, mixed>  $sealed
+     */
+    private function semanticallyEqual(array $stored, array $sealed): bool
+    {
+        return $this->normalizeJsonObject($stored) === $this->normalizeJsonObject($sealed);
+    }
+
+    /**
+     * @param  array<int|string, mixed>  $value
+     * @return array<int|string, mixed>
+     */
+    private function normalizeJsonObject(array $value): array
+    {
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $value[$key] = $this->normalizeJsonObject($item);
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $sealedEnvelope
+     * @return list<string>
+     */
+    private function sealedCoordinateMismatches(FiscalEvent $row, array $sealedEnvelope): array
+    {
+        $storedCoordinates = [
+            'business_date' => $row->business_date->format('Y-m-d'),
+            'chain_context' => $row->chain_context,
+            'company_id' => $row->company_id,
+            'event_time_device' => $row->event_time_device->utc()->format('Y-m-d\\TH:i:s\\Z'),
+            'event_type' => $row->event_type->value,
+            'event_version' => $row->event_version,
+            'operator_id' => $row->operator_id,
+            'previous_hash' => $row->previous_hash,
+            'reference_document_id' => $row->reference_document_id,
+            'reference_event_id' => $row->reference_event_id,
+            'sequence_number' => $row->sequence_number,
+            'signature_version' => $row->signature_version,
+            'tenant_id' => $row->tenant_id,
+            'terminal_id' => $row->terminal_id,
+        ];
+
+        $mismatches = [];
+        foreach ($storedCoordinates as $field => $storedValue) {
+            $sealedValue = $sealedEnvelope[$field] ?? null;
+            if ($storedValue !== $sealedValue) {
+                $mismatches[] = sprintf(
+                    '%s mismatch — sealed %s, stored %s',
+                    $field,
+                    $this->formatCoordinateValue($sealedValue),
+                    $this->formatCoordinateValue($storedValue),
+                );
+            }
+        }
+
+        return $mismatches;
+    }
+
+    private function formatCoordinateValue(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_string($value) || is_int($value)) {
+            return (string) $value;
+        }
+
+        return get_debug_type($value);
     }
 
     /**
