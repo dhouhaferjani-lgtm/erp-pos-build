@@ -394,3 +394,5 @@ Fresh PostgreSQL verification:
 - `GenerateZReportWithCountsTest.php`: 13 cases, 84 assertions, exit 0.
 
 Pint passed for every touched PHP file. The fix round is documentation/test-contract only; runtime money, authorization, event, and GL behavior remain unchanged.
+
+M1 round 2 accepted the milestone. M5 carries one close-before-merge report cleanup from that register: the G-2 block in the deploy-notes ticket is a verbatim historical reviewer quote, so the report must not claim every open-ruling phrase vanished; the prose following that quote must explicitly state that whole-drawer semantics now supersede the quoted question. M5 will also recheck the P3 hardening notes (split the monorepo-dependent client inventory from the always-on annotation test, tighten the device `@deprecated` regex, cross-reference the remaining deploy gates, and avoid calling the v2 branch literally unreachable).
