@@ -499,3 +499,5 @@ M3 review round 3 also failed before producing reviewer content. It is recorded 
 M3 review round 4 repeated the same empty bridge failure. It is recorded fail-closed and consumes the fourth fix round.
 
 M3 review round 5 again failed at invocation with an empty register. It consumes the fifth and final allowed fix round; the harness permits one terminal round-6 attempt, as in M0.
+
+The terminal M3 round-6 review also failed in the Claude invocation with empty stderr and no reviewer content. The implementation remains locally verified and the worktree is clean, but the fail-closed harness forbids treating tool silence as acceptance. M3 and the wave are therefore `blocked_review` under STOP condition A. M4 and M5 have not started.
