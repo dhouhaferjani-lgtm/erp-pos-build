@@ -464,6 +464,11 @@ final class VerifyEventChainCommandTest extends TestCase
         $this->assertSame(['operational', 'z_session'], $contexts);
         $this->assertGreaterThan(0, $projectedReceipts);
         $this->assertSame(0, $mirrorMismatches);
+        $this->assertFalse(
+            $this->app->make(ReceiptHashService::class)
+                ->verifyTerminalChain(Terminal::query()->findOrFail($this->terminalId)),
+            'The current receipt fiscal arm walks both contexts as one sequence stream; the second sequence-1 row must expose that known linkage failure.',
+        );
     }
 
     public function test_wrong_context_previous_hash_tamper_is_self_asserting(): void
@@ -575,7 +580,8 @@ final class VerifyEventChainCommandTest extends TestCase
         $this->assertSame('operational', $row->chain_context);
         $this->assertSame($zSessionHead, $row->previous_hash);
         $this->assertNotSame($operationalHead, $row->previous_hash);
-        $this->assertSame(hash('sha256', (string) $row->canonical_bytes), $row->current_hash);
+        $canonicalBytes = $this->stringifyCanonicalBytes($row->canonical_bytes);
+        $this->assertSame(hash('sha256', $canonicalBytes), $row->current_hash);
     }
 
     /**
@@ -653,9 +659,11 @@ final class VerifyEventChainCommandTest extends TestCase
             ->where('terminal_id', $this->terminalId)
             ->where('chain_sequence', 1)
             ->value('fiscal_hash');
+        $eventCanonicalBytes = $this->stringifyCanonicalBytes($mirror->event_canonical_bytes);
+        $receiptCanonicalBytes = $this->stringifyCanonicalBytes($mirror->receipt_canonical_bytes);
         $this->assertSame($eventId, $mirror->fiscal_event_id);
-        $this->assertSame(hash('sha256', (string) $mirror->event_canonical_bytes), $mirror->event_hash);
-        $this->assertSame($mirror->event_canonical_bytes, $mirror->receipt_canonical_bytes);
+        $this->assertSame(hash('sha256', $eventCanonicalBytes), $mirror->event_hash);
+        $this->assertSame($eventCanonicalBytes, $receiptCanonicalBytes);
         $this->assertSame($previousReceiptHash, $mirror->receipt_previous_hash);
         $this->assertNotSame($mirror->event_hash, $mirror->receipt_hash);
         $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', (string) $mirror->receipt_hash);
@@ -892,5 +900,28 @@ final class VerifyEventChainCommandTest extends TestCase
         DB::table('fiscal_events')->insert($row);
 
         return $eventId;
+    }
+
+    /**
+     * PostgreSQL returns BYTEA columns as stream resources while SQLite
+     * returns BLOBs as strings. Normalize both shapes for test assertions.
+     */
+    private function stringifyCanonicalBytes(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_resource($value)) {
+            $contents = stream_get_contents($value);
+
+            if ($contents === false) {
+                self::fail('Unable to read canonical_bytes stream.');
+            }
+
+            return $contents;
+        }
+
+        return (string) $value;
     }
 }

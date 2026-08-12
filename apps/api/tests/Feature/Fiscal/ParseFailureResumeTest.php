@@ -689,7 +689,7 @@ final class ParseFailureResumeTest extends TestCase
     private function seedPayloadRewriteTamper(): void
     {
         $event = $this->storeParseFailedFiscalEvent(eventVersion: 3);
-        $canonicalBytesBefore = (string) $event->canonical_bytes;
+        $canonicalBytesBefore = $this->stringifyCanonicalBytes($event->canonical_bytes);
         $currentHashBefore = (string) $event->current_hash;
 
         $this->app->make(ParseFailureResolutionService::class)
@@ -700,10 +700,23 @@ final class ParseFailureResumeTest extends TestCase
         $this->assertSame('parsed', $row->payload_parse_status);
         $this->assertSame('verified', $row->integrity_status);
         $this->assertNotNull($row->payload);
-        $this->assertSame($canonicalBytesBefore, $row->canonical_bytes);
+        $canonicalBytesAfter = $this->stringifyCanonicalBytes($row->canonical_bytes);
+        $this->assertSame($canonicalBytesBefore, $canonicalBytesAfter);
         $this->assertSame($currentHashBefore, $row->current_hash);
-        $this->assertSame(hash('sha256', (string) $row->canonical_bytes), $row->current_hash);
-        $this->assertNotSame((string) $row->canonical_bytes, (string) $row->payload);
+        $this->assertSame(hash('sha256', $canonicalBytesAfter), $row->current_hash);
+
+        /** @var array<string, mixed> $frozenPayload */
+        $frozenPayload = json_decode($canonicalBytesAfter, true, 512, JSON_THROW_ON_ERROR);
+        /** @var array<string, mixed> $correctedPayload */
+        $correctedPayload = json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR);
+
+        $this->assertSame(['a' => 2], $frozenPayload);
+        $this->assertSame('10.02', $correctedPayload['subtotal']);
+        $this->assertSame('-0.02', $correctedPayload['cash_rounding_adjustment']);
+        $this->assertSame('0.05', $correctedPayload['cash_rounding_denomination']);
+        $this->assertSame('prod-default', $correctedPayload['line_items'][0]['product_id']);
+        $this->assertArrayNotHasKey('a', $correctedPayload);
+        $this->assertNotSame($frozenPayload, $correctedPayload);
     }
 
     /**
@@ -769,6 +782,29 @@ final class ParseFailureResumeTest extends TestCase
             ->max('sequence_number');
 
         return is_numeric($max) ? ((int) $max) + 1 : 1;
+    }
+
+    /**
+     * PostgreSQL returns BYTEA columns as stream resources while SQLite
+     * returns BLOBs as strings. Normalize both shapes for test assertions.
+     */
+    private function stringifyCanonicalBytes(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_resource($value)) {
+            $contents = stream_get_contents($value);
+
+            if ($contents === false) {
+                self::fail('Unable to read canonical_bytes stream.');
+            }
+
+            return $contents;
+        }
+
+        return (string) $value;
     }
 
     /**
