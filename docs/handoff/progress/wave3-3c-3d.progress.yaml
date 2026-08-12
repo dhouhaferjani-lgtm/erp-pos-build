@@ -49,9 +49,9 @@ milestones:
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
     status: review
-    fix_rounds: 1
-    commit: 28a2d854b209d5fbadd25523b749def23d7ef460
-    verdict: docs/handoff/reviews/wave3-3c-3d/M2-round1.md
+    fix_rounds: 2
+    commit: 689a9b07a48c8b580462602591d861861bd51b44
+    verdict: docs/handoff/reviews/wave3-3c-3d/M2-round2.md
     last_verdict: CHANGES-REQUIRED
   - id: M3
     title: "3C tail: T18, T19, T19b + POS and GR D-f arms (WO arm = tested no-op tied to workshop-parts ticket; D-f POS arm carries NO grace window) + C-5 registration + flushIfOutermost tail + D-e stock_adjustment exclusion"
