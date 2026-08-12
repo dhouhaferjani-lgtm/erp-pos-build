@@ -7,7 +7,6 @@ namespace App\Modules\CountryDefaults\Infrastructure\Models;
 use App\Models\SuperAdmin;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
-use Closure;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,8 +18,6 @@ final class AdminTemplate extends Model
 {
     use CentralConnection;
     use HasUuids;
-
-    private static int $bootstrapImportDepth = 0;
 
     protected $fillable = [
         'domain',
@@ -43,8 +40,8 @@ final class AdminTemplate extends Model
             if ($template->status !== TemplateStatus::Draft) {
                 throw new LogicException('Templates must be created as drafts; lifecycle transitions require the publishing service.');
             }
-            if ($template->bootstrap_key !== null && self::$bootstrapImportDepth < 1) {
-                throw new LogicException('Template bootstrap_key may only be assigned by the bootstrap importer.');
+            if ($template->bootstrap_key !== null) {
+                throw new LogicException('Template bootstrap_key cannot be assigned through the model boundary.');
             }
         });
 
@@ -59,10 +56,6 @@ final class AdminTemplate extends Model
 
             $current = self::lockCurrentDraft($template);
             if ($template->isDirty('bootstrap_key')) {
-                if ($current->bootstrap_key === null && self::$bootstrapImportDepth > 0) {
-                    return;
-                }
-
                 throw new LogicException('Template bootstrap_key is immutable.');
             }
         });
@@ -74,17 +67,6 @@ final class AdminTemplate extends Model
 
             self::lockCurrentDraft($template);
         });
-    }
-
-    /** @param Closure(): mixed $operation */
-    public static function withinBootstrapImport(Closure $operation): mixed
-    {
-        self::$bootstrapImportDepth++;
-        try {
-            return $operation();
-        } finally {
-            self::$bootstrapImportDepth--;
-        }
     }
 
     private static function lockCurrentDraft(self $template): self

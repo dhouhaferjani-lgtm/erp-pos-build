@@ -12,6 +12,7 @@ use App\Modules\CountryDefaults\Application\Services\TemplateAssignmentService;
 use App\Modules\CountryDefaults\Application\Services\TemplatePublishingService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
+use App\Modules\CountryDefaults\Domain\Exceptions\TemplateRecertificationRequiredException;
 use App\Modules\CountryDefaults\Domain\Registries\ProtectedAccountCodeRegistry;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
@@ -204,6 +205,25 @@ final class TemplateAssignmentServiceTest extends TestCase
                 self::assertStringContainsString($message, $exception->getMessage());
             }
         }
+    }
+
+    public function test_assignment_stale_capability_version_requires_typed_recertification(): void
+    {
+        $actor = $this->actor();
+        $template = $this->published('FR', $actor);
+        DB::connection($template->getConnectionName())->table('admin_templates')
+            ->where('id', $template->id)
+            ->update(['capability_registry_version' => 'stale-v0']);
+
+        $this->expectException(TemplateRecertificationRequiredException::class);
+        $this->expectExceptionMessage('stale capability registry version');
+
+        app(TemplateAssignmentService::class)->assign(
+            'FR',
+            TemplateDomain::ChartOfAccounts,
+            $template->id,
+            $actor,
+        );
     }
 
     public function test_assignment_recomputes_and_matches_the_locked_canonical_hash(): void

@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\CountryDefaults\Infrastructure\Export;
 
 use App\Modules\CountryDefaults\Application\Services\CanonicalCoaSerializer;
+use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
+use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
@@ -26,6 +28,11 @@ final class LegacyCoaGoldenExporter
     ) {}
 
     public function export(string $country): string
+    {
+        return $this->exportLegacyDefinitions($country);
+    }
+
+    public function exportLegacyDefinitions(string $country): string
     {
         $normalized = strtolower(trim($country));
         $seeder = match ($normalized) {
@@ -63,16 +70,36 @@ final class LegacyCoaGoldenExporter
                     'parent_code' => $row->parent_code === null ? null : (string) $row->parent_code,
                     'system_purpose' => $row->system_purpose === null ? null : (string) $row->system_purpose,
                     'is_system' => (bool) $row->is_system,
-                    'sort_order' => (int) $row->sort_order,
                 ])
                 ->all();
 
-            return $this->serializer->serialize(array_values($rows));
+            return $this->serializer->serialize(
+                $this->serializer->withLegacyInsertionOrder(array_values($rows)),
+            );
         } finally {
             $this->database->setDefaultConnection($originalDefault);
             $this->database->purge(self::SCRATCH_CONNECTION);
             $this->config->offsetUnset('database.connections.'.self::SCRATCH_CONNECTION);
         }
+    }
+
+    public function exportPersistedTemplate(AdminTemplate $template): string
+    {
+        $rows = $template->accounts()
+            ->orderBy('sort_order')
+            ->get()
+            ->map(static fn (AdminTemplateAccount $row): array => [
+                'code' => $row->code,
+                'name' => $row->name,
+                'type' => $row->type,
+                'parent_code' => $row->parent_code,
+                'system_purpose' => $row->system_purpose,
+                'is_system' => $row->is_system,
+                'sort_order' => $row->sort_order,
+            ])
+            ->all();
+
+        return $this->serializer->serialize(array_values($rows));
     }
 
     private function configureScratchConnection(): void

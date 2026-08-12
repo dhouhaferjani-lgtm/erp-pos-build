@@ -7,6 +7,7 @@ namespace App\Modules\CountryDefaults\Application\Services;
 use App\Models\SuperAdmin;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
+use App\Modules\CountryDefaults\Domain\Exceptions\TemplateRecertificationRequiredException;
 use App\Modules\CountryDefaults\Domain\ValueObjects\CertificationScope;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplateAccount;
@@ -69,7 +70,11 @@ final class TemplateAssignmentService
                 throw new DomainException('Assignment domain must match the template domain.');
             }
             if ($template->capability_registry_version !== $this->capabilities->version()) {
-                throw new DomainException('Assignment template certification uses a stale capability version.');
+                throw TemplateRecertificationRequiredException::forAssignment(
+                    $normalized,
+                    (string) $template->capability_registry_version,
+                    $this->capabilities->version(),
+                );
             }
             if (! is_string($template->content_hash) || preg_match('/^[a-f0-9]{64}$/', $template->content_hash) !== 1) {
                 throw new DomainException('Assignment template certification requires a valid content_hash.');

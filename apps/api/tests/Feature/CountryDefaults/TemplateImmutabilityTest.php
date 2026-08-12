@@ -92,14 +92,13 @@ final class TemplateImmutabilityTest extends TestCase
             self::assertStringContainsString('immutable', $exception->getMessage());
         }
 
-        DB::connection($template->getConnectionName())->transaction(static fn (): mixed => AdminTemplate::withinBootstrapImport(
-            static fn (): bool => $template->forceFill(['bootstrap_key' => 'coa.test.legacy-v1'])->save(),
-        ));
+        $template->refresh();
+        self::assertNull($template->bootstrap_key);
         try {
             DB::connection($template->getConnectionName())->transaction(
-                static fn (): bool => $template->forceFill(['bootstrap_key' => 'coa.changed'])->save(),
+                static fn (): bool => $template->forceFill(['bootstrap_key' => 'coa.test.legacy-v1'])->save(),
             );
-            self::fail('A non-null bootstrap key must be immutable.');
+            self::fail('A draft may not acquire a bootstrap key through an arbitrary model write.');
         } catch (LogicException $exception) {
             self::assertStringContainsString('immutable', $exception->getMessage());
         }

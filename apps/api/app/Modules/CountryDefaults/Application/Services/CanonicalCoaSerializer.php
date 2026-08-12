@@ -7,6 +7,7 @@ namespace App\Modules\CountryDefaults\Application\Services;
 use BackedEnum;
 use InvalidArgumentException;
 use Normalizer;
+use ReflectionClass;
 use RuntimeException;
 
 final class CanonicalCoaSerializer
@@ -45,6 +46,8 @@ final class CanonicalCoaSerializer
      */
     public function serialize(array $rows): string
     {
+        $this->nativeIcuVersion();
+
         $parentCodesById = [];
         foreach ($rows as $row) {
             $id = $row['id'] ?? null;
@@ -96,6 +99,25 @@ final class CanonicalCoaSerializer
     public function hash(array $rows): string
     {
         return hash('sha256', $this->serialize($rows));
+    }
+
+    public function nativeIcuVersion(): string
+    {
+        if (! extension_loaded('intl')) {
+            throw new RuntimeException('Certification hashing requires the ext-intl native ICU implementation.');
+        }
+
+        $normalizer = new ReflectionClass(Normalizer::class);
+        if (! $normalizer->isInternal()) {
+            throw new RuntimeException('Certification hashing rejects a polyfill-only Normalizer; native ICU is required.');
+        }
+
+        $version = defined('INTL_ICU_VERSION') ? constant('INTL_ICU_VERSION') : null;
+        if (! is_string($version) || trim($version) === '') {
+            throw new RuntimeException('Certification hashing could not identify the active native ICU version.');
+        }
+
+        return $version;
     }
 
     /**

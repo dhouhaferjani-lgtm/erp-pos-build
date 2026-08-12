@@ -6,6 +6,24 @@ Source: `docs/handoff/reviews/country-defaults-phase-a/M1-round2.md`
 Status: OPEN carry-forward. M1's code findings are closed. The owners below must close or
 explicitly adjudicate every item at its target milestone, and M7 must cite the resulting evidence.
 
+## M4 closure record (2026-08-12)
+
+- Item 4 is closed by the root `ext-intl` requirement and lock content hash plus a
+  `CanonicalCoaSerializer` native-ICU preflight. The preflight requires the extension, an internal
+  `Normalizer` reflection, and a nonblank `INTL_ICU_VERSION`; M4 records ICU 78.1 and proves a
+  polyfill-only `php -n` process fails before hashing. `composer validate --strict` and
+  `composer check-platform-reqs` pass.
+- Item 7 is closed by distinct `LegacyCoaGoldenExporter::exportLegacyDefinitions()` and
+  `exportPersistedTemplate()` routes. Only the frozen-definition route calls
+  `withLegacyInsertionOrder()`; the persisted route retains explicit `10,20` order in its
+  integration test.
+- The narrow `Infrastructure/Import/LegacyCoaBootstrapImporter.php` is an intentional minimum
+  addition to the dispatch §1 file map. Review found that a public generic model closure was an
+  authority escape hatch. This final non-framework service is now the only production writer of a
+  non-null `bootstrap_key`; the top-level data migration is its only caller and uses Laravel's
+  migration-container resolution. A production-source ratchet enforces both facts. M7 must retain
+  this reviewed file-map deviation and replay that ratchet.
+
 ## Ownership and milestone summary
 
 | Obligation | Owner | Target milestone |
