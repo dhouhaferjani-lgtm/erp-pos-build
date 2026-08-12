@@ -6,6 +6,7 @@ namespace Tests\Feature\CountryDefaults;
 
 use App\Models\SuperAdmin;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -78,6 +79,26 @@ final class DefaultsEditorLifecycleTest extends TestCase
             'email' => 'wrong-role@example.test',
             'role' => 'super_admin',
         ])->assertUnprocessable();
+    }
+
+    public function test_editor_email_validation_queries_the_central_model_connection(): void
+    {
+        $actor = $this->admin('super_admin');
+        $editor = $this->admin('defaults_editor');
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            if (str_contains($query->sql, 'super_admins')) {
+                $queries[] = $query->connectionName;
+            }
+        });
+
+        $this->actingAs($actor, 'sanctum-admin')->postJson('/api/v1/admin/country-defaults/editors', [
+            'name' => 'Duplicate editor',
+            'email' => $editor->email,
+        ])->assertUnprocessable();
+
+        self::assertContains((new SuperAdmin)->getConnectionName(), $queries);
+        self::assertNotContains('central.super_admins', $queries);
     }
 
     private function admin(string $role): SuperAdmin
