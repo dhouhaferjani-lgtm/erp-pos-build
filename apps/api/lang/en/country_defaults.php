@@ -14,6 +14,7 @@ return [
         'template_validation_detail' => 'One or more certification rules failed.',
         'assignment_conflict' => 'The assignment conflicts with the template certification rules.',
         'editor_conflict' => 'The editor account operation conflicts with its current state.',
+        'provisioning_unavailable' => 'Company setup is temporarily unavailable. Please try again later or contact support.',
     ],
     'catalog' => ['generic_fallback' => 'Generic fallback'],
 ];

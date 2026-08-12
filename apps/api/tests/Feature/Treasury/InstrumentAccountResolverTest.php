@@ -15,8 +15,10 @@ use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
+#[Group('historical-compat')]
 final class InstrumentAccountResolverTest extends TestCase
 {
     use RefreshDatabase;

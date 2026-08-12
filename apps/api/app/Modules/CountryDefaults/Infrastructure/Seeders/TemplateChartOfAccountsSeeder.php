@@ -35,6 +35,7 @@ final class TemplateChartOfAccountsSeeder
                     ->where('company_id', $company->id)
                     ->where('code', $definition->code)
                     ->first();
+                $matchedByCode = $account instanceof Account;
 
                 $purpose = $definition->getRawOriginal('system_purpose');
                 if (! $account instanceof Account && is_string($purpose) && $purpose !== '') {
@@ -47,7 +48,7 @@ final class TemplateChartOfAccountsSeeder
 
                 if ($account instanceof Account) {
                     $accountIdMap[$definition->code] = $account->id;
-                    if ($definition->is_system && ! $account->is_system) {
+                    if ($matchedByCode && $definition->is_system && ! $account->is_system) {
                         Account::query()
                             ->where('tenant_id', $company->tenant_id)
                             ->where('company_id', $company->id)

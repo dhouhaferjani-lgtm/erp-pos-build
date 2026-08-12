@@ -14,8 +14,10 @@ use Database\Seeders\ExpenseCategorySeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
+#[Group('historical-compat')]
 final class ExpenseCategorySeederLoudFailureTest extends TestCase
 {
     use RefreshDatabase;

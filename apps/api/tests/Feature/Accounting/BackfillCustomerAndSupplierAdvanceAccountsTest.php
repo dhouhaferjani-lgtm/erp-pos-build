@@ -17,6 +17,7 @@ use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -39,6 +40,7 @@ use Tests\TestCase;
  * because `RefreshDatabase` has already run it against the (empty) schema;
  * these cases build the pre-migration chart shapes by hand and then apply it.
  */
+#[Group('historical-compat')]
 final class BackfillCustomerAndSupplierAdvanceAccountsTest extends TestCase
 {
     use RefreshDatabase;

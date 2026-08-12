@@ -47,6 +47,32 @@ final class TemplateChartOfAccountsSeederSemanticsTest extends TestCase
         self::assertTrue($existing->is_system);
     }
 
+    public function test_purpose_match_preserves_system_flag_like_legacy_seeders(): void
+    {
+        $actor = $this->m4Actor();
+        $template = $this->m4Published('generic', '*', $actor);
+        $company = $this->company();
+        $definition = $template->accounts()
+            ->whereNotNull('system_purpose')
+            ->where('is_system', true)
+            ->firstOrFail();
+        $existing = Account::query()->create([
+            'tenant_id' => $company->tenant_id,
+            'company_id' => $company->id,
+            'code' => 'OPERATOR-PURPOSE',
+            'name' => 'Operator-owned purpose account',
+            'type' => $definition->type,
+            'system_purpose' => $definition->system_purpose,
+            'is_system' => false,
+            'balance' => '0.000',
+        ]);
+
+        app(TemplateChartOfAccountsSeeder::class)->seed($template, $company);
+
+        self::assertFalse($existing->refresh()->is_system);
+        self::assertFalse(Account::query()->where('company_id', $company->id)->where('code', $definition->code)->exists());
+    }
+
     public function test_second_pass_restores_parent_links_for_existing_rows_including_roots(): void
     {
         $actor = $this->m4Actor();

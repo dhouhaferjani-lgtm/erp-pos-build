@@ -84,7 +84,9 @@ final class SeedChartsCommand extends Command
             return self::FAILURE;
         }
 
-        if ((bool) config('country_defaults.provisioning_enabled', false)) {
+        $dryRun = (bool) $this->option('dry-run');
+
+        if (! $dryRun && (bool) config('country_defaults.provisioning_enabled', false)) {
             $this->error(
                 'accounting:seed-charts is disabled while country-defaults template provisioning is enabled; templates apply only during new-company creation.',
             );
@@ -92,7 +94,6 @@ final class SeedChartsCommand extends Command
             return self::FAILURE;
         }
 
-        $dryRun = (bool) $this->option('dry-run');
         $companies = Company::query()->orderBy('id')->get();
 
         $created = 0;

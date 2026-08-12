@@ -6,11 +6,13 @@ namespace Tests\Feature\CountryDefaults;
 
 use App\Modules\CountryDefaults\Application\Services\CountryTemplateResolver;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
+use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
+use App\Modules\CountryDefaults\Domain\Exceptions\MissingCountryTemplateAssignmentException;
 use App\Modules\CountryDefaults\Domain\Exceptions\TemplateRecertificationRequiredException;
 use App\Modules\CountryDefaults\Domain\Exceptions\TimbreCountryRequiresExactAssignmentException;
+use App\Modules\CountryDefaults\Domain\Exceptions\UnpublishedAssignedTemplateException;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
-use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\Support\CountryDefaults\M4Fixtures;
@@ -64,10 +66,25 @@ final class CountryTemplateResolverTest extends TestCase
 
     public function test_missing_wildcard_assignment_fails_loudly(): void
     {
-        $this->expectException(DomainException::class);
+        $this->expectException(MissingCountryTemplateAssignmentException::class);
         $this->expectExceptionMessage('wildcard');
 
         app(CountryTemplateResolver::class)->resolve(TemplateDomain::ChartOfAccounts, 'ZZ');
+    }
+
+    public function test_assignment_to_unpublished_template_fails_with_typed_internal_error(): void
+    {
+        $actor = $this->m4Actor();
+        $template = $this->m4Published('fr', 'FR', $actor);
+        $this->m4Assign('FR', $template, $actor);
+        DB::connection($template->getConnectionName())
+            ->table('admin_templates')
+            ->where('id', $template->id)
+            ->update(['status' => TemplateStatus::Draft->value]);
+
+        $this->expectException(UnpublishedAssignedTemplateException::class);
+
+        app(CountryTemplateResolver::class)->resolve(TemplateDomain::ChartOfAccounts, 'FR');
     }
 
     public function test_stale_exact_and_wildcard_assignments_require_recertification(): void

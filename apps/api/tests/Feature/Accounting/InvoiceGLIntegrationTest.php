@@ -35,6 +35,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -56,6 +57,7 @@ use Tests\TestCase;
  * CRITICAL: These tests MUST fail initially (RED phase).
  * Agent 4B will implement the functionality to make them pass (GREEN phase).
  */
+#[Group('historical-compat')]
 class InvoiceGLIntegrationTest extends TestCase
 {
     use RefreshDatabase;

@@ -33,6 +33,7 @@ use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 use Throwable;
 
@@ -53,6 +54,7 @@ use Throwable;
  *
  * docs/superpowers/tickets/2026-08-03-w7-cross-cutting-findings.md (F-6)
  */
+#[Group('historical-compat')]
 final class DocumentCancellationGlReversalTest extends TestCase
 {
     use RefreshDatabase;

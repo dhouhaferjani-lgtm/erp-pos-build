@@ -235,6 +235,30 @@ final class SeedChartsCommandTest extends TestCase
         self::assertSame($before, $account->refresh()->getAttributes());
     }
 
+    public function test_template_provisioning_allows_dry_run_inspection_without_writes(): void
+    {
+        config()->set('country_defaults.provisioning_enabled', true);
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $this->app->instance(ChartOfAccountsService::class, new class($this->app->make(CountryTemplateResolver::class), $this->app->make(TemplateChartOfAccountsSeeder::class)) extends ChartOfAccountsService
+        {
+            public function seedForCompany(Company $company): void
+            {
+                Account::factory()->create([
+                    'tenant_id' => $company->tenant_id,
+                    'company_id' => $company->id,
+                    'code' => 'DRY-RUN-ONLY',
+                ]);
+            }
+        });
+
+        $this->command('accounting:seed-charts', ['--dry-run' => true])
+            ->expectsOutputToContain('[DRY-RUN] Chart provisioning: 1 created')
+            ->assertSuccessful();
+
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+    }
+
     public function test_delegate_throw_fails_loud_and_aborts(): void
     {
         $tenant = Tenant::factory()->create();

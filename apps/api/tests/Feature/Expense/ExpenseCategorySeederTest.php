@@ -21,9 +21,11 @@ use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
+#[Group('historical-compat')]
 final class ExpenseCategorySeederTest extends TestCase
 {
     use RefreshDatabase;

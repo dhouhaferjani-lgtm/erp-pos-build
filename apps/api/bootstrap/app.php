@@ -12,6 +12,7 @@ use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\CountryDefaults\Domain\Exceptions\CountryDefaultsProvisioningUnavailableException;
 use App\Modules\Document\Domain\Exceptions\DocumentHasPaymentsException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionConflictException;
 use App\Modules\Document\Domain\Exceptions\ReturnDecisionForbiddenException;
@@ -63,6 +64,7 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Sentry\Laravel\Integration;
@@ -724,7 +726,6 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-
         // Plan CF T6 — the guided cancel flow's typed refusals. All 422, all
         // registered BEFORE the generic DomainException handler (Laravel 11 matches
         // render callbacks in registration order), because every one of them extends
@@ -874,6 +875,22 @@ return Application::configure(basePath: dirname(__DIR__))
                         'code' => $e->refusalCode,
                         'message' => $e->getMessage(),
                         'details' => $e->details(),
+                    ],
+                ], 422);
+            }
+        });
+
+        $exceptions->render(function (CountryDefaultsProvisioningUnavailableException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                Log::error('Country-defaults provisioning configuration refused company creation.', [
+                    'exception_class' => $e::class,
+                    'exception_message' => $e->getMessage(),
+                ]);
+
+                return response()->json([
+                    'error' => [
+                        'code' => $e->publicCode(),
+                        'message' => trans($e->translationKey()),
                     ],
                 ], 422);
             }

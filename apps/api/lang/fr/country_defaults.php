@@ -14,6 +14,7 @@ return [
         'template_validation_detail' => 'Une ou plusieurs règles de certification ont échoué.',
         'assignment_conflict' => 'L’affectation est incompatible avec les règles de certification du modèle.',
         'editor_conflict' => 'L’opération est incompatible avec l’état actuel du compte éditeur.',
+        'provisioning_unavailable' => 'La création de l’entreprise est temporairement indisponible. Réessayez plus tard ou contactez le support.',
     ],
     'catalog' => ['generic_fallback' => 'Modèle générique'],
 ];

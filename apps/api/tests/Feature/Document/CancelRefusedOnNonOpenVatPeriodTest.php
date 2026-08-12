@@ -38,6 +38,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
+use PHPUnit\Framework\Attributes\Group;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -57,6 +58,7 @@ use Tests\TestCase;
  * condition attached to ruling 6a", suggested fix 2)
  * docs/superpowers/tickets/2026-08-07-round2-rulings-record.md (R-c c2)
  */
+#[Group('historical-compat')]
 final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 {
     use RefreshDatabase;

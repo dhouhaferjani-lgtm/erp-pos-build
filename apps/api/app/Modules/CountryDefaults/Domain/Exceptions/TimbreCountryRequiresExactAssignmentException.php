@@ -4,9 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\CountryDefaults\Domain\Exceptions;
 
-use DomainException;
-
-final class TimbreCountryRequiresExactAssignmentException extends DomainException
+final class TimbreCountryRequiresExactAssignmentException extends CountryDefaultsProvisioningUnavailableException
 {
     public static function forCountry(string $countryCode): self
     {

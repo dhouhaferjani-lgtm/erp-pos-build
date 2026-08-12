@@ -6,12 +6,13 @@ namespace App\Modules\CountryDefaults\Application\Services;
 
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateStatus;
+use App\Modules\CountryDefaults\Domain\Exceptions\MissingCountryTemplateAssignmentException;
 use App\Modules\CountryDefaults\Domain\Exceptions\TemplateRecertificationRequiredException;
 use App\Modules\CountryDefaults\Domain\Exceptions\TimbreCountryRequiresExactAssignmentException;
+use App\Modules\CountryDefaults\Domain\Exceptions\UnpublishedAssignedTemplateException;
 use App\Modules\CountryDefaults\Infrastructure\Models\AdminTemplate;
 use App\Modules\CountryDefaults\Infrastructure\Models\CountryTemplateAssignment;
 use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
-use DomainException;
 
 final class CountryTemplateResolver
 {
@@ -32,7 +33,7 @@ final class CountryTemplateResolver
 
         $wildcard = $this->assignment($domain, '*');
         if (! $wildcard instanceof CountryTemplateAssignment) {
-            throw new DomainException("No pinned wildcard assignment exists for {$domain->value}.");
+            throw MissingCountryTemplateAssignmentException::wildcard($domain);
         }
 
         return $this->verifiedTemplate($wildcard, '*');
@@ -53,7 +54,7 @@ final class CountryTemplateResolver
     ): AdminTemplate {
         $template = $assignment->template;
         if (! $template instanceof AdminTemplate || $template->status !== TemplateStatus::Published) {
-            throw new DomainException("Assignment {$countryCode} does not reference a published template.");
+            throw UnpublishedAssignedTemplateException::forCountry($countryCode);
         }
 
         $storedVersion = (string) $template->capability_registry_version;

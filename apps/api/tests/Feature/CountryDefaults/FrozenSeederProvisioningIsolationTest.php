@@ -100,6 +100,35 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
         self::assertSame([], $violations, 'Unexpected production frozen-seeder dependencies.');
     }
 
+    public function test_dynamic_class_strings_are_detected_by_the_guard(): void
+    {
+        $names = $this->codeNames("<?php app('Database\\Seeders\\TunisiaChartOfAccountsSeeder');");
+
+        self::assertContains('TunisiaChartOfAccountsSeeder', $names);
+    }
+
+    public function test_frozen_seeder_tests_are_explicitly_labeled_historical_compat(): void
+    {
+        $violations = [];
+        $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path('tests')));
+        foreach ($iterator as $file) {
+            if (! $file instanceof SplFileInfo || ! $file->isFile() || $file->getExtension() !== 'php') {
+                continue;
+            }
+            $relative = str_replace(base_path().DIRECTORY_SEPARATOR, '', $file->getPathname());
+            if ($relative === 'tests/Feature/CountryDefaults/FrozenSeederProvisioningIsolationTest.php') {
+                continue;
+            }
+            $source = (string) file_get_contents($file->getPathname());
+            if (array_intersect($this->frozenClasses(), $this->codeNames($source)) !== []
+                && ! str_contains($source, "Group('historical-compat')")) {
+                $violations[] = $relative;
+            }
+        }
+
+        self::assertSame([], $violations, 'Frozen-seeder tests must be explicitly labeled historical-compat.');
+    }
+
     /** @return list<string> */
     private function frozenClasses(): array
     {
@@ -115,11 +144,22 @@ final class FrozenSeederProvisioningIsolationTest extends TestCase
     {
         $names = [];
         foreach (token_get_all($source) as $token) {
-            if (! is_array($token) || ! in_array($token[0], [T_STRING, T_NAME_QUALIFIED], true)) {
+            if (! is_array($token) || in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
                 continue;
             }
-            $parts = explode('\\', $token[1]);
-            $names[] = end($parts) ?: $token[1];
+            if (in_array($token[0], [T_STRING, T_NAME_QUALIFIED], true)) {
+                $parts = explode('\\', $token[1]);
+                $names[] = end($parts) ?: $token[1];
+
+                continue;
+            }
+            if ($token[0] === T_CONSTANT_ENCAPSED_STRING) {
+                foreach ($this->frozenClasses() as $class) {
+                    if (str_contains($token[1], $class)) {
+                        $names[] = $class;
+                    }
+                }
+            }
         }
 
         return $names;

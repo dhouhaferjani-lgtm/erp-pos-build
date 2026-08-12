@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 use Tests\Traits\ProvesTenantMigrationRoundTrip;
 
@@ -31,6 +32,7 @@ use Tests\Traits\ProvesTenantMigrationRoundTrip;
  * because `RefreshDatabase` has already run it against the empty schema; these
  * cases build the pre-migration chart shape by hand and then apply it.
  */
+#[Group('historical-compat')]
 final class BackfillChartPurposesMigrationTest extends TestCase
 {
     use ProvesTenantMigrationRoundTrip;
