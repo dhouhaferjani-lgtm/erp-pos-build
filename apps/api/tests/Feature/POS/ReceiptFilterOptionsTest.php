@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\POS\Domain\Terminal;
@@ -30,6 +31,14 @@ final class ReceiptFilterOptionsTest extends ReceiptReportingTestCase
             'location_id' => $second->id,
             'code' => 'Z-HIDDEN',
         ]);
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $otherCompanyLocation = Location::factory()->create(['company_id' => $otherCompany->id]);
+        Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $otherCompany->id,
+            'location_id' => $otherCompanyLocation->id,
+            'code' => 'CROSS-COMPANY',
+        ]);
         $old = $this->createReceipt(postedAt: '2026-08-16 08:00:00 UTC');
         $old->forceFill(['cashier_name' => 'Old snapshot'])->saveQuietly();
         $latest = $this->createReceipt(postedAt: '2026-08-17 08:00:00 UTC');
@@ -53,6 +62,7 @@ final class ReceiptFilterOptionsTest extends ReceiptReportingTestCase
             'v4_refund_authoring_acknowledged_at' => '2026-08-17T08:00:00.000000Z',
         ]);
         $this->assertNotContains('Z-HIDDEN', array_column($response->json('data.terminals'), 'code'));
+        $this->assertNotContains('CROSS-COMPANY', array_column($response->json('data.terminals'), 'code'));
         $response->assertJsonFragment([
             'id' => $this->user->id,
             'name' => 'Latest snapshot',

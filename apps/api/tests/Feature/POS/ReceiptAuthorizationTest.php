@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
-use Spatie\Permission\Models\Permission;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
 final class ReceiptAuthorizationTest extends ReceiptReportingTestCase
@@ -25,8 +25,9 @@ final class ReceiptAuthorizationTest extends ReceiptReportingTestCase
     public function test_frozen_accountant_receipt_grants_reach_reads_and_reports_but_not_terminals(): void
     {
         $receipt = $this->createReceipt();
-        Permission::findOrCreate('pos.view_reports', 'sanctum');
-        $this->user->givePermissionTo('pos.view_reports');
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $this->user->syncPermissions([]);
+        $this->user->assignRole('accountant');
 
         $this->getJson('/api/v1/pos/receipts')->assertOk();
         $this->getJson('/api/v1/pos/receipts/'.$receipt->id)->assertOk();

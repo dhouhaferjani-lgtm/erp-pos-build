@@ -44,6 +44,19 @@ final class ReceiptIndexTypeFilterTest extends ReceiptReportingTestCase
         $this->assertSame(['return', 'return'], array_column($legacyAxis, 'receipt_type'));
     }
 
+    public function test_explicit_invoice_codes_take_precedence_over_the_legacy_axis(): void
+    {
+        $sale = $this->createReceipt('SALE');
+        $this->createReceipt('TRAINING', true);
+
+        $response = $this->getJson(
+            '/api/v1/pos/receipts?receipt_type=sale&include_training=true&invoice_type_codes[]=SALE',
+        );
+
+        $response->assertOk();
+        $this->assertSame([$sale->id], array_column($response->json('data.data'), 'id'));
+    }
+
     public function test_pre_fiscal_return_is_excluded_from_sales_and_projected_into_refunds(): void
     {
         $sale = $this->createReceipt('SALE');

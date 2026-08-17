@@ -116,7 +116,7 @@ final class ReceiptController extends Controller
         }
 
         $legacyReceiptType = $validated['receipt_type'] ?? null;
-        if (is_string($legacyReceiptType)) {
+        if (is_string($legacyReceiptType) && ! isset($validated['invoice_type_codes'])) {
             $query->where('receipt_type', $legacyReceiptType);
         } else {
             /** @var list<string> $invoiceTypeCodes */

@@ -131,11 +131,19 @@ final class ReceiptIndexTrainingExclusionTest extends ReceiptReportingTestCase
         yield 'all production codes' => [['SALE', 'REFUND', 'VOID']];
     }
 
-    public function test_empty_type_array_is_rejected(): void
+    public function test_blank_type_entry_is_rejected(): void
     {
         $this->assertApiValidationErrors(
             $this->getJson('/api/v1/pos/receipts?invoice_type_codes[]='),
             ['invoice_type_codes.0'],
+        );
+    }
+
+    public function test_empty_type_array_is_rejected(): void
+    {
+        $this->assertApiValidationErrors(
+            $this->json('GET', '/api/v1/pos/receipts', ['invoice_type_codes' => []]),
+            ['invoice_type_codes'],
         );
     }
 

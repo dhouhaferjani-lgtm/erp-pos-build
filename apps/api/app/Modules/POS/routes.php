@@ -141,7 +141,8 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/pos/replenishment-requests', [PosReplenishmentController::class, 'index'])
         ->name('pos.replenishment.index');
 
-    // Receipts (collection routes BEFORE parameterized)
+    // Receipts (collection routes BEFORE parameterized).
+    // NG-5: these routes inherit module:POS when POS becomes a real tenant module.
     Route::get('/pos/receipts/filter-options', ReceiptFilterOptionsController::class);
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);
     // §14.2 — New-sale SALE_RECEIPT server-authoring retired. Routes return

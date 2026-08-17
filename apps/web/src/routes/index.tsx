@@ -2917,6 +2917,7 @@ export function AppRoutes() {
           />
           {/* Receipt register is read-only. New-sale authoring and web-admin
               void/return controls remain retired; corrections use desktop POS. */}
+          {/* NG-5: inherit ModuleGuard module="POS" when POS becomes a real tenant module. */}
           <Route
             path="receipts"
             element={
