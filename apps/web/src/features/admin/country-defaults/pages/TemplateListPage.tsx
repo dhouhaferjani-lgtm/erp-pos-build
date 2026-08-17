@@ -19,6 +19,7 @@ export function TemplateListPage() {
     (template: TemplateSummary) => cloneTemplate(template.id, t('templates.cloneName', { name: template.name })),
   )
   const archive = useCountryDefaultsMutation((template: TemplateSummary) => archiveTemplate(template.id))
+  const lifecycleMutationPending = clone.isPending || archive.isPending
   const mutationError = archive.error ?? clone.error
   const columns: DataTableColumn<TemplateSummary>[] = [
     {
@@ -65,8 +66,8 @@ export function TemplateListPage() {
       header: t('templates.columns.actions'),
       render: (template) => (
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => { clone.mutate(template) }}><Copy className="mr-1 h-4 w-4" />{t('templates.clone')}</Button>
-          <Button size="sm" variant="dangerOutline" disabled={template.status !== 'published'} onClick={() => { archive.mutate(template) }}><Archive className="mr-1 h-4 w-4" />{t('templates.archive')}</Button>
+          <Button size="sm" variant="secondary" disabled={lifecycleMutationPending} onClick={() => { clone.mutate(template) }}><Copy className="mr-1 h-4 w-4" />{t('templates.clone')}</Button>
+          <Button size="sm" variant="dangerOutline" disabled={template.status !== 'published' || lifecycleMutationPending} onClick={() => { archive.mutate(template) }}><Archive className="mr-1 h-4 w-4" />{t('templates.archive')}</Button>
         </div>
       ),
     },

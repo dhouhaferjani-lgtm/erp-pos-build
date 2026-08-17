@@ -706,8 +706,13 @@ done
 # altered content, partial row set, concurrent import, retry after failure — is carried solely by
 # tests/Feature/CountryDefaults/BootstrapKeyAssertionImportTest.php (run in items 1 and 2).
 
-# 6 — verify command; a non-zero exit must abort this block (no `; echo` swallowing)
-php artisan country-defaults:verify
+# 6 — authenticated HTTP certification fixture + verify command. The committed runner fails closed
+#     unless the target has an explicit disposable Country Defaults test/scratch database name,
+#     confirms the actual PostgreSQL database identity, rebuilds only that target, publishes and
+#     assigns through authenticated HTTP, and leaves staging/production human certification open.
+PHASE_A_FIXTURE_CONFIRM=I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE \
+PHASE_A_FIXTURE_PORT=8197 \
+  ../../scripts/phase-a-authenticated-verifier-fixture.sh
 
 # 7 — route inventory
 php artisan route:list --path=admin --json > ../../docs/sessions/phase-a-route-inventory.json

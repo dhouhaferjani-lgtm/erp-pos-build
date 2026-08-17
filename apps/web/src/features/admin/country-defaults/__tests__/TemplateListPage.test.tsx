@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -101,6 +101,26 @@ describe('TemplateListPage', () => {
 
     await user.click(await screen.findByRole('button', { name: 'Archive' }))
     expect(await screen.findByText('The request conflicts with the current template lifecycle.')).toBeInTheDocument()
+  })
+
+  it('disables every lifecycle action while a clone request is pending', async () => {
+    const user = userEvent.setup()
+    vi.mocked(countryDefaultsApi.cloneTemplate).mockImplementation(() => new Promise<never>(() => {}))
+    renderPage()
+
+    const cloneButton = await screen.findByRole('button', { name: 'Clone' })
+    const archiveButton = screen.getByRole('button', { name: 'Archive' })
+    await user.click(cloneButton)
+
+    await waitFor(() => {
+      expect(cloneButton).toBeDisabled()
+      expect(archiveButton).toBeDisabled()
+    })
+    await user.click(cloneButton)
+    await user.click(archiveButton)
+
+    expect(countryDefaultsApi.cloneTemplate).toHaveBeenCalledTimes(1)
+    expect(countryDefaultsApi.archiveTemplate).not.toHaveBeenCalled()
   })
 
   it('never offers archive for a draft', async () => {

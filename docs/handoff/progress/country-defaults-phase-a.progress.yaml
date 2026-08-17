@@ -88,8 +88,8 @@ milestones:
   - id: M7
     title: "Whole-branch integration gate + executable evidence manifest (all M1-M6 paths on PG + SQLite parity, static scopes, country-defaults:verify, route inventory, six branch-wide static assertions) — no new implementation; failure of any item blocks"
     review_lenses: [treasury, tenancy-authz, frontend-conventions]
-    status: review
-    fix_rounds: 0
+    status: pending
+    fix_rounds: 1
     commit: 3092413df
     verdict: null
     last_verdict: null

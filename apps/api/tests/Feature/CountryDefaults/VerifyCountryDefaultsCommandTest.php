@@ -8,6 +8,7 @@ use App\Modules\CountryDefaults\Infrastructure\Models\CountryTemplateAssignment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\PendingCommand;
+use Symfony\Component\Process\Process;
 use Tests\Support\CountryDefaults\M4Fixtures;
 use Tests\TestCase;
 
@@ -47,6 +48,28 @@ final class VerifyCountryDefaultsCommandTest extends TestCase
         DB::connection($history->getConnectionName())->table('admin_template_accounts')->where('template_id', $history->id)->limit(1)->update(['name' => 'tampered history']);
 
         $this->m4Artisan()->assertFailed()->expectsOutputToContain('content_hash');
+    }
+
+    public function test_authenticated_fixture_runner_rejects_a_production_like_database_before_execution(): void
+    {
+        $repoRoot = dirname(base_path(), 2);
+        $process = new Process(
+            [$repoRoot.'/scripts/phase-a-authenticated-verifier-fixture.sh', '--preflight-only'],
+            $repoRoot,
+            [
+                'PGHOST' => '127.0.0.1',
+                'PGPORT' => '5432',
+                'PGUSER' => 'fixture-user',
+                'PGPASSWORD' => 'fixture-password',
+                'PHASE_A_MIGRATE_DB' => 'iziposcentral',
+                'PHASE_A_FIXTURE_CONFIRM' => 'I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE',
+                'PHASE_A_FIXTURE_PORT' => '8197',
+            ],
+        );
+        $process->run();
+
+        self::assertSame(64, $process->getExitCode());
+        self::assertStringContainsString('Refusing non-disposable database name: iziposcentral', $process->getErrorOutput());
     }
 
     private function m4Artisan(): PendingCommand
