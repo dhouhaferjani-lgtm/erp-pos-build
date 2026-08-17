@@ -10,13 +10,17 @@ use App\Modules\Company\Services\LocationContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\DTOs\ReceiptDetailData;
 use App\Modules\POS\Application\DTOs\ReceiptListItemData;
+use App\Modules\POS\Application\DTOs\ReceiptOriginalLineageData;
+use App\Modules\POS\Application\DTOs\ReceiptReturnLineageData;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPrintAuditService;
 use App\Modules\POS\Application\Services\ReceiptQrTokenIssuanceService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
+use App\Modules\POS\Application\Services\RefundReportingEnricher;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\PrintMethod;
 use App\Modules\POS\Domain\Enums\RefundDestination;
@@ -53,6 +57,7 @@ final class ReceiptController extends Controller
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
         private readonly CurrencyScaleResolverInterface $currencyScaleResolver,
+        private readonly RefundReportingEnricher $refundReportingEnricher,
         private readonly ReceiptCreationService $receiptCreationService,
         private readonly ReceiptPdfService $receiptPdfService,
         private readonly ReceiptPrintAuditService $receiptPrintAuditService,
@@ -75,10 +80,19 @@ final class ReceiptController extends Controller
         $companyId = $company->id;
         $validated = $request->validated();
 
-        $query = Receipt::where('company_id', $companyId)
-            ->with(['location:id,name', 'terminal:id,code']);
-
         $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
+        $query = Receipt::where('company_id', $companyId)
+            ->with([
+                'location:id,name',
+                'terminal:id,code',
+                'originalReceipt' => function ($originalQuery) use ($companyId, $allowedLocationIds): void {
+                    $originalQuery->where('company_id', $companyId);
+                    if ($allowedLocationIds !== null) {
+                        $originalQuery->whereIn('location_id', $allowedLocationIds);
+                    }
+                },
+            ]);
+
         $requestedLocationIds = $validated['location_ids'] ?? null;
         if ($allowedLocationIds !== null) {
             $effectiveLocationIds = $requestedLocationIds === null
@@ -173,14 +187,15 @@ final class ReceiptController extends Controller
 
         $receipts = $query->orderByDesc('posted_at')
             ->paginate((int) ($validated['per_page'] ?? 25));
+        $refundReporting = $this->refundReportingEnricher->enrich($receipts->getCollection());
 
-        $items = collect($receipts->items())->map(function (Receipt $receipt): array {
+        $items = collect($receipts->items())->map(function (Receipt $receipt) use ($refundReporting): array {
             $moneyScale = $this->currencyScaleResolver->getScale($receipt->currency);
             $isLegacyReturn = $receipt->receipt_type->value === 'return'
                 && $receipt->fiscal_event_id === null
                 && $receipt->invoice_type_code === 'SALE';
 
-            return (new ReceiptListItemData(
+            $row = (new ReceiptListItemData(
                 id: $receipt->id,
                 receipt_number: $receipt->receipt_number,
                 posted_at: $receipt->posted_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
@@ -198,6 +213,13 @@ final class ReceiptController extends Controller
                 currency: $receipt->currency,
                 original_receipt_id: $receipt->original_receipt_id,
             ))->toArray();
+
+            $reporting = $refundReporting[$receipt->id] ?? null;
+            if ($reporting !== null) {
+                $row = array_merge($row, $reporting->toArray());
+            }
+
+            return $row;
         });
 
         return response()->json([
@@ -551,16 +573,21 @@ final class ReceiptController extends Controller
         Gate::authorize('pos.view_receipts');
 
         $companyId = $this->companyContext->requireCompany()->id;
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
 
         $receiptQuery = Receipt::with([
             'company',
             'location',
             'terminal',
             'cashier',
-            'lines.product',
+            'lines.product.unitOfMeasure',
             'vatDetails',
             'payments.paymentMethod',
-            'returnReceipts' => function ($query): void {
+            'originalReceipt' => function ($query) use ($companyId, $allowedLocationIds): void {
+                $this->scopeRelatedReceipt($query, $companyId, $allowedLocationIds);
+            },
+            'returnReceipts' => function ($query) use ($companyId, $allowedLocationIds): void {
+                $this->scopeRelatedReceipt($query, $companyId, $allowedLocationIds);
                 $query->where('is_voided', false)->with('lines');
             },
         ])
@@ -570,22 +597,42 @@ final class ReceiptController extends Controller
 
         // Calculate already-returned quantities per line
         $returnedQuantities = $this->calculateReturnedQuantities($receipt);
-        $zeroQuantity = QuantityScale::formatForUnit('0', null);
+        $returnReporting = $this->refundReportingEnricher->enrich($receipt->returnReceipts);
+        $returnReceipts = $receipt->returnReceipts->map(function (Receipt $returnReceipt) use ($returnReporting): ReceiptReturnLineageData {
+            $reporting = $returnReporting[$returnReceipt->id];
 
-        // Build response with returned_quantity on each line
-        $receiptData = $receipt->toArray();
-        $receiptData['lines'] = $receipt->lines->map(function ($line) use ($returnedQuantities, $zeroQuantity) {
-            $lineData = $line->toArray();
-            $lineData['returned_quantity'] = $returnedQuantities[$line->id] ?? $zeroQuantity;
+            return new ReceiptReturnLineageData(
+                id: $returnReceipt->id,
+                receipt_number: $returnReceipt->receipt_number,
+                posted_at: $returnReceipt->posted_at->toIso8601String(),
+                invoice_type_code: $this->reportingInvoiceTypeCode($returnReceipt),
+                total: $this->receiptTotalMagnitude($returnReceipt),
+                currency: $returnReceipt->currency,
+                refund_reason: $reporting->refund_reason,
+                refund_reason_source: $reporting->refund_reason_source,
+                refund_destination: $reporting->refund_destination,
+            );
+        })->values()->all();
 
-            return $lineData;
-        })->values()->toArray();
+        $originalReceipt = $receipt->originalReceipt;
+        $originalLineage = $originalReceipt === null ? null : new ReceiptOriginalLineageData(
+            id: $originalReceipt->id,
+            receipt_number: $originalReceipt->receipt_number,
+            posted_at: $originalReceipt->posted_at->toIso8601String(),
+            total: $this->receiptTotalMagnitude($originalReceipt),
+            currency: $originalReceipt->currency,
+        );
 
-        // Remove the returnReceipts from the response (internal use only)
-        unset($receiptData['return_receipts']);
+        $receiptData = ReceiptDetailData::fromReceipt(
+            receipt: $receipt,
+            currencyScaleResolver: $this->currencyScaleResolver,
+            returnedQuantities: $returnedQuantities,
+            returnReceipts: array_values($returnReceipts),
+            originalReceipt: $originalLineage,
+        );
 
         return response()->json([
-            'data' => $receiptData,
+            'data' => $receiptData->toArray(),
         ]);
     }
 
@@ -612,6 +659,38 @@ final class ReceiptController extends Controller
             : bcadd($value, '0', 4); // precision-ok: 4 = canonical quantity storage scale
     }
 
+    private function receiptTotalMagnitude(Receipt $receipt): string
+    {
+        $scale = $this->currencyScaleResolver->getScale($receipt->currency);
+        $total = (string) $receipt->total;
+        $magnitude = bccomp($total, '0', 4) < 0
+            ? bcsub('0', $total, 4)
+            : bcadd($total, '0', 4);
+
+        return CurrencyScale::bcformatStrict($magnitude, $scale);
+    }
+
+    private function reportingInvoiceTypeCode(Receipt $receipt): string
+    {
+        return $receipt->receipt_type->value === 'return'
+            && $receipt->fiscal_event_id === null
+            && $receipt->invoice_type_code === 'SALE'
+                ? 'REFUND'
+                : $receipt->invoice_type_code;
+    }
+
+    /**
+     * @param  mixed  $query  Eager-loading supplies a relation rather than an Eloquent builder.
+     * @param  array<int, string>|null  $allowedLocationIds
+     */
+    private function scopeRelatedReceipt(mixed $query, string $companyId, ?array $allowedLocationIds): void
+    {
+        $query->where('company_id', $companyId);
+        if ($allowedLocationIds !== null) {
+            $query->whereIn('location_id', $allowedLocationIds);
+        }
+    }
+
     /**
      * Calculate already-returned quantities per original line ID.
      *
@@ -619,7 +698,7 @@ final class ReceiptController extends Controller
      * Uses original_line_id for precise matching when available, falls back to
      * product attribute matching for legacy return lines.
      *
-     * @return array<string, string> Map of original line ID to returned quantity
+     * @return array<string, numeric-string> Map of original line ID to returned quantity
      */
     private function calculateReturnedQuantities(Receipt $receipt): array
     {
