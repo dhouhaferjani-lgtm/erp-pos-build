@@ -589,3 +589,113 @@ The fix associates Header's settings and manager snapshots with the exact termin
 The full M4 surface is 66/66 green and POS typecheck exits zero. Focused ESLint has zero errors and only the previously recorded reconciliation warning. React Doctor's changed-file scan scores 91; its two remaining suggestions are the broad pre-existing `prefer-useReducer` architecture notes for Header and the modal, not a behavior regression. Production-only revert/replay removed the Header snapshot association and modal flow-state binding while retaining the two regressions: both failed on the stale `false:true` policy and visible `430.00`. Exact replay restored 2/2 selected green and a clean worktree.
 
 M4 round 5 accepted the milestone after independently reproducing 66/66, typecheck, ESLint, the exact production policy-object write paths, and the full render-path enumeration. Its remaining P3s carry to M5: document the misleading transient `confirming` display in the availability ticket, record the currently unreachable non-policy preview-reload hardening note, and refresh the ticket's drifted line citations.
+
+## M5 — whole-lane gate
+
+### Carried review cleanup
+
+M5 closes the sole carried P2 before merge: the M1 report no longer claims the historical G-2 quote vanished, and the deploy-note prose now explicitly says whole-drawer semantics supersede that quote. The nearby P3 hardening was also completed: the always-on deprecation contract is split from the monorepo-dependent client inventory, the device regex binds `@deprecated` to the immediately preceding JSDoc, the Treasury config points to all remaining deploy gates, and the compatibility branch is described as direct-legacy-API reachable rather than literally unreachable. The original red failure output is pasted in M1 above.
+
+M2 now pins all seven English and French summary values directly from the production JSON. Its one-minor-unit fractional display caveat, exact-but-narrow dossier labels, and muted instruction presentation remain explicitly recorded. M3 now has a permanent PostgreSQL `information_schema.columns` assertion for the migrated boolean default and a ticket for the orphaned company-vertical query contract. M4's availability ticket now records the misleading `confirming` refresh state, the currently unreachable non-policy reload hardening path, and corrected line citations.
+
+The PostgreSQL default assertion was mutation-checked. Removing only the migration's `default(true)->change()` block produced exactly one failure (`expected 'true', actual 'false'`); restoring it returned the selected test to 1/1 green.
+
+### Accumulated verification
+
+All backend runs used PostgreSQL on `127.0.0.1:5432` with the fresh dedicated database `autoerp_sv_stage1_m5_full_test`. The full PHPUnit suite was not run.
+
+- Main 16-file API set, including the new migration contract: 68 tests / 9,137 assertions, exit 0.
+- Fiscal status, request, end-to-end, and golden-hash expansion: 44 tests / 181 assertions, exit 0.
+- Cross-tenant cash-count payment-method guard: 1 test / 4 assertions, exit 0.
+- Aggregate PostgreSQL evidence: **113 tests / 9,322 assertions**.
+- POS path-scoped accumulation across 11 files (preview/formula/refund, reconciliation/modal/table/Header, v22/cache, report service, settings API): **146/146**, exit 0.
+- Web path-scoped compliance page/control tests: **10/10**, exit 0. This is deliberately not a claim that the unrelated `src/__tests__/i18n` directory is green; its pre-existing Arabic coverage failures remain outside the touched compliance resource.
+- Web and POS typechecks: exit 0. Full web and POS lint commands: exit 0. POS reports 84 repository warnings and zero errors. Web ratchets report query-key 0/0, design-system 738 acknowledged / 0 new / 0 stale, and quantity display 0/0; all custom ESLint rule tests pass.
+- Pint over every changed PHP file: pass. PHPStan level 8 over all six changed production PHP files: no errors.
+- React Doctor whole-wave scan: web 93/no issues; POS 83 with only the two broad `prefer-useReducer` warnings on the already stateful Header/modal, no behavioral finding.
+- Deptrac is honestly **globally red**, not claimed green: HEAD reports 116 violations versus the stale baseline 99. Reversing the wave's `apps/api/app` diff and rerunning against the pinned content base reports the identical 116 and identical category totals (HEAD has 12,914 allowed versus base 12,915). The wave adds zero violations and the checked-in baseline is not rewritten. An initial replay command used a root-relative pathspec from `apps/api` and produced no patch; it was discarded before the valid root-level comparison.
+
+### Pasted baseline-to-HEAD file list
+
+```text
+apps/api/app/Modules/Accounting/Application/Services/Reports/SalesReportService.php
+apps/api/app/Modules/Compliance/Application/Services/CompanyFraudSettingsService.php
+apps/api/app/Modules/Compliance/Domain/CompanyFraudSettings.php
+apps/api/app/Modules/Compliance/Providers/ComplianceServiceProvider.php
+apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php
+apps/api/app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php
+apps/api/config/treasury.php
+apps/api/database/migrations/tenant/2026_04_25_000004_add_cash_variance_settings_to_company_fraud_settings.php
+apps/api/database/migrations/tenant/2026_04_25_100001_seed_company_fraud_settings_for_existing_companies.php
+apps/api/database/migrations/tenant/2026_08_12_100000_enable_blind_cash_count_for_existing_settings.php
+apps/api/tests/Feature/Compliance/BlindCashCountDefaultMigrationTest.php
+apps/api/tests/Feature/Compliance/FraudSettingsControllerCashControlsTest.php
+apps/api/tests/Feature/Fiscal/ZReportServerAuthoringChokepointTest.php
+apps/api/tests/Feature/POS/FraudSettingsPosControllerTest.php
+apps/api/tests/Feature/POS/GenerateZReportWithCountsTest.php
+apps/api/tests/Feature/Treasury/ShiftCashVarianceTriggerPathsTest.php
+apps/api/tests/Unit/Compliance/CompanyFraudSettingsVerticalDefaultsTest.php
+apps/api/tests/Unit/POS/FraudSettingsResolverTest.php
+apps/pos/src/components/Header.tsx
+apps/pos/src/components/__tests__/Header.test.tsx
+apps/pos/src/components/pos/CashReconciliationSection.test.tsx
+apps/pos/src/components/pos/CashReconciliationSection.tsx
+apps/pos/src/components/pos/EndOfDayPreviewModal.test.tsx
+apps/pos/src/components/pos/EndOfDayPreviewModal.tsx
+apps/pos/src/components/pos/molecules/CashDrawerRevealSummary.tsx
+apps/pos/src/components/pos/organisms/CashCountTable.test.tsx
+apps/pos/src/components/pos/organisms/CashCountTable.tsx
+apps/pos/src/lib/db/__tests__/migration22.integration.test.ts
+apps/pos/src/lib/offline/__tests__/endOfDayPreview.test.ts
+apps/pos/src/lib/offline/endOfDayPreview.ts
+apps/pos/src/locales/en/pos.json
+apps/pos/src/locales/fr/pos.json
+apps/web/src/features/compliance/pages/FraudSettingsPage.test.tsx
+apps/web/src/features/compliance/pages/FraudSettingsPage.tsx
+apps/web/src/lib/i18n.ts
+apps/web/src/locales/ar/compliance.json
+docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md
+docs/handoff/CODEX-DISPATCH-sv-stage1-2026-08-11.md
+docs/handoff/progress/es-wave-a0.progress.yaml
+docs/handoff/progress/sv-stage1.progress.yaml
+docs/handoff/reviews/sv-stage1/M0-round1.md
+docs/handoff/reviews/sv-stage1/M0-round2.md
+docs/handoff/reviews/sv-stage1/M0-round3.md
+docs/handoff/reviews/sv-stage1/M0-round4.md
+docs/handoff/reviews/sv-stage1/M0-round5.md
+docs/handoff/reviews/sv-stage1/M0-round6.md
+docs/handoff/reviews/sv-stage1/M1-round1.md
+docs/handoff/reviews/sv-stage1/M1-round2.md
+docs/handoff/reviews/sv-stage1/M2-round1.md
+docs/handoff/reviews/sv-stage1/M2-round2.md
+docs/handoff/reviews/sv-stage1/M3-resume1-round1.md
+docs/handoff/reviews/sv-stage1/M3-resume1-round2.md
+docs/handoff/reviews/sv-stage1/M3-round1.md
+docs/handoff/reviews/sv-stage1/M3-round2.md
+docs/handoff/reviews/sv-stage1/M3-round3.md
+docs/handoff/reviews/sv-stage1/M3-round4.md
+docs/handoff/reviews/sv-stage1/M3-round5.md
+docs/handoff/reviews/sv-stage1/M3-round6.md
+docs/handoff/reviews/sv-stage1/M4-round1.md
+docs/handoff/reviews/sv-stage1/M4-round2.md
+docs/handoff/reviews/sv-stage1/M4-round3.md
+docs/handoff/reviews/sv-stage1/M4-round4.md
+docs/handoff/reviews/sv-stage1/M4-round5.md
+docs/handoff/reviews/sv-stage1/M4-sv10-leak-audit.md
+docs/sessions/codex-sv-stage1-report.md
+docs/superpowers/tickets/2026-08-08-g3-kill-switch-window-no-backfill.md
+docs/superpowers/tickets/2026-08-08-g3-legacy-closeshift-no-gl-leg.md
+docs/superpowers/tickets/2026-08-08-g3-shift-variance-gl-deploy-notes.md
+docs/superpowers/tickets/2026-08-11-pos-device-arabic-locale.md
+docs/superpowers/tickets/2026-08-12-sv9-blind-count-default-deploy.md
+docs/superpowers/tickets/2026-08-17-blind-count-policy-unavailable-close.md
+docs/superpowers/tickets/2026-08-17-orphan-company-vertical-query-contract.md
+docs/superpowers/tickets/2026-08-17-shift-closure-page-blind-count-parity.md
+docs/superpowers/tickets/2026-08-17-today-sales-blind-count-derivation.md
+```
+
+The list was read, not inferred. Production/test paths map only to SV-1, SV-9, SV-10, and SV-11. No Stage-2–5 implementation row is present. The two `es-wave-a0` paths and its progress YAML are the pre-dispatch administrative delta accepted by M0, not Lane A0/A1 implementation; the implementation-only range from administrative dispatch HEAD `a5520f23c` contains no ES/Lane A file. The GL flag line is byte-identical at base and HEAD: `env('TREASURY_SHIFT_VARIANCE_GL_ENABLED', false)`. No event file changed, and a zero-context scan of added/removed production lines found no event declaration, dispatch, rename, or retirement.
+
+### Deploy obligation
+
+On the next `origin/dev` promotion, run unattended `tenants:migrate`. Migration `2026_08_12_100000_enable_blind_cash_count_for_existing_settings.php` changes every persisted `require_blind_cash_count=false` row to true and changes the PostgreSQL column default to true. Verify each tenant's warning log contains `SV-9 BLIND COUNT BACKFILL COMPLETE:` with tenant, changed, and skipped counts; rerunning must report `changed=0`. The migration intentionally re-enables deliberate false rows because the schema has no provenance discriminator and the binding ruling is ON everywhere. It does not enable the Treasury GL flag.
