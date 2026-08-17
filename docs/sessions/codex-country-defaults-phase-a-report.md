@@ -1812,3 +1812,20 @@ Critical/Important findings:
   A migrations pending; and
 - **frontend conventions — PASS:** confirmed no frontend or generated-type bytes changed after its
   approved 42-test snapshot, and the final worktree was clean.
+
+The complete specialist outputs are committed as durable harness evidence at:
+
+- `docs/handoff/reviews/country-defaults-phase-a/M7-specialist-treasury-final.md`;
+- `docs/handoff/reviews/country-defaults-phase-a/M7-specialist-tenancy-authz-final.md`; and
+- `docs/handoff/reviews/country-defaults-phase-a/M7-specialist-frontend-conventions-final.md`.
+
+### M7 adversarial review round two
+
+The round-two adversarial reviewer independently reproduced the 57-path backend union on both
+engines, all 93 production-PHP static files, the committed authenticated fixture runner, the
+42-test frontend scope, and the clean frozen tree. It confirmed every round-one P1/P2 finding
+closed. Its sole blocking finding was evidence packaging: the three specialist PASS outputs above
+had been summarized in this report but had not been committed as standalone harness artifacts.
+The files above close that finding. The round-two register is committed at
+`docs/handoff/reviews/country-defaults-phase-a/M7-round2.md`; its remaining findings are explicitly
+non-blocking P3 notes.
