@@ -116,7 +116,8 @@ final class ReceiptController extends Controller
         }
 
         $legacyReceiptType = $validated['receipt_type'] ?? null;
-        if (is_string($legacyReceiptType) && ! isset($validated['invoice_type_codes'])) {
+        $usesLegacyReceiptType = is_string($legacyReceiptType) && ! isset($validated['invoice_type_codes']);
+        if ($usesLegacyReceiptType) {
             $query->where('receipt_type', $legacyReceiptType);
         } else {
             /** @var list<string> $invoiceTypeCodes */
@@ -147,7 +148,7 @@ final class ReceiptController extends Controller
             });
         }
 
-        if (! $request->boolean('include_training')) {
+        if (! $request->boolean('include_training') || $usesLegacyReceiptType) {
             $query->where('training_flag', false);
         }
 

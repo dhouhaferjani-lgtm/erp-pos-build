@@ -101,8 +101,8 @@ final class ReceiptIndexTrainingExclusionTest extends ReceiptReportingTestCase
     #[DataProvider('legalNonTrainingCodeSets')]
     public function test_include_training_is_a_byte_identical_no_op_for_non_training_code_sets(array $codes): void
     {
-        foreach (['SALE', 'REFUND', 'VOID'] as $code) {
-            $this->createReceipt($code);
+        foreach (['SALE', 'REFUND', 'VOID', 'TRAINING'] as $code) {
+            $this->createReceipt($code, $code === 'TRAINING');
         }
 
         $query = implode('&', array_map(
