@@ -217,6 +217,7 @@ commit, so the M7 command manifest stays literal and complete.
 | M3 | `tests/Feature/CountryDefaults/CentralAdminRouteInventoryTest.php`<br>`tests/Feature/CountryDefaults/AdminAuthRouteBoundaryTest.php`<br>`tests/Feature/CountryDefaults/DefaultsEditorLifecycleTest.php`<br>`tests/Feature/CountryDefaults/DefaultsEditorLoginFlagTest.php`<br>`tests/Feature/CountryDefaults/TemplateApiEndpointTest.php`<br>`tests/Feature/CountryDefaults/AssignmentApiEndpointTest.php` |
 | M4 | `tests/Feature/CountryDefaults/LegacyGoldenParityTest.php`<br>`tests/Feature/CountryDefaults/BootstrapKeyAssertionImportTest.php`<br>`tests/Feature/CountryDefaults/VerifyCountryDefaultsCommandTest.php`<br>`tests/Feature/CountryDefaults/CapabilityRegistryBumpTransitionTest.php`<br>`tests/Feature/CountryDefaults/CertifiedFixtureDeltaTest.php` |
 | M5 | `tests/Feature/CountryDefaults/CountryTemplateResolverTest.php`<br>`tests/Feature/CountryDefaults/ProvisioningFlagMatrixTest.php`<br>`tests/Feature/CountryDefaults/ProvisioningNoCacheTest.php`<br>`tests/Feature/CountryDefaults/CompanyCreationRollbackTest.php`<br>`tests/Feature/CountryDefaults/TemplateChartOfAccountsSeederSemanticsTest.php`<br>`tests/Feature/CountryDefaults/ExpenseCategorySeederLoudFailureTest.php`<br>`tests/Feature/CountryDefaults/NoExistingCompanyMutationTest.php`<br>`tests/Feature/CountryDefaults/FrozenSeederProvisioningIsolationTest.php` |
+| M1–M5 compatibility | `tests/Feature/Accounting/BackfillChartPurposesMigrationTest.php`<br>`tests/Feature/Accounting/BackfillCustomerAndSupplierAdvanceAccountsTest.php`<br>`tests/Feature/Accounting/BackfillPurchaseStampDutyAccountTest.php`<br>`tests/Feature/Accounting/BackfillSalesRoundingDifferenceAccountsTest.php`<br>`tests/Feature/Accounting/DocumentCancellationGlReversalTest.php`<br>`tests/Feature/Accounting/DocumentGlPreflightTest.php`<br>`tests/Feature/Accounting/InvoiceGLIntegrationTest.php`<br>`tests/Feature/Accounting/SeedChartsCommandTest.php`<br>`tests/Feature/Document/CancelRefusedOnNonOpenVatPeriodTest.php`<br>`tests/Feature/Document/InvoiceDeliveryNoteConfirmationTest.php`<br>`tests/Feature/Document/Types/CreditNoteDocumentTest.php`<br>`tests/Feature/Document/Types/InvoiceDocumentTest.php`<br>`tests/Feature/Expense/ExpenseCategorySeederTest.php`<br>`tests/Feature/Seeders/DemoSeedersTaxTest.php`<br>`tests/Feature/Seeders/SeededProductsHaveTaxRateTest.php`<br>`tests/Feature/Taxation/CompanyTaxProvisioningServiceTest.php`<br>`tests/Feature/Taxation/EndToEndTaxResolutionTest.php`<br>`tests/Feature/Tenant/OnboardingTaxStepTest.php`<br>`tests/Feature/Treasury/InstrumentAccountResolverTest.php`<br>`tests/Feature/Treasury/PayableInstrumentAccountsTest.php`<br>`tests/Unit/Taxation/CountryTaxConfigurationRegistryTest.php` |
 
 | M | Frontend test files (paths relative to `apps/web/`) |
 |---|---|
@@ -640,7 +641,28 @@ tests/Feature/CountryDefaults/CompanyCreationRollbackTest.php \
 tests/Feature/CountryDefaults/TemplateChartOfAccountsSeederSemanticsTest.php \
 tests/Feature/CountryDefaults/ExpenseCategorySeederLoudFailureTest.php \
 tests/Feature/CountryDefaults/NoExistingCompanyMutationTest.php \
-tests/Feature/CountryDefaults/FrozenSeederProvisioningIsolationTest.php"
+tests/Feature/CountryDefaults/FrozenSeederProvisioningIsolationTest.php \
+tests/Feature/Accounting/BackfillChartPurposesMigrationTest.php \
+tests/Feature/Accounting/BackfillCustomerAndSupplierAdvanceAccountsTest.php \
+tests/Feature/Accounting/BackfillPurchaseStampDutyAccountTest.php \
+tests/Feature/Accounting/BackfillSalesRoundingDifferenceAccountsTest.php \
+tests/Feature/Accounting/DocumentCancellationGlReversalTest.php \
+tests/Feature/Accounting/DocumentGlPreflightTest.php \
+tests/Feature/Accounting/InvoiceGLIntegrationTest.php \
+tests/Feature/Accounting/SeedChartsCommandTest.php \
+tests/Feature/Document/CancelRefusedOnNonOpenVatPeriodTest.php \
+tests/Feature/Document/InvoiceDeliveryNoteConfirmationTest.php \
+tests/Feature/Document/Types/CreditNoteDocumentTest.php \
+tests/Feature/Document/Types/InvoiceDocumentTest.php \
+tests/Feature/Expense/ExpenseCategorySeederTest.php \
+tests/Feature/Seeders/DemoSeedersTaxTest.php \
+tests/Feature/Seeders/SeededProductsHaveTaxRateTest.php \
+tests/Feature/Taxation/CompanyTaxProvisioningServiceTest.php \
+tests/Feature/Taxation/EndToEndTaxResolutionTest.php \
+tests/Feature/Tenant/OnboardingTaxStepTest.php \
+tests/Feature/Treasury/InstrumentAccountResolverTest.php \
+tests/Feature/Treasury/PayableInstrumentAccountsTest.php \
+tests/Unit/Taxation/CountryTaxConfigurationRegistryTest.php"
 
 # 2 — SQLite baseline (default phpunit.xml)
 php artisan test $PHASE_A_TESTS
@@ -659,10 +681,15 @@ app/Shared/Contracts/CountryDefaults \
 app/Http/Middleware/EnsureCentralAdmin.php \
 app/Models/Enums/SuperAdminRole.php \
 app/Modules/Taxation/Application/Registries/CountryTaxConfigurationRegistry.php \
+app/Modules/Taxation/Application/Services/CompanyTaxProvisioningService.php \
 app/Modules/Tenant/Application/Services/TenantInitializationService.php \
 app/Modules/Accounting/Application/Services/ChartOfAccountsService.php \
+app/Modules/Accounting/Application/Services/LegacyExistingChartRepairPreviewer.php \
+app/Modules/Expense/Application/Services/ExpenseCategoryProvisioningService.php \
 app/Modules/Company/Presentation/Controllers/CompanyController.php \
 app/Http/Controllers/Api/Admin/SuperAdminAuthController.php \
+app/Console/Commands/SeedChartsCommand.php \
+app/Console/Commands/BackfillChartPurposesCommand.php \
 bootstrap/app.php \
 bootstrap/providers.php \
 routes/api.php \
@@ -676,6 +703,8 @@ database/seeders/TunisianParapharmacySeeder.php \
 database/seeders/ParapharmacySeeder.php \
 database/seeders/DemoPharmacySeeder.php \
 database/seeders/ExpenseCategorySeeder.php \
+database/seeders/Contracts/ChartOfAccountsSeederContract.php \
+database/seeders/CountryDefaultsChartOfAccountsSeeder.php \
 database/seeders/TunisiaChartOfAccountsSeeder.php \
 database/seeders/FranceChartOfAccountsSeeder.php \
 database/seeders/GenericChartOfAccountsSeeder.php \

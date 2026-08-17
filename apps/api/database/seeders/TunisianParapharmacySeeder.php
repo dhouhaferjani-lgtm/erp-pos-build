@@ -459,7 +459,7 @@ class TunisianParapharmacySeeder extends Seeder
                 'id' => Str::uuid()->toString(),
                 'tenant_id' => $company->tenant_id,
                 'company_id' => $company->id,
-                'sku' => 'PARA-'.strtoupper(Str::ascii(mb_substr(str_replace(' ', '', $productData['name']), 0, 8))).rand(10, 99),
+                'sku' => 'PARA-'.strtoupper(Str::slug($productData['name'])),
                 'name' => $productData['name'],
                 'description' => 'Produit parapharmaceutique de qualité - '.$productData['name'],
                 'unit' => 'pièce',

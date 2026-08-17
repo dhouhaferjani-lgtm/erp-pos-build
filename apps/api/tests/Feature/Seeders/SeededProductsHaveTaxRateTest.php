@@ -90,6 +90,22 @@ final class SeededProductsHaveTaxRateTest extends TestCase
             'TunisianParapharmacySeeder must create at least one product'
         );
 
+        $expectedStableSkus = [
+            'Vitamine C 1000mg' => 'PARA-VITAMINE-C-1000MG',
+            'Vitamine D3 2000 UI' => 'PARA-VITAMINE-D3-2000-UI',
+        ];
+        $actualStableSkus = Product::whereIn('id', $newProductIds)
+            ->whereIn('name', array_keys($expectedStableSkus))
+            ->pluck('sku', 'name')
+            ->all();
+        ksort($expectedStableSkus);
+        ksort($actualStableSkus);
+        $this->assertSame(
+            $expectedStableSkus,
+            $actualStableSkus,
+            'Explicit parapharmacy SKUs must be stable and cannot collide when names share a prefix'
+        );
+
         $this->assertSame(
             0,
             Product::whereIn('id', $newProductIds)->whereNull('tax_rate')->count(),

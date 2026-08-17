@@ -33,6 +33,12 @@ final class ProvisioningFlagMatrixTest extends TestCase
     use M4Fixtures;
     use RefreshDatabase;
 
+    public function test_both_country_defaults_activation_flags_are_disabled_by_default(): void
+    {
+        self::assertFalse(config('country_defaults.provisioning_enabled'));
+        self::assertFalse(config('country_defaults.external_editors_enabled'));
+    }
+
     public function test_additional_company_path_uses_legacy_seeder_when_flag_is_false(): void
     {
         config(['country_defaults.provisioning_enabled' => false]);

@@ -325,7 +325,26 @@ final class DocumentCancellationGlReversalTest extends TestCase
      */
     protected function connectionsToTransact(): array
     {
-        return DB::getDriverName() === 'pgsql' ? [] : [config('database.default')];
+        return $this->usesCommittedPostgreSqlFixtures()
+            ? []
+            : [config('database.default')];
+    }
+
+    protected function tearDown(): void
+    {
+        try {
+            if ($this->usesCommittedPostgreSqlFixtures()) {
+                $this->artisan('migrate:fresh');
+            }
+        } finally {
+            parent::tearDown();
+        }
+    }
+
+    private function usesCommittedPostgreSqlFixtures(): bool
+    {
+        return DB::getDriverName() === 'pgsql'
+            && $this->name() === 'test_concurrent_cancels_cannot_double_reverse_the_ledger';
     }
 
     public function test_a_document_that_never_reached_the_gl_reverses_nothing(): void
