@@ -30,6 +30,7 @@ final class ReceiptIndexEnvelopeTest extends TestCase
         $company = Company::factory()->create([
             'tenant_id' => $tenant->id,
             'timezone' => 'Africa/Tunis',
+            'currency' => 'EUR',
         ]);
         $location = Location::factory()->create(['company_id' => $company->id]);
         $user = User::factory()->create(['tenant_id' => $tenant->id]);
@@ -58,6 +59,8 @@ final class ReceiptIndexEnvelopeTest extends TestCase
             'posted_at' => '2026-08-17 09:00:00 UTC',
             'invoice_type_code' => 'SALE',
             'training_flag' => false,
+            'currency' => 'TND',
+            'total' => '12.3450',
         ]);
 
         $response = $this->getJson('/api/v1/pos/receipts?from_date=2026-08-17&to_date=2026-08-17');
@@ -71,5 +74,7 @@ final class ReceiptIndexEnvelopeTest extends TestCase
         );
         $response->assertJsonPath('data.meta.from', '2026-08-16T23:00:00.000000Z');
         $response->assertJsonPath('data.meta.to', '2026-08-17T23:00:00.000000Z');
+        $response->assertJsonPath('data.data.0.currency', 'TND');
+        $response->assertJsonPath('data.data.0.total', '12.345');
     }
 }

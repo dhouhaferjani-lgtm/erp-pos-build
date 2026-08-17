@@ -10,6 +10,7 @@ use App\Modules\Company\Services\LocationContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\DTOs\ReceiptListItemData;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
@@ -148,23 +149,23 @@ final class ReceiptController extends Controller
         $items = collect($receipts->items())->map(function (Receipt $receipt): array {
             $moneyScale = $this->currencyScaleResolver->getScale($receipt->currency);
 
-            return [
-                'id' => $receipt->id,
-                'receipt_number' => $receipt->receipt_number,
-                'posted_at' => $receipt->posted_at->toISOString(),
-                'invoice_type_code' => $receipt->invoice_type_code,
-                'training_flag' => $receipt->training_flag,
-                'fiscal_status' => $receipt->fiscal_status->value,
-                'location_id' => $receipt->location_id,
-                'location_name' => $receipt->location?->name,
-                'terminal_id' => $receipt->terminal_id,
-                'terminal_code' => $receipt->terminal?->code ?? '',
-                'cashier_id' => $receipt->cashier_id,
-                'cashier_name' => $receipt->cashier_name,
-                'total' => CurrencyScale::bcformatStrict((string) $receipt->total, $moneyScale),
-                'currency' => $receipt->currency,
-                'original_receipt_id' => $receipt->original_receipt_id,
-            ];
+            return (new ReceiptListItemData(
+                id: $receipt->id,
+                receipt_number: $receipt->receipt_number,
+                posted_at: $receipt->posted_at->toISOString(),
+                invoice_type_code: $receipt->invoice_type_code,
+                training_flag: $receipt->training_flag,
+                fiscal_status: $receipt->fiscal_status->value,
+                location_id: $receipt->location_id,
+                location_name: $receipt->location?->name,
+                terminal_id: $receipt->terminal_id,
+                terminal_code: $receipt->terminal?->code ?? '',
+                cashier_id: $receipt->cashier_id,
+                cashier_name: $receipt->cashier_name,
+                total: CurrencyScale::bcformatStrict((string) $receipt->total, $moneyScale),
+                currency: $receipt->currency,
+                original_receipt_id: $receipt->original_receipt_id,
+            ))->toArray();
         });
 
         return response()->json([

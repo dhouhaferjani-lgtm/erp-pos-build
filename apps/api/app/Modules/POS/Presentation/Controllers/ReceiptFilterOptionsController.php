@@ -7,6 +7,8 @@ namespace App\Modules\POS\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\POS\Application\DTOs\ReceiptFilterCashierData;
+use App\Modules\POS\Application\DTOs\ReceiptFilterTerminalData;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Requests\ReceiptFilterOptionsRequest;
@@ -60,14 +62,14 @@ final class ReceiptFilterOptionsController extends Controller
         $terminals = $terminalQuery
             ->orderBy('code')
             ->get()
-            ->map(static fn (Terminal $terminal): array => [
-                'id' => $terminal->id,
-                'code' => $terminal->code,
-                'name' => $terminal->name,
-                'is_active' => $terminal->is_active,
-                'v4_refund_authoring_enabled' => $terminal->v4_refund_authoring_enabled,
-                'v4_refund_authoring_acknowledged_at' => $terminal->v4_refund_authoring_acknowledged_at?->toISOString(),
-            ])
+            ->map(static fn (Terminal $terminal): array => (new ReceiptFilterTerminalData(
+                id: $terminal->id,
+                code: $terminal->code,
+                name: $terminal->name,
+                is_active: $terminal->is_active,
+                v4_refund_authoring_enabled: $terminal->v4_refund_authoring_enabled,
+                v4_refund_authoring_acknowledged_at: $terminal->v4_refund_authoring_acknowledged_at?->toISOString(),
+            ))->toArray())
             ->values();
 
         $cashiers = $receiptQuery
@@ -75,10 +77,10 @@ final class ReceiptFilterOptionsController extends Controller
             ->orderByDesc('posted_at')
             ->get()
             ->unique('cashier_id')
-            ->map(static fn (Receipt $receipt): array => [
-                'id' => $receipt->cashier_id,
-                'name' => $receipt->cashier_name,
-            ])
+            ->map(static fn (Receipt $receipt): array => (new ReceiptFilterCashierData(
+                id: $receipt->cashier_id,
+                name: $receipt->cashier_name,
+            ))->toArray())
             ->sort(static fn (array $left, array $right): int => [$left['name'], $left['id']] <=> [$right['name'], $right['id']])
             ->values();
 

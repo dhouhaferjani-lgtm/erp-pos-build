@@ -1500,6 +1500,35 @@ tenderTolerancePercentage: string;
 tenderToleranceMaxAmount: string;
 refreshedAt: string;
 };
+export type ReceiptFilterCashierData = {
+id: string;
+name: string;
+};
+export type ReceiptFilterTerminalData = {
+id: string;
+code: string;
+name: string;
+is_active: boolean;
+v4_refund_authoring_enabled: boolean;
+v4_refund_authoring_acknowledged_at: string | null;
+};
+export type ReceiptListItemData = {
+id: string;
+receipt_number: string;
+posted_at: string;
+invoice_type_code: string;
+training_flag: boolean;
+fiscal_status: string;
+location_id: string;
+location_name: string | null;
+terminal_id: string;
+terminal_code: string;
+cashier_id: string;
+cashier_name: string;
+total: string;
+currency: string;
+original_receipt_id: string | null;
+};
 export type SalesSummaryData = {
 receipt_count: number;
 gross_sales: string;
