@@ -1797,3 +1797,18 @@ PostgreSQL-only skips / 2,388 assertions** and PostgreSQL **367 passed / 2,489 a
 the same 57 literal file paths. The three additional cases are the URL, config-cache, and effective
 connection protections. Production PHP scope is unchanged from the passing 93-file gate; frontend
 scope is unchanged from the passing 42-test/typecheck/lint/audit/build gate.
+
+### M7 final specialist reruns
+
+All three required specialists passed the clean frozen `c6dc598c5` snapshot with no open
+Critical/Important findings:
+
+- **treasury — PASS:** independently reran the six verifier tests on SQLite and PostgreSQL (18
+  assertions each), confirmed hostile URL exit 64, safe scratch preflight, explicit central
+  migration targeting, the complete 57-file/static scopes, and the COA/purpose/default-off gates;
+- **tenancy/authz — PASS:** independently confirmed URL/cache rejection, full generic and central
+  pinning, effective-config and live dual-connection identity checks, safe migration/full modes,
+  authenticated HTTP boundaries, and that configured `iziposcentral` still reports all four Phase
+  A migrations pending; and
+- **frontend conventions — PASS:** confirmed no frontend or generated-type bytes changed after its
+  approved 42-test snapshot, and the final worktree was clean.
