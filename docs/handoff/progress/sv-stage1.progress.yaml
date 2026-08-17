@@ -77,9 +77,9 @@ milestones:
     # User-authorized resume after the original M3-round1..M3-round6 bridge-tool failures.
     # Those registers remain historical evidence; the resumed allowance uses M3-resume1-round*.md.
     status: review
-    fix_rounds: 0
-    commit: b73a353f5ae0301b0310ff7578005d09ab20e9d9
-    verdict: docs/handoff/reviews/sv-stage1/M3-round6.md
+    fix_rounds: 1
+    commit: 41da762c1ddc9d2e518bec6bebf94ec2fa46966d
+    verdict: docs/handoff/reviews/sv-stage1/M3-resume1-round1.md
     last_verdict: CHANGES-REQUIRED
   - id: M4
     title: "SV-10 — blind-mode leak audit: READ-ONLY audit of the enumerated surfaces (EndOfDayPreviewModal defended card, CashReconciliationSection severity/reason prompts, CashCountTable reveal gate, any sibling rendering a variance-derived value pre-commit), findings to a file in docs/handoff/reviews/sv-stage1/. Fixes ONLY for leaks in-scope per the row (expected/variance MAGNITUDE disclosed before Commit Counts under blind mode); anything larger -> ticket + report. Do not weaken the existing defence."

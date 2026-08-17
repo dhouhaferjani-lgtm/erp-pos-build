@@ -473,8 +473,8 @@ G-3 backfills Treasury opening float and drawer-operation accounting during a di
 - The historical tenant column default and one-off seed documentation now match the all-vertical ruling.
 - The new settings-only migration updates persisted false rows, changes the database default to true, and emits the distinct warning token `SV-9 BLIND COUNT BACKFILL COMPLETE:` with tenant, changed, and skipped counts. It has table/column guards, a forward-only no-op down, and no catch: its single guarded update remains inside migration transaction handling and genuine errors fail loudly.
 - The web initial state, row normalization, and control fallback all use true, so an omitted row-less value cannot be submitted as false/undefined. The save-path test proves the mutation payload contains true.
-- The device cache schema default is 1 for pre-first-sync operation. Repository sync behavior remains unchanged, so a later persisted server value still wins.
-- Web English and French strings remain intact, and the new Arabic compliance bundle supplies and registers the blind-count label. Direct locale assertions cover all three.
+- The device cache's shipped v22 schema retains `DEFAULT 0`. Its only production upsert binds the setting explicitly, and the end-of-day section is withheld while the cache row is absent, so the active pre-sync defence is the null-settings gate rather than an inert column default. Repository sync supplies the ruled server value.
+- Web English and French strings remain intact, and the new Arabic compliance bundle supplies and registers the blind-count label. The Arabic path is covered through the real i18next registration and rendered page output.
 
 Deployment instructions and the warning-token grep contract are recorded in `docs/superpowers/tickets/2026-08-12-sv9-blind-count-default-deploy.md`.
 
@@ -488,7 +488,7 @@ Deployment instructions and the warning-token grep contract are recorded in `doc
 
 ### Revert-replay
 
-After commit `b73a353f5`, only the nine M3 production/default/migration/locale files were reversed while the new and rewritten tests remained. PostgreSQL failed four of ten selected cases (retail default false, resolver no-row false, and both missing-migration cases); the web suite failed to resolve the removed Arabic compliance bundle; and SQLite reported default `0` instead of `1`. Reapplying the exact patch restored the tree, and the web page test plus typecheck reran green. This replay proves the policy, data migration, device default, and locale evidence depend on the implementation rather than test weakening.
+After commit `b73a353f5`, only the nine M3 production/default/migration/locale files were reversed while the new and rewritten tests remained. PostgreSQL failed four of ten selected cases (retail default false, resolver no-row false, and both missing-migration cases); the web suite failed to resolve the removed Arabic compliance bundle; and SQLite reported default `0` instead of the then-implemented `1`. Reapplying the exact patch restored the tree, and the web page test plus typecheck reran green. The later resumed review established that changing the already-shipped v22 migration was not a valid field-device mechanism; fix round 1 restored that historical byte and replaced the assertion with an immutability guard.
 
 M3 review round 1 was a bridge tool error: the Claude invocation exited nonzero with an empty stderr/register. Per the self-review harness it is recorded fail-closed as CHANGES-REQUIRED and consumes one fix round. No implementation finding was emitted, so no speculative code change was made before round 2.
 
@@ -503,3 +503,18 @@ M3 review round 5 again failed at invocation with an empty register. It consumes
 The terminal M3 round-6 review also failed in the Claude invocation with empty stderr and no reviewer content. The implementation remains locally verified and the worktree is clean, but the fail-closed harness forbids treating tool silence as acceptance. M3 and the wave are therefore `blocked_review` under STOP condition A. M4 and M5 have not started.
 
 The user explicitly authorized continuation after that STOP. The six original tool-error registers remain unchanged; a fresh M3 review allowance is opened with registers named `M3-resume1-round<n>.md` so the failed invocation history is not overwritten. No implementation claim or prior local verification is promoted to acceptance without a new parseable reviewer verdict.
+
+### M3 resumed review fix round 1
+
+`M3-resume1-round1.md` returned a parseable `CHANGES-REQUIRED`. Its blocking P2 was a tautological locale-file assertion that never exercised Arabic i18n registration or rendered output. The replacement changes the real i18n language to `ar`, renders `FraudSettingsPage`, waits for the row-less API response to settle, and asserts the literal Arabic blind-count label in the DOM. Temporarily replacing the Arabic compliance resource with the English fallback made exactly this test fail (1 failed / 1 passed); restoring the production registration returned 2/2 green. The row-less round-trip test now also waits for the distinctive API value before saving and for the invalidation refetch afterward, removing its React `act(...)` warnings and proving it does not submit the initial-state value early.
+
+The review also found that changing the long-shipped device v22 migration would split fresh and upgraded schemas while the column default has no current consumer. A red-first immutability assertion observed `1` instead of the shipped `0`; v22 was restored to `DEFAULT 0`, and all eight migration-v22 cases passed. The deploy ticket now records the actual null-row/upsert reasoning and explicitly discloses that the data migration re-enables every false row, including a deliberate administrator choice, because no provenance discriminator exists and the ruling is "ON everywhere". The now-dead company-vertical query and its custom service-provider factory were removed; company creation uses the shared defaults directly.
+
+Verification for commit `41da762c1`:
+
+- Real PostgreSQL on `127.0.0.1:5432`, database `autoerp_sv_stage1_m3r1_test`: migration + vertical defaults + resolver, 10 cases / 32 assertions, exit 0. An earlier command that inherited PHPUnit's SQLite setting was rejected as evidence and its disposable 6.1 MB database file was moved to Trash before the explicit PostgreSQL rerun.
+- Web focused run: `FraudSettingsPage.test.tsx` + `CashDrawerControlsSection.test.tsx`, 10/10; full `pnpm lint` exits 0 with 6,530 repository-baselined warnings and no errors, all three ratchets report zero new findings, ESLint rule tests pass, and `pnpm typecheck` exits 0.
+- Device focused run: migration v22, cache repository, fraud-settings API, reconciliation, and preview modal, 58/58; `pnpm typecheck` exits 0.
+- PHPStan on the touched `app/` files reports no errors; Pint test mode passes.
+- The direct deptrac ratchet reports 116 violations against the stale checked-in count of 99. The identical ratchet executed from the pinned content base also reports the same 116 violations (category counts identical), proving this lane added zero; no baseline was rewritten or unrelated architecture debt absorbed.
+- React Doctor's deprecated `--diff` compared the long-lived branch to `main` and was discarded as a regression signal. The tool-prescribed `--scope changed --base HEAD` scan covered the actual uncommitted React fix: one file, score 100, no issues.
