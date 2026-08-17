@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { ProvenanceSection } from '../ProvenanceSection'
 import type {
   RefundProvenance,
@@ -12,25 +14,24 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }))
 
-vi.mock('react-router-dom', () => ({
-  Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
-    <a href={to}>{children}</a>
-  ),
-}))
-
 describe('ProvenanceSection', () => {
-  it('renders source receipt link for Refund provenance', () => {
+  it('navigates refund provenance through the registered receipt detail route', () => {
     const provenance: RefundProvenance = {
       source_receipt_id: 'r1',
       source_receipt_number: 'REC-2026-001',
       credit_note_link: null,
     }
-    render(<ProvenanceSection voucherSource="refund" provenance={provenance} />)
-    expect(screen.getByText('REC-2026-001')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'REC-2026-001' })).toHaveAttribute(
-      'href',
-      '/pos/receipts/r1',
+    render(
+      <MemoryRouter initialEntries={['/pos/vouchers/v1']}>
+        <Routes>
+          <Route path="/pos/vouchers/:id" element={<ProvenanceSection voucherSource="refund" provenance={provenance} />} />
+          <Route path="/pos/receipts/:id" element={<h1>Receipt detail destination</h1>} />
+        </Routes>
+      </MemoryRouter>,
     )
+
+    fireEvent.click(screen.getByRole('link', { name: 'REC-2026-001' }))
+    expect(screen.getByRole('heading', { name: 'Receipt detail destination' })).toBeInTheDocument()
   })
 
   it('renders source receipt link for ExchangeSurplus provenance', () => {
@@ -39,7 +40,11 @@ describe('ProvenanceSection', () => {
       source_receipt_number: 'REC-2026-002',
       credit_note_link: null,
     }
-    render(<ProvenanceSection voucherSource="exchange_surplus" provenance={provenance} />)
+    render(
+      <MemoryRouter>
+        <ProvenanceSection voucherSource="exchange_surplus" provenance={provenance} />
+      </MemoryRouter>,
+    )
     expect(screen.getByText('REC-2026-002')).toBeInTheDocument()
   })
 

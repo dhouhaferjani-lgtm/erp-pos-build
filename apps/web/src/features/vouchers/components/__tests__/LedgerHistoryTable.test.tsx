@@ -1,17 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { LedgerHistoryTable } from '../LedgerHistoryTable'
 import type { VoucherLedgerRow } from '../../types/voucher'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
-}))
-
-vi.mock('react-router-dom', () => ({
-  Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
-    <a href={to}>{children}</a>
-  ),
 }))
 
 const makeRow = (overrides: Partial<VoucherLedgerRow>): VoucherLedgerRow => ({
@@ -65,10 +61,19 @@ describe('LedgerHistoryTable', () => {
     expect(screen.getByText((content) => content.includes('−') && content.includes('100.00'))).toBeInTheDocument()
   })
 
-  it('renders receipt link when receipt_id is present', () => {
+  it('navigates a receipt link through the registered receipt detail route', () => {
     const rows = [makeRow({ id: 'l5', event: 'Redeemed', receipt_id: 'r1', receipt_number: 'REC-001' })]
-    render(<LedgerHistoryTable rows={rows} currency="EUR" />)
-    expect(screen.getByRole('link', { name: 'REC-001' })).toBeInTheDocument()
+    render(
+      <MemoryRouter initialEntries={['/pos/vouchers/v1']}>
+        <Routes>
+          <Route path="/pos/vouchers/:id" element={<LedgerHistoryTable rows={rows} currency="EUR" />} />
+          <Route path="/pos/receipts/:id" element={<h1>Receipt detail destination</h1>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(screen.getByRole('link', { name: 'REC-001' }))
+    expect(screen.getByRole('heading', { name: 'Receipt detail destination' })).toBeInTheDocument()
   })
 
   // Codex review R3 (2026-04-30): the backend's `formatLedger()` returns
