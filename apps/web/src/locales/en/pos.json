@@ -266,6 +266,88 @@
       "to": "To"
     }
   },
+  "receiptReporting": {
+    "tabs": {
+      "label": "Receipt registers",
+      "receipts": "Receipts",
+      "refunds": "Refunds & voids"
+    },
+    "reprint": {
+      "title": "Create a duplicate ticket?",
+      "auditConsequence": "This produces a duplicate ticket. The duplicate is recorded in the fiscal reprint log with a copy number and is visible to your accountant.",
+      "confirmPrint": "Print duplicate",
+      "confirmDownload": "Download duplicate"
+    },
+    "detail": {
+      "subtitle": "{{date}} · {{terminal}}",
+      "backToRegister": "Back to receipt register",
+      "notFoundTitle": "Receipt not found",
+      "notFoundDescription": "This receipt is unavailable or outside your permitted location scope.",
+      "printDuplicate": "Print duplicate",
+      "downloadDuplicate": "Download duplicate",
+      "summary": "Receipt summary",
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "rounding": "Cash rounding",
+      "lines": "Lines",
+      "product": "Product",
+      "quantity": "Quantity",
+      "unitPriceInclVat": "Unit price (incl. VAT)",
+      "vatRate": "VAT rate",
+      "lineNet": "Line net",
+      "returnedQuantity": "Returned quantity",
+      "percentValue": "{{value}}%",
+      "vatBreakdown": "VAT breakdown",
+      "netAmount": "Net amount",
+      "vatAmount": "VAT amount",
+      "grossAmount": "Gross amount",
+      "payments": "Payments",
+      "paymentMethod": "Payment method",
+      "reference": "Reference",
+      "amount": "Amount",
+      "changeDue": "Change due",
+      "lineage": "Refund lineage",
+      "originalReceipt": "Original receipt",
+      "noLineage": "No refund lineage is recorded for this receipt.",
+      "fiscalProvenance": "Fiscal provenance",
+      "fiscalHash": "Fiscal hash",
+      "previousHash": "Previous hash",
+      "chainSequence": "Chain sequence",
+      "receiptYear": "Receipt year",
+      "fiscalEvent": "Fiscal event",
+      "syncedAt": "Synced at"
+    },
+    "refunds": {
+      "title": "Refunds & voids",
+      "description": "Review refund and void receipts separately from sales",
+      "refundReceipt": "Refund receipt #",
+      "originalReceipt": "Original receipt #",
+      "reason": "Refund reason",
+      "destination": "Refund destination",
+      "amount": "Amount",
+      "alerts": "Policy alerts",
+      "alertCount": "{{count}} alert",
+      "alertCount_other": "{{count}} alerts",
+      "alertDetails": "Open the receipt for the recorded policy context.",
+      "capabilityTitle": "Terminal refund capability",
+      "noTerminals": "No terminals are available in the selected location scope.",
+      "emptyTitle": "No refunds or voids match this period",
+      "emptyDescription": "Refunds and voids appear here after an enabled terminal records them.",
+      "tableLabel": "Refunds and voids register",
+      "capability": {
+        "notEnabled": "Refunds are not enabled on {{terminal}} — the device cannot process one.",
+        "awaiting": "{{terminal}} is enabled and awaiting device acknowledgement.",
+        "active": "{{terminal}} active since {{date}}."
+      },
+      "reasonSources": {
+        "canonical": "Reason recorded in the fiscal event",
+        "legacy_enum": "Legacy receipt reason"
+      },
+      "destinations": {
+        "cash": "Cash"
+      }
+    }
+  },
   "zReports": {
     "title": "Z-Reports",
     "description": "View end-of-day fiscal reports",

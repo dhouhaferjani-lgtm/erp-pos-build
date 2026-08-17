@@ -21,22 +21,9 @@ import type { OffsetPaginationMeta } from '@/types/pagination'
  * `POST /pos/receipts/{id}/return` route stays for the desktop POS flow.
  */
 
-export interface ReceiptData {
-  id: string
-  receipt_number: string
-  terminal_id: string
-  cashier_name: string
-  subtotal: string
-  tax_amount: string
-  total: string
-  currency: string
-  posted_at: string
-  is_voided: boolean
-  fiscal_hash: string
-  chain_sequence: number
-}
-
 export type ReceiptListItem = App.Modules.POS.Application.DTOs.ReceiptListItemData
+export type ReceiptDetail = App.Modules.POS.Application.DTOs.ReceiptDetailData
+export type RefundReceiptListItem = ReceiptListItem & App.Modules.POS.Application.DTOs.RefundReportingData
 export type ReceiptFilterTerminal = App.Modules.POS.Application.DTOs.ReceiptFilterTerminalData
 export type ReceiptFilterCashier = App.Modules.POS.Application.DTOs.ReceiptFilterCashierData
 
@@ -65,6 +52,10 @@ export interface ReceiptListMeta extends Omit<OffsetPaginationMeta, 'from' | 'to
 export interface ReceiptListResponse {
   data: ReceiptListItem[]
   meta: ReceiptListMeta
+}
+
+export interface RefundReceiptListResponse extends Omit<ReceiptListResponse, 'data'> {
+  data: RefundReceiptListItem[]
 }
 
 export interface ReceiptFilterOptions {
@@ -102,6 +93,15 @@ export async function fetchReceipts(filters: ReceiptListFilters): Promise<Receip
   return response.data.data
 }
 
+export async function fetchRefundReceipts(filters: ReceiptListFilters): Promise<RefundReceiptListResponse> {
+  const query = receiptParams({
+    ...filters,
+    invoice_type_codes: ['REFUND', 'VOID'],
+  }).toString()
+  const response = await api.get<{ data: RefundReceiptListResponse }>(`/pos/receipts?${query}`)
+  return response.data.data
+}
+
 export async function fetchReceiptFilterOptions(filters: ReceiptFilterOptionsFilters): Promise<ReceiptFilterOptions> {
   const params = new URLSearchParams()
   appendArray(params, 'location_ids', filters.location_ids)
@@ -115,8 +115,8 @@ export async function fetchReceiptFilterOptions(filters: ReceiptFilterOptionsFil
 /**
  * Get receipt details
  */
-export async function getReceipt(id: string): Promise<ReceiptData> {
-  return apiGet<ReceiptData>(`/pos/receipts/${id}`)
+export async function getReceipt(id: string): Promise<ReceiptDetail> {
+  return apiGet<ReceiptDetail>(`/pos/receipts/${id}`)
 }
 
 // §14.2 — `createReceipt`, `processReceiptPayments`,

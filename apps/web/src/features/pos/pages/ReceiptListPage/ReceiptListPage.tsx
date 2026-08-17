@@ -23,6 +23,7 @@ import {
   type ReceiptListItem,
 } from '../../api/receiptApi'
 import { usePosTenantScope } from '../../hooks/usePosTenantScope'
+import { ReceiptRegisterTabs } from '../../components/ReceiptRegisterTabs'
 
 const FISCAL_STATUSES: ReceiptFiscalStatus[] = [
   'pending_seal',
@@ -286,6 +287,7 @@ function ReceiptRegister({ companyTimezone }: { companyTimezone: string }) {
         />
       ) : undefined}
     >
+      <ReceiptRegisterTabs active="receipts" />
       <DataTable
         columns={columns}
         data={receipts}

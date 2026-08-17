@@ -286,6 +286,8 @@ const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage
 const AnalyticsDashboardPage = lazy(() => import('../features/pos/pages/AnalyticsDashboardPage').then((m) => ({ default: m.AnalyticsDashboardPage })))
 const ZReportDetailPage = lazy(() => import('../features/pos/pages/ZReportDetailPage/ZReportDetailPage').then((m) => ({ default: m.ZReportDetailPage })))
 const ReceiptListPage = lazy(() => import('../features/pos/pages/ReceiptListPage').then((m) => ({ default: m.ReceiptListPage })))
+const ReceiptDetailPage = lazy(() => import('../features/pos/pages/ReceiptDetailPage').then((m) => ({ default: m.ReceiptDetailPage })))
+const RefundReceiptListPage = lazy(() => import('../features/pos/pages/RefundReceiptListPage').then((m) => ({ default: m.RefundReceiptListPage })))
 const OrdersPage = lazy(() => import('../features/pos/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })))
 const KitchenDisplayPage = lazy(() => import('../features/pos/pages/KitchenDisplayPage/KitchenDisplayPage').then((m) => ({ default: m.KitchenDisplayPage })))
 const TableManagementPage = lazy(() => import('../features/pos/pages/TableManagementPage/TableManagementPage').then((m) => ({ default: m.TableManagementPage })))
@@ -2924,6 +2926,28 @@ export function AppRoutes() {
               <RequirePermission permission="pos.view_receipts">
                 <SuspenseWrapper>
                   <ReceiptListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* NG-5: inherit ModuleGuard module="POS" when POS becomes a real tenant module. */}
+          <Route
+            path="receipts/refunds"
+            element={
+              <RequirePermission permission="pos.view_receipts">
+                <SuspenseWrapper>
+                  <RefundReceiptListPage />
+                </SuspenseWrapper>
+              </RequirePermission>
+            }
+          />
+          {/* NG-5: inherit ModuleGuard module="POS" when POS becomes a real tenant module. */}
+          <Route
+            path="receipts/:id"
+            element={
+              <RequirePermission permission="pos.view_receipts">
+                <SuspenseWrapper>
+                  <ReceiptDetailPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }

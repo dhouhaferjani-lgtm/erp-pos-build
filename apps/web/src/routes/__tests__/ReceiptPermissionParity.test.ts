@@ -48,6 +48,22 @@ describe('receipt reporting permission parity', () => {
     expect(fragment).not.toMatch(/createReceipt|processReceiptPayments|ReturnItemsModal|voidReceipt/)
   })
 
+  it('registers all three receipt routes with exact permission gates and NG-5 markers', () => {
+    const posRoutes = routesSource.slice(routesSource.indexOf('<Route path="pos">'))
+    for (const [path, component] of [
+      ['receipts', 'ReceiptListPage'],
+      ['receipts/refunds', 'RefundReceiptListPage'],
+      ['receipts/:id', 'ReceiptDetailPage'],
+    ]) {
+      const start = posRoutes.indexOf(`path="${path}"`)
+      const fragment = posRoutes.slice(start, start + 500)
+      expect(start).toBeGreaterThanOrEqual(0)
+      expect(fragment).toContain('permission="pos.view_receipts"')
+      expect(fragment).toContain(`<${component} />`)
+      expect(posRoutes.slice(Math.max(0, start - 140), start)).toContain('NG-5')
+    }
+  })
+
   it('gates compliance by any raw panel permission and fraud routes exactly', () => {
     const compliance = routesSource.indexOf('path="compliance/export"')
     const complianceFragment = routesSource.slice(compliance, compliance + 650)

@@ -266,6 +266,88 @@
       "to": "Au"
     }
   },
+  "receiptReporting": {
+    "tabs": {
+      "label": "Registres des tickets",
+      "receipts": "Tickets",
+      "refunds": "Remboursements et annulations"
+    },
+    "reprint": {
+      "title": "Créer un duplicata ?",
+      "auditConsequence": "Cette action produit un duplicata. Il est enregistré dans le journal fiscal des réimpressions avec un numéro de copie et reste visible par votre comptable.",
+      "confirmPrint": "Imprimer le duplicata",
+      "confirmDownload": "Télécharger le duplicata"
+    },
+    "detail": {
+      "subtitle": "{{date}} · {{terminal}}",
+      "backToRegister": "Retour au registre des tickets",
+      "notFoundTitle": "Ticket introuvable",
+      "notFoundDescription": "Ce ticket est indisponible ou hors de votre périmètre d'emplacements autorisé.",
+      "printDuplicate": "Imprimer le duplicata",
+      "downloadDuplicate": "Télécharger le duplicata",
+      "summary": "Résumé du ticket",
+      "subtotal": "Sous-total",
+      "discount": "Remise",
+      "rounding": "Arrondi espèces",
+      "lines": "Lignes",
+      "product": "Produit",
+      "quantity": "Quantité",
+      "unitPriceInclVat": "Prix unitaire (TVA incluse)",
+      "vatRate": "Taux de TVA",
+      "lineNet": "Net de la ligne",
+      "returnedQuantity": "Quantité retournée",
+      "percentValue": "{{value}} %",
+      "vatBreakdown": "Ventilation de la TVA",
+      "netAmount": "Montant net",
+      "vatAmount": "Montant de TVA",
+      "grossAmount": "Montant TTC",
+      "payments": "Paiements",
+      "paymentMethod": "Moyen de paiement",
+      "reference": "Référence",
+      "amount": "Montant",
+      "changeDue": "Monnaie rendue",
+      "lineage": "Traçabilité du remboursement",
+      "originalReceipt": "Ticket d'origine",
+      "noLineage": "Aucune traçabilité de remboursement n'est enregistrée pour ce ticket.",
+      "fiscalProvenance": "Provenance fiscale",
+      "fiscalHash": "Hachage fiscal",
+      "previousHash": "Hachage précédent",
+      "chainSequence": "Séquence de chaîne",
+      "receiptYear": "Année du ticket",
+      "fiscalEvent": "Événement fiscal",
+      "syncedAt": "Synchronisé le"
+    },
+    "refunds": {
+      "title": "Remboursements et annulations",
+      "description": "Consulter les tickets de remboursement et d'annulation séparément des ventes",
+      "refundReceipt": "Ticket de remboursement #",
+      "originalReceipt": "Ticket d'origine #",
+      "reason": "Motif du remboursement",
+      "destination": "Destination du remboursement",
+      "amount": "Montant",
+      "alerts": "Alertes de politique",
+      "alertCount": "{{count}} alerte",
+      "alertCount_other": "{{count}} alertes",
+      "alertDetails": "Ouvrez le ticket pour consulter le contexte de politique enregistré.",
+      "capabilityTitle": "Capacité de remboursement des terminaux",
+      "noTerminals": "Aucun terminal n'est disponible dans le périmètre d'emplacements sélectionné.",
+      "emptyTitle": "Aucun remboursement ou annulation pour cette période",
+      "emptyDescription": "Les remboursements et annulations apparaissent ici lorsqu'un terminal activé les enregistre.",
+      "tableLabel": "Registre des remboursements et annulations",
+      "capability": {
+        "notEnabled": "Les remboursements ne sont pas activés sur {{terminal}} — l'appareil ne peut pas en traiter.",
+        "awaiting": "{{terminal}} est activé et attend l'accusé de réception de l'appareil.",
+        "active": "{{terminal}} actif depuis le {{date}}."
+      },
+      "reasonSources": {
+        "canonical": "Motif enregistré dans l'événement fiscal",
+        "legacy_enum": "Motif du ticket historique"
+      },
+      "destinations": {
+        "cash": "Espèces"
+      }
+    }
+  },
   "zReports": {
     "title": "Rapports Z",
     "description": "Consulter les rapports fiscaux de fin de journée",

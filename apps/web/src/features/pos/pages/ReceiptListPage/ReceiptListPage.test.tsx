@@ -6,7 +6,7 @@ import { locationScopedKey } from '@/lib/locationScopedKey'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { ReceiptListPage } from './ReceiptListPage'
-import { fetchReceiptFilterOptions, fetchReceipts } from '../../api/receiptApi'
+import { downloadReceipt, fetchReceiptFilterOptions, fetchReceipts, printReceipt } from '../../api/receiptApi'
 
 const tenantScopeState = vi.hoisted(() => ({ hasTenantScope: true }))
 const companyState = vi.hoisted(() => ({
@@ -20,6 +20,8 @@ vi.mock('../../api/receiptApi', async (importOriginal) => {
     ...actual,
     fetchReceipts: vi.fn(),
     fetchReceiptFilterOptions: vi.fn(),
+    printReceipt: vi.fn(),
+    downloadReceipt: vi.fn(),
   }
 })
 
@@ -104,6 +106,8 @@ describe('ReceiptListPage', () => {
     expect(screen.queryByText('Tunis')).not.toBeInTheDocument()
     expect(screen.queryByText('REFUND')).not.toBeInTheDocument()
     expect(screen.queryByText('VOID')).not.toBeInTheDocument()
+    expect(printReceipt).not.toHaveBeenCalled()
+    expect(downloadReceipt).not.toHaveBeenCalled()
   })
 
   it('sends SALE only until training is explicitly enabled', async () => {
