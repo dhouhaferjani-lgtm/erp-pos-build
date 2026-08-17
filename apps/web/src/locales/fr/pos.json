@@ -352,12 +352,12 @@
       "sync_failed": "Échec de synchronisation"
     },
     "empty": {
-      "dayTitle": "Aucun ticket de vente pour cette journée",
-      "dayDescription": "Choisissez une autre date ou vérifiez la synchronisation depuis la caisse.",
+      "dayTitle": "Aucun ticket de caisse pour le moment",
+      "dayDescription": "Les tickets de vente sont créés sur la caisse et apparaissent ici après synchronisation.",
       "filteredTitle": "Aucun ticket ne correspond à ces filtres",
       "filteredDescription": "Supprimez un ou plusieurs filtres pour élargir le registre.",
-      "trainingTitle": "Aucun ticket de vente ou de formation pour cette journée",
-      "trainingDescription": "Choisissez une autre date ou désactivez les tickets de formation."
+      "noScopeTitle": "Sélectionnez une société pour consulter les tickets",
+      "noScopeDescription": "Choisissez une société et un périmètre d'emplacements avant d'ouvrir le registre."
     },
     "filters": {
       "terminal": "Terminal",

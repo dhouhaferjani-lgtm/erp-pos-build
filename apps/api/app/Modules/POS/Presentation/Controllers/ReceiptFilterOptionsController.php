@@ -14,6 +14,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Presentation\Requests\ReceiptFilterOptionsRequest;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 final class ReceiptFilterOptionsController extends Controller
@@ -29,9 +30,13 @@ final class ReceiptFilterOptionsController extends Controller
 
         $company = $this->companyContext->requireCompany();
         $validated = $request->validated();
+        $requestedLocationIds = isset($validated['location_ids']) && is_array($validated['location_ids'])
+            ? array_values(array_map('strval', $validated['location_ids']))
+            : null;
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($company->id);
         $effectiveLocationIds = $this->effectiveLocationIds(
-            $this->locationContext->getAllowedLocationIds($company->id),
-            $validated['location_ids'] ?? null,
+            $allowedLocationIds === null ? null : array_values($allowedLocationIds),
+            $requestedLocationIds,
         );
 
         $terminalQuery = Terminal::withTrashed()
@@ -44,17 +49,14 @@ final class ReceiptFilterOptionsController extends Controller
             $receiptQuery->whereIn('location_id', $effectiveLocationIds);
         }
 
-        if (isset($validated['from_date'])) {
-            $from = CarbonImmutable::createFromFormat('Y-m-d', $validated['from_date'], $company->timezone)
-                ->startOfDay()
-                ->utc();
+        if (isset($validated['from_date']) && is_string($validated['from_date'])) {
+            $from = $this->dateBoundary($validated['from_date'], $company->timezone)->utc();
             $receiptQuery->where('posted_at', '>=', $from);
         }
 
-        if (isset($validated['to_date'])) {
-            $to = CarbonImmutable::createFromFormat('Y-m-d', $validated['to_date'], $company->timezone)
+        if (isset($validated['to_date']) && is_string($validated['to_date'])) {
+            $to = $this->dateBoundary($validated['to_date'], $company->timezone)
                 ->addDay()
-                ->startOfDay()
                 ->utc();
             $receiptQuery->where('posted_at', '<', $to);
         }
@@ -72,16 +74,19 @@ final class ReceiptFilterOptionsController extends Controller
             ))->toArray())
             ->values();
 
-        $cashiers = $receiptQuery
-            ->select(['cashier_id', 'cashier_name', 'posted_at'])
-            ->orderByDesc('posted_at')
+        $cashierSnapshots = (clone $receiptQuery)
+            ->select(['cashier_id', 'cashier_name'])
+            ->selectRaw('ROW_NUMBER() OVER (PARTITION BY cashier_id ORDER BY posted_at DESC, id DESC) AS snapshot_rank');
+        $cashiers = DB::query()
+            ->fromSub($cashierSnapshots, 'cashier_snapshots')
+            ->where('snapshot_rank', 1)
+            ->orderBy('cashier_name')
+            ->orderBy('cashier_id')
             ->get()
-            ->unique('cashier_id')
-            ->map(static fn (Receipt $receipt): array => (new ReceiptFilterCashierData(
-                id: $receipt->cashier_id,
-                name: $receipt->cashier_name,
+            ->map(static fn (object $cashier): array => (new ReceiptFilterCashierData(
+                id: (string) $cashier->cashier_id,
+                name: (string) $cashier->cashier_name,
             ))->toArray())
-            ->sort(static fn (array $left, array $right): int => [$left['name'], $left['id']] <=> [$right['name'], $right['id']])
             ->values();
 
         return response()->json([
@@ -108,5 +113,15 @@ final class ReceiptFilterOptionsController extends Controller
         }
 
         return array_values(array_intersect($allowedLocationIds, $requestedLocationIds));
+    }
+
+    private function dateBoundary(string $date, string $timezone): CarbonImmutable
+    {
+        $boundary = CarbonImmutable::createFromFormat('!Y-m-d', $date, $timezone);
+        if (! $boundary instanceof CarbonImmutable) {
+            throw new \LogicException('Validated receipt date could not be parsed.');
+        }
+
+        return $boundary;
     }
 }

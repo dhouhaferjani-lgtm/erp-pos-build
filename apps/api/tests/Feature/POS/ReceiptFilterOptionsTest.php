@@ -7,6 +7,7 @@ namespace Tests\Feature\POS;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\POS\Domain\Terminal;
+use Illuminate\Support\Facades\DB;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
 final class ReceiptFilterOptionsTest extends ReceiptReportingTestCase
@@ -68,5 +69,23 @@ final class ReceiptFilterOptionsTest extends ReceiptReportingTestCase
         $this->getJson('/api/v1/pos/receipts/filter-options')
             ->assertOk()
             ->assertExactJson(['data' => ['terminals' => [], 'cashiers' => []]]);
+    }
+
+    public function test_cashier_options_are_deduplicated_by_the_database(): void
+    {
+        $this->createReceipt(postedAt: '2026-08-16 08:00:00 UTC');
+        $this->createReceipt(postedAt: '2026-08-17 08:00:00 UTC');
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        $this->getJson('/api/v1/pos/receipts/filter-options')->assertOk();
+
+        $cashierQuery = collect(DB::getQueryLog())
+            ->first(static fn (array $query): bool => str_contains(strtolower($query['query']), 'cashier_snapshots'));
+
+        $this->assertNotNull($cashierQuery);
+        $this->assertStringContainsString('row_number() over', strtolower($cashierQuery['query']));
+        $this->assertStringContainsString('snapshot_rank', strtolower($cashierQuery['query']));
     }
 }

@@ -35,6 +35,7 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\QuantityScale;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
@@ -99,7 +100,7 @@ final class ReceiptController extends Controller
 
         if (! empty($validated['receipt_number'])) {
             $escapedReceiptNumber = addcslashes($validated['receipt_number'], '\\%_');
-            $query->where('receipt_number', 'like', '%'.$escapedReceiptNumber.'%');
+            $query->whereRaw("receipt_number LIKE ? ESCAPE '\\'", ['%'.$escapedReceiptNumber.'%']);
         }
 
         if (! empty($validated['customer_id'])) {
@@ -114,11 +115,37 @@ final class ReceiptController extends Controller
             $query->where('is_voided', $request->boolean('is_voided'));
         }
 
-        $invoiceTypeCodes = $validated['invoice_type_codes'] ?? match ($validated['receipt_type'] ?? null) {
-            'return' => ['REFUND', 'VOID'],
-            default => $request->boolean('include_training') ? ['SALE', 'TRAINING'] : ['SALE'],
-        };
-        $query->whereIn('invoice_type_code', $invoiceTypeCodes);
+        $legacyReceiptType = $validated['receipt_type'] ?? null;
+        if (is_string($legacyReceiptType)) {
+            $query->where('receipt_type', $legacyReceiptType);
+        } else {
+            /** @var list<string> $invoiceTypeCodes */
+            $invoiceTypeCodes = $validated['invoice_type_codes']
+                ?? ($request->boolean('include_training') ? ['SALE', 'TRAINING'] : ['SALE']);
+            $includesRefund = in_array('REFUND', $invoiceTypeCodes, true);
+
+            $query->where(function (Builder $typeQuery) use ($invoiceTypeCodes, $includesRefund): void {
+                $typeQuery->where(function (Builder $currentTypeQuery) use ($invoiceTypeCodes): void {
+                    $currentTypeQuery
+                        ->whereIn('invoice_type_code', $invoiceTypeCodes)
+                        ->where(function (Builder $notLegacyReturn): void {
+                            $notLegacyReturn
+                                ->where('receipt_type', '!=', 'return')
+                                ->orWhereNotNull('fiscal_event_id')
+                                ->orWhere('invoice_type_code', '!=', 'SALE');
+                        });
+                });
+
+                if ($includesRefund) {
+                    $typeQuery->orWhere(function (Builder $legacyReturnQuery): void {
+                        $legacyReturnQuery
+                            ->where('receipt_type', 'return')
+                            ->whereNull('fiscal_event_id')
+                            ->where('invoice_type_code', 'SALE');
+                    });
+                }
+            });
+        }
 
         if (! $request->boolean('include_training')) {
             $query->where('training_flag', false);
@@ -128,11 +155,11 @@ final class ReceiptController extends Controller
             $query->where('fiscal_status', $validated['fiscal_status']);
         }
 
-        $from = isset($validated['from_date'])
-            ? CarbonImmutable::createFromFormat('Y-m-d', $validated['from_date'], $company->timezone)->startOfDay()->utc()
+        $from = isset($validated['from_date']) && is_string($validated['from_date'])
+            ? $this->dateBoundary($validated['from_date'], $company->timezone)->utc()
             : null;
-        $to = isset($validated['to_date'])
-            ? CarbonImmutable::createFromFormat('Y-m-d', $validated['to_date'], $company->timezone)->addDay()->startOfDay()->utc()
+        $to = isset($validated['to_date']) && is_string($validated['to_date'])
+            ? $this->dateBoundary($validated['to_date'], $company->timezone)->addDay()->utc()
             : null;
 
         if ($from !== null) {
@@ -148,18 +175,22 @@ final class ReceiptController extends Controller
 
         $items = collect($receipts->items())->map(function (Receipt $receipt): array {
             $moneyScale = $this->currencyScaleResolver->getScale($receipt->currency);
+            $isLegacyReturn = $receipt->receipt_type->value === 'return'
+                && $receipt->fiscal_event_id === null
+                && $receipt->invoice_type_code === 'SALE';
 
             return (new ReceiptListItemData(
                 id: $receipt->id,
                 receipt_number: $receipt->receipt_number,
-                posted_at: $receipt->posted_at->toISOString(),
-                invoice_type_code: $receipt->invoice_type_code,
+                posted_at: $receipt->posted_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
+                invoice_type_code: $isLegacyReturn ? 'REFUND' : $receipt->invoice_type_code,
+                receipt_type: $receipt->receipt_type->value,
                 training_flag: $receipt->training_flag,
                 fiscal_status: $receipt->fiscal_status->value,
                 location_id: $receipt->location_id,
-                location_name: $receipt->location?->name,
+                location_name: $receipt->location->name,
                 terminal_id: $receipt->terminal_id,
-                terminal_code: $receipt->terminal?->code ?? '',
+                terminal_code: $receipt->terminal->code,
                 cashier_id: $receipt->cashier_id,
                 cashier_name: $receipt->cashier_name,
                 total: CurrencyScale::bcformatStrict((string) $receipt->total, $moneyScale),
@@ -181,6 +212,16 @@ final class ReceiptController extends Controller
                 ],
             ],
         ]);
+    }
+
+    private function dateBoundary(string $date, string $timezone): CarbonImmutable
+    {
+        $boundary = CarbonImmutable::createFromFormat('!Y-m-d', $date, $timezone);
+        if (! $boundary instanceof CarbonImmutable) {
+            throw new \LogicException('Validated receipt date could not be parsed.');
+        }
+
+        return $boundary;
     }
 
     // DPA V9 (owner ruling D3 — SUNSET): `void()` and `ReceiptVoidService`

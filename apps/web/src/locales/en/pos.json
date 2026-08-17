@@ -352,12 +352,12 @@
       "sync_failed": "Sync failed"
     },
     "empty": {
-      "dayTitle": "No sales receipts for this business day",
-      "dayDescription": "Choose another date or confirm that sales have synced from the POS device.",
+      "dayTitle": "No POS receipts yet",
+      "dayDescription": "Sales receipts are created on the POS device and appear here after they sync.",
       "filteredTitle": "No receipts match these filters",
       "filteredDescription": "Clear one or more filters to broaden the register.",
-      "trainingTitle": "No sale or training receipts for this business day",
-      "trainingDescription": "Choose another date or turn off training receipts."
+      "noScopeTitle": "Select a company to view receipts",
+      "noScopeDescription": "Choose a company and location scope before opening the receipt register."
     },
     "filters": {
       "terminal": "Terminal",

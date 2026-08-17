@@ -658,4 +658,80 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(screen.queryByRole('link', { name: /navigation\.customerHistoryAudit/i })).not.toBeInTheDocument()
     })
   })
+
+  describe('POS sidebar and route permission parity', () => {
+    const posCompanyConfig: TestCompanyConfig = {
+      ...defaultCompanyConfig,
+      default_modules: [...defaultCompanyConfig.default_modules, 'Menu', 'Tables'],
+      all_enabled_modules: [...defaultCompanyConfig.all_enabled_modules, 'Menu', 'Tables'],
+    }
+
+    const setGrantedPermissions = (grants: ReadonlySet<string>) => {
+      mockCanAccessModule.mockImplementation((permission: string) => {
+        if (permission === 'pos') {
+          return ['pos.operate_terminal', 'pos.manage_terminals', 'pos.view_receipts']
+            .some((candidate) => grants.has(candidate))
+        }
+        if (permission === 'compliance') {
+          return ['compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log']
+            .some((candidate) => grants.has(candidate))
+        }
+        return grants.has(permission)
+      })
+    }
+
+    const visiblePosHrefs = () => screen.getAllByRole('link')
+      .map((link) => link.getAttribute('href'))
+      .filter((href): href is string => href?.startsWith('/pos/') === true)
+      .sort()
+
+    it('shows accountants exactly the POS routes they can enter plus compliance export', () => {
+      setGrantedPermissions(new Set([
+        'pos.view_receipts',
+        'pos.view_reports',
+        'compliance.verify_chains',
+      ]))
+
+      renderSidebar(posCompanyConfig)
+
+      expect(visiblePosHrefs()).toEqual([
+        '/pos/analytics',
+        '/pos/receipts',
+        '/pos/vouchers',
+        '/pos/z-reports',
+      ])
+      expect(screen.getByRole('link', { name: /navigation\.complianceExport/i }))
+        .toHaveAttribute('href', '/settings/compliance/export')
+    })
+
+    it('shows cashiers every enterable POS route and hides every denied route', () => {
+      const cashierGrants = new Set([
+        'pos.operate_terminal',
+        'pos.manage_shifts',
+        'pos.view_receipts',
+      ])
+      setGrantedPermissions(cashierGrants)
+
+      renderSidebar(posCompanyConfig)
+
+      expect(visiblePosHrefs()).toEqual([
+        '/pos/kitchen',
+        '/pos/orders',
+        '/pos/receipts',
+        '/pos/shift-history',
+        '/pos/vouchers',
+      ])
+      expect(cashierGrants.has('pos.manage_tables')).toBe(false)
+      expect(cashierGrants.has('pos.manage_terminals')).toBe(false)
+      expect(cashierGrants.has('pos.view_reports')).toBe(false)
+    })
+
+    it('does not render a group header when all children are denied', () => {
+      mockCanAccessModule.mockReturnValue(false)
+
+      renderSidebar(mechanicFullConfig)
+
+      expect(screen.queryByRole('button', { name: /navigation\.automotive/i })).not.toBeInTheDocument()
+    })
+  })
 })

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CalendarDays } from 'lucide-react'
-import { Button, Checkbox, Input, Select, StatusBadge } from '@/components/atoms'
+import { Button, Checkbox, Input, Select, Spinner, StatusBadge } from '@/components/atoms'
 import { DataTable, EmptyState, ListPageLayout, type DataTableColumn } from '@/components/molecules'
 import { SearchInput } from '@/components/molecules/SearchInput'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
@@ -33,8 +33,6 @@ const FISCAL_STATUSES: ReceiptFiscalStatus[] = [
   'sync_failed',
 ]
 
-const NARROWING_FILTER_KEYS = ['receipt_number', 'terminal_id', 'cashier_id', 'fiscal_status'] as const
-
 function stringFilter(filters: Record<string, unknown>, key: string): string {
   return typeof filters[key] === 'string' ? filters[key] : ''
 }
@@ -42,12 +40,31 @@ function stringFilter(filters: Record<string, unknown>, key: string): string {
 export function ReceiptListPage() {
   const { t } = useTranslation(['pos', 'common'])
   const { hasTenantScope } = usePosTenantScope()
+  const currentCompanyId = useCompanyStore((state) => state.currentCompanyId)
+  const activeCompany = useCompanyStore((state) => (
+    state.companies.find((company) => company.id === currentCompanyId) ?? null
+  ))
+
+  if (!hasTenantScope) {
+    return (
+      <EmptyState
+        title={t('pos:receipts.empty.noScopeTitle')}
+        description={t('pos:receipts.empty.noScopeDescription')}
+      />
+    )
+  }
+
+  if (!activeCompany) {
+    return <Spinner fullScreen message={t('common:loading')} />
+  }
+
+  return <ReceiptRegister companyTimezone={activeCompany.timezone} />
+}
+
+function ReceiptRegister({ companyTimezone }: { companyTimezone: string }) {
+  const { t } = useTranslation(['pos', 'common'])
   const { scope, effectiveLocationIds } = useViewScope()
   const { hasMultipleLocations } = useLocation()
-  const currentCompanyId = useCompanyStore((state) => state.currentCompanyId)
-  const companyTimezone = useCompanyStore((state) => (
-    state.companies.find((company) => company.id === currentCompanyId)?.timezone ?? 'UTC'
-  ))
 
   const today = calendarDateInTimeZone(companyTimezone)
   const tableState = useTableState({
@@ -85,22 +102,18 @@ export function ReceiptListPage() {
       from_date: fromDate,
       to_date: toDate,
     }),
-    enabled: hasTenantScope,
+    enabled: true,
   })
 
   const receiptsQuery = useQuery({
     queryKey: locationScopedKey(['pos', 'receipts', filters], scope),
     queryFn: () => fetchReceipts(filters),
-    enabled: hasTenantScope,
+    enabled: true,
   })
 
   const updateFilter = (key: string, value: string) => {
     if (value) tableState.setFilter(key, value)
     else tableState.removeFilter(key)
-  }
-
-  const clearNarrowingFilters = () => {
-    NARROWING_FILTER_KEYS.forEach(tableState.removeFilter)
   }
 
   const columns = useMemo<DataTableColumn<ReceiptListItem>[]>(() => {
@@ -164,16 +177,13 @@ export function ReceiptListPage() {
   const receipts = receiptsQuery.data?.data ?? []
   const meta = receiptsQuery.data?.meta
   const hasNarrowingFilter = Boolean(receiptNumber || terminalId || cashierId || fiscalStatus)
-  const emptyTitle = includeTraining && !hasNarrowingFilter
-    ? t('pos:receipts.empty.trainingTitle')
-    : hasNarrowingFilter
-      ? t('pos:receipts.empty.filteredTitle')
-      : t('pos:receipts.empty.dayTitle')
-  const emptyDescription = includeTraining && !hasNarrowingFilter
-    ? t('pos:receipts.empty.trainingDescription')
-    : hasNarrowingFilter
-      ? t('pos:receipts.empty.filteredDescription')
-      : t('pos:receipts.empty.dayDescription')
+  const hasAppliedFilter = hasNarrowingFilter || includeTraining || fromDate !== today || toDate !== today
+  const emptyTitle = hasAppliedFilter
+    ? t('pos:receipts.empty.filteredTitle')
+    : t('pos:receipts.empty.dayTitle')
+  const emptyDescription = hasAppliedFilter
+    ? t('pos:receipts.empty.filteredDescription')
+    : t('pos:receipts.empty.dayDescription')
   const firstRow = meta && meta.total > 0 ? (meta.current_page - 1) * meta.per_page + 1 : null
   const lastRow = firstRow === null ? null : firstRow + receipts.length - 1
 
@@ -284,12 +294,12 @@ export function ReceiptListPage() {
         isLoading={receiptsQuery.isLoading}
         emptyTitle={emptyTitle}
         emptyDescription={emptyDescription}
-        emptyState={hasNarrowingFilter ? (
+        emptyState={hasAppliedFilter ? (
           <EmptyState
             title={emptyTitle}
             description={emptyDescription}
             action={(
-              <Button type="button" variant="secondary" onClick={clearNarrowingFilters}>
+              <Button type="button" variant="secondary" onClick={tableState.clearFilters}>
                 {t('common:clearFilters')}
               </Button>
             )}

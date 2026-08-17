@@ -1517,6 +1517,7 @@ id: string;
 receipt_number: string;
 posted_at: string;
 invoice_type_code: string;
+receipt_type: string;
 training_flag: boolean;
 fiscal_status: string;
 location_id: string;

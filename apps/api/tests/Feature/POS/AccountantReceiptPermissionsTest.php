@@ -5,13 +5,21 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use Database\Seeders\RolesAndPermissionsSeeder;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Role;
+use Tests\TestCase;
 
 final class AccountantReceiptPermissionsTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_accountant_receives_only_the_frozen_receipt_lane_grants(): void
     {
-        $grants = RolesAndPermissionsSeeder::rolePermissionGrants()['accountant'];
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $grants = Role::findByName('accountant', 'sanctum')
+            ->permissions
+            ->pluck('name')
+            ->all();
 
         $this->assertContains('pos.view_receipts', $grants);
         $this->assertContains('pos.view_reports', $grants);
@@ -21,5 +29,6 @@ final class AccountantReceiptPermissionsTest extends TestCase
         $this->assertNotContains('pos.manage_terminals', $grants);
         $this->assertNotContains('pos.manage_shifts', $grants);
         $this->assertNotContains('pos.manage_tables', $grants);
+        $this->assertNotContains('pos.process_returns', $grants);
     }
 }

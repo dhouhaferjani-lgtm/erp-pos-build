@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { calendarDateInTimeZone } from '@/lib/format'
 import i18n from '@/lib/i18n'
 import { locationScopedKey } from '@/lib/locationScopedKey'
@@ -7,6 +7,12 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { ReceiptListPage } from './ReceiptListPage'
 import { fetchReceiptFilterOptions, fetchReceipts } from '../../api/receiptApi'
+
+const tenantScopeState = vi.hoisted(() => ({ hasTenantScope: true }))
+const companyState = vi.hoisted(() => ({
+  currentCompanyId: 'company-1' as string | null,
+  companies: [{ id: 'company-1', timezone: 'Africa/Tunis' }],
+}))
 
 vi.mock('../../api/receiptApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/receiptApi')>()
@@ -26,7 +32,11 @@ vi.mock('@/lib/locationScopedKey', () => ({
 }))
 
 vi.mock('../../hooks/usePosTenantScope', () => ({
-  usePosTenantScope: () => ({ tenantId: 'tenant-1', companyId: 'company-1', hasTenantScope: true }),
+  usePosTenantScope: () => ({
+    tenantId: tenantScopeState.hasTenantScope ? 'tenant-1' : null,
+    companyId: tenantScopeState.hasTenantScope ? 'company-1' : null,
+    hasTenantScope: tenantScopeState.hasTenantScope,
+  }),
 }))
 
 vi.mock('@/hooks/useLocation', () => ({
@@ -36,8 +46,8 @@ vi.mock('@/hooks/useLocation', () => ({
 vi.mock('@/stores/companyStore', () => ({
   useCompanyStore: Object.assign(
     (selector: (state: { currentCompanyId: string; companies: { id: string; timezone: string }[] }) => unknown) => selector({
-      currentCompanyId: 'company-1',
-      companies: [{ id: 'company-1', timezone: 'Africa/Tunis' }],
+      currentCompanyId: companyState.currentCompanyId ?? '',
+      companies: companyState.companies,
     }),
     { getState: () => ({ currentCompanyId: 'company-1' }) },
   ),
@@ -48,6 +58,7 @@ const row = {
   receipt_number: 'TN-POS-0001',
   posted_at: '2026-08-17T10:30:00.000000Z',
   invoice_type_code: 'TRAINING',
+  receipt_type: 'sale',
   training_flag: true,
   fiscal_status: 'fiscalized',
   location_id: 'loc-1',
@@ -65,6 +76,9 @@ describe('ReceiptListPage', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('en')
     vi.clearAllMocks()
+    tenantScopeState.hasTenantScope = true
+    companyState.currentCompanyId = 'company-1'
+    companyState.companies = [{ id: 'company-1', timezone: 'Africa/Tunis' }]
     vi.mocked(fetchReceipts).mockResolvedValue({
       data: [row],
       meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: '2026-08-16T23:00:00.000000Z', to: '2026-08-17T23:00:00.000000Z' },
@@ -141,8 +155,8 @@ describe('ReceiptListPage', () => {
   })
 
   it.each([
-    ['/pos/receipts', 'No sales receipts for this business day'],
-    ['/pos/receipts?include_training=true', 'No sale or training receipts for this business day'],
+    ['/pos/receipts', 'No POS receipts yet'],
+    ['/pos/receipts?include_training=true', 'No receipts match these filters'],
   ])('renders the distinct unfiltered empty state for %s', async (route, title) => {
     vi.mocked(fetchReceipts).mockResolvedValue({
       data: [],
@@ -152,6 +166,37 @@ describe('ReceiptListPage', () => {
     renderWithProviders(<ReceiptListPage />, { route })
 
     expect(await screen.findByText(title)).toBeInTheDocument()
+  })
+
+  it('renders a no-scope state without issuing receipt requests', () => {
+    tenantScopeState.hasTenantScope = false
+
+    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts' })
+
+    expect(screen.getByText('Select a company to view receipts')).toBeInTheDocument()
+    expect(fetchReceipts).not.toHaveBeenCalled()
+    expect(fetchReceiptFilterOptions).not.toHaveBeenCalled()
+  })
+
+  it('waits for the active company before deriving the default business day', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-16T23:30:00.000Z'))
+    companyState.companies = []
+
+    const view = renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts' })
+    expect(fetchReceipts).not.toHaveBeenCalled()
+
+    companyState.companies = [{ id: 'company-1', timezone: 'Africa/Tunis' }]
+    await act(async () => {
+      view.rerender(<ReceiptListPage />)
+      await vi.runAllTimersAsync()
+    })
+
+    expect(fetchReceipts).toHaveBeenCalledWith(expect.objectContaining({
+      from_date: '2026-08-17',
+      to_date: '2026-08-17',
+    }))
+    vi.useRealTimers()
   })
 
   it('renders the list shell with French translations', async () => {
