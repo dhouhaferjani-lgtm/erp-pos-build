@@ -793,6 +793,8 @@ class RolesAndPermissionsSeeder extends Seeder
                 'taxation.tax_configurations.manage',
                 'taxation.withholding_rules.manage',
                 'withholding.view', 'withholding.create', 'withholding.update',
+                'deliveries.view',
+                'pos.view_receipts', 'pos.view_reports',
                 'audit.view',
                 'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
                 // Accountant has read-only audit access to fraud detection.

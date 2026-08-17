@@ -2443,7 +2443,7 @@ export function AppRoutes() {
           <Route
             path="compliance/fraud-settings"
             element={
-              <RequirePermission moduleKey="settings">
+              <RequirePermission permission="fraud-settings.view">
                 <SuspenseWrapper>
                   <FraudSettingsPage />
                 </SuspenseWrapper>
@@ -2453,7 +2453,7 @@ export function AppRoutes() {
           <Route
             path="compliance/fraud-alerts"
             element={
-              <RequirePermission moduleKey="settings">
+              <RequirePermission permission="fraud-alerts.view">
                 <SuspenseWrapper>
                   <FraudAlertsPage />
                 </SuspenseWrapper>
@@ -2463,7 +2463,11 @@ export function AppRoutes() {
           <Route
             path="compliance/export"
             element={
-              <RequirePermission moduleKey="pos">
+              <RequirePermission permissions={[
+                'compliance.export_jet',
+                'compliance.verify_chains',
+                'compliance.view_reprint_log',
+              ]}>
                 <SuspenseWrapper>
                   <ComplianceExportPage />
                 </SuspenseWrapper>

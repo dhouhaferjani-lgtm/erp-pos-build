@@ -192,6 +192,8 @@
     "shifts": "Caisses",
     "shiftHistory": "Historique des postes",
     "receipts": "Tickets",
+    "posReceipts": "Tickets de caisse",
+    "complianceExport": "Export de conformité",
     "marketing": "Marketing",
     "promotions": "Promotions",
     "coupons": "Coupons",

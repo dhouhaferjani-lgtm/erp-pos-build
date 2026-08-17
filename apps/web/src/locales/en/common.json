@@ -251,6 +251,8 @@
     "shifts": "Shifts",
     "shiftHistory": "Shift History",
     "receipts": "Receipts",
+    "posReceipts": "POS Receipts",
+    "complianceExport": "Compliance export",
     "marketing": "Marketing",
     "promotions": "Promotions",
     "coupons": "Coupons",
