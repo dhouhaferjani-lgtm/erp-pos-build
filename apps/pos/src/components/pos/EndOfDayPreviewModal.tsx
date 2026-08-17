@@ -37,6 +37,8 @@ export interface EndOfDayPreviewModalProps {
   onPrintReceipt?: (result: EndOfDayConfirmResult) => void;
   /** When provided, the cash-reconciliation section is rendered. */
   fraudSettings?: CompanyFraudSettings | null;
+  /** Set by the production caller once the online-or-cache policy lookup finishes. */
+  cashCountPolicyResolved?: boolean;
   authorizedManagers?: AuthorizedManager[];
   cashierUserId?: string;
   onVerifyManagerPin?: (userId: string, pin: string) => Promise<{ valid: boolean }>;
@@ -59,6 +61,7 @@ export function EndOfDayPreviewModal({
   onConfirmAndClose,
   onPrintReceipt,
   fraudSettings,
+  cashCountPolicyResolved,
   authorizedManagers,
   cashierUserId,
   onVerifyManagerPin,
@@ -97,10 +100,14 @@ export function EndOfDayPreviewModal({
     onVerifyManagerPin !== undefined &&
     managerPinThrottle !== undefined &&
     onManagerPinThrottleUpdate !== undefined;
+  const cashCountPolicyPending =
+    cashCountPolicyResolved !== undefined && !cashCountPolicyResolved;
+  const cashCountPolicyUnavailable =
+    cashCountPolicyResolved === true && fraudSettings == null;
   // Physical non-cash totals are the exact expected count, and CASH plus the
   // visible opening float can reconstruct expected cash. Keep every payment
   // amount behind the same blind-count commit boundary as the tender table.
-  const hidePaymentAmounts =
+  const hideFinancialAmounts =
     cashCountEnabled &&
     fraudSettings?.require_blind_cash_count === true &&
     !cashCountsCommitted;
@@ -194,10 +201,24 @@ export function EndOfDayPreviewModal({
         </div>
       )}
 
-      {phase === 'error' && (
+      {phase === 'preview' && cashCountPolicyPending && (
+        <div className="flex flex-col items-center gap-3 py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-action" />
+          <p className="text-sm text-ink-muted">{t('reports.loading')}</p>
+        </div>
+      )}
+
+      {(phase === 'error' || (phase === 'preview' && cashCountPolicyUnavailable)) && (
         <div className="flex flex-col items-center gap-3 py-8">
           <AlertCircle className="h-10 w-10 text-danger" />
-          <p className="text-center text-sm text-danger-strong">{errorMessage}</p>
+          <p className="text-center text-sm text-danger-strong">
+            {cashCountPolicyUnavailable
+              ? t('cash_count.policy_unavailable', {
+                  defaultValue:
+                    'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
+                })
+              : errorMessage}
+          </p>
           <button
             onClick={handleClose}
             className="mt-4 rounded-ctl border border-border-strong px-6 py-2.5 text-sm font-semibold text-ink-muted hover:bg-surface-sunken"
@@ -207,7 +228,10 @@ export function EndOfDayPreviewModal({
         </div>
       )}
 
-      {(phase === 'preview' || phase === 'confirming') && preview !== null && (
+      {(phase === 'preview' || phase === 'confirming') &&
+        preview !== null &&
+        !cashCountPolicyPending &&
+        !cashCountPolicyUnavailable && (
         <div className="space-y-5">
           {/* Cash Reconciliation (new) — appears at the top when enabled */}
           {cashCountEnabled && (
@@ -242,9 +266,18 @@ export function EndOfDayPreviewModal({
           {/* Totals */}
           <div className="grid grid-cols-4 gap-3">
             <SummaryCard label={t('reports.endOfDay.salesCount')} value={String(preview.sales_count)} />
-            <SummaryCard label={t('reports.endOfDay.grossSales')} value={format(preview.gross_sales)} />
-            <SummaryCard label={t('reports.endOfDay.netSales')} value={format(preview.net_sales)} />
-            <SummaryCard label={t('reports.endOfDay.taxAmount')} value={format(preview.tax_amount)} />
+            <SummaryCard
+              label={t('reports.endOfDay.grossSales')}
+              value={hideFinancialAmounts ? '—' : format(preview.gross_sales)}
+            />
+            <SummaryCard
+              label={t('reports.endOfDay.netSales')}
+              value={hideFinancialAmounts ? '—' : format(preview.net_sales)}
+            />
+            <SummaryCard
+              label={t('reports.endOfDay.taxAmount')}
+              value={hideFinancialAmounts ? '—' : format(preview.tax_amount)}
+            />
           </div>
 
           {/* Cash reconciliation summary card (legacy parity). SECURITY: this
@@ -292,9 +325,15 @@ export function EndOfDayPreviewModal({
                     {preview.vat_breakdown.map((row) => (
                       <tr key={row.tax_rate} className="border-b border-border-subtle">
                         <td className="py-2">{formatPercent(row.tax_rate)}</td>
-                        <td className="py-2 text-right">{format(row.net_amount)}</td>
-                        <td className="py-2 text-right">{format(row.vat_amount)}</td>
-                        <td className="py-2 text-right">{format(row.gross_amount)}</td>
+                        <td className="py-2 text-right">
+                          {hideFinancialAmounts ? '—' : format(row.net_amount)}
+                        </td>
+                        <td className="py-2 text-right">
+                          {hideFinancialAmounts ? '—' : format(row.vat_amount)}
+                        </td>
+                        <td className="py-2 text-right">
+                          {hideFinancialAmounts ? '—' : format(row.gross_amount)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -321,7 +360,7 @@ export function EndOfDayPreviewModal({
                         <td className="py-2">{row.payment_method_code}</td>
                         <td className="py-2 text-right">{row.transaction_count}</td>
                         <td className="py-2 text-right">
-                          {hidePaymentAmounts ? '—' : format(row.total_amount)}
+                          {hideFinancialAmounts ? '—' : format(row.total_amount)}
                         </td>
                       </tr>
                     ))}

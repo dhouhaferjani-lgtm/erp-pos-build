@@ -150,7 +150,8 @@ function renderModal(
 }
 
 interface CashCountRenderOpts {
-  fraudSettings?: CompanyFraudSettings;
+  fraudSettings?: CompanyFraudSettings | null;
+  cashCountPolicyResolved?: boolean;
   onConfirmAndClose?: ReturnType<typeof vi.fn>;
   onClose?: ReturnType<typeof vi.fn>;
   onVerifyManagerPin?: ReturnType<typeof vi.fn>;
@@ -171,7 +172,12 @@ function renderModalWithCashCount(opts: CashCountRenderOpts = {}) {
         shift={sampleShift}
         terminalId="term-1"
         onConfirmAndClose={onConfirmAndClose}
-        fraudSettings={opts.fraudSettings ?? baseFraudSettings}
+        fraudSettings={
+          Object.prototype.hasOwnProperty.call(opts, 'fraudSettings')
+            ? opts.fraudSettings
+            : baseFraudSettings
+        }
+        cashCountPolicyResolved={opts.cashCountPolicyResolved}
         authorizedManagers={[
           { id: 'mgr-1', name: 'Mgr One' },
           { id: 'mgr-2', name: 'Mgr Two' },
@@ -489,7 +495,44 @@ describe('EndOfDayPreviewModal', () => {
       expect(screen.queryByText(/130\.00/)).not.toBeInTheDocument();
     });
 
-    it('SECURITY: withholds payment-method amounts until blind counts are committed', async () => {
+    it('SECURITY: withholds preview values while policy is unresolved or unavailable', async () => {
+      const { rerender } = renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: false,
+      });
+      await waitFor(() => {
+        expect(mockBuildEndOfDayPreview).toHaveBeenCalledOnce();
+      });
+
+      expect(screen.getByText('Generating report...')).toBeInTheDocument();
+      expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
+      expect(screen.queryByText('130.00')).not.toBeInTheDocument();
+
+      rerender(
+        <MemoryRouter>
+          <EndOfDayPreviewModal
+            isOpen
+            onClose={vi.fn()}
+            shift={sampleShift}
+            terminalId="term-1"
+            onConfirmAndClose={vi.fn().mockResolvedValue(confirmResult)}
+            fraudSettings={null}
+            cashCountPolicyResolved
+            authorizedManagers={[]}
+            cashierUserId="user-1"
+            onVerifyManagerPin={vi.fn().mockResolvedValue({ valid: true })}
+            managerPinThrottle={{ until: null, failedAttempts: 0 }}
+            onManagerPinThrottleUpdate={vi.fn()}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText(/Cannot close this shift/)).toBeInTheDocument();
+      expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
+      expect(screen.queryByText('130.00')).not.toBeInTheDocument();
+    });
+
+    it('SECURITY: withholds financial preview amounts until blind counts are committed', async () => {
       mockBuildEndOfDayPreview.mockResolvedValueOnce({
         ...samplePreview,
         payment_methods: [
@@ -511,6 +554,9 @@ describe('EndOfDayPreviewModal', () => {
       expect(within(paymentSummary).queryByText('30.00')).not.toBeInTheDocument();
       expect(within(paymentSummary).queryByText('15.00')).not.toBeInTheDocument();
       expect(within(paymentSummary).queryByText('430.00')).not.toBeInTheDocument();
+      expect(screen.queryByText('45.00')).not.toBeInTheDocument();
+      expect(screen.queryByText('37.82')).not.toBeInTheDocument();
+      expect(screen.queryByText('7.18')).not.toBeInTheDocument();
 
       await act(async () => {
         await enterTenderActual('CASH', '130');
@@ -523,6 +569,9 @@ describe('EndOfDayPreviewModal', () => {
       expect(within(paymentSummary).getByText('30.00')).toBeInTheDocument();
       expect(within(paymentSummary).getByText('15.00')).toBeInTheDocument();
       expect(within(paymentSummary).getByText('430.00')).toBeInTheDocument();
+      expect(screen.getAllByText('45.00')).toHaveLength(2);
+      expect(screen.getAllByText('37.82')).toHaveLength(2);
+      expect(screen.getAllByText('7.18')).toHaveLength(2);
     });
 
     it('shows the legacy expected-cash summary only when there is no cash-count reconciliation', async () => {

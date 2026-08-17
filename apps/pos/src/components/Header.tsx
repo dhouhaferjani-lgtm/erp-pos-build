@@ -76,6 +76,7 @@ export function Header() {
 
   // Cash-count fraud settings state (loaded when EOD modal opens)
   const [fraudSettings, setFraudSettings] = useState<CompanyFraudSettings | null>(null);
+  const [cashCountPolicyResolved, setCashCountPolicyResolved] = useState(false);
   const [authorizedManagers, setAuthorizedManagers] = useState<AuthorizedManager[]>([]);
   const [managerPinThrottle, setManagerPinThrottleState] = useState<{
     until: string | null;
@@ -223,6 +224,8 @@ export function Header() {
         } catch {
           // Silently ignore — throttle state resets to defaults
         }
+      } finally {
+        if (!cancelled) setCashCountPolicyResolved(true);
       }
     })();
 
@@ -230,6 +233,15 @@ export function Header() {
       cancelled = true;
     };
   }, [showEndOfDay, terminal, companyId]);
+
+  const handleOpenEndOfDay = () => {
+    // Fail closed on every open. This prevents a first-load null or a stale
+    // false policy from mounting a disclosure path while the refresh is in flight.
+    setFraudSettings(null);
+    setAuthorizedManagers([]);
+    setCashCountPolicyResolved(false);
+    setShowEndOfDay(true);
+  };
 
   // B7: above-hard-variance close manager approval is now OFFLINE-CAPABLE,
   // reusing the audited operator-approval verifier (online-first → anti-downgrade
@@ -608,7 +620,7 @@ export function Header() {
           {shift ? (
             <button
               type="button"
-              onClick={() => setShowEndOfDay(true)}
+              onClick={handleOpenEndOfDay}
               className="flex min-h-12 items-center rounded-pill px-1 transition-colors hover:bg-surface-sunken"
               title={t('shift.opening', { amount: shift.opening_cash })}
             >
@@ -706,6 +718,7 @@ export function Header() {
           onConfirmAndClose={handleEndOfDayConfirm}
           onPrintReceipt={isTauriEnvironment() ? handlePrintZReport : undefined}
           fraudSettings={fraudSettings}
+          cashCountPolicyResolved={cashCountPolicyResolved}
           authorizedManagers={authorizedManagers}
           cashierUserId={operator?.id ?? ''}
           onVerifyManagerPin={onVerifyManagerPin}
