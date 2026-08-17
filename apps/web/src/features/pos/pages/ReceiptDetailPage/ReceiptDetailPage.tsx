@@ -115,7 +115,10 @@ export function ReceiptDetailPage() {
 
   const paymentColumns: DataTableColumn<PaymentDetail>[] = [
     { key: 'method', header: t('pos:receiptReporting.detail.paymentMethod'), accessor: (row) => row.payment_method },
+    { key: 'card', header: t('pos:receiptReporting.detail.cardLastFour'), accessor: (row) => row.card_last_four ?? t('common:notAvailable') },
+    { key: 'instrument', header: t('pos:receiptReporting.detail.instrumentSerial'), accessor: (row) => row.instrument_serial ?? t('common:notAvailable') },
     { key: 'reference', header: t('pos:receiptReporting.detail.reference'), accessor: (row) => row.transaction_reference ?? t('common:notAvailable') },
+    { key: 'authorization', header: t('pos:receiptReporting.detail.authorizationCode'), accessor: (row) => row.authorization_code ?? t('common:notAvailable') },
     { key: 'amount', header: t('pos:receiptReporting.detail.amount'), numeric: true, render: (row) => formatCurrency(row.amount, { currency: receipt.currency }) },
   ]
 
@@ -204,6 +207,9 @@ export function ReceiptDetailPage() {
             <Link to={`/pos/receipts/${receipt.original_receipt.id}`} className={cn('mt-1 inline-block font-mono font-medium hover:underline', colorTokens.intent.primary.textStrong)}>
               {receipt.original_receipt.receipt_number}
             </Link>
+            <p className={cn('mt-1 text-xs', colorTokens.text.muted)}>
+              {formatDateTime(receipt.original_receipt.posted_at, dateOptions)}
+            </p>
           </div>
         ) : null}
         {receipt.return_receipts.length > 0 ? (
@@ -215,6 +221,9 @@ export function ReceiptDetailPage() {
                     {refund.receipt_number}
                   </Link>
                   <p className={cn('mt-1 text-xs', colorTokens.text.muted)}>
+                    {formatDateTime(refund.posted_at, dateOptions)}
+                  </p>
+                  <p className={cn('mt-0.5 text-xs', colorTokens.text.muted)}>
                     {refund.refund_reason ?? t('pos:receiptReporting.refunds.placeholder')} · {refund.refund_destination
                       ? t(`pos:receiptReporting.refunds.destinations.${refund.refund_destination}`)
                       : t('pos:receiptReporting.refunds.placeholder')}

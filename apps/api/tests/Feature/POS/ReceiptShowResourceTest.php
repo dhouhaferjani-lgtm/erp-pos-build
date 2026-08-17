@@ -11,6 +11,7 @@ use App\Modules\POS\Domain\ReceiptVatDetail;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Uom\Domain\Entities\Unit;
+use App\Modules\Uom\Domain\Enums\RoundingMethod;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
 final class ReceiptShowResourceTest extends ReceiptReportingTestCase
@@ -110,7 +111,10 @@ final class ReceiptShowResourceTest extends ReceiptReportingTestCase
 
     public function test_show_uses_the_current_unit_precision_without_replacing_the_historical_product_snapshot(): void
     {
-        $unit = Unit::factory()->create(['decimal_places' => 2]);
+        $unit = Unit::factory()->create([
+            'decimal_places' => 2,
+            'rounding_method' => RoundingMethod::Ceil,
+        ]);
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -124,7 +128,7 @@ final class ReceiptShowResourceTest extends ReceiptReportingTestCase
             'product_id' => $product->id,
             'product_code' => 'SNAPSHOT-001',
             'product_name' => 'Historical product name',
-            'quantity' => '1.2500',
+            'quantity' => '1.2510',
             'unit' => 'kg',
             'unit_price' => '1.000',
             'line_total' => '1.250',

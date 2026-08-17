@@ -578,13 +578,11 @@ final class ReceiptController extends Controller
         $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
 
         $receiptQuery = Receipt::with([
-            'company',
             'location',
             'terminal',
-            'cashier',
             'lines.product.unitOfMeasure',
             'vatDetails',
-            'payments.paymentMethod',
+            'payments',
             'originalReceipt' => function ($query) use ($companyId, $allowedLocationIds): void {
                 $this->scopeRelatedReceipt($query, $companyId, $allowedLocationIds);
             },

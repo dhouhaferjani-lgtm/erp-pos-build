@@ -73,10 +73,10 @@ const detail: ReceiptDetail = {
     id: 'payment-1',
     payment_method: 'Cash',
     amount: '13.900',
-    card_last_four: null,
-    instrument_serial: null,
-    transaction_reference: null,
-    authorization_code: null,
+    card_last_four: '4242',
+    instrument_serial: 'INST-001',
+    transaction_reference: 'TX-001',
+    authorization_code: 'AUTH-001',
   }],
   return_receipts: [{
     id: 'refund-1',
@@ -125,6 +125,12 @@ describe('ReceiptDetailPage', () => {
     expect(screen.getByText('Archived olive oil')).toBeInTheDocument()
     expect(screen.getByText('1.250')).toBeInTheDocument()
     expect(screen.queryByText('pc')).not.toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Card last four' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Instrument serial' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Authorization code' })).toBeInTheDocument()
+    expect(screen.getByText('4242')).toBeVisible()
+    expect(screen.getByText('INST-001')).toBeVisible()
+    expect(screen.getByText('AUTH-001')).toBeVisible()
     expect(printReceipt).not.toHaveBeenCalled()
     expect(downloadReceipt).not.toHaveBeenCalled()
   })
@@ -145,7 +151,9 @@ describe('ReceiptDetailPage', () => {
 
   it('links an original receipt to its refunds and a refund back to its original', async () => {
     const { unmount } = renderDetail()
-    expect(await screen.findByRole('link', { name: 'TN-REF-0001' })).toHaveAttribute('href', '/pos/receipts/refund-1')
+    const refundLink = await screen.findByRole('link', { name: 'TN-REF-0001' })
+    expect(refundLink).toHaveAttribute('href', '/pos/receipts/refund-1')
+    expect(refundLink.nextElementSibling).toHaveTextContent(/08\/18\/2026/)
     expect(screen.getByText('Reason recorded in the fiscal event')).toBeVisible()
     unmount()
 
@@ -164,7 +172,9 @@ describe('ReceiptDetailPage', () => {
         currency: detail.currency,
       },
     })
-    expect(await screen.findByRole('link', { name: 'TN-POS-0001' })).toHaveAttribute('href', '/pos/receipts/receipt-1')
+    const originalLink = await screen.findByRole('link', { name: 'TN-POS-0001' })
+    expect(originalLink).toHaveAttribute('href', '/pos/receipts/receipt-1')
+    expect(originalLink.nextElementSibling).toHaveTextContent(/08\/17\/2026/)
     expect(screen.getByText('Refund')).toBeVisible()
   })
 })

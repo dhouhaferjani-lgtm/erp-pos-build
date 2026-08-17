@@ -93,7 +93,11 @@ final class ReceiptDetailData extends Data
             ? null
             : $documentMoney($value);
         $documentQuantity = static function (string $value) use ($isLegacyReturn) {
-            $formatted = CurrencyScale::bcformatStrict($value, QuantityScale::SCALE);
+            if (! is_numeric($value)) {
+                throw new \InvalidArgumentException('Receipt quantity must be a numeric string.');
+            }
+
+            $formatted = QuantityScale::formatForUnit($value, QuantityScale::SCALE);
 
             return $isLegacyReturn ? bcsub('0', $formatted, QuantityScale::SCALE) : $formatted;
         };
@@ -104,7 +108,6 @@ final class ReceiptDetailData extends Data
                 ? $product->getRelation('unitOfMeasure')
                 : null;
             $quantityDecimals = $unit instanceof Unit ? $unit->decimal_places : QuantityScale::SCALE;
-            $roundingMethod = $unit instanceof Unit ? $unit->rounding_method->value : null;
 
             return new ReceiptDetailLineData(
                 id: $line->id,
@@ -112,7 +115,7 @@ final class ReceiptDetailData extends Data
                 product_id: $line->product_id,
                 product_name: $line->product_name,
                 product_code: $line->product_code,
-                quantity: QuantityScale::formatForUnit($documentQuantity((string) $line->quantity), $quantityDecimals, $roundingMethod),
+                quantity: QuantityScale::formatForUnit($documentQuantity((string) $line->quantity), $quantityDecimals),
                 quantity_decimals: $quantityDecimals,
                 unit_price: $money((string) $line->unit_price),
                 discount_amount: $documentMoney((string) $line->discount_amount),
@@ -122,7 +125,6 @@ final class ReceiptDetailData extends Data
                 returned_quantity: QuantityScale::formatForUnit(
                     $returnedQuantities[$line->id] ?? '0',
                     $quantityDecimals,
-                    $roundingMethod,
                 ),
             );
         })->values()->all();
