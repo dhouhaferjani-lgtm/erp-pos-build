@@ -6,6 +6,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
@@ -24,13 +25,16 @@ use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Presentation\Requests\IndexReceiptsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
 use App\Modules\POS\Presentation\Requests\StoreReturnRequest;
 use App\Modules\Voucher\Application\Services\VoucherLookupService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\QuantityScale;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -45,6 +49,8 @@ final class ReceiptController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
+        private readonly CurrencyScaleResolverInterface $currencyScaleResolver,
         private readonly ReceiptCreationService $receiptCreationService,
         private readonly ReceiptPdfService $receiptPdfService,
         private readonly ReceiptPrintAuditService $receiptPrintAuditService,
@@ -59,76 +65,105 @@ final class ReceiptController extends Controller
      *
      * GET /api/v1/pos/receipts
      */
-    public function index(Request $request): JsonResponse
+    public function index(IndexReceiptsRequest $request): JsonResponse
     {
         Gate::authorize('pos.view_receipts');
 
-        $companyId = $this->companyContext->getCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
+        $validated = $request->validated();
 
         $query = Receipt::where('company_id', $companyId)
-            ->with(['terminal']);
+            ->with(['location:id,name', 'terminal:id,code']);
+
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
+        $requestedLocationIds = $validated['location_ids'] ?? null;
+        if ($allowedLocationIds !== null) {
+            $effectiveLocationIds = $requestedLocationIds === null
+                ? $allowedLocationIds
+                : array_values(array_intersect($allowedLocationIds, $requestedLocationIds));
+            $query->whereIn('location_id', $effectiveLocationIds);
+        } elseif ($requestedLocationIds !== null) {
+            $query->whereIn('location_id', $requestedLocationIds);
+        }
 
         // Filters
-        if ($request->filled('terminal_id')) {
-            $query->where('terminal_id', $request->input('terminal_id'));
+        if (! empty($validated['terminal_id'])) {
+            $query->where('terminal_id', $validated['terminal_id']);
         }
 
-        if ($request->filled('cashier_id')) {
-            $query->where('cashier_id', $request->input('cashier_id'));
+        if (! empty($validated['cashier_id'])) {
+            $query->where('cashier_id', $validated['cashier_id']);
         }
 
-        if ($request->filled('receipt_number')) {
-            $query->where('receipt_number', 'like', '%'.$request->input('receipt_number').'%');
+        if (! empty($validated['receipt_number'])) {
+            $escapedReceiptNumber = addcslashes($validated['receipt_number'], '\\%_');
+            $query->where('receipt_number', 'like', '%'.$escapedReceiptNumber.'%');
         }
 
-        if ($request->filled('customer_id')) {
-            $query->where('partner_id', $request->input('customer_id'));
+        if (! empty($validated['customer_id'])) {
+            $query->where('partner_id', $validated['customer_id']);
         }
 
-        if ($request->filled('contact_id')) {
-            $query->where('contact_id', $request->input('contact_id'));
+        if (! empty($validated['contact_id'])) {
+            $query->where('contact_id', $validated['contact_id']);
         }
 
-        if ($request->has('is_voided')) {
-            $query->where('is_voided', filter_var($request->input('is_voided'), FILTER_VALIDATE_BOOLEAN));
+        if (array_key_exists('is_voided', $validated)) {
+            $query->where('is_voided', $request->boolean('is_voided'));
         }
 
-        if ($request->filled('receipt_type')) {
-            $query->where('receipt_type', $request->input('receipt_type'));
+        $invoiceTypeCodes = $validated['invoice_type_codes'] ?? match ($validated['receipt_type'] ?? null) {
+            'return' => ['REFUND', 'VOID'],
+            default => ['SALE'],
+        };
+        $query->whereIn('invoice_type_code', $invoiceTypeCodes);
+
+        if (! $request->boolean('include_training')) {
+            $query->where('training_flag', false);
         }
 
-        if ($request->filled('from_date')) {
-            $query->where('posted_at', '>=', $request->input('from_date'));
+        if (isset($validated['fiscal_status'])) {
+            $query->where('fiscal_status', $validated['fiscal_status']);
         }
 
-        if ($request->filled('to_date')) {
-            $query->where('posted_at', '<=', $request->input('to_date').' 23:59:59');
+        $from = isset($validated['from_date'])
+            ? CarbonImmutable::createFromFormat('Y-m-d', $validated['from_date'], $company->timezone)->startOfDay()->utc()
+            : null;
+        $to = isset($validated['to_date'])
+            ? CarbonImmutable::createFromFormat('Y-m-d', $validated['to_date'], $company->timezone)->addDay()->startOfDay()->utc()
+            : null;
+
+        if ($from !== null) {
+            $query->where('posted_at', '>=', $from);
+        }
+
+        if ($to !== null) {
+            $query->where('posted_at', '<', $to);
         }
 
         $receipts = $query->orderByDesc('posted_at')
-            ->paginate((int) $request->input('per_page', 20));
+            ->paginate((int) ($validated['per_page'] ?? 25));
 
-        // Transform receipt data to include terminal_code
-        $items = collect($receipts->items())->map(function (Receipt $receipt) {
+        $items = collect($receipts->items())->map(function (Receipt $receipt): array {
+            $moneyScale = $this->currencyScaleResolver->getScale($receipt->currency);
+
             return [
                 'id' => $receipt->id,
                 'receipt_number' => $receipt->receipt_number,
-                'receipt_type' => $receipt->receipt_type->value ?? 'sale',
-                'original_receipt_id' => $receipt->original_receipt_id,
-                'return_reason' => $receipt->return_reason?->value,
-                'terminal_id' => $receipt->terminal_id,
-                'terminal_code' => $receipt->terminal->code ?? '',
-                'cashier_name' => $receipt->cashier_name,
-                'subtotal' => $receipt->subtotal,
-                'tax_amount' => $receipt->tax_amount,
-                'total' => $receipt->total,
-                'currency' => $receipt->currency,
-                'customer_name' => $receipt->customer_name,
-                'partner_id' => $receipt->partner_id,
-                'contact_id' => $receipt->contact_id,
                 'posted_at' => $receipt->posted_at->toISOString(),
-                'is_voided' => $receipt->is_voided,
-                'void_reason' => $receipt->void_reason,
+                'invoice_type_code' => $receipt->invoice_type_code,
+                'training_flag' => $receipt->training_flag,
+                'fiscal_status' => $receipt->fiscal_status->value,
+                'location_id' => $receipt->location_id,
+                'location_name' => $receipt->location?->name,
+                'terminal_id' => $receipt->terminal_id,
+                'terminal_code' => $receipt->terminal?->code ?? '',
+                'cashier_id' => $receipt->cashier_id,
+                'cashier_name' => $receipt->cashier_name,
+                'total' => CurrencyScale::bcformatStrict((string) $receipt->total, $moneyScale),
+                'currency' => $receipt->currency,
+                'original_receipt_id' => $receipt->original_receipt_id,
             ];
         });
 
@@ -140,6 +175,8 @@ final class ReceiptController extends Controller
                     'last_page' => $receipts->lastPage(),
                     'per_page' => $receipts->perPage(),
                     'total' => $receipts->total(),
+                    'from' => $from?->toISOString(),
+                    'to' => $to?->toISOString(),
                 ],
             ],
         ]);
