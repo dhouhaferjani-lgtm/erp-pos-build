@@ -1,0 +1,110 @@
+wave: dn-consolidation-build
+brief: docs/handoff/CODEX-DISPATCH-dn-consolidation-build-2026-08-12.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+spec: docs/handoff/SPEC-dn-consolidation-billing-2026-08-11.md   # r8, gate-PASSED — normative
+# No pre-dispatch adversarial register exists for this brief; per-milestone registers land here.
+review_register: docs/handoff/reviews/dn-consolidation-build/
+reviewer_model: opus
+max_fix_rounds: 5
+
+# RE-PINNED BY PARENT 2026-08-17 (supersedes the "fresh origin/dev" instruction — same remedy as
+# the es-wave-a0/sv-stage1 re-pin, dc1899552). Rationale: origin/dev (7d85232cc) is 58 commits
+# behind curated local dev and MISSES the DPA wave-3 DN foundations (physical-line predicate,
+# DeliveryComplianceGate, SO->DN converter fixes) this spec's citations were verified against,
+# and the F-1 accountant deliveries.view grant (owner-ruled 2026-08-17) is parent-landed at the
+# pinned tip (d682b38ec). Recreate the worktree + branch FROM THIS SHA; do not fetch-and-repin.
+#   git worktree add .worktrees/dn-consolidation -b codex/dn-consolidation-2026-08-12 <base_sha>
+base_sha: d682b38ec9761a917b9716428091a482745795f6
+# Branch codex/dn-consolidation-2026-08-12 in worktree .worktrees/dn-consolidation, from base_sha.
+# NOT merged, NOT pushed: the parent Claude session performs the terminal audit and owns the merge.
+branch: null
+
+# Commit series assigned by the parent (brief §5): Phase 2.<milestone>.<seq>. Do not invent another.
+commit_series: "Phase 2.<milestone>.<seq>"
+
+owner_gates:
+  # informational record — the conditional/standing logic lives in the banner and the milestone text.
+  # No milestone carries an `owner_gate:` field: the harness reads that field as an UNCONDITIONAL
+  # stop (harness step 4 / condition B) and none of these are unconditional build stops.
+  - id: OI-9-legacy-unknown
+    question: "OI-9: `legacy_unknown` STANDS until the owner overturns it. Ship the fourth enum case + the neutral badge exactly as spec §4.2 item 2 states; it is a WRITE-ONCE historical value and a test asserts no new write can produce it. Do NOT implement the lossy alternative (all legacy -> consolidation). This is a RECORDED FINDING in `findings:`, not a decision to re-take."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: OI-12-legacy-survey-counts
+    question: "OI-12: the marker backfill logs rows written, DNs stamped without invoiced_via, and the four legacy-survey counts (missing / unparseable / dangling / cross-company invoice_id). No silent try/catch; a dirty row is written invoice_id=NULL + legacy_unknown and COUNTED, never aborting the tenant loop. The actual per-tenant STAGING counts are read from the tenants:migrate log by whoever promotes — the executor cannot promote. Record the survey mechanism + the fact the counts are owner-owed in `findings:`; do NOT reconcile or 'clean' data."
+    blocks_milestone: none
+    status: recorded_finding
+  - id: OI-13-module-sales-revocation
+    question: "OI-13: adding `module:Sales` to the EXISTING POST /delivery-notes/consolidate-to-invoice is a REVOCATION — any tenant without the Sales module starts getting 403. BUILD the gate; the live tenant module-assignment verification and the grant-vs-defer choice are the owner's, read before PROMOTION. Record it in `findings:` and state in the report that promotion is gated on it. Never silently ship it as routine."
+    blocks_milestone: none
+    status: recorded_finding
+  - id: D-6-staging-ordering
+    question: "Spec D-6 / brief §2: M1 must be on STAGING before M2 promotes, and P0 migrations + seeder + cache-reset must precede the FE that depends on them. Promotion is a PARENT/OWNER action (pushing origin/dev auto-deploys staging) and is NOT available to the executor from a worktree. It is therefore a DEPLOY-SEQUENCING obligation recorded here and in the report — it does not stop the branch: M1 still gates M2 through this harness's own review loop (M1 must reach status: passed first)."
+    blocks_milestone: none
+    status: parent_owned
+  - id: F-1-accountant-seeder-owned-elsewhere
+    question: "You do NOT edit the `accountant` block of RolesAndPermissionsSeeder. The POS-receipts lane ships the single three-key edit (incl. your `deliveries.view`) plus the regenerated permissionsMap.generated.ts. If `deliveries.view` is absent from your base when M1 needs it, or the branches collide, STOP (blocked_owner) — do not edit the seeder yourself."
+    blocks_milestone: none
+    status: conditional
+  - id: F-3-delivery-notes-moduleKey-inventory
+    question: "Whether the EXISTING /delivery-notes route's moduleKey=\"inventory\" gate should also be corrected is an OWNER QUESTION and is NOT in this build. Do not change that route; record the residual in `findings:` with the file:line at your base SHA."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: OI-8-refuse-batch-atomic
+    question: "OI-8 is CLOSED: batch-atomic REFUSE for both lanes, symmetrically. Option (b) 'bill the remainder' must not be built, not even behind a flag. UI conditions 1-4 are RATIFIED and binding (OWNER-DECISIONS 2026-08-12); conditions 5-7 are PROPOSED, NOT RATIFIED — see the brief §3: build only what the spec independently requires, record status in the final report. Not re-openable."
+    blocks_milestone: none
+    status: standing_constraint
+
+milestones:
+  - id: M0
+    title: "Dispatch preconditions (SETUP-ONLY, no implementation, NO bridge review — see the banner's M0 exception): fetch origin, pin base_sha = fresh origin/dev tip, create the dedicated worktree + branch, read SPEC r8 whole (esp. §2.3 Layers 0-5, the lock inventory, §6 fixture prescriptions) + OWNER-DECISIONS 2026-08-12 + research 17 Part 1 and Part 2 §2.5 Finding 2, and record the F-1 base check (is `deliveries.view` present on the accountant block at this base?). Completion = set status: passed with the base_sha recorded; no adversarial register is produced. Any failure -> status blocked_precondition, STOP."
+    review_lenses: []
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M1
+    title: "M1 - THE THREE P0s (spec §9; hard gate on everything else): P0-1 (invoiced projection + real server-side filter + exhaustible offset pagination + aggregates + index migration with withinTransaction=false) - P0-2 (permission repair + BOTH-LAYER module gating, incl. `module:Sales` on the EXISTING POST; four independent per-layer gating tests, a combined test is not acceptable) - P0-3 (Layer 0 global claim order incl. the SalesOrderToInvoiceConverter refactor, the lock inventory, the ONE injected claim service with claim() as the only public entry point and finalise() count-guarded to exactly N on BOTH the marker table and the payload projection, the marker table, the legacy survey/backfill, per-row attributed 422, the DocumentConverted regression from the production entry point) - the thin GET /delivery-notes/uninvoiced endpoint with its authorization/module contract and route-ordering fix - C5 and C8 - the OI-8 REFUSE behaviour with ratified UI conditions 1-4 (5-7 are proposals per the brief §3) - the §6.2 concurrency test with its four-gate fixture prescriptions honoured exactly. NO view work starts until this milestone reaches status: passed."
+    review_lenses: [tenancy-authz, treasury, inventory-costing, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2
+    title: "M2 - View A + A2 + View C: partner 'Delivery notes' tab, balance-card un-billed line, the /finance/lane-separation nav link (no grant is needed and none may be added), the invoiced_via badge + invoice link incl. on DeliveryNoteDetailPage, the OI-9 legacy_unknown neutral badge (en + fr), C9 invalidation. §6.3 green."
+    review_lenses: [frontend-conventions, treasury, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "M3 - View B: roll-up shape + GET /delivery-notes/uninvoiced/{partner} lazy expansion (M1 owns the endpoint's existence, authorization and module gate; M3 owns its roll-up shape, lazy expansion and UI), location scoping and filters, /sales/to-bill, sidebar entry, the 30/60/90/90+ aging strip, periodic-billing chip, coexistence helper text. §6.3 green AND the /finance/lane-separation regression green."
+    review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M4
+    title: "M4 - Retirement + frequency (runs strictly AFTER both M2 and M3 have passed): delete /inventory/delivery-notes/consolidate (route + page + component + barrel export); retire the consolidation_frequency selector and relax CreatePartnerRequest ONLY; re-label invoice_consolidation (en + fr). Grep proves zero remaining references; the diff contains NO partner migration."
+    review_lenses: [frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M5
+    title: "WHOLE-BRANCH GATE (no new implementation): re-run the §6 verification contract over the integrated branch - preflight with PREFLIGHT_TEST_PATHS and PREFLIGHT_VITEST_PATHS both set (never PREFLIGHT_SCOPE=full), all §6.1 backend tests by path, the §6.2 concurrency test, §6.3 frontend tests, the E2E run or its named blocker - plus the LOCK INVENTORY AS BUILT re-derived from code (every lock kind, acquisition point, acyclicity argument, and the explicit statement that no writer reaches invoice creation before its claims succeed), the OI-14 four-vanishing-artefacts proof, and the OI-8 conditions 1-4 evidence plus the recorded status of proposals 5-7. Every lens once more over the whole branch. Failure of any item blocks."
+    review_lenses: [tenancy-authz, treasury, inventory-costing, frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []
+findings: []             # owner-visible items: OI-12 counts, OI-13 module verdict, OI-1a residual, out-of-scope discoveries
