@@ -520,3 +520,19 @@ Verification for commit `41da762c1`:
 - React Doctor's deprecated `--diff` compared the long-lived branch to `main` and was discarded as a regression signal. The tool-prescribed `--scope changed --base HEAD` scan covered the actual uncommitted React fix: one file, score 100, no issues.
 
 M3 resumed round 2 accepted the milestone after independently rerunning PostgreSQL (21 cases / 86 assertions), the Arabic DOM test, the v22 immutability guard, PHPStan, Pint, ESLint, deptrac attribution, and a real-PG probe of the column-default change. Four non-blocking P3 notes carry to M5: permanently assert the migrated PostgreSQL column default; record the now-orphaned vertical-query contract without deleting it in this lane; preserve the pinned-base deptrac comparison and avoid claiming the stale ratchet is globally green; and scope web Vitest claims by path because unrelated Arabic coverage tests are already red.
+
+## M4 — SV-10 blind-mode leak audit
+
+The render-path audit is recorded at `docs/handoff/reviews/sv-stage1/M4-sv10-leak-audit.md`. It starts at the production `Header` caller, verifies that every prop required for the cash-count flow is supplied, follows the guarded legacy card, expected/variance table columns, severity-derived reason and manager-PIN prompts, six-line reveal, success-only thermal receipt, and then enumerates sibling pages and orphan components. No reachable cashier pre-commit path directly renders an expected-cash or variance magnitude under blind mode, so M4 required no production-code fix and left the existing SECURITY defence byte-unchanged.
+
+A rendered regression enters a critical `-60.00` variance with blind counting and hard-threshold manager authorization enabled. Before Commit Counts it proves that Expected/Variance headings, the magnitude, reveal summary, reason prompt, and PIN prompt are absent; after commit it proves the exact magnitude and both prompts appear. Removing the two `committed` prompt guards as a temporary mutation made that test fail on the pre-commit reason section (1 failed / 15 skipped); restoring the guards returned the complete focused surface to 49/49 green.
+
+The sibling manager-only `ShiftClosurePage` is a static/demo route that hard-codes expected cash and renders a locally computed variance before its inert Close Shift button. It is not connected to the production close flow and has no fraud-policy input, so choosing whether to remove it, define it as a manager report, or replace it with the real close workflow is larger than SV-10's narrow-fix permission. `docs/superpowers/tickets/2026-08-17-shift-closure-page-blind-count-parity.md` records that ownership decision and route-level acceptance. The unused `ZReportModal`, manager-only Z list, retired `CloseShiftModal`, and payment/sales summaries were also enumerated in the audit.
+
+Verification for commit `39a72abc0`:
+
+- POS rendered surface: `CashReconciliationSection.test.tsx`, `CashCountTable.test.tsx`, and `EndOfDayPreviewModal.test.tsx`, 49/49, exit 0.
+- POS `pnpm typecheck`, exit 0.
+- Focused ESLint on the changed React test, exit 0.
+- React Doctor changed-file scan: one file, score 100/100, no issues.
+- `git diff --check`, exit 0; `CashReconciliationSection.tsx` has no committed diff.

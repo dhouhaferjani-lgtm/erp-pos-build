@@ -85,9 +85,9 @@ milestones:
   - id: M4
     title: "SV-10 — blind-mode leak audit: READ-ONLY audit of the enumerated surfaces (EndOfDayPreviewModal defended card, CashReconciliationSection severity/reason prompts, CashCountTable reveal gate, any sibling rendering a variance-derived value pre-commit), findings to a file in docs/handoff/reviews/sv-stage1/. Fixes ONLY for leaks in-scope per the row (expected/variance MAGNITUDE disclosed before Commit Counts under blind mode); anything larger -> ticket + report. Do not weaken the existing defence."
     review_lenses: [fiscal-pos, frontend-conventions]
-    status: in_progress
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 39a72abc0678e36c4103bb7bd1845c5f6d86a791
     verdict: null
     last_verdict: null
   - id: M5
