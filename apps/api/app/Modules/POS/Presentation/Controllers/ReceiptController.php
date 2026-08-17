@@ -550,9 +550,9 @@ final class ReceiptController extends Controller
     {
         Gate::authorize('pos.view_receipts');
 
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompany()->id;
 
-        $receipt = Receipt::with([
+        $receiptQuery = Receipt::with([
             'company',
             'location',
             'terminal',
@@ -564,8 +564,9 @@ final class ReceiptController extends Controller
                 $query->where('is_voided', false)->with('lines');
             },
         ])
-            ->where('company_id', $companyId)
-            ->findOrFail($id);
+            ->where('company_id', $companyId);
+        $this->applyAllowedLocationScope($receiptQuery, $companyId);
+        $receipt = $receiptQuery->findOrFail($id);
 
         // Calculate already-returned quantities per line
         $returnedQuantities = $this->calculateReturnedQuantities($receipt);
@@ -673,10 +674,11 @@ final class ReceiptController extends Controller
         // the scope against future schema changes.
         $company = $this->companyContext->requireCompany();
 
-        $receipt = Receipt::query()
+        $receiptQuery = Receipt::query()
             ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->findOrFail($id);
+            ->where('company_id', $company->id);
+        $this->applyAllowedLocationScope($receiptQuery, $company->id);
+        $receipt = $receiptQuery->findOrFail($id);
 
         /** @var User $user */
         $user = Auth::user();
@@ -706,10 +708,11 @@ final class ReceiptController extends Controller
         // F.2 — defense-in-depth tenant_id scope (mirrors downloadPdf).
         $company = $this->companyContext->requireCompany();
 
-        $receipt = Receipt::query()
+        $receiptQuery = Receipt::query()
             ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->findOrFail($id);
+            ->where('company_id', $company->id);
+        $this->applyAllowedLocationScope($receiptQuery, $company->id);
+        $receipt = $receiptQuery->findOrFail($id);
 
         /** @var User $user */
         $user = Auth::user();
@@ -725,6 +728,17 @@ final class ReceiptController extends Controller
         $filename = $this->receiptPdfService->getFilename($receipt);
 
         return $pdf->stream($filename);
+    }
+
+    /**
+     * @param  Builder<Receipt>  $query
+     */
+    private function applyAllowedLocationScope(Builder $query, string $companyId): void
+    {
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
+        if ($allowedLocationIds !== null) {
+            $query->whereIn('location_id', $allowedLocationIds);
+        }
     }
 
     /**
