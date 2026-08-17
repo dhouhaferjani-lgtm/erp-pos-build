@@ -26,6 +26,7 @@
 - `6baf6adfc` — Phase 1.1.15: Close receipt route gate coverage
 - `e72a1abb5` — Phase 1.1.16: Record second receipt review
 - `af12e82fd` — Phase 1.1.17: Preserve archived receipt terminals
+- `54351b6a6` — Phase 1.1.18: Record third receipt review
 
 ### Spec-item status and evidence
 
@@ -64,6 +65,7 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - M1 review round 1: `CHANGES-REQUIRED`; register committed at `docs/handoff/reviews/receipts-build/M1-round1.md`. All six numbered P1/P2 findings were repaired in `cca51e7e2` with red-first regression evidence.
 - M1 review round 2: `CHANGES-REQUIRED`; register at `docs/handoff/reviews/receipts-build/M1-round2.md`. Its sole P2 (missing behavioral route-gate coverage) is repaired in `6baf6adfc`; the new backend and frontend suites pass, and mutation checks fail on the exact `settings.view` regression. The low-risk P3s for NG-5 comments, PostgreSQL filter-options coverage, legacy/new-axis precedence, empty-array validation, seeded accountant authorization, and cross-company filter options were also closed.
 - M1 review round 3: `CHANGES-REQUIRED`; register at `docs/handoff/reviews/receipts-build/M1-round3.md`. Its P1 reproduced an HTTP 500 when a receipt's terminal had been archived. `af12e82fd` fixes the relationship at its source with `withTrashed()` and adds a red-first historical-code regression. The remaining legacy-toggle and vacuous-fixture P3s were also closed. The expanded focused backend slice passes (`72 tests, 366 assertions, 1 PostgreSQL-only skip`), POS PHPStan level 8 passes, and focused Pint passes.
+- M1 review round 4: **ACCEPT**; register at `docs/handoff/reviews/receipts-build/M1-round4.md`. The reviewer independently re-ran the archived-terminal regression, the 11 changed backend classes (`50 tests, 248 assertions`), and the scoped frontend set (`48 tests`), and found no remaining M1 implementation blocker.
 - Full level-8 PHPStan reaches only two existing precision errors in `CopiesDocumentData.php`; both receipt controllers pass level 8 with no errors.
 - Exact backend paths completed in 574.77s. All receipt reporting and `ReceiptReturnFlowTest` cases passed; the command ended on 21 unrelated pre-existing failures in `CashCountValidationServiceTest` and `ZReportHashServiceTest` (`FraudSettingsDTO` fixture arity and duplicate shift fixtures). The new PostgreSQL migration contract separately passed on PostgreSQL (`1 test, 6 assertions`).
 - Exact preflight was rerun after the repair commit and still stops at the same repository-wide Pint drift before later stages; no unrelated files were reformatted. Type generation, permission-map generation, focused Pint/PHPStan, typecheck, and focused receipt/Sidebar tests were run separately and pass.
@@ -82,5 +84,7 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - No product decision outside the spec was made. Two generic presentation seams were extended without changing existing behavior: `DataTable.getRowClassName` for the required muted training row and `EmptyState.action` for the required clear-filters recovery.
 - Verification deviations are explicit above: live E2E/screenshots unavailable; global preflight/lint/scoped-suite baselines are not silently called green.
 - F-3 residual: fraud pages are exact-gated but deliberately have no new nav; OQ-10 owns their IA home.
+- OP-23 follow-up for OQ-10: the exact-gated fraud-settings page exposes Save and Reset to read-only accountants even though the backend correctly refuses both writes. This pre-existing read/write UI mismatch was widened to the accountant by the required re-gate; no unapproved UI behavior was changed in this lane.
+- Merge integration: `dev` independently added `settings.fiscal.update` after this branch's base. The parent must regenerate `permissionsMap.generated.ts` after merging, then confirm it contains that admin grant plus the three accountant deltas (`deliveries.view`, `pos.view_receipts`, `pos.view_reports`). Taking either generated file wholesale would leave a stale hash or drop a grant.
 - F-4: no unit label, event-version-5 preparation, or `apps/pos/**` change exists. Wave 2 will add only `quantity_decimals` as explicitly allowed.
 - i18n deviation recorded from round 1: four unused legacy keys (`active`, `voided`, `noReceipts`, `noReceiptsDescription`) were not carried over because no `receiptSearch` consumer remains; EN/FR receipt keysets stay identical.
