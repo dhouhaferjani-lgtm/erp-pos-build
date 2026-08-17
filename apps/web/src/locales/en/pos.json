@@ -334,6 +334,7 @@
     "status": "Status",
     "searchPlaceholder": "Search by receipt number...",
     "includeTraining": "Include training receipts",
+    "trainingIncluded": "Training receipts included",
     "tableLabel": "Receipt register",
     "resolvedWindow": "Resolved window: {{from}} to {{to}}",
     "types": {

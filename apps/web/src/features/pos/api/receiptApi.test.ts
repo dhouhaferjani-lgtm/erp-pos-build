@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { api } from '@/lib/api'
 import { fetchReceiptFilterOptions, fetchReceipts } from './receiptApi'
 
+const { getMock } = vi.hoisted(() => ({
+  getMock: vi.fn<(url: string, config?: unknown) => Promise<{ data: unknown }>>(),
+}))
+
 vi.mock('@/lib/api', () => ({
-  api: { get: vi.fn() },
+  api: { get: getMock },
   apiGet: vi.fn(),
 }))
 
@@ -13,7 +16,7 @@ describe('receipt reporting API', () => {
   })
 
   it('serializes the SALE register as one location-scoped request', async () => {
-    vi.mocked(api.get).mockResolvedValue({
+    getMock.mockResolvedValue({
       data: { data: { data: [], meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null, to: null } } },
     })
 
@@ -28,7 +31,9 @@ describe('receipt reporting API', () => {
       per_page: 50,
     })
 
-    const url = vi.mocked(api.get).mock.calls[0]?.[0]
+    const url = getMock.mock.calls[0]?.[0]
+    expect(typeof url).toBe('string')
+    if (typeof url !== 'string') throw new Error('Expected receipt request URL')
     expect(url).toContain('/pos/receipts?')
     expect(url).toContain('location_ids%5B%5D=loc-b')
     expect(url).toContain('location_ids%5B%5D=loc-a')
@@ -40,7 +45,7 @@ describe('receipt reporting API', () => {
   })
 
   it('requests filter options with location and calendar bounds only', async () => {
-    vi.mocked(api.get).mockResolvedValue({ data: { data: { terminals: [], cashiers: [] } } })
+    getMock.mockResolvedValue({ data: { data: { terminals: [], cashiers: [] } } })
 
     await fetchReceiptFilterOptions({
       location_ids: ['loc-a'],
@@ -48,7 +53,7 @@ describe('receipt reporting API', () => {
       to_date: '2026-08-17',
     })
 
-    expect(vi.mocked(api.get).mock.calls[0]?.[0]).toBe(
+    expect(getMock.mock.calls[0]?.[0]).toBe(
       '/pos/receipts/filter-options?location_ids%5B%5D=loc-a&from_date=2026-08-17&to_date=2026-08-17',
     )
   })

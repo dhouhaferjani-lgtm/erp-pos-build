@@ -1,14 +1,15 @@
-import { useCallback, useMemo } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CalendarDays } from 'lucide-react'
-import { Checkbox, Select, StatusBadge } from '@/components/atoms'
-import { DataTable, ListPageLayout, type DataTableColumn } from '@/components/molecules'
+import { Button, Checkbox, Select, StatusBadge } from '@/components/atoms'
+import { DataTable, EmptyState, ListPageLayout, type DataTableColumn } from '@/components/molecules'
 import { SearchInput } from '@/components/molecules/SearchInput'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { useLocation } from '@/hooks/useLocation'
+import { useTableState } from '@/hooks/useTableState'
 import { locationScopedKey } from '@/lib/locationScopedKey'
 import { calendarDateInTimeZone, formatCurrency, formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -32,15 +33,14 @@ const FISCAL_STATUSES: ReceiptFiscalStatus[] = [
   'sync_failed',
 ]
 
-function positiveInteger(value: string | null, fallback: number): number {
-  if (!value) return fallback
-  const parsed = Number(value)
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback
+const NARROWING_FILTER_KEYS = ['receipt_number', 'terminal_id', 'cashier_id', 'fiscal_status'] as const
+
+function stringFilter(filters: Record<string, unknown>, key: string): string {
+  return typeof filters[key] === 'string' ? filters[key] : ''
 }
 
 export function ReceiptListPage() {
   const { t } = useTranslation(['pos', 'common'])
-  const [searchParams, setSearchParams] = useSearchParams()
   const { hasTenantScope } = usePosTenantScope()
   const { scope, effectiveLocationIds } = useViewScope()
   const { hasMultipleLocations } = useLocation()
@@ -50,29 +50,33 @@ export function ReceiptListPage() {
   ))
 
   const today = calendarDateInTimeZone(companyTimezone)
-  const fromDate = searchParams.get('from_date') ?? today
-  const toDate = searchParams.get('to_date') ?? today
-  const receiptNumber = searchParams.get('receipt_number') ?? ''
-  const terminalId = searchParams.get('terminal_id') ?? ''
-  const cashierId = searchParams.get('cashier_id') ?? ''
-  const fiscalStatus = (searchParams.get('fiscal_status') ?? '') as ReceiptFiscalStatus | ''
-  const includeTraining = searchParams.get('include_training') === 'true'
-  const page = positiveInteger(searchParams.get('page'), 1)
-  const perPage = positiveInteger(searchParams.get('per_page'), 25)
+  const tableState = useTableState({
+    defaultFilters: { from_date: today, to_date: today },
+    defaultPerPage: 25,
+    syncToURL: true,
+  })
+  const fromDate = stringFilter(tableState.filters, 'from_date') || today
+  const toDate = stringFilter(tableState.filters, 'to_date') || today
+  const receiptNumber = stringFilter(tableState.filters, 'receipt_number')
+  const terminalId = stringFilter(tableState.filters, 'terminal_id')
+  const cashierId = stringFilter(tableState.filters, 'cashier_id')
+  const requestedFiscalStatus = stringFilter(tableState.filters, 'fiscal_status')
+  const fiscalStatus = FISCAL_STATUSES.find((status) => status === requestedFiscalStatus) ?? ''
+  const includeTraining = stringFilter(tableState.filters, 'include_training') === 'true'
 
   const filters = useMemo<ReceiptListFilters>(() => ({
     location_ids: effectiveLocationIds,
     invoice_type_codes: includeTraining ? ['SALE', 'TRAINING'] : ['SALE'],
-    include_training: includeTraining,
     from_date: fromDate,
     to_date: toDate,
-    page,
-    per_page: perPage,
+    page: tableState.page,
+    per_page: tableState.perPage,
+    ...(includeTraining ? { include_training: true } : {}),
     ...(receiptNumber ? { receipt_number: receiptNumber } : {}),
     ...(terminalId ? { terminal_id: terminalId } : {}),
     ...(cashierId ? { cashier_id: cashierId } : {}),
     ...(fiscalStatus ? { fiscal_status: fiscalStatus } : {}),
-  }), [cashierId, effectiveLocationIds, fiscalStatus, fromDate, includeTraining, page, perPage, receiptNumber, terminalId, toDate])
+  }), [cashierId, effectiveLocationIds, fiscalStatus, fromDate, includeTraining, receiptNumber, tableState.page, tableState.perPage, terminalId, toDate])
 
   const optionsQuery = useQuery({
     queryKey: locationScopedKey(['pos', 'receipts', 'filter-options', fromDate, toDate], scope),
@@ -90,13 +94,14 @@ export function ReceiptListPage() {
     enabled: hasTenantScope,
   })
 
-  const updateParam = useCallback((key: string, value: string) => {
-    const next = new URLSearchParams(searchParams)
-    if (value) next.set(key, value)
-    else next.delete(key)
-    if (key !== 'page') next.set('page', '1')
-    setSearchParams(next, { replace: true })
-  }, [searchParams, setSearchParams])
+  const updateFilter = (key: string, value: string) => {
+    if (value) tableState.setFilter(key, value)
+    else tableState.removeFilter(key)
+  }
+
+  const clearNarrowingFilters = () => {
+    NARROWING_FILTER_KEYS.forEach(tableState.removeFilter)
+  }
 
   const columns = useMemo<DataTableColumn<ReceiptListItem>[]>(() => {
     const result: DataTableColumn<ReceiptListItem>[] = [
@@ -176,6 +181,9 @@ export function ReceiptListPage() {
     <ListPageLayout
       title={t('pos:receipts.title')}
       subtitle={t('pos:receipts.description')}
+      actions={includeTraining ? (
+        <StatusBadge tone="warning">{t('pos:receipts.trainingIncluded')}</StatusBadge>
+      ) : undefined}
       filters={(
         <div className="w-full space-y-3">
           <div className={cn(
@@ -189,7 +197,7 @@ export function ReceiptListPage() {
               <input
                 type="date"
                 value={fromDate}
-                onChange={(event) => { updateParam('from_date', event.target.value) }}
+                onChange={(event) => { updateFilter('from_date', event.target.value) }}
                 className={tokens.input.base}
               />
             </label>
@@ -198,7 +206,7 @@ export function ReceiptListPage() {
               <input
                 type="date"
                 value={toDate}
-                onChange={(event) => { updateParam('to_date', event.target.value) }}
+                onChange={(event) => { updateFilter('to_date', event.target.value) }}
                 className={tokens.input.base}
               />
             </label>
@@ -215,13 +223,13 @@ export function ReceiptListPage() {
           <div className="flex flex-wrap items-end gap-3">
             <SearchInput
               value={receiptNumber}
-              onChange={(value) => { updateParam('receipt_number', value) }}
+              onChange={(value) => { updateFilter('receipt_number', value) }}
               placeholder={t('pos:receipts.searchPlaceholder')}
               className="min-w-64 flex-1"
             />
             <label className={cn('min-w-44 text-sm font-medium', colorTokens.text.secondary)}>
               <span className="mb-1 block">{t('pos:receipts.terminal')}</span>
-              <Select value={terminalId} onChange={(event) => { updateParam('terminal_id', event.target.value) }}>
+              <Select value={terminalId} onChange={(event) => { updateFilter('terminal_id', event.target.value) }}>
                 <option value="">{t('pos:receipts.filters.allTerminals')}</option>
                 {(optionsQuery.data?.terminals ?? []).map((terminal) => (
                   <option key={terminal.id} value={terminal.id}>{terminal.code} — {terminal.name}</option>
@@ -230,7 +238,7 @@ export function ReceiptListPage() {
             </label>
             <label className={cn('min-w-44 text-sm font-medium', colorTokens.text.secondary)}>
               <span className="mb-1 block">{t('pos:receipts.cashier')}</span>
-              <Select value={cashierId} onChange={(event) => { updateParam('cashier_id', event.target.value) }}>
+              <Select value={cashierId} onChange={(event) => { updateFilter('cashier_id', event.target.value) }}>
                 <option value="">{t('pos:receipts.filters.allCashiers')}</option>
                 {(optionsQuery.data?.cashiers ?? []).map((cashier) => (
                   <option key={cashier.id} value={cashier.id}>{cashier.name}</option>
@@ -239,7 +247,7 @@ export function ReceiptListPage() {
             </label>
             <label className={cn('min-w-44 text-sm font-medium', colorTokens.text.secondary)}>
               <span className="mb-1 block">{t('pos:receipts.status')}</span>
-              <Select value={fiscalStatus} onChange={(event) => { updateParam('fiscal_status', event.target.value) }}>
+              <Select value={fiscalStatus} onChange={(event) => { updateFilter('fiscal_status', event.target.value) }}>
                 <option value="">{t('pos:receipts.filters.allStatuses')}</option>
                 {FISCAL_STATUSES.map((status) => (
                   <option key={status} value={status}>{t(`pos:receipts.fiscalStatuses.${status}`)}</option>
@@ -249,7 +257,7 @@ export function ReceiptListPage() {
             <label className={cn('mb-2 flex items-center gap-2 text-sm font-medium', colorTokens.text.secondary)}>
               <Checkbox
                 checked={includeTraining}
-                onChange={(event) => { updateParam('include_training', event.target.checked ? 'true' : '') }}
+                onChange={(event) => { updateFilter('include_training', event.target.checked ? 'true' : '') }}
                 aria-label={t('pos:receipts.includeTraining')}
               />
               {t('pos:receipts.includeTraining')}
@@ -265,8 +273,8 @@ export function ReceiptListPage() {
           perPage={meta.per_page}
           from={firstRow}
           to={lastRow}
-          onPageChange={(value) => { updateParam('page', String(value)) }}
-          onPerPageChange={(value) => { updateParam('per_page', String(value)) }}
+          onPageChange={tableState.setPage}
+          onPerPageChange={tableState.setPerPage}
         />
       ) : undefined}
     >
@@ -274,9 +282,21 @@ export function ReceiptListPage() {
         columns={columns}
         data={receipts}
         keyExtractor={(receipt) => receipt.id}
+        getRowClassName={(receipt) => receipt.training_flag ? colorTokens.surface.page : undefined}
         isLoading={receiptsQuery.isLoading}
         emptyTitle={emptyTitle}
         emptyDescription={emptyDescription}
+        emptyState={hasNarrowingFilter ? (
+          <EmptyState
+            title={emptyTitle}
+            description={emptyDescription}
+            action={(
+              <Button type="button" variant="secondary" onClick={clearNarrowingFilters}>
+                {t('common:clearFilters')}
+              </Button>
+            )}
+          />
+        ) : undefined}
         ariaLabel={t('pos:receipts.tableLabel')}
       />
     </ListPageLayout>

@@ -334,6 +334,7 @@
     "status": "Statut",
     "searchPlaceholder": "Rechercher par numéro de ticket...",
     "includeTraining": "Inclure les tickets de formation",
+    "trainingIncluded": "Tickets de formation inclus",
     "tableLabel": "Registre des tickets",
     "resolvedWindow": "Période résolue : du {{from}} au {{to}}",
     "types": {

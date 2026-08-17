@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { calendarDateInTimeZone } from '@/lib/format'
+import i18n from '@/lib/i18n'
+import { locationScopedKey } from '@/lib/locationScopedKey'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { ReceiptListPage } from './ReceiptListPage'
 import { fetchReceiptFilterOptions, fetchReceipts } from '../../api/receiptApi'
-
-vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
-}))
 
 vi.mock('../../api/receiptApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/receiptApi')>()
@@ -22,6 +21,10 @@ vi.mock('@/features/locations/hooks/useViewScope', () => ({
   useViewScope: () => ({ scope: ['loc-1'], effectiveLocationIds: ['loc-1'], isAll: false, setScope: vi.fn() }),
 }))
 
+vi.mock('@/lib/locationScopedKey', () => ({
+  locationScopedKey: vi.fn((base: readonly unknown[], scope: readonly string[]) => [...base, { locScope: scope }]),
+}))
+
 vi.mock('../../hooks/usePosTenantScope', () => ({
   usePosTenantScope: () => ({ tenantId: 'tenant-1', companyId: 'company-1', hasTenantScope: true }),
 }))
@@ -32,7 +35,7 @@ vi.mock('@/hooks/useLocation', () => ({
 
 vi.mock('@/stores/companyStore', () => ({
   useCompanyStore: Object.assign(
-    (selector: (state: { currentCompanyId: string; companies: Array<{ id: string; timezone: string }> }) => unknown) => selector({
+    (selector: (state: { currentCompanyId: string; companies: { id: string; timezone: string }[] }) => unknown) => selector({
       currentCompanyId: 'company-1',
       companies: [{ id: 'company-1', timezone: 'Africa/Tunis' }],
     }),
@@ -59,7 +62,8 @@ const row = {
 } as const
 
 describe('ReceiptListPage', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage('en')
     vi.clearAllMocks()
     vi.mocked(fetchReceipts).mockResolvedValue({
       data: [row],
@@ -76,11 +80,13 @@ describe('ReceiptListPage', () => {
   })
 
   it('renders a register row with explicit receipt currency and one training signal', async () => {
-    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts' })
+    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts?include_training=true' })
 
-    expect(await screen.findByRole('link', { name: 'TN-POS-0001' })).toHaveAttribute('href', '/pos/receipts/receipt-1')
+    const receiptLink = await screen.findByRole('link', { name: 'TN-POS-0001' })
+    expect(receiptLink).toHaveAttribute('href', '/pos/receipts/receipt-1')
     expect(screen.getByText('12,345 TND')).toBeInTheDocument()
-    expect(screen.getByText('pos:receipts.types.TRAINING')).toBeInTheDocument()
+    expect(screen.getByText('Training')).toBeInTheDocument()
+    expect(receiptLink.closest('tr')).toHaveClass(colorTokens.surface.page)
     expect(screen.queryByText('Tunis')).not.toBeInTheDocument()
     expect(screen.queryByText('REFUND')).not.toBeInTheDocument()
     expect(screen.queryByText('VOID')).not.toBeInTheDocument()
@@ -92,12 +98,12 @@ describe('ReceiptListPage', () => {
     await waitFor(() => {
       expect(fetchReceipts).toHaveBeenCalledWith(expect.objectContaining({
         invoice_type_codes: ['SALE'],
-        include_training: false,
         location_ids: ['loc-1'],
       }))
+      expect(vi.mocked(fetchReceipts).mock.calls[0]?.[0]).not.toHaveProperty('include_training')
     })
 
-    fireEvent.click(screen.getByRole('checkbox', { name: 'pos:receipts.includeTraining' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Include training receipts' }))
 
     await waitFor(() => {
       expect(fetchReceipts).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -105,5 +111,56 @@ describe('ReceiptListPage', () => {
         include_training: true,
       }))
     })
+    expect(screen.getByText('Training receipts included')).toBeInTheDocument()
+  })
+
+  it('keys the list query through the location-scoped key helper', async () => {
+    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts' })
+
+    await waitFor(() => {
+      const listCall = vi.mocked(locationScopedKey).mock.calls.find(([key]) => key[0] === 'pos' && key[1] === 'receipts' && key.length === 3)
+      expect(listCall?.[0][2]).toMatchObject({ location_ids: ['loc-1'], invoice_type_codes: ['SALE'] })
+      expect(listCall?.[1]).toEqual(['loc-1'])
+    })
+  })
+
+  it('offers to clear a filtered empty state', async () => {
+    vi.mocked(fetchReceipts).mockResolvedValue({
+      data: [],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: '2026-08-16T23:00:00.000000Z', to: '2026-08-17T23:00:00.000000Z' },
+    })
+
+    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts?receipt_number=missing' })
+
+    expect(await screen.findByText('No receipts match these filters')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Filters' }))
+
+    await waitFor(() => {
+      expect(vi.mocked(fetchReceipts).mock.lastCall?.[0]).not.toHaveProperty('receipt_number')
+    })
+  })
+
+  it.each([
+    ['/pos/receipts', 'No sales receipts for this business day'],
+    ['/pos/receipts?include_training=true', 'No sale or training receipts for this business day'],
+  ])('renders the distinct unfiltered empty state for %s', async (route, title) => {
+    vi.mocked(fetchReceipts).mockResolvedValue({
+      data: [],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 0, from: null, to: null },
+    })
+
+    renderWithProviders(<ReceiptListPage />, { route })
+
+    expect(await screen.findByText(title)).toBeInTheDocument()
+  })
+
+  it('renders the list shell with French translations', async () => {
+    await i18n.changeLanguage('fr')
+
+    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts?include_training=true' })
+
+    expect(await screen.findByRole('heading', { name: 'Tickets' })).toBeInTheDocument()
+    expect(screen.getByText('Tickets de formation inclus')).toBeInTheDocument()
+    expect(screen.queryByText('receipts.trainingIncluded')).not.toBeInTheDocument()
   })
 })

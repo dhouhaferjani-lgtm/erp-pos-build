@@ -75,7 +75,9 @@ export interface ReceiptFilterOptions {
 export type ReceiptFilterOptionsFilters = Pick<ReceiptListFilters, 'location_ids' | 'from_date' | 'to_date'>
 
 function appendArray(params: URLSearchParams, key: string, values: string[] | undefined): void {
-  values?.forEach((value) => params.append(`${key}[]`, value))
+  values?.forEach((value) => {
+    params.append(`${key}[]`, value)
+  })
 }
 
 function receiptParams(filters: ReceiptListFilters): URLSearchParams {
@@ -127,18 +129,18 @@ export async function getReceipt(id: string): Promise<ReceiptData> {
  * Print receipt - returns PDF blob for browser print dialog
  */
 export async function printReceipt(receiptId: string): Promise<Blob> {
-  const response = await api.get(`/pos/receipts/${receiptId}/pdf`, {
+  const response = await api.get<Blob>(`/pos/receipts/${receiptId}/pdf`, {
     responseType: 'blob',
   })
 
-  return response.data as Blob
+  return response.data
 }
 
 /**
  * Download receipt - triggers browser download
  */
 export async function downloadReceipt(receiptId: string): Promise<void> {
-  const response = await api.get(`/pos/receipts/${receiptId}/pdf/download`, {
+  const response = await api.get<Blob>(`/pos/receipts/${receiptId}/pdf/download`, {
     responseType: 'blob',
   })
 
