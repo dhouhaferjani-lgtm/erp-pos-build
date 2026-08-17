@@ -5,6 +5,16 @@ review_register: .superpowers/sdd/HANDOVER-document-per-action-remediation-2026-
 reviewer_model: opus
 max_fix_rounds: 5
 
+# Human resume authorization (2026-08-17): after STOP A was recorded at
+# M2-round6, the owner asked Codex to continue. Rounds 4-6 contained tool errors
+# only, not findings. The five fix rounds remain immutable; one fresh parseable
+# review verdict is allowed. Any substantive CHANGES-REQUIRED verdict restores
+# STOP A immediately because no fix budget remains.
+review_resume:
+  milestone: M2
+  after_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round6.md
+  scope: reviewer_tool_retry_only
+
 # Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
 base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
 # 3C branch off base_sha; after 3C merges to local dev, create 3D branch off the new dev (see brief DELIVERABLE).
@@ -48,7 +58,7 @@ milestones:
   - id: M2
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
-    status: blocked_review
+    status: review
     fix_rounds: 5
     commit: 2cae847a9
     verdict: docs/handoff/reviews/wave3-3c-3d/M2-round6.md
@@ -79,9 +89,8 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: blocked_review      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
-blockers:
-  - "Harness STOP A: M2 exhausted max_fix_rounds=5 without an ACCEPT verdict. Round 3's four code findings were fixed and revert-replayed; rounds 4, 5, and 6 failed in the claude reviewer invocation before emitting findings, so the harness fails closed. Latest register: docs/handoff/reviews/wave3-3c-3d/M2-round6.md."
+blockers: []
