@@ -3,7 +3,7 @@
  * Switch and Lock must still be present.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const fraudApiMocks = vi.hoisted(() => ({
   fetchFraudSettings: vi.fn(),
@@ -448,12 +448,22 @@ describe('Header (Sub-Spec B)', () => {
       expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('true:true');
     });
 
+    let rejectRefresh: ((reason: Error) => void) | undefined;
     fraudApiMocks.fetchFraudSettings.mockImplementationOnce(
-      () => new Promise(() => {}),
+      () => new Promise((_resolve, reject) => { rejectRefresh = reject; }),
     );
     mockTerminal = { ...mockTerminal, code: 'T1-refreshed' };
     view.rerender(<Header />);
 
-    expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('false:true');
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('false:none');
+    });
+
+    await act(async () => {
+      rejectRefresh?.(new Error('refresh offline'));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('true:none');
+    });
   });
 });

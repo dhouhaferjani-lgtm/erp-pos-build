@@ -51,6 +51,13 @@ export interface EndOfDayPreviewModalProps {
 
 type ModalPhase = 'loading' | 'preview' | 'confirming' | 'success' | 'error';
 
+interface CashCountFlowState {
+  policy: CompanyFraudSettings | null | undefined;
+  payload: CashCountCommitPayload | null;
+  ready: boolean;
+  committed: boolean;
+}
+
 const NOOP_THROTTLE = { until: null, failedAttempts: 0 } as const;
 
 export function EndOfDayPreviewModal({
@@ -77,9 +84,12 @@ export function EndOfDayPreviewModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Cash-count flow state
-  const [cashCountPayload, setCashCountPayload] = useState<CashCountCommitPayload | null>(null);
-  const [cashCountReady, setCashCountReady] = useState<boolean>(false);
-  const [cashCountsCommitted, setCashCountsCommitted] = useState<boolean>(false);
+  const [cashCountFlow, setCashCountFlow] = useState<CashCountFlowState>({
+    policy: fraudSettings,
+    payload: null,
+    ready: false,
+    committed: false,
+  });
 
   // Guard: once confirmation begins, block backdrop dismiss
   const isConfirmingRef = useRef(false);
@@ -104,6 +114,15 @@ export function EndOfDayPreviewModal({
     cashCountPolicyResolved !== undefined && !cashCountPolicyResolved;
   const cashCountPolicyUnavailable =
     cashCountPolicyResolved === true && fraudSettings == null;
+
+  // Header creates a fresh settings object for each resolved terminal-policy
+  // snapshot. State from an older snapshot is invalid immediately, without a
+  // post-render reset that could briefly preserve its reveal boundary.
+  const cashCountFlowIsCurrent = cashCountFlow.policy === fraudSettings;
+  const cashCountPayload = cashCountFlowIsCurrent ? cashCountFlow.payload : null;
+  const cashCountReady = cashCountFlowIsCurrent && cashCountFlow.ready;
+  const cashCountsCommitted = cashCountFlowIsCurrent && cashCountFlow.committed;
+
   // Physical non-cash totals are the exact expected count, and CASH plus the
   // visible opening float can reconstruct expected cash. Keep every payment
   // amount behind the same blind-count commit boundary as the tender table.
@@ -120,9 +139,12 @@ export function EndOfDayPreviewModal({
       setPreview(null);
       setResult(null);
       setErrorMessage(null);
-      setCashCountPayload(null);
-      setCashCountReady(false);
-      setCashCountsCommitted(false);
+      setCashCountFlow({
+        policy: null,
+        payload: null,
+        ready: false,
+        committed: false,
+      });
       isConfirmingRef.current = false;
       return;
     }
@@ -245,10 +267,21 @@ export function EndOfDayPreviewModal({
               managerPinThrottle={managerPinThrottle ?? NOOP_THROTTLE}
               onManagerPinThrottleUpdate={onManagerPinThrottleUpdate}
               onChange={(payload, ready) => {
-                setCashCountPayload(payload);
-                setCashCountReady(ready);
+                setCashCountFlow((current) => ({
+                  policy: fraudSettings,
+                  payload,
+                  ready,
+                  committed:
+                    current.policy === fraudSettings && current.committed,
+                }));
               }}
-              onCommit={() => setCashCountsCommitted(true)}
+              onCommit={() => {
+                setCashCountFlow((current) => ({
+                  ...current,
+                  policy: fraudSettings,
+                  committed: true,
+                }));
+              }}
             />
           )}
 

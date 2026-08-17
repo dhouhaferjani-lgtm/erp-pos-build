@@ -612,6 +612,65 @@ describe('EndOfDayPreviewModal', () => {
       expect(screen.getAllByText('7.18')).toHaveLength(2);
     });
 
+    it('SECURITY: resets the parent commit boundary across a policy refresh', async () => {
+      const blindSettings = { ...baseFraudSettings, require_blind_cash_count: true };
+      const refreshedBlindSettings = { ...blindSettings };
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        payment_methods: [
+          ...samplePreview.payment_methods,
+          {
+            payment_method_id: 'pm-check',
+            payment_method_code: 'CHECK',
+            is_physical: true,
+            total_amount: '430.00',
+            transaction_count: 1,
+          },
+        ],
+      });
+      const view = renderModalWithCashCount({
+        fraudSettings: blindSettings,
+        cashCountPolicyResolved: true,
+      });
+      let paymentSummary = (await screen.findByText('Payments')).parentElement!;
+
+      await act(async () => {
+        await enterTenderActual('CASH', '130');
+        await enterTenderActual('CHECK', '430');
+      });
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+      expect(within(paymentSummary).getByText('430.00')).toBeInTheDocument();
+
+      const renderAtPolicyState = (resolved: boolean) => (
+        <MemoryRouter>
+          <EndOfDayPreviewModal
+            isOpen
+            onClose={vi.fn()}
+            shift={sampleShift}
+            terminalId="term-1"
+            onConfirmAndClose={vi.fn().mockResolvedValue(confirmResult)}
+            fraudSettings={resolved ? refreshedBlindSettings : null}
+            cashCountPolicyResolved={resolved}
+            authorizedManagers={[]}
+            cashierUserId="user-1"
+            onVerifyManagerPin={vi.fn().mockResolvedValue({ valid: true })}
+            managerPinThrottle={{ until: null, failedAttempts: 0 }}
+            onManagerPinThrottleUpdate={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+
+      view.rerender(renderAtPolicyState(false));
+      expect(screen.getByText('Generating report...')).toBeInTheDocument();
+
+      view.rerender(renderAtPolicyState(true));
+      paymentSummary = screen.getByText('Payments').parentElement!;
+      expect(within(paymentSummary).queryByText('430.00')).not.toBeInTheDocument();
+      expect(screen.queryByText('Expected')).not.toBeInTheDocument();
+      expect(screen.getByTestId('commit-counts-button')).toBeDisabled();
+      expect(screen.getByTestId('end-of-day-confirm-button')).toBeDisabled();
+    });
+
     it('shows the legacy expected-cash summary only when there is no cash-count reconciliation', async () => {
       renderModal();
       await screen.findByText('Confirm and Close Day');
