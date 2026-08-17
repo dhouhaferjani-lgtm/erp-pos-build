@@ -2,7 +2,9 @@
 
 - Base SHA: `7d85232cc54abd6a6b2135f476205ab434e71a66` (fresh `origin/dev` at dispatch)
 - Branch: `codex/pos-receipts-2026-08-12`
-- Worktree: `.worktrees/receipts-build`
+- Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/receipts-build`
+- Final reviewed SHA: `80796c29a` (M2 round 4 reviewed `base_sha..HEAD` and returned ACCEPT)
+- Delivered scope: waves 1+2. M2b is `BLOCKED` by the specified A0 owner gate; wave 3 was not dispatched.
 - Executor does not merge or push; the parent owns terminal audit and integration.
 
 ## Wave 1 / M1
@@ -109,6 +111,7 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - `e15d3e6a9` — Phase 1.2.14: Preserve legacy return document integrity
 - `afb88618a` — Phase 1.2.15: Record second wave two review
 - `59cfb57cb` — Phase 1.2.16: Complete receipt detail evidence
+- `80796c29a` — Phase 1.2.17: Record third wave two review
 
 ### Spec-item status and evidence
 
@@ -134,6 +137,7 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - M2 adversarial review round 1: **CHANGES-REQUIRED**, register at `docs/handoff/reviews/receipts-build/M2-round1.md`. The red repair run observed verify-chain HTTP 200 outside scope, a legacy detail `SALE`/signed total mismatch, invisible reason provenance and hidden historical rows. `be6cebe16` closes all five blocking findings and five low-risk P3s. Its focused green rerun passes 13 backend tests/80 assertions and 11 frontend tests; touched PHPStan, Pint, changed-file ESLint, TypeScript, i18n parity, quantity audit and design-system delta checks pass.
 - M2 adversarial review round 2: **CHANGES-REQUIRED**, register at `docs/handoff/reviews/receipts-build/M2-round2.md`. Its P1 exposed the half-projected legacy return shape. `e15d3e6a9` moves the exact pre-fiscal predicate fully to the server and sign-inverts the entire signed document coherently, including the reversal-discount sign, while preserving the aggregate identity. It also guards skipped lineage shapes, adds actor/terminal print assertions, removes the browser's blanket sign strip, and removes the literal money scale. Focused green: 26 backend tests/221 assertions and 12 frontend tests.
 - M2 adversarial review round 3: **CHANGES-REQUIRED**, register at `docs/handoff/reviews/receipts-build/M2-round3.md`. `59cfb57cb` closes its payment-detail P2, adds dates to both lineage directions, removes live `rounding_method` dependence, removes unused eager loads, and keeps quantity formatting in `QuantityScale`. Focused green remains 26 backend tests/221 assertions and 12 frontend tests.
+- M2 adversarial review round 4: **ACCEPT**, register at `docs/handoff/reviews/receipts-build/M2-round4.md`. The reviewer re-verified every round-3 closure against code, applied all five milestone lenses, recorded an empty blocking set, and independently confirmed that Lane A0 has not landed.
 
 - Focused wave-2 backend slice: PASS (`14 tests, 158 assertions`) across show allowlist, aggregate integrity, lineage, PDF audit, recursive forbidden keys, refund reporting and location authorization. Touched-file Pint and level-8 PHPStan pass.
 - Focused wave-2 frontend slice: PASS (`51 tests`) across receipt API/list/detail/refunds, route parity and both voucher consumers. Changed-file ESLint and `pnpm typecheck` pass.
@@ -153,3 +157,13 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - S-8/totals remains owner-blocked and was not implemented.
 - **Declared legacy reporting projection:** pre-fiscal returns (`receipt_type=return`, no fiscal event, stored `invoice_type_code=SALE`) are presented as REFUND magnitudes at the server boundary on both list and detail. Detail sign-inverts every signed component together, including discount as a negative reversal adjustment, so the emitted receipt and VAT identities remain internally coherent. Current fiscal REFUND/VOID rows are not rewritten by this rule.
 - Terminal-audit follow-up: `returned_quantity` on a location-scoped original is derived from the visible, scoped lineage collection. Current writers keep original and return at the same location, but a manually-created cross-location child could be hidden while the tally reads zero; changing that requires a separate scoped aggregate contract.
+- Terminal-audit follow-up: a normalized pre-fiscal return renders its discount as a negative reversal adjustment without a dedicated explanatory caption.
+- Terminal-audit follow-up: the normalized web detail shows a pre-fiscal return magnitude while its immutable fiscal PDF duplicate retains the stored negative sign; the two surfaces need explanatory follow-up, not a mutation of sealed output.
+- Terminal-audit follow-up: the detail API rounds the wire quantity to the current unit `decimal_places`; it does not preserve raw sealed scale-4 digits alongside `quantity_decimals`.
+- Terminal-audit follow-up: the VAT table keys rows by `tax_rate`, although the database does not enforce uniqueness for `(receipt_id, tax_rate)`; current projectors aggregate per rate, so this is defensive hardening.
+
+## Wave 2b / M2b owner STOP
+
+- **Screen (d) and FT-9 — BLOCKED.** The mandatory M2-close inspection found that `VerifyPosChainCommand.php:304,341` still applies `whereNull('fiscal_event_id')`, excluding fiscal-era projections from receipt verification. No verifier-path predicate for canonical `chain_context` and no `pos_receipts.fiscal_hash` to `fiscal_events.current_hash` mirror check exists on this branch. That is the pre-A0 shape, so Lane A0 has not landed.
+- Per brief §5/F-2 and the progress-file owner gate, no chain-verification panel, copy, i18n keys, or tests were added speculatively. M2b is `blocked_owner`, waves 1+2 are the delivered scope, and this executor run ends before M3.
+- This STOP is the specified conditional outcome, not an implementation failure. The parent session owns the terminal full-branch audit and integration after A0 coordination.
