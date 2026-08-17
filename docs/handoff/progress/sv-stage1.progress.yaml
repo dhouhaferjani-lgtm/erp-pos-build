@@ -86,10 +86,11 @@ milestones:
     title: "SV-10 — blind-mode leak audit: READ-ONLY audit of the enumerated surfaces (EndOfDayPreviewModal defended card, CashReconciliationSection severity/reason prompts, CashCountTable reveal gate, any sibling rendering a variance-derived value pre-commit), findings to a file in docs/handoff/reviews/sv-stage1/. Fixes ONLY for leaks in-scope per the row (expected/variance MAGNITUDE disclosed before Commit Counts under blind mode); anything larger -> ticket + report. Do not weaken the existing defence."
     review_lenses: [fiscal-pos, frontend-conventions]
     status: review
-    fix_rounds: 2
-    commit: 00e8667af3c0d3cd3221b05338b5d686daa2ba0f
-    verdict: docs/handoff/reviews/sv-stage1/M4-round2.md
+    fix_rounds: 3
+    commit: 7cfecf21e64996f2543b3f8ace43b1c6deee0f8a
+    verdict: docs/handoff/reviews/sv-stage1/M4-round3.md
     last_verdict: CHANGES-REQUIRED
+    updated: null
   - id: M5
     title: "WHOLE-LANE GATE — re-run the full accumulated evidence over the integrated branch with EVERY lens used in the wave (treasury included: it rides M1's Treasury config + listener docblock rewrites). Paste git diff --name-only BASE_SHA..HEAD and prove the negative: no Stage 2-5 row (SV-2..SV-8, SV-12..SV-18), TREASURY_SHIFT_VARIANCE_GL_ENABLED untouched, no event added/renamed/retired, no Lane A0/A1 file."
     review_lenses: [fiscal-pos, treasury, frontend-conventions, tenancy-authz]
