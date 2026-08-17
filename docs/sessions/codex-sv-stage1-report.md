@@ -699,3 +699,9 @@ The list was read, not inferred. Production/test paths map only to SV-1, SV-9, S
 ### Deploy obligation
 
 On the next `origin/dev` promotion, run unattended `tenants:migrate`. Migration `2026_08_12_100000_enable_blind_cash_count_for_existing_settings.php` changes every persisted `require_blind_cash_count=false` row to true and changes the PostgreSQL column default to true. Verify each tenant's warning log contains `SV-9 BLIND COUNT BACKFILL COMPLETE:` with tenant, changed, and skipped counts; rerunning must report `changed=0`. The migration intentionally re-enables deliberate false rows because the schema has no provenance discriminator and the binding ruling is ON everywhere. It does not enable the Treasury GL flag.
+
+### M5 round 1 owner stop
+
+The four-lens gate reproduced the implementation and evidence but returned two P2s. First, the deploy record does not yet state the cross-artifact ordering requirement: the POS build containing the SV-11 whole-drawer instruction must reach devices before the SV-9 server migration enables blind counting, especially for retail tenants previously persisted false. Second, M4's policy-unavailable state is a real fiscal-availability change: when online settings and local cache are both absent, it blocks shift close and Z generation. The disclosure direction is safe, but approving that operational behavior or specifying an audited recovery is owner-owed and exceeds SV-10's narrow-fix permission.
+
+Per harness STOP condition B, M5 and the wave are `blocked_owner` pending that explicit ruling. No fallback, default policy, or removal of the block is inferred. Round 1 also records four non-blocking P3s for the resumed pass: the already disclosed one-minor-unit reveal mismatch; a stale device-cache sentence in the SV-9 deploy ticket; hardening the partial Arabic compliance merge; and the dead-parameter `defaultsForVertical()` compatibility API.
