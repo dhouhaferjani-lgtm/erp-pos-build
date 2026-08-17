@@ -105,6 +105,8 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - `6d8b84f0e` — Phase 1.2.10: Add receipt reporting browser flows
 - `1a688283a` — Phase 1.2.11: Record receipt reporting evidence
 - `be6cebe16` — Phase 1.2.12: Repair receipt reporting review findings
+- `fe2035cb8` — Phase 1.2.13: Record first wave two review
+- `e15d3e6a9` — Phase 1.2.14: Preserve legacy return document integrity
 
 ### Spec-item status and evidence
 
@@ -128,6 +130,7 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 ### Verification
 
 - M2 adversarial review round 1: **CHANGES-REQUIRED**, register at `docs/handoff/reviews/receipts-build/M2-round1.md`. The red repair run observed verify-chain HTTP 200 outside scope, a legacy detail `SALE`/signed total mismatch, invisible reason provenance and hidden historical rows. `be6cebe16` closes all five blocking findings and five low-risk P3s. Its focused green rerun passes 13 backend tests/80 assertions and 11 frontend tests; touched PHPStan, Pint, changed-file ESLint, TypeScript, i18n parity, quantity audit and design-system delta checks pass.
+- M2 adversarial review round 2: **CHANGES-REQUIRED**, register at `docs/handoff/reviews/receipts-build/M2-round2.md`. Its P1 exposed the half-projected legacy return shape. `e15d3e6a9` moves the exact pre-fiscal predicate fully to the server and sign-inverts the entire signed document coherently, including the reversal-discount sign, while preserving the aggregate identity. It also guards skipped lineage shapes, adds actor/terminal print assertions, removes the browser's blanket sign strip, and removes the literal money scale. Focused green: 26 backend tests/221 assertions and 12 frontend tests.
 
 - Focused wave-2 backend slice: PASS (`14 tests, 158 assertions`) across show allowlist, aggregate integrity, lineage, PDF audit, recursive forbidden keys, refund reporting and location authorization. Touched-file Pint and level-8 PHPStan pass.
 - Focused wave-2 frontend slice: PASS (`51 tests`) across receipt API/list/detail/refunds, route parity and both voucher consumers. Changed-file ESLint and `pnpm typecheck` pass.
@@ -145,3 +148,4 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - Live E2E fixtures are required explicitly rather than skipped: the specs fail with a named prerequisite if the stack has no SALE, acknowledged-terminal REFUND/VOID, or refund/exchange voucher provenance. No mocked-auth substitute was introduced.
 - Verification deviations are explicit above: global Pint and scoped legacy-suite baselines are not called green, and E2E/screenshots are environment-blocked.
 - S-8/totals remains owner-blocked and was not implemented.
+- **Declared legacy reporting projection:** pre-fiscal returns (`receipt_type=return`, no fiscal event, stored `invoice_type_code=SALE`) are presented as REFUND magnitudes at the server boundary on both list and detail. Detail sign-inverts every signed component together, including discount as a negative reversal adjustment, so the emitted receipt and VAT identities remain internally coherent. Current fiscal REFUND/VOID rows are not rewritten by this rule.
