@@ -9,7 +9,7 @@ use App\Modules\POS\Domain\ReceiptVatDetail;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
-final class ReceiptDetailIntegrityTest extends ReceiptReportingTestCase
+final class ReceiptAggregateIntegrityTest extends ReceiptReportingTestCase
 {
     #[DataProvider('roundingCases')]
     public function test_detail_preserves_receipt_and_vat_aggregate_identities(

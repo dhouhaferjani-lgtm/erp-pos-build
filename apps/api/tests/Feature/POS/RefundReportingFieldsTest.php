@@ -68,31 +68,43 @@ final class RefundReportingFieldsTest extends ReceiptReportingTestCase
         $this->assertCount(1, $fiscalEventQueries);
     }
 
-    public function test_malformed_canonical_payload_degrades_to_legacy_fields_and_logs_a_warning(): void
+    public function test_null_and_deeply_malformed_payloads_degrade_to_legacy_fields_and_log_warnings(): void
     {
         Log::spy();
 
         $original = $this->createReceipt('SALE');
-        $malformedEvent = $this->createFiscalEvent([]);
-        $refund = $this->createRefund(
+        $validPayload = GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'];
+        $missingRequiredKey = $validPayload;
+        unset($missingRequiredKey['line_items'][0]['name']);
+        $scalarLineItem = $validPayload;
+        $scalarLineItem['line_items'][0] = 'not-an-object';
+
+        $events = [
+            $this->createFiscalEvent(null),
+            $this->createFiscalEvent($missingRequiredKey),
+            $this->createFiscalEvent($scalarLineItem),
+        ];
+        $refunds = collect($events)->map(fn (FiscalEvent $event): Receipt => $this->createRefund(
             invoiceTypeCode: 'REFUND',
             original: $original,
             reason: ReturnReason::WrongItem,
-            fiscalEvent: $malformedEvent,
-        );
+            fiscalEvent: $event,
+        ));
 
         $response = $this->getJson('/api/v1/pos/receipts?invoice_type_codes[]=REFUND')
             ->assertOk();
 
         $rows = collect($response->json('data.data'))->keyBy('id');
-        $this->assertSame('Wrong Item', $rows[$refund->id]['refund_reason']);
-        $this->assertSame('legacy_enum', $rows[$refund->id]['refund_reason_source']);
-        $this->assertNull($rows[$refund->id]['refund_destination']);
+        foreach ($refunds as $refund) {
+            $this->assertSame('Wrong Item', $rows[$refund->id]['refund_reason']);
+            $this->assertSame('legacy_enum', $rows[$refund->id]['refund_reason_source']);
+            $this->assertNull($rows[$refund->id]['refund_destination']);
+        }
 
-        Log::shouldHaveReceived('warning')->once()->with(
+        $eventIds = collect($events)->pluck('id')->all();
+        Log::shouldHaveReceived('warning')->times(3)->with(
             'Refund reporting payload degraded to the legacy receipt fallback.',
-            \Mockery::on(static fn (array $context): bool => $context['fiscal_event_id'] === $malformedEvent->id
-                && $context['receipt_id'] === $refund->id
+            \Mockery::on(static fn (array $context): bool => in_array($context['fiscal_event_id'], $eventIds, true)
                 && is_string($context['exception'])),
         );
     }

@@ -11,7 +11,7 @@ use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
-final class ReceiptPdfPrintAuditEndpointTest extends ReceiptReportingTestCase
+final class ReceiptPdfPrintAuditTest extends ReceiptReportingTestCase
 {
     public function test_stream_and_download_each_create_an_immutable_sequential_print_record(): void
     {

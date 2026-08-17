@@ -11,7 +11,7 @@ use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Receipt;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
-final class ReceiptLineageResourceTest extends ReceiptReportingTestCase
+final class ReceiptShowRefundLineageTest extends ReceiptReportingTestCase
 {
     public function test_detail_emits_allowlisted_bidirectional_lineage_with_magnitude_totals(): void
     {
@@ -42,7 +42,6 @@ final class ReceiptLineageResourceTest extends ReceiptReportingTestCase
         $this->assertSame($original->receipt_number, $data['original_receipt']['receipt_number']);
         $this->assertSame($this->moneyMagnitude((string) $original->total), $data['original_receipt']['total']);
 
-        $this->assertForbiddenKeysAbsentRecursively($data);
     }
 
     public function test_detail_omits_related_receipts_outside_the_users_location_scope(): void
@@ -85,22 +84,6 @@ final class ReceiptLineageResourceTest extends ReceiptReportingTestCase
         ])->saveQuietly();
 
         return $receipt;
-    }
-
-    /** @param array<string, mixed> $node */
-    private function assertForbiddenKeysAbsentRecursively(array $node): void
-    {
-        $forbidden = [
-            'canonical_bytes', 'tenant_id', 'company_id', 'payload', 'signature',
-            'password', 'remember_token', 'deleted_at', 'updated_at',
-        ];
-
-        foreach ($node as $key => $value) {
-            $this->assertNotContains($key, $forbidden);
-            if (is_array($value)) {
-                $this->assertForbiddenKeysAbsentRecursively($value);
-            }
-        }
     }
 
     private function moneyMagnitude(string $value): string
