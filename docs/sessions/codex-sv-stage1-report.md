@@ -501,3 +501,5 @@ M3 review round 4 repeated the same empty bridge failure. It is recorded fail-cl
 M3 review round 5 again failed at invocation with an empty register. It consumes the fifth and final allowed fix round; the harness permits one terminal round-6 attempt, as in M0.
 
 The terminal M3 round-6 review also failed in the Claude invocation with empty stderr and no reviewer content. The implementation remains locally verified and the worktree is clean, but the fail-closed harness forbids treating tool silence as acceptance. M3 and the wave are therefore `blocked_review` under STOP condition A. M4 and M5 have not started.
+
+The user explicitly authorized continuation after that STOP. The six original tool-error registers remain unchanged; a fresh M3 review allowance is opened with registers named `M3-resume1-round<n>.md` so the failed invocation history is not overwritten. No implementation claim or prior local verification is promoted to acceptance without a new parseable reviewer verdict.
