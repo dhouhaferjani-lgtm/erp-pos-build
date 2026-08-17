@@ -40,7 +40,7 @@ function RefundPolicyAlertDetails({ alerts, currency }: { alerts: readonly unkno
 
   return (
     <ul className={cn('mt-2 space-y-2 text-xs', colorTokens.text.secondary)}>
-      {alerts.map((value, index) => {
+      {alerts.map((value) => {
         const alert = isRecord(value) ? value : {}
         const type = typeof alert['type'] === 'string' ? alert['type'] : null
         const amount = typeof alert['original_transaction_discount_amount'] === 'string'
@@ -51,7 +51,10 @@ function RefundPolicyAlertDetails({ alerts, currency }: { alerts: readonly unkno
           : null
 
         return (
-          <li key={`${type ?? 'unknown'}-${String(index)}`} className={cn('rounded border p-2', colorTokens.border.subtle)}>
+          <li
+            key={`${type ?? 'unknown'}-${eventId ?? 'no-event'}-${amount ?? 'no-amount'}`}
+            className={cn('rounded border p-2', colorTokens.border.subtle)}
+          >
             <p className="font-medium">
               {type === 'non_zero_original_transaction_discount'
                 ? t('receiptReporting.refunds.alertTypes.nonZeroOriginalTransactionDiscount')
