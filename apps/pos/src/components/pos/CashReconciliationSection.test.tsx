@@ -273,6 +273,44 @@ describe('CashReconciliationSection', () => {
     });
   });
 
+  describe('SV-10 — blind pre-commit disclosure', () => {
+    it('withholds variance magnitude and severity-derived prompts until Commit Counts', async () => {
+      render(
+        <CashReconciliationSection
+          {...buildProps({
+            fraudSettings: {
+              ...baseFraudSettings,
+              require_blind_cash_count: true,
+              require_manager_pin_above_hard: true,
+            },
+            authorizedManagers: [{ id: 'mgr-1', name: 'Manager One' }],
+          })}
+        />,
+      );
+
+      await act(async () => {
+        await enterActual('CASH', '40');
+      });
+
+      expect(screen.getByTestId('commit-counts-button')).toBeEnabled();
+      expect(screen.queryByText('Expected')).not.toBeInTheDocument();
+      expect(screen.queryByText('Variance')).not.toBeInTheDocument();
+      expect(screen.queryByText('-60.00')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('cash-count-reveal-summary')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('variance-reason-section')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('manager-pin-section')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+
+      expect(await screen.findByTestId('cash-count-reveal-summary')).toHaveTextContent(
+        'Short60.00',
+      );
+      expect(screen.getByTestId('tender-variance-CASH')).toHaveTextContent('-60.00');
+      expect(screen.getByTestId('variance-reason-section')).toBeInTheDocument();
+      expect(screen.getByTestId('manager-pin-section')).toBeInTheDocument();
+    });
+  });
+
   // ── E4: payment_method_name display ────────────────────────────────────────
 
   describe('E4 — payment_method_name display', () => {
