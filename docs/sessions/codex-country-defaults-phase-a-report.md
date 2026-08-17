@@ -1654,9 +1654,9 @@ The API process was stopped immediately afterward. This is test evidence only; i
 the authenticated human certification and staging/production verification required before the
 Release-2 configuration flip.
 
-### M7 complete manifest rerun — 2026-08-17
+### M7 initial manifest rerun — superseded by the expanded round-two evidence
 
-After resolving the verifier precondition, the complete accumulated manifest was rerun from the
+After resolving the verifier precondition, the then-current accumulated manifest was rerun from the
 dedicated worktree. The 36-file backend union again passed with the same 210-case inventory:
 SQLite **202 passed + 8 explicit PostgreSQL-only skips / 1,682 assertions** and PostgreSQL
 **210 passed / 1,774 assertions**. The difference is entirely the eight real-driver concurrency
@@ -1813,7 +1813,7 @@ Critical/Important findings:
 - **frontend conventions — PASS:** confirmed no frontend or generated-type bytes changed after its
   approved 42-test snapshot, and the final worktree was clean.
 
-The complete specialist outputs are committed as durable harness evidence at:
+The recorded specialist verdicts are committed as durable harness evidence at:
 
 - `docs/handoff/reviews/country-defaults-phase-a/M7-specialist-treasury-final.md`;
 - `docs/handoff/reviews/country-defaults-phase-a/M7-specialist-tenancy-authz-final.md`; and
@@ -1829,3 +1829,19 @@ had been summarized in this report but had not been committed as standalone harn
 The files above close that finding. The round-two register is committed at
 `docs/handoff/reviews/country-defaults-phase-a/M7-round2.md`; its remaining findings are explicitly
 non-blocking P3 notes.
+
+### M7 terminal adversarial verdict
+
+Round three reviewed the frozen `98f7dd53d` snapshot and returned `ACCEPT`. The reviewer
+independently re-derived the 57-path union, verified there was no runnable changed backend suite
+outside it, reran a focused SQLite slice (**83 tests / 775 assertions**), proved both default-off
+assertions fail when their flags are forced on, checked the complete `ext-intl` toolchain and lock
+file, reran both frontend audit ratchets, and confirmed the round-two blocking evidence finding is
+closed. No P1 or P2 finding remains. The terminal register is committed at
+`docs/handoff/reviews/country-defaults-phase-a/M7-round3.md`.
+
+This M7 acceptance completes the Phase A implementation harness but does not certify the Release 2
+activation. Both feature flags remain off. Owner gates G1–G5, including authenticated human HTTP
+certification and `country-defaults:verify` on staging and production, remain open and must be
+completed before the Release 2 flip. The branch remains unmerged and unpushed for orchestrator and
+owner review.

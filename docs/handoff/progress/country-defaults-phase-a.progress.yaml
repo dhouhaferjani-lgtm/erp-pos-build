@@ -88,12 +88,12 @@ milestones:
   - id: M7
     title: "Whole-branch integration gate + executable evidence manifest (all M1-M6 paths on PG + SQLite parity, static scopes, country-defaults:verify, route inventory, six branch-wide static assertions) — no new implementation; failure of any item blocks"
     review_lenses: [treasury, tenancy-authz, frontend-conventions]
-    status: review
+    status: passed
     fix_rounds: 3
-    commit: d7ba40a602bb80bc3d2fbb3d55e8a58a7a1968cd
-    verdict: docs/handoff/reviews/country-defaults-phase-a/M7-round2.md
-    last_verdict: CHANGES-REQUIRED
-    updated: d7ba40a60
+    commit: 98f7dd53d1a11713a43755016588b186fe7d70ac
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M7-round3.md
+    last_verdict: ACCEPT
+    updated: 98f7dd53d
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: complete         # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
