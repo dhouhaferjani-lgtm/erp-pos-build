@@ -14,6 +14,8 @@ review_resume:
   milestone: M2
   after_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round6.md
   scope: reviewer_tool_retry_only
+  consumed_by_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
+  result: substantive_changes_required_stop_a
 
 # Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
 base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
@@ -58,10 +60,10 @@ milestones:
   - id: M2
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
-    status: review
+    status: blocked_review
     fix_rounds: 5
-    commit: 2cae847a9
-    verdict: docs/handoff/reviews/wave3-3c-3d/M2-round6.md
+    commit: 3b22936aa
+    verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
     last_verdict: CHANGES-REQUIRED
   - id: M3
     title: "3C tail: T18, T19, T19b + POS and GR D-f arms (WO arm = tested no-op tied to workshop-parts ticket; D-f POS arm carries NO grace window) + C-5 registration + flushIfOutermost tail + D-e stock_adjustment exclusion"
@@ -89,8 +91,12 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: blocked_review      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
-blockers: []
+blockers:
+  - "Harness STOP A: M2 remains CHANGES-REQUIRED after max_fix_rounds=5. The owner-authorized reviewer-tool retry produced a substantive round-7 verdict, so the retry authorization is consumed and no fix budget remains. Latest register: docs/handoff/reviews/wave3-3c-3d/M2-round7.md."
+  - "P2 finding 1: ReceiptReturnService's interactive refund path reads the original sale basis through pos_receipt_lines.unit_cost numeric(15,4), not the original stock_movements.unit_cost numeric(19,6), creating a rounding residual and violating settled R-1 option (a)."
+  - "P2 finding 2: InventoryGlPostingBoundaryGuard is enabled only by six opt-in test classes, restoring register-dependence contrary to mandatory R-2; the reviewer identifies transactionLevel() === 0 at RequestHandled as the universal real-root discriminator."
+  - "P3 findings 3-10 remain recorded in round 7: missing post-watermark POS null-cost ratchet, missing M2 report/deptrac evidence, unsquashed atomic cutover history, and retained fiscal/test/legacy edge-case notes."
