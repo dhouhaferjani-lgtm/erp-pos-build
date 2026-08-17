@@ -1,0 +1,105 @@
+wave: receipts-build
+brief: docs/handoff/CODEX-DISPATCH-receipts-build-2026-08-12.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+spec: docs/handoff/SPEC-pos-receipts-reporting-2026-08-11.md   # r5, gate-PASSED — normative
+# No pre-dispatch adversarial register exists for this brief; per-milestone registers land here.
+review_register: docs/handoff/reviews/receipts-build/
+reviewer_model: opus
+max_fix_rounds: 5
+
+# PIN AT DISPATCH. The brief (§0 header, §6) requires branching off the FRESH origin/dev tip —
+# `7d85232cc` is the writing-time reference SHA and is explicitly NOT the base. M0 does:
+#   git fetch origin && git rev-parse origin/dev   -> write that SHA here
+#   git worktree add .worktrees/receipts-build -b codex/pos-receipts-2026-08-12 <base_sha>
+# and records the real base SHA at the top of the handback. Do NOT invent or reuse a stale pin.
+base_sha: 7d85232cc54abd6a6b2135f476205ab434e71a66
+# Branch codex/pos-receipts-2026-08-12 in worktree .worktrees/receipts-build, created from base_sha.
+# NOT merged, NOT pushed: the parent Claude session performs the terminal audit and owns the merge.
+branch: codex/pos-receipts-2026-08-12
+
+# Commit series assigned by the parent (brief §6): Phase 1.<wave>.<seq>. Do not invent another series.
+commit_series: "Phase 1.<wave>.<seq>"
+
+owner_gates:
+  # informational record — the conditional/standing logic lives in the banner and the milestone text.
+  # No milestone carries an `owner_gate:` field, because the harness reads that field as an
+  # UNCONDITIONAL stop (harness step 4 / condition B) and none of these are unconditional.
+  - id: OI-3-wave-3-totals
+    question: "OI-3 (totals convention B-9) is OPEN with the owner. Wave 3 (S-8 + totals strip) is NOT dispatched. This build emits NO cross-receipt total, footer sum, VAT roll-up or aggregate figure — not even temporarily (brief §2, Addendum A(c) rule 2). If any milestone appears to require an aggregate, that is a STOP (blocked_owner), never a judgement call."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: A0-dependency-wave-2b
+    question: "Wave 2b (screen (d) chain-verify panel + FT-9) is HARD-BLOCKED on Lane A0 (the fixes session's honest-verification lane; spec §3.d / OI-7 / NG-10). A0's landing is not observable from this worktree. STOP-AND-CHECK at M2 close: inspect the base/branch for the post-A0 verify-chain response shape in code; if A0 has not landed, do NOT ship (d) early 'with captions' (r5 retracted that option) — set status blocked_owner on the M2b gate, record it, and end the run with waves 1+2 complete. If A0 HAS landed, OI-15 obliges a re-read of the post-A0 endpoint shape in code before freezing copy, i18n keys or tests."
+    blocks_milestone: M2b
+    status: conditional
+  - id: ev5-unit-lane
+    question: "OI-17 CONFIRMED for v1: receipts ship unit-less. The superseding path (a canonical `unit` field at fiscal event_version 5) and OP-22 are a SEPARATE QUEUED LANE. Do not implement or prepare for it; do not add a placeholder column; never derive/render a unit symbol or code, and never read pos_receipt_lines.unit. EXPRESSLY ALLOWED AND REQUIRED (brief §3, S-4): the quantity_decimals enrichment reads product.unitOfMeasure.decimal_places ONLY, fallback 4, relation unset before serialization — display precision is not a unit label. A milestone that seems to need an actual unit label is a STOP."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: F-1-accountant-seeder-collision
+    question: "The single three-key accountant seeder edit (pos.view_receipts, pos.view_reports, deliveries.view) + the regenerated permissionsMap.generated.ts belong to THIS build (M1/S-9). If the keys are already present on your base, or a conflicting edit appears, STOP (blocked_owner) — do not resolve it by re-editing the seeder."
+    blocks_milestone: none
+    status: conditional
+  - id: F-3-OP-23-IA-home
+    question: "OP-23's fraud routes are RE-GATED only. Where they surface in navigation is the OQ-10 Compliance-section work — add no nav entries for them; record the residual as a finding."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: device-lane-untouched
+    question: "apps/pos/** (device) is out of scope. If a task appears to need a device change, STOP and record it (brief §1 scope guard)."
+    blocks_milestone: none
+    status: standing_constraint
+
+milestones:
+  - id: M0
+    title: "Dispatch preconditions (SETUP-ONLY, no implementation, NO bridge review — see the banner's M0 exception): fetch origin, pin base_sha = fresh origin/dev tip, create the dedicated worktree + branch, read SPEC r5 whole + OWNER-DECISIONS 2026-08-12 sections + research 17 Parts 2/3, and record the F-1 base check (are the three accountant keys already present on this base?). Completion = set status: passed with the base_sha recorded; no adversarial register is produced. Any failure -> status blocked_precondition, STOP."
+    review_lenses: []
+    status: passed
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+    updated: 7d85232cc
+    preconditions:
+      f1_accountant_keys_on_base: absent
+      note: "The fresh base accountant block contains none of pos.view_receipts, pos.view_reports, or deliveries.view; the assigned three-key edit may proceed."
+  - id: M1
+    title: "WAVE 1 (spec §7.5 wave 1, binding): S-1, S-2, S-3, S-6, S-7, S-9 (incl. the regenerated permission map), S-13, S-11 (index + filter-options half) - screen (a) /pos/receipts (SALE-only, disjoint) - A-1 compliance-export re-gate on the composite `compliance` MODULE_PERMISSIONS key + its top-level bottom-section nav entry + OP-23 fraud-route re-gate - GATE-3 map entries - GATE-5 POS sidebar least-privilege re-key per the frozen §4.2.1 table - A-2 accountant three-key seeder grant - CL-1/CL-2/CL-5/CL-6/CL-7 - i18n rename - BT-1..BT-5, BT-8..BT-11, BT-12(index/options), BT-16, BT-18 - FT-1..FT-3, FT-10, FT-11, FT-14..FT-16. Addendum A(c) rule 1 is load-bearing: format with the RECEIPT's own currency via apps/web/src/lib/format.ts, and the differing-currency fixture assertion is required. NO cross-receipt sum anywhere."
+    review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
+    status: review
+    fix_rounds: 0
+    commit: f2bd463b8
+    verdict: null
+    last_verdict: null
+    updated: f2bd463b8
+  - id: M2
+    title: "WAVE 2 (spec §7.5 wave 2): S-4, S-5 (the intentional show() reshape), S-12, S-11 (show/PDF half) - screens (b) receipt detail /pos/receipts/:id and (c) refunds & voids register /pos/receipts/refunds incl. its three capability-banner states and the reprint confirm dialog + reprint audit surface - CL-3 (voucher links heal here, proven by test, never assumed) + CL-4 - BT-6, BT-7, BT-12(show/PDF), BT-13..BT-15, BT-17 - FT-4..FT-8, FT-12, FT-13. Close with the A0 STOP-AND-CHECK for M2b (owner_gates: A0-dependency-wave-2b)."
+    review_lenses: [fiscal-pos, frontend-conventions, treasury, tenancy-authz, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2b
+    title: "WAVE 2b - CONDITIONAL, runs ONLY if the M2-close check finds Lane A0 landed on your base: screen (d) chain-verify panel + FT-9, with OI-15's mandatory re-read of the post-A0 verify-chain response shape IN CODE before freezing copy, i18n keys or tests. If A0 has not landed: skip, set this milestone status blocked_owner with the observed A0 state in blockers, and treat waves 1+2 as the delivered scope (that is the specced outcome, not a failure)."
+    review_lenses: [fiscal-pos, frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "WHOLE-LANE GATE (no new implementation): re-run the §7 verification contract over the integrated branch - the exact PREFLIGHT_TEST_PATHS/PREFLIGHT_VITEST_PATHS preflight invocation, the scoped vitest/lint/typecheck, the Playwright money-campaign flows via loginAsRole (never e2e/fixtures.ts), the screenshots - plus the Addendum A evidence itemised (composite compliance key, OP-23 re-gate, no lane-separation grant, the differing-currency assertion, and the pasted grep proving NO cross-receipt sum exists in the diff). Every lens once more over the whole branch. Failure of any item blocks."
+    review_lenses: [fiscal-pos, frontend-conventions, tenancy-authz, treasury, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []
+findings:
+  - "F-3 residual: fraud settings and alerts are exact-gated, but OQ-10 still owns their navigation home; no nav was added."
+  - "F-4 standing exclusion observed: no event-version-5 unit work, unit label, or apps/pos change was made."
+  - "M1 live E2E/screenshots environment-blocked: Vite proxy could not connect to the API at 127.0.0.1:8010."
+  - "M1 exact preflight stopped on repository-wide Pint drift outside this lane; scoped Vitest has three unrelated baseline failures recorded in the handback."
