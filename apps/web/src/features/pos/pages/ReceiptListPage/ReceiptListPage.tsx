@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { CalendarDays } from 'lucide-react'
-import { Button, Checkbox, Select, StatusBadge } from '@/components/atoms'
+import { Button, Checkbox, Input, Select, StatusBadge } from '@/components/atoms'
 import { DataTable, EmptyState, ListPageLayout, type DataTableColumn } from '@/components/molecules'
 import { SearchInput } from '@/components/molecules/SearchInput'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
@@ -13,7 +13,7 @@ import { useTableState } from '@/hooks/useTableState'
 import { locationScopedKey } from '@/lib/locationScopedKey'
 import { calendarDateInTimeZone, formatCurrency, formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
-import { semanticColorTokens as colorTokens, tokens } from '@/lib/designTokens'
+import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { useCompanyStore } from '@/stores/companyStore'
 import {
   fetchReceiptFilterOptions,
@@ -194,20 +194,18 @@ export function ReceiptListPage() {
             <CalendarDays className={cn('mb-2 h-5 w-5', colorTokens.intent.primary.text)} aria-hidden="true" />
             <label className={cn('text-sm font-medium', colorTokens.text.secondary)}>
               <span className="mb-1 block">{t('pos:receipts.filters.from')}</span>
-              <input
+              <Input
                 type="date"
                 value={fromDate}
                 onChange={(event) => { updateFilter('from_date', event.target.value) }}
-                className={tokens.input.base}
               />
             </label>
             <label className={cn('text-sm font-medium', colorTokens.text.secondary)}>
               <span className="mb-1 block">{t('pos:receipts.filters.to')}</span>
-              <input
+              <Input
                 type="date"
                 value={toDate}
                 onChange={(event) => { updateFilter('to_date', event.target.value) }}
-                className={tokens.input.base}
               />
             </label>
             {meta?.from && meta.to ? (
