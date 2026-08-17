@@ -44,6 +44,7 @@ export interface CashReconciliationSectionProps {
   currencyCode: string;
   onVerifyManagerPin: (userId: string, pin: string) => Promise<{ valid: boolean }>;
   onChange: (payload: CashCountCommitPayload, isReady: boolean) => void;
+  onCommit?: () => void;
   managerPinThrottle: { until: string | null; failedAttempts: number };
   onManagerPinThrottleUpdate: (next: { until: string | null; failedAttempts: number }) => void;
 }
@@ -78,6 +79,7 @@ export function CashReconciliationSection({
   currencyCode,
   onVerifyManagerPin,
   onChange,
+  onCommit,
   managerPinThrottle,
   onManagerPinThrottleUpdate,
 }: CashReconciliationSectionProps) {
@@ -276,7 +278,10 @@ export function CashReconciliationSection({
       {blindMode && !committed && (
         <button
           type="button"
-          onClick={() => setCommitted(true)}
+          onClick={() => {
+            setCommitted(true);
+            onCommit?.();
+          }}
           disabled={!allPhysicalFilled}
           data-testid="commit-counts-button"
           className="rounded-ctl bg-action px-4 py-2 text-sm font-semibold text-ink-inverse transition-colors hover:bg-action-hover disabled:cursor-not-allowed disabled:bg-surface-sunken"

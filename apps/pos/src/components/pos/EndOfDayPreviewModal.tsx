@@ -76,6 +76,7 @@ export function EndOfDayPreviewModal({
   // Cash-count flow state
   const [cashCountPayload, setCashCountPayload] = useState<CashCountCommitPayload | null>(null);
   const [cashCountReady, setCashCountReady] = useState<boolean>(false);
+  const [cashCountsCommitted, setCashCountsCommitted] = useState<boolean>(false);
 
   // Guard: once confirmation begins, block backdrop dismiss
   const isConfirmingRef = useRef(false);
@@ -96,6 +97,13 @@ export function EndOfDayPreviewModal({
     onVerifyManagerPin !== undefined &&
     managerPinThrottle !== undefined &&
     onManagerPinThrottleUpdate !== undefined;
+  // Physical non-cash totals are the exact expected count, and CASH plus the
+  // visible opening float can reconstruct expected cash. Keep every payment
+  // amount behind the same blind-count commit boundary as the tender table.
+  const hidePaymentAmounts =
+    cashCountEnabled &&
+    fraudSettings?.require_blind_cash_count === true &&
+    !cashCountsCommitted;
 
   // Load preview data when modal opens
   useEffect(() => {
@@ -107,6 +115,7 @@ export function EndOfDayPreviewModal({
       setErrorMessage(null);
       setCashCountPayload(null);
       setCashCountReady(false);
+      setCashCountsCommitted(false);
       isConfirmingRef.current = false;
       return;
     }
@@ -215,6 +224,7 @@ export function EndOfDayPreviewModal({
                 setCashCountPayload(payload);
                 setCashCountReady(ready);
               }}
+              onCommit={() => setCashCountsCommitted(true)}
             />
           )}
 
@@ -310,7 +320,9 @@ export function EndOfDayPreviewModal({
                       <tr key={row.payment_method_code} className="border-b border-border-subtle">
                         <td className="py-2">{row.payment_method_code}</td>
                         <td className="py-2 text-right">{row.transaction_count}</td>
-                        <td className="py-2 text-right">{format(row.total_amount)}</td>
+                        <td className="py-2 text-right">
+                          {hidePaymentAmounts ? '—' : format(row.total_amount)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>

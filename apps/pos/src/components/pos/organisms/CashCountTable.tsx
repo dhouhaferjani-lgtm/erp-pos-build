@@ -136,7 +136,9 @@ export function CashCountTable({
                       {actual === '' ? '—' : actual}
                     </button>
                   ) : (
-                    <span className="text-ink-muted">{tender.expected_amount}</span>
+                    <span className="text-ink-muted">
+                      {blindMode && !committed ? '—' : tender.expected_amount}
+                    </span>
                   )}
                 </td>
                 {showVariance && (

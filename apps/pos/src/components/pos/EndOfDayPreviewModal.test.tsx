@@ -194,8 +194,8 @@ function renderModalWithCashCount(opts: CashCountRenderOpts = {}) {
 // see the same stale value and overwrite instead of append).
 // Clicks are scoped to cash-count-numpad-panel to avoid ambiguity when
 // the manager PIN numpad also appears (e.g. when variance > hard).
-async function enterCashActual(value: string = '130') {
-  fireEvent.click(screen.getByTestId('tender-actual-input-CASH'));
+async function enterTenderActual(code: string, value: string) {
+  fireEvent.click(screen.getByTestId(`tender-actual-input-${code}`));
   await Promise.resolve(); // wait for numpad panel to render
   const numpadPanel = screen.getByTestId('cash-count-numpad-panel');
   for (const ch of value) {
@@ -206,6 +206,10 @@ async function enterCashActual(value: string = '130') {
     }
     await Promise.resolve(); // flush after each digit so value prop updates
   }
+}
+
+async function enterCashActual(value: string = '130') {
+  await enterTenderActual('CASH', value);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -483,6 +487,42 @@ describe('EndOfDayPreviewModal', () => {
       expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
       // The expected value (130.00) must not appear anywhere pre-commit.
       expect(screen.queryByText(/130\.00/)).not.toBeInTheDocument();
+    });
+
+    it('SECURITY: withholds payment-method amounts until blind counts are committed', async () => {
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        payment_methods: [
+          ...samplePreview.payment_methods,
+          {
+            payment_method_id: 'pm-check',
+            payment_method_code: 'CHECK',
+            is_physical: true,
+            total_amount: '430.00',
+            transaction_count: 1,
+          },
+        ],
+      });
+      renderModalWithCashCount({
+        fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+      });
+      const paymentSummary = (await screen.findByText('Payments')).parentElement!;
+
+      expect(within(paymentSummary).queryByText('30.00')).not.toBeInTheDocument();
+      expect(within(paymentSummary).queryByText('15.00')).not.toBeInTheDocument();
+      expect(within(paymentSummary).queryByText('430.00')).not.toBeInTheDocument();
+
+      await act(async () => {
+        await enterTenderActual('CASH', '130');
+      });
+      await act(async () => {
+        await enterTenderActual('CHECK', '430');
+      });
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+
+      expect(within(paymentSummary).getByText('30.00')).toBeInTheDocument();
+      expect(within(paymentSummary).getByText('15.00')).toBeInTheDocument();
+      expect(within(paymentSummary).getByText('430.00')).toBeInTheDocument();
     });
 
     it('shows the legacy expected-cash summary only when there is no cash-count reconciliation', async () => {
