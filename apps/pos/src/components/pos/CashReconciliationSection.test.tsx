@@ -209,6 +209,24 @@ describe('CashReconciliationSection', () => {
       );
       expect(frPos.cash_count.no_difference).toBe('Aucun écart');
       expect(frPos.cash_count.variance).toBe('Écart');
+      expect(enPos.cash_count.summary).toEqual({
+        opening_float: 'Opening float',
+        cash_sales_net: 'Cash sales (net of change)',
+        drawer_movements: 'Paid in / paid out',
+        expected_in_drawer: 'Expected in drawer',
+        counted: 'Counted',
+        over: 'Over',
+        short: 'Short',
+      });
+      expect(frPos.cash_count.summary).toEqual({
+        opening_float: 'Fonds de caisse',
+        cash_sales_net: 'Ventes en espèces (net rendu monnaie)',
+        drawer_movements: "Entrées / sorties d'espèces",
+        expected_in_drawer: 'Attendu en caisse',
+        counted: 'Compté',
+        over: 'Excédent',
+        short: 'Manquant',
+      });
     });
 
     it('renders the exact French instruction, disclosure, and six-line reveal', async () => {

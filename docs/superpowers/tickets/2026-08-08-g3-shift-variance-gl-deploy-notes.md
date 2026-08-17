@@ -70,7 +70,9 @@ and out of this Stage-1 change.
 
 The in-`handle()` placement of the gate was chosen so this per-company dimension has somewhere to
 land without moving the check; that is the only part of the design that anticipates it. Nothing
-consults `$event->companyId` for gating today.
+consults `$event->companyId` for gating today. The quoted takings-versus-whole-drawer question is
+historical and superseded: cashiers count the whole drawer. G-2 now concerns only where the settled
+tenant policy is stored before this global kill switch can be enabled.
 
 ### G-3 — A backfill command, or a written-off window
 The disabled window is **permanently unrecoverable** without one: a re-sync short-circuits at

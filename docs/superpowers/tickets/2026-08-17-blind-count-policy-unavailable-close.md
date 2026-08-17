@@ -15,13 +15,15 @@ A terminal-record refresh while the modal is open also creates a transient unava
 3. Add monitoring for repeated policy-unavailable close attempts if the device telemetry surface supports it.
 4. Preserve the existing Header integration test for the real trigger (online fetch rejects and cache lookup returns null) and the modal tests proving preview values stay absent in the unavailable state.
 5. Decide whether a mid-count terminal refresh should be deferred, warn the operator, or preserve a versioned draft. Acceptance must prove that count input is either restored only under the same trusted policy version or explicitly discarded with operator-visible guidance, while expected/variance values stay concealed.
+6. Keep policy refreshes from replacing the `confirming` view with a blank body or a false unavailable-policy error while close/Z generation is already in flight. The confirmation result must remain authoritative, and Cancel must not be presented as actionable while dismissal is locked.
+7. Harden any future non-policy preview reload (shift or terminal preview inputs changing while open) with the same versioned payload/readiness/commit invalidation used for policy refreshes. That path is not reachable through current store update flows, but it must not grow into a second stale-reveal boundary.
 
 Any recovery must fail closed for disclosure: it may restore a trusted policy, but it must not silently assume non-blind mode or render the legacy expected-cash card.
 
 ## References
 
-- `apps/pos/src/components/Header.tsx:178-237`
-- `apps/pos/src/components/pos/EndOfDayPreviewModal.tsx:103-106,195-234`
+- `apps/pos/src/components/Header.tsx:120-246`
+- `apps/pos/src/components/pos/EndOfDayPreviewModal.tsx:113-124,226-256`
 - `apps/pos/src/components/__tests__/Header.test.tsx`
 - `apps/pos/src/components/pos/EndOfDayPreviewModal.test.tsx`
 - `docs/handoff/reviews/sv-stage1/M4-sv10-leak-audit.md`

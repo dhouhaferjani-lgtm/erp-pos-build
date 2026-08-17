@@ -8,6 +8,7 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -77,5 +78,38 @@ final class BlindCashCountDefaultMigrationTest extends TestCase
                 && str_contains($message, 'skipped=0')
                 && str_contains($message, 'schema=missing'))
             ->once();
+    }
+
+    public function test_it_changes_the_postgresql_column_default_to_true(): void
+    {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('[PG] information_schema default contract requires PostgreSQL.');
+        }
+
+        DB::statement(
+            'ALTER TABLE company_fraud_settings '
+            .'ALTER COLUMN require_blind_cash_count SET DEFAULT false',
+        );
+        $this->assertSame('false', $this->blindCashCountColumnDefault());
+
+        $this->runMigration();
+
+        $this->assertSame('true', $this->blindCashCountColumnDefault());
+    }
+
+    private function blindCashCountColumnDefault(): string
+    {
+        $row = DB::selectOne(<<<'SQL'
+            SELECT column_default
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'company_fraud_settings'
+              AND column_name = 'require_blind_cash_count'
+            SQL);
+
+        $this->assertNotNull($row);
+        $this->assertIsString($row->column_default);
+
+        return $row->column_default;
     }
 }

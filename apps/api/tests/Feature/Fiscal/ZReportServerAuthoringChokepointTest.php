@@ -13,7 +13,7 @@ use Tests\TestCase;
 
 final class ZReportServerAuthoringChokepointTest extends TestCase
 {
-    public function test_takings_only_expected_per_method_surface_is_deprecated_and_has_no_shipped_client(): void
+    public function test_takings_only_expected_per_method_surface_is_deprecated(): void
     {
         $method = new ReflectionMethod(ReportGenerationService::class, 'buildExpectedPerMethod');
         $docblock = $method->getDocComment();
@@ -24,6 +24,10 @@ final class ZReportServerAuthoringChokepointTest extends TestCase
         $this->assertStringContainsString('Production is whole-drawer via the device', $docblock);
         $this->assertStringContainsString('The defect is a missing join, not a wrong doctrine', $docblock);
         $this->assertStringContainsString('this annotation stops a fifth', $docblock);
+    }
+
+    public function test_takings_only_expected_per_method_surface_has_no_shipped_client(): void
+    {
 
         $repoRoot = dirname(base_path(), 2);
         $webClientPath = $repoRoot.'/apps/web/src/features/pos/api/shiftApi.ts';
@@ -41,7 +45,7 @@ final class ZReportServerAuthoringChokepointTest extends TestCase
             $webClient,
         );
         $this->assertMatchesRegularExpression(
-            '/@deprecated[\s\S]*?generateZReportServer\(terminalId: string\)[\s\S]*?\{ terminal_id: terminalId \}/',
+            '/\/\*\*(?:(?!\*\/)[\s\S])*@deprecated(?:(?!\*\/)[\s\S])*\*\/\s*export async function generateZReportServer\(terminalId: string\)[\s\S]*?\{ terminal_id: terminalId \}/',
             $deviceClient,
         );
     }

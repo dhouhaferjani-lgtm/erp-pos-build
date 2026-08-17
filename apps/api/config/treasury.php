@@ -21,7 +21,9 @@ return [
     // mid-shift drawer operations that form that expected balance (SV-3/SV-4).
     // Enabling the variance leg first would therefore create a cash/GL mismatch.
     // The flag remains the global kill switch if the lane ever needs stopping
-    // without a code change. Everything else in the lane (document, GL entry,
-    // movement, idempotency, audit trail) is in place behind it.
+    // without a code change. The remaining pre-enable gates are tracked in
+    // docs/superpowers/tickets/2026-08-08-g3-shift-variance-gl-deploy-notes.md.
+    // Everything else in the lane (document, GL entry, movement, idempotency,
+    // audit trail) is in place behind it.
     'shift_variance_gl_enabled' => (bool) env('TREASURY_SHIFT_VARIANCE_GL_ENABLED', false),
 ];

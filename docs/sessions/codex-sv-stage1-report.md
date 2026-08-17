@@ -365,6 +365,12 @@ PHPUnit-only references were also enumerated: the new reflection contract plus `
 ### Red/green evidence
 
 - Red: the new annotation/no-shipped-client contract failed because the reflection docblock did not contain `@deprecated` (1 failed, 2 assertions).
+
+```text
+FAIL  Tests\Feature\Fiscal\ZReportServerAuthoringChokepointTest
+Failed asserting that the method docblock contains "@deprecated".
+Tests: 1, Assertions: 2, Failures: 1.
+```
 - Green on fresh PostgreSQL database `autoerp_sv_stage1_m1_green2_test`: `ZReportServerAuthoringChokepointTest.php`, `ServerReportAuthoringUnreachabilityTest.php`, and `FiscalStatusFilterTest.php` — 10 cases, 8790 assertions, exit 0.
 - The first green attempt caught a test-only regex defect: TypeScript omits semicolons in that interface. The assertion was corrected to match the actual source style and rerun green; no production change was made for that failure.
 - Revert-replay after commit `2d7503018`: reversing only the five implementation/artifact files while retaining the new contract test reproduced the missing-`@deprecated` failure (exit 1, 2 assertions); replaying the exact non-empty patch restored a clean tree. The first replay command used root-relative pathspecs from `apps/api` and therefore produced no patch; that invalid attempt was discarded before the validated root-level replay.
@@ -386,7 +392,7 @@ The first review found that the retired premise still appeared in the listener's
 - names the deprecated compatibility symbol in the Sales report's row-fan-out cross-reference; and
 - skips the shipped-client portion of the contract honestly when an API-only checkout lacks the sibling web/device apps.
 
-The multi-line stale-premise scan over the required artifacts, all `2026-08-08-g3-*` tickets, and the two test mirrors returned no match for the refuted premise or open owner-ruling language.
+The multi-line stale-premise scan over the required artifacts, all `2026-08-08-g3-*` tickets, and the two test mirrors returned no live policy assertion using the refuted premise. One open-ruling phrase remains inside the deploy-notes ticket's explicitly verbatim historical reviewer quote; the prose immediately after it now states that whole-drawer semantics supersede the quoted question.
 
 Fresh PostgreSQL verification:
 
@@ -442,6 +448,8 @@ The same fix round adds rendered English and French over/short cases, formats Co
 Fix-round revert-replay reversed the three production files while retaining all fix tests. Three of 38 cases failed: the fractional expected value returned to `110.00`, and English/French Counted returned to raw `100`. The four over/short parameter cases remained green because their locale/default-value coverage already exercises production branches introduced in the main M2 commit. Replaying the production patch restored 38/38. A root-level `pnpm vitest` attempt could not resolve the workspace binary and was discarded; the valid run executed from `apps/pos`.
 
 M2 round 2 accepted the milestone. M5 carries the accepted P3s: pin all seven summary values directly from both locale JSON files; record that separately rounded display line 2 can differ by one minor unit from the byte-preserved authoritative expected value for structurally possible sub-scale input (no live writer found); and retain the owner-facing notes about exact dossier labels being narrower than refund/account-payment contents and the instruction's muted presentation.
+
+M5 closes the locale evidence gap by pinning all seven `cash_count.summary` values directly from both device locale files. The fractional fixture remains an intentional structural warning: with sub-scale source strings, the separately rounded line 2 can differ by one minor unit from the byte-preserved authoritative expected value, although no live writer of such input was found. The exact dossier labels remain narrower than refund/account-payment contents, and the always-visible instruction retains its muted presentation; both are recorded owner-facing presentation/product notes rather than silently broadened in Stage 1.
 
 ## M3 — SV-9 blind counting on everywhere
 
