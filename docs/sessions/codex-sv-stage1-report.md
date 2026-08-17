@@ -536,3 +536,18 @@ Verification for commit `39a72abc0`:
 - Focused ESLint on the changed React test, exit 0.
 - React Doctor changed-file scan: one file, score 100/100, no issues.
 - `git diff --check`, exit 0; `CashReconciliationSection.tsx` has no committed diff.
+
+### M4 review fix round 1
+
+Round 1 found a real parent-level bypass: `EndOfDayPreviewModal` repeated every payment method's amount below the guarded tender table. A physical non-cash method's payment total is its exact expected count, while the CASH total plus the now-visible opening float exactly reconstructs expected cash on a no-movement shift. It also found that the electronic tender's non-editable Actual cell repeated its expected value before commit. The audit's original clean classification was corrected rather than defended.
+
+Two red-first rendered regressions cover the complete paths. The modal test supplies CASH, electronic CARD, and physical CHECK rows and failed because `30.00`, `15.00`, and `430.00` rendered before Commit Counts. The table test failed because electronic `50.0000` rendered in Actual. The narrow fix sends the section's Commit Counts transition to its parent; while the active flow is blind and uncommitted, every payment-method amount cell renders a dash. The electronic Actual cell follows the same gate. On commit, all values reveal immediately. Non-blind and legacy preview-only rendering are unchanged, and no money, readiness, authorization, or persistence logic changed.
+
+Green evidence after the fix:
+
+- focused M4 surface: 51/51 rendered tests, exit 0;
+- POS typecheck, exit 0;
+- focused ESLint: zero errors and one pre-existing `set-state-in-effect` warning in `CashReconciliationSection`;
+- React Doctor scanned the five changed React files and reported one warning at the modal's pre-existing close/reset effect. The reset-on-close pattern predates M4; adding the new disclosure state to the same lifecycle does not introduce the pattern, and replacing the established modal reset architecture is outside the narrow security fix.
+
+The required production-only revert/replay removed the parent callback/gate and electronic-cell gate while retaining both regressions. Both selected tests failed on their pre-commit absence assertions (2 failed / 33 skipped). Reapplying the exact production changes restored 2/2 selected green and a clean worktree.
