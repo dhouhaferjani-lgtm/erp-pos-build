@@ -74,9 +74,9 @@ milestones:
   - id: M2
     title: "WAVE 2 (spec §7.5 wave 2): S-4, S-5 (the intentional show() reshape), S-12, S-11 (show/PDF half) - screens (b) receipt detail /pos/receipts/:id and (c) refunds & voids register /pos/receipts/refunds incl. its three capability-banner states and the reprint confirm dialog + reprint audit surface - CL-3 (voucher links heal here, proven by test, never assumed) + CL-4 - BT-6, BT-7, BT-12(show/PDF), BT-13..BT-15, BT-17 - FT-4..FT-8, FT-12, FT-13. Close with the A0 STOP-AND-CHECK for M2b (owner_gates: A0-dependency-wave-2b)."
     review_lenses: [fiscal-pos, frontend-conventions, treasury, tenancy-authz, general]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 6d8b84f0e
     verdict: null
     last_verdict: null
   - id: M2b

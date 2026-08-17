@@ -88,3 +88,56 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - Merge integration: `dev` independently added `settings.fiscal.update` after this branch's base. The parent must regenerate `permissionsMap.generated.ts` after merging, then confirm it contains that admin grant plus the three accountant deltas (`deliveries.view`, `pos.view_receipts`, `pos.view_reports`). Taking either generated file wholesale would leave a stale hash or drop a grant.
 - F-4: no unit label, event-version-5 preparation, or `apps/pos/**` change exists. Wave 2 will add only `quantity_decimals` as explicitly allowed.
 - i18n deviation recorded from round 1: four unused legacy keys (`active`, `voided`, `noReceipts`, `noReceiptsDescription`) were not carried over because no `receiptSearch` consumer remains; EN/FR receipt keysets stay identical.
+
+## Wave 2 / M2
+
+### Commits
+
+- `610a2d6f6` — Phase 1.2.1: Scope receipt detail and print reads
+- `ccbeb1d83` — Phase 1.2.2: Add safe receipt reporting resources
+- `cc70b3024` — Phase 1.2.3: Lock receipt reporting integrity
+- `cebea3f16` — Phase 1.2.4: Publish receipt reporting contracts
+- `6db7701de` — Phase 1.2.5: Build receipt detail and refund registers
+- `99659b936` — Phase 1.2.6: Prove voucher receipt navigation
+- `f9879ef7b` — Phase 1.2.7: Match receipt reporting acceptance fixtures
+- `8749c490c` — Phase 1.2.8: Polish receipt reporting details
+- `2f61d7b0d` — Phase 1.2.9: Stabilize policy alert rendering
+- `6d8b84f0e` — Phase 1.2.10: Add receipt reporting browser flows
+
+### Spec-item status and evidence
+
+- **S-4 — DONE.** `ReceiptDetailData.php:77-109` derives `quantity_decimals` only from the current product unit precision, falls back to 4 for a missing product, and serializes no unit label. `ReceiptDetailPage.tsx:68-106` renders the historical product-code/name snapshots, `formatQuantity` at that precision, TTC unit price, VAT, line net and returned quantity. `ReceiptShowResourceTest` and `ReceiptDetailPage.test.tsx` were red first on the absent shape/header/snapshot/null-product behavior; they now lock FT-6 and BT-14.
+- **S-5 — DONE.** The detail root and every nested collection are explicit DTO allowlists (`ReceiptDetailData.php:20-67` and sibling `ReceiptDetail*Data` classes). `ReceiptController.php:571-626` scopes the root plus both lineage directions to company/location before serialization. `ReceiptResourceNoCanonicalBytesRecursiveTest` failed before the allowlist and now recursively rejects `canonical_bytes` and every forbidden model key at all depths. `ReceiptAggregateIntegrityTest` locks positive, negative and null aggregate fields plus VAT sums without recomputing line arithmetic; `ReceiptShowRefundLineageTest` locks bidirectional lineage and related-receipt scope suppression.
+- **S-11 show/PDF half and BT-6/7/12/13/15 — DONE.** Direct show, stream and download reads apply the same allowed-location scope before lookup/audit (`ReceiptController.php:571-626,746-819`). `ReceiptLocationScopeAuthorizationTest` was red with 200 responses/audit leakage and now proves 404 plus zero audit rows for a denied same-company location. `ReceiptPdfPrintAuditTest` proves both endpoints append `pos_receipt_prints` rows with copy 1/2, the authenticated user, receipt, and `PrintMethod::Pdf`; 403/404 paths append none.
+- **S-12/BT-17 — DONE.** `RefundReportingEnricher.php:15-89` bulk-loads fiscal events once, reads each hydrated canonical event in memory, catches exactly `InvalidArgumentException|TypeError` per row, logs a warning and degrades that row to legacy/null fields. It enriches only refund-like rows. `RefundReportingFieldsTest` was red on the five absent fields; it now covers canonical v4, legacy, void, null payload, missing nested keys and scalar line items, all as HTTP 200 with the expected warning count.
+- **Screen (b), FT-4/5/7 — DONE.** The exact-gated route is `routes/index.tsx:2944-2953`. `ReceiptDetailPage.tsx:126-260` renders header/summary, lines, VAT, payments, two-way lineage and collapsed fiscal provenance. Print and Download live only on detail and always open `ConfirmDialog`; render and cancel issue no PDF request, confirm issues exactly one audited request. The detail tests were red before route/page/confirmation behavior existed and now prove no eager PDF fetch, cancel/confirm cardinality and both lineage directions.
+- **Screen (c), FT-8/16 — DONE.** The exact-gated route is `routes/index.tsx:2933-2943`. `RefundReceiptListPage.tsx:101-272` sends one server-paginated REFUND+VOID request with no training axis, uses location-scoped option/list keys, shows the three server-derived terminal capability states, and renders live rows only for an acknowledged terminal. Columns include the two receipt links, canonical-vs-legacy reason provenance, cash destination, row-local magnitude in the row's own currency, and a policy-alert disclosure containing the recorded discount/fiscal-event context (`:38-80,173-190`). Tests were red on the missing states/register and later on double-current tabs plus missing alert details; six component tests now pass.
+- **CL-3/CL-4 and FT-12/13 — DONE.** `LedgerHistoryTable.tsx:108` and `ProvenanceSection.tsx:28` link to `/pos/receipts/:id`. Both tests use a real `MemoryRouter` with the detail route registered, click the link and assert destination rendering; they failed against the pre-wave routing table rather than checking an href string.
+- **Routes/permissions — DONE.** All three receipt routes are sibling children of `/pos`, each exact-gated by `pos.view_receipts`, with the required NG-5 comment (`routes/index.tsx:2922-2953`). `ReceiptPermissionParity.test.ts` locks paths, components, gates and comments.
+- **Wire contracts/i18n — DONE.** Spatie-generated declarations include the detail, lineage and refund-reporting DTOs in `packages/shared/types/generated.d.ts`; they were regenerated with array cache and never hand-edited. All new copy lives under matching EN/FR `receiptReporting` trees. AR remains the parallel lane; hand over `pos:receiptReporting.{tabs.*,reprint.*,detail.*,refunds.*}`.
+
+### Addendum A and safety evidence
+
+- Every new list/detail/refund money render passes the row/detail receipt's explicit currency. `ReceiptShowResourceTest` uses TND values and now also locks `cash_rounding_denomination` to the TND three-decimal scale; the corresponding detail fixture carries TND explicitly.
+- `rg -n "SUM\\s*\\(|\\.sum\\s*\\(|reduce\\s*\\(" $(git diff --name-only 59b02a34c..HEAD)` returned no matches. Wave 2 adds no footer total, cross-receipt aggregate, VAT roll-up or export total.
+- No `parseFloat`/`Number(...)` money or quantity conversion, unit label, `pos_receipt_lines.unit` read, event-version-5 preparation, or `apps/pos/**` change was added.
+- M1's composite compliance key/OP-23 route evidence remains unchanged; no lane-separation grant was added in wave 2.
+
+### Verification
+
+- Focused wave-2 backend slice: PASS (`14 tests, 158 assertions`) across show allowlist, aggregate integrity, lineage, PDF audit, recursive forbidden keys, refund reporting and location authorization. Touched-file Pint and level-8 PHPStan pass.
+- Focused wave-2 frontend slice: PASS (`51 tests`) across receipt API/list/detail/refunds, route parity and both voucher consumers. Changed-file ESLint and `pnpm typecheck` pass.
+- React Doctor changed-scope scan improved from `92/100` with one index-key warning to `98/100`, no issues, after replacing the alert list's array-index key with immutable fiscal provenance.
+- Exact preflight invocation: **BLOCKED before scoped tests by repository-wide Pint drift** in unrelated files (including the previously recorded `tests/Feature/POS/ZReportListTest.php`); no unrelated file was reformatted.
+- Exact scoped Vitest command: **PARTIAL** — `560 passed / 563`; the same three out-of-lane baseline failures remain in `reportPages.tenantScope.test.tsx`, `useAnalytics.tenantScope.test.tsx`, and `POSPage.test.tsx`. All wave-2 receipt/voucher targets pass.
+- Exact scoped PHPUnit paths completed all 1,508 tests: **PARTIAL** — 1,487 completed without error, 114 skipped and 2 incomplete; the 21 errors are outside this lane (13 stale `FraudSettingsDTO` constructor calls in `CashCountValidationServiceTest`, 8 duplicate-shift fixtures in `ZReportHashServiceTest`). The focused M2 slice above is green.
+- `pnpm lint && pnpm typecheck`: PASS. ESLint reports 6,520 repository warnings and zero errors; TanStack keys report 0 new, design-system audit 737 acknowledged/0 new/0 stale, quantity audit 0, custom rule tests pass, and TypeScript passes.
+- Frozen four-file Playwright invocation: **ENVIRONMENT BLOCKED**. All four Chromium specs compile/list, Vite starts, but every login remains on `/login` because its `/api/v1` proxy receives `ECONNREFUSED` from the unavailable API at `127.0.0.1:8010`. This is not reported green.
+- Required wave-2 screenshots (detail six sections, three refund capability states, reprint dialog): **BLOCKED by the same unavailable live API**. The specs capture populated refunds and the reprint dialog when the live prerequisites exist.
+
+### Decisions, deviations and out-of-scope findings
+
+- The only presentation judgment beyond frozen copy is rendering the already-defined policy alert as a native `<details>` disclosure. Known alert fields are type-guarded and translated; unknown alert shapes render a generic translated label without unsafe property access.
+- Live E2E fixtures are required explicitly rather than skipped: the specs fail with a named prerequisite if the stack has no SALE, acknowledged-terminal REFUND/VOID, or refund/exchange voucher provenance. No mocked-auth substitute was introduced.
+- Verification deviations are explicit above: global Pint and scoped legacy-suite baselines are not called green, and E2E/screenshots are environment-blocked.
+- S-8/totals remains owner-blocked and was not implemented.
