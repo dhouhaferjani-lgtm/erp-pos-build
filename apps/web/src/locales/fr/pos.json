@@ -328,7 +328,12 @@
       "alerts": "Alertes de politique",
       "alertCount": "{{count}} alerte",
       "alertCount_other": "{{count}} alertes",
-      "alertDetails": "Ouvrez le ticket pour consulter le contexte de politique enregistré.",
+      "recordedAlert": "Alerte de politique enregistrée",
+      "originalDiscount": "Remise de la transaction d'origine",
+      "fiscalEvent": "Événement fiscal",
+      "alertTypes": {
+        "nonZeroOriginalTransactionDiscount": "La transaction d'origine comprenait une remise"
+      },
       "capabilityTitle": "Capacité de remboursement des terminaux",
       "noTerminals": "Aucun terminal n'est disponible dans le périmètre d'emplacements sélectionné.",
       "emptyTitle": "Aucun remboursement ou annulation pour cette période",

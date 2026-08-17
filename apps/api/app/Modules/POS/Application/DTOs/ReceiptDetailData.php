@@ -150,7 +150,7 @@ final class ReceiptDetailData extends Data
             tax_amount: $money((string) $receipt->tax_amount),
             discount_amount: $money((string) $receipt->discount_amount),
             cash_rounding_adjustment: $nullableMoney($receipt->cash_rounding_adjustment),
-            cash_rounding_denomination: $receipt->cash_rounding_denomination,
+            cash_rounding_denomination: $nullableMoney($receipt->cash_rounding_denomination),
             change_due: $nullableMoney($receipt->change_due),
             total: $money((string) $receipt->total),
             notes: $receipt->notes,

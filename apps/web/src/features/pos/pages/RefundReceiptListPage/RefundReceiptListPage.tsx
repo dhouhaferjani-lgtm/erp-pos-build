@@ -31,6 +31,49 @@ function amountMagnitude(value: string): string {
   return value.startsWith('-') ? value.slice(1) : value
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function RefundPolicyAlertDetails({ alerts, currency }: { alerts: readonly unknown[]; currency: string }) {
+  const { t } = useTranslation('pos')
+
+  return (
+    <ul className={cn('mt-2 space-y-2 text-xs', colorTokens.text.secondary)}>
+      {alerts.map((value, index) => {
+        const alert = isRecord(value) ? value : {}
+        const type = typeof alert['type'] === 'string' ? alert['type'] : null
+        const amount = typeof alert['original_transaction_discount_amount'] === 'string'
+          ? alert['original_transaction_discount_amount']
+          : null
+        const eventId = typeof alert['original_fiscal_event_id'] === 'string'
+          ? alert['original_fiscal_event_id']
+          : null
+
+        return (
+          <li key={`${type ?? 'unknown'}-${String(index)}`} className={cn('rounded border p-2', colorTokens.border.subtle)}>
+            <p className="font-medium">
+              {type === 'non_zero_original_transaction_discount'
+                ? t('receiptReporting.refunds.alertTypes.nonZeroOriginalTransactionDiscount')
+                : t('receiptReporting.refunds.recordedAlert')}
+            </p>
+            {amount ? (
+              <p>
+                {t('receiptReporting.refunds.originalDiscount')}: {formatCurrency(amount, { currency })}
+              </p>
+            ) : null}
+            {eventId ? (
+              <p>
+                {t('receiptReporting.refunds.fiscalEvent')}: <span className="font-mono">{eventId}</span>
+              </p>
+            ) : null}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 export function RefundReceiptListPage() {
   const { t } = useTranslation(['pos', 'common'])
   const { hasTenantScope } = usePosTenantScope()
@@ -139,7 +182,7 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
           <summary className={cn('cursor-pointer text-sm font-medium', colorTokens.intent.warning.textStrong)}>
             {t('pos:receiptReporting.refunds.alertCount', { count: row.refund_policy_alerts.length })}
           </summary>
-          <p className={cn('mt-1 text-xs', colorTokens.text.muted)}>{t('pos:receiptReporting.refunds.alertDetails')}</p>
+          <RefundPolicyAlertDetails alerts={row.refund_policy_alerts} currency={row.currency} />
         </details>
       ) : t('common:notAvailable'),
     },

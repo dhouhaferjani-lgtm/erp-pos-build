@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { screen, waitFor } from '@testing-library/react'
+import { fireEvent, screen, waitFor } from '@testing-library/react'
 import i18n from '@/lib/i18n'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { RefundReceiptListPage } from './RefundReceiptListPage'
@@ -41,6 +41,34 @@ const baseTerminal = {
   v4_refund_authoring_acknowledged_at: null,
 }
 
+const refundRow = {
+  id: 'refund-1',
+  receipt_number: 'TN-POS-R-0001',
+  posted_at: '2026-08-17T10:30:00.000000Z',
+  invoice_type_code: 'REFUND',
+  receipt_type: 'return',
+  training_flag: false,
+  fiscal_status: 'fiscalized',
+  location_id: 'loc-1',
+  location_name: 'Tunis',
+  terminal_id: 'terminal-1',
+  terminal_code: 'POS-1',
+  cashier_id: 'cashier-1',
+  cashier_name: 'Amina',
+  total: '12.345',
+  currency: 'TND',
+  original_receipt_id: 'sale-1',
+  original_receipt_number: 'TN-POS-0001',
+  refund_reason: 'Customer return',
+  refund_reason_source: 'canonical',
+  refund_destination: 'cash',
+  refund_policy_alerts: [{
+    type: 'non_zero_original_transaction_discount',
+    original_transaction_discount_amount: '2.000',
+    original_fiscal_event_id: 'event-1',
+  }],
+}
+
 describe('RefundReceiptListPage', () => {
   beforeEach(async () => {
     await i18n.changeLanguage('en')
@@ -79,5 +107,37 @@ describe('RefundReceiptListPage', () => {
       }))
       expect(vi.mocked(fetchRefundReceipts).mock.calls[0]?.[0]).not.toHaveProperty('include_training')
     })
+  })
+
+  it('marks only the refunds tab as the current page', async () => {
+    vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({
+      terminals: [{ ...baseTerminal, v4_refund_authoring_enabled: true, v4_refund_authoring_acknowledged_at: '2026-08-17T10:00:00Z' }],
+      cashiers: [],
+    })
+
+    renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
+
+    await screen.findByRole('tab', { name: 'Refunds & voids' })
+    expect(screen.getByRole('tab', { name: 'Receipts' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('tab', { name: 'Refunds & voids' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('reveals the recorded policy-alert context while null and empty alerts stay quiet', async () => {
+    vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({
+      terminals: [{ ...baseTerminal, v4_refund_authoring_enabled: true, v4_refund_authoring_acknowledged_at: '2026-08-17T10:00:00Z' }],
+      cashiers: [],
+    })
+    vi.mocked(fetchRefundReceipts).mockResolvedValue({
+      data: [refundRow],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: '2026-08-16T23:00:00.000000Z', to: '2026-08-17T23:00:00.000000Z' },
+    })
+
+    renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
+
+    const alertBadge = await screen.findByText('1 alert')
+    fireEvent.click(alertBadge)
+    expect(screen.getByText('Original transaction included a discount')).toBeVisible()
+    expect(screen.getByText(/2[.,]000/)).toBeVisible()
+    expect(screen.getByText('event-1')).toBeVisible()
   })
 })

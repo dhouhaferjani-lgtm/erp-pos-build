@@ -328,7 +328,12 @@
       "alerts": "Policy alerts",
       "alertCount": "{{count}} alert",
       "alertCount_other": "{{count}} alerts",
-      "alertDetails": "Open the receipt for the recorded policy context.",
+      "recordedAlert": "Recorded policy alert",
+      "originalDiscount": "Original transaction discount",
+      "fiscalEvent": "Fiscal event",
+      "alertTypes": {
+        "nonZeroOriginalTransactionDiscount": "Original transaction included a discount"
+      },
       "capabilityTitle": "Terminal refund capability",
       "noTerminals": "No terminals are available in the selected location scope.",
       "emptyTitle": "No refunds or voids match this period",

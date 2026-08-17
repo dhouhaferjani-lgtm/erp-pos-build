@@ -101,6 +101,7 @@ final class ReceiptShowResourceTest extends ReceiptReportingTestCase
         $response->assertJsonPath('data.lines.0.quantity_decimals', 4);
         $response->assertJsonPath('data.payments.0.id', $payment->id);
         $response->assertJsonPath('data.payments.0.payment_method', 'Cash');
+        $response->assertJsonPath('data.cash_rounding_denomination', '0.050');
         $response->assertJsonPath('data.total', '11.500');
     }
 }

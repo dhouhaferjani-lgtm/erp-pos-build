@@ -26,6 +26,7 @@ export function ReceiptRegisterTabs({ active }: ReceiptRegisterTabsProps) {
           <NavLink
             key={tab.key}
             to={tab.to}
+            end={tab.key === 'receipts'}
             role="tab"
             aria-selected={selected}
             className={cn(
