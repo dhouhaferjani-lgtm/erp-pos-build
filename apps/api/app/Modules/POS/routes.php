@@ -21,6 +21,7 @@ use App\Modules\POS\Presentation\Controllers\PosReplenishmentController;
 use App\Modules\POS\Presentation\Controllers\PosStockLevelController;
 use App\Modules\POS\Presentation\Controllers\PosVariantController;
 use App\Modules\POS\Presentation\Controllers\ReceiptController;
+use App\Modules\POS\Presentation\Controllers\ReceiptFilterOptionsController;
 use App\Modules\POS\Presentation\Controllers\ReportController;
 use App\Modules\POS\Presentation\Controllers\ShiftController;
 use App\Modules\POS\Presentation\Controllers\ShiftToleranceController;
@@ -141,6 +142,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('pos.replenishment.index');
 
     // Receipts (collection routes BEFORE parameterized)
+    Route::get('/pos/receipts/filter-options', ReceiptFilterOptionsController::class);
     Route::get('/pos/receipts', [ReceiptController::class, 'index']);
     // §14.2 — New-sale SALE_RECEIPT server-authoring retired. Routes return
     // 410 Gone with NEW_SALE_AUTHORING_RETIRED. The route-level closure
