@@ -75,10 +75,11 @@ milestones:
     title: "WAVE 2 (spec §7.5 wave 2): S-4, S-5 (the intentional show() reshape), S-12, S-11 (show/PDF half) - screens (b) receipt detail /pos/receipts/:id and (c) refunds & voids register /pos/receipts/refunds incl. its three capability-banner states and the reprint confirm dialog + reprint audit surface - CL-3 (voucher links heal here, proven by test, never assumed) + CL-4 - BT-6, BT-7, BT-12(show/PDF), BT-13..BT-15, BT-17 - FT-4..FT-8, FT-12, FT-13. Close with the A0 STOP-AND-CHECK for M2b (owner_gates: A0-dependency-wave-2b)."
     review_lenses: [fiscal-pos, frontend-conventions, treasury, tenancy-authz, general]
     status: review
-    fix_rounds: 0
-    commit: 6d8b84f0e
-    verdict: null
-    last_verdict: null
+    fix_rounds: 1
+    commit: be6cebe16
+    verdict: docs/handoff/reviews/receipts-build/M2-round1.md
+    last_verdict: changes-required
+    updated: be6cebe16
   - id: M2b
     title: "WAVE 2b - CONDITIONAL, runs ONLY if the M2-close check finds Lane A0 landed on your base: screen (d) chain-verify panel + FT-9, with OI-15's mandatory re-read of the post-A0 verify-chain response shape IN CODE before freezing copy, i18n keys or tests. If A0 has not landed: skip, set this milestone status blocked_owner with the observed A0 state in blockers, and treat waves 1+2 as the delivered scope (that is the specced outcome, not a failure)."
     review_lenses: [fiscal-pos, frontend-conventions, general]
@@ -109,3 +110,4 @@ findings:
   - "M1 review round 4 ACCEPTED M1; its register is docs/handoff/reviews/receipts-build/M1-round4.md."
   - "Merge-time action: regenerate permissionsMap.generated.ts after merging current dev so settings.fiscal.update and all three accountant deltas survive with a valid source hash."
   - "OQ-10 follow-up: the read-only accountant can reach fraud settings but the page still exposes Save/Reset controls whose backend writes correctly return 403."
+  - "M2 review round 1 CHANGES-REQUIRED was repaired in be6cebe16; all P1/P2 findings and five low-risk P3 findings are dispositioned in docs/handoff/reviews/receipts-build/M2-round1.md."
