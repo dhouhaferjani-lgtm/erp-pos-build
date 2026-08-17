@@ -212,12 +212,12 @@ export function EndOfDayPreviewModal({
         <div className="flex flex-col items-center gap-3 py-8">
           <AlertCircle className="h-10 w-10 text-danger" />
           <p className="text-center text-sm text-danger-strong">
-            {cashCountPolicyUnavailable
-              ? t('cash_count.policy_unavailable', {
+            {phase === 'error'
+              ? errorMessage
+              : t('cash_count.policy_unavailable', {
                   defaultValue:
                     'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
-                })
-              : errorMessage}
+                })}
           </p>
           <button
             onClick={handleClose}

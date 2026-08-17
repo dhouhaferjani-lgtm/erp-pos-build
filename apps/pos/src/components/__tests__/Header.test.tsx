@@ -9,6 +9,10 @@ const fraudApiMocks = vi.hoisted(() => ({
   fetchFraudSettings: vi.fn(),
   fetchAuthorizedManagers: vi.fn(),
 }));
+const fraudCacheMocks = vi.hoisted(() => ({
+  upsertCompanyFraudSettings: vi.fn(),
+  getCompanyFraudSettings: vi.fn(),
+}));
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
@@ -76,8 +80,8 @@ vi.mock('@/api/managersApi', () => ({
 }));
 vi.mock('@/lib/db', () => ({ getDatabase: vi.fn().mockResolvedValue({}) }));
 vi.mock('@/lib/db/repositories/companyFraudSettingsCacheRepository', () => ({
-  upsertCompanyFraudSettings: vi.fn().mockResolvedValue(undefined),
-  getCompanyFraudSettings: vi.fn().mockResolvedValue(null),
+  upsertCompanyFraudSettings: fraudCacheMocks.upsertCompanyFraudSettings,
+  getCompanyFraudSettings: fraudCacheMocks.getCompanyFraudSettings,
 }));
 vi.mock('@/lib/db/repositories/operatorPinRepository', () => ({
   getAllOperators: vi.fn().mockResolvedValue([]),
@@ -234,6 +238,10 @@ describe('Header (Sub-Spec B)', () => {
     });
     fraudApiMocks.fetchAuthorizedManagers.mockReset();
     fraudApiMocks.fetchAuthorizedManagers.mockResolvedValue([]);
+    fraudCacheMocks.upsertCompanyFraudSettings.mockReset();
+    fraudCacheMocks.upsertCompanyFraudSettings.mockResolvedValue(undefined);
+    fraudCacheMocks.getCompanyFraudSettings.mockReset();
+    fraudCacheMocks.getCompanyFraudSettings.mockResolvedValue(null);
   });
 
   it('renders no device-logout button for a manager operator', () => {
@@ -388,5 +396,64 @@ describe('Header (Sub-Spec B)', () => {
     await waitFor(() => {
       expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('true:true');
     });
+  });
+
+  it('reports the EOD policy resolved but unavailable when online and cache reads fail', async () => {
+    mockTerminal = {
+      id: 'terminal-1',
+      code: 'T1',
+      fiscal_schema_version: 3,
+      is_training_mode: false,
+    };
+    mockShift = {
+      id: 'shift-1',
+      shift_number: 1,
+      opening_cash: '100.00',
+      opened_at: '2026-08-17T08:00:00Z',
+      user: { id: 'op-1', name: 'Test Manager' },
+    };
+    fraudApiMocks.fetchFraudSettings.mockRejectedValueOnce(new Error('offline'));
+    fraudCacheMocks.getCompanyFraudSettings.mockResolvedValueOnce(null);
+
+    render(<Header />);
+    fireEvent.click(screen.getByTitle('shift.opening'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('true:none');
+    });
+    expect(fraudCacheMocks.getCompanyFraudSettings).toHaveBeenCalledWith(
+      expect.anything(),
+      'co-1',
+    );
+  });
+
+  it('re-arms policy loading immediately when the terminal record changes', async () => {
+    mockTerminal = {
+      id: 'terminal-1',
+      code: 'T1',
+      fiscal_schema_version: 3,
+      is_training_mode: false,
+    };
+    mockShift = {
+      id: 'shift-1',
+      shift_number: 1,
+      opening_cash: '100.00',
+      opened_at: '2026-08-17T08:00:00Z',
+      user: { id: 'op-1', name: 'Test Manager' },
+    };
+
+    const view = render(<Header />);
+    fireEvent.click(screen.getByTitle('shift.opening'));
+    await waitFor(() => {
+      expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('true:true');
+    });
+
+    fraudApiMocks.fetchFraudSettings.mockImplementationOnce(
+      () => new Promise(() => {}),
+    );
+    mockTerminal = { ...mockTerminal, code: 'T1-refreshed' };
+    view.rerender(<Header />);
+
+    expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('false:true');
   });
 });

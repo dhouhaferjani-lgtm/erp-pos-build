@@ -3,8 +3,12 @@ import { render, screen, within, fireEvent, waitFor, act } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { EndOfDayPreviewModal, type CompanyFraudSettings } from './EndOfDayPreviewModal';
 import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
+import enPos from '@/locales/en/pos.json';
+import frPos from '@/locales/fr/pos.json';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
+
+const modalI18nState = vi.hoisted(() => ({ locale: 'en' as 'en' | 'fr' }));
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
@@ -43,6 +47,10 @@ vi.mock('react-i18next', () => ({
         'reports.paymentCount': 'Count',
         'reports.paymentAmount': 'Amount',
         'reports.loading': 'Generating report...',
+        'cash_count.policy_unavailable':
+          modalI18nState.locale === 'fr'
+            ? "Impossible de fermer ce service : la politique de comptage de caisse n'a pas été synchronisée sur cet appareil. Connectez-vous au réseau, puis réessayez."
+            : 'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
         'shift.number': `Shift #${String(opts?.number ?? '')}`,
       };
       // Fall back to defaultValue when provided (covers cash_count.* keys),
@@ -223,6 +231,7 @@ async function enterCashActual(value: string = '130') {
 describe('EndOfDayPreviewModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    modalI18nState.locale = 'en';
     mockBuildEndOfDayPreview.mockResolvedValue(samplePreview);
   });
 
@@ -530,6 +539,35 @@ describe('EndOfDayPreviewModal', () => {
       expect(screen.getByText(/Cannot close this shift/)).toBeInTheDocument();
       expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
       expect(screen.queryByText('130.00')).not.toBeInTheDocument();
+    });
+
+    it('renders the unavailable-policy message in French and pins both locale files', async () => {
+      const english =
+        'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.';
+      const french =
+        "Impossible de fermer ce service : la politique de comptage de caisse n'a pas été synchronisée sur cet appareil. Connectez-vous au réseau, puis réessayez.";
+      expect(enPos.cash_count.policy_unavailable).toBe(english);
+      expect(frPos.cash_count.policy_unavailable).toBe(french);
+
+      modalI18nState.locale = 'fr';
+      renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: true,
+      });
+
+      expect(await screen.findByText(french)).toBeInTheDocument();
+      expect(screen.queryByText(english)).not.toBeInTheDocument();
+    });
+
+    it('preserves a preview-build error when policy is also unavailable', async () => {
+      mockBuildEndOfDayPreview.mockRejectedValueOnce(new Error('preview exploded'));
+      renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: true,
+      });
+
+      expect(await screen.findByText('preview exploded')).toBeInTheDocument();
+      expect(screen.queryByText(/cash-count policy/)).not.toBeInTheDocument();
     });
 
     it('SECURITY: withholds financial preview amounts until blind counts are committed', async () => {

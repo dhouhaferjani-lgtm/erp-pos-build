@@ -76,7 +76,7 @@ export function Header() {
 
   // Cash-count fraud settings state (loaded when EOD modal opens)
   const [fraudSettings, setFraudSettings] = useState<CompanyFraudSettings | null>(null);
-  const [cashCountPolicyResolved, setCashCountPolicyResolved] = useState(false);
+  const [cashCountPolicyTerminal, setCashCountPolicyTerminal] = useState<typeof terminal>(null);
   const [authorizedManagers, setAuthorizedManagers] = useState<AuthorizedManager[]>([]);
   const [managerPinThrottle, setManagerPinThrottleState] = useState<{
     until: string | null;
@@ -109,6 +109,8 @@ export function Header() {
       isTraining: terminal.is_training_mode === true,
     };
   }, [tenantId, companyId, terminal, operator?.id, userId]);
+  const cashCountPolicyResolved =
+    terminal !== null && cashCountPolicyTerminal === terminal;
 
   // Load fraud settings + authorized managers + local throttle when EOD modal opens
   useEffect(() => {
@@ -225,7 +227,7 @@ export function Header() {
           // Silently ignore — throttle state resets to defaults
         }
       } finally {
-        if (!cancelled) setCashCountPolicyResolved(true);
+        if (!cancelled) setCashCountPolicyTerminal(terminal);
       }
     })();
 
@@ -239,7 +241,7 @@ export function Header() {
     // false policy from mounting a disclosure path while the refresh is in flight.
     setFraudSettings(null);
     setAuthorizedManagers([]);
-    setCashCountPolicyResolved(false);
+    setCashCountPolicyTerminal(null);
     setShowEndOfDay(true);
   };
 
