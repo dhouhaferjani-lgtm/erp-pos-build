@@ -88,14 +88,12 @@ milestones:
   - id: M7
     title: "Whole-branch integration gate + executable evidence manifest (all M1-M6 paths on PG + SQLite parity, static scopes, country-defaults:verify, route inventory, six branch-wide static assertions) — no new implementation; failure of any item blocks"
     review_lenses: [treasury, tenancy-authz, frontend-conventions]
-    status: blocked_owner
+    status: pending
     fix_rounds: 0
     commit: 8421bc5c9
     verdict: null
     last_verdict: null
     updated: 8421bc5c9
 
-status: blocked_owner      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
-blockers:
-  - "M7 item 6 requires country-defaults:verify to exit zero, but the unattended migration correctly creates drafts only. The accepted design requires an authenticated human HTTP publish to set certification metadata, followed by TN/FR/* assignments; manufacturing these via CLI or test fixtures would violate the certification authority invariant. Owner must complete Release 1 authenticated certification and assignments on a migrated staging/production central database, then rerun the verifier."
-  - "The locally configured central database iziposcentral:5433 has not received the Phase A migrations; the dedicated fresh scratch database proves all four migrations run but correctly fails verify with missing TN, FR, and * assignments."
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []
