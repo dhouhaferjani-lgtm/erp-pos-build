@@ -233,7 +233,8 @@
     },
     "disposition": {
       "title": "La caisse fonctionne dans l'application de bureau",
-      "body": "Les ventes sont désormais encaissées dans l'application de caisse IziPOS pour ordinateur. Depuis le web, vous pouvez consulter les tickets, effectuer les retours et télécharger les PDF depuis les écrans de gestion de la boutique."
+      "body": "Les ventes sont encaissées dans l'application de caisse IziPOS pour ordinateur. Le registre web reste disponible pour consulter les tickets.",
+      "receiptsLink": "Ouvrir le registre des tickets"
     }
   },
   "shiftHistory": {
@@ -320,32 +321,49 @@
       "genesisReport": "Ceci est le premier rapport Z (genèse) pour ce terminal"
     }
   },
-  "receiptSearch": {
+  "receipts": {
     "title": "Tickets",
-    "description": "Rechercher et gérer les tickets de caisse",
+    "description": "Consulter les tickets fiscaux par journée, terminal et caissier",
     "receiptNumber": "Ticket #",
     "terminal": "Terminal",
     "cashier": "Caissier",
     "date": "Date",
+    "type": "Type",
+    "location": "Emplacement",
     "total": "Total",
     "status": "Statut",
-    "active": "Actif",
-    "voided": "Annulé",
     "searchPlaceholder": "Rechercher par numéro de ticket...",
-    "noReceipts": "Aucun ticket trouvé",
-    "noReceiptsDescription": "Aucun ticket ne correspond à vos filtres actuels.",
-    "void": "Annuler",
-    "voidReceipt": "Annuler le Ticket",
-    "voidConfirm": "Êtes-vous sûr de vouloir annuler ce ticket ? Cette action inversera les mouvements de stock et créera des écritures comptables d'annulation.",
-    "voidReason": "Raison de l'annulation",
-    "voidReasonPlaceholder": "Entrez la raison...",
-    "voidSuccess": "Ticket annulé avec succès",
-    "voidError": "Échec de l'annulation du ticket",
+    "includeTraining": "Inclure les tickets de formation",
+    "tableLabel": "Registre des tickets",
+    "resolvedWindow": "Période résolue : du {{from}} au {{to}}",
+    "types": {
+      "SALE": "Vente",
+      "TRAINING": "Formation",
+      "REFUND": "Remboursement",
+      "VOID": "Annulation"
+    },
+    "fiscalStatuses": {
+      "pending_seal": "En attente de scellement",
+      "fiscalized": "Fiscalisé",
+      "voided": "Annulé",
+      "pending_sync": "En attente de synchronisation",
+      "synced": "Synchronisé",
+      "sync_failed": "Échec de synchronisation"
+    },
+    "empty": {
+      "dayTitle": "Aucun ticket de vente pour cette journée",
+      "dayDescription": "Choisissez une autre date ou vérifiez la synchronisation depuis la caisse.",
+      "filteredTitle": "Aucun ticket ne correspond à ces filtres",
+      "filteredDescription": "Supprimez un ou plusieurs filtres pour élargir le registre.",
+      "trainingTitle": "Aucun ticket de vente ou de formation pour cette journée",
+      "trainingDescription": "Choisissez une autre date ou désactivez les tickets de formation."
+    },
     "filters": {
       "terminal": "Terminal",
       "status": "Statut",
       "type": "Type",
       "allTerminals": "Tous les terminaux",
+      "allCashiers": "Tous les caissiers",
       "allStatuses": "Tous les statuts",
       "allTypes": "Tous les types",
       "salesOnly": "Ventes uniquement",

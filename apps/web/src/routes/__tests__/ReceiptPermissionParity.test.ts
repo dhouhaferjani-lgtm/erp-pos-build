@@ -38,6 +38,16 @@ describe('receipt reporting permission parity', () => {
     expect(sidebarSource.slice(vouchers, vouchers + 150)).toContain("permission: 'pos'")
   })
 
+  it('registers the read-only receipt register behind the exact receipt permission', () => {
+    const receipts = routesSource.indexOf('path="receipts"', routesSource.indexOf('<Route path="pos">'))
+    const fragment = routesSource.slice(receipts, receipts + 420)
+
+    expect(receipts).toBeGreaterThanOrEqual(0)
+    expect(fragment).toContain('permission="pos.view_receipts"')
+    expect(fragment).toContain('<ReceiptListPage />')
+    expect(fragment).not.toMatch(/createReceipt|processReceiptPayments|ReturnItemsModal|voidReceipt/)
+  })
+
   it('gates compliance by any raw panel permission and fraud routes exactly', () => {
     const compliance = routesSource.indexOf('path="compliance/export"')
     const complianceFragment = routesSource.slice(compliance, compliance + 650)

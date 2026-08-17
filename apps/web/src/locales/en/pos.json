@@ -213,7 +213,8 @@
     },
     "disposition": {
       "title": "Point of sale runs in the desktop app",
-      "body": "Sales are now rung up in the IziPOS desktop checkout app. From the web you can browse receipts, process returns, and download PDFs from the shop-management screens."
+      "body": "Sales are rung up in the IziPOS desktop checkout app. The web register remains available for receipt review.",
+      "receiptsLink": "Open receipt register"
     }
   },
   "productInfo": {
@@ -320,32 +321,49 @@
       "genesisReport": "This is the first Z-report (genesis) for this terminal"
     }
   },
-  "receiptSearch": {
+  "receipts": {
     "title": "Receipts",
-    "description": "Search and manage POS receipts",
+    "description": "Review fiscal receipts by business day, terminal, and cashier",
     "receiptNumber": "Receipt #",
     "terminal": "Terminal",
     "cashier": "Cashier",
     "date": "Date",
+    "type": "Type",
+    "location": "Location",
     "total": "Total",
     "status": "Status",
-    "active": "Active",
-    "voided": "Voided",
     "searchPlaceholder": "Search by receipt number...",
-    "noReceipts": "No receipts found",
-    "noReceiptsDescription": "No receipts match your current filters.",
-    "void": "Void",
-    "voidReceipt": "Void Receipt",
-    "voidConfirm": "Are you sure you want to void this receipt? This action will reverse stock movements and create reversal GL entries.",
-    "voidReason": "Reason for voiding",
-    "voidReasonPlaceholder": "Enter reason...",
-    "voidSuccess": "Receipt voided successfully",
-    "voidError": "Failed to void receipt",
+    "includeTraining": "Include training receipts",
+    "tableLabel": "Receipt register",
+    "resolvedWindow": "Resolved window: {{from}} to {{to}}",
+    "types": {
+      "SALE": "Sale",
+      "TRAINING": "Training",
+      "REFUND": "Refund",
+      "VOID": "Void"
+    },
+    "fiscalStatuses": {
+      "pending_seal": "Pending seal",
+      "fiscalized": "Fiscalized",
+      "voided": "Voided",
+      "pending_sync": "Pending sync",
+      "synced": "Synced",
+      "sync_failed": "Sync failed"
+    },
+    "empty": {
+      "dayTitle": "No sales receipts for this business day",
+      "dayDescription": "Choose another date or confirm that sales have synced from the POS device.",
+      "filteredTitle": "No receipts match these filters",
+      "filteredDescription": "Clear one or more filters to broaden the register.",
+      "trainingTitle": "No sale or training receipts for this business day",
+      "trainingDescription": "Choose another date or turn off training receipts."
+    },
     "filters": {
       "terminal": "Terminal",
       "status": "Status",
       "type": "Type",
       "allTerminals": "All Terminals",
+      "allCashiers": "All Cashiers",
       "allStatuses": "All Statuses",
       "allTypes": "All Types",
       "salesOnly": "Sales Only",

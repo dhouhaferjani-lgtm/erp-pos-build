@@ -148,6 +148,8 @@ export interface ShiftReceipt {
  * Note: apiGet unwraps the outer { data: ... } envelope, so this
  * returns the receipts array directly. Pagination meta is not available
  * through apiGet — use the raw axios client if pagination is needed.
+ *
+ * @see /pos/receipts for the canonical company-scoped receipt register.
  */
 export async function getShiftReceipts(
   shiftId: string,
