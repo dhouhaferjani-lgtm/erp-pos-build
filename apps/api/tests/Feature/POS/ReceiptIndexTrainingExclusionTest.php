@@ -29,6 +29,72 @@ final class ReceiptIndexTrainingExclusionTest extends ReceiptReportingTestCase
         );
     }
 
+    public function test_include_training_without_explicit_codes_defaults_to_sale_and_training(): void
+    {
+        foreach (['SALE', 'TRAINING', 'REFUND', 'VOID'] as $code) {
+            $this->createReceipt($code, $code === 'TRAINING');
+        }
+
+        $response = $this->getJson('/api/v1/pos/receipts?include_training=true');
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing(
+            ['SALE', 'TRAINING'],
+            array_column($response->json('data.data'), 'invoice_type_code'),
+        );
+    }
+
+    /** @param list<string> $codes */
+    #[DataProvider('trainingCodeSets')]
+    public function test_every_training_code_set_requires_the_training_switch(array $codes): void
+    {
+        foreach ([null, false] as $includeTraining) {
+            $query = http_build_query(array_filter([
+                'invoice_type_codes' => $codes,
+                'include_training' => $includeTraining === false ? 'false' : null,
+            ], static fn (mixed $value): bool => $value !== null));
+
+            $this->assertApiValidationErrors(
+                $this->getJson('/api/v1/pos/receipts?'.$query),
+                ['invoice_type_codes'],
+            );
+        }
+    }
+
+    /** @param list<string> $codes */
+    #[DataProvider('trainingCodeSets')]
+    public function test_every_training_code_set_is_honoured_when_the_switch_is_true(array $codes): void
+    {
+        foreach (['SALE', 'TRAINING', 'REFUND', 'VOID'] as $code) {
+            $this->createReceipt($code, $code === 'TRAINING');
+        }
+
+        $query = http_build_query([
+            'invoice_type_codes' => $codes,
+            'include_training' => 'true',
+        ]);
+        $response = $this->getJson('/api/v1/pos/receipts?'.$query);
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing(
+            $codes,
+            array_column($response->json('data.data'), 'invoice_type_code'),
+        );
+    }
+
+    /** @return iterable<string, array{list<string>}> */
+    public static function trainingCodeSets(): iterable
+    {
+        yield 'training' => [['TRAINING']];
+        yield 'sale and training' => [['SALE', 'TRAINING']];
+        yield 'refund and training' => [['REFUND', 'TRAINING']];
+        yield 'void and training' => [['VOID', 'TRAINING']];
+        yield 'sale refund and training' => [['SALE', 'REFUND', 'TRAINING']];
+        yield 'sale void and training' => [['SALE', 'VOID', 'TRAINING']];
+        yield 'refund void and training' => [['REFUND', 'VOID', 'TRAINING']];
+        yield 'all codes' => [['SALE', 'REFUND', 'VOID', 'TRAINING']];
+    }
+
     /**
      * @param  list<string>  $codes
      */
@@ -57,6 +123,8 @@ final class ReceiptIndexTrainingExclusionTest extends ReceiptReportingTestCase
     public static function legalNonTrainingCodeSets(): iterable
     {
         yield 'sale' => [['SALE']];
+        yield 'refund' => [['REFUND']];
+        yield 'void' => [['VOID']];
         yield 'refund and void' => [['REFUND', 'VOID']];
         yield 'sale and refund' => [['SALE', 'REFUND']];
         yield 'sale and void' => [['SALE', 'VOID']];
@@ -67,6 +135,14 @@ final class ReceiptIndexTrainingExclusionTest extends ReceiptReportingTestCase
     {
         $this->assertApiValidationErrors(
             $this->getJson('/api/v1/pos/receipts?invoice_type_codes[]='),
+            ['invoice_type_codes.0'],
+        );
+    }
+
+    public function test_out_of_domain_type_code_is_rejected(): void
+    {
+        $this->assertApiValidationErrors(
+            $this->getJson('/api/v1/pos/receipts?invoice_type_codes[]=CREDIT'),
             ['invoice_type_codes.0'],
         );
     }

@@ -20,6 +20,8 @@ final class ReceiptFilterOptionsTest extends ReceiptReportingTestCase
             'location_id' => $this->location->id,
             'code' => 'A-INACTIVE',
             'is_active' => false,
+            'v4_refund_authoring_enabled' => true,
+            'v4_refund_authoring_acknowledged_at' => '2026-08-17 08:00:00 UTC',
         ]);
         Terminal::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -43,6 +45,12 @@ final class ReceiptFilterOptionsTest extends ReceiptReportingTestCase
         $this->assertSame(['data'], array_keys($response->json()));
         $this->assertSame(['terminals', 'cashiers'], array_keys($response->json('data')));
         $this->assertContains($inactive->id, array_column($response->json('data.terminals'), 'id'));
+        $response->assertJsonFragment([
+            'id' => $inactive->id,
+            'is_active' => false,
+            'v4_refund_authoring_enabled' => true,
+            'v4_refund_authoring_acknowledged_at' => '2026-08-17T08:00:00.000000Z',
+        ]);
         $this->assertNotContains('Z-HIDDEN', array_column($response->json('data.terminals'), 'code'));
         $response->assertJsonFragment([
             'id' => $this->user->id,

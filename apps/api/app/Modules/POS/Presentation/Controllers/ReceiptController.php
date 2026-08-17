@@ -116,7 +116,7 @@ final class ReceiptController extends Controller
 
         $invoiceTypeCodes = $validated['invoice_type_codes'] ?? match ($validated['receipt_type'] ?? null) {
             'return' => ['REFUND', 'VOID'],
-            default => ['SALE'],
+            default => $request->boolean('include_training') ? ['SALE', 'TRAINING'] : ['SALE'],
         };
         $query->whereIn('invoice_type_code', $invoiceTypeCodes);
 
