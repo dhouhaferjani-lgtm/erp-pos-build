@@ -109,18 +109,66 @@ final class RefundReportingFieldsTest extends ReceiptReportingTestCase
         );
     }
 
+    public function test_a_non_sale_fiscal_event_uses_the_legacy_fallback_without_warning_noise(): void
+    {
+        Log::spy();
+
+        $original = $this->createReceipt('SALE');
+        $event = $this->createFiscalEvent(
+            GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur'],
+            FiscalEventType::REFUND_RECEIPT,
+        );
+        $refund = $this->createRefund(
+            invoiceTypeCode: 'VOID',
+            original: $original,
+            reason: ReturnReason::WrongItem,
+            fiscalEvent: $event,
+        );
+
+        $rows = collect($this->getJson('/api/v1/pos/receipts?invoice_type_codes[]=VOID')
+            ->assertOk()
+            ->json('data.data'))->keyBy('id');
+
+        $this->assertSame('Wrong Item', $rows[$refund->id]['refund_reason']);
+        $this->assertSame('legacy_enum', $rows[$refund->id]['refund_reason_source']);
+        Log::shouldNotHaveReceived('warning');
+    }
+
+    public function test_a_fiscal_sale_row_does_not_gain_refund_only_fields_from_the_legacy_receipt_type(): void
+    {
+        $original = $this->createReceipt('SALE');
+        $event = $this->createFiscalEvent(GoldenFixtureBuilder::all()['F-16-refund-v4-cash-eur']);
+        $sale = $this->createRefund(
+            invoiceTypeCode: 'SALE',
+            original: $original,
+            reason: ReturnReason::Other,
+            fiscalEvent: $event,
+        );
+
+        $rows = collect($this->getJson('/api/v1/pos/receipts')->assertOk()->json('data.data'))->keyBy('id');
+        $row = $rows[$sale->id];
+
+        $this->assertArrayNotHasKey('refund_reason', $row);
+        $this->assertArrayNotHasKey('refund_reason_source', $row);
+        $this->assertArrayNotHasKey('refund_destination', $row);
+        $this->assertArrayNotHasKey('refund_policy_alerts', $row);
+        $this->assertArrayNotHasKey('original_receipt_number', $row);
+    }
+
     /**
      * @param  array<string, mixed>|null  $payload
      */
-    private function createFiscalEvent(?array $payload): FiscalEvent
-    {
+    private function createFiscalEvent(
+        ?array $payload,
+        FiscalEventType $eventType = FiscalEventType::SALE_RECEIPT,
+    ): FiscalEvent {
         return FiscalEvent::query()->create([
             'id' => Str::uuid()->toString(),
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'terminal_id' => $this->terminal->id,
             'operator_id' => $this->user->id,
-            'event_type' => FiscalEventType::SALE_RECEIPT,
+            'event_type' => $eventType,
             'event_version' => 4,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => random_int(1, 999999),

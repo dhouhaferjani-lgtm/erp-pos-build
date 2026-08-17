@@ -6,6 +6,8 @@ namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\POS\Domain\Terminal;
+use Spatie\Permission\Models\Permission;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
 final class ReceiptLocationScopeAuthorizationTest extends ReceiptReportingTestCase
@@ -27,10 +29,15 @@ final class ReceiptLocationScopeAuthorizationTest extends ReceiptReportingTestCa
     {
         $otherLocation = Location::factory()->create(['company_id' => $this->company->id]);
         $otherReceipt = $this->createReceipt(location: $otherLocation);
+        Permission::findOrCreate('pos.view_reports', 'sanctum');
+        $this->user->givePermissionTo('pos.view_reports');
 
         $this->getJson('/api/v1/pos/receipts/'.$otherReceipt->id)
             ->assertOk()
             ->assertJsonPath('data.id', $otherReceipt->id);
+        $this->postJson('/api/v1/pos/reports/receipts/verify-chain', [
+            'terminal_id' => $otherReceipt->terminal_id,
+        ])->assertOk();
     }
 
     public function test_empty_location_scope_denies_direct_receipt_reads(): void
@@ -39,6 +46,23 @@ final class ReceiptLocationScopeAuthorizationTest extends ReceiptReportingTestCa
         $this->restrictMembershipTo([]);
 
         $this->getJson('/api/v1/pos/receipts/'.$receipt->id)->assertNotFound();
+    }
+
+    public function test_receipt_chain_verification_does_not_enumerate_a_terminal_outside_location_scope(): void
+    {
+        Permission::findOrCreate('pos.view_reports', 'sanctum');
+        $this->user->givePermissionTo('pos.view_reports');
+        $otherLocation = Location::factory()->create(['company_id' => $this->company->id]);
+        $otherTerminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $otherLocation->id,
+        ]);
+        $this->restrictMembershipTo([$this->location->id]);
+
+        $this->postJson('/api/v1/pos/reports/receipts/verify-chain', [
+            'terminal_id' => $otherTerminal->id,
+        ])->assertNotFound();
     }
 
     /** @param list<string> $locationIds */

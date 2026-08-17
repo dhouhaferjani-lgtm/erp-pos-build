@@ -117,6 +117,8 @@ describe('ReceiptDetailPage', () => {
     renderDetail()
 
     expect(await screen.findByRole('heading', { name: 'TN-POS-0001' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'TN-POS-0001' }).nextElementSibling).toHaveTextContent(/11[.,]900/)
+    expect(screen.queryByText('Sale')).not.toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Unit price (incl. VAT)' })).toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Line net' })).toBeInTheDocument()
     expect(screen.getByText('SNAP-OLIVE')).toBeInTheDocument()
@@ -144,6 +146,7 @@ describe('ReceiptDetailPage', () => {
   it('links an original receipt to its refunds and a refund back to its original', async () => {
     const { unmount } = renderDetail()
     expect(await screen.findByRole('link', { name: 'TN-REF-0001' })).toHaveAttribute('href', '/pos/receipts/refund-1')
+    expect(screen.getByText('Reason recorded in the fiscal event')).toBeVisible()
     unmount()
 
     renderDetail({
@@ -162,5 +165,6 @@ describe('ReceiptDetailPage', () => {
       },
     })
     expect(await screen.findByRole('link', { name: 'TN-POS-0001' })).toHaveAttribute('href', '/pos/receipts/receipt-1')
+    expect(screen.getByText('Refund')).toBeVisible()
   })
 })

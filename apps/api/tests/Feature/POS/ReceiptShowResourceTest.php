@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\ReceiptVatDetail;
+use App\Modules\Product\Domain\Product;
 use App\Modules\Treasury\Domain\PaymentMethod;
+use App\Modules\Uom\Domain\Entities\Unit;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
 final class ReceiptShowResourceTest extends ReceiptReportingTestCase
@@ -103,5 +106,55 @@ final class ReceiptShowResourceTest extends ReceiptReportingTestCase
         $response->assertJsonPath('data.payments.0.payment_method', 'Cash');
         $response->assertJsonPath('data.cash_rounding_denomination', '0.050');
         $response->assertJsonPath('data.total', '11.500');
+    }
+
+    public function test_show_uses_the_current_unit_precision_without_replacing_the_historical_product_snapshot(): void
+    {
+        $unit = Unit::factory()->create(['decimal_places' => 2]);
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'unit_id' => $unit->id,
+            'sku' => 'CURRENT-001',
+        ]);
+        $receipt = $this->createReceipt();
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'product_code' => 'SNAPSHOT-001',
+            'product_name' => 'Historical product name',
+            'quantity' => '1.2500',
+            'unit' => 'kg',
+            'unit_price' => '1.000',
+            'line_total' => '1.250',
+            'tax_rate' => '0.00',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+        ]);
+        $product->forceFill(['sku' => 'MUTATED-999', 'name' => 'Renamed product'])->saveQuietly();
+
+        $this->getJson('/api/v1/pos/receipts/'.$receipt->id)
+            ->assertOk()
+            ->assertJsonPath('data.lines.0.quantity', '1.25')
+            ->assertJsonPath('data.lines.0.quantity_decimals', 2)
+            ->assertJsonPath('data.lines.0.product_code', 'SNAPSHOT-001')
+            ->assertJsonPath('data.lines.0.product_name', 'Historical product name');
+    }
+
+    public function test_show_normalizes_a_pre_fiscal_return_to_a_refund_with_a_magnitude_total(): void
+    {
+        $receipt = $this->createReceipt('SALE');
+        $receipt->forceFill([
+            'receipt_type' => ReceiptType::Return,
+            'fiscal_event_id' => null,
+            'total' => '-5.250',
+            'currency' => 'TND',
+        ])->saveQuietly();
+
+        $this->getJson('/api/v1/pos/receipts/'.$receipt->id)
+            ->assertOk()
+            ->assertJsonPath('data.invoice_type_code', 'REFUND')
+            ->assertJsonPath('data.total', '5.250');
     }
 }

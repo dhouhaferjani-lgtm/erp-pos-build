@@ -77,6 +77,19 @@ function RefundPolicyAlertDetails({ alerts, currency }: { alerts: readonly unkno
   )
 }
 
+function RefundReason({ reason, source }: { reason: string | null; source: string }) {
+  const { t } = useTranslation(['pos', 'common'])
+
+  return (
+    <div>
+      <p>{reason ?? t('pos:receiptReporting.refunds.placeholder')}</p>
+      <p className={cn('mt-0.5 text-xs', colorTokens.text.muted)}>
+        {t(`pos:receiptReporting.refunds.reasonSources.${source}`)}
+      </p>
+    </div>
+  )
+}
+
 export function RefundReceiptListPage() {
   const { t } = useTranslation(['pos', 'common'])
   const { hasTenantScope } = usePosTenantScope()
@@ -161,18 +174,14 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
         <Link to={`/pos/receipts/${row.original_receipt_id}`} className={cn('font-mono hover:underline', colorTokens.intent.primary.textStrong)}>
           {row.original_receipt_number}
         </Link>
-      ) : t('common:notAvailable'),
+      ) : t('pos:receiptReporting.refunds.placeholder'),
     },
     {
       key: 'reason',
       header: t('pos:receiptReporting.refunds.reason'),
-      render: (row) => (
-        <span title={t(`pos:receiptReporting.refunds.reasonSources.${row.refund_reason_source}`)}>
-          {row.refund_reason ?? t('common:notAvailable')}
-        </span>
-      ),
+      render: (row) => <RefundReason reason={row.refund_reason} source={row.refund_reason_source} />,
     },
-    { key: 'destination', header: t('pos:receiptReporting.refunds.destination'), render: (row) => row.refund_destination ? t(`pos:receiptReporting.refunds.destinations.${row.refund_destination}`) : t('common:notAvailable') },
+    { key: 'destination', header: t('pos:receiptReporting.refunds.destination'), render: (row) => row.refund_destination ? t(`pos:receiptReporting.refunds.destinations.${row.refund_destination}`) : t('pos:receiptReporting.refunds.placeholder') },
     { key: 'location', header: t('pos:receipts.location'), accessor: (row) => row.location_name ?? t('common:notAvailable') },
     { key: 'terminal', header: t('pos:receipts.terminal'), accessor: (row) => row.terminal_code },
     { key: 'cashier', header: t('pos:receipts.cashier'), accessor: (row) => row.cashier_name },
@@ -194,6 +203,7 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
   const terminals = optionsQuery.data?.terminals ?? []
   const hasActiveTerminal = terminals.some((terminal) => terminal.v4_refund_authoring_acknowledged_at !== null)
   const refunds = refundsQuery.data?.data ?? []
+  const showsRegister = hasActiveTerminal || refunds.length > 0
   const meta = refundsQuery.data?.meta
   const firstRow = meta && meta.total > 0 ? (meta.current_page - 1) * meta.per_page + 1 : null
   const lastRow = firstRow === null ? null : firstRow + refunds.length - 1
@@ -228,7 +238,7 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
           </label>
         </div>
       )}
-      pagination={hasActiveTerminal && meta ? (
+      pagination={showsRegister && meta ? (
         <OffsetPagination
           currentPage={meta.current_page}
           lastPage={meta.last_page}
@@ -255,7 +265,7 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
         )}
       </section>
 
-      {hasActiveTerminal ? (
+      {showsRegister ? (
         <DataTable
           columns={columns}
           data={refunds}

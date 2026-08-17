@@ -279,7 +279,6 @@
       "confirmDownload": "Télécharger le duplicata"
     },
     "detail": {
-      "subtitle": "{{date}} · {{terminal}}",
       "backToRegister": "Retour au registre des tickets",
       "notFoundTitle": "Ticket introuvable",
       "notFoundDescription": "Ce ticket est indisponible ou hors de votre périmètre d'emplacements autorisé.",
@@ -339,6 +338,7 @@
       "emptyTitle": "Aucun remboursement ou annulation pour cette période",
       "emptyDescription": "Les remboursements et annulations apparaissent ici lorsqu'un terminal activé les enregistre.",
       "tableLabel": "Registre des remboursements et annulations",
+      "placeholder": "—",
       "capability": {
         "notEnabled": "Les remboursements ne sont pas activés sur {{terminal}} — l'appareil ne peut pas en traiter.",
         "awaiting": "{{terminal}} est activé et attend l'accusé de réception de l'appareil.",
@@ -346,7 +346,7 @@
       },
       "reasonSources": {
         "canonical": "Motif enregistré dans l'événement fiscal",
-        "legacy_enum": "Motif du ticket historique"
+        "legacy_enum": "Classification historique — pas un texte saisi"
       },
       "destinations": {
         "cash": "Espèces"

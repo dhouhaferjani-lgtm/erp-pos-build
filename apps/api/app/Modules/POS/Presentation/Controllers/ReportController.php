@@ -424,18 +424,20 @@ final class ReportController extends Controller
             ],
         ]);
 
-        /** @var Terminal $terminal */
-        $terminal = Terminal::findOrFail($request->input('terminal_id'));
-
-        // Verify terminal belongs to current company
-        if ($terminal->company_id !== $this->companyContext->getCompanyId()) {
-            return response()->json([
-                'error' => [
-                    'code' => 'FORBIDDEN',
-                    'message' => 'Terminal does not belong to your company',
-                ],
-            ], 403);
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(401);
         }
+
+        $companyId = $this->companyContext->requireCompanyId();
+        $locationIds = $this->locationScope->resolve($user);
+        $unrestricted = $this->locationScopeBoundary->isUnrestricted($companyId, $locationIds);
+
+        /** @var Terminal $terminal */
+        $terminal = Terminal::query()
+            ->where('company_id', $companyId)
+            ->when(! $unrestricted, fn (Builder $query): Builder => $query->whereIn('location_id', $locationIds))
+            ->findOrFail($request->input('terminal_id'));
 
         $isValid = $this->receiptHashService->verifyTerminalChain($terminal);
 

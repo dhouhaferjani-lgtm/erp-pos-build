@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Application\Services;
 
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Application\DTOs\RefundReportingData;
 use App\Modules\POS\Domain\Enums\ReceiptType;
@@ -51,7 +52,9 @@ final class RefundReportingEnricher
     private static function isRefundLike(Receipt $receipt): bool
     {
         return in_array($receipt->invoice_type_code, ['REFUND', 'VOID'], true)
-            || $receipt->receipt_type === ReceiptType::Return;
+            || ($receipt->receipt_type === ReceiptType::Return
+                && $receipt->fiscal_event_id === null
+                && $receipt->invoice_type_code === 'SALE');
     }
 
     private function enrichReceipt(Receipt $receipt, ?FiscalEvent $event): RefundReportingData
@@ -60,7 +63,7 @@ final class RefundReportingEnricher
         $reasonSource = 'legacy_enum';
         $destination = null;
 
-        if ($event !== null) {
+        if ($event?->event_type === FiscalEventType::SALE_RECEIPT) {
             try {
                 $view = $this->canonicalPayloadReader->forSaleReceipt($event);
                 $reference = $view->originalReceiptReference();

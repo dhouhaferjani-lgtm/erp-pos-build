@@ -130,10 +130,7 @@ export function ReceiptDetailPage() {
     <div className="w-full space-y-5">
       <PageHeader
         title={receipt.receipt_number}
-        subtitle={t('pos:receiptReporting.detail.subtitle', {
-          date: formatDateTime(receipt.posted_at, dateOptions),
-          terminal: receipt.terminal_code,
-        })}
+        subtitle={formatCurrency(receipt.total, { currency: receipt.currency })}
         breadcrumb={(
           <Link to="/pos/receipts" className={cn('text-sm hover:underline', colorTokens.intent.primary.textStrong)}>
             {t('pos:receiptReporting.detail.backToRegister')}
@@ -145,7 +142,7 @@ export function ReceiptDetailPage() {
               <Download className="me-2 h-4 w-4" aria-hidden="true" />
               {t('pos:receiptReporting.detail.downloadDuplicate')}
             </Button>
-            <Button type="button" onClick={() => { setReprintAction('print') }}>
+            <Button type="button" variant="secondary" onClick={() => { setReprintAction('print') }}>
               <Printer className="me-2 h-4 w-4" aria-hidden="true" />
               {t('pos:receiptReporting.detail.printDuplicate')}
             </Button>
@@ -160,13 +157,15 @@ export function ReceiptDetailPage() {
               {t('pos:receiptReporting.detail.summary')}
             </h2>
             <p className={cn('mt-1 text-sm', colorTokens.text.muted)}>
-              {receipt.location_name ?? t('common:notAvailable')} · {receipt.cashier_name}
+              {formatDateTime(receipt.posted_at, dateOptions)} · {receipt.terminal_code} · {receipt.location_name ?? t('common:notAvailable')} · {receipt.cashier_name}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <StatusBadge tone={receipt.invoice_type_code === 'SALE' ? 'success' : 'warning'}>
-              {t(`pos:receipts.types.${receipt.invoice_type_code}`)}
-            </StatusBadge>
+            {receipt.invoice_type_code === 'SALE' ? null : (
+              <StatusBadge tone="warning">
+                {t(`pos:receipts.types.${receipt.invoice_type_code}`)}
+              </StatusBadge>
+            )}
             <StatusBadge>{t(`pos:receipts.fiscalStatuses.${receipt.fiscal_status}`)}</StatusBadge>
           </div>
         </div>
@@ -216,7 +215,12 @@ export function ReceiptDetailPage() {
                     {refund.receipt_number}
                   </Link>
                   <p className={cn('mt-1 text-xs', colorTokens.text.muted)}>
-                    {refund.refund_reason ?? t('common:notAvailable')} · {refund.refund_destination ?? t('common:notAvailable')}
+                    {refund.refund_reason ?? t('pos:receiptReporting.refunds.placeholder')} · {refund.refund_destination
+                      ? t(`pos:receiptReporting.refunds.destinations.${refund.refund_destination}`)
+                      : t('pos:receiptReporting.refunds.placeholder')}
+                  </p>
+                  <p className={cn('mt-0.5 text-xs', colorTokens.text.muted)}>
+                    {t(`pos:receiptReporting.refunds.reasonSources.${refund.refund_reason_source}`)}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

@@ -81,6 +81,13 @@ final class ReceiptDetailData extends Data
         $moneyScale = $currencyScaleResolver->getScale($receipt->currency);
         $money = static fn (string $value): string => CurrencyScale::bcformatStrict($value, $moneyScale);
         $nullableMoney = static fn (?string $value): ?string => $value === null ? null : CurrencyScale::bcformatStrict($value, $moneyScale);
+        $isLegacyReturn = $receipt->receipt_type->value === 'return'
+            && $receipt->fiscal_event_id === null
+            && $receipt->invoice_type_code === 'SALE';
+        $formattedTotal = $money((string) $receipt->total);
+        $reportingTotal = $isLegacyReturn && str_starts_with($formattedTotal, '-')
+            ? substr($formattedTotal, 1)
+            : $formattedTotal;
 
         $lines = $receipt->lines->map(function (ReceiptLine $line) use ($money, $returnedQuantities): ReceiptDetailLineData {
             $product = $line->relationLoaded('product') ? $line->getRelation('product') : null;
@@ -135,7 +142,7 @@ final class ReceiptDetailData extends Data
             id: $receipt->id,
             receipt_number: $receipt->receipt_number,
             posted_at: $receipt->posted_at->toIso8601String(),
-            invoice_type_code: $receipt->invoice_type_code,
+            invoice_type_code: $isLegacyReturn ? 'REFUND' : $receipt->invoice_type_code,
             training_flag: $receipt->training_flag,
             receipt_type: $receipt->receipt_type->value,
             fiscal_status: $receipt->fiscal_status->value,
@@ -152,7 +159,7 @@ final class ReceiptDetailData extends Data
             cash_rounding_adjustment: $nullableMoney($receipt->cash_rounding_adjustment),
             cash_rounding_denomination: $nullableMoney($receipt->cash_rounding_denomination),
             change_due: $nullableMoney($receipt->change_due),
-            total: $money((string) $receipt->total),
+            total: $reportingTotal,
             notes: $receipt->notes,
             is_voided: $receipt->is_voided,
             voided_at: $receipt->voided_at?->toISOString(),

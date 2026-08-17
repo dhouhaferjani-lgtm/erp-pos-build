@@ -588,7 +588,7 @@ final class ReceiptController extends Controller
             },
             'returnReceipts' => function ($query) use ($companyId, $allowedLocationIds): void {
                 $this->scopeRelatedReceipt($query, $companyId, $allowedLocationIds);
-                $query->where('is_voided', false)->with('lines');
+                $query->where('is_voided', false)->with(['lines', 'originalReceipt']);
             },
         ])
             ->where('company_id', $companyId);

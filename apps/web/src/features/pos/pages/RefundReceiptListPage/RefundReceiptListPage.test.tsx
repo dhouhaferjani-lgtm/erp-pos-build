@@ -140,4 +140,42 @@ describe('RefundReceiptListPage', () => {
     expect(screen.getByText(/2[.,]000/)).toBeVisible()
     expect(screen.getByText('event-1')).toBeVisible()
   })
+
+  it('keeps historical refunds visible when no terminal can currently author a refund', async () => {
+    vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({ terminals: [{ ...baseTerminal }], cashiers: [] })
+    vi.mocked(fetchRefundReceipts).mockResolvedValue({
+      data: [refundRow],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: null, to: null },
+    })
+
+    renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
+
+    expect(await screen.findByRole('link', { name: 'TN-POS-R-0001' })).toBeVisible()
+  })
+
+  it('shows whether a refund reason is canonical or only a legacy classification', async () => {
+    vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({
+      terminals: [{ ...baseTerminal, v4_refund_authoring_enabled: true, v4_refund_authoring_acknowledged_at: '2026-08-17T10:00:00Z' }],
+      cashiers: [],
+    })
+    vi.mocked(fetchRefundReceipts).mockResolvedValue({
+      data: [refundRow, {
+        ...refundRow,
+        id: 'refund-legacy',
+        receipt_number: 'TN-POS-R-0002',
+        original_receipt_id: null,
+        original_receipt_number: null,
+        refund_reason: 'Defective product',
+        refund_reason_source: 'legacy_enum',
+        refund_destination: null,
+      }],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 2, from: null, to: null },
+    })
+
+    renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
+
+    expect(await screen.findByText('Reason recorded in the fiscal event')).toBeVisible()
+    expect(screen.getByText('Legacy classification — not authored text')).toBeVisible()
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
+  })
 })
