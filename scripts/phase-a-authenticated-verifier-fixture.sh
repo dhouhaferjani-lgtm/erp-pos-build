@@ -34,17 +34,110 @@ if [[ ! "$PHASE_A_FIXTURE_PORT" =~ ^[0-9]+$ ]] \
   exit 64
 fi
 
-if [[ "${1:-}" == "--preflight-only" ]]; then
+mode=full
+case "${1:-}" in
+  '')
+    ;;
+  --preflight-only)
+    mode=preflight
+    ;;
+  --migrate-only)
+    mode=migrate
+    ;;
+  *)
+    echo "Usage: $0 [--preflight-only|--migrate-only]" >&2
+    exit 64
+    ;;
+esac
+if [[ $# -gt 1 ]]; then
+  echo "Usage: $0 [--preflight-only|--migrate-only]" >&2
+  exit 64
+fi
+
+for variable in DATABASE_URL DB_URL DB_CENTRAL_URL; do
+  if [[ -n "${!variable:-}" ]]; then
+    echo "Refusing inherited database URL override: $variable" >&2
+    exit 64
+  fi
+done
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(cd "$script_dir/.." && pwd)
+config_cache_path=${APP_CONFIG_CACHE:-bootstrap/cache/config.php}
+if [[ "$config_cache_path" != /* ]]; then
+  config_cache_path="$repo_root/apps/api/$config_cache_path"
+fi
+if [[ -f "$config_cache_path" ]]; then
+  echo "Refusing cached Laravel configuration: $config_cache_path" >&2
+  exit 64
+fi
+
+for executable in jq php; do
+  command -v "$executable" >/dev/null || {
+    echo "Missing required executable: $executable" >&2
+    exit 69
+  }
+done
+
+cd "$repo_root/apps/api"
+
+export DB_CONNECTION=central
+export DATABASE_URL=
+export DB_URL=
+export DB_CENTRAL_URL=
+export DB_HOST="$PGHOST"
+export DB_PORT="$PGPORT"
+export DB_DATABASE="$PHASE_A_MIGRATE_DB"
+export DB_USERNAME="$PGUSER"
+export DB_PASSWORD="$PGPASSWORD"
+export DB_CENTRAL_HOST="$PGHOST"
+export DB_CENTRAL_PORT="$PGPORT"
+export DB_CENTRAL_DATABASE="$PHASE_A_MIGRATE_DB"
+export DB_CENTRAL_USERNAME="$PGUSER"
+export DB_CENTRAL_PASSWORD="$PGPASSWORD"
+
+effective_config=$(php -r '
+require "vendor/autoload.php";
+$app = require "bootstrap/app.php";
+(new Illuminate\Foundation\Bootstrap\LoadEnvironmentVariables)->bootstrap($app);
+(new Illuminate\Foundation\Bootstrap\LoadConfiguration)->bootstrap($app);
+$config = $app["config"];
+echo json_encode([
+    "cached" => $app->configurationIsCached(),
+    "default" => $config->get("database.default"),
+    "driver" => $config->get("database.connections.central.driver"),
+    "url" => $config->get("database.connections.central.url"),
+    "host" => (string) $config->get("database.connections.central.host"),
+    "port" => (string) $config->get("database.connections.central.port"),
+    "database" => $config->get("database.connections.central.database"),
+    "username" => $config->get("database.connections.central.username"),
+], JSON_THROW_ON_ERROR);
+')
+if ! jq -e \
+  --arg host "$PGHOST" \
+  --arg port "$PGPORT" \
+  --arg database "$PHASE_A_MIGRATE_DB" \
+  --arg username "$PGUSER" \
+  '.cached == false
+    and .default == "central"
+    and .driver == "pgsql"
+    and (.url == null or .url == "")
+    and .host == $host
+    and .port == $port
+    and .database == $database
+    and .username == $username' >/dev/null <<<"$effective_config"; then
+  echo "Refusing because Laravel effective central connection does not match the disposable target." >&2
+  echo "$effective_config" | jq -c . >&2
+  exit 64
+fi
+echo "Laravel effective central connection matches $PHASE_A_MIGRATE_DB."
+
+if [[ "$mode" == preflight ]]; then
   echo "Disposable fixture preflight passed for $PHASE_A_MIGRATE_DB."
   exit 0
 fi
 
-if [[ $# -ne 0 ]]; then
-  echo "Usage: $0 [--preflight-only]" >&2
-  exit 64
-fi
-
-for executable in curl jq php psql; do
+for executable in curl psql; do
   command -v "$executable" >/dev/null || {
     echo "Missing required executable: $executable" >&2
     exit 69
@@ -59,18 +152,30 @@ if [[ "$actual_database" != "$PHASE_A_MIGRATE_DB" ]]; then
   exit 64
 fi
 
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-repo_root=$(cd "$script_dir/.." && pwd)
-cd "$repo_root/apps/api"
+laravel_databases=$(php -r '
+require "vendor/autoload.php";
+$app = require "bootstrap/app.php";
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+echo json_encode([
+    "default" => $app["db"]->connection()->scalar("select current_database()"),
+    "central" => $app["db"]->connection("central")->scalar("select current_database()"),
+], JSON_THROW_ON_ERROR);
+')
+if ! jq -e --arg database "$PHASE_A_MIGRATE_DB" \
+  '.default == $database and .central == $database' >/dev/null <<<"$laravel_databases"; then
+  echo "Laravel database identity mismatch; refusing destructive migration." >&2
+  echo "$laravel_databases" | jq -c . >&2
+  exit 64
+fi
+echo "Laravel default and central connections both resolve to $PHASE_A_MIGRATE_DB."
 
-export DB_HOST="$PGHOST"
-export DB_PORT="$PGPORT"
-export DB_USERNAME="$PGUSER"
-export DB_PASSWORD="$PGPASSWORD"
-export DB_DATABASE="$PHASE_A_MIGRATE_DB"
-export DB_CENTRAL_DATABASE="$PHASE_A_MIGRATE_DB"
+php artisan migrate:fresh --database=central --force
 
-php artisan migrate:fresh --force
+if [[ "$mode" == migrate ]]; then
+  php artisan migrate:status --database=central
+  echo "Scratch-only migration evidence complete."
+  exit 0
+fi
 
 export PHASE_A_FIXTURE_EMAIL="phase-a-m7-$RANDOM-$RANDOM@example.test"
 export PHASE_A_FIXTURE_PASSWORD="CountryDefaults-M7-Only-2026!"

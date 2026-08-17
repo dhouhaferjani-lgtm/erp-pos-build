@@ -52,24 +52,60 @@ final class VerifyCountryDefaultsCommandTest extends TestCase
 
     public function test_authenticated_fixture_runner_rejects_a_production_like_database_before_execution(): void
     {
-        $repoRoot = dirname(base_path(), 2);
-        $process = new Process(
-            [$repoRoot.'/scripts/phase-a-authenticated-verifier-fixture.sh', '--preflight-only'],
-            $repoRoot,
-            [
-                'PGHOST' => '127.0.0.1',
-                'PGPORT' => '5432',
-                'PGUSER' => 'fixture-user',
-                'PGPASSWORD' => 'fixture-password',
-                'PHASE_A_MIGRATE_DB' => 'iziposcentral',
-                'PHASE_A_FIXTURE_CONFIRM' => 'I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE',
-                'PHASE_A_FIXTURE_PORT' => '8197',
-            ],
-        );
+        $process = $this->fixturePreflight(['PHASE_A_MIGRATE_DB' => 'iziposcentral']);
         $process->run();
 
         self::assertSame(64, $process->getExitCode());
         self::assertStringContainsString('Refusing non-disposable database name: iziposcentral', $process->getErrorOutput());
+    }
+
+    public function test_authenticated_fixture_runner_rejects_inherited_database_url_precedence(): void
+    {
+        foreach (['DB_URL', 'DB_CENTRAL_URL'] as $variable) {
+            $process = $this->fixturePreflight([
+                $variable => 'postgresql://fixture:fixture@127.0.0.1:1/iziposcentral',
+            ]);
+            $process->run();
+
+            self::assertSame(64, $process->getExitCode());
+            self::assertStringContainsString("Refusing inherited database URL override: {$variable}", $process->getErrorOutput());
+        }
+    }
+
+    public function test_authenticated_fixture_runner_rejects_cached_laravel_configuration(): void
+    {
+        $cachePath = tempnam(sys_get_temp_dir(), 'phase-a-config-cache-');
+        self::assertIsString($cachePath);
+
+        try {
+            $process = $this->fixturePreflight(['APP_CONFIG_CACHE' => $cachePath]);
+            $process->run();
+
+            self::assertSame(64, $process->getExitCode());
+            self::assertStringContainsString('Refusing cached Laravel configuration', $process->getErrorOutput());
+        } finally {
+            if (is_file($cachePath)) {
+                unlink($cachePath);
+            }
+        }
+    }
+
+    public function test_authenticated_fixture_runner_pins_the_effective_laravel_connection(): void
+    {
+        $process = $this->fixturePreflight([
+            'DB_CENTRAL_HOST' => 'production-db.example.test',
+            'DB_CENTRAL_PORT' => '6543',
+            'DB_CENTRAL_DATABASE' => 'iziposcentral',
+            'DB_CENTRAL_USERNAME' => 'production-user',
+            'DB_CENTRAL_PASSWORD' => 'production-password',
+        ]);
+        $process->run();
+
+        self::assertSame(0, $process->getExitCode());
+        self::assertStringContainsString(
+            'Laravel effective central connection matches autoerp_country_defaults_scratch.',
+            $process->getOutput(),
+        );
     }
 
     private function m4Artisan(): PendingCommand
@@ -80,5 +116,25 @@ final class VerifyCountryDefaultsCommandTest extends TestCase
         }
 
         return $command;
+    }
+
+    /** @param array<string, string> $overrides */
+    private function fixturePreflight(array $overrides = []): Process
+    {
+        $repoRoot = dirname(base_path(), 2);
+
+        return new Process(
+            [$repoRoot.'/scripts/phase-a-authenticated-verifier-fixture.sh', '--preflight-only'],
+            $repoRoot,
+            array_merge([
+                'PGHOST' => '127.0.0.1',
+                'PGPORT' => '5432',
+                'PGUSER' => 'fixture-user',
+                'PGPASSWORD' => 'fixture-password',
+                'PHASE_A_MIGRATE_DB' => 'autoerp_country_defaults_scratch',
+                'PHASE_A_FIXTURE_CONFIRM' => 'I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE',
+                'PHASE_A_FIXTURE_PORT' => '8197',
+            ], $overrides),
+        );
     }
 }

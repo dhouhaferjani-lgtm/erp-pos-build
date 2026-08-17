@@ -717,13 +717,15 @@ database/migrations/2026_08_11_100300_import_legacy_coa_templates_as_drafts.php"
 ./vendor/bin/pint --test $PHASE_A_PHP_SCOPE
 
 # 5 — migrations: prove the four files are DISCOVERED by the default (production) path and
-#     apply cleanly from empty on a scratch central database.
-DB_HOST="$PGHOST" DB_PORT="$PGPORT" DB_USERNAME="$PGUSER" DB_PASSWORD="$PGPASSWORD" \
-DB_DATABASE="$PHASE_A_MIGRATE_DB" DB_CENTRAL_DATABASE="$PHASE_A_MIGRATE_DB" \
-  php artisan migrate:fresh --force
-DB_HOST="$PGHOST" DB_PORT="$PGPORT" DB_USERNAME="$PGUSER" DB_PASSWORD="$PGPASSWORD" \
-DB_DATABASE="$PHASE_A_MIGRATE_DB" DB_CENTRAL_DATABASE="$PHASE_A_MIGRATE_DB" \
-  php artisan migrate:status > /tmp/phase-a-migrate-status.txt
+#     apply cleanly from empty on a scratch central database. The committed runner rejects URL
+#     precedence and cached config, pins every default/central field, confirms both effective
+#     Laravel connections, and passes --database=central to the destructive command.
+PGHOST="$PGHOST" PGPORT="$PGPORT" PGUSER="$PGUSER" PGPASSWORD="$PGPASSWORD" \
+PHASE_A_MIGRATE_DB="$PHASE_A_MIGRATE_DB" \
+PHASE_A_FIXTURE_CONFIRM=I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE \
+PHASE_A_FIXTURE_PORT=8196 \
+  ../../scripts/phase-a-authenticated-verifier-fixture.sh --migrate-only \
+  | tee /tmp/phase-a-migrate-status.txt
 for m in 2026_08_11_100000_create_admin_templates_table \
          2026_08_11_100100_create_admin_template_accounts_table \
          2026_08_11_100200_create_country_template_assignments_table \
@@ -741,6 +743,8 @@ done
 #     assigns through authenticated HTTP, and leaves staging/production human certification open.
 PHASE_A_FIXTURE_CONFIRM=I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE \
 PHASE_A_FIXTURE_PORT=8197 \
+PGHOST="$PGHOST" PGPORT="$PGPORT" PGUSER="$PGUSER" PGPASSWORD="$PGPASSWORD" \
+PHASE_A_MIGRATE_DB="$PHASE_A_MIGRATE_DB" \
   ../../scripts/phase-a-authenticated-verifier-fixture.sh
 
 # 7 — route inventory
