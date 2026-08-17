@@ -90,10 +90,10 @@ milestones:
     review_lenses: [treasury, tenancy-authz, frontend-conventions]
     status: pending
     fix_rounds: 2
-    commit: ec414c4a9
+    commit: ab86ea880
     verdict: docs/handoff/reviews/country-defaults-phase-a/M7-round1.md
     last_verdict: CHANGES-REQUIRED
-    updated: ec414c4a9
+    updated: ab86ea880
 
 status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
