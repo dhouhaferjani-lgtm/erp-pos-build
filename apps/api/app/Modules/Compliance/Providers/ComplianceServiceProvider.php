@@ -22,7 +22,6 @@ use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
 use App\Modules\Inventory\Application\Services\FraudTriggeredCountingService;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
-use App\Shared\Contracts\Company\CompanyVerticalQueryContract;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -55,11 +54,7 @@ class ComplianceServiceProvider extends ServiceProvider
             );
         });
 
-        $this->app->singleton(CompanyFraudSettingsService::class, function ($app) {
-            return new CompanyFraudSettingsService(
-                $app->make(CompanyVerticalQueryContract::class),
-            );
-        });
+        $this->app->singleton(CompanyFraudSettingsService::class);
     }
 
     public function boot(): void

@@ -515,7 +515,7 @@ export const migrations: Migration[] = [
         cash_variance_over_hard             TEXT NOT NULL,
         cash_variance_under_soft            TEXT NOT NULL,
         cash_variance_under_hard            TEXT NOT NULL,
-        require_blind_cash_count            INTEGER NOT NULL DEFAULT 1,
+        require_blind_cash_count            INTEGER NOT NULL DEFAULT 0,
         require_manager_pin_above_hard      INTEGER NOT NULL DEFAULT 1,
         cash_variance_email_severity        TEXT NOT NULL DEFAULT 'none',
         refreshed_at                        TEXT NOT NULL DEFAULT (datetime('now'))
