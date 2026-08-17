@@ -66,11 +66,11 @@ milestones:
     title: "WAVE 1 (spec §7.5 wave 1, binding): S-1, S-2, S-3, S-6, S-7, S-9 (incl. the regenerated permission map), S-13, S-11 (index + filter-options half) - screen (a) /pos/receipts (SALE-only, disjoint) - A-1 compliance-export re-gate on the composite `compliance` MODULE_PERMISSIONS key + its top-level bottom-section nav entry + OP-23 fraud-route re-gate - GATE-3 map entries - GATE-5 POS sidebar least-privilege re-key per the frozen §4.2.1 table - A-2 accountant three-key seeder grant - CL-1/CL-2/CL-5/CL-6/CL-7 - i18n rename - BT-1..BT-5, BT-8..BT-11, BT-12(index/options), BT-16, BT-18 - FT-1..FT-3, FT-10, FT-11, FT-14..FT-16. Addendum A(c) rule 1 is load-bearing: format with the RECEIPT's own currency via apps/web/src/lib/format.ts, and the differing-currency fixture assertion is required. NO cross-receipt sum anywhere."
     review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
     status: review
-    fix_rounds: 1
-    commit: cca51e7e2
-    verdict: docs/handoff/reviews/receipts-build/M1-round1.md
+    fix_rounds: 2
+    commit: 6baf6adfc
+    verdict: docs/handoff/reviews/receipts-build/M1-round2.md
     last_verdict: changes_required
-    updated: cca51e7e2
+    updated: 6baf6adfc
   - id: M2
     title: "WAVE 2 (spec §7.5 wave 2): S-4, S-5 (the intentional show() reshape), S-12, S-11 (show/PDF half) - screens (b) receipt detail /pos/receipts/:id and (c) refunds & voids register /pos/receipts/refunds incl. its three capability-banner states and the reprint confirm dialog + reprint audit surface - CL-3 (voucher links heal here, proven by test, never assumed) + CL-4 - BT-6, BT-7, BT-12(show/PDF), BT-13..BT-15, BT-17 - FT-4..FT-8, FT-12, FT-13. Close with the A0 STOP-AND-CHECK for M2b (owner_gates: A0-dependency-wave-2b)."
     review_lenses: [fiscal-pos, frontend-conventions, treasury, tenancy-authz, general]
@@ -104,3 +104,4 @@ findings:
   - "M1 live E2E/screenshots environment-blocked: Vite proxy could not connect to the API at 127.0.0.1:8010."
   - "M1 exact preflight stopped on repository-wide Pint drift outside this lane; scoped Vitest has three unrelated baseline failures recorded in the handback."
   - "M1 review round 1 CHANGES-REQUIRED was repaired in cca51e7e2; its numbered register is docs/handoff/reviews/receipts-build/M1-round1.md."
+  - "M1 review round 2 CHANGES-REQUIRED was repaired in 6baf6adfc; its sole P2 and the addressed P3s are recorded in docs/handoff/reviews/receipts-build/M1-round2.md."
