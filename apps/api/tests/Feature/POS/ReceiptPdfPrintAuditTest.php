@@ -33,9 +33,13 @@ final class ReceiptPdfPrintAuditTest extends ReceiptReportingTestCase
         $this->assertSame(ReceiptPrintType::Original, $prints[0]->print_type);
         $this->assertSame(1, $prints[0]->copy_number);
         $this->assertSame(PrintMethod::Pdf, $prints[0]->print_method);
+        $this->assertSame($receipt->terminal_id, $prints[0]->terminal_id);
+        $this->assertSame($this->user->id, $prints[0]->user_id);
         $this->assertSame(ReceiptPrintType::Duplicate, $prints[1]->print_type);
         $this->assertSame(2, $prints[1]->copy_number);
         $this->assertSame(PrintMethod::Pdf, $prints[1]->print_method);
+        $this->assertSame($receipt->terminal_id, $prints[1]->terminal_id);
+        $this->assertSame($this->user->id, $prints[1]->user_id);
         $this->assertNull($prints[0]->updated_at);
         $this->assertNull($prints[1]->updated_at);
     }

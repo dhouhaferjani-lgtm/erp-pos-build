@@ -84,12 +84,21 @@ final class ReceiptDetailData extends Data
         $isLegacyReturn = $receipt->receipt_type->value === 'return'
             && $receipt->fiscal_event_id === null
             && $receipt->invoice_type_code === 'SALE';
-        $formattedTotal = $money((string) $receipt->total);
-        $reportingTotal = $isLegacyReturn && str_starts_with($formattedTotal, '-')
-            ? substr($formattedTotal, 1)
-            : $formattedTotal;
+        $documentMoney = static function (string $value) use ($isLegacyReturn, $moneyScale) {
+            $formatted = CurrencyScale::bcformatStrict($value, $moneyScale);
 
-        $lines = $receipt->lines->map(function (ReceiptLine $line) use ($money, $returnedQuantities): ReceiptDetailLineData {
+            return $isLegacyReturn ? bcsub('0', $formatted, $moneyScale) : $formatted;
+        };
+        $nullableDocumentMoney = static fn (?string $value): ?string => $value === null
+            ? null
+            : $documentMoney($value);
+        $documentQuantity = static function (string $value) use ($isLegacyReturn) {
+            $formatted = CurrencyScale::bcformatStrict($value, QuantityScale::SCALE);
+
+            return $isLegacyReturn ? bcsub('0', $formatted, QuantityScale::SCALE) : $formatted;
+        };
+
+        $lines = $receipt->lines->map(function (ReceiptLine $line) use ($documentMoney, $documentQuantity, $money, $returnedQuantities): ReceiptDetailLineData {
             $product = $line->relationLoaded('product') ? $line->getRelation('product') : null;
             $unit = $product instanceof Product && $product->relationLoaded('unitOfMeasure')
                 ? $product->getRelation('unitOfMeasure')
@@ -103,13 +112,13 @@ final class ReceiptDetailData extends Data
                 product_id: $line->product_id,
                 product_name: $line->product_name,
                 product_code: $line->product_code,
-                quantity: QuantityScale::formatForUnit((string) $line->quantity, $quantityDecimals, $roundingMethod),
+                quantity: QuantityScale::formatForUnit($documentQuantity((string) $line->quantity), $quantityDecimals, $roundingMethod),
                 quantity_decimals: $quantityDecimals,
                 unit_price: $money((string) $line->unit_price),
-                discount_amount: $money((string) $line->discount_amount),
+                discount_amount: $documentMoney((string) $line->discount_amount),
                 vat_rate: (string) $line->tax_rate,
-                vat_amount: $money((string) $line->tax_amount),
-                line_total: $money((string) $line->line_total),
+                vat_amount: $documentMoney((string) $line->tax_amount),
+                line_total: $documentMoney((string) $line->line_total),
                 returned_quantity: QuantityScale::formatForUnit(
                     $returnedQuantities[$line->id] ?? '0',
                     $quantityDecimals,
@@ -120,9 +129,9 @@ final class ReceiptDetailData extends Data
 
         $vatDetails = $receipt->vatDetails->map(fn (ReceiptVatDetail $detail): ReceiptDetailVatData => new ReceiptDetailVatData(
             tax_rate: (string) $detail->tax_rate,
-            net_amount: $money((string) $detail->net_amount),
-            vat_amount: $money((string) $detail->vat_amount),
-            gross_amount: $money((string) $detail->gross_amount),
+            net_amount: $documentMoney((string) $detail->net_amount),
+            vat_amount: $documentMoney((string) $detail->vat_amount),
+            gross_amount: $documentMoney((string) $detail->gross_amount),
         ))->values()->all();
 
         $payments = $receipt->payments->map(fn (ReceiptPayment $payment): ReceiptDetailPaymentData => new ReceiptDetailPaymentData(
@@ -153,13 +162,13 @@ final class ReceiptDetailData extends Data
             cashier_id: $receipt->cashier_id,
             cashier_name: $receipt->cashier_name,
             currency: $receipt->currency,
-            subtotal: $money((string) $receipt->subtotal),
-            tax_amount: $money((string) $receipt->tax_amount),
-            discount_amount: $money((string) $receipt->discount_amount),
-            cash_rounding_adjustment: $nullableMoney($receipt->cash_rounding_adjustment),
+            subtotal: $documentMoney((string) $receipt->subtotal),
+            tax_amount: $documentMoney((string) $receipt->tax_amount),
+            discount_amount: $documentMoney((string) $receipt->discount_amount),
+            cash_rounding_adjustment: $nullableDocumentMoney($receipt->cash_rounding_adjustment),
             cash_rounding_denomination: $nullableMoney($receipt->cash_rounding_denomination),
             change_due: $nullableMoney($receipt->change_due),
-            total: $reportingTotal,
+            total: $documentMoney((string) $receipt->total),
             notes: $receipt->notes,
             is_voided: $receipt->is_voided,
             voided_at: $receipt->voided_at?->toISOString(),

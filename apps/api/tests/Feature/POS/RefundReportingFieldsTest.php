@@ -153,6 +153,9 @@ final class RefundReportingFieldsTest extends ReceiptReportingTestCase
         $this->assertArrayNotHasKey('refund_destination', $row);
         $this->assertArrayNotHasKey('refund_policy_alerts', $row);
         $this->assertArrayNotHasKey('original_receipt_number', $row);
+        $this->getJson('/api/v1/pos/receipts/'.$original->id)
+            ->assertOk()
+            ->assertJsonCount(0, 'data.return_receipts');
     }
 
     /**

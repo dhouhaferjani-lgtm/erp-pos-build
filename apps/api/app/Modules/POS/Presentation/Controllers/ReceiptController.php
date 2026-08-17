@@ -209,7 +209,9 @@ final class ReceiptController extends Controller
                 terminal_code: $receipt->terminal->code,
                 cashier_id: $receipt->cashier_id,
                 cashier_name: $receipt->cashier_name,
-                total: CurrencyScale::bcformatStrict((string) $receipt->total, $moneyScale),
+                total: $isLegacyReturn
+                    ? $this->receiptTotalMagnitude($receipt)
+                    : CurrencyScale::bcformatStrict((string) $receipt->total, $moneyScale),
                 currency: $receipt->currency,
                 original_receipt_id: $receipt->original_receipt_id,
             ))->toArray();
@@ -598,21 +600,23 @@ final class ReceiptController extends Controller
         // Calculate already-returned quantities per line
         $returnedQuantities = $this->calculateReturnedQuantities($receipt);
         $returnReporting = $this->refundReportingEnricher->enrich($receipt->returnReceipts);
-        $returnReceipts = $receipt->returnReceipts->map(function (Receipt $returnReceipt) use ($returnReporting): ReceiptReturnLineageData {
-            $reporting = $returnReporting[$returnReceipt->id];
+        $returnReceipts = $receipt->returnReceipts
+            ->filter(static fn (Receipt $returnReceipt): bool => isset($returnReporting[$returnReceipt->id]))
+            ->map(function (Receipt $returnReceipt) use ($returnReporting): ReceiptReturnLineageData {
+                $reporting = $returnReporting[$returnReceipt->id];
 
-            return new ReceiptReturnLineageData(
-                id: $returnReceipt->id,
-                receipt_number: $returnReceipt->receipt_number,
-                posted_at: $returnReceipt->posted_at->toIso8601String(),
-                invoice_type_code: $this->reportingInvoiceTypeCode($returnReceipt),
-                total: $this->receiptTotalMagnitude($returnReceipt),
-                currency: $returnReceipt->currency,
-                refund_reason: $reporting->refund_reason,
-                refund_reason_source: $reporting->refund_reason_source,
-                refund_destination: $reporting->refund_destination,
-            );
-        })->values()->all();
+                return new ReceiptReturnLineageData(
+                    id: $returnReceipt->id,
+                    receipt_number: $returnReceipt->receipt_number,
+                    posted_at: $returnReceipt->posted_at->toIso8601String(),
+                    invoice_type_code: $this->reportingInvoiceTypeCode($returnReceipt),
+                    total: $this->receiptTotalMagnitude($returnReceipt),
+                    currency: $returnReceipt->currency,
+                    refund_reason: $reporting->refund_reason,
+                    refund_reason_source: $reporting->refund_reason_source,
+                    refund_destination: $reporting->refund_destination,
+                );
+            })->values()->all();
 
         $originalReceipt = $receipt->originalReceipt;
         $originalLineage = $originalReceipt === null ? null : new ReceiptOriginalLineageData(
@@ -663,9 +667,9 @@ final class ReceiptController extends Controller
     {
         $scale = $this->currencyScaleResolver->getScale($receipt->currency);
         $total = (string) $receipt->total;
-        $magnitude = bccomp($total, '0', 4) < 0
-            ? bcsub('0', $total, 4)
-            : bcadd($total, '0', 4);
+        $magnitude = bccomp($total, '0', $scale) < 0
+            ? bcsub('0', $total, $scale)
+            : bcadd($total, '0', $scale);
 
         return CurrencyScale::bcformatStrict($magnitude, $scale);
     }

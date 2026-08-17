@@ -77,6 +77,8 @@ final class ReceiptIndexTypeFilterTest extends ReceiptReportingTestCase
             'original_receipt_id' => $sale->id,
             'return_reason' => 'defective',
             'fiscal_event_id' => null,
+            'currency' => 'TND',
+            'total' => '-5.250',
         ])->saveQuietly();
 
         $sales = $this->getJson('/api/v1/pos/receipts')->assertOk()->json('data.data');
@@ -87,6 +89,7 @@ final class ReceiptIndexTypeFilterTest extends ReceiptReportingTestCase
         $this->assertSame([$sale->id], array_column($sales, 'id'));
         $this->assertSame([$legacyReturn->id], array_column($refunds, 'id'));
         $this->assertSame('REFUND', $refunds[0]['invoice_type_code']);
+        $this->assertSame('5.250', $refunds[0]['total']);
         $this->assertSame('return', $refunds[0]['receipt_type']);
     }
 

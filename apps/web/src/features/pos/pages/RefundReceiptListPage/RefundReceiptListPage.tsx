@@ -27,10 +27,6 @@ function stringFilter(filters: Record<string, unknown>, key: string): string {
   return typeof filters[key] === 'string' ? filters[key] : ''
 }
 
-function amountMagnitude(value: string): string {
-  return value.startsWith('-') ? value.slice(1) : value
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -185,7 +181,7 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
     { key: 'location', header: t('pos:receipts.location'), accessor: (row) => row.location_name ?? t('common:notAvailable') },
     { key: 'terminal', header: t('pos:receipts.terminal'), accessor: (row) => row.terminal_code },
     { key: 'cashier', header: t('pos:receipts.cashier'), accessor: (row) => row.cashier_name },
-    { key: 'amount', header: t('pos:receiptReporting.refunds.amount'), numeric: true, render: (row) => formatCurrency(amountMagnitude(row.total), { currency: row.currency }) },
+    { key: 'amount', header: t('pos:receiptReporting.refunds.amount'), numeric: true, render: (row) => formatCurrency(row.total, { currency: row.currency }) },
     {
       key: 'alerts',
       header: t('pos:receiptReporting.refunds.alerts'),

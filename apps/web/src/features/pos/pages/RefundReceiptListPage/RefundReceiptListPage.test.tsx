@@ -178,4 +178,19 @@ describe('RefundReceiptListPage', () => {
     expect(screen.getByText('Legacy classification — not authored text')).toBeVisible()
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2)
   })
+
+  it('does not silently rewrite an invalid signed fiscal refund in the browser', async () => {
+    vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({
+      terminals: [{ ...baseTerminal, v4_refund_authoring_enabled: true, v4_refund_authoring_acknowledged_at: '2026-08-17T10:00:00Z' }],
+      cashiers: [],
+    })
+    vi.mocked(fetchRefundReceipts).mockResolvedValue({
+      data: [{ ...refundRow, total: '-12.345' }],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: null, to: null },
+    })
+
+    renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
+
+    expect(await screen.findByText(/-12[.,]345/)).toBeVisible()
+  })
 })

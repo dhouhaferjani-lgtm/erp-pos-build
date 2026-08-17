@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\POS;
 
+use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptVatDetail;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
@@ -65,6 +67,60 @@ final class ReceiptAggregateIntegrityTest extends ReceiptReportingTestCase
         yield 'positive adjustment' => ['0.100', '11.500'];
         yield 'negative adjustment' => ['-0.100', '11.300'];
         yield 'legacy null adjustment' => [null, '11.400'];
+    }
+
+    public function test_pre_fiscal_return_detail_projects_one_consistent_magnitude_document(): void
+    {
+        $receipt = $this->createReceipt('SALE');
+        $receipt->forceFill([
+            'receipt_type' => ReceiptType::Return,
+            'fiscal_event_id' => null,
+            'currency' => 'TND',
+            'subtotal' => '-5.000',
+            'tax_amount' => '-0.250',
+            'discount_amount' => '0.500',
+            'cash_rounding_adjustment' => null,
+            'total' => '-5.750',
+        ])->saveQuietly();
+        ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 1,
+            'product_id' => null,
+            'product_code' => 'LEGACY-RETURN',
+            'product_name' => 'Legacy return line',
+            'quantity' => '-1.2500',
+            'unit' => 'pc',
+            'unit_price' => '4.000',
+            'line_total' => '-5.000',
+            'tax_rate' => '5.00',
+            'tax_amount' => '-0.250',
+            'discount_amount' => '0.500',
+        ]);
+        $this->createVatDetail($receipt, '5.00', '-5.000', '-0.250', '-5.250');
+
+        $data = $this->getJson('/api/v1/pos/receipts/'.$receipt->id)
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame('REFUND', $data['invoice_type_code']);
+        $this->assertSame('5.000', $data['subtotal']);
+        $this->assertSame('0.250', $data['tax_amount']);
+        $this->assertSame('-0.500', $data['discount_amount']);
+        $this->assertSame('5.750', $data['total']);
+        $this->assertSame('1.2500', $data['lines'][0]['quantity']);
+        $this->assertSame('-0.500', $data['lines'][0]['discount_amount']);
+        $this->assertSame('0.250', $data['lines'][0]['vat_amount']);
+        $this->assertSame('5.000', $data['lines'][0]['line_total']);
+        $this->assertSame('5.000', $data['vat_details'][0]['net_amount']);
+        $this->assertSame('0.250', $data['vat_details'][0]['vat_amount']);
+        $this->assertSame('5.250', $data['vat_details'][0]['gross_amount']);
+
+        $calculatedTotal = bcsub(
+            bcadd($data['subtotal'], $data['tax_amount'], 3),
+            $data['discount_amount'],
+            3,
+        );
+        $this->assertSame(0, bccomp($data['total'], $calculatedTotal, 3));
     }
 
     private function createVatDetail(
