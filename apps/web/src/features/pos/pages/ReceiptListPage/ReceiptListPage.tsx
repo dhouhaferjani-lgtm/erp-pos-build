@@ -10,7 +10,7 @@ import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { useViewScope } from '@/features/locations/hooks/useViewScope'
 import { useLocation } from '@/hooks/useLocation'
 import { locationScopedKey } from '@/lib/locationScopedKey'
-import { formatCurrency, formatDateTime } from '@/lib/format'
+import { calendarDateInTimeZone, formatCurrency, formatDateTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { semanticColorTokens as colorTokens, tokens } from '@/lib/designTokens'
 import { useCompanyStore } from '@/stores/companyStore'
@@ -31,17 +31,6 @@ const FISCAL_STATUSES: ReceiptFiscalStatus[] = [
   'synced',
   'sync_failed',
 ]
-
-export function calendarDateInTimeZone(timeZone: string, date: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(date)
-  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
-  return `${value('year')}-${value('month')}-${value('day')}`
-}
 
 function positiveInteger(value: string | null, fallback: number): number {
   if (!value) return fallback

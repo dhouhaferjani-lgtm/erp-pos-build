@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { calendarDateInTimeZone } from '@/lib/format'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { calendarDateInTimeZone, ReceiptListPage } from './ReceiptListPage'
+import { ReceiptListPage } from './ReceiptListPage'
 import { fetchReceiptFilterOptions, fetchReceipts } from '../../api/receiptApi'
 
 vi.mock('react-i18next', () => ({
