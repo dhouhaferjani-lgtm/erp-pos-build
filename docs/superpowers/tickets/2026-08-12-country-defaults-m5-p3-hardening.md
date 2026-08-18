@@ -16,20 +16,25 @@ deployment-blocking are operational prerequisites, not optional cleanup.
 Laravel production uses cached configuration. Changing
 `COUNTRY_DEFAULTS_PROVISIONING_ENABLED` does nothing to already-cached processes by itself.
 
-For the Release 2 flip to `true`, and again for rollback to `false`:
+The Release 2 flip has a blocking precondition after authenticated G2 certification and assignment:
+run `php artisan country-defaults:verify` on staging and production. Both commands must exit zero
+before changing the flag. If either command exits non-zero, keep
+`COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false`; do not enable template-backed company creation or
+tenant registration.
+
+Only after that two-environment gate passes, perform the Release 2 flip to `true`:
 
 1. change the deployment environment value;
 2. rebuild Laravel's config cache (`php artisan config:cache` on the released artifact/container);
 3. restart every API/application process so no old config remains resident;
 4. terminate/restart Horizon workers (`php artisan horizon:terminate`, with the process supervisor
    bringing Horizon back) and restart any non-Horizon queue workers;
-5. verify `config('country_defaults.provisioning_enabled')` from the running release;
-6. on the forward flip, require `php artisan country-defaults:verify` to exit zero before company
-   creation is re-opened.
+5. verify `config('country_defaults.provisioning_enabled')` from the running release.
 
-Rollback is not complete until the false value is recached and all app/Horizon/queue processes have
-restarted. Owners: release engineering + platform operations. Status: **OPEN — must be copied into
-the production release runbook before Release 2**.
+For rollback, set the value to `false` and repeat steps 2–5. Rollback is not complete until the
+false value is recached and all app/Horizon/queue processes have restarted. Owners: release
+engineering + platform operations. Status: **OPEN — blocking gate must be copied into the
+production release runbook before Release 2**.
 
 ### Release 1 is not behaviorally inert (round 3 #4)
 

@@ -90,11 +90,15 @@ CLOSED by wave 4 · M2/M3 defaults revision with pilot data.
 - [ ] **G2. Authenticated certification:** a logged-in active `super_admin` reviews and publishes
       the TN, FR, and Generic chart templates through the HTTP surface, then assigns `TN`, `FR`,
       and `*`. No CLI/synthetic certification is permitted.
-- [ ] **G3. Verification:** run `php artisan country-defaults:verify` to zero exit on staging and
-      again on production before any reader switchover.
-- [ ] **G4. Release 2:** set `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=true`, rebuild `config:cache`,
-      restart application/queue workers, run `php artisan horizon:terminate`, and verify the value
-      from the running release. Keep external editors disabled pending the central-admin MFA lane.
+- [ ] **G3. Blocking verification gate:** after G2 certification and assignments, run
+      `php artisan country-defaults:verify` to zero exit on staging and again on production. A
+      non-zero exit in either environment blocks G4: keep
+      `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false` and do not reopen company creation or tenant
+      registration on the template-backed path.
+- [ ] **G4. Release 2:** only after both G3 commands exit zero, set
+      `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=true`, rebuild `config:cache`, restart
+      application/queue workers, run `php artisan horizon:terminate`, and verify the value from the
+      running release. Keep external editors disabled pending the central-admin MFA lane.
 - [ ] **G5. Rollback:** restore `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false`, rebuild config cache,
       restart application/queue workers, terminate Horizon, and verify the running value. Release 1
       has one behaviorally active expense-category loud-failure boundary; see the M5 P3 ticket.

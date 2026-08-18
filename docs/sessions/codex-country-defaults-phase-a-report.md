@@ -1845,3 +1845,62 @@ activation. Both feature flags remain off. Owner gates G1–G5, including authen
 certification and `country-defaults:verify` on staging and production, remain open and must be
 completed before the Release 2 flip. The branch remains unmerged and unpushed for orchestrator and
 owner review.
+
+## Terminal audit round 1 remediation — 2026-08-18
+
+The parent-held terminal audit returned `CHANGES-REQUIRED`. This scoped response leaves
+`.github/workflows/**` untouched and does not attempt the parent-owned merge conflict in
+`scripts/adversarial-review.sh`.
+
+### F-2 — PostgreSQL assignment API isolation
+
+The ordered PostgreSQL reproduction ran `AssignmentApiEndpointTest` immediately before
+`TemplateAssignmentServiceTest`. Before the fix, the API class passed but the service test failed:
+**1 failed, 16 passed / 63 assertions**, with **15** `admin_audit_logs` rows where **5** were
+expected. `AssignmentApiEndpointTest` disabled transaction wrapping for PostgreSQL but deleted only
+`country_template_assignments`, leaving its committed `super_admins`, templates, accounts, and
+audit rows for the next class.
+
+An initial literal truncate of all five tables made the focused order green, but the required whole
+feature-directory run rejected it: **1 failure + 6 errors / 160 tests** because it also erased the
+three migration-owned bootstrap drafts needed by `BootstrapKeyAssertionImportTest`. That attempt
+was discarded.
+
+The final fix narrows the PostgreSQL transaction opt-out to the single forked-concurrency test.
+Its teardown deletes only that test's committed non-bootstrap assignments, accounts, templates,
+audit rows, and administrator fixture, preserving the migration baseline. The ordered run is green:
+**17 tests / 66 assertions**. Both required whole-directory PostgreSQL commands are green:
+
+- `./vendor/bin/phpunit -c phpunit-pgsql.xml tests/Feature/CountryDefaults` — **160 tests / 1,088
+  assertions**;
+- `./vendor/bin/phpunit -c phpunit-pgsql.xml --testdox tests/Unit/CountryDefaults` — **53 tests /
+  693 assertions**.
+
+### F-3 — command tenant-context classification
+
+The first `ConsoleCommandTenantContextTest` run listed
+`App\Modules\CountryDefaults\Presentation\Console\VerifyCountryDefaultsCommand` among 12
+unclassified commands. The command now carries a justified class-level
+`@cross-tenant-by-design` annotation because it verifies the central catalog shared by every
+tenant. The rerun still reports the 11 unrelated pre-existing classifications, but the
+CountryDefaults command line is gone.
+
+### F-5 — blocking Release-2 order
+
+The consolidated owner checklist and M5 deployment ticket now make the order fail-closed: after
+authenticated certification and assignments, `php artisan country-defaults:verify` must exit zero
+on staging and production before the provisioning flag may change. A non-zero result keeps
+`COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false` and blocks template-backed company creation and
+tenant registration; the flag/cache/process/Horizon flip begins only after both environments pass.
+
+### F-6 through F-9 — durable P3 tickets
+
+Each terminal P3 has its own owner and acceptance contract:
+
+- `docs/superpowers/tickets/2026-08-18-document-cancellation-pg-test-db-safety.md`;
+- `docs/superpowers/tickets/2026-08-18-country-defaults-specialist-verdict-freshness.md`;
+- `docs/superpowers/tickets/2026-08-18-legacy-coa-export-pgbouncer-compatibility.md`; and
+- `docs/superpowers/tickets/2026-08-18-defaults-editor-frontend-route.md`.
+
+F-1 remains excluded for the workflow-hardening wave. F-4 remains a parent merge-time obligation.
+This branch is handed back for the parent's narrow terminal re-audit.

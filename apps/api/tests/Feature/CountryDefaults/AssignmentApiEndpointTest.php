@@ -46,18 +46,39 @@ final class AssignmentApiEndpointTest extends TestCase
     /** @return list<string|null> */
     protected function connectionsToTransact(): array
     {
-        return DB::getDriverName() === 'pgsql' ? [] : [config('database.default')];
+        return $this->usesCommittedPostgreSqlFixtures()
+            ? []
+            : [config('database.default')];
     }
 
     protected function tearDown(): void
     {
-        if (DB::getDriverName() === 'pgsql') {
-            DB::connection((new CountryTemplateAssignment)->getConnectionName())
-                ->table('country_template_assignments')
-                ->delete();
-        }
+        try {
+            if ($this->usesCommittedPostgreSqlFixtures()) {
+                $connection = DB::connection((new CountryTemplateAssignment)->getConnectionName());
+                $templateIds = $connection->table('admin_templates')
+                    ->whereNull('bootstrap_key')
+                    ->pluck('id')
+                    ->all();
 
-        parent::tearDown();
+                if ($templateIds !== []) {
+                    $connection->table('country_template_assignments')->whereIn('template_id', $templateIds)->delete();
+                    $connection->table('admin_template_accounts')->whereIn('template_id', $templateIds)->delete();
+                    $connection->table('admin_templates')->whereIn('id', $templateIds)->delete();
+                }
+
+                $connection->table('admin_audit_logs')->delete();
+                $connection->table('super_admins')->delete();
+            }
+        } finally {
+            parent::tearDown();
+        }
+    }
+
+    private function usesCommittedPostgreSqlFixtures(): bool
+    {
+        return DB::getDriverName() === 'pgsql'
+            && $this->name() === 'test_postgresql_concurrent_first_assignment_unique_loser_is_a_typed_conflict';
     }
 
     public function test_assignment_api_returns_country_matrix_normalizes_and_repoints(): void

@@ -16,6 +16,9 @@ use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use Illuminate\Console\Command;
 use Throwable;
 
+/**
+ * @cross-tenant-by-design Verifies the central country-default template and assignment catalog shared by all tenants.
+ */
 final class VerifyCountryDefaultsCommand extends Command
 {
     protected $signature = 'country-defaults:verify';
