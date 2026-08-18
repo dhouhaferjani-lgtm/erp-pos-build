@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M2 accepted, M3 under review
+# UI Wave 0 implementer report — M2 accepted, M3 review fixes verified
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b, M1, and M2 passed; M3 implementation is committed and awaiting bridge review.
+- Wave status: M0b, M1, and M2 passed; M3 round-2 findings are repaired and verified, with round 3 pending.
 
 ## M0 repin
 
@@ -197,6 +197,7 @@ d7f3ea21d1107e8a1cc30fd06987fa5f0989bf48 Phase 0.10.1: Delete retired web shift 
 cdce8ab3874ab8fad75827f4466a680e93d283d8 Phase 0.11.1: Delete duplicate marketing hub
 1184a83ac3b74ea74ba3b17c026de6bd4ab22e8b Phase 0.12.1: Delete retired finance hub
 85bf6b02d9c1a8bb5ed42113a3fdb194562f999f Phase 0.13.1: Delete duplicate settings account route
+9ac83f0eb6804d817fe00daffac62515e5003809 Phase 0.13.4: Resolve M3 review findings
 ```
 
 ### T10 — retired web shift console
@@ -236,13 +237,26 @@ apps/web/src/features/pos/README.md:270:### ShiftDashboardPage
 apps/web/src/features/pos/README.md:520:- ShiftDashboardPage manages shift state
 ```
 
-Red-first route evidence: the new route test initially failed because the retired page string remained; after deletion `routes.test.tsx` passed 16/16. The task-close full suite reported 4,209 passed / 5 failed / 1 skipped / 3 todo; failures were confined to the three M0b-reviewed exception files. Typecheck passed; lint exited 0 with 6,516 warnings and design audit 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
+Red-first route evidence was reconstructed against the pre-delete commit and proves both prohibited literals existed:
+
+```text
+$ git show d7f3ea21d^:apps/web/src/routes/index.tsx | grep -nE 'path="/pos/shifts"|POSShiftsPage'
+284:const POSShiftsPage = lazy(() => import('@/pages/POS/POSShiftsDashboard'))
+3181:          path="/pos/shifts"
+3186:              <POSShiftsPage />
+```
+
+The new test was red before deletion and passed after it. The task-close full suite reported 4,209 passed / 5 failed / 1 skipped / 3 todo; failures were confined to the three M0b-reviewed exception files. Typecheck passed; lint exited 0 with 6,516 warnings and design audit 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
 
 ### T11 — duplicate marketing hub
 
 The `/marketing` route/import, complete `features/marketing` subtree, en/fr marketing locale files, and the en/fr/ar i18n namespace registrations were deleted. The six Sidebar destinations represented by the hub remain at `Sidebar.tsx:262-267`.
 
 ```text
+$ git show cdce8ab38^:apps/web/src/routes/index.tsx | grep -nE 'path="marketing"|MarketingHubPage'
+98:const MarketingHubPage = lazy(() => import('../features/marketing').then((m) => ({ default: m.MarketingHubPage })))
+1981:          path="marketing"
+1984:              <MarketingHubPage />
 $ grep -rnE "/marketing\b|MarketingHubPage|marketing:" apps/web/src
 [no output]
 $ pnpm exec vitest run src/routes/routes.test.tsx
@@ -251,13 +265,19 @@ $ pnpm exec vitest run src/lib/i18nRawKeyCoverage.test.tsx src/__tests__/i18n/ar
 i18nRawKeyCoverage: 5 passed; arLocaleCoverage: the already-reviewed Arabic exception only
 ```
 
-The task-close full suite reported 4,206 passed / 5 failed / 1 skipped / 3 todo, with exactly the three reviewed exception files. Typecheck and lint passed; design audit remained 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
+Round 2 found the initial route-literal assertion had constructed `/marketing` even though the nested route literal was `marketing`; the companion page-name assertion supplied the red result but the route guard was vacuous. Commit `9ac83f0eb` fixes the literal construction. The focused route/POS regression set passes 26/26. The task-close full suite reported 4,206 passed / 5 failed / 1 skipped / 3 todo, with exactly the three reviewed exception files. Typecheck and lint passed; design audit remained 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
 
 ### T12 — finance hub deleted outright
 
 Only the finance index element was removed; the `finance` parent and every child route remain. `FinanceHubPage` and its tests were deleted. A loop enumerated all 35 scalar `finance:hub.*` keys and grepped each outside locales and the retiring page/test; only `finance:hub.cards.treasuryOverview.title` had surviving consumers. The other 34 keys were removed from en/fr/ar, while the preserved title still resolves exactly to `Treasury`, `Trésorerie`, and `الخزينة`.
 
 ```text
+$ git show 1184a83ac^:apps/web/src/routes/index.tsx | sed -n '1977,1987p'
+<Route path="finance">
+  <Route index element={
+    <RequirePermission moduleKey="finance">
+      <SuspenseWrapper>
+        <FinanceHubPage />
 $ pnpm exec vitest run src/routes/routes.test.tsx src/lib/i18nRawKeyCoverage.test.tsx src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx
 Test Files 3 passed (3); Tests 63 passed (63)
 $ jq -r '.hub' src/locales/{en,fr,ar}/finance.json
@@ -272,6 +292,46 @@ $ grep -rn "Navigate" apps/web/src/routes/index.tsx | grep -i finance
 [no output]
 ```
 
+The required per-key grep used each scalar path extracted from the pre-delete English locale. `hub.title` and `hub.description` only hit the unrelated `pos` and `inventory` namespaces. The complete finance-hub result was:
+
+```text
+hub.title => only PosHubPage/InventoryHubPage and their tests (non-finance namespaces)
+hub.description => only PosHubPage/InventoryHubPage (non-finance namespaces)
+hub.sections.bankingAndPayments => [no output]
+hub.sections.accounting => [no output]
+hub.sections.reports => [no output]
+hub.cards.payments.title => [no output]
+hub.cards.payments.description => [no output]
+hub.cards.repositories.title => [no output]
+hub.cards.repositories.description => [no output]
+hub.cards.instruments.title => [no output]
+hub.cards.instruments.description => [no output]
+hub.cards.bankReconciliation.title => [no output]
+hub.cards.bankReconciliation.description => [no output]
+hub.cards.expenses.title => [no output]
+hub.cards.expenses.description => [no output]
+hub.cards.withholdingCertificates.title => [no output]
+hub.cards.withholdingCertificates.description => [no output]
+hub.cards.treasuryOverview.title => i18nRawKeyCoverage.test.tsx + Sidebar.tsx
+hub.cards.treasuryOverview.description => [no output]
+hub.cards.chartOfAccounts.title => [no output]
+hub.cards.chartOfAccounts.description => [no output]
+hub.cards.generalLedger.title => [no output]
+hub.cards.generalLedger.description => [no output]
+hub.cards.journalEntries.title => [no output]
+hub.cards.journalEntries.description => [no output]
+hub.cards.trialBalance.title => [no output]
+hub.cards.trialBalance.description => [no output]
+hub.cards.profitLoss.title => [no output]
+hub.cards.profitLoss.description => [no output]
+hub.cards.balanceSheet.title => [no output]
+hub.cards.balanceSheet.description => [no output]
+hub.cards.agedReceivables.title => [no output]
+hub.cards.agedReceivables.description => [no output]
+hub.cards.agedPayables.title => [no output]
+hub.cards.agedPayables.description => [no output]
+```
+
 The seven intentional generic `HubCard.test.tsx` fixture literals remain byte-identical at lines 12, 22, 35, 54, 63, 87, and 103; SHA-256 remains `ccf2be6a90c78ee95ed09427a7a8a8858c0752a2ca5301c22fa63b310d744c9f`. Per `OWNER-DECISIONS:58`, obsolete E2E block `MTP-GL-28` was deleted rather than repointed, and only `['24-finance', '/finance']` was removed from `ui-audit-shots.mjs`; neighbouring shot ordinals were not renumbered. This E2E-test removal is the task's explicit authorized deviation.
 
 The task-close full suite reported 4,199 passed / 5 failed / 1 skipped / 3 todo, with exactly the three reviewed exception files. Typecheck and lint passed; design audit remained 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
@@ -281,6 +341,13 @@ The task-close full suite reported 4,199 passed / 5 failed / 1 skipped / 3 todo,
 Only the settings child block was deleted. The canonical finance child remains guarded and linked:
 
 ```text
+$ git show 85bf6b02d^:apps/web/src/routes/index.tsx | sed -n '2302,2315p'
+          <Route
+            path="chart-of-accounts"
+            element={
+              <RequirePermission permission="accounts.view">
+                <SuspenseWrapper>
+                  <ChartOfAccountsPage />
 $ grep -rn "settings/chart-of-accounts" apps/web/src
 [no output]
 $ rg -n 'path="chart-of-accounts"|permission="accounts.view"' apps/web/src/routes/index.tsx
@@ -309,3 +376,9 @@ Route manifest drift — run: node scripts/factory/gen-route-manifest.mjs && com
 That exit 1 is the explicitly permitted M3 intermediate state. M4 owns the single regeneration and drift-CI work.
 
 M3 bridge round 1 (`docs/handoff/reviews/ui-wave0/M3-round1.md`) ended in a blank review-tool error with no findings and no parseable verdict. The harness therefore records it as `CHANGES-REQUIRED`; no code fix was possible, and round 2 retries the read-only gate.
+
+M3 bridge round 2 (`docs/handoff/reviews/ui-wave0/M3-round2.md`) returned `CHANGES-REQUIRED`. Commit `9ac83f0eb` fixes its actionable source/test findings: the `/marketing` guard now checks the actual relative route literal, the T10-orphaned `_invalidation.ts` production helper and its helper-only tests are deleted, and stale current-tense POS references are removed. Post-fix verification is 26/26 focused tests; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo, with failures only in the three M0b-reviewed exception files; typecheck and lint pass; design audit is 736 acknowledged / 0 new / 0 stale; React Doctor is 100/100.
+
+Round 2 also found four newly zero-consumer API exports after T10: `getOrCreateWebTerminal`, `closeShift`, `XReportResponse`, and `XReportData`. API-client deletion is explicitly outside T10 scope, so they remain unchanged and are carried as terminal-audit findings.
+
+Owner/terminal ruling remains required before merge for `/finance`: the delivered parent route has no index and no element, so React Router matches `/finance` and renders an empty outlet rather than reaching the catch-all redirect. This contradicts the accepted rationale in `OWNER-DECISIONS:58`, but the source implements the brief exactly (keep the parent, delete the index, add no redirect). No unruled production behavior was added. M3 round 3 must verify that this contradiction is explicitly disclosed; the parent must choose leave-as-ruled, add a redirect, or supply another route element before merge.

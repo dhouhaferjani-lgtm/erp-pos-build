@@ -67,10 +67,10 @@ milestones:
     title: "T10, T11, T12, T13 - the four owner-ruled deletions (/pos/shifts + POSShiftsDashboard; /marketing + MarketingHubPage; /finance + FinanceHubPage OUTRIGHT with no redirect, preserving finance:hub.cards.treasuryOverview.title and applying the three-row disposition table; the duplicate /settings/chart-of-accounts mount), each against the six-point deletion checklist in §3, one commit per task, source only. EXPECTED AND PERMITTED: these commits leave scripts/factory/manifests/ drifted and check-manifest-drift.sh exiting 1 in the intermediate state (§2 exception 2) - the reviewer must not treat that as a defect at this milestone. T10 hand-removes exactly the two baseline lines (baseline.json:202, :717); --write-baseline is forbidden. Each commit still green on typecheck/lint/test."
     review_lenses: [frontend-conventions, general]
     status: review
-    fix_rounds: 1
-    updated: 85bf6b02d
-    commit: 85bf6b02d9c1a8bb5ed42113a3fdb194562f999f
-    verdict: docs/handoff/reviews/ui-wave0/M3-round1.md
+    fix_rounds: 2
+    updated: 9ac83f0eb
+    commit: 9ac83f0eb6804d817fe00daffac62515e5003809
+    verdict: docs/handoff/reviews/ui-wave0/M3-round2.md
     last_verdict: CHANGES-REQUIRED
   - id: M4
     title: "T3 (UI-10) - two authorised commits: T3(a) regenerate scripts/factory/manifests/ (manifests and nothing else) so the manifest reflects T2 plus the four deletions, then T3(b) the standalone manifest drift CI job. check-manifest-drift.sh must exit 0 at this point."
@@ -155,3 +155,6 @@ findings:
   - "T12 deletes obsolete E2E test MTP-GL-28 under OWNER-DECISIONS:58 and removes audit-shot entry 24-finance; the seven HubCard.test.tsx /finance fixture literals remain byte-identical. This is an authorized deviation and must remain explicit in the final handback."
   - "M3 intentionally leaves route manifests drifted for M4: check-manifest-drift.sh exits 1 and shows /pos/shifts, /marketing, /finance index, and /settings/chart-of-accounts as removals; git diff d3b0550ed..HEAD -- scripts/factory/manifests is empty."
   - "M3 bridge round 1 produced a blank review-tool error and no verdict/findings; the harness treats exit 3 as CHANGES-REQUIRED. No implementation fix was possible, so the failed register is preserved and round 2 retries the read-only gate."
+  - "M3 bridge round 2 found a vacuous /marketing route-literal assertion, a T10-orphaned POS invalidation helper plus stale references, missing pasted red/per-key evidence, and four newly zero-consumer POS API exports. Commit 9ac83f0eb fixes the source/test findings; the evidence and out-of-scope API exports are recorded in the handback."
+  - "M3 round-2 owner escalation: keeping the finance parent while deleting its index and adding no redirect makes /finance match the element-less parent and render a blank outlet; it does not fall through to the catch-all /dashboard redirect stated in OWNER-DECISIONS:58. The implementation follows the brief exactly, so no unruled behavior change was made; parent/owner must rule before merge."
+  - "M3 round-2 post-fix verification: focused route/POS tests 26/26; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with only the three reviewed M0b exception files; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale; React Doctor 100/100."
