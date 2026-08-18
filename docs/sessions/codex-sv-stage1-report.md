@@ -784,3 +784,12 @@ The round-2 four-lens bridge exited 3 and wrote only `# REVIEW TOOL ERROR (miles
 Per the harness, this is recorded fail-closed as CHANGES-REQUIRED and consumes fix round 2. It emitted
 no implementation finding, so no speculative production or test change is made before round 3; the
 fresh accumulated evidence above remains the reviewed tree's evidence.
+
+### M5 round 3 tool error
+
+Round 3 repeated the exit-3 bridge failure and wrote only the tool-error heading. A minimal direct
+Claude CLI probe reproduced the same silent wait and then terminated with `API Error: 529 Overloaded`,
+confirming the failure is the external reviewer service rather than the M5 prompt, diff, or repository.
+The process table also showed a shared Claude invocation in an explicit backoff. Per the fail-closed
+harness, round 3 consumes fix round 3; no implementation change is inferred from the unavailable
+reviewer.
