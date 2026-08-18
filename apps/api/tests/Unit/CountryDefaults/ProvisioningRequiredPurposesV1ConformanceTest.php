@@ -302,10 +302,23 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
         }
     }
 
-    public function test_uninvoiced_delivery_note_service_has_no_production_caller(): void
+    public function test_uninvoiced_revenue_posting_surface_has_no_production_caller(): void
     {
-        // Production break caught: dead UninvoicedRevenue code becomes reachable without reclassification.
-        $target = 'App\\Modules\\Compliance\\Services\\UninvoicedDeliveryNoteService';
+        // Production break caught: dead UninvoicedRevenue POSTING code becomes reachable
+        // without reclassification.
+        //
+        // Merge-seam reconciliation 2026-08-18 (parent orchestrator, country-defaults
+        // Phase A x DPA wave-3): this tripwire originally refused ANY production
+        // reference to UninvoicedDeliveryNoteService. The DPA-3E lane-separation
+        // report legitimately consumes the READ surface (ReportsController::
+        // generateYearEndReport, CheckCogsCoverageCommand::getUninvoicedDeliveryNotes)
+        // without touching GL, so the guard now pins what the v1 catalog
+        // classification actually depends on: the two methods that mint journal
+        // entries against SystemAccountPurpose::UninvoicedRevenue. If this test
+        // fails, the purpose must be reclassified in ProvisioningRequiredPurposesV1
+        // (SOFT -> required, with a certified account mapping) BEFORE the caller
+        // ships — do not simply extend an allowlist here.
+        $postingMethods = ['generateYearEndAdjustment', 'generateReversalEntry'];
         $ownFile = $this->apiRoot().'/app/Modules/Compliance/Services/UninvoicedDeliveryNoteService.php';
         $references = [];
         $parser = (new ParserFactory)->createForNewestSupportedVersion();
@@ -316,16 +329,25 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
             }
 
             $ast = $parser->parse((string) file_get_contents($file)) ?? [];
-            $visitor = new class($target) extends NodeVisitorAbstract
+            $visitor = new class($postingMethods) extends NodeVisitorAbstract
             {
                 /** @var list<int> */
                 public array $lines = [];
 
-                public function __construct(private readonly string $target) {}
+                /** @param list<string> $postingMethods */
+                public function __construct(private readonly array $postingMethods) {}
 
                 public function enterNode(Node $node): null
                 {
-                    if ($node instanceof Node\Name && ltrim($node->toString(), '\\') === $this->target) {
+                    $isCall = $node instanceof Node\Expr\MethodCall
+                        || $node instanceof Node\Expr\NullsafeMethodCall
+                        || $node instanceof Node\Expr\StaticCall;
+
+                    if (
+                        $isCall
+                        && $node->name instanceof Node\Identifier
+                        && in_array($node->name->toString(), $this->postingMethods, true)
+                    ) {
                         $this->lines[] = $node->getStartLine();
                     }
 

@@ -32,6 +32,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 
 /**
  * Shared fixtures for the DPA sub-wave 3E (pre-delivery invoicing policy) suite.
@@ -54,6 +55,7 @@ use Spatie\Permission\PermissionRegistrar;
  *
  * Real models and the real seeders only — no fakes.
  */
+#[UsesFrozenSeederFixture]
 trait BuildsDeliveryPolicyFixtures
 {
     protected Tenant $dpTenant;

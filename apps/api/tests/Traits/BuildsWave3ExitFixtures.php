@@ -28,6 +28,7 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use Database\Factories\CompanyFactory;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Illuminate\Support\Str;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 
 /**
  * ONE fixture origin for the DPA Wave-3 sub-wave 3A suites (T1 characterisation,
@@ -42,6 +43,7 @@ use Illuminate\Support\Str;
  * The consuming test class must `use RefreshDatabase` and call
  * `bootWave3ExitFixtures()` from `setUp()`.
  */
+#[UsesFrozenSeederFixture]
 trait BuildsWave3ExitFixtures
 {
     protected string $tenantId;
