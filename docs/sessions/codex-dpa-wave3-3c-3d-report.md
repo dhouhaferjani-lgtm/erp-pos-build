@@ -279,3 +279,26 @@ zero legacy COGS, zero duplicate groups, and zero non-physical delivery groups,
 but is explicitly recorded as a syntax/probe run—not deploy-target evidence.
 Full details and task-level red/green evidence are in
 `docs/handoff/reviews/wave3-3c-3d/M3-evidence.md`.
+
+### M3 adversarial round 1 remediation
+
+Round 1 found that D-f treated intentional POS no-movement refund outcomes as
+projection holes, D-e treated not-yet-wired count corrections as missing GL,
+D-b treated historical NULL-cost refunds as defects, and D-a would begin
+reporting D-20 adjustments once 3D adds their costs. `f9ca0bfe8` closes all
+four: POS lines persist an immutable `stock_movement_expected` decision used by
+both the stock branch and D-f; D-e temporarily excludes counting until T21
+lands; D-b excludes historical rows; and D-a shares the stock-adjustment
+exclusion.
+
+The same round replaced the GR detector fixture's fabricated inventory entry
+with the real NULL-reason inbound shape, removed arity-vacuous log assertions,
+corrected the NOT NULL watermark model type, and recorded the GR reason and D-f
+mutable-physical-snapshot P3 follow-ups. The fix commit's revert-replay produced
+four detector failures, one projected-refund failure, and two interactive
+refund failures with the new tests retained.
+
+Fresh PostgreSQL verification is detector `20/41`, projected refund `14/69`,
+interactive disposition `5/19`, return flow `21/119`, and movement
+characterisation `15/54`. Pint and touched-file PHPStan pass; deptrac remains
+127; no workflow file changed.

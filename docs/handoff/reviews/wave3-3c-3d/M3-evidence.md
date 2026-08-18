@@ -140,3 +140,62 @@ deptrac: 127 current, 127 at accepted M2, 116 at M1, 99 checked-in baseline
 The deptrac ratchet still exits non-zero against the stale checked-in baseline,
 but M3 adds no violation over the accepted M2 aggregate. No baseline or
 workflow file was changed.
+
+## Adversarial round 1 remediation
+
+Round 1 returned `CHANGES-REQUIRED` with four close-before-merge detector
+defects. The scoped fix is `f9ca0bfe8`:
+
+- POS D-f now filters on the immutable `pos_receipt_lines.stock_movement_expected`
+  projection outcome. The additive, idempotent migration defaults existing
+  pre-watermark rows to true. Projected and interactive writers set false for
+  `not_received`; the projector also sets false for a restock disposition when
+  the effective policy at projection time is `Never`. The same captured array
+  drives the stock branch, so a concurrent catalogue-policy edit cannot split
+  the stored decision from the action. The detector test changes the product
+  policy afterward and remains silent, proving it does not re-evaluate history.
+- D-e temporarily excludes `inventory_counting` until M5/T21 wires the real
+  count writer; T21 must remove the exclusion with that wiring. Its M3 positive
+  uses a synthetic `SupplierReturn`, while a live-shaped `CountCorrection` is
+  the negative. D-a now shares the ruled stock-adjustment exclusion, and D-b
+  excludes deliberate historical NULL-cost movements.
+- The GR negative now carries the production shape (`reason = NULL`) and no
+  fabricated `inventory_entry`. The separate reason/GR-IR ownership gap is
+  recorded in
+  `docs/superpowers/tickets/2026-08-18-goods-receipt-movement-reason-detector-gap.md`.
+- All arity-vacuous `Log::shouldNotHaveReceived` checks were removed; exit 0
+  carries the real signal. D-f's unavoidable live `is_physical` classification
+  is documented at both new arms and in
+  `docs/superpowers/tickets/2026-08-18-df-immutable-physical-snapshot.md`.
+  The Company watermark type now matches its NOT NULL schema. The seeder keeps
+  an explicit `is_physical = true`; only its second duplicate array key was
+  removed so the touched file remains PHPStan-clean.
+
+Red-first produced four detector failures (`expected exit 0, received 1`) and
+NULL projected disposition/expectation assertions. Reverting `f9ca0bfe8` while
+retaining its covering tests reproduced:
+
+```text
+Detector scoped replay: 4 failed (10 assertions)
+Projected not_received replay: 1 failed (3 assertions)
+Interactive disposition replay: 2 failed (4 assertions)
+```
+
+`git revert --abort` restored the committed tree. Fresh PostgreSQL results:
+
+```text
+CheckCogsCoverageCommandTest: 20 passed (41 assertions)
+PosCoreReceiptProjectionRefundDispositionStockTest: 14 passed (69 assertions)
+StoreReturnRequestDispositionTest: 5 passed (19 assertions)
+ReceiptReturnFlowTest: 21 passed (119 assertions)
+CogsRelocationCharacterisationTest: 15 passed (54 assertions)
+Pint: pass
+PHPStan (all round-1 touched production/migration/seeder files): [OK] No errors
+deptrac: 127 (unchanged from accepted M2)
+git diff --check: pass
+```
+
+One first-attempt PostgreSQL schema reset hit the local server's
+`max_locks_per_transaction` limit before application code. No stale test
+process or backend remained; the isolated retry passed all 14 projected-refund
+tests and is the result recorded above.

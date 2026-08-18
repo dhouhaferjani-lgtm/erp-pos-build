@@ -75,11 +75,11 @@ milestones:
     title: "3C tail: T18, T19, T19b + POS and GR D-f arms (WO arm = tested no-op tied to workshop-parts ticket; D-f POS arm carries NO grace window) + C-5 registration + flushIfOutermost tail + D-e stock_adjustment exclusion"
     review_lenses: [inventory-costing, fiscal-pos]
     status: review
-    fix_rounds: 0
-    commit: f6e14340c12ed72687c3aca5969f5a8f4e6ec25c
-    verdict: null
-    last_verdict: null
-    updated: f6e14340c
+    fix_rounds: 1
+    commit: f9ca0bfe858d9984bedd5c7e2650ca5b66c9d891
+    verdict: docs/handoff/reviews/wave3-3c-3d/M3-round1.md
+    last_verdict: CHANGES-REQUIRED
+    updated: f9ca0bfe8
   - id: M4
     title: "3D France/purposes arm: T20 (propose shrinkage/gain codes — treasury approval a MERGE CONDITION), T20b. requiresGLEntry stays TRUE; thread unitCost, exclude adjustment path from GL buffer, preserve D-b exclusion."
     review_lenses: [inventory-costing, treasury]
