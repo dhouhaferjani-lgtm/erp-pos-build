@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M1 accepted, M2 review pending
+# UI Wave 0 implementer report — M2 accepted, M3 in progress
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b and M1 passed; M2 implementation is committed and awaiting bridge review.
+- Wave status: M0b, M1, and M2 passed; M3 is in progress.
 
 ## M0 repin
 
@@ -153,14 +153,29 @@ M1 bridge round 3 (`docs/handoff/reviews/ui-wave0/M1-round3.md`) returned `ACCEP
 
 Commit `daf0a8f5065184cae0bf8c60eb4422dd6ae387f9` (`Phase 0.2.1: Resolve keyed route manifest pages`) adds `KeyedByRouteId` to the manifest generator's explicit pure-wrapper allow-list with the required keying-only/no-visual-output comment. It adds two tests: the keyed wrapper resolves to its inner page, while an unknown local wrapper remains the recorded component.
 
-Red-first evidence: `node --test scripts/factory/gen-route-manifest.test.mjs` reported 9 passed / 1 failed before the allow-list change. The failure was exact:
+Red-first evidence: `node --test scripts/factory/gen-route-manifest.test.mjs` reported 9 passed / 1 failed before the allow-list change. Node's assertion delta was exact (`+` is actual, `-` is expected):
 
 ```diff
-- component: InvoiceDetailPage
-+ component: KeyedByRouteId
++ component: 'KeyedByRouteId'
+- component: 'InvoiceDetailPage'
 ```
 
-After the fix, the suite passes 10/10. A temporary regeneration (outside the repository) produces:
+After the fix, the suite passes 10/10. The scratch-generation evidence was:
+
+```text
+$ M2_TMP_DIR=$(mktemp -d /tmp/ui-wave0-m2.XXXXXX)
+$ node scripts/factory/gen-route-manifest.mjs --out "$M2_TMP_DIR"
+wrote /tmp/ui-wave0-m2.OcDtRm/routes-web.yaml (269 routes)
+wrote /tmp/ui-wave0-m2.OcDtRm/routes-pos.yaml (9 routes, 9 phase screens)
+$ rg -n -A3 -B1 'path: /sales/invoices/:id$' "$M2_TMP_DIR/routes-web.yaml"
+773-    permission: null
+774:  - path: /sales/invoices/:id
+775-    component: InvoiceDetailPage
+776-    module_gate: sales
+777-    permission: null
+```
+
+The generated row is therefore:
 
 ```yaml
 - path: /sales/invoices/:id
@@ -171,4 +186,4 @@ After the fix, the suite passes 10/10. A temporary regeneration (outside the rep
 
 `<KeyedByRouteId>` has exactly one route-tree use, at the invoice-detail mount, so this wrapper addition cannot change another manifest entry. `bash scripts/factory/check-manifest-drift.sh` still exits 1 for the expected pre-T3 route/permission drift but no longer prints an invoice-detail component hunk. No manifest file is changed or committed in M2; M3 route deletions must land before M4 performs the single authorized regeneration.
 
-M2 bridge review is pending. M3 and later milestones have not started.
+M2 bridge round 1 (`docs/handoff/reviews/ui-wave0/M2-round1.md`) returned `ACCEPT`. The reviewer independently regenerated both manifests before and after reverting only the new allow-list member: exactly one web-manifest line changed (`KeyedByRouteId` to `InvoiceDetailPage`) and the POS manifest was byte-identical. It also reproduced the 9/1 red and 10/10 green test runs and confirmed no manifest file was committed. Its P2 handback-evidence finding is closed by the pasted command/output above; its line-anchor note will be reconciled after M3's route-import deletions shift `routes/index.tsx`. M3 is now in progress; later milestones have not started.

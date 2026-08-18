@@ -57,16 +57,16 @@ milestones:
   - id: M2
     title: "T2 (UI-11) - gen-route-manifest.mjs resolves through the local KeyedByRouteId wrapper so /sales/invoices/:id records InvoiceDetailPage. NO manifest file is committed here (T3 owns scripts/factory/manifests/)."
     review_lenses: [frontend-conventions, general]
-    status: in_progress
-    fix_rounds: 0
+    status: passed
+    fix_rounds: 1
     updated: daf0a8f50
     commit: daf0a8f5065184cae0bf8c60eb4422dd6ae387f9
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/ui-wave0/M2-round1.md
+    last_verdict: ACCEPT
   - id: M3
     title: "T10, T11, T12, T13 - the four owner-ruled deletions (/pos/shifts + POSShiftsDashboard; /marketing + MarketingHubPage; /finance + FinanceHubPage OUTRIGHT with no redirect, preserving finance:hub.cards.treasuryOverview.title and applying the three-row disposition table; the duplicate /settings/chart-of-accounts mount), each against the six-point deletion checklist in §3, one commit per task, source only. EXPECTED AND PERMITTED: these commits leave scripts/factory/manifests/ drifted and check-manifest-drift.sh exiting 1 in the intermediate state (§2 exception 2) - the reviewer must not treat that as a defect at this milestone. T10 hand-removes exactly the two baseline lines (baseline.json:202, :717); --write-baseline is forbidden. Each commit still green on typecheck/lint/test."
     review_lenses: [frontend-conventions, general]
-    status: pending
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
