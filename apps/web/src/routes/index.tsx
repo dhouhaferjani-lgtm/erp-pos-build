@@ -2304,16 +2304,6 @@ export function AppRoutes() {
             }
           />
           <Route
-            path="chart-of-accounts"
-            element={
-              <RequirePermission permission="accounts.view">
-                <SuspenseWrapper>
-                  <ChartOfAccountsPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-          <Route
             path="locations"
             element={
               <RequirePermission permission="inventory.view">

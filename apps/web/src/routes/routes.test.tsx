@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 const routesSource = readFileSync(`${process.cwd()}/src/routes/index.tsx`, 'utf8')
 const sidebarSource = readFileSync(`${process.cwd()}/src/components/organisms/Sidebar/Sidebar.tsx`, 'utf8')
+const commandPaletteSource = readFileSync(`${process.cwd()}/src/components/organisms/CommandPalette/useCommandPalette.ts`, 'utf8')
 const posHubSource = readFileSync(`${process.cwd()}/src/features/pos/pages/PosHubPage.tsx`, 'utf8')
 
 function routeBranch(path: string): string {
@@ -115,6 +116,21 @@ describe('route module guards', () => {
     ]) {
       expect(financeBranch).toContain(`path="${childPath}"`)
     }
+  })
+
+  it('keeps chart of accounts only under finance with its guard and inbound links', () => {
+    const childPath = ['chart', 'of', 'accounts'].join('-')
+    const canonicalHref = ['/finance', childPath].join('/')
+    const settingsBranch = routeBranch('settings')
+    const financeBranch = routeBranch('finance')
+    expect(settingsBranch).not.toContain(`path="${childPath}"`)
+    const canonicalIndex = financeBranch.indexOf(`path="${childPath}"`)
+    expect(canonicalIndex).toBeGreaterThanOrEqual(0)
+    expect(financeBranch.slice(canonicalIndex, canonicalIndex + 350)).toContain(
+      'permission="accounts.view"',
+    )
+    expect(sidebarSource).toContain(`href: '${canonicalHref}'`)
+    expect(commandPaletteSource).toContain(`href: '${canonicalHref}'`)
   })
 
   it('does not register the legacy bank reconciliation route', () => {
