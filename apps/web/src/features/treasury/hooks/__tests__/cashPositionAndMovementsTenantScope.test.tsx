@@ -104,6 +104,7 @@ describe('useCashPosition tenant scope', () => {
     })
 
     unmount()
+    // Promoted L3 locationScopedKey lane: compare against all scope-hydration calls before the tenant gate.
     const callsBeforeGatedRender = mockApiGet.mock.calls.length
     resetTenant()
     const gatedClient = createClient()

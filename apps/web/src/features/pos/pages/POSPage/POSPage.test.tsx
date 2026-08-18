@@ -109,7 +109,7 @@ describe('POSPage', () => {
     const incrementButtons = getAllByRole('button', { name: /increment/i })
     fireEvent.click(incrementButtons[0])
 
-    // Promoted UoM unit-precision lane (Phase 1.2.18): quantities render at product precision.
+    // Promoted UoM unit-precision lane (Phase 1.2.18): missing metadata uses four-decimal storage precision.
     expect(getByText('2.0000')).toBeInTheDocument()
   })
 

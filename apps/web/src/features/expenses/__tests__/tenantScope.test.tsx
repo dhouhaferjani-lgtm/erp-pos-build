@@ -429,7 +429,8 @@ describe('cross-tenant isolation', () => {
   it('expensesInvalidationPredicate rejects tenant-B expenses cache entry', async () => {
     setTenant('tenant-A', 'company-1')
     const client = createTestQueryClient()
-    const tenantBKey = ['expenses', 'list', undefined, 'tenant-B', 'company-1']
+    // Promoted L3 locationScopedKey lane: cross-tenant decoys mirror production location-scoped keys.
+    const tenantBKey = ['expenses', 'list', { location_ids: [] }, { locScope: 'all' }, 'tenant-B', 'company-1']
     client.setQueryData(tenantBKey, [{ id: 'e-tenant-b' }])
 
     const pred = expensesInvalidationPredicate('tenant-A', 'company-1')
@@ -447,7 +448,7 @@ describe('cross-tenant isolation', () => {
     // response — NOT the seeded tenant-B payload.
     const client = createTestQueryClient()
 
-    const tenantBKey = ['expenses', 'list', undefined, 'tenant-B', 'company-1']
+    const tenantBKey = ['expenses', 'list', { location_ids: [] }, { locScope: 'all' }, 'tenant-B', 'company-1']
     client.setQueryData(tenantBKey, [{ id: 'leaked-tenant-b-expense' }])
     const tenantBCatKey = ['expense-categories', 'list', undefined, 'tenant-B', 'company-1']
     client.setQueryData(tenantBCatKey, [{ id: 'leaked-tenant-b-category' }])
