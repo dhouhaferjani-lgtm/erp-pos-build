@@ -294,3 +294,11 @@ Reverting `0f99bde9e12558d8baa51a9ebfa890526f60ddef` while retaining the two
 covering assertions reproduced both failures: the variant line persisted
 `stock_movement_expected = false`, and the regulated refund emitted no warning
 matching `never-restock`. `git revert --abort` restored a clean tree.
+
+## Adversarial round 4 tool error
+
+The round-4 bridge produced no review register or parseable `VERDICT:` line and
+exited with `claude invocation failed`. Per the self-review harness this is
+recorded fail-closed as `CHANGES-REQUIRED`; it is not a code finding and no
+production change was made. The retry consumes the fourth fix-round slot and
+uses review round 5.

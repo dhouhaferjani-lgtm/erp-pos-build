@@ -349,3 +349,8 @@ Detector remains `22/43`, movement characterization `15/54`, Pint and
 touched-production PHPStan pass, deptrac remains 127, and no workflow file was
 changed. Revert-replay makes the variant flag and never-restock warning tests
 red and aborting it restores a clean tree.
+
+Round 4 returned only `claude invocation failed`; its on-disk register is the
+harness-generated tool-error marker. It is treated fail-closed as
+`CHANGES-REQUIRED`, consumes the fourth fix-round slot, and triggers review
+round 5 without a production change.
