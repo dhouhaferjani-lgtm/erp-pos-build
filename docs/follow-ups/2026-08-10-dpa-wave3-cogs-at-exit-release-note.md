@@ -50,10 +50,11 @@ The POS D-f missing-movement arm has no grace window.
 
 POS lines also carry the immutable projection decision
 `stock_movement_expected`. D-f ignores `not_received` and regulated
-never-restock refunds, sale lines with no stock grain at the terminal location,
-and archived-product scrap refunds whose writers deliberately produced no
-movement. Later catalogue policy edits do not reclassify those historical
-outcomes.
+never-restock refunds, product-level sale lines with no stock grain at the
+terminal location, and archived-product scrap refunds whose writers
+deliberately produced no movement. A missing variant-scoped grain remains an
+anomaly: the writer warns and D-f reports it. Later catalogue policy edits do
+not reclassify those historical outcomes.
 
 Until 3D T21 wires count-correction GL at the real counting root, D-e excludes
 `reference_type = inventory_counting`; otherwise every completed count would
@@ -118,6 +119,11 @@ mid-loop. Its source type, amount, accounts, and source id are unchanged.
   use the live product physical flag because there is no movement snapshot to
   read. Owner: Inventory + Product architecture. Ticket:
   `docs/superpowers/tickets/2026-08-18-df-immutable-physical-snapshot.md`.
+- **POS location stock-tracking classification:** product-level POS lines use
+  exact location-grain presence as the temporary stock-tracked signal; missing
+  variant grains remain reportable. Owner: Inventory + Product architecture.
+  Ticket:
+  `docs/superpowers/tickets/2026-08-18-pos-location-stock-tracking-classification.md`.
 - **Goods-receipt reason coverage:** real inbound WAC movements carry no
   movement reason, while GR-IR remains document-keyed. Owner: Procurement +
   Inventory + Accounting architecture. Ticket:

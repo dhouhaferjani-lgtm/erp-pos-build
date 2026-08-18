@@ -36,6 +36,7 @@ use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -409,6 +410,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
         // Disposition says restock, but the product is regulated never-restock.
         $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'restock', sequenceNumber: 2);
+        Log::spy();
         $this->project($refund);
 
         $stockLevel->refresh();
@@ -418,6 +420,10 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             ->sole();
         self::assertSame('restock', $refundLine->disposition?->value);
         self::assertFalse($refundLine->stock_movement_expected);
+        Log::shouldHaveReceived('warning')->withArgs(
+            fn (string $message, array $context = []): bool => str_contains($message, 'never-restock')
+                && ($context['product_id'] ?? null) === $product->id,
+        );
     }
 
     /**

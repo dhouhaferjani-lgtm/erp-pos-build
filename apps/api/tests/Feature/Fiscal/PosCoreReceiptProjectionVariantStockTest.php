@@ -212,6 +212,10 @@ final class PosCoreReceiptProjectionVariantStockTest extends TestCase
 
         // The receipt still projects (stock is a best-effort downstream effect).
         $this->assertSame(1, DB::table('pos_receipts')->count());
+        $this->assertTrue(
+            (bool) DB::table('pos_receipt_lines')->value('stock_movement_expected'),
+            'A missing variant grain is an anomaly that D-f must continue to report.',
+        );
 
         // The absent variant grain is surfaced, not silently swallowed.
         Log::shouldHaveReceived('warning')->withArgs(
