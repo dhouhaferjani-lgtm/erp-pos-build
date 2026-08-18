@@ -94,12 +94,12 @@ milestones:
   - id: M5
     title: "WHOLE-LANE GATE — re-run the full accumulated evidence over the integrated branch with EVERY lens used in the wave (treasury included: it rides M1's Treasury config + listener docblock rewrites). Paste git diff --name-only BASE_SHA..HEAD and prove the negative: no Stage 2-5 row (SV-2..SV-8, SV-12..SV-18), TREASURY_SHIFT_VARIANCE_GL_ENABLED untouched, no event added/renamed/retired, no Lane A0/A1 file."
     review_lenses: [fiscal-pos, treasury, frontend-conventions, tenancy-authz]
-    status: review
+    status: passed
     fix_rounds: 4
-    commit: 33f323a341a7f9b0efafd22250f53364f4f4a2b6
-    verdict: docs/handoff/reviews/sv-stage1/M5-round4.md
-    last_verdict: CHANGES-REQUIRED
-    updated: 33f323a34
+    commit: f7b9fffeb8c8ab1c861179340f429f661509156e
+    verdict: docs/handoff/reviews/sv-stage1/M5-round5.md
+    last_verdict: ACCEPT
+    updated: f7b9fffeb
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: complete      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []

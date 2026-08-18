@@ -683,6 +683,10 @@ docs/handoff/reviews/sv-stage1/M4-round4.md
 docs/handoff/reviews/sv-stage1/M4-round5.md
 docs/handoff/reviews/sv-stage1/M4-sv10-leak-audit.md
 docs/handoff/reviews/sv-stage1/M5-round1.md
+docs/handoff/reviews/sv-stage1/M5-round2.md
+docs/handoff/reviews/sv-stage1/M5-round3.md
+docs/handoff/reviews/sv-stage1/M5-round4.md
+docs/handoff/reviews/sv-stage1/M5-round5.md
 docs/pos-operations/install.md
 docs/sessions/codex-sv-stage1-report.md
 docs/superpowers/tickets/2026-08-08-g3-kill-switch-window-no-backfill.md
@@ -694,6 +698,7 @@ docs/superpowers/tickets/2026-08-17-blind-count-policy-unavailable-close.md
 docs/superpowers/tickets/2026-08-17-orphan-company-vertical-query-contract.md
 docs/superpowers/tickets/2026-08-17-shift-closure-page-blind-count-parity.md
 docs/superpowers/tickets/2026-08-17-today-sales-blind-count-derivation.md
+docs/superpowers/tickets/2026-08-18-sv-stage1-carried-m5-p3s.md
 ```
 
 The list was read, not inferred. Production/test paths map only to SV-1, SV-9, SV-10, and SV-11. No Stage-2–5 implementation row is present. The two `es-wave-a0` paths and its progress YAML are the pre-dispatch administrative delta accepted by M0, not Lane A0/A1 implementation; the implementation-only range from administrative dispatch HEAD `a5520f23c` contains no ES/Lane A file. The GL flag line is byte-identical at base and HEAD: `env('TREASURY_SHIFT_VARIANCE_GL_ENABLED', false)`. No event file changed, and a zero-context scan of added/removed production lines found no event declaration, dispatch, rename, or retirement.
@@ -768,8 +773,9 @@ tests used PostgreSQL on `127.0.0.1:5432` with the fresh database
   allowed. Mechanically reversing the wave's `apps/api/app` patch and rerunning at the pinned content
   baseline produced the identical 116 violations and category counts / 12,915 allowed, then the exact
   patch was restored and the worktree returned clean. The lane adds zero architecture violations.
-- `git diff --name-only df85d43f4..HEAD` contains 76 files; the complete pasted list above was refreshed
-  with `M5-round1.md` and `docs/pos-operations/install.md` and read. Production/test paths remain
+- `git diff --name-only df85d43f4..HEAD` contains 81 files; the complete pasted list above was refreshed
+  through the accepted `M5-round5.md`, the install runbook, and the carried-P3 ticket and read.
+  Production/test paths remain
   limited to SV-1, SV-9, SV-10, and SV-11. The implementation-only range contains no Fiscal module,
   POS Commands, or Domain Events path. The GL flag value remains byte-identical to the pinned base.
 
@@ -801,3 +807,21 @@ the committed tree. It nevertheless exited 3 after its review interval and wrote
 heading. Other adversarial-review processes were concurrently active on the host. The failure remains
 tool-level with no reviewer content, is recorded fail-closed, and consumes fix round 4 without a
 speculative implementation change.
+
+### M5 round 5 acceptance
+
+After DNS/HTTPS reachability and a direct Opus probe returned healthy, round 5 completed the full
+four-lens review and returned `VERDICT: ACCEPT`: no P1 or P2 findings. The reviewer independently ran
+POS 97/97, web 2/2, PostgreSQL 31 tests / 8,896 assertions plus the 3-test migration contract, Pint,
+PHPStan, both typechecks, and the deptrac comparison. It re-derived the stage/flag/event/precision
+negatives and verified that both round-1 P2s are closed by the binding deploy order, owner ruling, and
+provisioning runbook.
+
+The accepted register's handback bookkeeping is applied here: the pasted file list is current through
+round 5, and the M5 progress entry points to the reviewed `f7b9fffeb` tree and accepted register. Its
+remaining product/code P3s are durable in
+`docs/superpowers/tickets/2026-08-18-sv-stage1-carried-m5-p3s.md` (SV-12 rounding decomposition,
+Arabic compliance fallback merge, and the misleading vertical-default compatibility API). The two
+M4-round5 policy-unavailable display P3s remain in their existing availability ticket. The extra
+Accounting comment rewrite is explicitly recorded as comment-only cleanup of a stale reference to the
+deprecated formula; no additional action is required.
