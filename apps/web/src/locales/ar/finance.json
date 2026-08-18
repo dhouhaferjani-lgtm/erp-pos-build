@@ -39,8 +39,7 @@
   "hub": {
     "cards": {
       "treasuryOverview": {
-        "title": "الخزينة",
-        "description": "راجع وضعية النقدية وحركات الأموال القادمة"
+        "title": "الخزينة"
       }
     }
   },

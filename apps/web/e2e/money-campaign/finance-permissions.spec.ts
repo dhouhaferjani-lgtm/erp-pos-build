@@ -1,7 +1,7 @@
 /**
  * MONEY TEST CAMPAIGN — wave W-6 — finance route permission denials and the
- * finance money tiles: `MTP-GL-21`, `-22`, `-23` and the NEW `MTP-GL-27`,
- * `MTP-GL-28` (plan §B.6 rows 80 and 83).
+ * finance money tiles: `MTP-GL-21`, `-22`, `-23` and the NEW `MTP-GL-27`
+ * (plan §B.6 row 80).
  *
  * Live local stack (web :5173 -> api :8010, tenant `demo-pharmacy-tn`), real
  * login through the real form, real backend, no mocks.
@@ -293,62 +293,4 @@ test.describe('GL — finance permission denials and money tiles', () => {
     ).toContain(digitsOf(totalAssets))
   })
 
-  test('MTP-GL-28 (P2): the finance hub is a permission-filtered navigator that surfaces NO money', async ({
-    page,
-  }) => {
-    await loginAsRole(page, 'owner')
-    await page.goto('/finance')
-    await settleAfterNav(page)
-
-    // Every section, and every card the owner is entitled to. Located by
-    // HREF, not by label: several card descriptions share words with other
-    // card titles, so an accessible-name regex is ambiguous here.
-    for (const heading of ['Banking & Payments', 'Accounting', 'Reports']) {
-      await expect(
-        page.getByRole('heading', { name: heading }),
-        `the "${heading}" section renders`,
-      ).toBeVisible({ timeout: 15_000 })
-    }
-    for (const href of [
-      '/finance/overview',
-      '/finance/chart-of-accounts',
-      '/finance/ledger',
-      '/finance/journal-entries',
-      '/finance/trial-balance',
-      '/finance/profit-loss',
-      '/finance/balance-sheet',
-      '/finance/aged-receivables',
-      '/finance/aged-payables',
-    ]) {
-      await expect(
-        page.locator(`a[href^="${href}"]`).first(),
-        `the hub card linking to ${href} renders for the owner`,
-      ).toBeVisible({ timeout: 15_000 })
-    }
-
-    // The hub carries NO figures at all — it is pure navigation, so there is
-    // nothing here to reconcile against the ledger. Asserted as the absence of
-    // any currency-shaped token in the whole page body.
-    const body = (await page.locator('main').innerText()).trim()
-    expect(body, 'the finance hub renders no money').not.toMatch(/\d[\d   ,.]*\s*(TND|EUR|€)/)
-
-    // The permission filter is real — FIXED 2026-08-06/07 (was the same
-    // `reports.view` admin-only-grant tripwire as D5 above; comment kept,
-    // not deleted, per the fix-round instruction). The accountant now holds
-    // `reports.operational` (D5 "financial + operational + ledger.view" role
-    // sub-rule), and the Treasury card is gated on `reports.operational`
-    // (`FinanceHubPage.tsx`), so it renders for the accountant instead of
-    // being hidden.
-    await loginAsRole(page, 'accountant')
-    await page.goto('/finance')
-    await settleAfterNav(page)
-    await expect(
-      page.locator('a[href^="/finance/trial-balance"]').first(),
-      'the accountant still sees the reports.financial-gated report cards',
-    ).toBeVisible({ timeout: 15_000 })
-    await expect(
-      page.locator('a[href^="/finance/overview"]'),
-      'the accountant holds reports.operational, so the Treasury card renders',
-    ).toBeVisible({ timeout: 15_000 })
-  })
 })

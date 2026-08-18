@@ -95,6 +95,28 @@ describe('route module guards', () => {
     }
   })
 
+  it('removes the finance index hub while retaining every finance child route', () => {
+    const financeBranch = routeBranch('finance')
+    const retiredFinancePage = ['Finance', 'HubPage'].join('')
+    expect(financeBranch).not.toContain('<Route index')
+    expect(financeBranch).not.toContain(retiredFinancePage)
+    for (const childPath of [
+      'overview',
+      'lane-separation',
+      'cash-movements',
+      'chart-of-accounts',
+      'ledger',
+      'trial-balance',
+      'profit-loss',
+      'balance-sheet',
+      'aged-receivables',
+      'aged-payables',
+      'journal-entries',
+    ]) {
+      expect(financeBranch).toContain(`path="${childPath}"`)
+    }
+  })
+
   it('does not register the legacy bank reconciliation route', () => {
     expect(routesSource).not.toContain('path="reconciliation"')
     expect(routesSource).not.toContain('BankReconciliationPage')
