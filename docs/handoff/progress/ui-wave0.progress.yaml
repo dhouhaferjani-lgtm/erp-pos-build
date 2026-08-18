@@ -36,10 +36,10 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M0b
-    title: "Owner-authorized tests-only baseline remediation before M1: re-derive the full failing set at pinned base d682b38ec9761a917b9716428091a482745795f6, then fix every stale test to assert current ruled behavior with a one-line comment citing the promoted lane that changed it (including UoM unit-precision quantity display and L3 locationScopedKey where applicable). Diff is limited to test files; zero production-code changes. If any failure exposes a real current-behavior defect rather than stale test debt, record it as a finding and STOP that item as blocked_review. Exit requires full apps/web pnpm test green plus pnpm typecheck and pnpm lint, followed by the normal bridge review. Commit series: Phase 0.0b.<seq>."
+    title: "Owner-authorized tests-only baseline remediation before M1: re-derive the full failing set at pinned base d682b38ec9761a917b9716428091a482745795f6, then fix every stale test to assert current ruled behavior with a one-line comment citing the promoted lane that changed it (including UoM unit-precision quantity display and L3 locationScopedKey where applicable). Diff is limited to test files; zero production-code changes. Owner amendment 2026-08-18: individually confirmed real-behavior defects remain failing as an enumerated exception list with owning lanes, and execution continues unless a defect invalidates this wave's own tasks; the M0b bridge must verify every classification. Initial exception: src/__tests__/i18n/arLocaleCoverage.test.ts, owned by CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md. Exit requires the remaining full apps/web pnpm test set green plus pnpm typecheck and pnpm lint, followed by the normal bridge review. Later milestones inherit the same reviewed exceptions. Commit series: Phase 0.0b.<seq>."
     review_lenses: [frontend-conventions, general]
-    status: blocked_review
-    updated: 3dcb31d
+    status: in_progress
+    updated: 261c6c4
     fix_rounds: 0
     commit: null
     verdict: null
@@ -134,10 +134,9 @@ owner_gates:
     blocks_milestone: none
     status: standing_constraint
 
-status: blocked_review    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
-blockers:
-  - "M0b hard stop: src/__tests__/i18n/arLocaleCoverage.test.ts deterministically exposes a current production defect, not a stale expectation: 142 Arabic keys are missing across common (122), workshop-technicians (1), and vehicles (19). A test-only change could only weaken valid coverage, while the real repair requires production locale edits forbidden by M0b. M1 has not started."
+status: in_progress    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []
 findings:
   - "Pinned-base inventory run 1: 20 failed files / 45 failed tests / 4,179 passed. Structured repeat: 19 failed files / 44 failed tests / 4,180 passed; the extra first-run failure was a CreateStockTransferPage.availability timeout absent from the repeat."
   - "Deterministic isolated evidence: pnpm exec vitest run src/__tests__/i18n/arLocaleCoverage.test.ts => 3 failed / 7 passed; current runtime falls back to English for the missing Arabic keys despite src/lib/i18n.ts claiming the enforced namespaces are fully translated."
-  - "No test or production implementation files were changed in M0b; classification stopped at the first confirmed real-behavior defect as required by the owner ruling."
+  - "Owner ruling 2026-08-18 CONFIRMS src/__tests__/i18n/arLocaleCoverage.test.ts as an enumerated real-defect exception owned by CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md; Arabic parity is not launch scope."

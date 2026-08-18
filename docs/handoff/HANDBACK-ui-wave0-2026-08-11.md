@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M0b blocked_review
+# UI Wave 0 implementer report — M0b in progress
 
 ## Header
 
@@ -7,7 +7,7 @@
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/ui-wave0`
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`
-- Wave status: `blocked_review` in M0b; M1 has not started.
+- Wave status: `in_progress` in M0b; M1 has not started.
 
 ## M0 repin
 
@@ -56,12 +56,14 @@ This is a current product defect rather than stale test debt:
 - `src/lib/i18n.ts` loads the incomplete Arabic bundles directly, labels these namespaces fully translated, and falls back to English for missing keys.
 - The test entered in `f683715db750904fad8e45f57bcb49939d45a8c7`; later English locale changes added keys without maintaining Arabic parity.
 
-A test-only edit could only remove namespaces or allow missing keys, masking the real fallback behavior. The actual repair requires production changes to Arabic locale JSON files, which violates M0b's zero-production-code constraint. Per the owner ruling, classification stopped at this first confirmed real-behavior defect and the milestone is `blocked_review`.
+A test-only edit could only remove namespaces or allow missing keys, masking the real fallback behavior. The actual repair requires production changes to Arabic locale JSON files, which violates M0b's zero-production-code constraint.
+
+Parent ruling 2026-08-18 confirms this as an enumerated real-defect exception owned by `CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md`; Arabic parity remains outside launch scope. M0b resumed to classify and repair the remaining failing files. Every exception must be independently confirmed by the bridge review.
 
 ## Scope and review state
 
-- No test implementation files changed.
+- Test-only remediation is in progress; production files remain off-limits.
 - No production files changed.
-- The known UoM quantity and L3 `locationScopedKey` stale expectations remain in the failing inventory but were not edited after the hard stop.
-- The bridge was not invoked because the M0b contract requires a green implementation commit before milestone review; the owner-mandated real-defect stop occurred first.
+- The known UoM quantity and L3 `locationScopedKey` stale expectations remain in the working inventory.
+- The M0b bridge review is pending completion of classification and test-only repairs.
 - M1 and all later milestones remain pending.
