@@ -64,6 +64,7 @@
 |---|---|---|---|---|
 | D-1 | Device build stack: **v60/61** (replenishment) → **v62** (UoM) → **v63** (cash rounding) → **v66** (Lane C) → **v67** (SUBJECT TO owner ruling O-22) | memory: `project_replenishment_requests`, `project_uom_display_precision`, cash-rounding + Lane C files | OPEN | Device/deploy operator |
 | D-2 | `RolesAndPermissionsSeeder` + cache-reset stack alongside the device update | `src: memory` | OPEN | Device/deploy operator |
+| D-3 | **SV-11 device build MUST deploy fleet-wide BEFORE the SV-9 migration reaches any origin/dev promotion** (owner-ruled 2026-08-18 at sv-stage1 M5, with fail-closed option 1). SV-9 flips `require_blind_cash_count` on for every tenant via unattended `tenants:migrate`; a pre-SV-11 device shows no expected figure and no whole-drawer instruction → false variance ≈ opening float on every close, manager-PIN wall fleet-wide. HARD precondition on the promotion that carries SV-9, joins the v60-67 cumulative stack. | sv-stage1 M5 gate (`.worktrees/sv-stage1/docs/handoff/reviews/sv-stage1/M5-round1.md`); owner ruling 2026-08-18 | OPEN — armed at sv-stage1 merge | Device/deploy operator + promotion gatekeeper |
 
 ## 4. Expert-comptable queue
 
