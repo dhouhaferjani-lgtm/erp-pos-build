@@ -19,8 +19,8 @@ review_resume:
     authority: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-18-m2-stop-a.md
     scope: stop_a_scoped_fix_round
     review_round: 8
-    consumed_by_verdict: null
-    result: in_progress
+    consumed_by_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round8.md
+    result: accepted
 
 # Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
 base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
@@ -65,11 +65,12 @@ milestones:
   - id: M2
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
-    status: review
+    status: passed
     fix_rounds: 5
     commit: 2bd9595d9ec1903826fbd4515f993a1b45005b31
-    verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/wave3-3c-3d/M2-round8.md
+    last_verdict: ACCEPT
+    updated: c15794eab
   - id: M3
     title: "3C tail: T18, T19, T19b + POS and GR D-f arms (WO arm = tested no-op tied to workshop-parts ticket; D-f POS arm carries NO grace window) + C-5 registration + flushIfOutermost tail + D-e stock_adjustment exclusion"
     review_lenses: [inventory-costing, fiscal-pos]

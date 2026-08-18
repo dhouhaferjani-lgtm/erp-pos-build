@@ -235,3 +235,12 @@ pass 69 tests / 310 assertions when the POS real-root class is isolated from
 the committed fixtures of the preceding five files; the wrapper trio passes
 41 / 218; Goods Receipt ordering passes 12 / 42. Pint and touched-file PHPStan
 pass, `git diff --check` is clean, and deptrac remains the reconciled 127.
+
+Adversarial round 8 applied the 2026-08-18 STOP-A ruling as explicit authority
+and returned `ACCEPT`. It independently reran the distinguishing R-1 test,
+Guard 4 seam, D-13 ratchet, wrapper/non-wrapper spot checks, Pint, and PHPStan;
+it verified that `2bd9595d9` is the only production cutover commit and accepted
+the per-writer T11c composition across all ten pairs. Its five observations are
+P3 notes only; the legacy NULL-cost helper issue shares the existing P3-8
+ticket, the deptrac number is deferred to the M5 whole-branch gate, and none is
+`CHANGES-REQUIRED` inside the ruled round-8 scope.
