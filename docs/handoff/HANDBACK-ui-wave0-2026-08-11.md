@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M1 accepted, M2 in progress
+# UI Wave 0 implementer report — M1 accepted, M2 review pending
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b and M1 passed; M2 is in progress.
+- Wave status: M0b and M1 passed; M2 implementation is committed and awaiting bridge review.
 
 ## M0 repin
 
@@ -148,3 +148,27 @@ M1 bridge round 1 (`docs/handoff/reviews/ui-wave0/M1-round1.md`) returned `CHANG
 M1 bridge round 2 (`docs/handoff/reviews/ui-wave0/M1-round2.md`) also returned `CHANGES-REQUIRED`. Commit `72c0207b41afdda1fa18cbec109a33ef7456bebb` (`Phase 0.1.5: Clarify M1 reachability evidence`) addresses its evidence findings: the report distinguishes the raw 27 scanner candidates from the 22 remaining after manual review; identifies the four shared-document Add targets and income edit link; corrects the inherited-rule source to `02-design-system-consistency.md:66`; documents the literal-prop union approximation; changes the secondary-surface claim to a conservative 33 with an explicit reproduction rule; and reconciles the timing and test-count evidence.
 
 M1 bridge round 3 (`docs/handoff/reviews/ui-wave0/M1-round3.md`) returned `ACCEPT`. The reviewer independently reproduced 46 listings, 271 route records, the 27 raw-candidate split, every listing distribution, 12/12 tests under both runners, and zero production changes. Two terminal-audit items remain explicit: applying the report's stated secondary-surface rule literally produced 35 rather than the reported 33 (P2 close-before-merge), and the mandated `17-` report ordinal collides with an owner-untracked session file. The tool's known five-link manual correction remains disclosed rather than implemented in the analyzer. M2 is now in progress; later milestones have not started.
+
+## M2 — T2 keyed route manifest resolution
+
+Commit `daf0a8f5065184cae0bf8c60eb4422dd6ae387f9` (`Phase 0.2.1: Resolve keyed route manifest pages`) adds `KeyedByRouteId` to the manifest generator's explicit pure-wrapper allow-list with the required keying-only/no-visual-output comment. It adds two tests: the keyed wrapper resolves to its inner page, while an unknown local wrapper remains the recorded component.
+
+Red-first evidence: `node --test scripts/factory/gen-route-manifest.test.mjs` reported 9 passed / 1 failed before the allow-list change. The failure was exact:
+
+```diff
+- component: InvoiceDetailPage
++ component: KeyedByRouteId
+```
+
+After the fix, the suite passes 10/10. A temporary regeneration (outside the repository) produces:
+
+```yaml
+- path: /sales/invoices/:id
+  component: InvoiceDetailPage
+  module_gate: sales
+  permission: null
+```
+
+`<KeyedByRouteId>` has exactly one route-tree use, at the invoice-detail mount, so this wrapper addition cannot change another manifest entry. `bash scripts/factory/check-manifest-drift.sh` still exits 1 for the expected pre-T3 route/permission drift but no longer prints an invoice-detail component hunk. No manifest file is changed or committed in M2; M3 route deletions must land before M4 performs the single authorized regeneration.
+
+M2 bridge review is pending. M3 and later milestones have not started.

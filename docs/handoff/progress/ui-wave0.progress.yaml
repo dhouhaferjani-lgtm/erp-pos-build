@@ -59,7 +59,8 @@ milestones:
     review_lenses: [frontend-conventions, general]
     status: in_progress
     fix_rounds: 0
-    commit: null
+    updated: daf0a8f50
+    commit: daf0a8f5065184cae0bf8c60eb4422dd6ae387f9
     verdict: null
     last_verdict: null
   - id: M3
