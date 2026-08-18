@@ -244,3 +244,38 @@ the per-writer T11c composition across all ten pairs. Its five observations are
 P3 notes only; the legacy NULL-cost helper issue shares the existing P3-8
 ticket, the deptrac number is deferred to the M5 whole-branch gate, and none is
 `CHANGES-REQUIRED` inside the ruled round-8 scope.
+
+## M3 — 3C tail controls
+
+M3 is implemented in `f6e14340c`. T18 removes the obsolete
+`createCOGSEntry()` API and migrates its accounting tests to movement-keyed
+inventory entries, including the no-`CompanyContext` chain-sequence coverage.
+T19 adds a fail-closed per-tenant pre-promotion SQL artifact and the required
+seven-section operations note, including 4a/4b/4c and the three new follow-up
+tickets. T19b adds the explicit, confirmed, forward-only compensating command;
+it posts exact inverse entries, nets each affected account to zero, is
+idempotent, and is never called by the normal path.
+
+The detector now implements D-a, D-b, D-e, and D-g plus D-f's POS and
+goods-receipt arms. POS has no grace window; goods receipt uses its persisted
+line link plus the established `Document` / purchase-order source tuple; D-e
+matches D-b's stock-adjustment exclusion. The work-order arm is a named,
+ticket-citing no-op with a negative regression. R-5's documented SQL
+counterpart now includes tenant, company, and physical-product scope, with a
+cross-tenant parity fixture. C-5, pulled into M2 for atomic safety, passes its
+live composite-root flush assertion.
+
+The implementation commit's revert-replay retained the new tests and produced
+`10 failed, 12 passed (27 assertions)`: all six new detector positives were
+absent, the R-5 forged line was reported, and all three reversal tests raised
+`CommandNotFoundException`. Aborting the revert restored a clean tree.
+
+Fresh PostgreSQL results are detector `19/42`, reversal plus enum/source
+regressions `7/43`, the combined accounting/document movement group `96/332`,
+the real complete-sales root `1/55`, C-5 `1/3`, and the touched seeder path
+`1/2`. Pint and touched-file PHPStan pass; `git diff --check` is clean; and
+deptrac remains 127, identical to accepted M2. The local preflight returned
+zero legacy COGS, zero duplicate groups, and zero non-physical delivery groups,
+but is explicitly recorded as a syntax/probe run—not deploy-target evidence.
+Full details and task-level red/green evidence are in
+`docs/handoff/reviews/wave3-3c-3d/M3-evidence.md`.

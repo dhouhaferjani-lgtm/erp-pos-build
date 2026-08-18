@@ -74,11 +74,12 @@ milestones:
   - id: M3
     title: "3C tail: T18, T19, T19b + POS and GR D-f arms (WO arm = tested no-op tied to workshop-parts ticket; D-f POS arm carries NO grace window) + C-5 registration + flushIfOutermost tail + D-e stock_adjustment exclusion"
     review_lenses: [inventory-costing, fiscal-pos]
-    status: in_progress
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: f6e14340c12ed72687c3aca5969f5a8f4e6ec25c
     verdict: null
     last_verdict: null
+    updated: f6e14340c
   - id: M4
     title: "3D France/purposes arm: T20 (propose shrinkage/gain codes — treasury approval a MERGE CONDITION), T20b. requiresGLEntry stays TRUE; thread unitCost, exclude adjustment path from GL buffer, preserve D-b exclusion."
     review_lenses: [inventory-costing, treasury]
