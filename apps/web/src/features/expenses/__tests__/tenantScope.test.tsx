@@ -186,8 +186,10 @@ describe('expenses hook queryKey shapes', () => {
     const key = client.getQueryCache().getAll()
       .map((query) => query.queryKey as unknown[])
       .find((candidate) => candidate[0] === 'expenses' && candidate[1] === 'analytics')
-    expect(key).toEqual(['expenses', 'analytics', filters, 'tenant-A', 'company-1'])
-    expect(mockExpenseAnalytics).toHaveBeenCalledWith(filters)
+    // Promoted L3 locationScopedKey lane: expense analytics carries effective locations and scope.
+    const scopedFilters = { ...filters, location_ids: [] }
+    expect(key).toEqual(['expenses', 'analytics', scopedFilters, { locScope: 'all' }, 'tenant-A', 'company-1'])
+    expect(mockExpenseAnalytics).toHaveBeenCalledWith(scopedFilters)
   })
 
   it('useExpenses queryKey carries tenant + company at the suffix (.261)', async () => {
@@ -460,7 +462,8 @@ describe('cross-tenant isolation', () => {
       expect(cat.current.isSuccess).toBe(true)
     })
 
-    const tenantAExpensesKey = ['expenses', 'list', undefined, 'tenant-A', 'company-1']
+    // Promoted L3 locationScopedKey lane: expense lists isolate location-scoped tenant slots.
+    const tenantAExpensesKey = ['expenses', 'list', { location_ids: [] }, { locScope: 'all' }, 'tenant-A', 'company-1']
     const tAExp = client.getQueryCache().find({ queryKey: tenantAExpensesKey, exact: true })
     expect(tAExp?.state.data).toEqual([])
     const tAExpData = (tAExp?.state.data ?? []) as Array<{ id: string }>

@@ -1,14 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { PERMISSIONS } from '../usePermissions'
 
-const fullRoles = ['admin', 'manager', 'accountant']
+// Promoted permission-map generation lane (Phase 3.0.16): generated role arrays are canonical and sorted.
+const fullRoles = ['accountant', 'admin', 'manager']
 const viewOnlyRoles = ['cashier', 'operator', 'viewer']
 
 describe('expense recurrence frontend permission alignment', () => {
   it('grants full recurrence CRUD and export only to the normative financial roles', () => {
     expect(PERMISSIONS['expense-recurrences.view']).toEqual([
-      ...fullRoles,
-      ...viewOnlyRoles,
+      'accountant',
+      'admin',
+      'cashier',
+      'manager',
+      'operator',
+      'viewer',
     ])
 
     for (const permission of [

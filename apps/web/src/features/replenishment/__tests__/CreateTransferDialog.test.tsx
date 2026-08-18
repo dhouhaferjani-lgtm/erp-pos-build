@@ -14,8 +14,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
 vi.mock('@/components/auth', () => ({
   RequirePermission: ({ children }: { children: React.ReactNode }) => permissionAllowed ? children : null,
 }))
-vi.mock('@/features/locations/hooks/useLocations', () => ({
-  useLocations: () => ({ data: [
+// Promoted multilocation Wave 1 gate lane: transfers consume transaction-eligible locations.
+vi.mock('@/features/locations/hooks/useTransactionLocations', () => ({
+  useTransactionLocations: () => ({ data: [
     { id: 'warehouse', name: 'Warehouse', type: 'warehouse', isActive: true },
     { id: 'shop-a', name: 'Shop A', type: 'shop', isActive: true },
     { id: 'shop-b', name: 'Shop B', type: 'shop', isActive: true },

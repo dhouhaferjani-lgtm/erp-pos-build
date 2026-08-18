@@ -285,7 +285,8 @@ describe('SupplierInvoiceListPage — tenant scope', () => {
 
 describe('SupplierInvoiceListPage — scan entry point', () => {
   it('renders a scan-invoice link with the locked kind when the user has document-ingestions.view', async () => {
-    setTenant('tenant-1', 'company-1', ['purchases'])
+    // Promoted permission-map generation lane (Phase 3.0.16): tests use an authorized generated role.
+    setTenant('tenant-1', 'company-1', ['accountant'])
     renderWithProviders(<SupplierInvoiceListPage />)
 
     await waitFor(() => {

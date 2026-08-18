@@ -35,6 +35,11 @@ vi.mock('@/stores/companyStore', () => ({
     selector({ currentCompanyId: 'company-1' }),
 }))
 
+// Promoted L3 locationScopedKey lane: mutation tests pin the all-locations view scope.
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({ scope: 'all', effectiveLocationIds: [], isAll: true, setScope: vi.fn() }),
+}))
+
 function wrapperWith(client: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>

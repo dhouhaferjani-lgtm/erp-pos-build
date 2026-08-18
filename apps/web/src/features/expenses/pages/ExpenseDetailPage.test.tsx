@@ -29,6 +29,11 @@ vi.mock('../../documents/components/DocumentAttachments', () => ({
   DocumentAttachments: () => <div data-testid="document-attachments" />,
 }))
 
+// Promoted statement-reconciliation workspace lane (Phase 5.5.2): shell tests stub its query child.
+vi.mock('@/features/treasury/statements/StatementReconciliationChips', () => ({
+  StatementReconciliationChips: () => null,
+}))
+
 // ─── usePermissions: configurable mock — default grants all ──────────────────
 const mockHasPermission = vi.fn((_p: string): boolean => true)
 vi.mock('@/hooks/usePermissions', () => ({
