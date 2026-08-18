@@ -36,15 +36,15 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M0b
-    title: "Owner-authorized tests-only baseline remediation before M1: re-derive the full failing set at pinned base d682b38ec9761a917b9716428091a482745795f6, then fix every stale test to assert current ruled behavior with a one-line comment citing the promoted lane that changed it (including UoM unit-precision quantity display and L3 locationScopedKey where applicable). Diff is limited to test files; zero production-code changes. Owner amendment 2026-08-18: individually confirmed real-behavior defects remain failing as an enumerated exception list with owning lanes, and execution continues unless a defect invalidates this wave's own tasks; the M0b bridge must verify every classification. Initial exception: src/__tests__/i18n/arLocaleCoverage.test.ts, owned by CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md. Exit requires the remaining full apps/web pnpm test set green plus pnpm typecheck and pnpm lint, followed by the normal bridge review. Later milestones inherit the same reviewed exceptions. Commit series: Phase 0.0b.<seq>."
+    title: "Owner-authorized tests-only baseline remediation before M1: re-derive the full failing set at pinned base d682b38ec9761a917b9716428091a482745795f6, then fix every stale test to assert current ruled behavior with a one-line comment citing the promoted lane that changed it (including UoM unit-precision quantity display and L3 locationScopedKey where applicable). Diff is limited to test files; zero production-code changes. Owner amendment 2026-08-18: individually confirmed real-behavior defects remain failing as an enumerated exception list with owning lanes, and execution continues unless a defect invalidates this wave's own tasks; the M0b bridge must verify every classification. Initial exception: src/__tests__/i18n/arLocaleCoverage.test.ts, owned by CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md. Exit requires the remaining apps/web `pnpm test -- --maxWorkers=1` set green plus pnpm typecheck and pnpm lint, followed by the normal bridge review. Later milestones inherit the same reviewed exceptions and deterministic test command. Commit series: Phase 0.0b.<seq>."
     review_lenses: [frontend-conventions, general]
     authority: docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md
-    status: in_progress
-    updated: 61d9dce8a
-    fix_rounds: 1
-    commit: 61d9dce8a576a2c6d0af267424532c635d34e20b
-    verdict: docs/handoff/reviews/ui-wave0/M0b-round1.md
-    last_verdict: CHANGES-REQUIRED
+    status: passed
+    updated: 87cbda211
+    fix_rounds: 2
+    commit: 87cbda21112e7da89a2cd8b2c872c03830381c0c
+    verdict: docs/handoff/reviews/ui-wave0/M0b-round2.md
+    last_verdict: ACCEPT
   - id: M1
     title: "T1 (CX-4) - component-graph-aware listing re-census: apps/web/tools/audit-listing-census.mjs (pure exported functions + main), its node --test suite, and the report at docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md. Discovery rule stated and not hardcoded to 46; import-following into organisms; orphan reachability incl. parameterized routes and breadcrumb parents; always exit 0 and NOT chained into `lint` or CI. Supersedes UI-28/UI-29/UI-34 with method-per-number."
     review_lenses: [frontend-conventions, general]
@@ -102,7 +102,7 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M8
-    title: "WHOLE-BRANCH GATE (no new implementation): the SIX §4 whole-branch contract items at final state - (1) ./scripts/preflight.sh with the PHPUnit skip reported AS A SKIP, never as green, and every non-PHPUnit stage genuinely passing; (2) check-manifest-drift.sh exit 0 with /sales/invoices/:id -> InvoiceDetailPage present and the four deleted routes absent; (3) audit-design-system.mjs 0 new/0 stale with the categorised per-category delta - ONLY C6 grows, C2 -1 and C3 -1 traceable to the two deleted files, C1/C4/C5 frozen, anything else is a fail; (4) the per-deleted-route greps with quoted -E patterns, the production-only /finance grep and the enumeration of the seven intentional HubCard.test.tsx literals (lines 12, 22, 35, 54, 63, 87, 103); (5) pnpm typecheck/lint/test green in apps/web; (6) the UI E2E run with any skipped spec documented by screenshot, or the named blocker. Then write the handback per §5 - including the hard prohibition on the words 'Wave 0 complete' / 'UI-43 closed'."
+    title: "WHOLE-BRANCH GATE (no new implementation): the SIX §4 whole-branch contract items at final state - (1) ./scripts/preflight.sh with the PHPUnit skip reported AS A SKIP, never as green, and every non-PHPUnit stage genuinely passing; (2) check-manifest-drift.sh exit 0 with /sales/invoices/:id -> InvoiceDetailPage present and the four deleted routes absent; (3) audit-design-system.mjs 0 new/0 stale with the categorised per-category delta - ONLY C6 grows, C2 -1 and C3 -1 traceable to the two deleted files, C1/C4/C5 frozen, anything else is a fail; (4) the per-deleted-route greps with quoted -E patterns, the production-only /finance grep and the enumeration of the seven intentional HubCard.test.tsx literals (lines 12, 22, 35, 54, 63, 87, 103); (5) pnpm typecheck/lint and `pnpm test -- --maxWorkers=1` green in apps/web, subject only to the bridge-confirmed M0b real-defect exceptions; (6) the UI E2E run with any skipped spec documented by screenshot, or the named blocker. Then write the handback per §5 - including the hard prohibition on the words 'Wave 0 complete' / 'UI-43 closed'."
     review_lenses: [frontend-conventions, tenancy-authz, general]
     status: pending
     fix_rounds: 0

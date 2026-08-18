@@ -103,7 +103,7 @@ The complete repaired subset passes: 17 files and 168 tests.
 
 - `pnpm test -- --maxWorkers=1 --reporter=json --outputFile=/tmp/ui-wave0-m0b-full-single-worker.json`: deterministic canonical gate; 4,224 passed, 5 failed, 1 skipped, 3 todo. The only failing files are the three enumerated real-defect exceptions above.
 - `pnpm test -- --maxWorkers=4 --reporter=json`: one executor run produced 4,224 passed, 5 failed, 1 skipped, 3 todo, with the five failed assertions belonging only to the three enumerated exception files above. The round-1 reviewer reproduced additional load-only flakes at four workers, so this is superseded by the single-worker gate above.
-- The unconstrained full run also reproduced all three exception files; five additional timing/contention failures passed in a focused rerun and were not classified as defects. The one deterministic partner hydration race was repaired test-only and now passes in isolation.
+- The unconstrained full run also reproduced all three exception files; timing/contention failures in `ReviewIngestionPage.test.tsx`, `PartnerForm.test.tsx`, `PosHubPage.test.tsx`, and `SupplierInvoiceDetailPage.test.tsx` passed in a focused rerun and were not classified as defects. The observed partner hydration race was repaired test-only and now passes in the 168-test repaired subset.
 - `pnpm typecheck`: pass.
 - `pnpm lint`: pass with the repository's pre-existing warning inventory; TanStack keys report 0 new/0 stale, design-system audit 0 new/0 stale, quantity audit 0 new/0 stale, and all custom ESLint rule tests pass.
 - `npx react-doctor@latest --verbose --scope changed --base d682b38ec9761a917b9716428091a482745795f6`: 100/100, no issues across 17 changed web files.
@@ -111,9 +111,10 @@ The complete repaired subset passes: 17 files and 168 tests.
 ## M0b review rounds
 
 - Round 1: `docs/handoff/reviews/ui-wave0/M0b-round1.md` — `CHANGES-REQUIRED`. The reviewer confirmed zero production changes and all stale-expectation fixes, but required a deterministic full-suite command, forward routing for the two newly discovered production defects, stronger tenant-risk characterization, and evidence/comment corrections.
+- Round 2: `docs/handoff/reviews/ui-wave0/M0b-round2.md` — `ACCEPT`. The reviewer independently reproduced 4,224 passed / 5 failed under `--maxWorkers=1`, confirmed the failing files are exactly the three enumerated real defects, verified 168/168 repaired tests plus typecheck and lint, and confirmed zero production changes.
 
 ## Scope and review state
 
 - Test-only remediation and local verification are complete; production files remain unchanged.
-- The M0b bridge review is pending and must confirm both candidate exception classifications.
-- M1 and all later milestones remain pending.
+- M0b is bridge-accepted with the three enumerated real-defect exceptions above.
+- M1 and all later milestones remain pending; later test gates use `--maxWorkers=1` and inherit only those reviewed exceptions unless a new real defect is individually confirmed.
