@@ -3,6 +3,13 @@
     "defaultsTitle": "الوحدات الافتراضية",
     "defaultsHint": "مضمّنة مع قطاع {{vertical}} — مفعّلة دائمًا ولا يمكن تعطيلها."
   },
+  "shell": {
+    "brand": "الإدارة", "panel": "لوحة الإدارة المركزية", "portalTitle": "بوابة الإدارة المركزية", "portalSubtitle": "سجّل الدخول إلى لوحة الإدارة",
+    "email": "البريد الإلكتروني", "emailPlaceholder": "admin@example.com", "password": "كلمة المرور", "passwordPlaceholder": "أدخل كلمة المرور",
+    "signIn": "تسجيل الدخول", "signingIn": "جارٍ تسجيل الدخول…", "signOut": "تسجيل الخروج",
+    "backToLogin": "العودة إلى تسجيل الدخول العادي", "invalidCredentials": "بيانات الاعتماد غير صحيحة", "adminFallback": "مسؤول",
+    "navigation": { "dashboard": "لوحة المعلومات", "tenants": "المستأجرون", "verticals": "القطاعات", "companyOwners": "مالكو الشركات", "billing": "الفوترة", "monitoring": "المراقبة", "auditLogs": "سجلات التدقيق" }
+  },
   "verticals": {
     "title": "إعداد القطاعات",
     "loading": "جارٍ تحميل القطاعات...",

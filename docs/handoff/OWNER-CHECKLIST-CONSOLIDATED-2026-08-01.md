@@ -82,3 +82,28 @@
 Sale-branch Z decomposition fix (own fiscal gate) · legacy-return sequence on v3-from-birth
 terminals (chain-numbering lane) · Lane C minor carry-overs (12 items) · positive-refund ticket
 CLOSED by wave 4 · M2/M3 defaults revision with pilot data.
+
+## G. COUNTRY DEFAULTS PHASE A — TWO-RELEASE ACTIVATION
+- [ ] **G1. Release 1:** deploy the additive central schema, draft bootstrap import, admin API/UI,
+      and provisioning code with both `COUNTRY_DEFAULTS_EXTERNAL_EDITORS_ENABLED=false` and
+      `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false`.
+- [ ] **G2. Authenticated certification:** a logged-in active `super_admin` reviews and publishes
+      the TN, FR, and Generic chart templates through the HTTP surface, then assigns `TN`, `FR`,
+      and `*`. No CLI/synthetic certification is permitted.
+- [ ] **G3. Blocking verification gate:** after G2 certification and assignments, run
+      `php artisan country-defaults:verify` to zero exit on staging and again on production. A
+      non-zero exit in either environment blocks G4: keep
+      `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false` and do not reopen company creation or tenant
+      registration on the template-backed path.
+- [ ] **G4. Release 2:** only after both G3 commands exit zero, set
+      `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=true`, rebuild `config:cache`, restart
+      application/queue workers, run `php artisan horizon:terminate`, and verify the value from the
+      running release. Keep external editors disabled pending the central-admin MFA lane.
+- [ ] **G5. Rollback:** restore `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false`, rebuild config cache,
+      restart application/queue workers, terminate Horizon, and verify the running value. Release 1
+      has one behaviorally active expense-category loud-failure boundary; see the M5 P3 ticket.
+
+Phase A limitation (S-5): **Phase A does not wait for, and does not implement, `country_code`
+immutability** (a separate settings-guards lane owns it). Phase A's certification claims cover
+**unconditional template-layer timbre invariants only**. The tenant-side stamp capability check is
+a **usability guard, never an authorization control**, until that lane closes.

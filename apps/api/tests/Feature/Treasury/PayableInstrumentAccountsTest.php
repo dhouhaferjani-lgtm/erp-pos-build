@@ -16,8 +16,10 @@ use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Testing\PendingCommand;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
+#[UsesFrozenSeederFixture]
 final class PayableInstrumentAccountsTest extends TestCase
 {
     use RefreshDatabase;

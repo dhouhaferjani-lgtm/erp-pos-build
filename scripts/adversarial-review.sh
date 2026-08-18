@@ -14,7 +14,7 @@
 #
 # Exit codes: 0 = ACCEPT · 2 = CHANGES-REQUIRED · 3 = tool/parse error (treat as CHANGES-REQUIRED, fail-closed)
 #
-# Runs read-only: Opus is told not to modify the repo; the script captures its stdout.
+# Runs read-only: plan-mode permissions enforce no writes, and the script captures Opus's stdout.
 # Requires: claude CLI on PATH (verified 2026-08-11 @ 2.1.227) supporting --print/--model/--permission-mode.
 set -euo pipefail
 
@@ -32,7 +32,13 @@ while [ $# -gt 0 ]; do
 done
 
 for req in BRIEF MILESTONE RANGE OUT; do
-  if [ -z "${!req}" ]; then echo "missing --${req,,}" >&2; exit 3; fi
+  case "$req" in
+    BRIEF) req_flag="brief" ;;
+    MILESTONE) req_flag="milestone" ;;
+    RANGE) req_flag="range" ;;
+    OUT) req_flag="out" ;;
+  esac
+  if [ -z "${!req}" ]; then echo "missing --${req_flag}" >&2; exit 3; fi
 done
 if ! command -v claude >/dev/null 2>&1; then echo "claude CLI not on PATH" >&2; exit 3; fi
 if [ ! -f "$BRIEF" ]; then echo "brief not found: $BRIEF" >&2; exit 3; fi
@@ -82,7 +88,7 @@ PROMPT_EOF
 TMP="$(mktemp)"
 if ! claude -p "$PROMPT" \
       --model opus \
-      --permission-mode bypassPermissions \
+      --permission-mode plan \
       --output-format text > "$TMP" 2>"${TMP}.err"; then
   echo "claude invocation failed:" >&2; tail -5 "${TMP}.err" >&2
   { echo "# REVIEW TOOL ERROR (milestone ${MILESTONE}, round ${ROUND})"; echo; cat "${TMP}.err"; } > "$OUT"

@@ -21,8 +21,8 @@ use Database\Seeders\ExpenseCategorySeeder;
  *
  * Ordering contract: run AFTER the chart of accounts, because every category
  * links to a class-6 account (or resolves the `GeneralExpense` purpose).
- * Idempotent — {@see ExpenseCategorySeeder::seedForCompany} uses `firstOrCreate`
- * and skips rather than writing a null `account_id` when the chart is absent.
+ * Idempotent — {@see ExpenseCategorySeeder::seedForCompany} uses `firstOrCreate`.
+ * A missing chart or certified mapped code is a provisioning failure and throws.
  */
 final class ExpenseCategoryProvisioningService
 {

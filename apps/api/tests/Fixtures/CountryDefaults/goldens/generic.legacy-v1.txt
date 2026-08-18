@@ -1,0 +1,61 @@
+{"code":"1000","name":"Equity","type":"equity","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":1}
+{"code":"1100","name":"Retained Earnings","type":"equity","parent_code":"1000","system_purpose":"retained_earnings","is_system":true,"sort_order":2}
+{"code":"1190","name":"Opening Balance Equity","type":"equity","parent_code":"1000","system_purpose":"opening_balance_equity","is_system":true,"sort_order":3}
+{"code":"2000","name":"Fixed Assets","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":4}
+{"code":"2100","name":"Tangible Assets","type":"asset","parent_code":"2000","system_purpose":null,"is_system":false,"sort_order":5}
+{"code":"2800","name":"Accumulated Depreciation","type":"asset","parent_code":"2000","system_purpose":null,"is_system":false,"sort_order":6}
+{"code":"3000","name":"Inventory","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":7}
+{"code":"3700","name":"Goods for Resale","type":"asset","parent_code":"3000","system_purpose":"inventory","is_system":true,"sort_order":8}
+{"code":"4000","name":"Third Parties","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":9}
+{"code":"4010","name":"Supplier Payable","type":"liability","parent_code":"4000","system_purpose":"supplier_payable","is_system":true,"sort_order":10}
+{"code":"403","name":"Supplier Effects Payable","type":"liability","parent_code":"4000","system_purpose":null,"is_system":true,"sort_order":11}
+{"code":"4035","name":"Supplier Checks Payable","type":"liability","parent_code":"4000","system_purpose":null,"is_system":true,"sort_order":12}
+{"code":"4080","name":"Goods Received Not Invoiced","type":"liability","parent_code":"4000","system_purpose":"goods_received_not_invoiced","is_system":true,"sort_order":13}
+{"code":"4090","name":"Advance to Suppliers","type":"asset","parent_code":"4000","system_purpose":"supplier_advance","is_system":true,"sort_order":14}
+{"code":"4100","name":"Customer Receivable","type":"asset","parent_code":"4000","system_purpose":"customer_receivable","is_system":true,"sort_order":15}
+{"code":"413","name":"Effects Receivable","type":"asset","parent_code":"4000","system_purpose":null,"is_system":true,"sort_order":16}
+{"code":"416","name":"Doubtful Receivables","type":"asset","parent_code":"4000","system_purpose":null,"is_system":true,"sort_order":17}
+{"code":"4180","name":"Uninvoiced Revenue","type":"asset","parent_code":"4000","system_purpose":"uninvoiced_revenue","is_system":true,"sort_order":18}
+{"code":"4190","name":"Customer Advance","type":"liability","parent_code":"4000","system_purpose":"customer_advance","is_system":true,"sort_order":19}
+{"code":"4400","name":"Tax Accounts","type":"liability","parent_code":"4000","system_purpose":null,"is_system":false,"sort_order":20}
+{"code":"4456","name":"VAT Deductible (Input)","type":"asset","parent_code":"4400","system_purpose":"vat_deductible","is_system":true,"sort_order":21}
+{"code":"44566","name":"VAT Recoverable on Bank Fees","type":"asset","parent_code":"4456","system_purpose":null,"is_system":true,"sort_order":22}
+{"code":"4457","name":"VAT Collected (Output)","type":"liability","parent_code":"4400","system_purpose":"vat_collected","is_system":true,"sort_order":23}
+{"code":"5000","name":"Cash & Bank","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":24}
+{"code":"5100","name":"Bank Accounts","type":"asset","parent_code":"5000","system_purpose":"bank","is_system":true,"sort_order":25}
+{"code":"511","name":"Values in Collection","type":"asset","parent_code":"5000","system_purpose":null,"is_system":false,"sort_order":26}
+{"code":"5112","name":"Checks to Collect","type":"asset","parent_code":"511","system_purpose":null,"is_system":true,"sort_order":27}
+{"code":"5113","name":"Effects in Collection","type":"asset","parent_code":"511","system_purpose":null,"is_system":true,"sort_order":28}
+{"code":"5114","name":"Effects Discounted","type":"asset","parent_code":"511","system_purpose":null,"is_system":true,"sort_order":29}
+{"code":"5300","name":"Cash","type":"asset","parent_code":"5000","system_purpose":"cash","is_system":true,"sort_order":30}
+{"code":"6000","name":"Expenses","type":"expense","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":31}
+{"code":"6030","name":"Cost of Goods Sold","type":"expense","parent_code":"6000","system_purpose":"cost_of_goods_sold","is_system":true,"sort_order":32}
+{"code":"6070","name":"Purchase Expenses","type":"expense","parent_code":"6000","system_purpose":"purchase_expenses","is_system":true,"sort_order":33}
+{"code":"6130","name":"Utilities","type":"expense","parent_code":"6000","system_purpose":"utilities_expense","is_system":true,"sort_order":34}
+{"code":"6170","name":"Office Supplies","type":"expense","parent_code":"6000","system_purpose":"office_expense","is_system":true,"sort_order":35}
+{"code":"6250","name":"Travel","type":"expense","parent_code":"6000","system_purpose":"travel_expense","is_system":true,"sort_order":36}
+{"code":"6256","name":"Meals & Entertainment","type":"expense","parent_code":"6000","system_purpose":"meals_expense","is_system":true,"sort_order":37}
+{"code":"627","name":"Bank Services and Fees","type":"expense","parent_code":"6000","system_purpose":null,"is_system":true,"sort_order":38}
+{"code":"6280","name":"General Expenses","type":"expense","parent_code":"6000","system_purpose":"general_expense","is_system":true,"sort_order":39}
+{"code":"6400","name":"Salaries & Wages","type":"expense","parent_code":"6000","system_purpose":null,"is_system":false,"sort_order":40}
+{"code":"6350","name":"Purchase Stamp Duty","type":"expense","parent_code":"6000","system_purpose":"purchase_stamp_duty","is_system":true,"sort_order":41}
+{"code":"6580","name":"Payment Tolerance Expense","type":"expense","parent_code":"6000","system_purpose":"payment_tolerance_expense","is_system":true,"sort_order":42}
+{"code":"6585","name":"Écart sur prix d'achat","type":"expense","parent_code":"6000","system_purpose":"purchase_price_variance_expense","is_system":true,"sort_order":43}
+{"code":"6581","name":"Sales Rounding Difference (Expense)","type":"expense","parent_code":"6000","system_purpose":"sales_rounding_difference_expense","is_system":true,"sort_order":44}
+{"code":"6660","name":"Realized FX Loss","type":"expense","parent_code":"6000","system_purpose":"realized_fx_loss","is_system":true,"sort_order":45}
+{"code":"6590","name":"Refund Write-Off","type":"expense","parent_code":"6000","system_purpose":"refund_write_off","is_system":true,"sort_order":46}
+{"code":"7000","name":"Revenue","type":"revenue","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":47}
+{"code":"7060","name":"Service Revenue","type":"revenue","parent_code":"7000","system_purpose":"service_revenue","is_system":true,"sort_order":48}
+{"code":"7070","name":"Product Sales Revenue","type":"revenue","parent_code":"7000","system_purpose":"product_revenue","is_system":true,"sort_order":49}
+{"code":"7090","name":"Sales Returns","type":"expense","parent_code":"7000","system_purpose":"sales_return","is_system":true,"sort_order":50}
+{"code":"7091","name":"Sales Discounts","type":"expense","parent_code":"7000","system_purpose":"sales_discount","is_system":true,"sort_order":51}
+{"code":"7580","name":"Payment Tolerance Income","type":"revenue","parent_code":"7000","system_purpose":"payment_tolerance_income","is_system":true,"sort_order":52}
+{"code":"7581","name":"Sales Rounding Difference (Income)","type":"revenue","parent_code":"7000","system_purpose":"sales_rounding_difference_income","is_system":true,"sort_order":53}
+{"code":"7585","name":"Écart sur prix d'achat","type":"revenue","parent_code":"7000","system_purpose":"purchase_price_variance_income","is_system":true,"sort_order":54}
+{"code":"7660","name":"Realized FX Gain","type":"revenue","parent_code":"7000","system_purpose":"realized_fx_gain","is_system":true,"sort_order":55}
+{"code":"7092","name":"Sales Returns Clearing (Voucher)","type":"expense","parent_code":"7000","system_purpose":"sales_returns_clearing","is_system":true,"sort_order":56}
+{"code":"4197","name":"Voucher Liability","type":"liability","parent_code":"4000","system_purpose":"voucher_liability","is_system":true,"sort_order":57}
+{"code":"6238","name":"Marketing Goodwill Expense","type":"expense","parent_code":"6000","system_purpose":"marketing_goodwill_expense","is_system":true,"sort_order":58}
+{"code":"7592","name":"Voucher Breakage Income","type":"revenue","parent_code":"7000","system_purpose":"voucher_breakage_income","is_system":true,"sort_order":59}
+{"code":"6588","name":"Rounding Loss Expense (Voucher)","type":"expense","parent_code":"6000","system_purpose":"rounding_loss_expense","is_system":true,"sort_order":60}
+{"code":"5810","name":"POS Tender Clearing (Voucher Redemption)","type":"asset","parent_code":null,"system_purpose":"pos_tender_clearing","is_system":true,"sort_order":61}

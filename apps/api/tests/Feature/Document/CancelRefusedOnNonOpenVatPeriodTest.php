@@ -39,6 +39,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
 /**
@@ -57,6 +58,7 @@ use Tests\TestCase;
  * condition attached to ruling 6a", suggested fix 2)
  * docs/superpowers/tickets/2026-08-07-round2-rulings-record.md (R-c c2)
  */
+#[UsesFrozenSeederFixture]
 final class CancelRefusedOnNonOpenVatPeriodTest extends TestCase
 {
     use RefreshDatabase;

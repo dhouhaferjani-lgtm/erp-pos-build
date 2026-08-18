@@ -6,10 +6,12 @@ namespace App\Modules\Tenant\Application\Services;
 
 use App\Enums\Vertical;
 use App\Models\CountryTaxRate;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Expense\Application\Services\ExpenseCategoryProvisioningService;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Taxation\Application\Services\CompanyTaxProvisioningService;
 use App\Modules\Tenant\Domain\Tenant;
@@ -19,13 +21,9 @@ use Database\Seeders\CountryDocumentSettingsSeeder;
 use Database\Seeders\CountryInventorySettingsSeeder;
 use Database\Seeders\CountryPaymentSettingsSeeder;
 use Database\Seeders\CountryTaxRatesSeeder;
-use Database\Seeders\ExpenseCategorySeeder;
-use Database\Seeders\FranceChartOfAccountsSeeder;
-use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\PaymentRepositorySeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Support\Facades\Artisan;
 
 /**
@@ -38,6 +36,8 @@ class TenantInitializationService
 {
     public function __construct(
         private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
+        private readonly ChartOfAccountsService $chartOfAccounts,
+        private readonly ExpenseCategoryProvisioningService $expenseCategories,
     ) {}
 
     /**
@@ -217,15 +217,7 @@ class TenantInitializationService
 
     private function seedChartOfAccounts(Company $company): void
     {
-        $countryCode = strtoupper($company->country_code);
-
-        $seeder = match ($countryCode) {
-            'TN' => new TunisiaChartOfAccountsSeeder,
-            'FR' => new FranceChartOfAccountsSeeder,
-            default => new GenericChartOfAccountsSeeder,
-        };
-
-        $seeder->run($company->id, $company->tenant_id);
+        $this->chartOfAccounts->seedForCompany($company);
     }
 
     /**
@@ -254,8 +246,7 @@ class TenantInitializationService
      */
     private function seedExpenseCategories(Company $company): void
     {
-        $seeder = new ExpenseCategorySeeder;
-        $seeder->seedForCompany($company);
+        $this->expenseCategories->provisionForCompany($company);
     }
 
     private function seedBanks(Company $company): void

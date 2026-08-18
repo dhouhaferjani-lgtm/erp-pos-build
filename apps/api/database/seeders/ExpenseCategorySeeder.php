@@ -8,7 +8,9 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Expense\Domain\ExpenseCategory;
+use DomainException;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Seeds a company's default expense categories, each linked to an existing
@@ -25,10 +27,9 @@ use Illuminate\Database\Seeder;
  *   TN / FR (French-plan charts) → PCN/PCG codes 613/615/616/624/626/6061/6064
  *   anything else (generic chart) → 6130/6170/6250/6256, English names
  *
- * A code that a chart does not carry, and the deliberate `null` catch-all,
- * resolve through the GeneralExpense system purpose — which every chart now
- * seeds (register E-1). Categories are per-company data an operator edits, so
- * these are defaults, never enforcement.
+ * A deliberate `null` catch-all resolves through the GeneralExpense system
+ * purpose. A non-null mapping that the chart does not carry is certification
+ * drift and fails loudly; it must never silently book to a different account.
  */
 class ExpenseCategorySeeder extends Seeder
 {
@@ -72,36 +73,42 @@ class ExpenseCategorySeeder extends Seeder
      */
     public function seedForCompany(Company $company): void
     {
-        $fallback = Account::findByPurpose($company->id, SystemAccountPurpose::GeneralExpense);
-
-        $sort = 0;
-        foreach ($this->categoriesForCountry($company->country_code) as $name => $code) {
-            $account = $code !== null
-                ? Account::query()
-                    ->where('company_id', $company->id)
-                    ->where('code', $code)
-                    ->first()
-                : null;
-
-            $account ??= $fallback;
-
-            // Skip rather than insert a NULL account_id (COA was not seeded yet).
-            if ($account === null) {
-                continue;
+        DB::transaction(function () use ($company): void {
+            if (Account::query()->where('company_id', $company->id)->doesntExist()) {
+                throw new DomainException("Company {$company->id} has no chart of accounts for expense categories.");
             }
 
-            ExpenseCategory::query()->firstOrCreate(
-                ['company_id' => $company->id, 'name' => $name],
-                [
-                    'tenant_id' => $company->tenant_id,
-                    'account_id' => $account->id,
-                    'is_active' => true,
-                    'sort_order' => $sort,
-                ],
-            );
+            $fallback = Account::findByPurpose($company->id, SystemAccountPurpose::GeneralExpense);
+            $sort = 0;
+            foreach ($this->categoriesForCountry($company->country_code) as $name => $code) {
+                if ($code === null) {
+                    if (! $fallback instanceof Account) {
+                        throw new DomainException("Company {$company->id} has no GeneralExpense account for category {$name}.");
+                    }
+                    $account = $fallback;
+                } else {
+                    $account = Account::query()
+                        ->where('company_id', $company->id)
+                        ->where('code', $code)
+                        ->first();
+                    if (! $account instanceof Account) {
+                        throw new DomainException("Company {$company->id} is missing mapped expense account code {$code} for category {$name}.");
+                    }
+                }
 
-            $sort++;
-        }
+                ExpenseCategory::query()->firstOrCreate(
+                    ['company_id' => $company->id, 'name' => $name],
+                    [
+                        'tenant_id' => $company->tenant_id,
+                        'account_id' => $account->id,
+                        'is_active' => true,
+                        'sort_order' => $sort,
+                    ],
+                );
+
+                $sort++;
+            }
+        });
     }
 
     /**

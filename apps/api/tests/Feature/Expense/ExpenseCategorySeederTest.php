@@ -22,8 +22,10 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
+#[UsesFrozenSeederFixture]
 final class ExpenseCategorySeederTest extends TestCase
 {
     use RefreshDatabase;

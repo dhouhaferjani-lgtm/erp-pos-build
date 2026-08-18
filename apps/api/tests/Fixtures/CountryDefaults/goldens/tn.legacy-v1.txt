@@ -1,0 +1,139 @@
+{"code":"1","name":"CAPITAUX","type":"equity","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":1}
+{"code":"10","name":"Capital social","type":"equity","parent_code":"1","system_purpose":null,"is_system":false,"sort_order":2}
+{"code":"11","name":"Réserves","type":"equity","parent_code":"1","system_purpose":null,"is_system":false,"sort_order":3}
+{"code":"12","name":"Report à nouveau","type":"equity","parent_code":"1","system_purpose":"retained_earnings","is_system":true,"sort_order":4}
+{"code":"119","name":"Solde d'ouverture","type":"equity","parent_code":"1","system_purpose":"opening_balance_equity","is_system":true,"sort_order":5}
+{"code":"13","name":"Résultat de l'exercice","type":"equity","parent_code":"1","system_purpose":null,"is_system":false,"sort_order":6}
+{"code":"14","name":"Subventions d'investissement","type":"equity","parent_code":"1","system_purpose":null,"is_system":false,"sort_order":7}
+{"code":"15","name":"Provisions réglementées","type":"equity","parent_code":"1","system_purpose":null,"is_system":false,"sort_order":8}
+{"code":"16","name":"Emprunts et dettes assimilées","type":"liability","parent_code":"1","system_purpose":null,"is_system":false,"sort_order":9}
+{"code":"17","name":"Dettes rattachées à des participations","type":"liability","parent_code":"1","system_purpose":null,"is_system":false,"sort_order":10}
+{"code":"2","name":"IMMOBILISATIONS","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":11}
+{"code":"20","name":"Immobilisations incorporelles","type":"asset","parent_code":"2","system_purpose":null,"is_system":false,"sort_order":12}
+{"code":"21","name":"Immobilisations corporelles","type":"asset","parent_code":"2","system_purpose":null,"is_system":false,"sort_order":13}
+{"code":"211","name":"Terrains","type":"asset","parent_code":"21","system_purpose":null,"is_system":false,"sort_order":14}
+{"code":"212","name":"Agencements et aménagements de terrains","type":"asset","parent_code":"21","system_purpose":null,"is_system":false,"sort_order":15}
+{"code":"213","name":"Constructions","type":"asset","parent_code":"21","system_purpose":null,"is_system":false,"sort_order":16}
+{"code":"215","name":"Installations techniques","type":"asset","parent_code":"21","system_purpose":null,"is_system":false,"sort_order":17}
+{"code":"218","name":"Matériel et outillage","type":"asset","parent_code":"21","system_purpose":null,"is_system":false,"sort_order":18}
+{"code":"2182","name":"Matériel et outillage industriel","type":"asset","parent_code":"218","system_purpose":null,"is_system":false,"sort_order":19}
+{"code":"22","name":"Immobilisations mises en concession","type":"asset","parent_code":"2","system_purpose":null,"is_system":false,"sort_order":20}
+{"code":"23","name":"Immobilisations en cours","type":"asset","parent_code":"2","system_purpose":null,"is_system":false,"sort_order":21}
+{"code":"24","name":"Immobilisations financières","type":"asset","parent_code":"2","system_purpose":null,"is_system":false,"sort_order":22}
+{"code":"28","name":"Amortissements des immobilisations","type":"asset","parent_code":"2","system_purpose":null,"is_system":false,"sort_order":23}
+{"code":"3","name":"STOCKS","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":24}
+{"code":"31","name":"Matières premières et fournitures","type":"asset","parent_code":"3","system_purpose":null,"is_system":false,"sort_order":25}
+{"code":"32","name":"Autres approvisionnements","type":"asset","parent_code":"3","system_purpose":null,"is_system":false,"sort_order":26}
+{"code":"33","name":"En-cours de production de biens","type":"asset","parent_code":"3","system_purpose":null,"is_system":false,"sort_order":27}
+{"code":"35","name":"Stocks de produits","type":"asset","parent_code":"3","system_purpose":null,"is_system":false,"sort_order":28}
+{"code":"37","name":"Stocks de marchandises","type":"asset","parent_code":"3","system_purpose":"inventory","is_system":true,"sort_order":29}
+{"code":"39","name":"Dépréciations des stocks","type":"asset","parent_code":"3","system_purpose":null,"is_system":false,"sort_order":30}
+{"code":"4","name":"TIERS","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":31}
+{"code":"40","name":"Fournisseurs et comptes rattachés","type":"liability","parent_code":"4","system_purpose":null,"is_system":true,"sort_order":32}
+{"code":"401","name":"Fournisseurs","type":"liability","parent_code":"40","system_purpose":"supplier_payable","is_system":true,"sort_order":33}
+{"code":"4011","name":"Fournisseurs - Achats de biens","type":"liability","parent_code":"401","system_purpose":null,"is_system":false,"sort_order":34}
+{"code":"4017","name":"Fournisseurs - Retenues de garantie","type":"liability","parent_code":"401","system_purpose":null,"is_system":false,"sort_order":35}
+{"code":"403","name":"Fournisseurs - Effets à payer","type":"liability","parent_code":"40","system_purpose":null,"is_system":true,"sort_order":36}
+{"code":"4035","name":"Fournisseurs - Chèques à payer","type":"liability","parent_code":"40","system_purpose":null,"is_system":true,"sort_order":37}
+{"code":"408","name":"Fournisseurs - Factures non parvenues","type":"liability","parent_code":"40","system_purpose":"goods_received_not_invoiced","is_system":true,"sort_order":38}
+{"code":"409","name":"Fournisseurs débiteurs","type":"asset","parent_code":"40","system_purpose":"supplier_advance","is_system":true,"sort_order":39}
+{"code":"41","name":"Clients et comptes rattachés","type":"asset","parent_code":"4","system_purpose":null,"is_system":true,"sort_order":40}
+{"code":"411","name":"Clients","type":"asset","parent_code":"41","system_purpose":"customer_receivable","is_system":true,"sort_order":41}
+{"code":"413","name":"Clients - Effets à recevoir","type":"asset","parent_code":"41","system_purpose":null,"is_system":true,"sort_order":42}
+{"code":"416","name":"Clients douteux","type":"asset","parent_code":"41","system_purpose":null,"is_system":true,"sort_order":43}
+{"code":"418","name":"Clients - Produits non encore facturés","type":"asset","parent_code":"41","system_purpose":"uninvoiced_revenue","is_system":true,"sort_order":44}
+{"code":"419","name":"Clients créditeurs","type":"liability","parent_code":"41","system_purpose":"customer_advance","is_system":true,"sort_order":45}
+{"code":"42","name":"Personnel et comptes rattachés","type":"liability","parent_code":"4","system_purpose":null,"is_system":false,"sort_order":46}
+{"code":"421","name":"Personnel - Rémunérations dues","type":"liability","parent_code":"42","system_purpose":null,"is_system":false,"sort_order":47}
+{"code":"43","name":"Organismes sociaux","type":"liability","parent_code":"4","system_purpose":null,"is_system":false,"sort_order":48}
+{"code":"431","name":"CNSS","type":"liability","parent_code":"43","system_purpose":null,"is_system":false,"sort_order":49}
+{"code":"44","name":"État et collectivités publiques","type":"liability","parent_code":"4","system_purpose":null,"is_system":true,"sort_order":50}
+{"code":"442","name":"État - Impôts et taxes","type":"liability","parent_code":"44","system_purpose":null,"is_system":false,"sort_order":51}
+{"code":"4455","name":"TVA à décaisser","type":"liability","parent_code":"44","system_purpose":null,"is_system":false,"sort_order":52}
+{"code":"4456","name":"TVA déductible","type":"asset","parent_code":"44","system_purpose":"vat_deductible","is_system":true,"sort_order":53}
+{"code":"43666","name":"TVA récupérable sur frais bancaires","type":"asset","parent_code":"44","system_purpose":null,"is_system":true,"sort_order":54}
+{"code":"4457","name":"TVA collectée","type":"liability","parent_code":"44","system_purpose":"vat_collected","is_system":true,"sort_order":55}
+{"code":"4375","name":"État - Droit de timbre à reverser","type":"liability","parent_code":"44","system_purpose":"sales_stamp_duty_payable","is_system":true,"sort_order":56}
+{"code":"45","name":"Groupe et associés","type":"asset","parent_code":"4","system_purpose":null,"is_system":false,"sort_order":57}
+{"code":"46","name":"Débiteurs et créditeurs divers","type":"asset","parent_code":"4","system_purpose":null,"is_system":false,"sort_order":58}
+{"code":"47","name":"Comptes transitoires ou d'attente","type":"asset","parent_code":"4","system_purpose":null,"is_system":false,"sort_order":59}
+{"code":"48","name":"Comptes de régularisation","type":"asset","parent_code":"4","system_purpose":null,"is_system":false,"sort_order":60}
+{"code":"49","name":"Dépréciations des comptes de tiers","type":"asset","parent_code":"4","system_purpose":null,"is_system":false,"sort_order":61}
+{"code":"5","name":"FINANCIERS","type":"asset","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":62}
+{"code":"50","name":"Valeurs mobilières de placement","type":"asset","parent_code":"5","system_purpose":null,"is_system":false,"sort_order":63}
+{"code":"51","name":"Banques et établissements financiers","type":"asset","parent_code":"5","system_purpose":null,"is_system":true,"sort_order":64}
+{"code":"512","name":"Banques","type":"asset","parent_code":"51","system_purpose":"bank","is_system":true,"sort_order":65}
+{"code":"53","name":"Caisse","type":"asset","parent_code":"5","system_purpose":"cash","is_system":true,"sort_order":66}
+{"code":"531","name":"Caisse siège","type":"asset","parent_code":"53","system_purpose":null,"is_system":false,"sort_order":67}
+{"code":"5312","name":"Chèques à encaisser","type":"asset","parent_code":"531","system_purpose":null,"is_system":true,"sort_order":68}
+{"code":"5313","name":"Effets à l’encaissement","type":"asset","parent_code":"531","system_purpose":null,"is_system":true,"sort_order":69}
+{"code":"5314","name":"Effets à l’escompte","type":"asset","parent_code":"531","system_purpose":null,"is_system":true,"sort_order":70}
+{"code":"54","name":"Régies d'avances et accréditifs","type":"asset","parent_code":"5","system_purpose":null,"is_system":false,"sort_order":71}
+{"code":"6","name":"CHARGES","type":"expense","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":72}
+{"code":"60","name":"Achats","type":"expense","parent_code":"6","system_purpose":null,"is_system":true,"sort_order":73}
+{"code":"601","name":"Achats stockés - Matières premières","type":"expense","parent_code":"60","system_purpose":null,"is_system":false,"sort_order":74}
+{"code":"602","name":"Achats stockés - Autres approvisionnements","type":"expense","parent_code":"60","system_purpose":null,"is_system":false,"sort_order":75}
+{"code":"603","name":"Variation des stocks","type":"expense","parent_code":"60","system_purpose":"cost_of_goods_sold","is_system":true,"sort_order":76}
+{"code":"606","name":"Achats non stockés de matières et fournitures","type":"expense","parent_code":"60","system_purpose":null,"is_system":false,"sort_order":77}
+{"code":"6061","name":"Fournitures non stockables (eau, électricité)","type":"expense","parent_code":"606","system_purpose":"utilities_expense","is_system":true,"sort_order":78}
+{"code":"6064","name":"Fournitures administratives","type":"expense","parent_code":"606","system_purpose":"office_expense","is_system":true,"sort_order":79}
+{"code":"607","name":"Achats de marchandises","type":"expense","parent_code":"60","system_purpose":"purchase_expenses","is_system":true,"sort_order":80}
+{"code":"61","name":"Services extérieurs","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":81}
+{"code":"611","name":"Sous-traitance générale","type":"expense","parent_code":"61","system_purpose":null,"is_system":false,"sort_order":82}
+{"code":"613","name":"Locations","type":"expense","parent_code":"61","system_purpose":null,"is_system":false,"sort_order":83}
+{"code":"614","name":"Charges locatives et de copropriété","type":"expense","parent_code":"61","system_purpose":null,"is_system":false,"sort_order":84}
+{"code":"615","name":"Entretien et réparations","type":"expense","parent_code":"61","system_purpose":null,"is_system":false,"sort_order":85}
+{"code":"616","name":"Primes d'assurances","type":"expense","parent_code":"61","system_purpose":null,"is_system":false,"sort_order":86}
+{"code":"62","name":"Autres services extérieurs","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":87}
+{"code":"621","name":"Personnel extérieur","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":88}
+{"code":"622","name":"Rémunérations d'intermédiaires et honoraires","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":89}
+{"code":"623","name":"Publicité, publications, relations publiques","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":90}
+{"code":"624","name":"Transport de biens et transport collectif","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":91}
+{"code":"625","name":"Déplacements, missions et réceptions","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":92}
+{"code":"6251","name":"Voyages et déplacements","type":"expense","parent_code":"625","system_purpose":"travel_expense","is_system":true,"sort_order":93}
+{"code":"6257","name":"Réceptions","type":"expense","parent_code":"625","system_purpose":"meals_expense","is_system":true,"sort_order":94}
+{"code":"626","name":"Frais postaux et frais de télécommunications","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":95}
+{"code":"627","name":"Services bancaires et assimilés","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":96}
+{"code":"6275","name":"Frais sur effets et chèques","type":"expense","parent_code":"627","system_purpose":null,"is_system":true,"sort_order":97}
+{"code":"628","name":"Cotisations et divers","type":"expense","parent_code":"62","system_purpose":null,"is_system":false,"sort_order":98}
+{"code":"63","name":"Impôts, taxes et versements assimilés","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":99}
+{"code":"6354","name":"Droits d'enregistrement et de timbre","type":"expense","parent_code":"63","system_purpose":"purchase_stamp_duty","is_system":true,"sort_order":100}
+{"code":"64","name":"Charges de personnel","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":101}
+{"code":"641","name":"Rémunérations du personnel","type":"expense","parent_code":"64","system_purpose":null,"is_system":false,"sort_order":102}
+{"code":"645","name":"Charges de sécurité sociale et de prévoyance","type":"expense","parent_code":"64","system_purpose":null,"is_system":false,"sort_order":103}
+{"code":"65","name":"Autres charges de gestion courante","type":"expense","parent_code":"6","system_purpose":"general_expense","is_system":true,"sort_order":104}
+{"code":"6580","name":"Écart de règlement (charges)","type":"expense","parent_code":"65","system_purpose":"payment_tolerance_expense","is_system":true,"sort_order":105}
+{"code":"6590","name":"Perte sur remboursement (write-off)","type":"expense","parent_code":"65","system_purpose":"refund_write_off","is_system":true,"sort_order":106}
+{"code":"6585","name":"Écart sur prix d'achat","type":"expense","parent_code":"65","system_purpose":"purchase_price_variance_expense","is_system":true,"sort_order":107}
+{"code":"66","name":"Charges financières","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":108}
+{"code":"661","name":"Charges d'intérêts","type":"expense","parent_code":"66","system_purpose":null,"is_system":false,"sort_order":109}
+{"code":"67","name":"Charges exceptionnelles","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":110}
+{"code":"68","name":"Dotations aux amortissements","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":111}
+{"code":"69","name":"Impôts sur les bénéfices","type":"expense","parent_code":"6","system_purpose":null,"is_system":false,"sort_order":112}
+{"code":"7","name":"PRODUITS","type":"revenue","parent_code":null,"system_purpose":null,"is_system":true,"sort_order":113}
+{"code":"70","name":"Ventes de produits fabriqués","type":"revenue","parent_code":"7","system_purpose":null,"is_system":true,"sort_order":114}
+{"code":"701","name":"Ventes de produits finis","type":"revenue","parent_code":"70","system_purpose":null,"is_system":false,"sort_order":115}
+{"code":"702","name":"Ventes de produits intermédiaires","type":"revenue","parent_code":"70","system_purpose":null,"is_system":false,"sort_order":116}
+{"code":"703","name":"Ventes de produits résiduels","type":"revenue","parent_code":"70","system_purpose":null,"is_system":false,"sort_order":117}
+{"code":"704","name":"Travaux","type":"revenue","parent_code":"70","system_purpose":null,"is_system":false,"sort_order":118}
+{"code":"705","name":"Études","type":"revenue","parent_code":"70","system_purpose":null,"is_system":false,"sort_order":119}
+{"code":"706","name":"Prestations de services","type":"revenue","parent_code":"70","system_purpose":"service_revenue","is_system":true,"sort_order":120}
+{"code":"707","name":"Ventes de marchandises","type":"revenue","parent_code":"70","system_purpose":"product_revenue","is_system":true,"sort_order":121}
+{"code":"708","name":"Produits des activités annexes","type":"revenue","parent_code":"70","system_purpose":null,"is_system":false,"sort_order":122}
+{"code":"709","name":"Rabais, remises et ristournes accordés","type":"expense","parent_code":"70","system_purpose":"sales_return","is_system":true,"sort_order":123}
+{"code":"7097","name":"Rabais, remises et ristournes accordés sur ventes de marchandises","type":"expense","parent_code":"70","system_purpose":"sales_discount","is_system":true,"sort_order":124}
+{"code":"7580","name":"Écart de règlement (produits)","type":"revenue","parent_code":"75","system_purpose":"payment_tolerance_income","is_system":true,"sort_order":125}
+{"code":"7091","name":"Remboursements clients - Virements bons d'achat","type":"expense","parent_code":"70","system_purpose":"sales_returns_clearing","is_system":true,"sort_order":126}
+{"code":"4197","name":"Clients - Bons d'achat émis (passif courant)","type":"liability","parent_code":"41","system_purpose":"voucher_liability","is_system":true,"sort_order":127}
+{"code":"6238","name":"Dépenses de bonne volonté commerciale","type":"expense","parent_code":"62","system_purpose":"marketing_goodwill_expense","is_system":true,"sort_order":128}
+{"code":"7592","name":"Produits sur bons d'achat non utilisés (breakage)","type":"revenue","parent_code":"75","system_purpose":"voucher_breakage_income","is_system":true,"sort_order":129}
+{"code":"7585","name":"Écart sur prix d'achat","type":"revenue","parent_code":"75","system_purpose":"purchase_price_variance_income","is_system":true,"sort_order":130}
+{"code":"6588","name":"Pertes d'arrondis sur bons d'achat","type":"expense","parent_code":"65","system_purpose":"rounding_loss_expense","is_system":true,"sort_order":131}
+{"code":"5810","name":"Compte d'attente règlements TPV (bons d'achat)","type":"asset","parent_code":"5","system_purpose":"pos_tender_clearing","is_system":true,"sort_order":132}
+{"code":"71","name":"Production stockée (ou déstockage)","type":"revenue","parent_code":"7","system_purpose":null,"is_system":false,"sort_order":133}
+{"code":"72","name":"Production immobilisée","type":"revenue","parent_code":"7","system_purpose":null,"is_system":false,"sort_order":134}
+{"code":"74","name":"Subventions d'exploitation","type":"revenue","parent_code":"7","system_purpose":null,"is_system":false,"sort_order":135}
+{"code":"75","name":"Autres produits de gestion courante","type":"revenue","parent_code":"7","system_purpose":null,"is_system":false,"sort_order":136}
+{"code":"76","name":"Produits financiers","type":"revenue","parent_code":"7","system_purpose":null,"is_system":false,"sort_order":137}
+{"code":"77","name":"Produits exceptionnels","type":"revenue","parent_code":"7","system_purpose":null,"is_system":false,"sort_order":138}
+{"code":"78","name":"Reprises sur amortissements et provisions","type":"revenue","parent_code":"7","system_purpose":null,"is_system":false,"sort_order":139}

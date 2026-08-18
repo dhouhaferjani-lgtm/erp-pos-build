@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
@@ -92,8 +93,10 @@ class CoffeeShopSeeder extends Seeder
     /** @var array<string, ModifierGroup> */
     private array $modifierGroups = [];
 
-    public function run(): void
-    {
+    public function run(
+        CompanyTaxProvisioningService $companyTaxProvisioning,
+        ChartOfAccountsService $chartOfAccounts,
+    ): void {
         $this->command->newLine();
         $this->command->info('Seeding Cafe Tunis - Coffee Shop with F&B');
         $this->command->newLine();
@@ -138,14 +141,11 @@ class CoffeeShopSeeder extends Seeder
 
         // 4. Financial foundation (Chart of Accounts, Payment Methods)
         $this->command->info('Setting up financial foundation...');
-        $this->setupFinancialFoundation();
+        $this->setupFinancialFoundation($chartOfAccounts);
 
         // 4b. Provision country tax configurations (TN: VAT bands + stamp duty + company default).
         //     Countries are seeded at step 2 above; CoA is now in place.
-        $companyTaxProvisioning = new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        );
-        $companyTaxProvisioning->provisionForCompany($this->company);
+        $companyTaxProvisioning->provisionForCompany($this->company, failLoudOnMissingCountry: true);
         $this->command->info('Tax configurations provisioned');
 
         // 5. Ingredient products
@@ -304,7 +304,6 @@ class CoffeeShopSeeder extends Seeder
                 'status' => SubscriptionStatus::Active,
                 'billing_cycle' => 'yearly',
                 'price' => CurrencyScale::bcformat(0, 3),
-                'started_at' => now(),
                 'current_period_start' => now(),
                 'current_period_end' => now()->addYear(),
             ]);
@@ -365,11 +364,9 @@ class CoffeeShopSeeder extends Seeder
         return [$company, $location];
     }
 
-    private function setupFinancialFoundation(): void
+    private function setupFinancialFoundation(ChartOfAccountsService $chartOfAccounts): void
     {
-        $tunisiaSeeder = new TunisiaChartOfAccountsSeeder;
-        $tunisiaSeeder->setCommand($this->command);
-        $tunisiaSeeder->run($this->company->id, $this->company->tenant_id);
+        $chartOfAccounts->seedForCompany($this->company);
         $this->command->info('Chart of Accounts ready');
 
         $this->call(PaymentMethodSeeder::class, false, ['company' => $this->company]);

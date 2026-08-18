@@ -5,20 +5,27 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\LegacyExistingChartRepairPreviewer;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
+use App\Modules\CountryDefaults\Application\Services\CountryTemplateResolver;
+use App\Modules\CountryDefaults\Infrastructure\Seeders\TemplateChartOfAccountsSeeder;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\CountryDefaults\CountryAccountingCapabilities;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\PendingCommand;
 use Mockery;
 use Mockery\LegacyMockInterface;
 use RuntimeException;
+use Tests\Support\CountryDefaults\M4Fixtures;
 use Tests\TestCase;
 
 final class SeedChartsCommandTest extends TestCase
 {
+    use M4Fixtures;
     use RefreshDatabase;
 
     /**
@@ -209,12 +216,100 @@ final class SeedChartsCommandTest extends TestCase
             ->assertSuccessful();
     }
 
+    public function test_template_provisioning_refuses_to_mutate_existing_company_charts(): void
+    {
+        config()->set('country_defaults.provisioning_enabled', true);
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $account = Account::factory()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => 'EXISTING',
+            'name' => 'Operator-owned account',
+            'parent_id' => null,
+            'is_system' => false,
+        ]);
+
+        $before = $account->refresh()->getAttributes();
+
+        $this->command('accounting:seed-charts')
+            ->expectsOutputToContain('disabled while country-defaults template provisioning is enabled')
+            ->assertFailed();
+
+        self::assertSame(1, Account::query()->where('company_id', $company->id)->count());
+        self::assertSame($before, $account->refresh()->getAttributes());
+    }
+
+    public function test_template_provisioning_allows_legacy_dry_run_without_assignments_or_writes(): void
+    {
+        config()->set('country_defaults.provisioning_enabled', true);
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+
+        $this->command('accounting:seed-charts', ['--dry-run' => true])
+            ->expectsOutputToContain('[LEGACY-ONLY PREVIEW]')
+            ->expectsOutputToContain('[NOT ASSIGNED-TEMPLATE PARITY]')
+            ->expectsOutputToContain('[DRY-RUN] Chart provisioning:')
+            ->assertSuccessful();
+
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+    }
+
+    public function test_template_provisioning_legacy_dry_run_ignores_stale_assignment_without_writes(): void
+    {
+        config()->set('country_defaults.provisioning_enabled', true);
+        $actor = $this->m4Actor();
+        $template = $this->m4Published('tn', 'TN', $actor);
+        $this->m4Assign('TN', $template, $actor);
+        $this->app->bind(CountryAccountingCapabilities::class, static fn (): CountryAccountingCapabilities => new class implements CountryAccountingCapabilities
+        {
+            public function supportsStampDuty(string $countryCode): bool
+            {
+                return true;
+            }
+
+            public function version(): string
+            {
+                return 'stale-preview-proof';
+            }
+        });
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+
+        $this->command('accounting:seed-charts', ['--dry-run' => true])
+            ->expectsOutputToContain('[LEGACY-ONLY PREVIEW]')
+            ->expectsOutputToContain('[NOT ASSIGNED-TEMPLATE PARITY]')
+            ->expectsOutputToContain('[DRY-RUN] Chart provisioning:')
+            ->assertSuccessful();
+
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+    }
+
+    public function test_legacy_preview_collaborator_never_commits_with_or_without_caller_transaction(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $previewer = app(LegacyExistingChartRepairPreviewer::class);
+
+        [$created] = $previewer->preview($company);
+        self::assertGreaterThan(0, $created);
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+
+        DB::transaction(function () use ($previewer, $company): void {
+            [$nestedCreated] = $previewer->preview($company);
+            self::assertGreaterThan(0, $nestedCreated);
+            self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+        });
+
+        self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
+    }
+
     public function test_delegate_throw_fails_loud_and_aborts(): void
     {
         $tenant = Tenant::factory()->create();
         Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
 
-        $this->app->instance(ChartOfAccountsService::class, new class extends ChartOfAccountsService
+        $this->app->instance(ChartOfAccountsService::class, new class($this->app->make(CountryTemplateResolver::class), $this->app->make(TemplateChartOfAccountsSeeder::class)) extends ChartOfAccountsService
         {
             public function seedForCompany(Company $company): void
             {

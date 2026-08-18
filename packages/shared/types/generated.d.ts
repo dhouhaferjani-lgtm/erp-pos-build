@@ -5,7 +5,7 @@ export type Product = 'izipos' | 'otospex';
 export type Vertical = 'mechanic' | 'pharmacy' | 'restaurant' | 'coffee_shop' | 'retail' | 'fashion' | 'body_shop' | 'parts_retailer' | 'car_glass' | 'tire_shop' | 'service_station' | 'parapharmacy';
 }
 declare namespace App.Models.Enums {
-export type SuperAdminRole = 'super_admin' | 'support_approver';
+export type SuperAdminRole = 'super_admin' | 'support_approver' | 'defaults_editor';
 }
 declare namespace App.Modules.Accounting.Application.DTOs {
 export type AccountData = {
@@ -626,6 +626,90 @@ is_primary: boolean;
 }
 declare namespace App.Modules.Contact.Domain.Enums {
 export type Gender = 'male' | 'female' | 'other';
+}
+declare namespace App.Modules.CountryDefaults.Application.DTOs {
+export type AssignmentMatrixData = {
+data: Array<App.Modules.CountryDefaults.Application.DTOs.AssignmentMatrixRowData>;
+meta: App.Modules.CountryDefaults.Application.DTOs.AssignmentMatrixMetaData;
+};
+export type AssignmentMatrixMetaData = {
+catalog_version: string;
+};
+export type AssignmentMatrixRowData = {
+country_code: string;
+name: string;
+pinned: boolean;
+domain: App.Modules.CountryDefaults.Domain.Enums.TemplateDomain;
+assignment_id: string | null;
+template_id: string | null;
+template: App.Modules.CountryDefaults.Application.DTOs.TemplateSummaryData | null;
+};
+export type CountryTemplateAssignmentData = {
+id: string;
+country_code: string;
+domain: App.Modules.CountryDefaults.Domain.Enums.TemplateDomain;
+template_id: string;
+template: App.Modules.CountryDefaults.Application.DTOs.TemplateSummaryData | null;
+};
+export type TemplateAccountData = {
+id: string;
+code: string;
+name: string;
+type: App.Modules.Accounting.Domain.Enums.AccountType;
+parent_code: string | null;
+system_purpose: App.Modules.Accounting.Domain.Enums.SystemAccountPurpose | null;
+is_system: boolean;
+sort_order: number;
+is_protected: boolean;
+protection_source: string | null;
+};
+export type TemplateData = {
+id: string;
+domain: App.Modules.CountryDefaults.Domain.Enums.TemplateDomain;
+name: string;
+description: string | null;
+status: App.Modules.CountryDefaults.Domain.Enums.TemplateStatus;
+content_hash: string | null;
+standard_ref: string | null;
+certified_country_codes: Array<string> | null;
+capability_registry_version: string | null;
+certified_by: string | null;
+published_at: string | null;
+cloned_from_id: string | null;
+rows: Array<App.Modules.CountryDefaults.Application.DTOs.TemplateAccountData>;
+account_types: Array<App.Modules.Accounting.Domain.Enums.AccountType>;
+system_account_purposes: Array<App.Modules.Accounting.Domain.Enums.SystemAccountPurpose>;
+created_by: string | null;
+created_at: string | null;
+updated_at: string | null;
+};
+export type TemplateSummaryData = {
+id: string;
+domain: App.Modules.CountryDefaults.Domain.Enums.TemplateDomain;
+name: string;
+description: string | null;
+status: App.Modules.CountryDefaults.Domain.Enums.TemplateStatus;
+content_hash: string | null;
+standard_ref: string | null;
+certified_country_codes: Array<string> | null;
+capability_registry_version: string | null;
+certified_by: string | null;
+published_at: string | null;
+cloned_from_id: string | null;
+};
+export type TemplateValidationErrorData = {
+code: string;
+parameters: Record<string, string>;
+};
+export type TemplateValidationReportData = {
+valid: boolean;
+scope: Array<string>;
+errors: Array<App.Modules.CountryDefaults.Application.DTOs.TemplateValidationErrorData>;
+};
+}
+declare namespace App.Modules.CountryDefaults.Domain.Enums {
+export type TemplateDomain = 'chart_of_accounts';
+export type TemplateStatus = 'draft' | 'published' | 'archived';
 }
 declare namespace App.Modules.Coupon.Application.DTOs {
 export type CouponData = {

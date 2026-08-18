@@ -6,6 +6,8 @@ import { RequirePermission } from '../components/auth'
 import { ModuleGuard } from '../components/guards'
 import { LoadingSpinner } from '../components/atoms/Spinner'
 import { DashboardLanding } from './DashboardLanding'
+import { AdminIndexRedirect, RequireAdminRole } from '../features/admin/components/AdminRoleGuard'
+import { adminRoutePolicies } from '../features/admin/lib/adminRolePolicy'
 
 // Lazy loaded pages
 const LoginPage = lazy(() => import('../features/auth/LoginPage').then((m) => ({ default: m.LoginPage })))
@@ -30,6 +32,9 @@ const AdminVerticalsPage = lazy(() => import('../features/admin/pages/VerticalsP
 const AdminLayout = lazy(() => import('../features/admin/components/AdminLayout').then((m) => ({ default: m.AdminLayout })))
 const RequireAdminAuth = lazy(() => import('../features/admin/components/RequireAdminAuth').then((m) => ({ default: m.RequireAdminAuth })))
 const AdminSupportAccessPage = lazy(() => import('../features/support-access/pages/AdminSupportAccessPage').then((m) => ({ default: m.AdminSupportAccessPage })))
+const CountryDefaultsTemplateListPage = lazy(() => import('../features/admin/country-defaults/pages/TemplateListPage').then((m) => ({ default: m.TemplateListPage })))
+const CountryDefaultsTemplateEditorPage = lazy(() => import('../features/admin/country-defaults/pages/TemplateEditorPage').then((m) => ({ default: m.TemplateEditorPage })))
+const CountryDefaultsAssignmentsPage = lazy(() => import('../features/admin/country-defaults/pages/AssignmentsPage').then((m) => ({ default: m.AssignmentsPage })))
 const TenantSupportAccessPage = lazy(() => import('../features/support-access/pages/TenantSupportAccessPage').then((m) => ({ default: m.TenantSupportAccessPage })))
 
 // Sales module
@@ -418,95 +423,120 @@ export function AppRoutes() {
           </SuspenseWrapper>
         }
       >
-        <Route index element={<Navigate to="/admin/dashboard" replace />} />
+        <Route index element={<AdminIndexRedirect />} />
         <Route
-          path="dashboard"
+          path={adminRoutePolicies.dashboard.path}
           element={
-            <SuspenseWrapper>
-              <AdminDashboardPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.dashboard.roles}>
+              <SuspenseWrapper>
+                <AdminDashboardPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="support-access"
+          path={adminRoutePolicies.supportAccess.path}
           element={
-            <SuspenseWrapper>
-              <AdminSupportAccessPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.supportAccess.roles}>
+              <SuspenseWrapper>
+                <AdminSupportAccessPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="tenants"
+          path={adminRoutePolicies.tenants.path}
           element={
-            <SuspenseWrapper>
-              <TenantsPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.tenants.roles}>
+              <SuspenseWrapper>
+                <TenantsPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="company-owners"
+          path={adminRoutePolicies.companyOwners.path}
           element={
-            <SuspenseWrapper>
-              <CompanyOwnersPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.companyOwners.roles}>
+              <SuspenseWrapper>
+                <CompanyOwnersPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="verticals"
+          path={adminRoutePolicies.verticals.path}
           element={
-            <SuspenseWrapper>
-              <AdminVerticalsPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.verticals.roles}>
+              <SuspenseWrapper>
+                <AdminVerticalsPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="audit-logs"
+          path={adminRoutePolicies.auditLogs.path}
           element={
-            <SuspenseWrapper>
-              <AuditLogsPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.auditLogs.roles}>
+              <SuspenseWrapper>
+                <AuditLogsPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="billing"
+          path={adminRoutePolicies.billing.path}
           element={
-            <SuspenseWrapper>
-              <BillingDashboardPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.billing.roles}>
+              <SuspenseWrapper>
+                <BillingDashboardPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="billing/subscriptions"
+          path={adminRoutePolicies.subscriptions.path}
           element={
-            <SuspenseWrapper>
-              <AdminSubscriptionsPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.subscriptions.roles}>
+              <SuspenseWrapper>
+                <AdminSubscriptionsPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="billing/invoices"
+          path={adminRoutePolicies.invoices.path}
           element={
-            <SuspenseWrapper>
-              <AdminInvoicesPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.invoices.roles}>
+              <SuspenseWrapper>
+                <AdminInvoicesPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="billing/payments"
+          path={adminRoutePolicies.payments.path}
           element={
-            <SuspenseWrapper>
-              <AdminPaymentsPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.payments.roles}>
+              <SuspenseWrapper>
+                <AdminPaymentsPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
         <Route
-          path="monitoring"
+          path={adminRoutePolicies.monitoring.path}
           element={
-            <SuspenseWrapper>
-              <AdminMonitoringPage />
-            </SuspenseWrapper>
+            <RequireAdminRole allow={adminRoutePolicies.monitoring.roles}>
+              <SuspenseWrapper>
+                <AdminMonitoringPage />
+              </SuspenseWrapper>
+            </RequireAdminRole>
           }
         />
+        <Route path={adminRoutePolicies.countryDefaults.path} element={<RequireAdminRole allow={adminRoutePolicies.countryDefaults.roles}><SuspenseWrapper><CountryDefaultsTemplateListPage /></SuspenseWrapper></RequireAdminRole>} />
+        <Route path={adminRoutePolicies.countryDefaultsTemplate.path} element={<RequireAdminRole allow={adminRoutePolicies.countryDefaultsTemplate.roles}><SuspenseWrapper><CountryDefaultsTemplateEditorPage /></SuspenseWrapper></RequireAdminRole>} />
+        <Route path={adminRoutePolicies.countryDefaultAssignments.path} element={<RequireAdminRole allow={adminRoutePolicies.countryDefaultAssignments.roles}><SuspenseWrapper><CountryDefaultsAssignmentsPage /></SuspenseWrapper></RequireAdminRole>} />
       </Route>
 
       {/* Company Onboarding (full-page without layout) */}

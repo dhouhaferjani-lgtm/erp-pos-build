@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\MembershipRole;
@@ -31,8 +32,10 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database with test data.
      */
-    public function run(): void
-    {
+    public function run(
+        CompanyTaxProvisioningService $companyTaxProvisioning,
+        ChartOfAccountsService $chartOfAccounts,
+    ): void {
         // CENTRAL reference data (plans live in the central database; the super
         // admin is a platform-level account in central). Seed BEFORE creating
         // the tenant so the plan exists when the tenant database is provisioned.
@@ -85,9 +88,7 @@ class DatabaseSeeder extends Seeder
         $frCompany = $this->createCompany($tenant, 'FR', 'Demo Garage France', 'EUR');
 
         $this->command->info('Creating French chart of accounts...');
-        $franceSeeder = new FranceChartOfAccountsSeeder;
-        $franceSeeder->setCommand($this->command);
-        $franceSeeder->run($frCompany->id, $tenant->id);
+        $chartOfAccounts->seedForCompany($frCompany);
 
         $this->command->info('Creating payment methods for French company...');
         $this->call(PaymentMethodSeeder::class, false, ['company' => $frCompany]);
@@ -96,9 +97,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $frCompany]);
 
         $this->command->info('Provisioning tax configurations for French company...');
-        (new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        ))->provisionForCompany($frCompany);
+        $companyTaxProvisioning->provisionForCompany($frCompany, failLoudOnMissingCountry: true);
 
         $this->command->info('Creating partners for French company...');
         $this->createPartners($tenant, $frCompany);
@@ -119,9 +118,7 @@ class DatabaseSeeder extends Seeder
         $tnCompany = $this->createCompany($tenant, 'TN', 'Demo Garage Tunisia', 'TND');
 
         $this->command->info('Creating Tunisian chart of accounts...');
-        $tunisiaSeeder = new TunisiaChartOfAccountsSeeder;
-        $tunisiaSeeder->setCommand($this->command);
-        $tunisiaSeeder->run($tnCompany->id, $tenant->id);
+        $chartOfAccounts->seedForCompany($tnCompany);
 
         $this->command->info('Creating payment methods for Tunisian company...');
         $this->call(PaymentMethodSeeder::class, false, ['company' => $tnCompany]);
@@ -130,9 +127,7 @@ class DatabaseSeeder extends Seeder
         $this->call(PaymentRepositorySeeder::class, false, ['company' => $tnCompany]);
 
         $this->command->info('Provisioning tax configurations for Tunisian company...');
-        (new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: true,
-        ))->provisionForCompany($tnCompany);
+        $companyTaxProvisioning->provisionForCompany($tnCompany, failLoudOnMissingCountry: true);
 
         $this->command->info('Creating partners for Tunisian company...');
         $this->createPartners($tenant, $tnCompany);

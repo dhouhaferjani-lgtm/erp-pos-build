@@ -1,0 +1,56 @@
+# M1 adversarial merge-gate review — round 4
+
+**Wave:** country-defaults-phase-a · **Base:** `7d85232cc` · **Head:** `e89edba80`
+**Range reviewed:** full `7d85232cc..HEAD`, with the round-3 delta (`6bd2cbd50..HEAD`) verified line-by-line.
+**Working tree unchanged** (`git status --porcelain` empty); no file modified, staged, or committed.
+
+**Lens: treasury — applied** (protected treasury instrument literals ⇄ `InstrumentAccountResolver`; purpose manifest ⇄ live GL throwing sites; stamp/absorber semantics ⇄ timbre capability authority; chart content ⇄ REQUIRED partition). **Not engaged, with reason:** tenancy-authz (no table, route, middleware, or connection change in this milestone), fiscal-pos (no hash chain, sealed bytes, or projection), frontend (no `apps/web` file). **Rule 19 not engaged:** nothing in the range touches money or quantity — no float, no `bcmath` call, no scale resolver, no FormRequest. No migration, no queue (`onQueue`) — Horizon coverage n/a. No user-facing string — en+fr n/a. No `app()` in any touched production file (verified by grep over the new module, the two changed Taxation classes, and all five changed seeders).
+
+## Round-3 finding — closure
+
+| # | round-3 finding | round-4 verdict |
+|---|---|---|
+| 1 (P2) | capability *version* not coupled to the capability *set*; the test comment claimed a guarantee the suite did not provide | **CLOSED — CONFIRMED.** `apps/api/tests/Unit/CountryDefaults/CountryAccountingCapabilitiesServiceTest.php:25-41` now asserts `version()` and `STAMP_DUTY_COUNTRIES` as a **single** `assertSame` over one array. Adding `'MA'` to `CountryAccountingCapabilitiesService.php:14` makes the actual side `['TN','MA']` and reds the test — the prescribed minimum fix, delivered exactly. The misleading comment is gone and replaced with an accurate one. `ReflectionClass::getConstant()` does read the private const (proven by the green run, not assumed). Green on **both** engines at HEAD (below). |
+
+Round-3 findings 2 and 3 were P3 routing notes; both are in `docs/superpowers/tickets/2026-08-11-country-defaults-m1-p3-hardening.md` (§4 reworded to the native-ICU preflight; new §9 for the D-4 backfill-command boundary). Correctly closed, not re-litigated.
+
+## Register — round 4
+
+### 1. P2 — the milestone is being closed with no recorded evidence for fix rounds 2 and 3, and no executed proof that the replacement test is non-vacuous · CONFIRMED
+`docs/sessions/codex-country-defaults-phase-a-report.md:7,502-582` (file ends at 582)
+
+The §9 deliverable requires the report to carry, per milestone: *"files touched, tests + exact commands + output, SQLite and PG counts, red-first proof …, revert-replay records, decisions taken, concerns."* House rule §5 adds: *"A real PostgreSQL run before any green claim. SQLite-only greens are not evidence. Report SQLite + PG counts per milestone."*
+
+The report's last section is **"M1 adversarial review round 1"**, closing at `1a3982d3f` (line 582). There is **no** section for fix round 2 (`06064a3a6`) or fix round 3 (`86e62e2bd`) — no files touched, no commands, no output, no counts, no red/mutation evidence, no decisions. The header at `:7` still reads `Status: M0 passed; Opus round 3 ACCEPT` and never mentions M1. By contrast M0 documented every one of its fix rounds (`:151`, `:329`, `:363`) — the precedent this milestone drops. Grep for `86e62e2b`, `06064a3a`, `M1-round2`, `M1-round3`, "fix round 3" returns nothing in the report.
+
+**Failure scenario:** M7's manifest item 9 requires every milestone finding closed with its evidence, and the M7 red-first exception explicitly says its obligation is a rerun of the accumulated evidence set *"plus the revert-replay records already captured per behavior change."* Records that were never captured cannot be cited, so the promotion gate fails at M7 — after M2–M6 are built on top — rather than here, where the remedy is a page of text.
+
+The sharper half: round 3's finding was *precisely* "a green test that misdescribes its own coverage." Its replacement has been accepted into the branch **without an executed mutation showing it reds** when `STAMP_DUTY_COUNTRIES` gains a country. I am confident the coupling is real — `assertSame` over an array literal is mechanically certain, and I confirmed `getConstant` returns the private const rather than `false` by running it — but accepting a non-vacuity claim on inspection alone is the same move that produced the round-3 finding.
+
+**Remedy (small, precisely scoped):** add the two missing report sections, including (a) the executed mutation proof that the hardened test reds on a `STAMP_DUTY_COUNTRIES` edit and greens on restore, (b) the SQLite and PG counts at HEAD, (c) refresh the `:7` Status line. No code change is required — see the counts I produced below; the substance is green, the record is not.
+
+*Mitigating and stated plainly:* `git diff --stat 1a3982d3f..HEAD` shows **one test file plus documentation** — zero production code has moved since fix round 1, whose dual-engine evidence is recorded. This is an evidence-completeness defect, not a code defect.
+
+### 2. P3 — `PurchaseStampDuty` (REQUIRED) and `SalesStampDutyPayable` (SCOPE_REQUIRED) are classified asymmetrically although they sit under one identical guard · CONFIRMED (asymmetry) / not a defect (design)
+`apps/api/app/Modules/CountryDefaults/Domain/Services/ProvisioningRequiredPurposesV1.php:49,62` vs `apps/api/app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:290-292`
+
+Both purposes are resolved on adjacent lines inside the same `if ($hasStampDuty)` block, so their reachability is identical — yet one is REQUIRED for every template and the other is scope-gated. I recorded this rather than filed it because the asymmetry encodes the **ban**, not the requirement: a stray `SalesStampDutyPayable` row in an FR template misdirects runtime absorber selection (brief M1 invariant, spec §4.2.1), while `PurchaseStampDuty` cannot, and all three frozen charts already carry it (verified below). The residual — an FR-chart company whose `country_code` is later switched to TN throwing at `:292` — **predates Phase A** (the legacy FR seeder never had the account) and is squarely inside the S-5 limitation already recorded in the addendum. One line in M2's publish-gate reasoning would make the asymmetry a documented decision rather than an artifact.
+
+## Bypasses attempted that FAILED (no finding)
+
+- **Break the wildcard/generic template's future publish gate.** Hypothesis: the registry hands `*` the non-TN instrument set (`ProtectedAccountCodeRegistry.php:47`), but the Generic chart is a minimal English chart that may not carry French-plan instrument codes — making the wildcard template permanently unpublishable and blocking Release 2. **Refuted:** all nine codes exist in all three charts with the resolver's exact queried type and `is_system => true` — Generic `5112/5113/5114` `:158-160`, `403/4035` `:132-133`, `413/416` `:140-141`, `44566` `:149`, `627` `:178`; France `:247-249,170-171,190-191,216,320`; Tunisia `5312/5313/5314` `:226-228`, `43666` `:206`, `6275` `:270`, `403/4035/413/416` `:176-177,185-186`. Registry ⇄ `InstrumentAccountResolver.php:45-70` matches on all 18 code/type pairs, both variants.
+- **Independently reproduce M0's "missing-REQUIRED = `[]`" claim that the manifest rests on.** Extracted every `SystemAccountPurpose::` occurrence from all three frozen seeders and intersected against the manifest's 27 REQUIRED names. TN `[]`, FR `[]`, Generic `[]`. `SalesStampDutyPayable` appears in **Tunisia only** — the scope-dependent result holds, and the non-timbre content ban is satisfied by the frozen bytes.
+- **Smuggle content drift past the frozen-seeder guard.** Recomputed all three fingerprints from the pinned base: `git show 7d85232cc:… | shasum -a 256` → `4e5dae62…`, `44d1d721…`, `d0f13078…`. Byte-exact against `FrozenSeederDocblockTest.php:21-23`. The only delta in those files is the `@deprecated` line the test strips.
+- **Independently recompute the canonical golden.** Rebuilt the two-row projection in Python (NFC + `ensure_ascii=False` + `(',',':')`) → `b93206e4fe2e416c36152f70c6684fd4c95a9865cbf5f1e46b4b13a9e100eb36`, exactly `CanonicalCoaSerializerGoldenTest.php:15`. `is_active` genuinely absent from the projection, no trailing newline, NFC case real (`cafe\u{301}s`).
+- **Break a caller with the constructor/signature churn.** Repo-wide: zero `new CompanyTaxProvisioningService`, zero `new CountryTaxConfigurationRegistry`, zero direct `new` of the five converted seeders. Every `provisionForCompany` caller preserves its prior fail-loud value — `TenantInitializationService.php:313` and `CompanyController.php:175` keep the default `false`; the seeders pass named `true` exactly where they previously constructed with `true`. Seeder method injection resolves through `Seeder::__invoke` → `container->call`.
+- **Find a behavior change behind the Taxation delegation.** `MAP[...]['supports_stamp_duty'] ?? false` (TN/FR only) → `in_array(strtoupper(trim($c)), ['TN'])`. Identical for every input; the added `trim` is strictly more permissive in the safe direction. `TaxConfigurationController` is not in the diff at all, and `TaxConfigurationCapabilityDelegationTest.php:44-66` pins the controller against an **injected fake** authority, so a hidden second predicate would red.
+- **Find a new deptrac violation class.** `deptrac.yaml:88-93` allows `ModuleDomain → SharedContracts` (`CertificationScope` → the contract) and leaves cross-module same-tier deps unenforced (`ProvisioningRequiredPurposesV1` → `Accounting\Domain\Enums\SystemAccountPurpose` is Domain→Domain). No new violation class; `Providers/` is collected by no layer.
+- **Hide code in an unanalysed directory.** `phpstan.neon:6-7` analyses `app/` only, so the round-3 test-only change is outside static scope — but `git diff --stat 1a3982d3f..HEAD` proves no production code moved, so nothing was relocated into the blind spot.
+- **Make the ratchet vacuous.** `ProvisioningRequiredPurposesRegistrationRatchetTest.php:23` is an exact `assertSame` between the manifest's 101-entry inventory and a fresh AST scan — any added, moved, or renamed throwing site reds.
+- **Execution (this is the evidence finding 1 asks the implementer to record).** The nine §1.1 M1 files, at HEAD: SQLite **54 passed / 693 assertions**; PostgreSQL (`autoerp_country_defaults_test`, `-c phpunit-pgsql.xml`) **54 passed / 693 assertions**. Counts match exactly across engines.
+
+---
+
+**Blocking: none.** **Fix before merge: finding 1** — the round-3 fix is correct and green on both engines, but the branch's own §9 report carries no record of fix rounds 2 or 3, no counts at HEAD, and no executed proof that the replacement test reds on a capability-set edit; accepting a non-vacuity claim on inspection alone repeats the exact failure mode round 3 caught. Every earlier round-1/2/3 finding is closed and independently re-verified; the invariant kernel itself — capability singularity, scope algebra, the 41-case partition, the protected-code registry, the canonical byte contract, the frozen-seeder pins — is in good shape and survived every bypass I attempted.
+
+VERDICT: CHANGES-REQUIRED

@@ -14,6 +14,8 @@ use Illuminate\Support\Str;
  *
  * A minimal chart of accounts for countries that do not have a dedicated seeder.
  * Uses simple numeric codes with English names and maps all SystemAccountPurpose values.
+ *
+ * @deprecated compatibility artifact; frozen at 7d85232cc
  */
 class GenericChartOfAccountsSeeder extends Seeder
 {

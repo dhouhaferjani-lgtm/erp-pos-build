@@ -7,6 +7,9 @@ namespace App\Modules\Accounting\Application\Services;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
+use App\Modules\CountryDefaults\Application\Services\CountryTemplateResolver;
+use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
+use App\Modules\CountryDefaults\Infrastructure\Seeders\TemplateChartOfAccountsSeeder;
 use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\GenericChartOfAccountsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
@@ -24,6 +27,11 @@ use RuntimeException;
  */
 class ChartOfAccountsService
 {
+    public function __construct(
+        private readonly CountryTemplateResolver $templateResolver,
+        private readonly TemplateChartOfAccountsSeeder $templateSeeder,
+    ) {}
+
     /**
      * Seed chart of accounts for a newly created company.
      * Automatically selects the appropriate seeder based on country.
@@ -31,6 +39,16 @@ class ChartOfAccountsService
      */
     public function seedForCompany(Company $company): void
     {
+        if ((bool) config('country_defaults.provisioning_enabled', false)) {
+            $template = $this->templateResolver->resolve(
+                TemplateDomain::ChartOfAccounts,
+                $company->country_code,
+            );
+            $this->templateSeeder->seed($template, $company);
+
+            return;
+        }
+
         $seeder = $this->getSeederForCountry($company->country_code);
 
         DB::transaction(function () use ($company, $seeder): void {

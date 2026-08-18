@@ -9,6 +9,7 @@ use App\Modules\Channel\Providers\ChannelServiceProvider;
 use App\Modules\Company\CompanyServiceProvider;
 use App\Modules\Compliance\Providers\ComplianceServiceProvider;
 use App\Modules\Contact\Providers\ContactServiceProvider;
+use App\Modules\CountryDefaults\Providers\CountryDefaultsServiceProvider;
 use App\Modules\Coupon\Providers\CouponServiceProvider;
 use App\Modules\Dashboard\Providers\DashboardServiceProvider;
 use App\Modules\Document\Providers\DocumentServiceProvider;
@@ -100,6 +101,7 @@ return [
     CouponServiceProvider::class,
     PlatformIntegrationServiceProvider::class,
     ContactServiceProvider::class,
+    CountryDefaultsServiceProvider::class,
     MarketplaceServiceProvider::class,
     PurchaseHubServiceProvider::class,
     CartServiceProvider::class,

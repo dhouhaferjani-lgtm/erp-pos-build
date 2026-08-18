@@ -9,6 +9,7 @@ use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\ParapharmacySeeder;
 use Database\Seeders\TunisianParapharmacySeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 
 /**
@@ -33,6 +34,7 @@ final class SeededProductsHaveTaxRateTest extends TestCase
      * product must carry the French standard rate (20.00) because the seeder's
      * calculatePricing() was fixed in T15 to emit 20.00 for all categories.
      */
+    #[Group('historical-compat')]
     public function test_parapharmacy_seeder_products_all_have_fr_tax_rate(): void
     {
         $this->artisan('db:seed', ['--class' => ParapharmacySeeder::class, '--force' => true])
@@ -65,6 +67,7 @@ final class SeededProductsHaveTaxRateTest extends TestCase
      *
      * Requires DatabaseSeeder to run first (creates active tenant + countries).
      */
+    #[Group('historical-compat')]
     public function test_tunisian_parapharmacy_seeder_products_all_have_tn_tax_rate(): void
     {
         // TunisianParapharmacySeeder attaches to the first active tenant, which
@@ -85,6 +88,22 @@ final class SeededProductsHaveTaxRateTest extends TestCase
             0,
             $newProductIds->count(),
             'TunisianParapharmacySeeder must create at least one product'
+        );
+
+        $expectedStableSkus = [
+            'Vitamine C 1000mg' => 'PARA-VITAMINE-C-1000MG',
+            'Vitamine D3 2000 UI' => 'PARA-VITAMINE-D3-2000-UI',
+        ];
+        $actualStableSkus = Product::whereIn('id', $newProductIds)
+            ->whereIn('name', array_keys($expectedStableSkus))
+            ->pluck('sku', 'name')
+            ->all();
+        ksort($expectedStableSkus);
+        ksort($actualStableSkus);
+        $this->assertSame(
+            $expectedStableSkus,
+            $actualStableSkus,
+            'Explicit parapharmacy SKUs must be stable and cannot collide when names share a prefix'
         );
 
         $this->assertSame(

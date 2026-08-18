@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Database\Seeders;
 
 use App\Enums\Vertical;
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Billing\Domain\Enums\SubscriptionStatus;
 use App\Modules\Billing\Domain\Plan;
 use App\Modules\Billing\Domain\TenantSubscription;
@@ -81,6 +82,11 @@ use Spatie\Permission\Models\Role;
  */
 class DemoTenantSeeder extends Seeder
 {
+    public function __construct(
+        private readonly CompanyTaxProvisioningService $companyTaxProvisioning,
+        private readonly ChartOfAccountsService $chartOfAccounts,
+    ) {}
+
     /**
      * Cached automotive units for the current tenant being seeded. Reset at
      * the top of `createUnlimitedDemoTenant` so re-running the seeder for a
@@ -215,9 +221,7 @@ class DemoTenantSeeder extends Seeder
         // Tunisia COA must exist before accounting-linked seed paths run.
         // Guarded on company_id so a re-seed doesn't duplicate the chart.
         if (DB::table('accounts')->where('company_id', $company->id)->doesntExist()) {
-            $coaSeeder = new TunisiaChartOfAccountsSeeder;
-            $coaSeeder->setCommand($this->command);
-            $coaSeeder->run($company->id, $tenant->id);
+            $this->chartOfAccounts->seedForCompany($company);
         }
 
         // Provision tax configurations if countries is already seeded
@@ -2068,10 +2072,7 @@ class DemoTenantSeeder extends Seeder
      */
     private function provisionCompanyTax(Company $company): void
     {
-        $provisioning = new CompanyTaxProvisioningService(
-            failLoudOnMissingCountry: false,
-        );
-        $provisioning->provisionForCompany($company);
+        $this->companyTaxProvisioning->provisionForCompany($company);
     }
 
     /**

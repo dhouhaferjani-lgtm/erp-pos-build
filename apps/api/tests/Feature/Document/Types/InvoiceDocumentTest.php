@@ -25,8 +25,10 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
+#[UsesFrozenSeederFixture]
 class InvoiceDocumentTest extends TestCase
 {
     use RefreshDatabase;

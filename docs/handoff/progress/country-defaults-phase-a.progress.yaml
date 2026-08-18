@@ -7,8 +7,8 @@ reviewer_model: opus
 max_fix_rounds: 5
 
 # Re-pin at dispatch (V-1): origin/dev moves. If it advanced past 7d85232cc, re-verify the §0 drift table before coding.
-base_sha: null
-branch: null
+base_sha: 7d85232cc54abd6a6b2135f476205ab434e71a66
+branch: codex/country-defaults-phase-a
 
 owner_gates:
   - id: spec-read-through
@@ -25,67 +25,75 @@ milestones:
   - id: M0
     title: "Reconciliation addendum — recompute §0 drift table from current origin/dev; capture pre-addendum reconciliation command output (documentation-only, no red test)"
     review_lenses: [treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 2
+    commit: 118190f1f4ea0b863f7bdced646ae34564880053
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M0-round3.md
+    last_verdict: ACCEPT
+    updated: 2163203d8
   - id: M1
     title: "Invariant kernel (no DB/HTTP): CountryAccountingCapabilities contract+impl, CertificationScope VO, ProvisioningRequiredPurposes::V1 manifest + conformance suite + AST ratchet, protected-code registry, CanonicalCoaSerializer + golden vector, frozen-seeder @deprecated docblocks"
     review_lenses: [treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 4
+    commit: 95206724a0813f13b9c31a0c5da37a45ee7e32bb
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M1-round5.md
+    last_verdict: ACCEPT
+    updated: e81f774d2
   - id: M2
     title: "Central schema (3 tables, directly in database/migrations/) + CentralConnection models + publish/assignment domain services; locks/transactions/audit-in-transaction"
     review_lenses: [tenancy-authz, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 4
+    commit: e8c9dde8a52ea1346c6f559ab647e39bd4b578a9
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M2-round5.md
+    last_verdict: ACCEPT
+    updated: d6f76670b
   - id: M3
     title: "defaults_editor role + EnsureCentralAdmin (central_admin alias) + route groups (minimal auth edit: only nested logout/me) + MFA feature flag + full API surface"
     review_lenses: [tenancy-authz]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 1
+    commit: 556b9771e2ea6f66d9ddd62250c91bb3fe407c35
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M3-round2.md
+    last_verdict: ACCEPT
+    updated: 87d4f24ee
   - id: M4
     title: "Legacy golden exporter + bootstrap key-as-assertion data migration (drafts only) + country-defaults:verify global drift scan; report 27-REQUIRED + scope-dependent SalesStampDutyPayable results"
     review_lenses: [treasury, tenancy-authz]
-    status: pending
+    status: passed
     fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    commit: 782a2a5a16337508ce63f6ec8994cf86b55dc0c8
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M4-round1.md
+    last_verdict: ACCEPT
+    updated: 3e1dd04c3
   - id: M5
     title: "Provisioning rewire: resolver 4-step algorithm, TemplateChartOfAccountsSeeder, full consumer inventory (incl. ExpenseCategoryProvisioningService), rollback semantics — behind COUNTRY_DEFAULTS_PROVISIONING_ENABLED (default false)"
     review_lenses: [treasury, tenancy-authz]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 4
+    commit: 7320b13157ed6b9c9e42038e9a3e171fe4c94cd0
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M5-round5.md
+    last_verdict: ACCEPT
+    updated: f583c8b26
   - id: M6
     title: "Admin FE (apps/web/src/features/admin/country-defaults/): templates list, editor grid, assignments, three-role shell, en+fr"
     review_lenses: [frontend-conventions, tenancy-authz]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 3
+    commit: cea196fb2
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M6-round4.md
+    last_verdict: ACCEPT
+    updated: 9909bdfd1
   - id: M7
     title: "Whole-branch integration gate + executable evidence manifest (all M1-M6 paths on PG + SQLite parity, static scopes, country-defaults:verify, route inventory, six branch-wide static assertions) — no new implementation; failure of any item blocks"
     review_lenses: [treasury, tenancy-authz, frontend-conventions]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 3
+    commit: 98f7dd53d1a11713a43755016588b186fe7d70ac
+    verdict: docs/handoff/reviews/country-defaults-phase-a/M7-round3.md
+    last_verdict: ACCEPT
+    updated: 98f7dd53d
 
-status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: complete         # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []

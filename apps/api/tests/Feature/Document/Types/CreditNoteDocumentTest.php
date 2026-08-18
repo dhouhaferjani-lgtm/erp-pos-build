@@ -23,8 +23,10 @@ use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
+#[UsesFrozenSeederFixture]
 class CreditNoteDocumentTest extends TestCase
 {
     use RefreshDatabase;

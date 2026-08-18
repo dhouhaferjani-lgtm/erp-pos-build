@@ -217,6 +217,7 @@ commit, so the M7 command manifest stays literal and complete.
 | M3 | `tests/Feature/CountryDefaults/CentralAdminRouteInventoryTest.php`<br>`tests/Feature/CountryDefaults/AdminAuthRouteBoundaryTest.php`<br>`tests/Feature/CountryDefaults/DefaultsEditorLifecycleTest.php`<br>`tests/Feature/CountryDefaults/DefaultsEditorLoginFlagTest.php`<br>`tests/Feature/CountryDefaults/TemplateApiEndpointTest.php`<br>`tests/Feature/CountryDefaults/AssignmentApiEndpointTest.php` |
 | M4 | `tests/Feature/CountryDefaults/LegacyGoldenParityTest.php`<br>`tests/Feature/CountryDefaults/BootstrapKeyAssertionImportTest.php`<br>`tests/Feature/CountryDefaults/VerifyCountryDefaultsCommandTest.php`<br>`tests/Feature/CountryDefaults/CapabilityRegistryBumpTransitionTest.php`<br>`tests/Feature/CountryDefaults/CertifiedFixtureDeltaTest.php` |
 | M5 | `tests/Feature/CountryDefaults/CountryTemplateResolverTest.php`<br>`tests/Feature/CountryDefaults/ProvisioningFlagMatrixTest.php`<br>`tests/Feature/CountryDefaults/ProvisioningNoCacheTest.php`<br>`tests/Feature/CountryDefaults/CompanyCreationRollbackTest.php`<br>`tests/Feature/CountryDefaults/TemplateChartOfAccountsSeederSemanticsTest.php`<br>`tests/Feature/CountryDefaults/ExpenseCategorySeederLoudFailureTest.php`<br>`tests/Feature/CountryDefaults/NoExistingCompanyMutationTest.php`<br>`tests/Feature/CountryDefaults/FrozenSeederProvisioningIsolationTest.php` |
+| M1–M5 compatibility | `tests/Feature/Accounting/BackfillChartPurposesMigrationTest.php`<br>`tests/Feature/Accounting/BackfillCustomerAndSupplierAdvanceAccountsTest.php`<br>`tests/Feature/Accounting/BackfillPurchaseStampDutyAccountTest.php`<br>`tests/Feature/Accounting/BackfillSalesRoundingDifferenceAccountsTest.php`<br>`tests/Feature/Accounting/DocumentCancellationGlReversalTest.php`<br>`tests/Feature/Accounting/DocumentGlPreflightTest.php`<br>`tests/Feature/Accounting/InvoiceGLIntegrationTest.php`<br>`tests/Feature/Accounting/SeedChartsCommandTest.php`<br>`tests/Feature/Document/CancelRefusedOnNonOpenVatPeriodTest.php`<br>`tests/Feature/Document/InvoiceDeliveryNoteConfirmationTest.php`<br>`tests/Feature/Document/Types/CreditNoteDocumentTest.php`<br>`tests/Feature/Document/Types/InvoiceDocumentTest.php`<br>`tests/Feature/Expense/ExpenseCategorySeederTest.php`<br>`tests/Feature/Seeders/DemoSeedersTaxTest.php`<br>`tests/Feature/Seeders/SeededProductsHaveTaxRateTest.php`<br>`tests/Feature/Taxation/CompanyTaxProvisioningServiceTest.php`<br>`tests/Feature/Taxation/EndToEndTaxResolutionTest.php`<br>`tests/Feature/Tenant/OnboardingTaxStepTest.php`<br>`tests/Feature/Treasury/InstrumentAccountResolverTest.php`<br>`tests/Feature/Treasury/PayableInstrumentAccountsTest.php`<br>`tests/Unit/Taxation/CountryTaxConfigurationRegistryTest.php` |
 
 | M | Frontend test files (paths relative to `apps/web/`) |
 |---|---|
@@ -640,7 +641,28 @@ tests/Feature/CountryDefaults/CompanyCreationRollbackTest.php \
 tests/Feature/CountryDefaults/TemplateChartOfAccountsSeederSemanticsTest.php \
 tests/Feature/CountryDefaults/ExpenseCategorySeederLoudFailureTest.php \
 tests/Feature/CountryDefaults/NoExistingCompanyMutationTest.php \
-tests/Feature/CountryDefaults/FrozenSeederProvisioningIsolationTest.php"
+tests/Feature/CountryDefaults/FrozenSeederProvisioningIsolationTest.php \
+tests/Feature/Accounting/BackfillChartPurposesMigrationTest.php \
+tests/Feature/Accounting/BackfillCustomerAndSupplierAdvanceAccountsTest.php \
+tests/Feature/Accounting/BackfillPurchaseStampDutyAccountTest.php \
+tests/Feature/Accounting/BackfillSalesRoundingDifferenceAccountsTest.php \
+tests/Feature/Accounting/DocumentCancellationGlReversalTest.php \
+tests/Feature/Accounting/DocumentGlPreflightTest.php \
+tests/Feature/Accounting/InvoiceGLIntegrationTest.php \
+tests/Feature/Accounting/SeedChartsCommandTest.php \
+tests/Feature/Document/CancelRefusedOnNonOpenVatPeriodTest.php \
+tests/Feature/Document/InvoiceDeliveryNoteConfirmationTest.php \
+tests/Feature/Document/Types/CreditNoteDocumentTest.php \
+tests/Feature/Document/Types/InvoiceDocumentTest.php \
+tests/Feature/Expense/ExpenseCategorySeederTest.php \
+tests/Feature/Seeders/DemoSeedersTaxTest.php \
+tests/Feature/Seeders/SeededProductsHaveTaxRateTest.php \
+tests/Feature/Taxation/CompanyTaxProvisioningServiceTest.php \
+tests/Feature/Taxation/EndToEndTaxResolutionTest.php \
+tests/Feature/Tenant/OnboardingTaxStepTest.php \
+tests/Feature/Treasury/InstrumentAccountResolverTest.php \
+tests/Feature/Treasury/PayableInstrumentAccountsTest.php \
+tests/Unit/Taxation/CountryTaxConfigurationRegistryTest.php"
 
 # 2 — SQLite baseline (default phpunit.xml)
 php artisan test $PHASE_A_TESTS
@@ -659,10 +681,15 @@ app/Shared/Contracts/CountryDefaults \
 app/Http/Middleware/EnsureCentralAdmin.php \
 app/Models/Enums/SuperAdminRole.php \
 app/Modules/Taxation/Application/Registries/CountryTaxConfigurationRegistry.php \
+app/Modules/Taxation/Application/Services/CompanyTaxProvisioningService.php \
 app/Modules/Tenant/Application/Services/TenantInitializationService.php \
 app/Modules/Accounting/Application/Services/ChartOfAccountsService.php \
+app/Modules/Accounting/Application/Services/LegacyExistingChartRepairPreviewer.php \
+app/Modules/Expense/Application/Services/ExpenseCategoryProvisioningService.php \
 app/Modules/Company/Presentation/Controllers/CompanyController.php \
 app/Http/Controllers/Api/Admin/SuperAdminAuthController.php \
+app/Console/Commands/SeedChartsCommand.php \
+app/Console/Commands/BackfillChartPurposesCommand.php \
 bootstrap/app.php \
 bootstrap/providers.php \
 routes/api.php \
@@ -676,6 +703,8 @@ database/seeders/TunisianParapharmacySeeder.php \
 database/seeders/ParapharmacySeeder.php \
 database/seeders/DemoPharmacySeeder.php \
 database/seeders/ExpenseCategorySeeder.php \
+database/seeders/Contracts/ChartOfAccountsSeederContract.php \
+database/seeders/CountryDefaultsChartOfAccountsSeeder.php \
 database/seeders/TunisiaChartOfAccountsSeeder.php \
 database/seeders/FranceChartOfAccountsSeeder.php \
 database/seeders/GenericChartOfAccountsSeeder.php \
@@ -688,13 +717,15 @@ database/migrations/2026_08_11_100300_import_legacy_coa_templates_as_drafts.php"
 ./vendor/bin/pint --test $PHASE_A_PHP_SCOPE
 
 # 5 — migrations: prove the four files are DISCOVERED by the default (production) path and
-#     apply cleanly from empty on a scratch central database.
-DB_HOST="$PGHOST" DB_PORT="$PGPORT" DB_USERNAME="$PGUSER" DB_PASSWORD="$PGPASSWORD" \
-DB_DATABASE="$PHASE_A_MIGRATE_DB" DB_CENTRAL_DATABASE="$PHASE_A_MIGRATE_DB" \
-  php artisan migrate:fresh --force
-DB_HOST="$PGHOST" DB_PORT="$PGPORT" DB_USERNAME="$PGUSER" DB_PASSWORD="$PGPASSWORD" \
-DB_DATABASE="$PHASE_A_MIGRATE_DB" DB_CENTRAL_DATABASE="$PHASE_A_MIGRATE_DB" \
-  php artisan migrate:status > /tmp/phase-a-migrate-status.txt
+#     apply cleanly from empty on a scratch central database. The committed runner rejects URL
+#     precedence and cached config, pins every default/central field, confirms both effective
+#     Laravel connections, and passes --database=central to the destructive command.
+PGHOST="$PGHOST" PGPORT="$PGPORT" PGUSER="$PGUSER" PGPASSWORD="$PGPASSWORD" \
+PHASE_A_MIGRATE_DB="$PHASE_A_MIGRATE_DB" \
+PHASE_A_FIXTURE_CONFIRM=I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE \
+PHASE_A_FIXTURE_PORT=8196 \
+  ../../scripts/phase-a-authenticated-verifier-fixture.sh --migrate-only \
+  | tee /tmp/phase-a-migrate-status.txt
 for m in 2026_08_11_100000_create_admin_templates_table \
          2026_08_11_100100_create_admin_template_accounts_table \
          2026_08_11_100200_create_country_template_assignments_table \
@@ -706,8 +737,15 @@ done
 # altered content, partial row set, concurrent import, retry after failure — is carried solely by
 # tests/Feature/CountryDefaults/BootstrapKeyAssertionImportTest.php (run in items 1 and 2).
 
-# 6 — verify command; a non-zero exit must abort this block (no `; echo` swallowing)
-php artisan country-defaults:verify
+# 6 — authenticated HTTP certification fixture + verify command. The committed runner fails closed
+#     unless the target has an explicit disposable Country Defaults test/scratch database name,
+#     confirms the actual PostgreSQL database identity, rebuilds only that target, publishes and
+#     assigns through authenticated HTTP, and leaves staging/production human certification open.
+PHASE_A_FIXTURE_CONFIRM=I_UNDERSTAND_THIS_REBUILDS_A_DISPOSABLE_DATABASE \
+PHASE_A_FIXTURE_PORT=8197 \
+PGHOST="$PGHOST" PGPORT="$PGPORT" PGUSER="$PGUSER" PGPASSWORD="$PGPASSWORD" \
+PHASE_A_MIGRATE_DB="$PHASE_A_MIGRATE_DB" \
+  ../../scripts/phase-a-authenticated-verifier-fixture.sh
 
 # 7 — route inventory
 php artisan route:list --path=admin --json > ../../docs/sessions/phase-a-route-inventory.json

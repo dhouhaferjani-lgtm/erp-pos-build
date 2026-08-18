@@ -34,6 +34,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
 /**
@@ -56,6 +57,7 @@ use Tests\TestCase;
  *   2. the same document posts normally once its totals are corrected — i.e. the
  *      refusal is recoverable, not a dead end.
  */
+#[UsesFrozenSeederFixture]
 final class DocumentGlPreflightTest extends TestCase
 {
     use RefreshDatabase;

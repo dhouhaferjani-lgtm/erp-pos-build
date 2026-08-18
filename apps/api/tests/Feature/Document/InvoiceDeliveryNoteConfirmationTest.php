@@ -27,6 +27,7 @@ use Database\Seeders\FranceChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 
 /**
@@ -38,6 +39,7 @@ use Tests\TestCase;
  * @see SalesOrderToInvoiceConverter
  * @see InvoiceController::confirmDeliveriesAndPost()
  */
+#[UsesFrozenSeederFixture]
 class InvoiceDeliveryNoteConfirmationTest extends TestCase
 {
     use RefreshDatabase;

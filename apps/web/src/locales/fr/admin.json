@@ -3,6 +3,13 @@
     "defaultsTitle": "Modules par défaut",
     "defaultsHint": "Inclus avec la verticale {{vertical}} — toujours actifs, non modifiables."
   },
+  "shell": {
+    "brand": "Admin", "panel": "Panneau d’administration central", "portalTitle": "Portail d’administration central", "portalSubtitle": "Connectez-vous au panneau d’administration",
+    "email": "Adresse e-mail", "emailPlaceholder": "admin@example.com", "password": "Mot de passe", "passwordPlaceholder": "Saisissez votre mot de passe",
+    "signIn": "Se connecter", "signingIn": "Connexion…", "signOut": "Se déconnecter",
+    "backToLogin": "Retour à la connexion habituelle", "invalidCredentials": "Identifiants invalides", "adminFallback": "Administrateur",
+    "navigation": { "dashboard": "Tableau de bord", "tenants": "Locataires", "verticals": "Verticales", "companyOwners": "Propriétaires d’entreprise", "billing": "Facturation", "monitoring": "Supervision", "auditLogs": "Journaux d’audit" }
+  },
   "verticals": {
     "title": "Configuration des verticales",
     "loading": "Chargement des verticales...",

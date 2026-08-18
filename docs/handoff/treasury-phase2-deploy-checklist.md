@@ -16,6 +16,15 @@ Verify no tenant has a pending migration and every existing company has a non-nu
 
 ## 2. Re-run chart provisioning
 
+> **Country-defaults Release 2 correction (2026-08-12):** once
+> `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=true`, do **not** run the apply command or the historical
+> Tinker loop below against existing companies. Assigned templates are creation-only. The supported
+> `accounting:seed-charts --dry-run` mode reports the retired legacy repair baseline only; it is
+> explicitly **not assigned-template parity** and cannot be applied by that command. Use
+> `php artisan country-defaults:verify` for assignment/certification health. Any required live-chart
+> repair must ship as a reviewed one-off migration. Deployment prerequisites and rollback steps are
+> tracked in `docs/superpowers/tickets/2026-08-12-country-defaults-m5-p3-hardening.md`.
+
 Re-run the locale chart seeder through `ChartOfAccountsService::seedForCompany()` for every company in every tenant. The seeders are idempotent and add the portfolio/fee accounts without replacing existing accounts.
 
 Required purpose codes:
