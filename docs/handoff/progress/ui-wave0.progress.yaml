@@ -1,0 +1,139 @@
+wave: ui-wave0
+brief: docs/handoff/CODEX-DISPATCH-ui-wave0-2026-08-11.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+# Pre-dispatch brief gates (content already PASSED at r3); per-milestone registers land here.
+review_register: docs/handoff/reviews/ui-wave0/
+brief_gates:
+  - docs/superpowers/reviews/2026-08-11-wave0-brief-gate-r1.md
+  - docs/superpowers/reviews/2026-08-11-wave0-brief-gate-r2.md
+reviewer_model: opus
+max_fix_rounds: 5
+
+# OWNER RULING 2026-08-17 supersedes the original fresh-origin rule: use this exact curated dev tip.
+# Do NOT fetch and repin.
+base_sha: d682b38ec9761a917b9716428091a482745795f6
+# Branch codex/ui-wave0-2026-08-11 in worktree .worktrees/ui-wave0, created from base_sha.
+# NOT merged, NOT pushed: the parent Claude session performs the terminal audit and owns the merge.
+branch: codex/ui-wave0-2026-08-11
+
+# F-6: the commit-message series for this wave is a PARENT decision (AGENTS.md:16 mandates
+# `Phase <major.minor.patch>: <imperative summary>`; live dev history is mixed). The parent writes the
+# verbatim answer here BEFORE dispatch. If this is still null at M0, that is a blocked_precondition
+# STOP — do not invent a phase number and do not fall back to fix(web): on your own authority.
+commit_series: "Phase 0.<task#>.<seq>"
+
+# Milestone grouping is an EXECUTION-MODE construct for the review gates ONLY. It changes no task, no
+# acceptance criterion and no ordering: it is exactly the §2 binding dependency chain
+# (T2 -> {T10,T11,T12,T13} -> T3(a) -> T3(b) -> T9, and T1 -> T9), batched into reviewable units.
+milestones:
+  - id: M0
+    title: "Dispatch preconditions (SETUP-ONLY, no implementation, NO bridge review — see the banner's M0 exception): fetch origin, pin base_sha = fresh origin/dev tip, create the dedicated worktree + branch, confirm `commit_series` is filled in (null = blocked_precondition STOP, F-6), and read the §0 documents in order (00-EXECUTIVE-REPORT rev 5, OWNER-DECISIONS, 10-verification-orphans-duplicates, 11-research-finance-hub). Do NOT read section files 01-04 standalone. Completion = set status: passed with the base_sha recorded; no adversarial register is produced."
+    review_lenses: []
+    status: passed
+    updated: d682b38e
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M0b
+    title: "Owner-authorized tests-only baseline remediation before M1: re-derive the full failing set at pinned base d682b38ec9761a917b9716428091a482745795f6, then fix every stale test to assert current ruled behavior with a one-line comment citing the promoted lane that changed it (including UoM unit-precision quantity display and L3 locationScopedKey where applicable). Diff is limited to test files; zero production-code changes. If any failure exposes a real current-behavior defect rather than stale test debt, record it as a finding and STOP that item as blocked_review. Exit requires full apps/web pnpm test green plus pnpm typecheck and pnpm lint, followed by the normal bridge review. Commit series: Phase 0.0b.<seq>."
+    review_lenses: [frontend-conventions, general]
+    status: in_progress
+    updated: "2026-08-18"
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M1
+    title: "T1 (CX-4) - component-graph-aware listing re-census: apps/web/tools/audit-listing-census.mjs (pure exported functions + main), its node --test suite, and the report at docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md. Discovery rule stated and not hardcoded to 46; import-following into organisms; orphan reachability incl. parameterized routes and breadcrumb parents; always exit 0 and NOT chained into `lint` or CI. Supersedes UI-28/UI-29/UI-34 with method-per-number."
+    review_lenses: [frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2
+    title: "T2 (UI-11) - gen-route-manifest.mjs resolves through the local KeyedByRouteId wrapper so /sales/invoices/:id records InvoiceDetailPage. NO manifest file is committed here (T3 owns scripts/factory/manifests/)."
+    review_lenses: [frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "T10, T11, T12, T13 - the four owner-ruled deletions (/pos/shifts + POSShiftsDashboard; /marketing + MarketingHubPage; /finance + FinanceHubPage OUTRIGHT with no redirect, preserving finance:hub.cards.treasuryOverview.title and applying the three-row disposition table; the duplicate /settings/chart-of-accounts mount), each against the six-point deletion checklist in §3, one commit per task, source only. EXPECTED AND PERMITTED: these commits leave scripts/factory/manifests/ drifted and check-manifest-drift.sh exiting 1 in the intermediate state (§2 exception 2) - the reviewer must not treat that as a defect at this milestone. T10 hand-removes exactly the two baseline lines (baseline.json:202, :717); --write-baseline is forbidden. Each commit still green on typecheck/lint/test."
+    review_lenses: [frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M4
+    title: "T3 (UI-10) - two authorised commits: T3(a) regenerate scripts/factory/manifests/ (manifests and nothing else) so the manifest reflects T2 plus the four deletions, then T3(b) the standalone manifest drift CI job. check-manifest-drift.sh must exit 0 at this point."
+    review_lenses: [frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M5
+    title: "T4 (UI-01/UI-02) + T15 (UI-07) - the gating pair. T4: canAccessModule fails CLOSED, the ModuleKey union typed, the mandatory pre-step widening hasAnyPermission AND hasAllPermissions to readonly Permission[], the four invalid keys across five literal occurrences fixed, the six call surfaces (incl. CashPositionWidget.tsx:124-127) covered, and EXACTLY the five enumerated diagnostics - a sixth is a STOP-and-report. T15: the one-line /expenses nav parity fix at Sidebar.tsx:280 with role-level tests, the treasury siblings untouched, and the bankingAndPayments module-gate constraint recorded report-only. Both are USER-VISIBLE navigation changes in opposite directions (F-3, F-5) - state them plainly."
+    review_lenses: [tenancy-authz, frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M6
+    title: "T5 (UI-12 voucher filter chips - both ternary branches empty), T7 (UI-40 partial: the C6 detector regex fix + the colorClasses migration/baseline PLAN only - do not remove the carve-outs, do not migrate the 52 importers; T7's C1-C5 rule is commit-local), T8's T8-c claim only (dead-code sweep; T8-b stays a non-executable BLOCKED record, touchOptimized stays unassigned per F-2b), T14 (OQ-1 app name as a config value, incl. the seeded-product render test on TenantSupportAccessPage and the renderWithProviders/ProductConfigProvider wrapper fix)."
+    review_lenses: [frontend-conventions, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M7
+    title: "T9 (UI-44) - documentation debt, consuming T1's report (M1) and T3's regenerated manifest (M4). Where a runtime assertion is impossible the acceptance criterion is a reproducible command whose output goes in the handback."
+    review_lenses: [general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M8
+    title: "WHOLE-BRANCH GATE (no new implementation): the SIX §4 whole-branch contract items at final state - (1) ./scripts/preflight.sh with the PHPUnit skip reported AS A SKIP, never as green, and every non-PHPUnit stage genuinely passing; (2) check-manifest-drift.sh exit 0 with /sales/invoices/:id -> InvoiceDetailPage present and the four deleted routes absent; (3) audit-design-system.mjs 0 new/0 stale with the categorised per-category delta - ONLY C6 grows, C2 -1 and C3 -1 traceable to the two deleted files, C1/C4/C5 frozen, anything else is a fail; (4) the per-deleted-route greps with quoted -E patterns, the production-only /finance grep and the enumeration of the seven intentional HubCard.test.tsx literals (lines 12, 22, 35, 54, 63, 87, 103); (5) pnpm typecheck/lint/test green in apps/web; (6) the UI E2E run with any skipped spec documented by screenshot, or the named blocker. Then write the handback per §5 - including the hard prohibition on the words 'Wave 0 complete' / 'UI-43 closed'."
+    review_lenses: [frontend-conventions, tenancy-authz, general]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+owner_gates:
+  # informational record — the conditional/standing logic lives in the banner and the milestone text.
+  # No milestone carries an `owner_gate:` field: the harness reads that field as an UNCONDITIONAL
+  # stop (harness step 4 / condition B), and these are standing constraints, not per-milestone stops.
+  - id: F-1-rafiq-parked-directory
+    question: "T6 (UI-14, ProductEditHero.tsx:137) and T8-b (BarcodeHero.tsx) both target apps/web/src/features/products/editor/, which owner ruling OQ-4 (PARKED) puts off-limits pending the unmerged Rafiq round-2 worktree. BOTH REMAIN NON-EXECUTABLE BLOCKED RECORDS: no commit, excluded from the task count. The gate-r1 reviewer's merge-risk assessment LOWERS the estimated risk and is NOT authorisation - the executor must not act on it. Only an explicit parent/owner ruling changes the disposition, and it must also name who reconciles audit-design-system-baseline.json against the Rafiq branch. The three baseline lines (:224-225, :665) must still be PRESENT at final state."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: F-2b-touchOptimized-ownership
+    question: "UI-43's touchOptimized claim (15 TSX files) has NO recorded owner: rev 5 assigns all four split UI-43 claims to Wave 0 and the size argument is a scheduling recommendation, not an ownership transfer. Do not implement it. Until the parent dispatches it, reassigns it on the record, or accepts it as a standing gap, NEITHER Wave 0 NOR UI-43 may be reported complete (§5 item 7) - report per-finding status and mark UI-43 PARTIAL with its four claims itemised."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: F-6-commit-series
+    question: "The <major.minor.patch> phase series for this wave is a parent decision (AGENTS.md:16). It is recorded in `commit_series:` above BEFORE dispatch; if it is still null at M0 the run stops as blocked_precondition. Blocking for commit hygiene only - no implementation work depends on it once it is filled in."
+    blocks_milestone: M0
+    status: pre_dispatch
+  - id: do-not-touch-boundaries
+    question: "Standing DO-NOT-TOUCH set (§1): features/products/editor/**, LaneSeparationReportPage + the /finance/lane-separation route (owned by the DN-consolidation lane), the events/shift-variance dossiers (fixes session), any Wave-3 listing-pattern migration, removing the colorClasses ESLint carve-outs or migrating the 52 importers, and apps/api/** (no backend change in this wave - if a task appears to need one, STOP and report)."
+    blocks_milestone: none
+    status: standing_constraint
+  - id: F-3-F-5-visible-nav-changes
+    question: "T4 removes nav entries from roles that never held the permission; T15 adds /expenses for cashier/operator/viewer who already hold expenses.view. Both are USER-VISIBLE and must be stated plainly at gate time - acknowledged, not softened."
+    blocks_milestone: none
+    status: standing_constraint
+
+status: in_progress    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []
+findings: []
