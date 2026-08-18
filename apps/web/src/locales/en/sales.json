@@ -370,6 +370,23 @@
       "not_delivered": "Not Delivered",
       "partially_delivered": "Partially Delivered",
       "fully_delivered": "Fully Delivered"
+    },
+    "billingRefusal": {
+      "title": "Delivery notes were already invoiced",
+      "guarantee": "No invoice was created. No invoice number was used.",
+      "billedBy": {
+        "consolidation": "Billed by consolidation",
+        "order_conversion": "Billed from sales order",
+        "pre_post_delivery": "Billed during guided delivery",
+        "legacy_unknown": "Billed (source not recorded)",
+        "unknown": "Billing source unavailable"
+      },
+      "openInvoice": "Open {{number}}",
+      "invoiceRemaining": "Invoice remaining lines…",
+      "noRemaining": "Every order line is already covered by the invoices above.",
+      "remainingUnavailable": "The remaining lines cannot be identified safely. Review the invoices above before continuing.",
+      "remainingTitle": "Invoice remaining lines",
+      "confirmRemaining": "Create invoice"
     }
   },
   "purchaseOrders": {

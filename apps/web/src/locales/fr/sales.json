@@ -370,6 +370,23 @@
       "not_delivered": "Non livré",
       "partially_delivered": "Partiellement livré",
       "fully_delivered": "Entièrement livré"
+    },
+    "billingRefusal": {
+      "title": "Des bons de livraison ont déjà été facturés",
+      "guarantee": "Aucune facture n’a été créée. Aucun numéro de facture n’a été utilisé.",
+      "billedBy": {
+        "consolidation": "Facturé par consolidation",
+        "order_conversion": "Facturé depuis la commande client",
+        "pre_post_delivery": "Facturé lors de la livraison guidée",
+        "legacy_unknown": "Facturé (origine non enregistrée)",
+        "unknown": "Origine de facturation indisponible"
+      },
+      "openInvoice": "Ouvrir {{number}}",
+      "invoiceRemaining": "Facturer les lignes restantes…",
+      "noRemaining": "Toutes les lignes de la commande sont déjà couvertes par les factures ci-dessus.",
+      "remainingUnavailable": "Les lignes restantes ne peuvent pas être identifiées de manière fiable. Vérifiez les factures ci-dessus avant de continuer.",
+      "remainingTitle": "Facturer les lignes restantes",
+      "confirmRemaining": "Créer la facture"
     }
   },
   "purchaseOrders": {
