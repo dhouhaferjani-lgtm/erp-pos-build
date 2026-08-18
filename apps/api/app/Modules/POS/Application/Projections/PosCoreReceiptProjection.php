@@ -456,7 +456,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 return;
             }
 
-            $lineUnitCosts = $this->writeLines(
+            $lineProjection = $this->writeLines(
                 $receiptId,
                 $event,
                 $view,
@@ -482,7 +482,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $payload->currencyCode,
                 $postedAt,
                 $originalReceiptId,
-                $lineUnitCosts,
+                $lineProjection['unit_costs'],
+                $lineProjection['stock_movement_expected'],
             );
 
             // Voucher redemption reaches the company GL advisory. It is
@@ -1168,7 +1169,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * calculateAlreadyReturnedQuantities()` `original_line_id`-keyed
      * lookup, exactly like a legacy-authored return line already does.
      */
-    /** @return array<int, numeric-string|null> */
+    /**
+     * @return array{
+     *     unit_costs: array<int, numeric-string|null>,
+     *     stock_movement_expected: array<int, bool>
+     * }
+     */
     private function writeLines(
         string $receiptId,
         FiscalEvent $event,
@@ -1198,7 +1204,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
 
         $lineNumber = 1;
         $lineUnitCosts = [];
+        $lineStockMovementExpected = [];
         foreach ($view->lineItems as $index => $line) {
+            $originalLineReference = $originalLineReferences[$index] ?? null;
             // pos_receipt_lines.product_id is a foreign key to `products`
             // with `nullable()->restrictOnDelete()`. The canonical
             // `line_items[].product_id` is the audit-stable identifier
@@ -1235,6 +1243,15 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 )['unit_cost'];
             }
             $lineUnitCosts[$index] = $lineUnitCost;
+            $stockMovementExpected = true;
+            if ($receiptType === ReceiptType::Return && $originalLineReference !== null) {
+                $disposition = ReturnLineDisposition::tryFrom($originalLineReference->disposition);
+                $stockMovementExpected = $disposition !== ReturnLineDisposition::NotReceived
+                    && ! ($disposition === ReturnLineDisposition::Restock
+                        && $productFk !== null
+                        && $this->restockPolicyResolver->resolve($productFk)->policy === RestockPolicy::Never);
+            }
+            $lineStockMovementExpected[$index] = $stockMovementExpected;
 
             ReceiptLine::query()->create([
                 'id' => Str::uuid()->toString(),
@@ -1257,10 +1274,19 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 'discount_amount' => $line->lineDiscountAmount,
                 'discount_reason' => $line->lineDiscountReason,
                 'original_line_id' => $originalLineIdByIndex[$index] ?? null,
+                // Detector D-f must distinguish an intentional no-movement
+                // refund from a projection hole without re-parsing the sealed
+                // event. This is a projection column; canonical bytes remain
+                // authoritative and unchanged.
+                'disposition' => $originalLineReference?->disposition,
+                'stock_movement_expected' => $stockMovementExpected,
             ]);
         }
 
-        return $lineUnitCosts;
+        return [
+            'unit_costs' => $lineUnitCosts,
+            'stock_movement_expected' => $lineStockMovementExpected,
+        ];
     }
 
     /**
@@ -1604,6 +1630,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * bcmath precision; neither touches `CompanyContext` (rule 20).
      *
      * @param  array<int, numeric-string|null>  $lineUnitCosts
+     * @param  array<int, bool>  $lineStockMovementExpected
      */
     private function applyStockMovementForLines(
         string $receiptId,
@@ -1615,6 +1642,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         CarbonInterface $entryDate,
         ?string $originalReceiptId,
         array $lineUnitCosts,
+        array $lineStockMovementExpected,
     ): void {
         if ($receiptType === ReceiptType::Return) {
             $this->restockForLines(
@@ -1625,6 +1653,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 $currencyCode,
                 $entryDate,
                 $originalReceiptId,
+                $lineStockMovementExpected,
             );
 
             return;
@@ -2028,6 +2057,8 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *     one. `RestockPolicy::Never` is deliberately NOT consulted here: a
      *     regulated never-restock item being DESTROYED is the correct outcome,
      *     and the pair never leaves it sellable.
+     *
+     * @param  array<int, bool>  $lineStockMovementExpected
      */
     private function restockForLines(
         string $receiptId,
@@ -2037,6 +2068,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $currencyCode,
         CarbonInterface $entryDate,
         ?string $originalReceiptId,
+        array $lineStockMovementExpected,
     ): void {
         $originalLineReferences = $view->originalLineReferences();
 
@@ -2063,7 +2095,15 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 if ($reference !== null) {
                     $disposition = ReturnLineDisposition::tryFrom($reference->disposition);
 
-                    if ($disposition === ReturnLineDisposition::NotReceived) {
+                    if (! ($lineStockMovementExpected[$index] ?? true)) {
+                        if ($disposition === ReturnLineDisposition::Restock) {
+                            Log::warning('PosCoreReceiptProjection: regulated never-restock product refunded with disposition=restock; stock NOT restored', [
+                                'fiscal_event_id' => $event->id,
+                                'receipt_id' => $receiptId,
+                                'product_id' => $productId,
+                            ]);
+                        }
+
                         continue;
                     }
 
@@ -2084,16 +2124,6 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                         continue;
                     }
 
-                    if ($disposition === ReturnLineDisposition::Restock
-                        && $this->restockPolicyResolver->resolve($productId)->policy === RestockPolicy::Never) {
-                        Log::warning('PosCoreReceiptProjection: regulated never-restock product refunded with disposition=restock; stock NOT restored', [
-                            'fiscal_event_id' => $event->id,
-                            'receipt_id' => $receiptId,
-                            'product_id' => $productId,
-                        ]);
-
-                        continue;
-                    }
                 }
             }
 

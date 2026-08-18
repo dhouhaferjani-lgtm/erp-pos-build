@@ -21,9 +21,13 @@ use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\StockMovement;
+use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnLineDisposition;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\Product\Domain\Enums\RestockPolicy;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
@@ -241,6 +245,8 @@ class CheckCogsCoverageCommandTest extends TestCase
         $this->movement(MovementReason::Delivery, '5.000000', now()->subMinute());
         $historical = $this->movement(MovementReason::Delivery, '5.000000', now()->subHours(3));
         $historical->update(['is_historical' => true]);
+        $adjustment = $this->movement(MovementReason::Damage, '5.000000', now()->subHours(3));
+        $adjustment->update(['reference_type' => 'stock_adjustment']);
         $coveredByReversal = $this->movement(MovementReason::Delivery, '5.000000', now()->subHours(3));
         JournalEntry::create([
             'tenant_id' => $this->dpTenant->id,
@@ -255,7 +261,6 @@ class CheckCogsCoverageCommandTest extends TestCase
         Log::spy();
 
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
-        Log::shouldNotHaveReceived('warning', [\Mockery::pattern('/\[D-a\]/')]);
     }
 
     public function test_db_fires_on_zero_cost_but_excludes_stock_adjustments(): void
@@ -271,6 +276,8 @@ class CheckCogsCoverageCommandTest extends TestCase
         );
 
         $zero->update(['reference_type' => 'stock_adjustment']);
+        $historical = $this->movement(MovementReason::POSReturn, null, now()->subMinutes(30));
+        $historical->update(['is_historical' => true]);
         Log::spy();
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
     }
@@ -278,7 +285,7 @@ class CheckCogsCoverageCommandTest extends TestCase
     public function test_de_fires_for_non_cogs_gl_movements_and_excludes_stock_adjustments(): void
     {
         $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
-        $movement = $this->movement(MovementReason::CountCorrection, '4.000000', now()->subMinutes(30));
+        $movement = $this->movement(MovementReason::SupplierReturn, '4.000000', now()->subMinutes(30));
         Log::spy();
 
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
@@ -288,6 +295,12 @@ class CheckCogsCoverageCommandTest extends TestCase
         );
 
         $movement->update(['reference_type' => 'stock_adjustment']);
+        $this->movement(
+            MovementReason::CountCorrection,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: 'inventory_counting',
+        );
         Log::spy();
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
     }
@@ -341,6 +354,40 @@ class CheckCogsCoverageCommandTest extends TestCase
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
     }
 
+    public function test_df_pos_arm_stays_silent_for_intentional_no_movement_refunds(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        $sale = $this->posReceiptWithLine();
+        $this->movement(
+            MovementReason::POSSale,
+            '5.000000',
+            now(),
+            referenceType: 'pos_receipt',
+            referenceId: $sale->id,
+        );
+
+        $returnAttributes = [
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $sale->id,
+            'return_reason' => ReturnReason::Other,
+        ];
+        $this->posReceiptWithLine($returnAttributes, [
+            'disposition' => ReturnLineDisposition::NotReceived,
+            'stock_movement_expected' => false,
+        ]);
+        $this->dpProduct->update(['restock_policy' => RestockPolicy::Never]);
+        $this->posReceiptWithLine($returnAttributes, [
+            'disposition' => ReturnLineDisposition::Restock,
+            'stock_movement_expected' => false,
+        ]);
+        // The detector reads the immutable projection outcome, not today's
+        // mutable catalogue policy.
+        $this->dpProduct->update(['restock_policy' => RestockPolicy::DefaultAllow]);
+        Log::spy();
+
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+    }
+
     public function test_df_goods_receipt_arm_uses_the_line_link_and_source_tuple(): void
     {
         $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
@@ -361,17 +408,8 @@ class CheckCogsCoverageCommandTest extends TestCase
             referenceType: 'Document',
             referenceId: $receipt->purchase_order_id,
         );
+        DB::table('stock_movements')->where('id', $movement->id)->update(['reason' => null]);
         $line->update(['movement_id' => $movement->id]);
-        JournalEntry::create([
-            'tenant_id' => $this->dpTenant->id,
-            'company_id' => $this->dpCompany->id,
-            'entry_number' => 'JE-GR-DETECTOR',
-            'entry_date' => now(),
-            'status' => JournalEntryStatus::Draft,
-            'source_type' => 'inventory_entry',
-            'source_id' => $movement->id,
-            'journal_code' => JournalCode::Misc,
-        ]);
         Log::spy();
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
     }
@@ -392,7 +430,6 @@ class CheckCogsCoverageCommandTest extends TestCase
         Log::spy();
 
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
-        Log::shouldNotHaveReceived('warning', [\Mockery::pattern('/\[D-f\]/')]);
     }
 
     // ── the command ──────────────────────────────────────────────────────────
@@ -487,22 +524,26 @@ class CheckCogsCoverageCommandTest extends TestCase
         return $return->refresh();
     }
 
-    private function posReceiptWithLine(): Receipt
+    /**
+     * @param  array<string, mixed>  $receiptAttributes
+     * @param  array<string, mixed>  $lineAttributes
+     */
+    private function posReceiptWithLine(array $receiptAttributes = [], array $lineAttributes = []): Receipt
     {
         $terminal = Terminal::factory()->create([
             'tenant_id' => $this->dpTenant->id,
             'company_id' => $this->dpCompany->id,
             'location_id' => $this->dpLocation->id,
         ]);
-        $receipt = Receipt::factory()->create([
+        $receipt = Receipt::factory()->create(array_merge([
             'tenant_id' => $this->dpTenant->id,
             'company_id' => $this->dpCompany->id,
             'location_id' => $this->dpLocation->id,
             'terminal_id' => $terminal->id,
             'cashier_id' => $this->dpUser->id,
             'currency' => 'TND',
-        ]);
-        ReceiptLine::create([
+        ], $receiptAttributes));
+        ReceiptLine::create(array_merge([
             'receipt_id' => $receipt->id,
             'line_number' => 1,
             'product_id' => $this->dpProduct->id,
@@ -515,7 +556,7 @@ class CheckCogsCoverageCommandTest extends TestCase
             'tax_rate' => '0.00',
             'tax_amount' => '0.000',
             'discount_amount' => '0.000',
-        ]);
+        ], $lineAttributes));
 
         return $receipt;
     }

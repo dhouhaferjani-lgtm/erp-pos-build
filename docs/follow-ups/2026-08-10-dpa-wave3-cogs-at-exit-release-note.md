@@ -48,6 +48,16 @@ Pre-cutover movements are out of scope by design, so historical rows do not
 turn the detector into a permanent alarm. D-a alone has a two-hour grace window.
 The POS D-f missing-movement arm has no grace window.
 
+POS lines also carry the immutable projection decision
+`stock_movement_expected`. D-f ignores `not_received` and regulated
+never-restock refunds whose writers deliberately produced no movement; later
+catalogue policy edits do not reclassify those historical outcomes.
+
+Until 3D T21 wires count-correction GL at the real counting root, D-e excludes
+`reference_type = inventory_counting`; otherwise every completed count would
+be a permanent false alarm during the 3C-to-3D interval. T21 must remove that
+temporary exclusion in the same change that makes the count writer live.
+
 ## 3. POS cutover behavior
 
 An already-applied pre-cutover receipt never regains COGS on replay. Pending or
@@ -100,6 +110,14 @@ mid-loop. Its source type, amount, accounts, and source id are unchanged.
 - **Quantity precision trigger:** close
   `docs/superpowers/tickets/2026-08-10-float-on-wac-exit-path.md` before any
   product unit above four decimal places ships.
+- **D-f immutable classification:** all three missing-movement arms currently
+  use the live product physical flag because there is no movement snapshot to
+  read. Owner: Inventory + Product architecture. Ticket:
+  `docs/superpowers/tickets/2026-08-18-df-immutable-physical-snapshot.md`.
+- **Goods-receipt reason coverage:** real inbound WAC movements carry no
+  movement reason, while GR-IR remains document-keyed. Owner: Procurement +
+  Inventory + Accounting architecture. Ticket:
+  `docs/superpowers/tickets/2026-08-18-goods-receipt-movement-reason-detector-gap.md`.
 
 ## 6. Known fiscal-chain verifier false tamper
 
@@ -119,4 +137,3 @@ confirms the delivery note, records that linkage, then posts the invoice in one
 root frame; its C-5 tail flushes all movement entries before commit. Recorded
 Workshop exemptions remain visible in the detector rather than being treated as
 unexplained holes.
-

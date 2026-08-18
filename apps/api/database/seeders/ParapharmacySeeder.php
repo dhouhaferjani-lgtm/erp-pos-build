@@ -972,6 +972,7 @@ class ParapharmacySeeder extends Seeder
             'name' => $productName,
             'sku' => $sku,
             'barcode' => $barcode,
+            'is_physical' => true,
             'purchase_price' => $cost,
             // cost_price seeds the initial WAC read by MarginService and the
             // movement writer. The inventory-GL seam later books the immutable
@@ -981,7 +982,6 @@ class ParapharmacySeeder extends Seeder
             'sale_price' => $retailPrice,
             'tax_rate' => $vatRate,
             'is_active' => true,
-            'is_physical' => true,
             'requires_batch_tracking' => $requiresBatchTracking,
             'default_shelf_life_days' => $shelfLifeDays,
             // Set both the FK and the mirrored legacy string (the create path

@@ -366,6 +366,11 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
         $stockLevel->refresh();
         self::assertSame('5.0000', $stockLevel->quantity, 'not_received must NOT restore stock');
+        $refundLine = ReceiptLine::query()
+            ->whereHas('receipt', fn ($query) => $query->where('fiscal_event_id', $refund->id))
+            ->sole();
+        self::assertSame('not_received', $refundLine->disposition?->value);
+        self::assertFalse($refundLine->stock_movement_expected);
     }
 
     public function test_regulated_never_restock_product_is_not_restocked_even_with_restock_disposition(): void
@@ -388,6 +393,11 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
         $stockLevel->refresh();
         self::assertSame('5.0000', $stockLevel->quantity, 'regulated never-restock policy must be honored even when disposition=restock');
+        $refundLine = ReceiptLine::query()
+            ->whereHas('receipt', fn ($query) => $query->where('fiscal_event_id', $refund->id))
+            ->sole();
+        self::assertSame('restock', $refundLine->disposition?->value);
+        self::assertFalse($refundLine->stock_movement_expected);
     }
 
     /**

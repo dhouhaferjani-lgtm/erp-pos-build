@@ -19,6 +19,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\InventoryGlSourceTypes;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -107,9 +108,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
         $findings = 0;
         $cutoverAt = $company->inventory_gl_cutover_at;
 
-        if ($cutoverAt !== null) {
-            $findings += $this->scanMovementChecks($tenant, $company, $cutoverAt);
-        }
+        $findings += $this->scanMovementChecks($tenant, $company, $cutoverAt);
 
         // ── D-c ──────────────────────────────────────────────────────────────
         foreach ($this->invoicedBeforeDelivery->scan($company->id) as $row) {
@@ -139,14 +138,9 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
         }
 
         // ── D-f ──────────────────────────────────────────────────────────────
-        if ($cutoverAt !== null) {
-            $findings += $this->scanMissingMovementLines($tenant, $company, $cutoverAt);
-            $findings += $this->scanMissingWorkOrderMovementLines();
-        }
-
-        if ($cutoverAt !== null) {
-            $findings += $this->scanCurrentCostReturns($tenant, $company, $cutoverAt);
-        }
+        $findings += $this->scanMissingMovementLines($tenant, $company, $cutoverAt);
+        $findings += $this->scanMissingWorkOrderMovementLines();
+        $findings += $this->scanCurrentCostReturns($tenant, $company, $cutoverAt);
 
         return $findings;
     }
@@ -192,6 +186,9 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where('occurred_at', '<=', now()->subHours(2))
             ->where('is_historical', false)
             ->whereIn('reason', $cogsReasons)
+            ->where(function ($query): void {
+                $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
+            })
             ->whereNotNull('unit_cost')
             ->where('unit_cost', '!=', 0)
             ->whereNotExists($missingEntry)
@@ -206,9 +203,10 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
         $dB = StockMovement::query()
             ->where('company_id', $company->id)
             ->where('created_at', '>=', $cutoverAt)
+            ->where('is_historical', false)
             ->whereIn('reason', $cogsReasons)
             ->where(function ($query): void {
-                $query->whereNull('reference_type')->orWhere('reference_type', '!=', 'stock_adjustment');
+                $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
             ->where(function ($query): void {
                 $query->whereNull('unit_cost')->orWhere('unit_cost', 0);
@@ -228,7 +226,13 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             // D-20 deliberately leaves the stock-adjustment document lane out
             // of the GL buffer even though its reasons require a GL entry.
             ->where(function ($query): void {
-                $query->whereNull('reference_type')->orWhere('reference_type', '!=', 'stock_adjustment');
+                $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
+            })
+            // T21 is an M5 writer. Until it lands, inventory-counting
+            // corrections are intentionally movement-only; reporting them in
+            // 3C would make every completed count a permanent false alarm.
+            ->where(function ($query): void {
+                $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::InventoryCounting->value);
             })
             ->whereNotExists($missingEntry)
             ->orderBy('created_at')
@@ -283,7 +287,12 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where('receipts.created_at', '>=', $cutoverAt)
             ->where('products.tenant_id', $tenant->id)
             ->where('products.company_id', $company->id)
+            // R-6 exception: D-f asks why no movement exists, so it has no
+            // immutable movement snapshot to classify. The live flag is the
+            // only available physical-goods signal; the cutover watermark
+            // bounds its historical exposure. See the release-note ticket.
             ->where('products.is_physical', true)
+            ->where('lines.stock_movement_expected', true)
             ->where('lines.quantity', '>', 0)
             ->whereNotExists(function ($query): void {
                 $query->selectRaw('1')
@@ -339,6 +348,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where('receipts.created_at', '>=', $cutoverAt)
             ->where('products.tenant_id', $tenant->id)
             ->where('products.company_id', $company->id)
+            // Same unavoidable R-6 D-f exception as the POS arm above.
             ->where('products.is_physical', true)
             ->where(function ($query): void {
                 $query->where(function ($paid): void {
