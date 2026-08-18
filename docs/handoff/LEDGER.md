@@ -100,6 +100,12 @@ Every consumer named AT-RISK by the gate ticket now carries per-row, receipt_typ
 
 Verdict: **satisfied in code.** The three-way disagreement (MEMORY.md "open gate" / readiness register "satisfied-in-code needing close-out" / UI session "appears-remediated") resolves to the readiness register's version. Remaining action: close-out header on the gate ticket; MEMORY.md line is stale.
 
+## 6. Lane-owed code debts (ticketed, awaiting a lane — not enable-gates)
+
+| ID | Item | Source | Status | Action owner |
+|---|---|---|---|---|
+| C-1 | **Audited duplicate receipt PDF vs register disagree on a legacy return's total** — `ReceiptPdfService.php:132-141` renders the raw (negative) stored total while `ReceiptDetailData` emits the magnitude and relabels the type REFUND; accountant-visible discrepancy between the fiscal document and the register on migrated pre-v4 returns. Surfaced by the receipts wave's own M2-round4 self-flag; carried here at merge per terminal-audit fiscal P3-7 (2026-08-18). | `.worktrees/receipts-build/docs/handoff/reviews/receipts-build/M2-round4.md:26-28`; terminal-audit fiscal register (parent session 2026-08-18) | OPEN — fold into the next receipts follow-up lane or the PDF-surface lane | Orchestrator |
+
 ---
 
 *Update protocol: edit rows in place; when closing an item, change Status to `CLOSED (date, evidence)` and leave the row for one review cycle before moving it to a "Discharged" appendix. Never delete a row without evidence in the Status cell.*
