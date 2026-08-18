@@ -8,11 +8,14 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class DocumentConversionController extends Controller
 {
@@ -279,6 +282,32 @@ class DocumentConversionController extends Controller
                     'source_delivery_note_ids' => $deliveryNoteIds,
                 ],
             ], 201);
+        } catch (DeliveryNoteBatchValidationException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => $e->containsAlreadyInvoiced()
+                        ? 'DELIVERY_NOTE_ALREADY_INVOICED'
+                        : 'CONSOLIDATION_VALIDATION_FAILED',
+                    'message' => $e->getMessage(),
+                    'details' => [
+                        'documents' => $this->deliveryNoteFailureDetails($e->documents),
+                    ],
+                ],
+            ], 422);
+        } catch (DeliveryNoteAlreadyClaimedException $e) {
+            return response()->json([
+                'error' => [
+                    'code' => 'DELIVERY_NOTE_ALREADY_INVOICED',
+                    'message' => $e->getMessage(),
+                    'details' => [
+                        'documents' => $this->deliveryNoteFailureDetails([[
+                            'id' => $e->deliveryNoteId,
+                            'document_number' => '',
+                            'reason' => 'claim_lost',
+                        ]]),
+                    ],
+                ],
+            ], 422);
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'error' => [
@@ -386,5 +415,68 @@ class DocumentConversionController extends Controller
         return Document::query()
             ->where('tenant_id', $company->tenant_id)
             ->where('company_id', $company->id);
+    }
+
+    /**
+     * Re-read attribution only after the converter's outer transaction has
+     * rolled back. A claim loser must never build its 422 from transaction-local
+     * marker state that no longer exists.
+     *
+     * @param list<array{
+     *     id: string,
+     *     document_number: string,
+     *     reason: 'already_invoiced'|'wrong_partner'|'wrong_currency'|'not_confirmed'|'cancelled'|'no_lines'|'claim_lost'
+     * }> $failures
+     * @return list<array{
+     *     id: string,
+     *     document_number: string,
+     *     reason: string,
+     *     invoice_id: string|null,
+     *     invoice_number: string|null,
+     *     invoice_date: string|null,
+     *     invoiced_via: string|null
+     * }>
+     */
+    private function deliveryNoteFailureDetails(array $failures): array
+    {
+        $ids = array_column($failures, 'id');
+        $documents = $this->scopedQuery()
+            ->where('type', DocumentType::DeliveryNote->value)
+            ->whereIn('id', $ids)
+            ->get(['id', 'document_number'])
+            ->keyBy('id');
+        $markers = DB::table('delivery_note_billing_marks')
+            ->where('company_id', $this->companyContext->requireCompanyId())
+            ->whereIn('delivery_note_id', $ids)
+            ->get(['delivery_note_id', 'invoice_id', 'invoiced_via'])
+            ->keyBy('delivery_note_id');
+        $invoiceIds = $markers->pluck('invoice_id')->filter()->values()->all();
+        $invoices = $this->scopedQuery()
+            ->where('type', DocumentType::Invoice->value)
+            ->whereIn('id', $invoiceIds)
+            ->get(['id', 'document_number', 'document_date'])
+            ->keyBy('id');
+
+        return array_map(static function (array $failure) use ($documents, $markers, $invoices): array {
+            $marker = $markers->get($failure['id']);
+            $invoiceId = $marker?->invoice_id !== null ? (string) $marker->invoice_id : null;
+
+            return [
+                'id' => $failure['id'],
+                'document_number' => $documents->get($failure['id'])->document_number
+                    ?? $failure['document_number'],
+                'reason' => $failure['reason'],
+                'invoice_id' => $invoiceId,
+                'invoice_number' => $invoiceId !== null
+                    ? $invoices->get($invoiceId)?->document_number
+                    : null,
+                'invoice_date' => $invoiceId !== null
+                    ? $invoices->get($invoiceId)?->document_date?->toDateString()
+                    : null,
+                'invoiced_via' => $marker?->invoiced_via !== null
+                    ? (string) $marker->invoiced_via
+                    : null,
+            ];
+        }, $failures);
     }
 }

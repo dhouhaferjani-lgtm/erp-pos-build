@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
@@ -95,6 +96,14 @@ class StandaloneInvoiceGuidedDeliveryTest extends TestCase
 
         $this->assertSame(DocumentStatus::Confirmed, $deliveryNote->status);
         $this->assertNotNull($deliveryNote->fiscal_hash);
+        $this->assertSame($invoice->id, $deliveryNote->payload['invoice_id']);
+        $this->assertSame(DeliveryNoteBillingLane::PrePostDelivery->value, $deliveryNote->payload['invoiced_via']);
+        $this->assertDatabaseHas('delivery_note_billing_marks', [
+            'delivery_note_id' => $deliveryNote->id,
+            'invoice_id' => $invoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::PrePostDelivery->value,
+            'company_id' => $this->dpCompany->id,
+        ]);
 
         // Step 2 — the linkage the resolver reads.
         $this->assertSame(
@@ -122,6 +131,75 @@ class StandaloneInvoiceGuidedDeliveryTest extends TestCase
             1,
             $deliveryNote->lines->whereNotNull('product_id')->count(),
             'Exactly one goods line, and it is the physical one.',
+        );
+        $invoice->refresh()->load('lines');
+        foreach ($invoice->lines as $sourceLine) {
+            $this->assertSame(
+                0,
+                bccomp((string) $sourceLine->quantity, (string) $sourceLine->quantity_delivered, 4),
+                'The unchanged factory must keep stamping each copied source line as fully delivered.',
+            );
+        }
+    }
+
+    public function test_a_guided_claim_failure_rolls_back_delivery_stock_linkage_and_posting(): void
+    {
+        $invoice = $this->dpConfirmedInvoice([$this->dpPhysicalLine('2.0000')]);
+        $before = [
+            'delivery_notes' => Document::query()->where('type', DocumentType::DeliveryNote)->count(),
+            'movements' => StockMovement::query()->count(),
+            'claims' => DB::table('delivery_note_billing_marks')->count(),
+            'delivery_numbers' => (int) DB::table('document_sequences')
+                ->where('company_id', $this->dpCompany->id)
+                ->where('type', DocumentType::DeliveryNote->value)
+                ->sum('last_number'),
+            'stored_events' => DB::table('stored_events')->count(),
+            'audit_events' => DB::table('audit_events')->count(),
+            'payload' => $invoice->payload,
+            'quantity_delivered' => $invoice->lines
+                ->mapWithKeys(static fn ($line): array => [$line->id => (string) $line->quantity_delivered])
+                ->all(),
+        ];
+        $forced = false;
+
+        DB::listen(static function ($query) use (&$forced): void {
+            if (! $forced
+                && str_contains(strtolower($query->sql), 'insert into')
+                && str_contains($query->sql, 'delivery_note_billing_marks')) {
+                $forced = true;
+                throw new \DomainException('Force the real claim boundary to fail.');
+            }
+        });
+
+        $this->actingAs($this->dpUser)
+            ->postJson("/api/v1/invoices/{$invoice->id}/create-delivery-and-post")
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'OPERATION_FAILED');
+
+        $this->assertTrue($forced, 'The real marker insert boundary was not exercised.');
+        $this->assertSame(
+            $before['delivery_notes'],
+            Document::query()->where('type', DocumentType::DeliveryNote)->count(),
+        );
+        $this->assertSame($before['movements'], StockMovement::query()->count());
+        $this->assertSame($before['claims'], DB::table('delivery_note_billing_marks')->count());
+        $this->assertSame(
+            $before['delivery_numbers'],
+            (int) DB::table('document_sequences')
+                ->where('company_id', $this->dpCompany->id)
+                ->where('type', DocumentType::DeliveryNote->value)
+                ->sum('last_number'),
+        );
+        $this->assertSame($before['stored_events'], DB::table('stored_events')->count());
+        $this->assertSame($before['audit_events'], DB::table('audit_events')->count());
+        $this->assertSame(DocumentStatus::Confirmed, $invoice->refresh()->status);
+        $this->assertSame($before['payload'], $invoice->payload);
+        $this->assertSame(
+            $before['quantity_delivered'],
+            $invoice->lines
+                ->mapWithKeys(static fn ($line): array => [$line->id => (string) $line->quantity_delivered])
+                ->all(),
+            'A failed claim must roll back the factory quantity-delivered stamps.',
         );
     }
 

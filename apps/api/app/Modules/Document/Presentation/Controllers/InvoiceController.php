@@ -12,6 +12,7 @@ use App\Modules\Document\Application\Services\DocumentLineTaxResolver;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryComplianceCode;
+use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -19,6 +20,9 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Exceptions\DeliveryRequiredBeforeInvoiceException;
 use App\Modules\Document\Domain\Exceptions\GuidedDeliveryCannotBeGeneratedException;
 use App\Modules\Document\Domain\Exceptions\GuidedDeliveryNoLongerApplicableException;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
 use App\Modules\Document\Domain\Services\DeliveryComplianceGate;
 use App\Modules\Document\Domain\Services\DeliveryNoteFromDocumentFactory;
 use App\Modules\Document\Domain\Services\DeliveryNoteService;
@@ -82,6 +86,7 @@ class InvoiceController extends Controller
         private readonly DeliveryComplianceGate $deliveryComplianceGate,
         private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
         private readonly InventoryGlPostingBuffer $glBuffer,
+        private readonly DeliveryNoteBillingClaimService $billingClaimService,
     ) {}
 
     private function scale(): int
@@ -1005,22 +1010,18 @@ class InvoiceController extends Controller
                 // 4 — post; the gate now sees goods issued
                 $postedInvoice = $this->postingService->post($documentModel);
 
-                // 5 — 🚨 MARK THE NOTE INVOICED (fix round 1 / inv P1-1). Mirrors
-                // `SalesOrderToInvoiceConverter::markDeliveryNotesAsInvoiced()`,
-                // with its own `invoiced_via` so the two paths stay
-                // distinguishable. Without it this note reports itself, forever,
-                // as "delivered, never invoiced": `invoiced_at` had exactly two
-                // writers in `app/` and neither is on this path, while
-                // `UninvoicedDeliveryNoteService` lists precisely that shape.
-                // Under `require_delivery_first` this is THE path for every
-                // standalone goods invoice, so the 418 year-end accrual would
-                // accrue revenue ON TOP of revenue this same transaction
-                // recognised and sealed.
-                $notePayload = $confirmed->payload ?? [];
-                $notePayload['invoiced_at'] = now()->toDateTimeString();
-                $notePayload['invoice_id'] = $postedInvoice->id;
-                $notePayload['invoiced_via'] = 'pre_post_delivery';
-                $confirmed->update(['payload' => $notePayload]);
+                // 5 — claim the newly-created delivery note through the same
+                // marker/projection service as consolidation. This lane already
+                // owns the posted source invoice, so its closure only returns
+                // that id; reserve and finalise still occur atomically here.
+                $this->billingClaimService->claim(
+                    new DeliveryNoteClaimRequest(
+                        [$confirmed->id],
+                        $this->companyContext->requireCompanyId(),
+                        DeliveryNoteBillingLane::PrePostDelivery,
+                    ),
+                    static fn (DeliveryNoteClaimSet $set): string => $postedInvoice->id,
+                );
 
                 // C-5 owns this root transaction. DeliveryNoteService's nested
                 // frame only enqueues, so the guided endpoint must flush after

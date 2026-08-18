@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
@@ -55,6 +61,8 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
         protected readonly DocumentNumberingService $numberingService,
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
         protected readonly TaxCalculationService $taxCalculationService,
+        private readonly DeliveryNoteBillingClaimService $billingClaimService,
+        private readonly CompanyContext $companyContext,
     ) {}
 
     public function sourceType(): DocumentType
@@ -112,16 +120,18 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
     {
         /** @var array<int, string>|null $deliveryNoteIds */
         $deliveryNoteIds = $options['delivery_note_ids'] ?? null;
+        $ids = $deliveryNoteIds !== null && count($deliveryNoteIds) > 0
+            ? array_values($deliveryNoteIds)
+            : [$source->id];
+        $isConsolidation = $deliveryNoteIds !== null && count($deliveryNoteIds) > 0;
 
-        // If delivery_note_ids provided, load and consolidate multiple DNs
-        if ($deliveryNoteIds !== null && count($deliveryNoteIds) > 0) {
-            $deliveryNotes = $this->loadAndValidateDeliveryNotes($deliveryNoteIds);
+        return DB::transaction(function () use ($ids, $isConsolidation, $source): Document {
+            $deliveryNotes = $this->loadAndValidateDeliveryNotes($ids, $source->id);
 
-            return $this->consolidateDeliveryNotes($deliveryNotes);
-        }
-
-        // Single DN conversion
-        return $this->convertSingleDeliveryNote($source);
+            return $isConsolidation
+                ? $this->consolidateDeliveryNotes($deliveryNotes)
+                : $this->convertSingleDeliveryNote($deliveryNotes[0]);
+        });
     }
 
     /**
@@ -129,36 +139,45 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
      */
     private function convertSingleDeliveryNote(Document $dn): Document
     {
-        $this->validateDeliveryNote($dn);
+        $invoice = null;
 
-        return DB::transaction(function () use ($dn): Document {
-            $invoice = $this->createTargetDocument($dn, DocumentType::Invoice, [
-                'due_date' => now()->addDays(30),
-            ]);
+        $this->billingClaimService->claim(
+            new DeliveryNoteClaimRequest(
+                [$dn->id],
+                $this->companyContext->requireCompanyId(),
+                DeliveryNoteBillingLane::Consolidation,
+            ),
+            function (DeliveryNoteClaimSet $set) use ($dn, &$invoice): string {
+                $invoice = $this->createTargetDocument($dn, DocumentType::Invoice, [
+                    'due_date' => now()->addDays(30),
+                ]);
 
-            // Copy lines with source linking
-            $this->copyLinesWithSourceLink($dn, $invoice);
+                // Copy lines with source linking
+                $this->copyLinesWithSourceLink($dn, $invoice);
 
-            // Recalculate totals
-            $this->recalculateTotals($invoice);
+                // Recalculate totals
+                $this->recalculateTotals($invoice);
 
-            // Copy vehicle context if present
-            $this->copyVehicleContext($dn, $invoice);
+                // Copy vehicle context if present
+                $this->copyVehicleContext($dn, $invoice);
 
-            // Store source DN ID in invoice payload
-            $invoicePayload = $invoice->payload ?? [];
-            $invoicePayload['source_delivery_note_ids'] = [$dn->id];
-            $invoice->update(['payload' => $invoicePayload]);
+                // Store source DN ID in invoice payload
+                $invoicePayload = $invoice->payload ?? [];
+                $invoicePayload['source_delivery_note_ids'] = [$dn->id];
+                $invoice->update(['payload' => $invoicePayload]);
 
-            // Mark DN as invoiced
-            $this->markDeliveryNoteAsInvoiced($dn, $invoice);
+                return $invoice->id;
+            },
+        );
 
-            // Dispatch conversion event
-            $this->dispatchConversionEvent($dn, $invoice);
+        if (! $invoice instanceof Document) {
+            throw new \LogicException('Delivery-note claim closure did not create an invoice.');
+        }
 
-            /** @var Document */
-            return $invoice->fresh(['lines']);
-        });
+        $this->dispatchConversionEvent($dn, $invoice);
+
+        /** @var Document */
+        return $invoice->fresh(['lines']);
     }
 
     /**
@@ -174,72 +193,88 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
 
         $firstDn = $deliveryNotes[0];
 
-        return DB::transaction(function () use ($deliveryNotes, $firstDn): Document {
-            // Create reference string from all DN numbers
-            $dnNumbers = array_map(fn (Document $dn) => $dn->document_number, $deliveryNotes);
-            $reference = implode(', ', $dnNumbers);
+        $invoice = null;
 
-            // Create the invoice
-            $invoice = $this->createTargetDocument($firstDn, DocumentType::Invoice, [
-                'due_date' => now()->addDays(30),
-                'reference' => $reference,
-            ]);
+        $this->billingClaimService->claim(
+            new DeliveryNoteClaimRequest(
+                array_values(array_map(
+                    static fn (Document $deliveryNote): string => $deliveryNote->id,
+                    $deliveryNotes,
+                )),
+                $this->companyContext->requireCompanyId(),
+                DeliveryNoteBillingLane::Consolidation,
+            ),
+            function (DeliveryNoteClaimSet $set) use ($deliveryNotes, $firstDn, &$invoice): string {
+                // Create reference string from all DN numbers
+                $dnNumbers = array_map(fn (Document $dn) => $dn->document_number, $deliveryNotes);
+                $reference = implode(', ', $dnNumbers);
 
-            // Copy lines from all DNs and track source DN IDs
-            $sourceDeliveryNoteIds = [];
-            $lineNumber = 0;
+                // Create the invoice
+                $invoice = $this->createTargetDocument($firstDn, DocumentType::Invoice, [
+                    'due_date' => now()->addDays(30),
+                    'reference' => $reference,
+                ]);
 
-            foreach ($deliveryNotes as $dn) {
-                $sourceDeliveryNoteIds[] = $dn->id;
+                // Copy lines from all DNs and track source DN IDs
+                $sourceDeliveryNoteIds = [];
+                $lineNumber = 0;
 
-                foreach ($dn->lines as $dnLine) {
-                    $lineNumber++;
+                foreach ($deliveryNotes as $dn) {
+                    $sourceDeliveryNoteIds[] = $dn->id;
 
-                    DocumentLine::create([
-                        'id' => Str::uuid()->toString(),
-                        'document_id' => $invoice->id,
-                        'line_number' => $lineNumber,
-                        'product_id' => $dnLine->product_id,
-                        'product_code' => $dnLine->product_code,
-                        'description' => $dnLine->description,
-                        'quantity' => $dnLine->quantity,
-                        'unit_price' => $dnLine->unit_price,
-                        'discount_percent' => $dnLine->discount_percent,
-                        'discount_amount' => $dnLine->discount_amount,
-                        'tax_rate' => $dnLine->tax_rate,
-                        'line_total' => $dnLine->line_total ?? '0.00',
-                        'notes' => $dnLine->notes,
-                        'designation_default_snapshot' => $dnLine->designation_default_snapshot,
-                        'source_line_id' => $dnLine->id,
-                    ]);
+                    foreach ($dn->lines as $dnLine) {
+                        $lineNumber++;
+
+                        DocumentLine::create([
+                            'id' => Str::uuid()->toString(),
+                            'document_id' => $invoice->id,
+                            'line_number' => $lineNumber,
+                            'product_id' => $dnLine->product_id,
+                            'product_code' => $dnLine->product_code,
+                            'description' => $dnLine->description,
+                            'quantity' => $dnLine->quantity,
+                            'unit_price' => $dnLine->unit_price,
+                            'discount_percent' => $dnLine->discount_percent,
+                            'discount_amount' => $dnLine->discount_amount,
+                            'tax_rate' => $dnLine->tax_rate,
+                            'line_total' => $dnLine->line_total ?? '0.00',
+                            'notes' => $dnLine->notes,
+                            'designation_default_snapshot' => $dnLine->designation_default_snapshot,
+                            'source_line_id' => $dnLine->id,
+                        ]);
+                    }
                 }
 
-                // Mark DN as invoiced
-                $this->markDeliveryNoteAsInvoiced($dn, $invoice);
-            }
+                // Store source DN IDs in invoice payload
+                $invoicePayload = $invoice->payload ?? [];
+                $invoicePayload['source_delivery_note_ids'] = $sourceDeliveryNoteIds;
+                $invoice->update(['payload' => $invoicePayload]);
 
-            // Store source DN IDs in invoice payload
-            $invoicePayload = $invoice->payload ?? [];
-            $invoicePayload['source_delivery_note_ids'] = $sourceDeliveryNoteIds;
-            $invoice->update(['payload' => $invoicePayload]);
+                // Recalculate totals
+                $this->recalculateTotals($invoice);
 
-            // Recalculate totals
-            $this->recalculateTotals($invoice);
+                // Copy vehicle context from first delivery note if present
+                $this->copyVehicleContext($firstDn, $invoice);
 
-            // Copy vehicle context from first delivery note if present
-            $this->copyVehicleContext($firstDn, $invoice);
+                return $invoice->id;
+            },
+        );
 
-            // Dispatch conversion events for each DN (consolidation audit trail)
-            foreach ($deliveryNotes as $dn) {
-                $this->dispatchConversionEvent($dn, $invoice, false, [
-                    'consolidation' => true,
-                    'total_dns_consolidated' => count($deliveryNotes),
-                ]);
-            }
+        if (! $invoice instanceof Document) {
+            throw new \LogicException('Delivery-note claim closure did not create an invoice.');
+        }
 
-            /** @var Document */
-            return $invoice->fresh(['lines']);
-        });
+        // Dispatch only after claim finalisation, while the outer transaction
+        // is still open, so event-store and audit writes share its rollback.
+        foreach ($deliveryNotes as $dn) {
+            $this->dispatchConversionEvent($dn, $invoice, false, [
+                'consolidation' => true,
+                'total_dns_consolidated' => count($deliveryNotes),
+            ]);
+        }
+
+        /** @var Document */
+        return $invoice->fresh(['lines']);
     }
 
     /**
@@ -248,66 +283,80 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
      * @param  array<int, string>  $deliveryNoteIds
      * @return array<int, Document>
      */
-    private function loadAndValidateDeliveryNotes(array $deliveryNoteIds): array
+    private function loadAndValidateDeliveryNotes(array $deliveryNoteIds, string $anchorId): array
     {
-        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
-            ->where('type', DocumentType::DeliveryNote)
+        $deliveryNoteIds = array_values(array_unique($deliveryNoteIds));
+        sort($deliveryNoteIds, SORT_STRING);
+
+        $deliveryNotes = Document::query()
+            ->where('tenant_id', $this->companyContext->requireTenantId())
+            ->where('company_id', $this->companyContext->requireCompanyId())
+            ->where('type', DocumentType::DeliveryNote->value)
+            ->whereIn('id', $deliveryNoteIds)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->with('lines')
             ->get()
             ->all();
 
-        if (empty($deliveryNotes)) {
-            throw new \InvalidArgumentException('No valid delivery notes found');
+        if (count($deliveryNotes) !== count($deliveryNoteIds)) {
+            throw new \InvalidArgumentException('One or more delivery notes were not found in the active company.');
         }
 
-        // Validate all DNs
-        $firstDn = $deliveryNotes[0];
-        $partnerId = $firstDn->partner_id;
-        $companyId = $firstDn->company_id;
-        $currency = $firstDn->currency;
-
-        foreach ($deliveryNotes as $dn) {
-            $this->validateDeliveryNote($dn);
-
-            // Same company (check before partner since partners are company-scoped)
-            if ($dn->company_id !== $companyId) {
-                throw new \DomainException('All delivery notes must belong to the same company');
-            }
-
-            // Same partner
-            if ($dn->partner_id !== $partnerId) {
-                throw new \DomainException('All delivery notes must belong to the same partner');
-            }
-
-            // Same currency
-            if ($dn->currency !== $currency) {
-                throw new \DomainException('All delivery notes must have the same currency');
+        $anchor = null;
+        foreach ($deliveryNotes as $deliveryNote) {
+            if ($deliveryNote->id === $anchorId) {
+                $anchor = $deliveryNote;
+                break;
             }
         }
+
+        if (! $anchor instanceof Document) {
+            throw new \InvalidArgumentException('The source delivery note was not found in the active company.');
+        }
+
+        $this->validateDeliveryNotes($deliveryNotes, $anchor);
 
         return $deliveryNotes;
     }
 
     /**
-     * Validate a single delivery note for invoicing.
+     * Collect every row-level failure before refusing the atomic batch.
+     *
+     * @param  array<int, Document>  $deliveryNotes
      */
-    private function validateDeliveryNote(Document $dn): void
+    private function validateDeliveryNotes(array $deliveryNotes, Document $anchor): void
     {
-        if ($dn->type !== DocumentType::DeliveryNote) {
-            throw new \InvalidArgumentException('All documents must be delivery notes');
+        $failures = [];
+
+        foreach ($deliveryNotes as $deliveryNote) {
+            $reason = null;
+
+            if ($deliveryNote->status === DocumentStatus::Cancelled) {
+                $reason = 'cancelled';
+            } elseif ($deliveryNote->status !== DocumentStatus::Confirmed) {
+                $reason = 'not_confirmed';
+            } elseif (! empty(($deliveryNote->payload ?? [])['invoiced_at'])) {
+                $reason = 'already_invoiced';
+            } elseif ($deliveryNote->partner_id !== $anchor->partner_id) {
+                $reason = 'wrong_partner';
+            } elseif ($deliveryNote->currency !== $anchor->currency) {
+                $reason = 'wrong_currency';
+            } elseif ($deliveryNote->lines->isEmpty()) {
+                $reason = 'no_lines';
+            }
+
+            if ($reason !== null) {
+                $failures[] = [
+                    'id' => $deliveryNote->id,
+                    'document_number' => $deliveryNote->document_number,
+                    'reason' => $reason,
+                ];
+            }
         }
 
-        if ($dn->status === DocumentStatus::Draft) {
-            throw new \DomainException('Delivery note must be confirmed before invoicing');
-        }
-
-        if ($dn->status === DocumentStatus::Cancelled) {
-            throw new \RuntimeException('Cannot invoice cancelled delivery note');
-        }
-
-        // Check if already invoiced
-        $payload = $dn->payload ?? [];
-        if (! empty($payload['invoiced_at'])) {
-            throw new \RuntimeException('Delivery note has already been invoiced');
+        if ($failures !== []) {
+            throw new DeliveryNoteBatchValidationException($failures);
         }
     }
 
@@ -319,16 +368,5 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
         foreach ($dn->lines as $line) {
             $this->copyLine($line, $invoice, null, null, null, true);
         }
-    }
-
-    /**
-     * Mark a delivery note as invoiced.
-     */
-    private function markDeliveryNoteAsInvoiced(Document $dn, Document $invoice): void
-    {
-        $dnPayload = $dn->payload ?? [];
-        $dnPayload['invoiced_at'] = now()->toDateTimeString();
-        $dnPayload['invoice_id'] = $invoice->id;
-        $dn->update(['payload' => $dnPayload]);
     }
 }
