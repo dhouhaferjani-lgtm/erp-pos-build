@@ -38,12 +38,13 @@ milestones:
   - id: M0b
     title: "Owner-authorized tests-only baseline remediation before M1: re-derive the full failing set at pinned base d682b38ec9761a917b9716428091a482745795f6, then fix every stale test to assert current ruled behavior with a one-line comment citing the promoted lane that changed it (including UoM unit-precision quantity display and L3 locationScopedKey where applicable). Diff is limited to test files; zero production-code changes. Owner amendment 2026-08-18: individually confirmed real-behavior defects remain failing as an enumerated exception list with owning lanes, and execution continues unless a defect invalidates this wave's own tasks; the M0b bridge must verify every classification. Initial exception: src/__tests__/i18n/arLocaleCoverage.test.ts, owned by CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md. Exit requires the remaining full apps/web pnpm test set green plus pnpm typecheck and pnpm lint, followed by the normal bridge review. Later milestones inherit the same reviewed exceptions. Commit series: Phase 0.0b.<seq>."
     review_lenses: [frontend-conventions, general]
+    authority: docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md
     status: in_progress
-    updated: 3e87358c5
-    fix_rounds: 0
-    commit: 3e87358c5197cbee1fbff10c4c63fef119da9f99
-    verdict: null
-    last_verdict: null
+    updated: 62c75bf70
+    fix_rounds: 1
+    commit: 62c75bf7093f6127efbef5f4397be29006e80643
+    verdict: docs/handoff/reviews/ui-wave0/M0b-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M1
     title: "T1 (CX-4) - component-graph-aware listing re-census: apps/web/tools/audit-listing-census.mjs (pure exported functions + main), its node --test suite, and the report at docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md. Discovery rule stated and not hardcoded to 46; import-following into organisms; orphan reachability incl. parameterized routes and breadcrumb parents; always exit 0 and NOT chained into `lint` or CI. Supersedes UI-28/UI-29/UI-34 with method-per-number."
     review_lenses: [frontend-conventions, general]
@@ -140,7 +141,7 @@ findings:
   - "Pinned-base inventory run 1: 20 failed files / 45 failed tests / 4,179 passed. Structured repeat: 19 failed files / 44 failed tests / 4,180 passed; the extra first-run failure was a CreateStockTransferPage.availability timeout absent from the repeat."
   - "Deterministic isolated evidence: pnpm exec vitest run src/__tests__/i18n/arLocaleCoverage.test.ts => 3 failed / 7 passed; current runtime falls back to English for the missing Arabic keys despite src/lib/i18n.ts claiming the enforced namespaces are fully translated."
   - "Owner ruling 2026-08-18 CONFIRMS src/__tests__/i18n/arLocaleCoverage.test.ts as an enumerated real-defect exception owned by CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md; Arabic parity is not launch scope."
-  - "Candidate exception for M0b bridge confirmation: tools/__tests__/offset-pagination-meta-consolidation.test.mjs correctly detects the inline pagination meta reintroduced at src/features/treasury/statements/api.ts:112. This is a production type-consolidation regression owned by CODEX-replenishment-followups-2026-07-12.md Wave B / pagination-meta consolidation; the test remains unchanged."
-  - "Candidate exception for M0b bridge confirmation: src/components/__tests__/SharedSingletons.tenantScope.test.tsx correctly detects AddQuickProductModal invalidating the foreign-tenant products cache through the bare ['products'] prefix at AddQuickProductModal.tsx:209. This is a production tenant-isolation regression owned by the promoted tenant-scoped invalidation sweep (cc1332fd); the test remains unchanged."
-  - "Tests-only remediation commit 3e87358c5197cbee1fbff10c4c63fef119da9f99 updates 17 stale or racy test files and changes zero production files. The repaired set passed 159/159 tests."
-  - "Controlled full apps/web pnpm test (--maxWorkers=4) after remediation: 4,224 passed, 5 failed, 1 skipped, 3 todo; the only failing files are the three enumerated exception candidates above. pnpm typecheck and pnpm lint pass; React Doctor changed-scope scan reports 100/100 with no issues."
+  - "Candidate exception for M0b bridge confirmation: tools/__tests__/offset-pagination-meta-consolidation.test.mjs correctly detects the inline pagination meta reintroduced at src/features/treasury/statements/api.ts:112. Historical lane: CODEX-replenishment-followups-2026-07-12.md Wave B / pagination-meta consolidation. Forward owner: the parent terminal audit must route this finding to a live production-fix lane before merge; it is not accepted as a standing gap. The test remains unchanged."
+  - "Candidate exception for M0b bridge confirmation: src/components/__tests__/SharedSingletons.tenantScope.test.tsx correctly detects AddQuickProductModal invalidating the foreign-tenant products cache through the bare ['products'] prefix at AddQuickProductModal.tsx:209. Historical lane: promoted tenant-scoped invalidation sweep cc1332fd, which missed this tenantScope-pinned site. Forward owner: the parent terminal audit must route this launch-program tenant-isolation finding to a live production-fix lane before merge; it is not accepted as a standing gap. The test remains unchanged."
+  - "Tests-only remediation commit 3e87358c5197cbee1fbff10c4c63fef119da9f99 plus review-fix commit 62c75bf7093f6127efbef5f4397be29006e80643 update 17 stale or racy test files and change zero production files. The repaired set passed 168/168 tests."
+  - "Deterministic full apps/web pnpm test (--maxWorkers=1) after remediation: 4,224 passed, 5 failed, 1 skipped, 3 todo; the only failing files are the three enumerated exception candidates above. Four-worker evidence is superseded because round-1 review reproduced load-induced flakes. pnpm typecheck and pnpm lint pass; React Doctor changed-scope scan reports 100/100 with no issues."

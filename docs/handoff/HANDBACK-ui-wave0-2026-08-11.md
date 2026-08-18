@@ -7,6 +7,7 @@
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/ui-wave0`
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`
+- M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
 - Wave status: `in_progress` in M0b; M1 has not started.
 
 ## M0 repin
@@ -66,17 +67,23 @@ Parent ruling 2026-08-18 confirms this as an enumerated real-defect exception ow
 
 `tools/__tests__/offset-pagination-meta-consolidation.test.mjs` is a valid architecture test and remains unchanged. It identifies the inline pagination shape at `src/features/treasury/statements/api.ts:112`, reintroduced after the shared `OffsetPaginationMeta` consolidation. Matching the test to production would conceal duplicated production type ownership, so this is a real product-code regression rather than stale test debt.
 
-- Owning lane: `CODEX-replenishment-followups-2026-07-12.md`, Wave B — pagination-meta consolidation.
+- Historical owning lane: `CODEX-replenishment-followups-2026-07-12.md`, Wave B — pagination-meta consolidation (closed).
+- Forward owner: the parent terminal audit must route this to a live production-fix lane before merge; it is not accepted as a standing gap.
 - Production site: `StatementListResponse.meta` in `src/features/treasury/statements/api.ts`.
 - Disposition: enumerated candidate exception; M0b bridge must confirm.
 
 ### 3. Shared singleton cross-tenant invalidation — bridge confirmation pending
 
-`src/components/__tests__/SharedSingletons.tenantScope.test.tsx` is a valid tenant-isolation test and remains unchanged. `AddQuickProductModal` currently calls `invalidateQueries({ queryKey: ['products'] })`, which also marks a seeded foreign-tenant product cache entry invalid. Changing the assertion to accept that behavior would weaken the existing tenant boundary.
+`src/components/__tests__/SharedSingletons.tenantScope.test.tsx` is a valid tenant-isolation test and remains unchanged. `AddQuickProductModal` currently calls `invalidateQueries({ queryKey: ['products'] })`, which also marks a seeded foreign-tenant product cache entry invalid. The `cc1332fd` sweep explicitly preserved four tenant-precise invalidations protected by tenant-scope tests but missed this already-pinned site. Changing the assertion to accept that behavior would weaken the existing tenant boundary.
 
-- Owning lane: promoted tenant-scoped invalidation sweep, commit `cc1332fd5266a52397656e39d09d8fc8200c5e34`.
+- Historical owning lane: promoted tenant-scoped invalidation sweep, commit `cc1332fd5266a52397656e39d09d8fc8200c5e34` (closed and causal, not a forward owner).
+- Forward owner: the parent terminal audit must route this launch-program tenant-isolation defect to a live production-fix lane before merge; it is not accepted as a standing gap.
 - Production site: `src/components/organisms/AddQuickProductModal/AddQuickProductModal.tsx:209`.
 - Disposition: enumerated candidate exception; M0b bridge must confirm.
+
+Failure scenario: a quick-product create under tenant A marks a cached tenant-B product slot invalid. On a later tenant switch, that invalidated slot refetches under the then-active session and risks repopulating a tenant-B-keyed entry from the wrong tenant response. The forward fix should use the tenant-precise invalidation pattern already preserved at the four explicit exception sites in `cc1332fd`.
+
+Adjacent out-of-M0b finding for the same production visit: `AddQuickProductModal.tsx:201,203` uses `parseFloat` on price and tax-rate values, contrary to Rule 19. It is pre-existing at the pinned base and cannot be changed in this tests-only milestone.
 
 None of these defects invalidates the UI audit tasks dispatched in M1–M8.
 
@@ -90,15 +97,20 @@ Commit `3e87358c5197cbee1fbff10c4c63fef119da9f99` (`Phase 0.0b.3: Align stale we
 - Repository company-config, statement-reconciliation, stock-rebalancing, and transaction-location harnesses.
 - Partner edit hydration before bank-account interaction.
 
-The complete repaired subset passes: 52 suites and 159 tests.
+The complete repaired subset passes: 17 files and 168 tests.
 
 ## M0b verification evidence
 
-- `pnpm test -- --maxWorkers=4 --reporter=json`: 4,224 passed, 5 failed, 1 skipped, 3 todo. The five failed assertions belong only to the three enumerated exception files above.
+- `pnpm test -- --maxWorkers=1 --reporter=json --outputFile=/tmp/ui-wave0-m0b-full-single-worker.json`: deterministic canonical gate; 4,224 passed, 5 failed, 1 skipped, 3 todo. The only failing files are the three enumerated real-defect exceptions above.
+- `pnpm test -- --maxWorkers=4 --reporter=json`: one executor run produced 4,224 passed, 5 failed, 1 skipped, 3 todo, with the five failed assertions belonging only to the three enumerated exception files above. The round-1 reviewer reproduced additional load-only flakes at four workers, so this is superseded by the single-worker gate above.
 - The unconstrained full run also reproduced all three exception files; five additional timing/contention failures passed in a focused rerun and were not classified as defects. The one deterministic partner hydration race was repaired test-only and now passes in isolation.
 - `pnpm typecheck`: pass.
 - `pnpm lint`: pass with the repository's pre-existing warning inventory; TanStack keys report 0 new/0 stale, design-system audit 0 new/0 stale, quantity audit 0 new/0 stale, and all custom ESLint rule tests pass.
 - `npx react-doctor@latest --verbose --scope changed --base d682b38ec9761a917b9716428091a482745795f6`: 100/100, no issues across 17 changed web files.
+
+## M0b review rounds
+
+- Round 1: `docs/handoff/reviews/ui-wave0/M0b-round1.md` — `CHANGES-REQUIRED`. The reviewer confirmed zero production changes and all stale-expectation fixes, but required a deterministic full-suite command, forward routing for the two newly discovered production defects, stronger tenant-risk characterization, and evidence/comment corrections.
 
 ## Scope and review state
 
