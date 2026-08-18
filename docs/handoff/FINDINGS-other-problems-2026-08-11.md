@@ -36,6 +36,14 @@
 | OP-13 | Partner Detail "Documents" tab: unstyled badge + missing i18n key + wrong route (`/sales/invoices/{deliveryNoteId}`) for delivery/return-note rows — independent of the DN-consolidation feature. | `13-research…` §1.1 (`PartnerDetailPage.tsx:662,677,679`) | P2 | UNOWNED | Standalone bug fix (badge/i18n for all doc types, or filter the tab). |
 | OP-14 | `pos.void_receipts` still seeded to `manager` though the void route is a 410 tombstone. | `12-research…` §5(d); `14-research…` C-h | P3 | UNOWNED | Housekeeping on next seeder touch. |
 | OP-15 | `/pos/shift-history`: tenant-scoped not location-scoped; `parseFloat` on money (rule-19 violation). | `14-research…` §2.2, A-7 (`ShiftHistoryPage.tsx:33,161,177,180,191-197`) | P2 | UNOWNED | Standalone FE fix (`locationScopedKey`, `formatCurrency`); adjacent to but not owned by the shift-variance-GL dossier. |
+| OP-21 | `TermsOfServicePage.tsx:37-38,49-50,107-108,131-132` hardcodes the brand six times in non-`t()` inline strings with its own FR/EN branching — brand leak + rule-11 i18n violation, larger than OQ-1's app-name-placeholder scope (found 2026-08-11 during Wave 0 brief verification). | `CODEX-DISPATCH-ui-wave0-2026-08-11.md` out-of-scope findings | P2 | UNOWNED | Small lane: rewrite ToS page copy through i18n + `useProductConfig().productName`; coordinate with legal-copy owner. |
+
+## A2. Late additions (2026-08-12, from research 17/18)
+
+| ID | Finding | Evidence | Sev | Status | Suggested action |
+|---|---|---|---|---|---|
+| OP-22 | **Unit-designation print obligation (FR consumer price law: Arrêté 83-50/A art. 3 services ≥25€; Arrêté 3-déc-1987 art. 8 weight/measure goods) is unsatisfiable today**: POS receipt lines have no truthful unit (OI-17) and B2B `document_lines` has **no unit column at all**. Remedy path: canonical `unit` at fiscal event_version 5 (POS, queued lane per `18-research-nf525-chain-vs-sidecar.md`) + a document_lines unit column (B2B, separate lane). | `18-research…` §4 | P2 (FR-launch relevant; TN advisory) | UNOWNED — two lanes proposed | Queue the ev5 unit lane (device+server); ticket the B2B unit column. |
+| OP-23 | **Second A-1-class dead-permission bug**: accountant holds `fraud-alerts.view`/`fraud-settings.view` but both routes gate `moduleKey="settings"` which the role can't pass. Same fix pattern as A-1. Also: A-1's re-gate needs a NAMED replacement gate — no `compliance` moduleKey exists. | `17-research…` Part 2 | P2 | UNOWNED → fold into receipts-build handover A-1 work | Re-gate both routes alongside A-1 with the composite compliance permission key. |
 
 ## C. Standing design constraints (1)
 
@@ -48,7 +56,7 @@
 | ID | Finding | Evidence | What to confirm |
 |---|---|---|---|
 | OP-19 | Fresh-tenant seeded `payment_methods` set never checked against a live UI (page was orphaned until this session; 6 features read its list). | `10-verification…` item 3, secondary note | Staging check before the newly-linked config page goes in front of a customer. |
-| OP-20 | Unconfirmed whether `TerminalResource` emits `v4_refund_authoring_enabled`/`_acknowledged_at`. | `14-research…` §3.1 A-5, OQ 5 | Verify before building the refunds-register capability banner. |
+| OP-20 | ~~Unconfirmed whether `TerminalResource` emits `v4_refund_authoring_enabled`/`_acknowledged_at`.~~ **RESOLVED 2026-08-11 during receipts-spec drafting**: `TerminalResource.php:134-135` DOES emit both fields; the actual gap is the access path (`TerminalController` reads require `pos.manage_terminals`) — addressed by the spec's S-7 filter-options endpoint. See `SPEC-pos-receipts-reporting-2026-08-11.md` (OI-6). No runtime check needed. | `14-research…` §3.1 A-5; spec verification | — |
 
 ## E. Cross-references (navigation only)
 

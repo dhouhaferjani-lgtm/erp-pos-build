@@ -51,6 +51,59 @@ Rulings given verbally by the owner against the §6 questions of `docs/sessions/
 2. **NEW-Q2 — receipts web view:** **RULED: BUILD.** The web app definitely needs a receipts view **and the analytics related to it**. Scope research dispatched → `12-research-receipts-web-view.md`, then spec, then Codex build.
 3. **NEW-Q3 — DN-consolidation billing UX:** RESEARCH + ADVISE (owner-directed). Owner lean: the **partner page should have a way to filter un-invoiced delivery notes** (verify whether it exists; if not, plan it). Open question: what other views does the user need, from a user perspective — "let's build this properly." → `13-research-dn-consolidation-ux.md`
 
+## Research-round rulings (owner, 2026-08-11)
+
+| Lane | Ruling |
+|---|---|
+| Finance hub (11) | **DELETE outright — no redirect.** Greenfield; nothing links to `/finance`, so no broken-bookmark risk. (Research had proposed delete+redirect; owner simplified.) |
+| Receipts (12) | **Build properly.** List receipts the way they should be listed; **refunds are listed SEPARATELY** (gross + separate refunds register — this is the returns-convention ruling). Receipt detail cross-links to its related refund(s) and vice versa. **POS scope only** — B2B-flow refunds (credit notes) are explicitly out of scope here. **Additional research ordered**: POS is going live as a module for the FIRST TENANT — research what reporting/functionality is expected in that specific scenario before spec-writing. → `14-research-pos-module-first-tenant-reporting.md` |
+| DN-consolidation (13) | **APPROVED as proposed**: partner DN tab + global "To bill" queue + link lane-separation + retire old page; DN-billed-once coexistence rule with `invoiced_via` badge; no scheduler — retire frequency selector, repurpose boolean; P0 eligibility-filter fix + role-matrix repair + DB-level double-invoice guard as prerequisites. |
+
+## First-tenant POS research rulings (owner, 2026-08-11, on `14-research-pos-module-first-tenant-reporting.md`)
+- **A-1 accountant access: APPROVED** — re-gate `/settings/compliance/export` off the `pos` moduleKey and grant the accountant role what it needs (seeder + cache-reset at deploy).
+- **A-9 POS count semantics: research delivered (`15-…`, recommendation = whole-drawer, industry unanimous, ratifies current device/server behavior).** Owner follow-ups before final confirm: (1) explain the takings-only formula — origin, why it was conceived, any real-life use case → archaeology dispatched, `16-takings-formula-archaeology.md`; (2) **blind counting: RULED — ON everywhere** (not just first tenant); (3) the 3 GL-flag blockers (float/DEPOSIT/PAYOUT unbooked in Treasury; v3 emits no CashCountRecorded; count-screen copy) — determine whether the parallel document-per-action session already owns them; owner lean = hand them to that session so it owns ALL v3 fixes. **RULED: cash-count events must be emitted on v3.**
+- **NEW PROGRAM (owner, 2026-08-11): whole-application event-sourcing coverage audit** — "check whether events are being sourced everywhere they should be; I think we'll find gaps." Multi-agent audit (Opus/Sonnet/Haiku) runs in THIS session; **fixes belong to a SEPARATE dedicated session** → audit output `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/` + handover brief.
+- Launch-required list A-2..A-8: accepted into the receipts/POS-reporting spec scope.
+- Escalations acknowledged: TN VAT refund-netting gap → refund-enable E1 block (launch program lane); "no POS module exists" → separate packaging lane; pages ship permission-gated meanwhile.
+
+## Final A-9 + remediation-packaging rulings (owner, 2026-08-11)
+- **A-9 CONFIRMED: WHOLE-DRAWER counting.** Takings-only formula is dead code born of a missing float join (see `16-takings-formula-archaeology.md`); bury it and correct the config/docblock comments that describe it as policy. Blind counting stays RULED ON everywhere.
+- **Remediation packaging: THREE findings dossiers, folded into the EXISTING fixes session** (not a new dedicated session): (1) events-specific → `docs/sessions/EVENT-SOURCING-AUDIT-2026-08-11/00-CONSOLIDATED-REGISTER.md` + handover `docs/handoff/HANDOVER-event-sourcing-remediation-2026-08-11.md`; (2) shift-variance GL + everything related → `docs/handoff/FINDINGS-shift-variance-gl-2026-08-11.md`; (3) all other problems discovered this session not owned by the UI wave plan or the events register → `docs/handoff/FINDINGS-other-problems-2026-08-11.md`.
+
+## Wave 0 brief — parent (orchestrator) assignments, 2026-08-11 (per gate-r2 flags; brief PASS at r3)
+- **F-2b (`touchOptimized` ownership):** ASSIGNED to the **Wave 1 dispatch brief backlog** (to be drafted next). Reassignment recorded here so Wave 0 / UI-43 can be reported complete with the gap owned, per the brief's completeness rule.
+- **F-6 (commit phase number):** RECORDED EXCEPTION per `AGENTS.md` — Wave 0 commits use `Phase 0.<task#>.<seq>:` (e.g. `Phase 0.4.1: fail-closed canAccessModule`), where task# is the brief's T-number.
+- **F-1 (successDot removal + BarcodeHero deletion inside the Rafiq-parked `features/products/editor/`):** REMAINS OWNER-OWED. Gate assessment on file: the Rafiq worktree is clean with no branch-unique changes under that directory; the real reconciliation risk is the design-system baseline, and any authorisation must name who reconciles it.
+
+## Post-gate rulings round (owner, 2026-08-12)
+- **Dispatch model (standing):** fully-autonomous long-running Codex tasks are dispatched **by the owner via Codex Desktop** from a handover brief — not by the orchestrator through the CLI. Handover briefs in `docs/handoff/` are the interface.
+- **OI-8 (SO losing-path): provisional REFUSE (batch-atomic)** — owner's hunch, matching the spec default ("more conservative and reliable"); best-practice research ordered to confirm before it becomes final. → `17-research-open-question-best-practices.md`
+- **OI-10: ACKNOWLEDGED via principle** — two lanes (inventory / finance) interact, nothing drops silently, minimal user interaction; the SO converter's committed-outside-transaction side effects violate this and the spec's fix is in scope. "It needs to work."
+- **F-1 / BarcodeHero: the Rafiq-parked editor directory stays parked in full** — including the dead-code deletions. The owner will return to that directory soon; Wave 0's T6/T8-b remain non-executable escalation records (already how the gated brief treats them — no change needed).
+- **Permissions (A-2, OI-1a, and generally): principle ruled** — every role gets access to everything it needs to do its job (accountant included); finer grant/revoke tuning comes later. Research ordered to derive the concrete accountant grant list from that principle.
+- **OI-17 clarification owed back to owner:** OI-17 is about **unit of measure** (pc/kg on receipt lines), NOT currency. The owner's currency point is a separate, valid question: verify whether the fiscal schema/canonical payload already emits currency (single-currency today), and ensure the receipts feature handles currency in a way that can evolve to multi-currency without another fiscal-schema break. Research ordered.
+
+## OI-17 reframed (owner, 2026-08-12) — fiscal chain vs stored receipts
+Owner direction: **distinguish the fiscal chain (signed, inalterable, NF525-scoped) from receipts as stored in our system.** Money-related data belongs in the chain; units (kg/pc) may not be required there — but they matter for cross-referencing stock (inventory lane) against money (finance lane). We may store MORE data than the chain requires, outside the signed bytes, synced from the device through our system. Possible B2B-vs-retail distinction. **Research ordered** (`18-research-nf525-chain-vs-sidecar.md`): NF525 minimum signed-content requirements; our canonical_bytes vs sidecar structure; whether truthful UoM can ride the sync envelope outside the chain; the projection-rebuild caveat (sidecar data must survive rebuilds from canonical events); B2B/retail differences. OI-17's "no unit symbol" ruling stands as the spec default until this research reports.
+
+## Research round 3 outcomes (2026-08-12, research 17 + 18) — closing the open sheet
+- **OI-8: CLOSED — REFUSE (batch-atomic)**, owner hunch confirmed by industry precedent + code (bill-the-remainder is barely computable: converter copies order lines, partial mechanism is whole-line-only). UI conditions binding: persistent inline error, lost DNs named with taker, "no invoice was created, no number used", no bare Retry — "Open INV-XXXX" + "Invoice remaining lines…". → DN spec has NO dispatch blockers left (OI-10 acknowledged 2026-08-12).
+- **Accountant grants: CLOSED — add exactly `pos.view_receipts`, `pos.view_reports`, `deliveries.view`; REFUSE `dashboard.owner`.** Corrections for the handovers: lane-separation needs no grant (`reports.financial` already held); OI-1a alone insufficient (delivery-notes route gated `moduleKey="inventory"` — same fix pattern as A-1); OP-23 second dead-permission bug (fraud-alerts/settings) folds into A-1 work; A-1 needs a NAMED composite compliance gate (no `compliance` moduleKey exists).
+- **Currency: CLOSED — already canonical + hash-covered** (`currency_code`/`currency_scale` required at v3/v4, stored, emitted). Multi-currency forward-compat = two binding rules for the builds: never format with company-default currency; never SUM across receipts without grouping by currency.
+- **OI-17/UoM: superseding path adopted as a QUEUED LANE — canonical `unit` at event_version 5** (device-authored, canonical-only, ~9-10 gated edits; variant-V2 precedent; sidecar rejected: costs more, no integrity, and projections never rebuild so a projection column would freeze wrong forever). Receipts v1 ships unit-less per OI-17; pre-v5 sealed receipts stay unit-less permanently. Related legal finding OP-22 (unit-designation print obligation; B2B document_lines has no unit column).
+
+## Unit-of-measure rulings (owner, 2026-08-12) — TWO SEPARATE FIXES, BOTH APPROVED
+1. **POS lane (ev5)**: device snapshots the product's UoM into the SIGNED line at sale time — canonical `unit` at fiscal event_version 5, per `18-research-nf525-chain-vs-sidecar.md`. Queued lane; pre-v5 sealed receipts stay unit-less; NOT part of the receipts build.
+2. **B2B lane (OP-22)**: add a unit column to `document_lines`, snapshotted from the product UoM at document creation. Separate lane, ticket via OP-22; NOT part of the DN-consolidation build.
+Principle confirmed by owner: unit carries over from the product UoM **at the moment of sale/creation as a snapshot**, never looked up live at display time on a historical document.
+
+## Execution-mode ruling (owner, 2026-08-12)
+**All three UI-lane Desktop handovers run as FULLY AUTONOMOUS self-reviewing waves** under `docs/handoff/SELF-REVIEW-HARNESS.md`: Codex Desktop works the full scope; at every milestone it runs the adversarial review ITSELF via `scripts/adversarial-review.sh` (`claude -p --model opus`), loops fix rounds until ACCEPT, tracks state in a per-lane progress YAML, and STOPs only on the harness's three conditions. No per-milestone handback. **The parent Claude session (this lane) owns the TERMINAL audit and the merge into dev — the executor never merges.**
+
+## Build-handover parent assignments (orchestrator, 2026-08-12)
+- **Accountant seeder edit (3 keys) + `permissionsMap.generated.ts` regeneration = receipts build's task**; the DN build must NOT touch the accountant block (prevents two lanes rewriting the same generated file). RATIFIED.
+- **Commit phase series per lane**: receipts = `Phase 1.<wave>.<seq>:`, DN = `Phase 2.<milestone>.<seq>:` (recorded exceptions, same basis as Wave 0's `Phase 0.*`). RATIFIED.
+
 ## Standing owner directions captured in the same session
 - Post-gate implementation sessions run **in Codex** (Claude orchestrates + gates).
 - en/fr/ar run **in parallel** for cheap work (translation files etc.).
