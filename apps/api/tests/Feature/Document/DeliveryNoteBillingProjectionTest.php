@@ -6,6 +6,8 @@ namespace Tests\Feature\Document;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\LocationType;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\UninvoicedDeliveryNoteService;
@@ -27,6 +29,7 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use ReflectionClass;
+use ReflectionMethod;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -92,20 +95,29 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
     public function test_document_data_projects_stamped_and_unstamped_billing_state(): void
     {
         $invoice = $this->document(DocumentType::Invoice, 'INV-PROJECTION');
-        $stamped = $this->deliveryNote('DN-STAMPED', [
-            'invoiced_at' => '2026-08-12T09:10:11+00:00',
-            'invoice_id' => $invoice->id,
-            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
-        ]);
+        $stamped = [];
+        foreach ([
+            DeliveryNoteBillingLane::Consolidation,
+            DeliveryNoteBillingLane::OrderConversion,
+            DeliveryNoteBillingLane::PrePostDelivery,
+        ] as $lane) {
+            $stamped[$lane->value] = $this->deliveryNote('DN-'.strtoupper($lane->value), [
+                'invoiced_at' => '2026-08-12T09:10:11+00:00',
+                'invoice_id' => $invoice->id,
+                'invoiced_via' => $lane->value,
+            ]);
+        }
         $unstamped = $this->deliveryNote('DN-UNSTAMPED');
 
-        $stampedData = DocumentData::fromModel($stamped, false, 3);
-        $unstampedData = DocumentData::fromModel($unstamped, false, 3);
+        foreach ($stamped as $lane => $deliveryNote) {
+            $stampedData = DocumentData::fromModel($deliveryNote, false, 3);
+            $this->assertSame('2026-08-12T09:10:11+00:00', $stampedData->invoiced_at);
+            $this->assertSame($invoice->id, $stampedData->invoiced_by_document_id);
+            $this->assertSame('INV-PROJECTION', $stampedData->invoiced_by_document_number);
+            $this->assertSame($lane, $stampedData->invoiced_via);
+        }
 
-        $this->assertSame('2026-08-12T09:10:11+00:00', $stampedData->invoiced_at);
-        $this->assertSame($invoice->id, $stampedData->invoiced_by_document_id);
-        $this->assertSame('INV-PROJECTION', $stampedData->invoiced_by_document_number);
-        $this->assertSame('consolidation', $stampedData->invoiced_via);
+        $unstampedData = DocumentData::fromModel($unstamped, false, 3);
         $this->assertNull($unstampedData->invoiced_at);
         $this->assertNull($unstampedData->invoiced_by_document_id);
         $this->assertNull($unstampedData->invoiced_by_document_number);
@@ -158,7 +170,20 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
             'invoice_id' => 'invoice-123',
             'invoiced_via' => 'order_conversion',
         ], $state->toPayloadPatch());
-        $this->assertFalse((new ReflectionClass($state))->hasProperty('invoice_number'));
+
+        $reflection = new ReflectionClass($state);
+        $propertyNames = array_map(fn ($property): string => $property->getName(), $reflection->getProperties());
+        sort($propertyNames);
+        $this->assertSame(['invoice_id', 'invoiced_at', 'invoiced_via'], $propertyNames);
+
+        $constructor = $reflection->getConstructor();
+        $this->assertNotNull($constructor);
+        $constructorParameters = array_map(fn ($parameter): string => $parameter->getName(), $constructor->getParameters());
+        $this->assertSame(['invoiced_at', 'invoice_id', 'invoiced_via'], $constructorParameters);
+
+        foreach ($reflection->getMethods(ReflectionMethod::IS_PUBLIC) as $method) {
+            $this->assertDoesNotMatchRegularExpression('/invoice.*number|number.*invoice/i', $method->getName());
+        }
     }
 
     public function test_uninvoiced_and_invoiced_filters_are_complements_and_match_the_compliance_service_for_all_json_shapes(): void
@@ -178,6 +203,39 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
         $this->assertEqualsCanonicalizing([$absent->id, $jsonNull->id], array_column($uninvoiced->json('data'), 'id'));
         $this->assertEqualsCanonicalizing([$absent->id, $jsonNull->id], array_column($serviceRows, 'id'));
         $this->assertCount(3, $invoiced->json('data'));
+    }
+
+    public function test_controller_and_compliance_service_exclude_another_tenants_rows_in_shared_connection_mode(): void
+    {
+        $foreignTenant = Tenant::create([
+            'name' => 'Foreign billing tenant',
+            'slug' => 'foreign-billing-tenant',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+        $foreignCompany = Company::create([
+            'tenant_id' => $foreignTenant->id,
+            'name' => 'Foreign billing company',
+            'legal_name' => 'Foreign billing company LLC',
+            'tax_id' => 'FOREIGN-BILLING-TAX',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+        $current = $this->deliveryNote('DN-CURRENT-TENANT');
+        $foreignCompanyRow = $this->deliveryNote('DN-FOREIGN-COMPANY', [], '10.000', $foreignCompany->id, null, '2026-08-12', DocumentStatus::Confirmed, DocumentType::DeliveryNote, $foreignTenant->id);
+        $mismatchedTenantRow = $this->deliveryNote('DN-MISMATCHED-TENANT', [], '10.000', $this->company->id, null, '2026-08-12', DocumentStatus::Confirmed, DocumentType::DeliveryNote, $foreignTenant->id);
+
+        $controller = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?uninvoiced=1');
+        $serviceRows = app(UninvoicedDeliveryNoteService::class)->getUninvoicedDeliveryNotes($this->company->id);
+
+        $controller->assertOk();
+        $this->assertSame([$current->id], array_column($controller->json('data'), 'id'));
+        $this->assertSame([$current->id], array_column($serviceRows, 'id'));
+        $this->assertNotContains($foreignCompanyRow->id, array_column($controller->json('data'), 'id'));
+        $this->assertNotContains($mismatchedTenantRow->id, array_column($serviceRows, 'id'));
     }
 
     public function test_offset_pagination_returns_the_second_twenty_five_rows_and_cursor_mode_remains_available(): void
@@ -203,18 +261,59 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
 
     public function test_aggregates_are_opt_in_and_page_invariant_over_the_full_filtered_set(): void
     {
+        $location = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Aggregate location',
+            'code' => 'AGG',
+            'type' => LocationType::Warehouse,
+            'is_default' => true,
+            'is_active' => true,
+        ]);
+        $otherLocation = Location::create([
+            'company_id' => $this->company->id,
+            'name' => 'Excluded aggregate location',
+            'code' => 'EXCLUDED-AGG',
+            'type' => LocationType::Warehouse,
+            'is_default' => false,
+            'is_active' => true,
+        ]);
+        $otherPartner = Partner::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
         foreach (range(1, 55) as $number) {
-            $this->deliveryNote(sprintf('DN-AGGREGATE-%03d', $number), [], (string) $number.'.125');
+            $this->deliveryNote(sprintf('DN-AGGREGATE-%03d', $number), [], (string) $number.'.125', $this->company->id, $location->id);
         }
 
+        // Each fixture would corrupt the hand-derived 55-row / 1546.875 total if
+        // the row and aggregate queries ever drift on one of these filters.
+        $this->deliveryNote('DN-OTHER-PARTNER', [], '100.000', $this->company->id, $location->id, '2026-08-12', DocumentStatus::Confirmed, DocumentType::DeliveryNote, null, $otherPartner->id);
+        $this->deliveryNote('DN-INVOICED', $this->stamp(DeliveryNoteBillingLane::Consolidation), '200.000', $this->company->id, $location->id);
+        $this->deliveryNote('DN-OTHER-LOCATION', [], '300.000', $this->company->id, $otherLocation->id);
+        $this->deliveryNote('DN-OUTSIDE-DATE', [], '400.000', $this->company->id, $location->id, '2026-08-10');
+        $this->deliveryNote('INV-NOT-A-DN', [], '500.000', $this->company->id, $location->id, '2026-08-12', DocumentStatus::Confirmed, DocumentType::Invoice);
+        $this->deliveryNote('DN-DRAFT', [], '600.000', $this->company->id, $location->id, '2026-08-12', DocumentStatus::Draft);
+
+        $query = http_build_query([
+            'partner_id' => $this->partner->id,
+            'uninvoiced' => 1,
+            'location_id' => $location->id,
+            'date_from' => '2026-08-12',
+            'date_to' => '2026-08-12',
+            'status' => DocumentStatus::Confirmed->value,
+            'with_aggregates' => 1,
+        ]);
+
         $without = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?page=1');
-        $first = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?page=1&with_aggregates=1');
-        $third = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?page=3&with_aggregates=1');
+        $first = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?page=1&'.$query);
+        $third = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?page=3&'.$query);
 
         $without->assertOk()->assertJsonMissingPath('aggregates');
         $first->assertOk()->assertJsonPath('aggregates.count', 55)
             ->assertJsonPath('aggregates.total', '1546.875')
-            ->assertJsonPath('aggregates.currency', 'TND');
+            ->assertJsonPath('aggregates.currency', 'TND')
+            ->assertJsonPath('meta.total', 55);
         $third->assertOk()->assertJsonPath('aggregates.count', 55)
             ->assertJsonPath('aggregates.total', '1546.875')
             ->assertJsonPath('aggregates.currency', 'TND');
@@ -231,20 +330,31 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
         ];
     }
 
-    private function deliveryNote(string $number, array $payload = [], string $total = '10.000'): Document
-    {
+    private function deliveryNote(
+        string $number,
+        array $payload = [],
+        string $total = '10.000',
+        ?string $companyId = null,
+        ?string $locationId = null,
+        string $documentDate = '2026-08-12',
+        DocumentStatus $status = DocumentStatus::Confirmed,
+        DocumentType $type = DocumentType::DeliveryNote,
+        ?string $tenantId = null,
+        ?string $partnerId = null,
+    ): Document {
         return Document::create([
-            'tenant_id' => $this->tenant->id,
-            'company_id' => $this->company->id,
-            'partner_id' => $this->partner->id,
-            'type' => DocumentType::DeliveryNote,
-            'status' => DocumentStatus::Confirmed,
+            'tenant_id' => $tenantId ?? $this->tenant->id,
+            'company_id' => $companyId ?? $this->company->id,
+            'partner_id' => $partnerId ?? $this->partner->id,
+            'location_id' => $locationId,
+            'type' => $type,
+            'status' => $status,
             'document_number' => $number,
-            'document_date' => '2026-08-12',
+            'document_date' => $documentDate,
             'currency' => 'TND',
             'total' => $total,
             'payload' => $payload,
-            'fiscal_category' => FiscalCategory::DeliveryNote,
+            'fiscal_category' => FiscalCategory::fromDocumentType($type),
             'fiscal_status' => FiscalStatus::Draft,
             'created_at' => CarbonImmutable::parse('2026-08-12 12:00:00')->subSeconds($this->createdAtSequence++),
             'updated_at' => CarbonImmutable::parse('2026-08-12 12:00:00'),

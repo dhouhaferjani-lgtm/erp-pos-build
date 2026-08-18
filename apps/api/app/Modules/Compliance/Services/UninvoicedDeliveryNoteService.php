@@ -61,8 +61,15 @@ class UninvoicedDeliveryNoteService
         ?Carbon $fromDate = null,
         ?Carbon $toDate = null,
     ): array {
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($companyId);
+
         $query = Document::query()
-            ->where('company_id', $companyId)
+            // The explicit predicate protects shared-DB compatibility mode; in
+            // DB-per-tenant mode Stancl has already switched this query to the
+            // active tenant connection.
+            ->forTenant($company->tenant_id)
+            ->where('company_id', $company->id)
             ->where('type', DocumentType::DeliveryNote)
             ->where('status', DocumentStatus::Confirmed)
             ->whereDeliveryNoteUninvoiced()

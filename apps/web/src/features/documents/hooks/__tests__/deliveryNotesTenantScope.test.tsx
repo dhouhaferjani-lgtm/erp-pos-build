@@ -91,7 +91,6 @@ function deliveryNoteFixture(id: string): DeliveryNote {
     total: '100.000',
     currency: 'TND',
     lines: [],
-    payload: {},
     created_at: '2026-05-11T09:00:00Z',
     updated_at: '2026-05-11T09:00:00Z',
   }
@@ -134,8 +133,10 @@ beforeEach(() => {
   })
 })
 
-afterEach(() => {
-  resetTenant()
+afterEach(async () => {
+  await act(async () => {
+    resetTenant()
+  })
 })
 
 describe('delivery note hooks tenant scope', () => {

@@ -99,6 +99,10 @@ class DeliveryNoteController extends Controller
         $company = $this->companyContext->requireCompany();
 
         $query = $this->baseQuery()
+            // Shared-DB compatibility mode has no tenant connection switch; retain
+            // the row predicate there while DB-per-tenant mode supplies the same
+            // boundary through Stancl's active connection.
+            ->forTenant($company->tenant_id)
             ->ofType(DocumentType::DeliveryNote)
             ->where('currency', $company->currency);
 

@@ -8,7 +8,22 @@ import { api, apiGet, apiPost } from '@/lib/api'
 /**
  * Delivery Note document type
  */
-export type DeliveryNote = App.Modules.Document.Application.DTOs.DocumentData
+export type DeliveryNote = Pick<App.Modules.Document.Application.DTOs.DocumentData,
+  | 'id'
+  | 'document_number'
+  | 'type'
+  | 'status'
+  | 'partner_id'
+  | 'partner_name'
+  | 'document_date'
+  | 'subtotal'
+  | 'tax_amount'
+  | 'total'
+  | 'currency'
+  | 'lines'
+  | 'created_at'
+  | 'updated_at'
+>
 export type DeliveryNoteLine = App.Modules.Document.Application.DTOs.DocumentLineData
 
 /**
