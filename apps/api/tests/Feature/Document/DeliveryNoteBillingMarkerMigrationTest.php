@@ -17,11 +17,13 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\QueryException;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use RuntimeException;
 use Tests\TestCase;
 
 final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
@@ -51,6 +53,8 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
         ]);
+
+        Schema::dropIfExists('delivery_note_billing_marks');
     }
 
     public function test_it_backfills_every_stamped_delivery_note_with_safe_attribution_and_auditable_counts(): void
@@ -74,9 +78,25 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             'invoiced_via' => DeliveryNoteBillingLane::PrePostDelivery->value,
         ]));
         $missing = $this->deliveryNote('DN-MISSING', $this->stamp());
+        $missingNull = $this->deliveryNote('DN-MISSING-NULL', $this->stamp([
+            'invoice_id' => null,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]));
         $malformed = $this->deliveryNote('DN-MALFORMED', $this->stamp([
             'invoice_id' => 'not-a-uuid',
             'invoiced_via' => DeliveryNoteBillingLane::OrderConversion->value,
+        ]));
+        $blank = $this->deliveryNote('DN-BLANK', $this->stamp([
+            'invoice_id' => ' ',
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]));
+        $numeric = $this->deliveryNote('DN-NUMERIC', $this->stamp([
+            'invoice_id' => 123,
+            'invoiced_via' => DeliveryNoteBillingLane::OrderConversion->value,
+        ]));
+        $array = $this->deliveryNote('DN-ARRAY', $this->stamp([
+            'invoice_id' => ['not' => 'a UUID'],
+            'invoiced_via' => DeliveryNoteBillingLane::PrePostDelivery->value,
         ]));
         $dangling = $this->deliveryNote('DN-DANGLING', $this->stamp([
             'invoice_id' => (string) Str::uuid(),
@@ -94,11 +114,12 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             'invoice_id' => $validInvoice->id,
         ]));
 
+        $this->assertFalse(Schema::hasTable('delivery_note_billing_marks'));
         Log::spy();
         $this->runMigration();
 
         $this->assertTrue(Schema::hasTable('delivery_note_billing_marks'));
-        $this->assertSame(9, DB::table('delivery_note_billing_marks')->count());
+        $this->assertSame(13, DB::table('delivery_note_billing_marks')->count());
         $this->assertSame($validInvoice->id, $this->marker($valid)->invoice_id);
         $this->assertSame(DeliveryNoteBillingLane::Consolidation->value, $this->marker($valid)->invoiced_via);
         $this->assertSame($validInvoice->id, $this->marker($orderConversion)->invoice_id);
@@ -106,7 +127,7 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
         $this->assertSame($validInvoice->id, $this->marker($prePostDelivery)->invoice_id);
         $this->assertSame(DeliveryNoteBillingLane::PrePostDelivery->value, $this->marker($prePostDelivery)->invoiced_via);
 
-        foreach ([$missing, $malformed, $dangling, $crossCompany, $nonInvoice] as $dirtyDeliveryNote) {
+        foreach ([$missing, $missingNull, $malformed, $blank, $numeric, $array, $dangling, $crossCompany, $nonInvoice] as $dirtyDeliveryNote) {
             $marker = $this->marker($dirtyDeliveryNote);
             $this->assertNull($marker->invoice_id);
             $this->assertSame(DeliveryNoteBillingLane::LegacyUnknown->value, $marker->invoiced_via);
@@ -121,9 +142,10 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             ->withArgs(static fn (string $message, array $context): bool => $message === 'delivery_note_billing_marks.backfill'
                 && $context === [
                     'tenant_id' => $tenantId,
-                    'rows_written' => 9,
-                    'missing_invoice_id' => 1,
-                    'unparseable_invoice_id' => 1,
+                    'database' => DB::connection()->getDatabaseName(),
+                    'rows_written' => 13,
+                    'missing_invoice_id' => 2,
+                    'unparseable_invoice_id' => 4,
                     'dangling_invoice_id' => 1,
                     'cross_company_invoice_id' => 1,
                     'non_invoice_document_id' => 1,
@@ -144,10 +166,31 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
         ]));
 
         $this->runMigration();
+        $lateDeliveryNote = $this->deliveryNote('DN-AFTER-COMPLETION', $this->stamp([
+            'invoice_id' => $invoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]));
+
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+        Log::spy();
         $this->runMigration();
+        $rerunQueries = $queries;
 
         $this->assertSame(1, DB::table('delivery_note_billing_marks')->count());
         $this->assertSame($invoice->id, $this->marker($deliveryNote)->invoice_id);
+        $this->assertNull($this->marker($lateDeliveryNote));
+        $dataQueries = array_filter(
+            $rerunQueries,
+            static fn (string $sql): bool => str_contains($sql, 'from "documents"')
+                || str_contains($sql, 'into "delivery_note_billing_marks"')
+                || str_contains($sql, 'update "delivery_note_billing_marks"')
+                || str_contains($sql, 'delete from "delivery_note_billing_marks"'),
+        );
+        $this->assertSame([], array_values($dataQueries));
+        Log::shouldNotHaveReceived('info');
 
         $migration = require database_path('migrations/tenant/'.self::MIGRATION);
         $migration->down();
@@ -155,6 +198,46 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
         $this->assertFalse(Schema::hasTable('delivery_note_billing_marks'));
         $this->assertNotNull(Document::find($deliveryNote->id));
         $this->assertNotNull(Document::find($invoice->id));
+    }
+
+    public function test_an_existing_incomplete_marker_table_is_not_treated_as_a_completed_run(): void
+    {
+        Schema::create('delivery_note_billing_marks', function (Blueprint $table): void {
+            $table->uuid('delivery_note_id')->primary();
+            $table->uuid('invoice_id')->nullable();
+            $table->string('invoiced_via', 32);
+            $table->timestampTz('invoiced_at');
+            $table->uuid('company_id');
+        });
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('delivery_note_billing_marks exists but is incomplete');
+
+        $this->runMigration();
+    }
+
+    public function test_an_empty_invocation_creates_the_table_and_logs_attributable_zero_counts(): void
+    {
+        Log::spy();
+
+        $this->runMigration();
+
+        $this->assertTrue(Schema::hasTable('delivery_note_billing_marks'));
+        $database = DB::connection()->getDatabaseName();
+        Log::shouldHaveReceived('info')
+            ->withArgs(static fn (string $message, array $context): bool => $message === 'delivery_note_billing_marks.backfill'
+                && $context === [
+                    'tenant_id' => null,
+                    'database' => $database,
+                    'rows_written' => 0,
+                    'missing_invoice_id' => 0,
+                    'unparseable_invoice_id' => 0,
+                    'dangling_invoice_id' => 0,
+                    'cross_company_invoice_id' => 0,
+                    'non_invoice_document_id' => 0,
+                    'missing_invoiced_via' => 0,
+                ])
+            ->once();
     }
 
     private function company(string $name): Company
@@ -212,7 +295,7 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
         $migration->up();
     }
 
-    /** @param array<string, string> $overrides */
+    /** @param array<string, mixed> $overrides */
     private function stamp(array $overrides = []): array
     {
         return array_merge([

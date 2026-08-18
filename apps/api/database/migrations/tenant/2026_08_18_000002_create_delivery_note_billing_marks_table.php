@@ -26,28 +26,36 @@ return new class extends Migration
             return;
         }
 
-        if (! Schema::hasTable('delivery_note_billing_marks')) {
-            Schema::create('delivery_note_billing_marks', function (Blueprint $table): void {
-                $table->uuid('delivery_note_id')->primary();
-                $table->uuid('invoice_id')->nullable();
-                $table->string('invoiced_via', 32);
-                $table->timestampTz('invoiced_at');
-                $table->uuid('company_id');
+        if (Schema::hasTable('delivery_note_billing_marks')) {
+            if ($this->markerTableIsComplete()) {
+                return;
+            }
 
-                $table->foreign('delivery_note_id')
-                    ->references('id')
-                    ->on('documents');
-                $table->foreign('invoice_id')
-                    ->references('id')
-                    ->on('documents')
-                    ->onDelete('restrict');
-                $table->foreign('company_id')
-                    ->references('id')
-                    ->on('companies')
-                    ->onDelete('cascade');
-                $table->index('company_id');
-            });
+            throw new RuntimeException(
+                'delivery_note_billing_marks exists but is incomplete; repair the schema before rerunning the migration.',
+            );
         }
+
+        Schema::create('delivery_note_billing_marks', function (Blueprint $table): void {
+            $table->uuid('delivery_note_id')->primary();
+            $table->uuid('invoice_id')->nullable();
+            $table->string('invoiced_via', 32);
+            $table->timestampTz('invoiced_at');
+            $table->uuid('company_id');
+
+            $table->foreign('delivery_note_id')
+                ->references('id')
+                ->on('documents');
+            $table->foreign('invoice_id')
+                ->references('id')
+                ->on('documents')
+                ->onDelete('restrict');
+            $table->foreign('company_id')
+                ->references('id')
+                ->on('companies')
+                ->onDelete('cascade');
+            $table->index('company_id');
+        });
 
         $deliveryNotesByTenant = DB::table('documents')
             ->select(['id', 'tenant_id', 'company_id', 'payload'])
@@ -56,16 +64,16 @@ return new class extends Migration
             ->get()
             ->groupBy('tenant_id');
 
+        if ($deliveryNotesByTenant->isEmpty()) {
+            $currentTenant = function_exists('tenant') ? tenant() : null;
+            $tenantId = $currentTenant?->getTenantKey();
+            $this->logCounts($tenantId === null ? null : (string) $tenantId, $this->newCounts());
+
+            return;
+        }
+
         foreach ($deliveryNotesByTenant as $tenantId => $deliveryNotes) {
-            $counts = [
-                'rows_written' => 0,
-                'missing_invoice_id' => 0,
-                'unparseable_invoice_id' => 0,
-                'dangling_invoice_id' => 0,
-                'cross_company_invoice_id' => 0,
-                'non_invoice_document_id' => 0,
-                'missing_invoiced_via' => 0,
-            ];
+            $counts = $this->newCounts();
 
             foreach ($deliveryNotes as $deliveryNote) {
                 $payload = $this->payload($deliveryNote->payload);
@@ -96,9 +104,7 @@ return new class extends Migration
                 $counts['rows_written']++;
             }
 
-            Log::info('delivery_note_billing_marks.backfill', array_merge([
-                'tenant_id' => (string) $tenantId,
-            ], $counts));
+            $this->logCounts((string) $tenantId, $counts);
         }
     }
 
@@ -141,14 +147,14 @@ return new class extends Migration
     /** @param array<string, mixed> $payload @param array<string, int> $counts */
     private function safeInvoiceId(array $payload, string $companyId, array &$counts): ?string
     {
-        $invoiceId = $payload['invoice_id'] ?? null;
-        if (! is_string($invoiceId) || trim($invoiceId) === '') {
+        if (! array_key_exists('invoice_id', $payload) || $payload['invoice_id'] === null) {
             $counts['missing_invoice_id']++;
 
             return null;
         }
 
-        if (! Str::isUuid($invoiceId)) {
+        $invoiceId = $payload['invoice_id'];
+        if (! is_string($invoiceId) || trim($invoiceId) === '' || ! Str::isUuid($invoiceId)) {
             $counts['unparseable_invoice_id']++;
 
             return null;
@@ -178,5 +184,83 @@ return new class extends Migration
         }
 
         return $invoiceId;
+    }
+
+    private function markerTableIsComplete(): bool
+    {
+        $columns = collect(Schema::getColumns('delivery_note_billing_marks'))->keyBy('name');
+        $expectedNullability = [
+            'delivery_note_id' => false,
+            'invoice_id' => true,
+            'invoiced_via' => false,
+            'invoiced_at' => false,
+            'company_id' => false,
+        ];
+
+        if ($columns->count() !== count($expectedNullability)) {
+            return false;
+        }
+
+        foreach ($expectedNullability as $column => $nullable) {
+            if (! $columns->has($column) || $columns->get($column)['nullable'] !== $nullable) {
+                return false;
+            }
+        }
+
+        $indexes = collect(Schema::getIndexes('delivery_note_billing_marks'));
+        $hasPrimaryKey = $indexes->contains(
+            static fn (array $index): bool => $index['primary'] === true
+                && $index['columns'] === ['delivery_note_id'],
+        );
+        $hasCompanyIndex = $indexes->contains(
+            static fn (array $index): bool => $index['columns'] === ['company_id'],
+        );
+
+        if (! $hasPrimaryKey || ! $hasCompanyIndex) {
+            return false;
+        }
+
+        $foreignKeys = collect(Schema::getForeignKeys('delivery_note_billing_marks'));
+        foreach ([
+            ['delivery_note_id', 'documents', 'id', 'no action'],
+            ['invoice_id', 'documents', 'id', 'restrict'],
+            ['company_id', 'companies', 'id', 'cascade'],
+        ] as [$column, $foreignTable, $foreignColumn, $onDelete]) {
+            $matches = $foreignKeys->contains(
+                static fn (array $foreignKey): bool => $foreignKey['columns'] === [$column]
+                    && $foreignKey['foreign_table'] === $foreignTable
+                    && $foreignKey['foreign_columns'] === [$foreignColumn]
+                    && $foreignKey['on_delete'] === $onDelete,
+            );
+
+            if (! $matches) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @return array<string, int> */
+    private function newCounts(): array
+    {
+        return [
+            'rows_written' => 0,
+            'missing_invoice_id' => 0,
+            'unparseable_invoice_id' => 0,
+            'dangling_invoice_id' => 0,
+            'cross_company_invoice_id' => 0,
+            'non_invoice_document_id' => 0,
+            'missing_invoiced_via' => 0,
+        ];
+    }
+
+    /** @param array<string, int> $counts */
+    private function logCounts(?string $tenantId, array $counts): void
+    {
+        Log::info('delivery_note_billing_marks.backfill', array_merge([
+            'tenant_id' => $tenantId,
+            'database' => DB::connection()->getDatabaseName(),
+        ], $counts));
     }
 };
