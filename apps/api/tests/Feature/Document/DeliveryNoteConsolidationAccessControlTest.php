@@ -105,6 +105,14 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
             ->assertForbidden();
     }
 
+    public function test_uninvoiced_endpoint_is_forbidden_without_delivery_read_permission_when_sales_is_enabled(): void
+    {
+        $actor = $this->actorWithPermissions(['invoices.create']);
+
+        $this->actingAs($actor)->getJson('/api/v1/delivery-notes/uninvoiced')
+            ->assertForbidden();
+    }
+
     public function test_uninvoiced_endpoint_returns_only_confirmed_delivery_notes_from_the_existing_read_path(): void
     {
         $actor = $this->actorWithRole('viewer');
@@ -136,6 +144,52 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
         ])->assertForbidden();
     }
 
+    public function test_uninvoiced_endpoint_excludes_delivery_notes_from_a_foreign_tenant_and_company(): void
+    {
+        $actor = $this->actorWithRole('viewer');
+        $eligible = $this->confirmedDeliveryNote('DN-LOCAL');
+        $foreignTenant = Tenant::create([
+            'name' => 'Foreign delivery-note tenant',
+            'slug' => 'foreign-delivery-note-'.Str::random(8),
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+            'vertical' => Vertical::Mechanic,
+        ]);
+        $foreignCompany = Company::create([
+            'tenant_id' => $foreignTenant->id,
+            'name' => 'Foreign delivery-note company',
+            'legal_name' => 'Foreign delivery-note company LLC',
+            'tax_id' => 'FOREIGN-DELIVERY-NOTE',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+        $foreignPartner = Partner::create([
+            'tenant_id' => $foreignTenant->id,
+            'company_id' => $foreignCompany->id,
+            'name' => 'Foreign delivery-note customer',
+            'type' => PartnerType::Customer,
+            'email' => 'foreign-delivery-note-customer@example.test',
+        ]);
+        Document::create([
+            'tenant_id' => $foreignTenant->id,
+            'company_id' => $foreignCompany->id,
+            'partner_id' => $foreignPartner->id,
+            'type' => DocumentType::DeliveryNote,
+            'status' => DocumentStatus::Confirmed,
+            'document_number' => 'DN-FOREIGN',
+            'document_date' => now(),
+            'currency' => 'TND',
+        ]);
+
+        $this->actingAs($actor)->getJson('/api/v1/delivery-notes/uninvoiced')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $eligible->id);
+    }
+
     private function actorWithRole(string $role): User
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -148,6 +202,31 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
             'status' => UserStatus::Active,
         ]);
         $actor->assignRole($role);
+
+        UserCompanyMembership::create([
+            'user_id' => $actor->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
+        ]);
+
+        return $actor;
+    }
+
+    /**
+     * @param  list<string>  $permissions
+     */
+    private function actorWithPermissions(array $permissions): User
+    {
+        app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+
+        $actor = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Direct-permission delivery-note actor',
+            'email' => 'direct-permission-'.Str::random(8).'@example.test',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $actor->givePermissionTo($permissions);
 
         UserCompanyMembership::create([
             'user_id' => $actor->id,

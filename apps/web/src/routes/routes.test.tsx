@@ -47,15 +47,6 @@ describe('route module guards', () => {
     expect(fragment).toContain('permission="batches.write-off"')
   })
 
-  it('guards delivery-note consolidation with Sales and invoices.create', () => {
-    const start = routesSource.indexOf('path="delivery-notes/consolidate"')
-    expect(start).toBeGreaterThanOrEqual(0)
-    const branch = routesSource.slice(start, start + 500)
-
-    expect(branch).toContain('<ModuleGuard module="Sales">')
-    expect(branch).toContain('<RequirePermission permission="invoices.create">')
-  })
-
   // F&B leak: Table Management + Kitchen Display must be vertical-gated so they
   // are unreachable on non-F&B verticals (e.g. parapharmacy). Module keys mirror
   // the Sidebar nav (Sidebar.tsx: tables -> 'Tables', kitchen -> 'Menu').

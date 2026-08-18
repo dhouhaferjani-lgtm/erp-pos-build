@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, fireEvent, screen } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { resetAuth, seedAuth } from '@/test/seedAuth'
 import { defaultCompanyConfig, mechanicCompanyConfig } from '@/test/fixtures/companyConfig'
@@ -77,20 +77,34 @@ describe('DeliveryNoteConsolidation gates', () => {
     expect(mockMutateAsync).not.toHaveBeenCalled()
   })
 
-  it('hides consolidation from a delivery reader but shows it to an invoice creator when Sales is enabled', () => {
+  it('hides the inline consolidation action from a delivery reader when Sales is enabled', () => {
     setPermissions(['deliveries.view'])
-    const { rerender } = renderWithProviders(<DeliveryNoteConsolidation />, {
+    renderWithProviders(<DeliveryNoteConsolidation />, {
       companyConfig: mechanicCompanyConfig,
     })
 
     selectDeliveryNote()
     expect(screen.queryByRole('button', { name: /create invoice/i })).not.toBeInTheDocument()
+    expect(mockMutateAsync).not.toHaveBeenCalled()
+  })
 
+  it('executes consolidation with the selected delivery-note ids for an invoice creator when Sales is enabled', async () => {
+    const onSuccess = vi.fn()
+    mockMutateAsync.mockResolvedValue({ data: { id: 'invoice-1' } })
     setPermissions(['invoices.create'])
-    act(() => {
-      rerender(<DeliveryNoteConsolidation />)
+
+    renderWithProviders(<DeliveryNoteConsolidation onSuccess={onSuccess} />, {
+      companyConfig: mechanicCompanyConfig,
     })
 
-    expect(screen.getByRole('button', { name: /create invoice/i })).toBeInTheDocument()
+    selectDeliveryNote()
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: /create invoice/i }))
+    })
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith(['delivery-note-1'])
+    })
+    expect(onSuccess).toHaveBeenCalledWith('invoice-1')
   })
 })
