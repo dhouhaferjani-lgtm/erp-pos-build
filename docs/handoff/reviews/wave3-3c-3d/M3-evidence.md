@@ -343,3 +343,12 @@ movement suppressed D-f (exit 0), missing-company scanning threw PostgreSQL
 disposition stored `stock_movement_expected = false`. The delivery-note
 watermark pin remained green, correctly showing that it covers behavior that
 already existed before the fix. `git revert --abort` restored a clean tree.
+
+## Adversarial round 6 — STOP A
+
+The decisive post–fifth-fix review produced no register or parseable
+`VERDICT:` line. The bridge wrote only `REVIEW TOOL ERROR (milestone M3, round
+6)`. The harness therefore treats the result as `CHANGES-REQUIRED`. Because
+`max_fix_rounds = 5` is exhausted, M3 is `blocked_review` under STOP A. No
+additional code change or reviewer retry was attempted; orchestrator/human
+authorization is required to resume.

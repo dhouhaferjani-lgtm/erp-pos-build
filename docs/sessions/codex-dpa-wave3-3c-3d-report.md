@@ -369,3 +369,8 @@ Fresh PostgreSQL results are detector `25/50`, all 14 projection files
 PHPStan pass, deptrac remains 127, and no workflow file changed. Revert-replay
 restored all four behavioral failures; the DN watermark test remained green as
 an honest expected-green coverage pin for pre-existing behavior.
+
+Round 6 was the decisive review after all five fix rounds. It returned only
+the harness `REVIEW TOOL ERROR` marker and no parseable verdict. Per the
+self-review harness this fails closed as `CHANGES-REQUIRED`; M3 and the wave are
+now `blocked_review` at STOP A. No retry or further production change was made.

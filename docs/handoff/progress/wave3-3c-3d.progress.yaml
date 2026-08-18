@@ -74,12 +74,12 @@ milestones:
   - id: M3
     title: "3C tail: T18, T19, T19b + POS and GR D-f arms (WO arm = tested no-op tied to workshop-parts ticket; D-f POS arm carries NO grace window) + C-5 registration + flushIfOutermost tail + D-e stock_adjustment exclusion"
     review_lenses: [inventory-costing, fiscal-pos]
-    status: review
+    status: blocked_review
     fix_rounds: 5
     commit: d07868ccaf7f395bb50744a767c56aa4ab945983
-    verdict: docs/handoff/reviews/wave3-3c-3d/M3-round5.md
+    verdict: docs/handoff/reviews/wave3-3c-3d/M3-round6.md
     last_verdict: CHANGES-REQUIRED
-    updated: d07868cca
+    updated: c971dbf21
   - id: M4
     title: "3D France/purposes arm: T20 (propose shrinkage/gain codes — treasury approval a MERGE CONDITION), T20b. requiresGLEntry stays TRUE; thread unitCost, exclude adjustment path from GL buffer, preserve D-b exclusion."
     review_lenses: [inventory-costing, treasury]
@@ -98,8 +98,9 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: blocked_review      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
-blockers: []
+blockers:
+  - "STOP A — M3 round 6 ended with REVIEW TOOL ERROR after max_fix_rounds=5; no parseable verdict was produced. Fail closed. Human/orchestrator authorization is required before any reviewer-tool retry; no further code fix budget remains."
