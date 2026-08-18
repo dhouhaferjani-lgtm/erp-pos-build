@@ -68,7 +68,10 @@ class UndeliveredGoodsLineScanner
      */
     public function scan(string $companyId, ?\DateTimeInterface $cutoverAt = null): array
     {
-        $tenantId = (string) Company::query()->whereKey($companyId)->value('tenant_id');
+        $tenantId = Company::query()->whereKey($companyId)->value('tenant_id');
+        if (! is_string($tenantId) || $tenantId === '') {
+            return [];
+        }
 
         // Documented SQL counterpart of PhysicalLinePredicate's scoped row
         // form; parity is pinned by

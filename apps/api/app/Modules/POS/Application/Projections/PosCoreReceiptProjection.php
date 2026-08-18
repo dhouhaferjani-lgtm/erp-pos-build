@@ -1270,7 +1270,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                             ->where('company_id', $event->company_id)
                             ->whereKey($productFk)
                             ->exists(),
-                    default => $stockGrainExists,
+                    default => $stockTrackingExpected,
                 };
             }
             $lineStockMovementExpected[$index] = $stockMovementExpected;
@@ -2123,6 +2123,18 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                         if ($disposition === ReturnLineDisposition::Restock
                             && $this->restockPolicyResolver->resolve($productId)->policy === RestockPolicy::Never) {
                             Log::warning('PosCoreReceiptProjection: regulated never-restock product refunded with disposition=restock; stock NOT restored', [
+                                'fiscal_event_id' => $event->id,
+                                'receipt_id' => $receiptId,
+                                'product_id' => $productId,
+                            ]);
+                        } elseif ($disposition === ReturnLineDisposition::Scrap
+                            && Product::withTrashed()
+                                ->where('tenant_id', $event->tenant_id)
+                                ->where('company_id', $event->company_id)
+                                ->whereKey($productId)
+                                ->whereNotNull('deleted_at')
+                                ->exists()) {
+                            Log::warning('PosCoreReceiptProjection: scrap refund references an archived product; neither stock leg was recorded', [
                                 'fiscal_event_id' => $event->id,
                                 'receipt_id' => $receiptId,
                                 'product_id' => $productId,

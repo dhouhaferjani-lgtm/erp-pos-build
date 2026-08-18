@@ -86,7 +86,10 @@ class InvoicedBeforeDeliveryScanner
      */
     public function scan(string $companyId, ?Carbon $fromDate = null, ?Carbon $toDate = null): array
     {
-        $tenantId = (string) Company::query()->whereKey($companyId)->value('tenant_id');
+        $tenantId = Company::query()->whereKey($companyId)->value('tenant_id');
+        if (! is_string($tenantId) || $tenantId === '') {
+            return [];
+        }
 
         $query = Document::query()
             ->where('company_id', $companyId)

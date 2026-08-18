@@ -9,6 +9,7 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\PeriodStatus;
 use App\Modules\Company\Domain\FiscalPeriod;
@@ -426,6 +427,53 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         );
     }
 
+    public function test_unknown_disposition_keeps_a_missing_variant_grain_reportable(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+        $variant = ProductVariant::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'product_id' => $product->id,
+        ]);
+        $stockLevel = StockLevel::create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'product_id' => $product->id,
+            'variant_id' => $variant->id,
+            'location_id' => $this->locationId,
+            'quantity' => '10.0000',
+            'reserved' => '0.0000',
+        ]);
+        $sale = $this->v4SaleEvent($product->id, '5.000', sequenceNumber: 1, variantId: $variant->id);
+        $this->project($sale);
+        $stockLevel->delete();
+
+        $refund = $this->v4RefundEvent(
+            $sale,
+            $product->id,
+            '2.000',
+            'future_disposition',
+            sequenceNumber: 2,
+            variantId: $variant->id,
+        );
+        Log::spy();
+        $this->project($refund);
+
+        $refundLine = ReceiptLine::query()
+            ->whereHas('receipt', fn ($query) => $query->where('fiscal_event_id', $refund->id))
+            ->sole();
+        self::assertNull($refundLine->disposition);
+        self::assertTrue($refundLine->stock_movement_expected);
+        Log::shouldHaveReceived('warning')->withArgs(
+            fn (string $message, array $context = []): bool => str_contains($message, 'no variant-scoped stock')
+                && ($context['variant_id'] ?? null) === $variant->id,
+        );
+    }
+
     /**
      * A projector may never REJECT an already-signed event (Model 1 §4.1).
      * When the scrap pair cannot complete the SAVEPOINT rolls BOTH legs back:
@@ -510,6 +558,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         $product->delete();
 
         $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
+        Log::spy();
         $this->project($refund);
 
         $refundReceipt = Receipt::query()->where('fiscal_event_id', $refund->id)->sole();
@@ -527,6 +576,10 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             ->where('product_id', $product->id)
             ->where('reason', MovementReason::POSSale->value)
             ->count());
+        Log::shouldHaveReceived('warning')->withArgs(
+            fn (string $message, array $context = []): bool => str_contains($message, 'archived product')
+                && ($context['product_id'] ?? null) === $product->id,
+        );
     }
 
     /** @return iterable<string, array{string}> */
@@ -722,8 +775,12 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
     /**
      * @param  numeric-string  $quantity
      */
-    private function v4SaleEvent(string $productId, string $quantity, int $sequenceNumber): FiscalEvent
-    {
+    private function v4SaleEvent(
+        string $productId,
+        string $quantity,
+        int $sequenceNumber,
+        ?string $variantId = null,
+    ): FiscalEvent {
         return $this->buildEvent(
             invoiceTypeCode: 'SALE',
             eventVersion: 3,
@@ -733,6 +790,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             receiptUuid: '00000000-0000-4000-8000-000000000001',
             originalLineReferences: null,
             originalReceiptReference: null,
+            variantId: $variantId,
         );
     }
 
@@ -745,6 +803,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         string $quantity,
         string $disposition,
         int $sequenceNumber,
+        ?string $variantId = null,
     ): FiscalEvent {
         return $this->buildEvent(
             invoiceTypeCode: 'REFUND',
@@ -765,6 +824,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
                 'original_receipt_uuid' => '00000000-0000-4000-8000-000000000001',
                 'refund_reason' => 'customer return',
             ],
+            variantId: $variantId,
         );
     }
 
@@ -782,6 +842,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         string $receiptUuid,
         ?array $originalLineReferences,
         ?array $originalReceiptReference,
+        ?string $variantId = null,
     ): FiscalEvent {
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
@@ -802,7 +863,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             'sku' => 'SKU-DISP',
             'tax_category_code' => 'Z',
             'unit_price' => $unitPrice,
-            'variant_id' => null,
+            'variant_id' => $variantId,
             'variant_name' => null,
             'variant_sku' => null,
             'vat_rate' => '0.00',

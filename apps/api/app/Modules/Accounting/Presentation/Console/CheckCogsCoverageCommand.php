@@ -301,6 +301,15 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
                     ->whereColumn('stock_movements.product_id', 'lines.product_id')
                     ->whereColumn('stock_movements.tenant_id', 'receipts.tenant_id')
                     ->whereColumn('stock_movements.company_id', 'receipts.company_id')
+                    ->where(function ($variantQuery): void {
+                        $variantQuery
+                            ->whereColumn('stock_movements.variant_id', 'lines.variant_id')
+                            ->orWhere(function ($nullVariantQuery): void {
+                                $nullVariantQuery
+                                    ->whereNull('stock_movements.variant_id')
+                                    ->whereNull('lines.variant_id');
+                            });
+                    })
                     ->where('stock_movements.reference_type', 'pos_receipt');
             })
             ->select([

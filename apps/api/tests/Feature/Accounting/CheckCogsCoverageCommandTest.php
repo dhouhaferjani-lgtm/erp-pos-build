@@ -7,6 +7,7 @@ namespace Tests\Feature\Accounting;
 use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Catalog\Domain\Entities\ProductVariant;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\InvoicedBeforeDeliveryScanner;
 use App\Modules\Compliance\Services\UndeliveredGoodsLineScanner;
@@ -171,6 +172,38 @@ class CheckCogsCoverageCommandTest extends TestCase
         $this->dpDraftDeliveryNote([$this->dpPhysicalLine()]);
 
         $this->assertSame([], app(UndeliveredGoodsLineScanner::class)->scan($this->dpCompany->id));
+    }
+
+    public function test_df_delivery_note_arm_applies_the_company_cutover_watermark(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        $live = $this->dpConfirmedDeliveryNote([$this->dpPhysicalLine()]);
+        StockMovement::query()->where('reference_id', $live->id)->delete();
+
+        Log::spy();
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '[D-f]')
+                && ($context['arm'] ?? null) === 'delivery_note'
+                && ($context['document_id'] ?? null) === $live->id,
+        );
+
+        DB::table('documents')->where('id', $live->id)->update([
+            'created_at' => now()->subHours(2),
+        ]);
+
+        $this->assertSame([], app(UndeliveredGoodsLineScanner::class)->scan(
+            $this->dpCompany->id,
+            $this->dpCompany->inventory_gl_cutover_at,
+        ));
+    }
+
+    public function test_document_scanners_return_empty_for_a_missing_company(): void
+    {
+        $missingCompanyId = (string) Str::uuid();
+
+        $this->assertSame([], app(UndeliveredGoodsLineScanner::class)->scan($missingCompanyId));
+        $this->assertSame([], app(InvoicedBeforeDeliveryScanner::class)->scan($missingCompanyId));
     }
 
     /**
@@ -426,6 +459,54 @@ class CheckCogsCoverageCommandTest extends TestCase
         $foreignMovement->update(['company_id' => $foreignCompany->id]);
 
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+    }
+
+    public function test_df_pos_arm_matches_movements_at_null_safe_variant_grain(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        $coveredVariant = ProductVariant::factory()->create([
+            'tenant_id' => $this->dpTenant->id,
+            'company_id' => $this->dpCompany->id,
+            'product_id' => $this->dpProduct->id,
+        ]);
+        $missingVariant = ProductVariant::factory()->create([
+            'tenant_id' => $this->dpTenant->id,
+            'company_id' => $this->dpCompany->id,
+            'product_id' => $this->dpProduct->id,
+        ]);
+        $receipt = $this->posReceiptWithLine([], ['variant_id' => $coveredVariant->id]);
+        $missingLine = ReceiptLine::create([
+            'receipt_id' => $receipt->id,
+            'line_number' => 2,
+            'product_id' => $this->dpProduct->id,
+            'variant_id' => $missingVariant->id,
+            'product_code' => 'DPA-DETECTOR-VARIANT',
+            'product_name' => $this->dpProduct->name,
+            'quantity' => '1.0000',
+            'unit' => 'unit',
+            'unit_price' => '100.000',
+            'line_total' => '100.000',
+            'tax_rate' => '0.00',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'stock_movement_expected' => true,
+        ]);
+        $coveredMovement = $this->movement(
+            MovementReason::POSSale,
+            '5.000000',
+            now(),
+            referenceType: 'pos_receipt',
+            referenceId: $receipt->id,
+        );
+        $coveredMovement->update(['variant_id' => $coveredVariant->id]);
+
+        Log::spy();
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '[D-f]')
+                && ($context['arm'] ?? null) === 'pos'
+                && ($context['line_id'] ?? null) === $missingLine->id,
+        );
     }
 
     public function test_df_goods_receipt_arm_uses_the_line_link_and_source_tuple(): void
