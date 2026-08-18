@@ -167,3 +167,28 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - **Screen (d) and FT-9 — BLOCKED.** The mandatory M2-close inspection found that `VerifyPosChainCommand.php:304,341` still applies `whereNull('fiscal_event_id')`, excluding fiscal-era projections from receipt verification. No verifier-path predicate for canonical `chain_context` and no `pos_receipts.fiscal_hash` to `fiscal_events.current_hash` mirror check exists on this branch. That is the pre-A0 shape, so Lane A0 has not landed.
 - Per brief §5/F-2 and the progress-file owner gate, no chain-verification panel, copy, i18n keys, or tests were added speculatively. M2b is `blocked_owner`, waves 1+2 are the delivered scope, and this executor run ends before M3.
 - This STOP is the specified conditional outcome, not an implementation failure. The parent session owns the terminal full-branch audit and integration after A0 coordination.
+
+## Parent terminal-audit repair — 2026-08-18
+
+### Commit
+
+- `d9d129d09` — Phase 1.2.19: Repair receipt terminal audit findings
+
+### Closed findings
+
+- Receipt-reporting fixtures now set sealed snapshots and aggregate-valid monetary values at creation time. The sanctioned PostgreSQL CI filter line covers the full 19-class receipt-reporting set; no other workflow line changed.
+- The list DTO and generated TypeScript contract expose `is_voided`, and live/voided state is visible on the receipt register, refund register, and receipt detail.
+- The resolved-window caption now says the range ends **before** the exclusive `meta.to` bound in EN and FR. Receipt-register route navigation uses native link semantics under a labelled `nav`, with `aria-current="page"` supplied by `NavLink`.
+- Receipt detail waits for an active company before fetching/rendering timezone-sensitive values. Refund reason provenance and policy-alert rendering degrade safely for legacy null values.
+- Seven non-blocking convention/fiscal residues are recorded together in `docs/superpowers/tickets/2026-08-18-receipt-reporting-terminal-audit-followups.md` without implementation.
+
+### Fresh verification
+
+- PostgreSQL `ReceiptFilterOptionsTest`: **3 tests, 18 assertions**.
+- Full PostgreSQL receipt-reporting filter: **71 tests, 454 assertions**. This includes all rebuilt fixture classes and the visible `is_voided` filter regression.
+- The voided-field regression was mutation-proven: removing the DTO/controller field fails on `null is identical to true`; restoring it passes **1 test, 8 assertions**.
+- Focused receipt-list/refund-list/detail Vitest: **3 files, 28 tests**.
+- Production PHPStan level 8, touched-file Pint, changed-file ESLint, TypeScript, EN/FR key parity, generated-types regeneration, and `pnpm --filter @autoerp/web build`: **PASS**.
+- React Doctor narrowed to `af176b09e..d9d129d09`: **100/100, no issues**. Its initial branch-to-main scan was intentionally discarded because it covered 2,428 files outside this fix range.
+
+M2b remains `blocked_owner` on Lane A0. This repair does not add the chain-verification panel or touch any parent-owned merge resolution, permissions-map regeneration, seeder conflict, or PDF/page sign-discrepancy ledger item.

@@ -118,6 +118,8 @@ findings:
   - "M2 review round 2 CHANGES-REQUIRED was repaired in e15d3e6a9; its legacy-return integrity P1 and addressed P3s are dispositioned in docs/handoff/reviews/receipts-build/M2-round2.md."
   - "M2 review round 3 CHANGES-REQUIRED was repaired in 59cfb57cb; its payment-detail P2 and addressed P3s are dispositioned in docs/handoff/reviews/receipts-build/M2-round3.md."
   - "M2 review round 4 ACCEPTED M2 with an empty blocking set; its register is docs/handoff/reviews/receipts-build/M2-round4.md."
+  - "Parent terminal audit CHANGES-REQUIRED was repaired in d9d129d09: PostgreSQL-safe receipt-reporting fixtures, visible voided state, exclusive-window copy, route-navigation semantics, company hydration gate, and nullable legacy metadata guards."
+  - "Parent terminal-audit residuals are grouped in docs/superpowers/tickets/2026-08-18-receipt-reporting-terminal-audit-followups.md; the ticket commit contains no production or test code."
   - "Terminal-audit follow-up: returned_quantity on a location-scoped original is derived only from visible lineage, so a cross-location child (low reachability under current writers) can under-report the historical tally."
   - "Terminal-audit follow-up: a normalized pre-fiscal return displays its discount as a negative reversal adjustment without a dedicated explanatory caption."
   - "Terminal-audit follow-up: the normalized web detail shows a pre-fiscal return as a positive magnitude while the immutable fiscal PDF duplicate retains its stored negative sign."
