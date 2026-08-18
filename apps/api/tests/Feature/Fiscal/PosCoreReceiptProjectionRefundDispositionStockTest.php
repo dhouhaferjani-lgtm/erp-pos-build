@@ -126,6 +126,24 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         self::assertSame('7.0000', $stockLevel->quantity);
     }
 
+    public function test_sale_without_a_stock_grain_records_that_no_movement_was_expected(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+        ]);
+
+        $sale = $this->v4SaleEvent($product->id, '1.000', sequenceNumber: 1);
+        $this->project($sale);
+
+        $receipt = Receipt::query()->where('fiscal_event_id', $sale->id)->sole();
+        self::assertFalse($receipt->lines()->sole()->stock_movement_expected);
+        self::assertSame(0, StockMovement::query()
+            ->where('reference_type', 'pos_receipt')
+            ->where('reference_id', $receipt->id)
+            ->count());
+    }
+
     public function test_post_cutover_pos_sale_and_return_movements_never_have_a_null_unit_cost(): void
     {
         $this->seedWriteOffAccounts();
@@ -193,6 +211,8 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
 
         $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
         $this->project($refund);
+        $refundReceipt = Receipt::query()->where('fiscal_event_id', $refund->id)->sole();
+        self::assertTrue($refundReceipt->lines()->sole()->stock_movement_expected);
 
         // Net sellable quantity unchanged — the two legs cancel.
         $stockLevel->refresh();
@@ -486,7 +506,8 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         $refund = $this->v4RefundEvent($sale, $product->id, '2.000', 'scrap', sequenceNumber: 2);
         $this->project($refund);
 
-        self::assertTrue(Receipt::query()->where('fiscal_event_id', $refund->id)->exists());
+        $refundReceipt = Receipt::query()->where('fiscal_event_id', $refund->id)->sole();
+        self::assertFalse($refundReceipt->lines()->sole()->stock_movement_expected);
 
         $stockLevel->refresh();
         self::assertSame('5.0000', $stockLevel->quantity, 'NO phantom restock of destroyed goods');

@@ -299,6 +299,8 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
                     ->from('stock_movements')
                     ->whereColumn('stock_movements.reference_id', 'receipts.id')
                     ->whereColumn('stock_movements.product_id', 'lines.product_id')
+                    ->whereColumn('stock_movements.tenant_id', 'receipts.tenant_id')
+                    ->whereColumn('stock_movements.company_id', 'receipts.company_id')
                     ->where('stock_movements.reference_type', 'pos_receipt');
             })
             ->select([

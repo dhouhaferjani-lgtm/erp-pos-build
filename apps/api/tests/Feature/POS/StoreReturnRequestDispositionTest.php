@@ -120,11 +120,6 @@ final class StoreReturnRequestDispositionTest extends TestCase
 
         // Validation must pass — 201 returned by the controller.
         $response->assertStatus(201);
-        $returnReceipt = Receipt::query()
-            ->where('original_receipt_id', $saleReceipt->id)
-            ->where('receipt_type', ReceiptType::Return)
-            ->sole();
-        $this->assertFalse($returnReceipt->lines()->sole()->stock_movement_expected);
     }
 
     // ---------------------------------------------------------------
@@ -186,11 +181,6 @@ final class StoreReturnRequestDispositionTest extends TestCase
         );
 
         $response->assertStatus(201);
-        $returnReceipt = Receipt::query()
-            ->where('original_receipt_id', $saleReceipt->id)
-            ->where('receipt_type', ReceiptType::Return)
-            ->sole();
-        $this->assertTrue($returnReceipt->lines()->sole()->stock_movement_expected);
     }
 
     // ---------------------------------------------------------------

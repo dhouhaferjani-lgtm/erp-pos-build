@@ -459,6 +459,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $lineProjection = $this->writeLines(
                 $receiptId,
                 $event,
+                $terminal,
                 $view,
                 $receiptTypeEnum,
                 $originalReceiptId,
@@ -1178,6 +1179,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     private function writeLines(
         string $receiptId,
         FiscalEvent $event,
+        Terminal $terminal,
         SaleReceiptCanonicalView $view,
         ReceiptType $receiptType,
         ?string $originalReceiptId = null,
@@ -1243,13 +1245,27 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 )['unit_cost'];
             }
             $lineUnitCosts[$index] = $lineUnitCost;
-            $stockMovementExpected = true;
+            $stockGrainExists = $productFk !== null && $this->stockGrainExists(
+                $event->company_id,
+                (string) $terminal->location_id,
+                $productFk,
+                $line->variantId,
+            );
+            $stockMovementExpected = $stockGrainExists;
             if ($receiptType === ReceiptType::Return && $originalLineReference !== null) {
                 $disposition = ReturnLineDisposition::tryFrom($originalLineReference->disposition);
-                $stockMovementExpected = $disposition !== ReturnLineDisposition::NotReceived
-                    && ! ($disposition === ReturnLineDisposition::Restock
-                        && $productFk !== null
-                        && $this->restockPolicyResolver->resolve($productFk)->policy === RestockPolicy::Never);
+                $stockMovementExpected = match ($disposition) {
+                    ReturnLineDisposition::NotReceived => false,
+                    ReturnLineDisposition::Restock => $stockGrainExists
+                        && $this->restockPolicyResolver->resolve($productFk)->policy !== RestockPolicy::Never,
+                    ReturnLineDisposition::Scrap => $stockGrainExists
+                        && Product::query()
+                            ->where('tenant_id', $event->tenant_id)
+                            ->where('company_id', $event->company_id)
+                            ->whereKey($productFk)
+                            ->exists(),
+                    default => $stockGrainExists,
+                };
             }
             $lineStockMovementExpected[$index] = $stockMovementExpected;
 
@@ -1278,7 +1294,9 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                 // refund from a projection hole without re-parsing the sealed
                 // event. This is a projection column; canonical bytes remain
                 // authoritative and unchanged.
-                'disposition' => $originalLineReference?->disposition,
+                'disposition' => $originalLineReference === null
+                    ? null
+                    : ReturnLineDisposition::tryFrom($originalLineReference->disposition)?->value,
                 'stock_movement_expected' => $stockMovementExpected,
             ]);
         }
@@ -1668,6 +1686,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             $currencyCode,
             $entryDate,
             $lineUnitCosts,
+            $lineStockMovementExpected,
         );
 
         // Live inventory counting task C2: a signed sale can never be rejected
@@ -1776,6 +1795,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * and keep the product-level (`variant_id IS NULL`) behaviour.
      *
      * @param  array<int, numeric-string|null>  $lineUnitCosts
+     * @param  array<int, bool>  $lineStockMovementExpected
      */
     private function decrementStockForLines(
         string $receiptId,
@@ -1786,6 +1806,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         string $currencyCode,
         CarbonInterface $entryDate,
         array $lineUnitCosts,
+        array $lineStockMovementExpected,
     ): void {
         // Phase 0 fast-follow (return-disposition spec §5.1): a REFUND/VOID-via-
         // SALE_RECEIPT maps to ReceiptType::Return and must NOT decrement stock
@@ -1796,6 +1817,10 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         }
 
         foreach ($view->lineItems as $index => $line) {
+            if (! ($lineStockMovementExpected[$index] ?? true)) {
+                continue;
+            }
+
             $productId = $line->productId;
             // Skip stock decrement when the canonical product_id is not a
             // local FK (non-UUID snapshot, deleted product, etc.). The
@@ -2096,13 +2121,12 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
                     $disposition = ReturnLineDisposition::tryFrom($reference->disposition);
 
                     if (! ($lineStockMovementExpected[$index] ?? true)) {
-                        if ($disposition === ReturnLineDisposition::Restock) {
-                            Log::warning('PosCoreReceiptProjection: regulated never-restock product refunded with disposition=restock; stock NOT restored', [
-                                'fiscal_event_id' => $event->id,
-                                'receipt_id' => $receiptId,
-                                'product_id' => $productId,
-                            ]);
-                        }
+                        Log::warning('PosCoreReceiptProjection: refund line was captured as intentionally movementless; stock NOT changed', [
+                            'fiscal_event_id' => $event->id,
+                            'receipt_id' => $receiptId,
+                            'product_id' => $productId,
+                            'disposition' => $disposition?->value,
+                        ]);
 
                         continue;
                     }
@@ -2210,7 +2234,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         // destroy. Bail BEFORE the savepoint so this benign, recurring case does
         // not emit an ERROR on every occurrence (gate M2 log-noise), and so
         // `issue()` never materialises a zero-quantity row just to fail on it.
-        if (! $this->scrapStockGrainExists($event->company_id, (string) $terminal->location_id, $productId, $variantId)) {
+        if (! $this->stockGrainExists($event->company_id, (string) $terminal->location_id, $productId, $variantId)) {
             Log::warning('PosCoreReceiptProjection: no stock_levels row for a scrap line; neither leg recorded', [
                 'fiscal_event_id' => $event->id,
                 'receipt_id' => $receiptId,
@@ -2286,7 +2310,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      * touch? Mirrors `restockStock`'s variant-aware lookup (no lock — this is a
      * pre-flight benign-case probe; both legs take their own locks).
      */
-    private function scrapStockGrainExists(
+    private function stockGrainExists(
         string $companyId,
         string $locationId,
         string $productId,

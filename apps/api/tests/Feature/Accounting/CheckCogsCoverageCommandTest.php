@@ -7,6 +7,7 @@ namespace Tests\Feature\Accounting;
 use App\Modules\Accounting\Domain\Enums\JournalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\InvoicedBeforeDeliveryScanner;
 use App\Modules\Compliance\Services\UndeliveredGoodsLineScanner;
 use App\Modules\Document\Domain\Document;
@@ -380,12 +381,51 @@ class CheckCogsCoverageCommandTest extends TestCase
             'disposition' => ReturnLineDisposition::Restock,
             'stock_movement_expected' => false,
         ]);
+        $scrap = $this->posReceiptWithLine($returnAttributes, [
+            'disposition' => ReturnLineDisposition::Scrap,
+            'stock_movement_expected' => true,
+        ]);
+        $this->movement(
+            MovementReason::POSReturn,
+            '5.000000',
+            now(),
+            referenceType: 'pos_receipt',
+            referenceId: $scrap->id,
+        );
         // The detector reads the immutable projection outcome, not today's
         // mutable catalogue policy.
         $this->dpProduct->update(['restock_policy' => RestockPolicy::DefaultAllow]);
         Log::spy();
 
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+    }
+
+    public function test_df_pos_arm_stays_silent_when_the_sale_writer_marks_no_stock_grain(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        $this->posReceiptWithLine([], ['stock_movement_expected' => false]);
+
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+    }
+
+    public function test_df_pos_arm_is_not_silenced_by_a_cross_company_movement(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        $receipt = $this->posReceiptWithLine();
+        $foreignCompany = Company::factory()->create([
+            'tenant_id' => $this->dpTenant->id,
+            'currency' => $this->dpCompany->currency,
+        ]);
+        $foreignMovement = $this->movement(
+            MovementReason::POSSale,
+            '5.000000',
+            now(),
+            referenceType: 'pos_receipt',
+            referenceId: $receipt->id,
+        );
+        $foreignMovement->update(['company_id' => $foreignCompany->id]);
+
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
     }
 
     public function test_df_goods_receipt_arm_uses_the_line_link_and_source_tuple(): void

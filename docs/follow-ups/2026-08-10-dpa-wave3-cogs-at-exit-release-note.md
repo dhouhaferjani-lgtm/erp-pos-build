@@ -50,13 +50,17 @@ The POS D-f missing-movement arm has no grace window.
 
 POS lines also carry the immutable projection decision
 `stock_movement_expected`. D-f ignores `not_received` and regulated
-never-restock refunds whose writers deliberately produced no movement; later
-catalogue policy edits do not reclassify those historical outcomes.
+never-restock refunds, sale lines with no stock grain at the terminal location,
+and archived-product scrap refunds whose writers deliberately produced no
+movement. Later catalogue policy edits do not reclassify those historical
+outcomes.
 
 Until 3D T21 wires count-correction GL at the real counting root, D-e excludes
 `reference_type = inventory_counting`; otherwise every completed count would
 be a permanent false alarm during the 3C-to-3D interval. T21 must remove that
-temporary exclusion in the same change that makes the count writer live.
+temporary exclusion in the same change that makes the count writer live; this
+is pinned by
+`docs/superpowers/tickets/2026-08-18-remove-counting-detector-exclusion-with-t21.md`.
 
 ## 3. POS cutover behavior
 

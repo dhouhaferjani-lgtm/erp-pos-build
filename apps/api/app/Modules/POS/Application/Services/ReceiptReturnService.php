@@ -1026,10 +1026,6 @@ final class ReceiptReturnService
                 'disposition' => $returnLine['disposition']->value,
                 'physical_receipt' => $returnLine['physical_receipt'],
                 'resalable' => $returnLine['resalable'],
-                // RestockPolicy::Never is refused before this point, so the
-                // only intentional no-movement interactive disposition is
-                // NotReceived. Scrap expects both restore and write-off rows.
-                'stock_movement_expected' => $returnLine['disposition'] !== ReturnLineDisposition::NotReceived,
             ];
 
             $rateKey = $taxRate;
