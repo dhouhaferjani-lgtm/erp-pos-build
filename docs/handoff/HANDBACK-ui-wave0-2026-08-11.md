@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M2 accepted, M3 in progress
+# UI Wave 0 implementer report — M2 accepted, M3 under review
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b, M1, and M2 passed; M3 is in progress.
+- Wave status: M0b, M1, and M2 passed; M3 implementation is committed and awaiting bridge review.
 
 ## M0 repin
 
@@ -186,4 +186,124 @@ The generated row is therefore:
 
 `<KeyedByRouteId>` has exactly one route-tree use, at the invoice-detail mount, so this wrapper addition cannot change another manifest entry. `bash scripts/factory/check-manifest-drift.sh` still exits 1 for the expected pre-T3 route/permission drift but no longer prints an invoice-detail component hunk. No manifest file is changed or committed in M2; M3 route deletions must land before M4 performs the single authorized regeneration.
 
-M2 bridge round 1 (`docs/handoff/reviews/ui-wave0/M2-round1.md`) returned `ACCEPT`. The reviewer independently regenerated both manifests before and after reverting only the new allow-list member: exactly one web-manifest line changed (`KeyedByRouteId` to `InvoiceDetailPage`) and the POS manifest was byte-identical. It also reproduced the 9/1 red and 10/10 green test runs and confirmed no manifest file was committed. Its P2 handback-evidence finding is closed by the pasted command/output above; its line-anchor note will be reconciled after M3's route-import deletions shift `routes/index.tsx`. M3 is now in progress; later milestones have not started.
+M2 bridge round 1 (`docs/handoff/reviews/ui-wave0/M2-round1.md`) returned `ACCEPT`. The reviewer independently regenerated both manifests before and after reverting only the new allow-list member: exactly one web-manifest line changed (`KeyedByRouteId` to `InvoiceDetailPage`) and the POS manifest was byte-identical. It also reproduced the 9/1 red and 10/10 green test runs and confirmed no manifest file was committed. Its P2 handback-evidence finding is closed by the pasted command/output above; its line-anchor note remains a terminal-audit item after M3 shifted `KeyedByRouteId` from line 325 to line 322.
+
+## M3 — T10–T13 owner-ruled route and page deletions
+
+The four required source commits are:
+
+```text
+d7f3ea21d1107e8a1cc30fd06987fa5f0989bf48 Phase 0.10.1: Delete retired web shift console
+cdce8ab3874ab8fad75827f4466a680e93d283d8 Phase 0.11.1: Delete duplicate marketing hub
+1184a83ac3b74ea74ba3b17c026de6bd4ab22e8b Phase 0.12.1: Delete retired finance hub
+85bf6b02d9c1a8bb5ed42113a3fdb194562f999f Phase 0.13.1: Delete duplicate settings account route
+```
+
+### T10 — retired web shift console
+
+The route, lazy import, `POSShiftsDashboard`, the orphaned `ShiftDashboardPage` subtree and barrels, component tests, and sole-consumer `shiftDashboard` / `shifts` locale groups were deleted. The supported `/pos/shift-history` route and links remain. The two POS markdown files were deliberately retained as historical records with the required dated supersession line at each file's top. The owner caveat about a browser sales-demo console was considered and is superseded by the explicit delete ruling; the parent should re-check that ruling at terminal audit.
+
+The design-baseline edit was manual and exactly two lines:
+
+```diff
+-    "C2|src/features/pos/pages/ShiftDashboardPage/ShiftDashboardPage.tsx|..."
+-    "C3|src/pages/POS/POSShiftsDashboard.tsx|..."
+```
+
+The full `git show d7f3ea21d -- apps/web/tools/audit-design-system-baseline.json` hunk contains only those two deletions. Current source/baseline greps are zero; the documentation grep returns only the two annotated historical files:
+
+```text
+$ grep -rnE "pos/shifts\"|'/pos/shifts'|POSShiftsDashboard|ShiftDashboardPage" apps/web/src --include='*.ts' --include='*.tsx'
+[no output]
+$ grep -n "ShiftDashboardPage\|POSShiftsDashboard" apps/web/tools/audit-design-system-baseline.json
+[no output]
+$ jq '{shiftDashboard, shifts}' apps/web/src/locales/{en,fr,ar}/pos.json
+{"shiftDashboard":null,"shifts":null}
+{"shiftDashboard":null,"shifts":null}
+{"shiftDashboard":null,"shifts":null}
+$ grep -rn "ShiftDashboardPage" apps/web/src --include='*.md'
+apps/web/src/features/pos/IMPLEMENTATION_SUMMARY.md:3:> Superseded 2026-08-11: `ShiftDashboardPage` was deleted; use `/pos/shift-history` for the supported web-admin surface.
+apps/web/src/features/pos/IMPLEMENTATION_SUMMARY.md:109:9. **ShiftDashboardPage** - 17 tests
+apps/web/src/features/pos/IMPLEMENTATION_SUMMARY.md:306:    ├── ShiftDashboardPage/
+apps/web/src/features/pos/IMPLEMENTATION_SUMMARY.md:307:    │   ├── ShiftDashboardPage.tsx
+apps/web/src/features/pos/IMPLEMENTATION_SUMMARY.md:308:    │   ├── ShiftDashboardPage.test.tsx
+apps/web/src/features/pos/IMPLEMENTATION_SUMMARY.md:367:  element: <ShiftDashboardPage {...props} />,
+apps/web/src/features/pos/README.md:3:> Superseded 2026-08-11: `ShiftDashboardPage` was deleted; use `/pos/shift-history` for the supported web-admin surface.
+apps/web/src/features/pos/README.md:22:└── ShiftDashboardPage (shift management)
+apps/web/src/features/pos/README.md:99:import { ShiftDashboardPage } from '@/features/pos'
+apps/web/src/features/pos/README.md:149:    <ShiftDashboardPage
+apps/web/src/features/pos/README.md:270:### ShiftDashboardPage
+apps/web/src/features/pos/README.md:520:- ShiftDashboardPage manages shift state
+```
+
+Red-first route evidence: the new route test initially failed because the retired page string remained; after deletion `routes.test.tsx` passed 16/16. The task-close full suite reported 4,209 passed / 5 failed / 1 skipped / 3 todo; failures were confined to the three M0b-reviewed exception files. Typecheck passed; lint exited 0 with 6,516 warnings and design audit 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
+
+### T11 — duplicate marketing hub
+
+The `/marketing` route/import, complete `features/marketing` subtree, en/fr marketing locale files, and the en/fr/ar i18n namespace registrations were deleted. The six Sidebar destinations represented by the hub remain at `Sidebar.tsx:262-267`.
+
+```text
+$ grep -rnE "/marketing\b|MarketingHubPage|marketing:" apps/web/src
+[no output]
+$ pnpm exec vitest run src/routes/routes.test.tsx
+Test Files 1 passed (1); Tests 16 passed (16)
+$ pnpm exec vitest run src/lib/i18nRawKeyCoverage.test.tsx src/__tests__/i18n/arLocaleCoverage.test.ts
+i18nRawKeyCoverage: 5 passed; arLocaleCoverage: the already-reviewed Arabic exception only
+```
+
+The task-close full suite reported 4,206 passed / 5 failed / 1 skipped / 3 todo, with exactly the three reviewed exception files. Typecheck and lint passed; design audit remained 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
+
+### T12 — finance hub deleted outright
+
+Only the finance index element was removed; the `finance` parent and every child route remain. `FinanceHubPage` and its tests were deleted. A loop enumerated all 35 scalar `finance:hub.*` keys and grepped each outside locales and the retiring page/test; only `finance:hub.cards.treasuryOverview.title` had surviving consumers. The other 34 keys were removed from en/fr/ar, while the preserved title still resolves exactly to `Treasury`, `Trésorerie`, and `الخزينة`.
+
+```text
+$ pnpm exec vitest run src/routes/routes.test.tsx src/lib/i18nRawKeyCoverage.test.tsx src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx
+Test Files 3 passed (3); Tests 63 passed (63)
+$ jq -r '.hub' src/locales/{en,fr,ar}/finance.json
+{"cards":{"treasuryOverview":{"title":"Treasury"}}}
+{"cards":{"treasuryOverview":{"title":"Trésorerie"}}}
+{"cards":{"treasuryOverview":{"title":"الخزينة"}}}
+$ grep -rn "FinanceHubPage" apps/web/src
+[no output]
+$ grep -rnE "to=\"/finance\"|to=\{'/finance'\}|navigate\('/finance'\)|href=\"/finance\"" apps/web/src --include='*.ts' --include='*.tsx' | grep -vE "\.test\.tsx?:|__tests__/|/test/"
+[no output]
+$ grep -rn "Navigate" apps/web/src/routes/index.tsx | grep -i finance
+[no output]
+```
+
+The seven intentional generic `HubCard.test.tsx` fixture literals remain byte-identical at lines 12, 22, 35, 54, 63, 87, and 103; SHA-256 remains `ccf2be6a90c78ee95ed09427a7a8a8858c0752a2ca5301c22fa63b310d744c9f`. Per `OWNER-DECISIONS:58`, obsolete E2E block `MTP-GL-28` was deleted rather than repointed, and only `['24-finance', '/finance']` was removed from `ui-audit-shots.mjs`; neighbouring shot ordinals were not renumbered. This E2E-test removal is the task's explicit authorized deviation.
+
+The task-close full suite reported 4,199 passed / 5 failed / 1 skipped / 3 todo, with exactly the three reviewed exception files. Typecheck and lint passed; design audit remained 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
+
+### T13 — duplicate settings chart-of-accounts mount
+
+Only the settings child block was deleted. The canonical finance child remains guarded and linked:
+
+```text
+$ grep -rn "settings/chart-of-accounts" apps/web/src
+[no output]
+$ rg -n 'path="chart-of-accounts"|permission="accounts.view"' apps/web/src/routes/index.tsx
+2010:            path="chart-of-accounts"
+2012:              <RequirePermission permission="accounts.view">
+$ rg -n "href: '/finance/chart-of-accounts'" apps/web/src/components/organisms/{Sidebar/Sidebar.tsx,CommandPalette/useCommandPalette.ts}
+Sidebar.tsx:299: ... href: '/finance/chart-of-accounts' ...
+useCommandPalette.ts:80: ... href: '/finance/chart-of-accounts' ...
+```
+
+The route test failed red on the settings branch and then passed 18/18. The task-close full suite reported 4,200 passed / 5 failed / 1 skipped / 3 todo, with exactly the three reviewed exception files. Typecheck and lint passed; design audit remained 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
+
+### M3 intermediate manifest state
+
+No manifest was regenerated or committed:
+
+```text
+$ git diff --stat d3b0550ed..HEAD -- scripts/factory/manifests/
+[no output]
+$ bash scripts/factory/check-manifest-drift.sh
+[exit 1]
+... removes /marketing, /pos/shifts, /settings/chart-of-accounts, and the /finance index entry ...
+Route manifest drift — run: node scripts/factory/gen-route-manifest.mjs && commit the manifests
+```
+
+That exit 1 is the explicitly permitted M3 intermediate state. M4 owns the single regeneration and drift-CI work.

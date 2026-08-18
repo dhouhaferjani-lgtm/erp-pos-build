@@ -66,9 +66,10 @@ milestones:
   - id: M3
     title: "T10, T11, T12, T13 - the four owner-ruled deletions (/pos/shifts + POSShiftsDashboard; /marketing + MarketingHubPage; /finance + FinanceHubPage OUTRIGHT with no redirect, preserving finance:hub.cards.treasuryOverview.title and applying the three-row disposition table; the duplicate /settings/chart-of-accounts mount), each against the six-point deletion checklist in §3, one commit per task, source only. EXPECTED AND PERMITTED: these commits leave scripts/factory/manifests/ drifted and check-manifest-drift.sh exiting 1 in the intermediate state (§2 exception 2) - the reviewer must not treat that as a defect at this milestone. T10 hand-removes exactly the two baseline lines (baseline.json:202, :717); --write-baseline is forbidden. Each commit still green on typecheck/lint/test."
     review_lenses: [frontend-conventions, general]
-    status: in_progress
+    status: review
     fix_rounds: 0
-    commit: null
+    updated: 85bf6b02d
+    commit: 85bf6b02d9c1a8bb5ed42113a3fdb194562f999f
     verdict: null
     last_verdict: null
   - id: M4
@@ -150,3 +151,6 @@ findings:
   - "M1 round-1 review found that the 46-page filename population was inherited rather than independent, a material route-mounted non-detail DataTable surface was outside that cohort, seven action/form routes had resolvable prefix-dynamic links, and the empty-state predicate could span unrelated comparisons. Commit 5383a2467 discloses the scope boundaries, resolves the bounded link patterns, tightens the predicate, and adds regression tests."
   - "M1 round-2 review confirmed the round-1 repairs, then identified five more raw action/form false negatives beyond the bounded expression model, a broken audit-source pointer, an undisclosed prop-union approximation, and an unreproducible secondary-surface count. Commit 72c0207b4 separates the raw 27 from the 22 remaining after manual call-flow review, attributes all five live links, fixes the pointer/method, and adopts a conservative reproducible 33-page secondary-surface rule."
   - "M1 round-3 bridge ACCEPTED the milestone and independently reproduced 46 listings, 271 route records, 27 raw candidates, all distributions, 12/12 tests in both runners, and zero production changes. Its close-before-merge P2 remains open for the parent terminal audit: applying the report's stated conservative secondary-surface rule literally yields 35 rather than 33; the report path ordinal collision also remains the parent's merge-time decision."
+  - "M3 source commits d7f3ea21d, cdce8ab38, 1184a83ac, and 85bf6b02d implement the four owner-ruled deletions one task per commit. Each used a red-first route assertion, then passed typecheck, lint/audits, React Doctor, and the deterministic single-worker full suite subject only to the three M0b-reviewed exception files."
+  - "T12 deletes obsolete E2E test MTP-GL-28 under OWNER-DECISIONS:58 and removes audit-shot entry 24-finance; the seven HubCard.test.tsx /finance fixture literals remain byte-identical. This is an authorized deviation and must remain explicit in the final handback."
+  - "M3 intentionally leaves route manifests drifted for M4: check-manifest-drift.sh exits 1 and shows /pos/shifts, /marketing, /finance index, and /settings/chart-of-accounts as removals; git diff d3b0550ed..HEAD -- scripts/factory/manifests is empty."
