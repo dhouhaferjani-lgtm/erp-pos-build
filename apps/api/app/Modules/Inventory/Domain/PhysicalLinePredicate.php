@@ -48,6 +48,22 @@ use Illuminate\Database\Eloquent\Builder;
  * answers for a query. They are kept in agreement by
  * `PhysicalLinePredicateTest::test_the_query_scope_selects_exactly_the_lines_the_row_predicate_accepts`.
  *
+ * Compliance scanners that start from documents cannot call `physical()` on
+ * their nested line builders without changing their set-based query shape.
+ * Their documented SQL counterpart is therefore exactly:
+ *
+ * `document_lines.product_id IS NOT NULL`
+ * `AND document_lines.product_id IN (`
+ * `  SELECT products.id FROM products`
+ * `  WHERE products.tenant_id = :tenant_id`
+ * `    AND products.company_id = :company_id`
+ * `    AND products.is_physical = TRUE`
+ * `)`
+ *
+ * `CheckCogsCoverageCommandTest::test_scanner_sql_physical_predicates_match_the_scoped_row_predicate`
+ * pins both scanner implementations to the scoped row predicate on a mixed,
+ * cross-tenant fixture.
+ *
  * ## Tenant scoping
  *
  * `physicalProductFor()` accepts an OPTIONAL `(tenantId, companyId)` pair. When

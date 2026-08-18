@@ -40,7 +40,8 @@ enum JournalCode: string
             'pos_payment', 'pos_receipt', 'pos_receipt_refund' => self::Cash,
             'instrument', 'instrument_remittance' => self::Effets,
             'inventory_exit', 'inventory_entry', 'inventory_shrinkage',
-            'batch_write_off', 'batch_write_off_reversal' => self::Misc,
+            'batch_write_off', 'batch_write_off_reversal',
+            'inventory_movement_reversal' => self::Misc,
             default => self::Misc,
         };
     }

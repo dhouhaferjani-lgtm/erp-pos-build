@@ -49,6 +49,8 @@ use Illuminate\Support\Facades\Log;
  */
 final class GeneralLedgerService
 {
+    public const string INVENTORY_MOVEMENT_REVERSAL_SOURCE_TYPE = 'inventory_movement_reversal';
+
     public function __construct(
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
@@ -1835,110 +1837,6 @@ final class GeneralLedgerService
         }
 
         return $availableAfterDrafts;
-    }
-
-    /**
-     * Create journal entry for Cost of Goods Sold (COGS).
-     *
-     * When an invoice containing physical products is posted, this records
-     * the cost of inventory sold:
-     * Debit: Cost of Goods Sold (expense - 601 in Tunisia)
-     * Credit: Inventory (asset - 37 in Tunisia)
-     *
-     * @param  array<int, array{product_id: string, quantity: string, unit_cost: string}>  $lineItems
-     */
-    public function createCOGSEntry(
-        string $companyId,
-        string $invoiceId,
-        string $documentNumber,
-        array $lineItems,
-        \DateTimeInterface $date,
-        ?string $description = null,
-        ?string $currencyCode = null,
-    ): ?JournalEntry {
-        // Calculate total COGS.
-        //
-        // unit_cost carries the perpetual WAC at higher internal precision (6 dp,
-        // see WeightedAverageCostService::COST_SCALE). We therefore accumulate
-        // quantity × unit_cost at a HIGH working precision (no per-line truncation
-        // that would bias the total downward / violate NC 01 §62) and round the
-        // TOTAL exactly once, HALF-UP, to the currency scale at this GL posting
-        // boundary. The single rounded $totalCOGS is used for BOTH the debit and
-        // the credit leg, so the entry balances by construction.
-        $scale = $currencyCode !== null
-            ? $this->scaleResolver->getScale($currencyCode)
-            : $this->scale();
-        $working = $scale + 6; // headroom beyond the 6-dp at-rest cost precision
-        $totalCOGSPrecise = '0';
-        foreach ($lineItems as $item) {
-            /** @var numeric-string $quantity */
-            $quantity = $item['quantity'];
-            /** @var numeric-string $unitCost */
-            $unitCost = $item['unit_cost'];
-            $lineCost = bcmul($quantity, $unitCost, $working);
-            $totalCOGSPrecise = bcadd($totalCOGSPrecise, $lineCost, $working);
-        }
-
-        // Round HALF-UP at the posting boundary (presentation/recording boundary).
-        $totalCOGS = CurrencyScale::bcround($totalCOGSPrecise, $scale);
-
-        // Don't create entry if no COGS
-        if (bccomp($totalCOGS, '0', $scale) <= 0) {
-            return null;
-        }
-
-        $cogsAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::CostOfGoodsSold);
-        $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
-
-        $entry = DB::transaction(function () use (
-            $companyId, $invoiceId, $documentNumber, $totalCOGS,
-            $date, $description, $cogsAccount, $inventoryAccount
-        ): JournalEntry {
-            $entryNumber = $this->generateEntryNumber($companyId);
-
-            // Get tenant_id from company
-            $company = Company::findOrFail($companyId);
-
-            $entry = JournalEntry::create([
-                'tenant_id' => $company->tenant_id,
-                'company_id' => $companyId,
-                'entry_number' => $entryNumber,
-                'entry_date' => $date,
-                'description' => $description ?? "COGS for Invoice {$documentNumber}",
-                'status' => JournalEntryStatus::Draft,
-                'source_type' => 'cogs',
-                'journal_code' => JournalCode::fromSourceType('cogs')->value,
-                'source_id' => $invoiceId,
-            ]);
-
-            // Debit: Cost of Goods Sold (expense increases)
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $cogsAccount->id,
-                'partner_id' => null,
-                'debit' => $totalCOGS,
-                'credit' => '0',
-                'description' => 'Cost of goods sold',
-                'line_order' => 0,
-            ]);
-
-            // Credit: Inventory (asset decreases)
-            JournalLine::create([
-                'journal_entry_id' => $entry->id,
-                'account_id' => $inventoryAccount->id,
-                'partner_id' => null,
-                'debit' => '0',
-                'credit' => $totalCOGS,
-                'description' => 'Inventory reduction',
-                'line_order' => 1,
-            ]);
-
-            return $entry->load('lines');
-        });
-
-        $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $companyId, $currencyCode);
-
-        return $entry;
     }
 
     /**
@@ -4752,6 +4650,75 @@ final class GeneralLedgerService
         }
 
         return $entry;
+    }
+
+    /**
+     * Post an immutable compensating entry for a movement-keyed inventory leg.
+     *
+     * The original Posted entry is never edited. Idempotency is keyed by the
+     * reversal's source tuple `(inventory_movement_reversal, original entry id)`.
+     */
+    public function reverseInventoryMovementEntry(
+        JournalEntry $original,
+        \DateTimeInterface $entryDate,
+    ): JournalEntry {
+        if (! in_array($original->source_type, ['inventory_exit', 'inventory_entry'], true)) {
+            throw new \InvalidArgumentException('Only inventory_exit and inventory_entry entries can be reversed here.');
+        }
+        if ($original->status !== JournalEntryStatus::Posted) {
+            throw new \InvalidArgumentException('Only Posted inventory entries can be reversed.');
+        }
+
+        return DB::transaction(function () use ($original, $entryDate): JournalEntry {
+            $locked = JournalEntry::query()
+                ->whereKey($original->id)
+                ->lockForUpdate()
+                ->with('lines')
+                ->firstOrFail();
+
+            $existing = JournalEntry::query()
+                ->where('company_id', $locked->company_id)
+                ->where('source_type', self::INVENTORY_MOVEMENT_REVERSAL_SOURCE_TYPE)
+                ->where('source_id', $locked->id)
+                ->with('lines')
+                ->first();
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            $reversal = JournalEntry::create([
+                'tenant_id' => $locked->tenant_id,
+                'company_id' => $locked->company_id,
+                'entry_number' => $this->generateEntryNumber($locked->company_id),
+                'entry_date' => $entryDate,
+                'description' => 'Cutover reversal of '.$locked->entry_number,
+                'status' => JournalEntryStatus::Draft,
+                'source_type' => self::INVENTORY_MOVEMENT_REVERSAL_SOURCE_TYPE,
+                'journal_code' => JournalCode::fromSourceType(self::INVENTORY_MOVEMENT_REVERSAL_SOURCE_TYPE)->value,
+                'source_id' => $locked->id,
+            ]);
+
+            foreach ($locked->lines as $line) {
+                JournalLine::create([
+                    'journal_entry_id' => $reversal->id,
+                    'account_id' => $line->account_id,
+                    'partner_id' => $line->partner_id,
+                    'debit' => (string) $line->credit,
+                    'credit' => (string) $line->debit,
+                    'description' => 'Cutover reversal: '.($line->description ?? $locked->entry_number),
+                    'line_order' => $line->line_order,
+                ]);
+            }
+
+            $reversal->load('lines');
+            $this->postEntryNow(
+                $reversal,
+                null,
+                $this->currencyCodeForCompany($locked->company_id),
+            );
+
+            return $reversal->refresh()->load('lines');
+        });
     }
 
     /**

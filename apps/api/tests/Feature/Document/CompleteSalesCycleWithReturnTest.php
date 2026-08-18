@@ -35,13 +35,27 @@ use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Factories\CompanyFactory;
+use Illuminate\Database\DatabaseTransactionsManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class CompleteSalesCycleWithReturnTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * The movement GL seam flushes only at the application transaction root.
+     * Laravel's test wrapper would turn both confirms into nested savepoints
+     * and make the very entries asserted by this test defer until teardown.
+     *
+     * @return list<string>
+     */
+    protected function connectionsToTransact(): array
+    {
+        return [];
+    }
 
     private Tenant $tenant;
 
@@ -81,6 +95,13 @@ class CompleteSalesCycleWithReturnTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Complete movement-keyed sales-cycle coverage requires PostgreSQL root transactions.');
+        }
+
+        self::assertSame(0, DB::transactionLevel(), 'sales-cycle test must begin at a real application root');
+        DB::connection()->setTransactionManager(new DatabaseTransactionsManager);
 
         // Create tenant first (user needs tenant_id)
         $this->tenant = Tenant::create([
@@ -359,8 +380,17 @@ class CompleteSalesCycleWithReturnTest extends TestCase
             'reference_id' => $deliveryNote->id,
         ]);
 
-        $movement = StockMovement::where('reference_id', $deliveryNote->id)->first();
+        $movement = StockMovement::where('reference_id', $deliveryNote->id)->firstOrFail();
         $this->assertEquals(-10, $movement->quantity); // Negative for sale
+
+        // COGS is booked at the immutable stock-exit row, not later at the
+        // invoice. This assertion was blocked until both movement-keyed legs
+        // existed.
+        $deliveryCogsEntry = JournalEntry::query()
+            ->where('source_type', 'inventory_exit')
+            ->where('source_id', $movement->id)
+            ->firstOrFail();
+        $this->assertEquals(2, $deliveryCogsEntry->lines()->count());
 
         // Step 5: Create Invoice
         $invoice = Document::create([
@@ -376,6 +406,9 @@ class CompleteSalesCycleWithReturnTest extends TestCase
             'document_date' => now(),
             'currency' => 'USD',
             'total' => 1000.00,
+            // The authoritative DN → invoice lineage consumed by the unified
+            // delivery gate; source_document_id alone is not that contract.
+            'payload' => ['source_delivery_note_ids' => [$deliveryNote->id]],
         ]);
 
         DocumentLine::create([
@@ -409,24 +442,6 @@ class CompleteSalesCycleWithReturnTest extends TestCase
         $invoiceEntry = $this->glService->createFromInvoice($invoice, $this->user);
         $this->assertNotNull($invoiceEntry);
 
-        // TODO: Create COGS entry for invoice
-        // Currently skipping this as the lines collection seems to be empty after post/refresh
-        // This needs investigation - the COGS entry creation should work but returns null
-        // $lineItems = $invoice->lines->map(fn($line) => [
-        //     'product_id' => $line->product_id,
-        //     'quantity' => (string) $line->quantity,
-        //     'unit_cost' => (string) ($line->unit_cost ?? 0),
-        // ])->toArray();
-
-        // $cogsEntry = $this->glService->createCOGSEntry(
-        //     companyId: $this->company->id,
-        //     invoiceId: $invoice->id,
-        //     documentNumber: $invoice->document_number,
-        //     lineItems: $lineItems,
-        //     date: $invoice->document_date
-        // );
-        // $this->assertNotNull($cogsEntry);
-
         // Verify invoice GL entry exists
         $journalEntry = JournalEntry::where('source_id', $invoice->id)
             ->where('source_type', 'invoice')
@@ -436,12 +451,12 @@ class CompleteSalesCycleWithReturnTest extends TestCase
         // Should have AR, Revenue lines (2 lines for invoice entry)
         $this->assertEquals(2, $journalEntry->lines()->count());
 
-        // TODO: Verify COGS entry exists (currently skipped, see above)
-        // $cogsJournalEntry = JournalEntry::where('source_id', $invoice->id)
-        //     ->where('source_type', 'cogs')
-        //     ->first();
-        // $this->assertNotNull($cogsJournalEntry);
-        // $this->assertEquals(2, $cogsJournalEntry->lines()->count());
+        // Invoice posting owns only the money lane. The delivery movement above
+        // remains the sole COGS origin for this sale.
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_id' => $invoice->id,
+            'source_type' => 'cogs',
+        ]);
 
         // ============================================================
         // REVERSE FLOW: Return Note → Credit Note
@@ -508,8 +523,14 @@ class CompleteSalesCycleWithReturnTest extends TestCase
             'reference_id' => $returnNote->id,
         ]);
 
-        $returnMovement = StockMovement::where('reference_id', $returnNote->id)->first();
+        $returnMovement = StockMovement::where('reference_id', $returnNote->id)->firstOrFail();
         $this->assertEquals(5, $returnMovement->quantity); // Positive for return
+
+        $returnCogsEntry = JournalEntry::query()
+            ->where('source_type', 'inventory_entry')
+            ->where('source_id', $returnMovement->id)
+            ->firstOrFail();
+        $this->assertEquals(2, $returnCogsEntry->lines()->count());
 
         // Step 9: Create Credit Note
         $creditNote = Document::create([

@@ -972,11 +972,11 @@ class ParapharmacySeeder extends Seeder
             'name' => $productName,
             'sku' => $sku,
             'barcode' => $barcode,
-            'is_physical' => true,
             'purchase_price' => $cost,
-            // cost_price is the WAC field read by MarginService and
-            // PostCOGSOnInvoice; without it margin/COGS compute against a null
-            // cost. Seed it to the same landed cost as purchase_price.
+            // cost_price seeds the initial WAC read by MarginService and the
+            // movement writer. The inventory-GL seam later books the immutable
+            // stock_movements.unit_cost snapshot, not this mutable catalogue
+            // field. Seed it to the same landed cost as purchase_price.
             'cost_price' => $cost,
             'sale_price' => $retailPrice,
             'tax_rate' => $vatRate,
@@ -1029,6 +1029,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign ingredients to a product based on category.
+     *
+     * @param  Collection<int, Ingredient>  $ingredients
      */
     private function assignIngredients(
         Product $product,
@@ -1069,6 +1071,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign certifications to a product based on category.
+     *
+     * @param  Collection<int, Certification>  $certifications
      */
     private function assignCertifications(
         Product $product,
@@ -1113,6 +1117,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign health claims to a product based on category.
+     *
+     * @param  Collection<int, HealthClaim>  $healthClaims
      */
     private function assignHealthClaims(
         Product $product,
@@ -1156,6 +1162,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Assign key components to a product based on dosage form.
+     *
+     * @param  Collection<int, KeyComponent>  $keyComponents
      */
     private function assignKeyComponents(
         Product $product,
@@ -1287,6 +1295,8 @@ class ParapharmacySeeder extends Seeder
 
     /**
      * Seed stock levels for 90% of products.
+     *
+     * @param  Collection<int, Product>  $products
      */
     protected function seedStockLevels(
         Company $company,
@@ -1302,7 +1312,7 @@ class ParapharmacySeeder extends Seeder
             }
 
             $metadata = $product->parapharmacyMetadata;
-            $quantity = match ($metadata->category) {
+            $quantity = match ($metadata?->category) {
                 ParapharmacyCategory::Supplement => rand(50, 200),
                 ParapharmacyCategory::Cosmetic => rand(50, 150),
                 ParapharmacyCategory::Herbal => rand(20, 100),

@@ -110,7 +110,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
  * @property InventoryValuationMode|null $inventory_valuation_mode Company override for the
  *                                                                 inventory valuation system. NULL = inherit the country default; resolve through
  *                                                                 `InventoryValuationModeResolver`, never by reading this column directly.
- * @property CarbonImmutable $inventory_gl_cutover_at COGS-at-exit detector watermark
+ * @property CarbonImmutable|null $inventory_gl_cutover_at COGS-at-exit detector watermark; null until the cutover deploy step
  * @property string $default_target_margin Default target margin percentage
  * @property string $default_minimum_margin Default minimum margin percentage
  * @property bool $allow_below_cost_sales Whether below-cost sales are allowed

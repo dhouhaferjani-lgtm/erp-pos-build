@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -85,16 +86,21 @@ class InvoicedBeforeDeliveryScanner
      */
     public function scan(string $companyId, ?Carbon $fromDate = null, ?Carbon $toDate = null): array
     {
+        $tenantId = (string) Company::query()->whereKey($companyId)->value('tenant_id');
+
         $query = Document::query()
             ->where('company_id', $companyId)
             ->where('type', DocumentType::Invoice)
             ->where('status', DocumentStatus::Posted)
             // First pass, set-based: only invoices that actually carry goods.
             // A services-only invoice is not in scope for a delivery rule and
-            // must never appear on this report.
-            ->whereHas('lines', function (Builder $lineQuery) use ($companyId): void {
+            // must never appear on this report. This is the documented SQL
+            // counterpart in PhysicalLinePredicate's class docblock, pinned by
+            // test_scanner_sql_physical_predicates_match_the_scoped_row_predicate.
+            ->whereHas('lines', function (Builder $lineQuery) use ($tenantId, $companyId): void {
                 $lineQuery->whereNotNull('product_id')
                     ->whereIn('product_id', Product::query()
+                        ->where('tenant_id', $tenantId)
                         ->where('company_id', $companyId)
                         ->where('is_physical', true)
                         ->select('id'));
