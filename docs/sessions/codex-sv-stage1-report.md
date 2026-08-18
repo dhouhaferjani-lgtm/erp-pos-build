@@ -682,6 +682,8 @@ docs/handoff/reviews/sv-stage1/M4-round3.md
 docs/handoff/reviews/sv-stage1/M4-round4.md
 docs/handoff/reviews/sv-stage1/M4-round5.md
 docs/handoff/reviews/sv-stage1/M4-sv10-leak-audit.md
+docs/handoff/reviews/sv-stage1/M5-round1.md
+docs/pos-operations/install.md
 docs/sessions/codex-sv-stage1-report.md
 docs/superpowers/tickets/2026-08-08-g3-kill-switch-window-no-backfill.md
 docs/superpowers/tickets/2026-08-08-g3-legacy-closeshift-no-gl-leg.md
@@ -738,3 +740,40 @@ The two M4-round5 policy-unavailable display P3s remain carried in
 blank the body during `confirming`, and a failed refresh can show a false policy-not-synced error with
 an inert Cancel action while confirmation is already in flight. They remain non-disclosing,
 non-blocking UX defects; no claim is made that they were fixed.
+
+### M5 ruling rerun evidence
+
+The accumulated path-scoped evidence was rerun after the owner-ruling documentation commit. Backend
+tests used PostgreSQL on `127.0.0.1:5432` with the fresh database
+`autoerp_sv_stage1_m5_585afba68_test`; the forbidden full PHPUnit suite was not run.
+
+- Main 15-file API set plus `BlindCashCountDefaultMigrationTest`: 65 tests / 9,127 assertions, exit 0.
+- Fiscal status/request/end-to-end/golden-hash set: 44 tests / 181 assertions, exit 0.
+- Exact cross-tenant payment-method guard: 1 test / 4 assertions, exit 0.
+- Unique PostgreSQL aggregate across those three commands: **110 tests / 9,312 assertions**. This
+  rerun does not double-count `FiscalStatusFilterTest` between the main and fiscal commands.
+- POS accumulation across 11 named files: **148/148**, exit 0.
+- Web compliance page/control tests: **10/10**, exit 0.
+- Web and POS typechecks: exit 0. Full web lint: exit 0 with 6,530 repository warnings and zero
+  errors; query-key audit 0/0, design-system audit 738 acknowledged / 0 new / 0 stale, quantity audit
+  0/0, and all custom ESLint rule tests passed. Full POS lint: exit 0 with 84 warnings and zero errors;
+  both custom rule suites passed.
+- Pint test mode over every changed PHP file: `pass`. PHPStan level 8 over all six changed production
+  PHP files: `[OK] No errors`.
+- React Doctor's current prescribed changed-scope scan against the pinned base: web 93 with no
+  findings; POS 83 with only the two already recorded `prefer-useReducer` warnings for `Header` and
+  `EndOfDayPreviewModal`. Its unscoped full-repository mode reports broad unrelated legacy debt and is
+  not used as a lane-regression signal.
+- Deptrac remains globally red against the stale checked-in 99 baseline: HEAD is 116 violations / 12,914
+  allowed. Mechanically reversing the wave's `apps/api/app` patch and rerunning at the pinned content
+  baseline produced the identical 116 violations and category counts / 12,915 allowed, then the exact
+  patch was restored and the worktree returned clean. The lane adds zero architecture violations.
+- `git diff --name-only df85d43f4..HEAD` contains 76 files; the complete pasted list above was refreshed
+  with `M5-round1.md` and `docs/pos-operations/install.md` and read. Production/test paths remain
+  limited to SV-1, SV-9, SV-10, and SV-11. The implementation-only range contains no Fiscal module,
+  POS Commands, or Domain Events path. The GL flag value remains byte-identical to the pinned base.
+
+The M5 fix is documentation-only: owner ruling, deployment sequencing, provisioning runbook, stale
+cache-note correction, and carried-P3 records. It changes no production or test behavior, so a
+production revert/replay is not applicable; `git diff --check` and exact contract-content assertions
+cover the documentary fix.
