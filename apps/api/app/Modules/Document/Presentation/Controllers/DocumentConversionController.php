@@ -322,13 +322,6 @@ class DocumentConversionController extends Controller
                     'message' => $e->getMessage(),
                 ],
             ], 422);
-        } catch (\RuntimeException $e) {
-            return response()->json([
-                'error' => [
-                    'code' => 'DELIVERY_NOTE_ALREADY_INVOICED',
-                    'message' => $e->getMessage(),
-                ],
-            ], 422);
         }
     }
 

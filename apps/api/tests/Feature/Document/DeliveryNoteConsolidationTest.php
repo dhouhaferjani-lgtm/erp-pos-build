@@ -26,6 +26,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -255,9 +256,13 @@ class DeliveryNoteConsolidationTest extends TestCase
             throw new \RuntimeException('Force the production endpoint to roll back after claim finalisation.');
         });
 
-        $this->actingAs($this->user)->postJson('/api/v1/delivery-notes/consolidate-to-invoice', [
+        $response = $this->actingAs($this->user)->postJson('/api/v1/delivery-notes/consolidate-to-invoice', [
             'delivery_note_ids' => [$dn2->id, $dn1->id],
-        ])->assertStatus(422);
+        ]);
+
+        $response->assertStatus(500)
+            ->assertJsonStructure(['error' => ['code', 'message', 'request_id']])
+            ->assertJsonPath('error.code', 'INTERNAL_ERROR');
 
         $this->assertSame($before['invoices'], Document::query()->where('type', DocumentType::Invoice)->count());
         $this->assertSame(
@@ -404,6 +409,43 @@ class DeliveryNoteConsolidationTest extends TestCase
                 ->where('type', DocumentType::Invoice->value)
                 ->sum('last_number'),
         );
+    }
+
+    public function test_unrelated_unique_violation_uses_the_internal_error_envelope(): void
+    {
+        config()->set('app.debug', false);
+
+        $existing = $this->createConfirmedDeliveryNote('DN-UNRELATED-EXISTING', [
+            ['description' => 'Existing marker', 'quantity' => '1.00', 'unit_price' => '10.00'],
+        ]);
+        DB::table('delivery_note_billing_marks')->insert([
+            'delivery_note_id' => $existing->id,
+            'invoice_id' => null,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+            'invoiced_at' => now(),
+            'company_id' => $this->company->id,
+        ]);
+        Schema::table('delivery_note_billing_marks', static function ($table): void {
+            $table->unique('company_id', 'delivery_note_billing_marks_company_id_review_unique');
+        });
+        $target = $this->createConfirmedDeliveryNote('DN-UNRELATED-TARGET', [
+            ['description' => 'Target marker', 'quantity' => '1.00', 'unit_price' => '20.00'],
+        ]);
+        $invoiceCountBefore = Document::query()->where('type', DocumentType::Invoice)->count();
+
+        $response = $this->actingAs($this->user)->postJson('/api/v1/delivery-notes/consolidate-to-invoice', [
+            'delivery_note_ids' => [$target->id],
+        ]);
+
+        $response->assertStatus(500)
+            ->assertJsonStructure(['error' => ['code', 'message', 'request_id']])
+            ->assertJsonPath('error.code', 'INTERNAL_ERROR');
+        $this->assertNotSame('DELIVERY_NOTE_ALREADY_INVOICED', $response->json('error.code'));
+        $this->assertSame($invoiceCountBefore, Document::query()->where('type', DocumentType::Invoice)->count());
+        $this->assertDatabaseMissing('delivery_note_billing_marks', [
+            'delivery_note_id' => $target->id,
+        ]);
+        $this->assertArrayNotHasKey('invoiced_at', $target->fresh()->payload ?? []);
     }
 
     public function test_twelve_note_batch_reports_every_offending_row_with_taker_attribution(): void
