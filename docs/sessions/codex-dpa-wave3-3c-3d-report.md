@@ -354,3 +354,18 @@ Round 4 returned only `claude invocation failed`; its on-disk register is the
 harness-generated tool-error marker. It is treated fail-closed as
 `CHANGES-REQUIRED`, consumes the fourth fix-round slot, and triggers review
 round 5 without a production change.
+
+### M3 adversarial round 5 remediation
+
+The fifth scoped fix, `d07868cca`, closes the same-product sibling masking
+case by matching POS movements at nullable variant grain. It also keeps an
+unknown-disposition variant refund reportable, restores a dedicated archived
+scrap warning, pins delivery-note cutover behavior, and makes both scanners
+return empty for an unresolved company instead of issuing an invalid empty
+UUID predicate.
+
+Fresh PostgreSQL results are detector `25/50`, all 14 projection files
+`85/327`, and movement characterization `15/54`. Pint and touched-production
+PHPStan pass, deptrac remains 127, and no workflow file changed. Revert-replay
+restored all four behavioral failures; the DN watermark test remained green as
+an honest expected-green coverage pin for pre-existing behavior.

@@ -302,3 +302,44 @@ exited with `claude invocation failed`. Per the self-review harness this is
 recorded fail-closed as `CHANGES-REQUIRED`; it is not a code finding and no
 production change was made. The retry consumes the fourth fix-round slot and
 uses review round 5.
+
+## Adversarial round 5 remediation
+
+Round 5 found one P2 variant-grain masking defect and four P3 hardening gaps.
+The fifth and final scoped fix is
+`d07868ccaf7f395bb50744a767c56aa4ab945983`:
+
+- POS D-f's anti-join now matches the nullable variant grain as well as
+  receipt/product/tenant/company. A two-line receipt with two variants of the
+  same product proves that one variant's movement cannot mask the sibling's
+  missing movement.
+- The defensive unknown-disposition arm uses `$stockTrackingExpected`, so an
+  unparseable variant refund remains movement-expected and reaches the existing
+  missing-variant warning instead of becoming double-blind.
+- An archived-product scrap refund remains intentionally movementless but now
+  emits a dedicated warning; its stock and GL outcome is unchanged.
+- The delivery-note arm's cutover parameter is pinned with an above-watermark
+  command positive and a below-watermark scanner negative.
+- Both public scanner methods return an empty result when the company cannot be
+  resolved, avoiding an empty-string UUID predicate on PostgreSQL.
+
+Fresh PostgreSQL and static results:
+
+```text
+CheckCogsCoverageCommandTest: 25 passed (50 assertions)
+PosCoreReceiptProjection*Test.php (14 files): 85 passed (327 assertions)
+CogsRelocationCharacterisationTest: 15 passed (54 assertions)
+Pint (round-5 touched PHP): pass
+PHPStan level 8 (round-5 touched production PHP): [OK] No errors
+deptrac: 127 (unchanged)
+git diff --check: pass
+.github/workflows/** changes: 0
+```
+
+Reverting `d07868ccaf7f395bb50744a767c56aa4ab945983` while retaining the
+covering tests reproduced four intended failures: the same-product sibling
+movement suppressed D-f (exit 0), missing-company scanning threw PostgreSQL
+`22P02`, archived scrap emitted no matching warning, and the unknown
+disposition stored `stock_movement_expected = false`. The delivery-note
+watermark pin remained green, correctly showing that it covers behavior that
+already existed before the fix. `git revert --abort` restored a clean tree.
