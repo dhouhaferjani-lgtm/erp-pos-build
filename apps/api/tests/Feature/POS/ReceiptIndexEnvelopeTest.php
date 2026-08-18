@@ -73,6 +73,15 @@ final class ReceiptIndexEnvelopeTest extends TestCase
         $this->assertSame(['data'], array_keys($response->json()));
         $this->assertSame(['data', 'meta'], array_keys($response->json('data')));
         $this->assertSame(
+            [
+                'id', 'receipt_number', 'posted_at', 'invoice_type_code', 'receipt_type',
+                'training_flag', 'is_voided', 'fiscal_status', 'location_id', 'location_name',
+                'terminal_id', 'terminal_code', 'cashier_id', 'cashier_name', 'total',
+                'currency', 'original_receipt_id',
+            ],
+            array_keys($response->json('data.data.0')),
+        );
+        $this->assertSame(
             ['current_page', 'last_page', 'per_page', 'total', 'from', 'to'],
             array_keys($response->json('data.meta')),
         );

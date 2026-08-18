@@ -426,7 +426,7 @@
     "includeTraining": "Include training receipts",
     "trainingIncluded": "Training receipts included",
     "tableLabel": "Receipt register",
-    "resolvedWindow": "Resolved window: {{from}} before {{to}}",
+    "resolvedWindow": "Resolved window: from {{from}}, ending before {{to}}",
     "types": {
       "SALE": "Sale",
       "TRAINING": "Training",

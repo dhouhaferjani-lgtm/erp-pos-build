@@ -125,7 +125,9 @@ describe('ReceiptListPage', () => {
   it('describes the resolved server window with its exclusive upper bound', async () => {
     renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts' })
 
-    expect(await screen.findByText(/Resolved window:/)).toHaveTextContent('before')
+    expect(await screen.findByText(/Resolved window:/)).toHaveTextContent(
+      /^Resolved window: from .+, ending before .+$/,
+    )
   })
 
   it('sends SALE only until training is explicitly enabled', async () => {

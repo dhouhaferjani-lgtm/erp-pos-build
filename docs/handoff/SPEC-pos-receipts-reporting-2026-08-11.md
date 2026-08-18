@@ -299,7 +299,9 @@ r1 said "use a `ReceiptResource`" and left the field set to the builder. r2 free
 
 **(i) List row** — `GET /pos/receipts` `data.data[]`:
 
-`id`, `receipt_number`, `posted_at`, `invoice_type_code`, `training_flag`, `fiscal_status`, `location_id`, `location_name`, `terminal_id`, `terminal_code`, `cashier_id`, `cashier_name`, `total`, `currency`, `original_receipt_id`.
+`id`, `receipt_number`, `posted_at`, `invoice_type_code`, `receipt_type`, `training_flag`, `is_voided`, `fiscal_status`, `location_id`, `location_name`, `terminal_id`, `terminal_code`, `cashier_id`, `cashier_name`, `total`, `currency`, `original_receipt_id`.
+
+**2026-08-18 terminal-audit amendment:** `receipt_type` remains the explicitly labelled legacy axis, and `is_voided` is emitted so a migrated legacy-voided sale cannot be presented as indistinguishable from a live sale. Both fields are part of the exhaustive list-row allowlist and must be locked by BT-2's row-key assertion.
 
 Refund/void rows additionally carry the S-12 reporting fields: `original_receipt_number`, `refund_reason`, **`refund_reason_source`**, `refund_destination`, **`refund_policy_alerts`**.
 
