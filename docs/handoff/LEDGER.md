@@ -1,0 +1,105 @@
+# LEDGER — Outstanding Debts (single source of truth)
+
+> **This file is the ONLY authoritative owes list.** Sessions must update it IN PLACE when a debt is created, discharged, or re-scoped. Any owes/debt list in any other document (handoffs, specs, memory files, checklists) is a pointer at best — **where another document conflicts with this ledger, the other document is stale.** Do not fork per-project owes lists; link here instead.
+>
+> Seeded 2026-08-12 from the memory-file mine; wording verified against cited repo docs where they exist. Items whose only source is a memory paraphrase are marked `src: memory`. Status vocabulary: **OPEN** / **BLOCKED-ON-x** / **CLOSED (date, evidence)** / **STALE-IN-MEMORY** (memory says open, cited doc says otherwise) / **UNVERIFIED** (could not confirm against any repo doc).
+
+---
+
+## 1. Owner owes (decisions / rulings / sign-offs)
+
+| ID | Item | Source | Status | Action owner |
+|---|---|---|---|---|
+| O-1 | Push the mobile branch | `src: memory` (MEMORY.md active-work) | OPEN | Owner |
+| O-2 | Pre-filing VAT skip runbook (execute/confirm before first VAT filing) | `src: memory` | OPEN | Owner |
+| O-3 | Launch gate **E-10** — production environment decision | `docs/handoff/DECISION-HANDOVER-prod-env-choices-2026-08-06.md`; memory `project_first_tenant_launch_program` | OPEN | Owner |
+| O-4 | Launch gate **E-1** — production secrets | memory `project_first_tenant_launch_program` | OPEN | Owner |
+| O-5 | Launch gate **E-2** — device smoke test | memory `project_first_tenant_launch_program` | OPEN | Owner |
+| O-6 | Launch gate **E-3** — migration rehearsal | memory `project_first_tenant_launch_program` | OPEN | Owner |
+| O-7 | Launch gate **E-4** — TN legal (also blocks impersonation usage) | memory `project_first_tenant_launch_program`, `project_tenant_impersonation_support_access` | OPEN | Owner |
+| O-8 | Launch gate **E-9** — staging-runbook execution | memory `project_first_tenant_launch_program` | OPEN | Owner |
+| O-9 | Launch gate **E-7** — evidence, **NON-WAIVABLE**; interim policy = **NO REFUNDS** until satisfied | memory `project_first_tenant_launch_program` (wave 3 owed) | OPEN | Owner |
+| O-10 | Order Hetzner **AX42-1** (critical path of prod-env plan) | memory `project_production_environment_and_cat_b_2026_08_05` | OPEN | Owner |
+| O-11 | Confirm launch staffing = **TWO humans** | `src: memory` | OPEN | Owner |
+| O-12 | UI open item **OI-8** (SO losing-path) | `docs/handoff/OWNER-DECISIONS-ui-audit-2026-08-10.md:90` | **CLOSED (2026-08-12: REFUSE, batch-atomic)** — STALE-IN-MEMORY | — |
+| O-13 | UI open item **OI-10** (two-lane interaction principle) | `docs/handoff/OWNER-DECISIONS-ui-audit-2026-08-10.md:81,90` | **CLOSED (acknowledged 2026-08-12)** — STALE-IN-MEMORY | — |
+| O-14 | UI open item **OI-14** | `src: memory` (not found in OWNER-DECISIONS-ui-audit-2026-08-10.md) | UNVERIFIED — locate ruling or re-ask | Owner |
+| O-15 | **NEW-Q1** — `/finance` hub delete-vs-refresh (research ordered, decision pending report-back) | `docs/handoff/OWNER-DECISIONS-ui-audit-2026-08-10.md:50` | OPEN (awaiting research 11) | Owner |
+| O-16 | **NEW-Q2** — receipts web view | `docs/handoff/OWNER-DECISIONS-ui-audit-2026-08-10.md:51` | **CLOSED (RULED: BUILD)** — STALE-IN-MEMORY | — |
+| O-17 | **NEW-Q3** — DN-consolidation billing UX (research+advise; owner lean: partner-page un-invoiced DN filter) | `docs/handoff/OWNER-DECISIONS-ui-audit-2026-08-10.md:52` | OPEN (awaiting research 13) | Owner |
+| O-18 | ES-remediation owner decision sheet **D-1…D-17** (17 items; memory's "10 open" count is superseded by the sheet) | `docs/handoff/OWNER-QUESTIONS-es-remediation-2026-08-11.md` | OPEN — answer in place on that sheet | Owner |
+| O-19 | SV design items **SV-namespace E-2 / E-3 / E-4 / E-5 / E-8** + **SV-16 (= sheet D-17)** — float shape, DEPOSIT/PAYOUT GL typing, negative-till policy, two-stage deposit follow-on, TND thresholds, SAFE_DROP-vs-CASH_OUT. **Do NOT confuse with launch E-gates (O-3…O-9): same letters, different namespace.** | `docs/handoff/FINDINGS-shift-variance-gl-2026-08-11.md:43,326-330` | OPEN | Owner |
+| O-20 | Owner-ack owed: **no in-product country/currency correction path** (settings-identity-guards close-out) | memory `project_document_per_action_remediation` | OPEN | Owner |
+| O-21 | `fiscal:backfill` **register-or-delete** ruling | `src: memory` | OPEN / UNVERIFIED (no repo doc located) | Owner |
+| O-22 | Device **v67-vs-v64 E-8 row** ruling (gates whether v67 ships — see D-1 in §3) | `src: memory` | OPEN | Owner |
+| O-23 | **B5** flagged-for-review mobile state — Option A recommended, **not ruled** | `src: memory` | OPEN | Owner |
+| O-24 | **Cash-rounding enable sign-off** — either the refund-rounding track lands (`docs/superpowers/specs/2026-07-27-refund-rounding-research.md`, approved NOT implemented) **or** owner signs the acceptance blank ("who accepted, when") | `docs/handoff/cash-rounding-phase2-deploy-checklist.md:224-229` (both boxes unticked as of 2026-08-12) | OPEN — blocks gate G-2 in §5 | Owner |
+| O-25 | **Country-code mutable authz** ruling — who may mutate country code and under what authority | `docs/superpowers/tickets/2026-08-10-country-code-mutable-authz-authority.md` | OPEN | Owner |
+
+## 2. Staging owes (deploy / ops steps)
+
+| ID | Item | Source | Status | Action owner |
+|---|---|---|---|---|
+| S-1 | Run `channels:reconcile` | `src: memory` | OPEN | Staging operator |
+| S-2 | Explicit `permission:cache-reset` | `src: memory` | OPEN | Staging operator |
+| S-3 | Negative-repo + negative-line detection SQL, per tenant | `src: memory` | OPEN | Staging operator |
+| S-4 | Custom-grant drift check | `src: memory` | OPEN | Staging operator |
+| S-5 | Per-tenant migrate log check (country-defaults promotion `7d85232cc`) | memory `project_country_defaults_super_admin` | OPEN | Staging operator |
+| S-6 | Impersonation seeder + role reseed + permission cache-reset | memory `project_country_defaults_super_admin`, `project_tenant_impersonation_support_access` | OPEN | Staging operator |
+| S-7 | Country-defaults **§F.3** checks | memory `project_country_defaults_super_admin` (spec §F.3) | OPEN | Staging operator |
+| S-8 | `DemoPharmacySeeder` rerun (UoM display-precision deploy debt) | memory `project_uom_display_precision` | OPEN | Staging operator |
+| S-9 | Replenishment staging seeder | memory `project_replenishment_requests` | OPEN | Staging operator |
+| S-10 | Treasury phases **②③④⑤** stacked deploy checklists (launch Lane D2 is consolidating them — consolidation does not discharge the debt) | memory: treasury phase project files; `docs/handoff/CODEX-treasury-phase*` handbacks | OPEN | Staging operator |
+| S-11 | **9 deploy checklists 0-ticked** in the production-env file | memory `project_production_environment_and_cat_b_2026_08_05` | OPEN | Staging operator |
+| S-12 | `failed_jobs` purge follow-up | memory `project_staging_2026_08_04_upload_500_and_cross_tenant_jobs` | OPEN | Staging operator |
+| S-13 | Live tenant: **126 cash repositories share one gl_account with `location_id` NULL** — tenant #1's 4 branch registers need `location_id` set before branch journal legs mean anything | `src: memory` | OPEN | Staging operator |
+| S-14 | **Enforcement-guards remote-CI verification (PRE-promotion gate — gate-r2 R2-C-2/R2-H-2 rewrite)** — the enforcement-guards executor never pushes (gate-r1 H-7 ruling), and the CI workflow never triggers on a `dev` push (`.github/workflows/ci.yml:3-8`, `:740-747`), so a post-promotion dev push would produce NO run to observe. The executor's local evidence (actionlint or a generic YAML parse) is explicitly INSUFFICIENT for the Actions job/event graph — syntax only. The promotion sequence (gate-r5 R5-H-4: UNIVERSAL for every enforcement package; the `workflow_dispatch` leg fires only when the accepted branch touches `.github/workflows/**`) is — with NOTHING committed to the package between final-gate ACCEPT and merge (gate-r3 R3-C-2) and **the parent performing NO other local-dev merge of ANY lane during steps 0–5 (single-writer serialization, gate-r5 R5-C-3)**: (0) freshness assert `git merge-base --is-ancestor <current-dev-tip> A` — fast-forward only; (1) the PARENT ITSELF runs the final gate via `scripts/adversarial-review-final.sh` against a SEALED detached worktree at the handed-over tip (gate-r6 R6-C-1, gate-r7 R7-C-1, gate-r8 R8-C-1 — one-dirty-entry handover: status shows exactly the untracked handback, which the bridge copies+hashes itself (gate-r9 R9-H-2); the bridge is RECEIPT-DRIVEN — inputs from the parent dispatch receipt at ~/.claude/projects/-Users-houssamr-Projects-syneriva-apps-erp/memory/dispatch-receipts/enforcement-<pkg>.receipt.yaml, created at dispatch and named here per package (gate-r10 R10-C-1); PyYAML required on the parent host (gate-r10 R10-H-1); verdict must be the final non-empty register line (gate-r10 R10-H-3); control-file preflight incl. the manifest and both bridges; every control input sha256-verified against `docs/handoff/enforcement-control-manifest.yaml` and lenses/max_fix_rounds sourced from it, never candidate YAML — gate-r8 R8-H-1; the bridge computes the handback digest itself, digest never in the prompt, content-derived census evidence required, pre-tag re-hash equality — gate-r8 R8-H-2; substantive CHANGES-REQUIRED = executor fix round, tool_error = parent-owned same-A retry bounded at 3 — gate-r8 R8-H-3) and, on ACCEPT, immediately digests the register from ITS OWN invocation (gate-r5 R5-C-1); (2) *(ratchet packages)* preflight the pre-allocated tag name is free, THEN set the repository variable(s) to the gate-reviewed seed blob hash and VERIFY the read-back value (gate-r5 R5-H-2); for P2, SEND the final merge announcement; (3) the owner pushes the package's PRE-ALLOCATED **annotated** closing pin tag at exactly A — name reviewed in A's mirror block for ALL packages (P3: p3_closing_pin_tag — gate-r6 R6-H-4), annotation binding `{A, manifest_sha256, sha256(register(s)), sha256(handback), control_sha256 lines}` (gate-r7 R7-C-1, gate-r10 R10-H-2), tag verified to resolve to A, **tags NEVER deleted or reused** (gate-r5 R5-C-1/R5-C-2) — and, for workflow-touching packages, pushes A to a throwaway ref + runs `workflow_dispatch`, verifying head == A, GREEN, new job(s)/step(s) executed; (4) **step 4a: repeat the freshness assert AND re-verify tag target/annotation/variable AFTER any dispatch run, and reject candidates whose workflow diff grants contents-write (gate-r5 R5-C-3, gate-r6 R6-H-5)**, then fast-forward EXACTLY A — promotion SHA == accepted SHA == dispatched head; (5) ONE closing admin commit C — THE first-parent child of A, C^ == A (gate-r6 R6-H-2) — lands ALL closing evidence (digested register bytes, handback, final YAML status incl. the structured closing_receipt — which contains ONLY pre-commit-knowable data, never C's own SHA or post-commit output (gate-r6 R6-H-4, gate-r7 R7-C-2), receipts, this LEDGER row), verified by the **named closing check** (preflight before commit; amend authorized only while C is the unpushed dev tip — gate-r6 R6-H-3): `git rev-list --count <A>..C` == 1 (C = the first-parent child of A, `C^ == A`) AND every `git diff --name-only <A>..C` path inside the CURRENT package's closing set only (its own progress YAML · its own `docs/handoff/reviews/enforcement-<pkg>/**` · its own `HANDBACK-enforcement-<pkg>-*.md` · this LEDGER) — another package's evidence or any production/workflow path = closing FAIL (gate-r5 R5-H-3), output recorded via the annotated CLOSE TAG ci-close/enforcement-<pkg>-r<n> pushed AT C after the check passes ({closing_commit: C, closing_check: pass, accepted_sha: A} — gate-r7 R7-C-2, attestation form gate-r8 R8-M-1; every consumer verifies the tag resolves to C, and the parent read-back after EVERY close-tag push verifies target + all three annotation fields incl. closing_check == pass (gate-r10 R10-M-2); never deleted/reused). **Re-gate protocol (only route back; triggers broadened gate-r5 R5-H-2): step-0/4a failure, red dispatch, or ANY side-effect failure (tag collision/push failure/wrong target, variable read-back mismatch, ref/dispatch API failure, announcement failure) → STOP, restore last known-good variable, record partial state here, then retry the SAME A idempotently (an existing tag exactly matching {A, digests} IS step 3 done — gate-r6 R6-H-3) or return to an in-progress final milestone (rebase → rerun invalidated evidence → hand over for the PARENT-invoked whole-package bridge → new A′ → re-send announcement → restart from 0). For workflow-touching packages, no green run on exactly the promoted SHA = PROMOTION BLOCKED.** A post-promotion-discovered workflow defect blocks the NEXT promotion until a green dispatch run on the fixed revision exists. | `docs/handoff/CODEX-DISPATCH-enforcement-guards-2026-08-12.md` §5, §6 F-7/F-8 (gate-r2 R2-C-2/R2-H-2; gate-r3 R3-C-1/R3-C-2; gate-r4 R4-C-1/R4-C-2/R4-H-1/R4-H-2; gate-r5 R5-C-1..3/R5-H-1..4; gate-r6 R6-C-1/R6-H-1..5; gate-r7 R7-C-1..2/R7-H-1..2; gate-r8 R8-C-1/R8-H-1..3/R8-M-1; gate-r9 R9-C-1/R9-H-1..4/R9-M-1, gate-r10 R10-C-1/R10-H-1..4/R10-M-1..2 — bridge rewritten: parent-held base + expected-manifest-sha256, one-dirty-entry seal, neutral-cwd review with brief injected, exact verdict parse; consumers verify closing_check == pass + manifest identity) | OPEN (armed per package at acceptance; must be satisfied BEFORE each enforcement-guards promotion) | Owner |
+| S-15 | **−19.000 stranded unbalanced GL entry on the demo tenant** — W-6 D1b: the campaign's own DOC06 probe via a since-fixed VAT-zeroing bug; disposition = forward correcting entry OR evidence-pack annotation, owner-side on the demo tenant. NOT code scope of any lane; the enforcement-guards P3 handback points here and carries no status of its own (gate-r1 H-10). | `docs/handoff/PLAN-p0-fix-lanes-pre-production-2026-08-05.md` §W-6 (`:53`); `docs/handoff/CODEX-DISPATCH-enforcement-guards-2026-08-12.md` §4 3(a) item 6 | OPEN | Owner |
+
+## 3. Device owes (POS builds + seeder/cache steps)
+
+**One device update ships all of the below** — the versions are cumulative, not separate rollouts.
+
+| ID | Item | Source | Status | Action owner |
+|---|---|---|---|---|
+| D-1 | Device build stack: **v60/61** (replenishment) → **v62** (UoM) → **v63** (cash rounding) → **v66** (Lane C) → **v67** (SUBJECT TO owner ruling O-22) | memory: `project_replenishment_requests`, `project_uom_display_precision`, cash-rounding + Lane C files | OPEN | Device/deploy operator |
+| D-2 | `RolesAndPermissionsSeeder` + cache-reset stack alongside the device update | `src: memory` | OPEN | Device/deploy operator |
+
+## 4. Expert-comptable queue
+
+| ID | Item | Source | Status | Action owner |
+|---|---|---|---|---|
+| E-1 | Rulings **R-b, c2, c3** (+ stamp) | `docs/superpowers/tickets/2026-08-08-expert-comptable-rulings-rb-c2-c3-stamp.md` | **RECEIVED 2026-08-08** — STALE-IN-MEMORY (memory listed as owed); verify downstream lanes consumed them | Orchestrator |
+| E-2 | **c1-bis** (perpetual-inventory open question in the R-b/c2/c3 ticket) | `docs/superpowers/tickets/2026-08-08-expert-comptable-rulings-rb-c2-c3-stamp.md` §c1-bis; `HANDOVER-document-per-action-remediation-2026-08-08.md:26,33` | PARTIALLY RULED per handover ("PERPETUAL inventory as…") — confirm closure in the ticket | Owner ↔ expert |
+| E-3 | **6354 confirmation** (TN 6654 vs FR 6354 seeded-account question) | `src: memory` (country accounting seeded-settings rule) | OPEN / UNVERIFIED (no repo doc located naming 6354) | Owner ↔ expert |
+| E-4 | **D4 final confirm** | `src: memory` | OPEN / UNVERIFIED | Owner ↔ expert |
+| E-5 | **EQ-1 (+Q5b/Q6)** cleared-instrument reversal — "SEND NOW, long turnaround, gates only Path B" | `docs/handoff/HANDOVER-dpa-session2-2026-08-09.md:90-92` | OPEN — send if not yet sent | Owner ↔ expert |
+| E-6 | **FR analogs** of the 2026-08-10 rulings (PCG 487 / délivrance-vs-débits) — needed before FR launch only | `docs/handoff/HANDOVER-dpa-session2-2026-08-09.md:92-93` | OPEN (FR-launch-gated) | Owner ↔ expert |
+| E-7 | SEEDS gate **8-item account-confirmation list** (603-vs-6037 + liasse-607, 628-vs-65x, 7097, TN 606/625x post-H-1, 409/419, 418, FR 666/766, FR supplier-invoice fallback) | `docs/handoff/HANDOVER-dpa-session2-2026-08-09.md:93-96` (gate-seeds-review.md §expert) | OPEN | Owner ↔ expert |
+| E-8 | Deferred-revenue / VAT-issuance rulings | `docs/superpowers/tickets/2026-08-10-expert-rulings-deferred-revenue-vat-issuance.md` | **RECEIVED 2026-08-10** — precondition recorded (no `allow` seed until 472 machinery exists) | — |
+
+## 5. Hard pre-enable gates (BLOCK enabling a feature/launch)
+
+| ID | Gate | Source | Status | Action owner |
+|---|---|---|---|---|
+| G-1 | **Sign-blind `SUM(pos_receipts.total)` aggregates** must be receipt_type-aware before `EnableV4RefundAuthoringCommand` runs on any real tenant | `docs/superpowers/tickets/2026-08-01-positive-refund-total-consumers.md` | **VERIFIED IN CODE 2026-08-12 — remediation PRESENT at every site the gate ticket names** (evidence below). Residual debt: the gate ticket itself carries **no close-out header** and still reads as open — add one citing this row. | Orchestrator (close-out header only) |
+| G-2 | **Cash-rounding enable blocked** — refund short-change up to D/2 in either direction on refunds of rounded receipts; do not run the Enable step until refund-rounding track lands OR owner signs acceptance (O-24) | `docs/handoff/cash-rounding-phase2-deploy-checklist.md:224-229` (verified 2026-08-12: both condition boxes unticked; refund-rounding spec approved, NOT implemented) | BLOCKED-ON-O-24 | Owner |
+| G-3 | **TRAINING receipts move real money in Treasury/GL** — `TreasuryReceiptBridge` tender-leg loop is not training-gated; wholesale fix (hoist gate / early-return + projection test) required before training mode is used near launch | `docs/superpowers/tickets/2026-07-31-treasury-bridge-training-money-legs.md` | **STILL OPEN — verified in code 2026-08-12**: the only training gate is `TreasuryReceiptBridge.php:406` (guards only the §4.6 rounding/tolerance entries); the tender-leg loop above it still writes Payment/GL/movement rows for TRAINING receipts | Implementation lane (Lane C surface) |
+| G-4 | **TN VAT declaration must net POS refunds before refunds enable** — `EloquentVatDataRepository` has no `receipt_type` discrimination on the POS arm (**OP-03**, owned by launch **E1** refund-enable block) | `docs/handoff/FINDINGS-other-problems-2026-08-11.md:67` | OPEN | Launch E1 lane |
+| G-5 | **`treasury.shift_variance_gl_enabled` flip conditions** — boxed condition: SV-3+SV-4 (float + DEPOSIT/PAYOUT booked), SV-5, SV-2 (v3 `CashCountRecorded` — absolute on an all-v3 fleet), SV-7+SV-8, G-2/G-3/G-4 (SV-17). Stage-1 items are NOT preconditions and must not delay (or be delayed by) the flip. | `docs/handoff/FINDINGS-shift-variance-gl-2026-08-11.md:366-377` | OPEN — flag stays false | SV lane + owner (via O-19) |
+
+### G-1 evidence (verified 2026-08-12, working tree at branch `dev`)
+
+Every consumer named AT-RISK by the gate ticket now carries per-row, receipt_type-aware handling (`CASE WHEN receipt_type='return' THEN -ABS(col) ELSE col END` — per-row, never `ABS(SUM(...))`, so mixed legacy-negative/v4-positive eras stay correct):
+
+- `apps/api/app/Modules/POS/Application/Services/PosAnalyticsService.php:38-43,70,111,139,174,203,337` — all sums via `netOfReturns` / `netOfReturnsQualified` helpers (defined `:457`, `:475`); discount arms filter `receipt_type = Sale` (`:242,257,274`).
+- `apps/api/app/Modules/POS/Domain/Services/GrandtotalService.php:230-238` — perpetual totals apply `-ABS(...)` per row; docblock `:214-223` cites the gate ticket explicitly.
+- `apps/api/app/Modules/POS/Application/Services/ReportGenerationService.php:528,546` — `pos_receipt_payments.amount` summed with per-row `-ABS` CASE on `receipt_type='return'`; change_due excludes returns.
+- Already-safe sites re-confirmed: `SalesReportService.php:72,81` and `topSkus` `:122` (filter `receipt_type = Sale`); `LiveSalesReportService.php:63`; `OwnerSalesSummaryService.php:105-114` (CASE-split gross/returns with per-row ABS).
+- Guard test asserting the blended-sum trap: `apps/api/tests/Feature/POS/ReceiptReturnRefactorV3Test.php:556,819-828`.
+
+Verdict: **satisfied in code.** The three-way disagreement (MEMORY.md "open gate" / readiness register "satisfied-in-code needing close-out" / UI session "appears-remediated") resolves to the readiness register's version. Remaining action: close-out header on the gate ticket; MEMORY.md line is stale.
+
+---
+
+*Update protocol: edit rows in place; when closing an item, change Status to `CLOSED (date, evidence)` and leave the row for one review cycle before moving it to a "Discharged" appendix. Never delete a row without evidence in the Status cell.*

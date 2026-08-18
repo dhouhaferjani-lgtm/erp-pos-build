@@ -1,0 +1,190 @@
+wave: enforcement-p2
+brief: docs/handoff/CODEX-DISPATCH-enforcement-guards-2026-08-12.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+# Brief gate round 1: docs/superpowers/reviews/2026-08-12-enforcement-guards-brief-gate-r1.md
+# (r21 of the brief applies all 17 gate-r1 findings, round-0 R0-3/R0-4 + r7-R0-1 + r9-R0-1 + r11-R0-1 + r13-R0-1 + r17-R0-1 + r20-R0-1, the 11 gate-r2 findings, the 6 gate-r3 findings, the 7 gate-r4 findings, the 7 gate-r5 findings, the 6 gate-r6 findings, the 4 gate-r7 findings, the 5 gate-r8 findings, the 6 gate-r9 findings, the 7 gate-r10 findings, and the 3 gate-r11 findings; re-gate before dispatch). Per-milestone registers land here:
+review_register: docs/handoff/reviews/enforcement-p2/
+reviewer_model: opus
+max_fix_rounds: 5
+
+# PIN AT DISPATCH. base_sha = the SHA the parent names for the quiet window. M0 additionally requires
+# quiet_window_ack (below) — this package edits .github/workflows/ci.yml, changing CI behaviour for
+# EVERY open lane, and P2-M1's frontend-lint step additions are themselves a CI-contract change
+# (gate-r1 H-3; mechanism corrected r4/R0-3 — the job runs discrete steps, never pnpm lint).
+base_sha: null
+# Parent records here, BEFORE dispatch (gate-r2 R2-H-1 SPLIT — the final checklist does not exist until
+# M3, so M0 attests only the PRELIMINARY state): the owner-approved quiet window AND that a PRELIMINARY
+# scope notice (what will change, roughly when) was SENT to all active lanes (brief F-6).
+# Format free-text (window + notice pointer). Still null at M0 = blocked_precondition.
+quiet_window_ack: null
+# FINAL-announcement receipt (gate-r2 R2-H-1; cycle fixed gate-r3 R3-C-2 — writing this into the
+# accepted candidate would change the SHA the gate accepted). The RULE: the FINAL announcement — built
+# from the M3-generated checklist, with the as-implemented contract changes and per-lane rebase
+# instructions — is SENT after M3/M4 acceptance and BEFORE promotion; an unsent announcement at
+# promotion time = PROMOTION BLOCKED (audited via LEDGER S-14). THIS field is the RECORD, written by
+# the parent AFTER promotion in the post-promotion admin commit (admin-only delta, a5520f23c).
+merge_announcement_ack: null
+
+# TWO-PHASE PINNED-BASELINE PROTOCOL — NON-AUTHORITATIVE MIRROR pins for the i18n ratchet (gate-r2
+# R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4). The AUTHORITY the CI checker
+# reads is the OWNER-SET repository variable I18N_BASELINE_PROTECTED_BLOB (the executor cannot write
+# repo variables); these fields are the paper-trail MIRROR; mirror != variable = CI FAIL, as are unset
+# variable and unfetchable blob (fail closed).
+# Pin order INSIDE P2-M1 (gate-r3 R3-H-4): commit 1 = the dedicated seed commit; commit 2 = these
+# mirror pins (+ checker metadata); ONLY THEN the M1 bridge review, covering both commits. A
+# seed-changing fix round RECREATES the same two-step topology (seed-revision commit, then a distinct
+# metadata commit, then BOTH re-reviewed — gate-r4 R4-H-3; a single self-identifying fix commit is
+# forbidden).
+#   i18n_baseline_seed_commit   = the seed commit that generated the initial i18n baseline.
+#   i18n_baseline_protected_blob = git rev-parse <seed_commit>:<baseline-path> — MIRROR of the variable.
+#   i18n_baseline_pin_tag       = the PRE-ALLOCATED closing pin-tag NAME (gate-r5 R5-C-2 — recorded in
+#                                 metadata commit 2, NON-NULL and gate-reviewed in the accepted
+#                                 candidate; ci-pin/enforcement-p2-r<n>, n = 1 + highest existing,
+#                                 never reuse). The OWNER creates the ANNOTATED tag at exactly A at
+#                                 promotion step 3, annotation binding {A, sha256(register(s)),
+#                                 sha256(handback), control_sha256 lines} (gate-r5 R5-C-1, gate-r7 R7-C-1); tags are NEVER deleted. CI
+#                                 fetches it explicitly.
+# Bootstrap + every re-pin are OWNER writes at promotion time — variable + pin tag TOGETHER (brief §5
+# item 4 steps 2-3 / §6 F-8); the parent updates this mirror block in the POST-promotion admin commit
+# (gate-r3 R3-C-2). LOCAL green runs export the reviewed seed blob under the same env name after
+# asserting it equals the mirror; the unset negative case runs isolated via env -u (gate-r4 R4-H-4).
+i18n_baseline_seed_commit: null
+i18n_baseline_protected_blob: null
+i18n_baseline_pin_tag: null
+
+# PRE-PROMOTION CI DISPATCH receipt (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2). The GATE is
+# procedural (brief §5 item 4): after final-gate ACCEPT of tip A, the owner dispatches CI on EXACTLY A
+# (throwaway ref), verifies head == A + GREEN + the new frontend-lint steps / any new job executed, and
+# the parent merges EXACTLY A — nothing is committed to the package between ACCEPT and merge.
+# Promotion adds (gate-r4 R4-C-2): step-0 freshness assert (fast-forward only), promotions SERIALIZED
+# across packages, and the re-gate protocol on stale A / red run (back to in-progress final milestone,
+# rebase, rerun invalidated evidence + whole-package gate -> new A', re-send the announcement, restart).
+# THIS field is the durable RECORD, written by the parent AFTER promotion in the ONE post-promotion
+# admin commit that also lands the final register(s)/handback/final YAML status (gate-r4 R4-C-1) —
+# diff ⊆ P2's OWN closing set (narrowed gate-r5 R5-H-3):
+# docs/handoff/progress/enforcement-p2.progress.yaml · docs/handoff/LEDGER.md ·
+# docs/handoff/reviews/enforcement-p2/** · docs/handoff/HANDBACK-enforcement-p2-*.md — ANOTHER
+# package's evidence or any production/workflow path = closing FAIL. No green run on exactly A =
+# PROMOTION BLOCKED (LEDGER §2 row S-14). Not executor acceptance evidence.
+# Universal closing sequence note (gate-r5 R5-C-1/R5-C-3/R5-H-2/R5-H-3/R5-H-4): steps 0/1/4/4a/5, the
+# single-writer serialization (parent performs NO other local-dev merge during steps 0-5), the step-4a
+# freshness RE-assert, the ANNOTATED closing tag binding {A, sha256(register(s)), sha256(handback), control_sha256 lines},
+# the broadened fail-closed re-gate triggers, and the named package-specific closing check
+# (git rev-list --count <A>..C == 1 where C is THE first-parent child of A, C^ == A — gate-r6 R6-H-2;
+# diff paths only in THIS package's closing set) apply to
+# EVERY package; the workflow_dispatch leg applies only when the accepted branch touches
+# .github/workflows/**.
+pre_promotion_ci_dispatch: null
+# STRUCTURED CLOSING RECEIPT (gate-r6 R6-H-4; de-self-referenced gate-r7 R7-C-2 — C can only contain
+# what is knowable BEFORE commit): accepted_sha: <A> · tag: <closing pin-tag name> · digests: <the
+# annotation payload> · manifest: <the mandatory closing-path list> · preflight: pass. NEVER C's own
+# SHA, NEVER post-commit check output — those live in the SECOND owner-authenticated object: the
+# annotated CLOSE TAG ci-close/enforcement-<pkg>-r<n> pushed AT C after the check passes, annotation
+# {closing_commit: <C>, closing_check: pass (owner attestation — gate-r8 R8-M-1), accepted_sha: <A>} (never deleted,
+# never reused). Consumers derive C as A's first-parent child (C^ == A) and verify the close tag.
+# Workflow packages also point to pre_promotion_ci_dispatch. Independent of the CI-dispatch receipt;
+# exists for EVERY package incl. a no-workflow promotion.
+closing_receipt: null
+# Branch codex/enforcement-p2-ci-guards in worktree .worktrees/enforcement-p2, created from base_sha.
+# NOT merged, NOT pushed — and the executor NEVER pushes (gate-r1 H-7): every workflow edit is evidenced
+# LOCALLY (actionlint/YAML parse — explicitly INSUFFICIENT for the Actions job/event graph (gate-r2
+# R2-H-2) — + local run of the job's commands + job-graph reasoning); remote-CI proof is the owner's
+# PRE-promotion workflow_dispatch gate (pre_promotion_ci_dispatch above; LEDGER §2 row S-14). The
+# parent promotes only after that run is green.
+branch: null
+
+# F-1: parent writes the `Phase <major.minor.patch>` series here BEFORE dispatch (AGENTS.md:16).
+commit_series: null
+
+# TRUST-MODEL ACK (gate-r5 R5-H-1; brief §6 F-8): PARENT-owned, written BEFORE dispatch — the dated,
+# commit-stamped enumeration of repository write-access principals + the owner's assertion that none
+# of them authors this candidate (or a pointer to that record). Null at M0 = blocked_precondition.
+# Re-confirmed at promotion if access changed; final state lands in the closing receipt.
+ratchet_trust_model_ack: null
+# CONTROL MANIFEST pin (gate-r8 R8-C-1/R8-H-1; STRUCTURED gate-r10 R10-H-2; PARENT fills at
+# dispatch): {path: <canonical absolute manifest path>, sha256: <hex>} matching the PARENT DISPATCH
+# RECEIPT (gate-r10 R10-C-1) — the final gate's sole source for lenses/max_fix_rounds/control hashes;
+# the bridge field-checks this pin against the receipt. Null at M0 = blocked_precondition. On the
+# control-file preflight list: no package may touch it; manifest surrogates in base..A are rejected.
+control_manifest: null
+
+owner_gates:
+  # informational — NO milestone below carries an `owner_gate:` field. The harness treats a populated
+  # milestone `owner_gate:` as an UNCONDITIONAL STOP (SELF-REVIEW-HARNESS.md step 4 / condition B);
+  # conditional logic lives in the milestone text (safe encoding copied from es-wave-a0/ui-wave0).
+  - id: quiet-window
+    question: "quiet_window_ack must be filled by the parent (window + PRELIMINARY scope notice sent — gate-r2 R2-H-1) before dispatch; null at M0 = blocked_precondition."
+    status: pre_dispatch
+  - id: merge-announcement
+    question: "FINAL announcement (gate-r2 R2-H-1; cycle fixed gate-r3 R3-C-2): after M3/M4 acceptance and before promotion, the parent SENDS the M3-generated checklist-based announcement (as-implemented contract changes + per-lane rebase lines); unsent at promotion = promotion blocked. merge_announcement_ack records the sent fact AFTER promotion in the post-promotion admin commit — never a commit into the accepted candidate. Parent-owned; fires at promotion."
+    blocks_milestone: none
+    status: post_acceptance
+  - id: pre-promotion-ci-dispatch
+    question: "Owner-executed PRE-promotion gate (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2): a workflow_dispatch run on EXACTLY the accepted candidate SHA, green, with the new frontend-lint steps / any new job executed; the parent merges exactly that SHA, then records the receipt in pre_promotion_ci_dispatch in the POST-promotion admin commit. No green run = promotion blocked. Parent/owner-side; fires at promotion."
+    blocks_milestone: none
+    status: post_acceptance
+  - id: i18n-baseline-re-pin
+    question: "Bootstrap + re-pin (gate-r2 R2-C-1(iv); authority gate-r3 R3-C-1; durable ref gate-r4 R4-H-2): at first promotion the OWNER sets I18N_BASELINE_PROTECTED_BLOB to the gate-reviewed seed blob hash AND pushes the durable pin tag; after each promotion that shrinks the baseline the OWNER updates variable + tag together and the parent updates the YAML mirror block in the post-promotion admin commit. Never the executor, never CI, never a candidate diff (brief §6 F-8 — incl. the owner's dispatch-time trust-model assertion, gate-r4 R4-H-1)."
+    blocks_milestone: none
+    status: post_acceptance
+  - id: F-2-ci-minutes-budget
+    question: "2(b) Option A cost: measured LOCALLY (single local run, wall time — no push). Fires ONLY if the measurement is material: then the A-vs-B choice is the owner's with the number in front of them — STOP blocked_owner. Conditional; the logic lives in M2's text."
+    blocks_milestone: none
+    status: conditional
+  - id: t3b-ownership
+    question: "Manifest-drift job OWNERSHIP (gate-r1 H-2): 2(a) implements T3(b) ONLY if docs/handoff/progress/ui-wave0.progress.yaml shows the task relinquished or the wave complete WITHOUT the job on base. UI M4 pending/in_progress = verify-only + record the dependency, even though the job is absent from base. Landed-but-not-in-aggregate = record + fix membership only (gate-r1 H-9). Any ambiguous state -> STOP blocked_owner."
+    blocks_milestone: none
+    status: conditional
+  - id: openapi-ci-ownership
+    question: "The OpenAPI Desktop lane is live and owns CI drift/coverage wiring for its layer (HANDOVER-openapi-lane-orchestration-2026-08-07.md:32-36). Same ownership rule as t3b: any job it owns is verify-only; the M3 announcement checklist carries an explicit OpenAPI rebase/merge-order line. Ambiguity -> blocked_owner."
+    blocks_milestone: none
+    status: conditional
+  - id: branch-protection-knob
+    question: "all-checks-pass on PR->dev / branch protection keying is an owner knob: 2(a) produces a PROPOSAL in the handback, never a unilateral branch-protection change."
+    blocks_milestone: none
+    status: standing_constraint
+
+milestones:
+  - id: M0
+    title: "Preconditions (SETUP-ONLY, no bridge review): (1) quiet_window_ack non-null — the owner-approved quiet window + the PRELIMINARY scope notice only (gate-r2 R2-H-1; the FINAL announcement is a separate post-M3/M4 parent artifact attested by merge_announcement_ack, NOT an M0 input — M0 must not claim the M3 checklist was sent); (2) commit_series non-null; (3) OWNERSHIP SNAPSHOT recorded into the handback (gate-r1 H-2): ui-wave0.progress.yaml M4/wave status + grep of ci.yml at base_sha for check-manifest-drift + the OpenAPI lane's CI-wiring state at base — the 2(a) branch decision (verify-only vs implement vs blocked_owner) is derived from THIS snapshot, not from a later grep; (4) fresh worktree/branch off base_sha; (5) ratchet_trust_model_ack non-null (gate-r5 R5-H-1 — the F-8 principal enumeration + non-authorship assertion is an M0 artifact, not prose); (6) control_manifest non-null and the manifest file present at base with a matching sha256 (gate-r8 R8-H-1). Any failure: blocked_precondition, STOP. No adversarial register is produced."
+    review_lenses: []
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M1
+    title: "2(c) i18n completeness + 2(d) guard-liveness — CLASSIFIED AS A CI-CONTRACT CHANGE (gate-r1 H-3; mechanism corrected r4/R0-3): the i18n audit lands as an EXPLICIT DISCRETE STEP in the frontend-lint job in ci.yml — NEVER via the package.json lint chain (frontend-lint runs discrete steps + lint:ratchet, never pnpm lint; ci.yml:885 comment says the ratchet supersedes it; the chain is local-only) — and that workflow edit changes frontend-lint's pass/fail on every open lane, so M1 carries the same quiet-window/announcement/observe-first-or-baselined treatment as M2/M3 (the old 'pure additions, safe first' label was false). Acceptance greps ci.yml for the step; H-9: verify frontend-lint in all-checks-pass needs (:1104 at brief base), wire if absent. 2(c) audits AUTHORED-LOCALE PROVENANCE — source translation files/imports, never the merged resources object (gate-r1 H-5): English-aliased namespaces (i18n.ts:392-405,416-424) and spread-supplied keys (:429-430) count as UNTRANSLATED and enter the ratchet baseline; production-shaped alias/spread tamper fixture required. The i18n ratchet carries the anti-growth check in its TWO-PHASE PINNED form (gate-r2 R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4): commit 1 = dedicated SEED COMMIT, commit 2 = mirror pins (i18n_baseline_seed_commit + i18n_baseline_protected_blob + the PRE-ALLOCATED i18n_baseline_pin_tag NAME, gate-r5 R5-C-2) + checker metadata, ONLY THEN this milestone's bridge review (verdict covers both commits; a seed-changing fix round RECREATES the same two-step topology then re-reviews both — gate-r4 R4-H-3, single self-identifying fix commit forbidden); the CI checker compares PARSED KEY SETS against the blob named by the OWNER-SET repository variable I18N_BASELINE_PROTECTED_BLOB (git cat-file blob; never the YAML, never a branch name; FAIL CLOSED on unset variable / unfetchable blob / YAML-mirror drift; keys removal-only; bootstrap + re-pins are owner variable writes at promotion, brief §6 F-8; the before-state IS the variable-held blob) — any added key FAILS + its planted violation+matching-key tamper case must fail against the variable-held comparison (plus mirror-drift -> FAIL, unset variable -> FAIL via isolated env -u subshell). LOCAL green runs use the authority setup export (derive seed blob, assert == mirror, export I18N_BASELINE_PROTECTED_BLOB — gate-r4 R4-H-4); the CI step maps ${{ vars.I18N_BASELINE_PROTECTED_BLOB }} into the checker env and fetches the pin tag explicitly (gate-r4 R4-H-2). CLDR plural-category check per locale. 2(d): RuleTester for each untested ESLint rule; tamper test per audit script (C6 Record<X, StatusTone> case coordinated with UI Wave 0 T7 under the ownership rule); the convention written into docs/conventions/; PLUS named deliverable 4 (r4/R0-3; runner corrected gate-r2 R2-H-3): the tools tests STAY ON VITEST — add the script \"test:tools\": \"vitest run tools/__tests__\" to apps/web/package.json and wire pnpm test:eslint-rules AND pnpm test:tools (that exact command string, also in M4 + package acceptance; node --test removed everywhere) into CI (both run in NO workflow today) as a discrete step or job (executor's choice, justified in the decision doc), with a planted-failing-rule-test tamper proof."
+    review_lenses: [frontend-conventions]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2
+    title: "2(b) Feature-suite strategy: decision doc + implementation of the chosen option. LOCAL timing measurement only (no push — gate-r1 H-7); if material -> F-2 fires (blocked_owner). Kill the unanchored --filter substring mechanism (anchor survivors ^...Test$ + exactly-one-match lint). MANDATORY (gate-r1 H-6): the mechanically-checked class-to-lane/exclusion manifest covering EVERY tests/Feature class (script/test fails on any unassigned class) + the planted-new-Feature-class negative proof in a previously-UNCOVERED directory (selected automatically or loud failure; revert; both outputs pasted). Pointing at already-covered Treasury/Accounting (ci.yml:833-851) does not satisfy it. RECIPROCAL NOTE (gate-r2 R2-H-6; hardened gate-r3 R3-H-2/R3-H-3): P3 dispatches only after the WHOLE P2 package lands (p2_landed_sha is a P3-M0 dispatch precondition — P3's base contains this milestone's outcome by construction; there is no mid-wave pin); P3-M2 wires its country-chart completeness test into the lane this milestone selects; any later P2 restructuring of the Feature lanes/allowlist must reconcile against that landed P3 wiring — never silently drop the landed P3 test."
+    review_lenses: [frontend-conventions, tenancy-authz]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "2(a) per the M0 ownership snapshot: verify-only (no `if:` + all-checks-pass `needs` membership, gate-r1 H-9) OR implement per the T3(b) spec (only on recorded relinquish/complete-without-artifact) — never regenerate manifests unless T2's KeyedByRouteId fix is on base. Plus the aggregate PR->dev proposal (owner knob, proposal only) and the MERGE-ANNOUNCEMENT CHECKLIST for the parent: every open lane, one 'what you must rebase for' line each, incl. the OpenAPI merge-order/reconciliation line and the M1 frontend-lint step-addition contract change (r4/R0-3). The checklist is the INPUT to the parent's FINAL announcement, SENT after M3/M4 acceptance and before promotion; merge_announcement_ack records the sent fact in the POST-promotion admin commit (gate-r2 R2-H-1; gate-r3 R3-C-2 — nothing is committed to the accepted candidate between ACCEPT and merge); it is not the M0 preliminary notice and the executor never sends it."
+    review_lenses: [frontend-conventions]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M4
+    title: "WHOLE-PACKAGE GATE (no new implementation, gate-r1 H-8): rerun the full accumulated evidence with EVERY lens this package used (frontend-conventions, tenancy-authz) over the integrated branch — pnpm lint / node tools/audit-i18n-completeness.mjs / pnpm test:tools (the exact CI command string — gate-r2 R2-H-3) / pnpm test:eslint-rules all green — each preceded by the LOCAL AUTHORITY SETUP export (gate-r4 R4-H-4); local workflow-change evidence per brief §5 (no executor CI links — the remote proof is the owner's PRE-promotion workflow_dispatch gate on EXACTLY the accepted SHA, receipt recorded post-promotion in pre_promotion_ci_dispatch, gate-r2 R2-C-2/R2-H-2 + gate-r3 R3-C-2; the handback names the step/job ids that run must show executed); scope proof git diff --stat <base_sha>..HEAD + allowlist. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
+    review_lenses: [frontend-conventions, tenancy-authz]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []

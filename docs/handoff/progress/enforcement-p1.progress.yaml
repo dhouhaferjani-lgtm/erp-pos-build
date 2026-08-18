@@ -1,0 +1,186 @@
+wave: enforcement-p1
+brief: docs/handoff/CODEX-DISPATCH-enforcement-guards-2026-08-12.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+# Brief gate round 1: docs/superpowers/reviews/2026-08-12-enforcement-guards-brief-gate-r1.md
+# (r21 of the brief applies all 17 gate-r1 findings, round-0 R0-3/R0-4 + r7-R0-1 + r9-R0-1 + r11-R0-1 + r13-R0-1 + r17-R0-1 + r20-R0-1, the 11 gate-r2 findings, the 6 gate-r3 findings, the 7 gate-r4 findings, the 7 gate-r5 findings, the 6 gate-r6 findings, the 4 gate-r7 findings, the 5 gate-r8 findings, the 6 gate-r9 findings, the 7 gate-r10 findings, and the 3 gate-r11 findings; re-gate before dispatch). Per-milestone registers land here:
+review_register: docs/handoff/reviews/enforcement-p1/
+reviewer_model: opus
+max_fix_rounds: 5
+
+# PIN AT DISPATCH (parent writes the SHAs; do NOT invent any):
+#   base_sha        = local-dev tip AFTER the accepted DPA 3C merge (P1 branches from here).
+#   dpa_3c_merge_sha = the accepted 3C merge commit on local dev, from the 3C lane's gated handback.
+#   dpa_3c_reviewed_sha = ONLY when the merge commit differs from the reviewed 3C tip: the reviewed tip
+#                         the accepted M3 verdict was issued against (gate-r2 R2-H-4). Null when equal.
+# M0 verifies, mechanically (gate-r1 H-1, extended gate-r2 R2-H-4):
+#   1. dpa_3c_merge_sha is non-null and exists: git rev-parse --verify <dpa_3c_merge_sha>
+#   2. it is an ancestor of the base:           git merge-base --is-ancestor <dpa_3c_merge_sha> <base_sha>
+#   3. ACCEPTED-3C proof (gate-r2 R2-H-4; equality hardened gate-r3 R3-H-1 — ancestry+seam alone accepts
+#      intermediate/rejected commits, and an arbitrary ancestor could stand in for the reviewed tip):
+#      docs/handoff/progress/wave3-3c-3d.progress.yaml M3 (the 3C tail milestone) reads status: passed,
+#      its verdict: path resolves to a parseable ACCEPT verdict artifact, AND its recorded commit EQUALS
+#      dpa_3c_merge_sha — or, when dpa_3c_reviewed_sha is set, its recorded commit EQUALS
+#      dpa_3c_reviewed_sha (exact equality, gate-r3 R3-H-1) AND the chain reviewed-tip -> merge-commit ->
+#      base_sha holds under git merge-base --is-ancestor (both hops).
+#   4. the S0 seam exists AT THAT EXACT SHA:
+#        git show <dpa_3c_merge_sha>:apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php \
+#          | grep -n 'assertReferenceLinkagePaired'
+#      and the recordMovement signature carries `?StockMovementReferenceType $referenceType` +
+#      `?string $referenceId`; repeat the same check at base_sha.
+#   Any failure: status blocked_precondition, STOP. Do NOT edit the pins.
+# P1 is NEVER folded into the running 3C session (gate-r1 H-1 ruling): this wave runs only as a FRESH
+# worktree/branch created from base_sha after 3C is accepted and merged.
+base_sha: null
+dpa_3c_merge_sha: null
+dpa_3c_reviewed_sha: null
+
+# TWO-PHASE PINNED-BASELINE PROTOCOL — NON-AUTHORITATIVE MIRROR pins (gate-r2 R2-C-1; authority moved
+# gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4). The AUTHORITY the CI checker reads is the OWNER-SET
+# repository variable DPA_BASELINE_PROTECTED_BLOB (the executor cannot write repo variables — no push,
+# no credentials); these YAML fields are the paper-trail MIRROR, and mirror != variable = CI FAIL (drift
+# tripwire, fail closed — as are unset variable and unfetchable blob object).
+# Pin order INSIDE P1-M2 (gate-r3 R3-H-4 — pins land BEFORE the gate, the verdict covers them):
+#   commit 1 = the dedicated seed commit generating the initial baseline;
+#   commit 2 = these mirror pins recorded (+ any checker metadata);
+#   ONLY THEN the M2 bridge review runs, covering both commits. A fix round regenerating the seed
+#   recreates the SAME two-step topology (gate-r4 R4-H-3 — one commit cannot contain its own SHA):
+#   seed-revision commit, then a DISTINCT metadata commit updating these mirrors, then BOTH re-reviewed;
+#   a single self-identifying fix commit is forbidden.
+#   dpa_baseline_seed_commit   = the dedicated seed commit that generated the initial baseline.
+#   dpa_baseline_protected_blob = git rev-parse <seed_commit>:<baseline-path> — MIRROR of the variable.
+#   dpa_baseline_pin_tag       = the PRE-ALLOCATED closing pin-tag NAME (gate-r5 R5-C-2 — recorded in
+#                                metadata commit 2, so it is NON-NULL and gate-reviewed in the accepted
+#                                candidate; allocation ci-pin/enforcement-p1-r<n>, n = 1 + highest
+#                                existing, collision = next n, never reuse). The OWNER creates the
+#                                ANNOTATED tag at exactly A at promotion step 3, annotation binding
+#                                {A, sha256(register(s)), sha256(handback), control_sha256 lines}
+#                                (gate-r5 R5-C-1, gate-r7 R7-C-1);
+#                                tags are NEVER deleted. CI fetches it explicitly (git fetch origin
+#                                tag <tag>) before resolving the variable's blob.
+# Bootstrap + every re-pin are OWNER writes at promotion time — variable + pin tag TOGETHER (brief §5
+# item 4 steps 2-3 / §6 F-8); the parent updates this mirror block in the POST-promotion admin commit
+# (gate-r3 R3-C-2). Never executor, never CI, never a candidate diff. LOCAL green runs export the
+# reviewed seed blob under the same env name after asserting it equals the mirror; the unset negative
+# case runs isolated via env -u (gate-r4 R4-H-4).
+dpa_baseline_seed_commit: null
+dpa_baseline_protected_blob: null
+dpa_baseline_pin_tag: null
+
+# PRE-PROMOTION CI DISPATCH receipt (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2 — a receipt
+# committed into the candidate changes the SHA it attests). The GATE is procedural (brief §5 item 4):
+# after final-gate ACCEPT of tip A, the owner dispatches CI on EXACTLY A (throwaway ref), verifies
+# head == A + GREEN + the new Architecture job executed, and the parent merges EXACTLY A — nothing is
+# committed to the package between ACCEPT and merge. Promotion adds (gate-r4 R4-C-2): step-0 freshness
+# assert (git merge-base --is-ancestor <dev-tip> A — fast-forward only), promotions SERIALIZED across
+# packages, and the re-gate protocol on stale A / red run (back to in-progress final milestone, rebase,
+# rerun invalidated evidence + whole-package gate -> new A', restart). THIS field is the durable RECORD,
+# written by the parent AFTER promotion in the ONE post-promotion ADMIN COMMIT that also lands the final
+# register(s)/handback/final YAML status (gate-r4 R4-C-1) — diff ⊆ P1's OWN closing set (narrowed
+# gate-r5 R5-H-3): docs/handoff/progress/enforcement-p1.progress.yaml · docs/handoff/LEDGER.md ·
+# docs/handoff/reviews/enforcement-p1/** · docs/handoff/HANDBACK-enforcement-p1-*.md — ANOTHER
+# package's evidence or any production/workflow path = closing FAIL (admin-only-delta, a5520f23c).
+# No green run on exactly A = PROMOTION BLOCKED (LEDGER §2 row S-14). Not executor acceptance evidence.
+# Universal closing sequence note (gate-r5 R5-C-1/R5-C-3/R5-H-2/R5-H-3/R5-H-4): steps 0/1/4/4a/5, the
+# single-writer serialization (parent performs NO other local-dev merge during steps 0-5), the step-4a
+# freshness RE-assert, the ANNOTATED closing tag binding {A, sha256(register(s)), sha256(handback), control_sha256 lines},
+# the broadened fail-closed re-gate triggers, and the named package-specific closing check
+# (git rev-list --count <A>..C == 1 where C is THE first-parent child of A, C^ == A — gate-r6 R6-H-2;
+# diff paths only in THIS package's closing set) apply to
+# EVERY package; the workflow_dispatch leg applies only when the accepted branch touches
+# .github/workflows/**.
+pre_promotion_ci_dispatch: null
+# STRUCTURED CLOSING RECEIPT (gate-r6 R6-H-4; de-self-referenced gate-r7 R7-C-2 — C can only contain
+# what is knowable BEFORE commit): accepted_sha: <A> · tag: <closing pin-tag name> · digests: <the
+# annotation payload> · manifest: <the mandatory closing-path list> · preflight: pass. NEVER C's own
+# SHA, NEVER post-commit check output — those live in the SECOND owner-authenticated object: the
+# annotated CLOSE TAG ci-close/enforcement-<pkg>-r<n> pushed AT C after the check passes, annotation
+# {closing_commit: <C>, closing_check: pass (owner attestation — gate-r8 R8-M-1), accepted_sha: <A>} (never deleted,
+# never reused). Consumers derive C as A's first-parent child (C^ == A) and verify the close tag.
+# Workflow packages also point to pre_promotion_ci_dispatch. Independent of the CI-dispatch receipt;
+# exists for EVERY package incl. a no-workflow promotion.
+closing_receipt: null
+# Branch codex/enforcement-p1-cementing-guard in worktree .worktrees/enforcement-p1, created from base_sha.
+# NOT merged, NOT pushed — and the executor NEVER pushes (gate-r1 H-7): remote-CI proof of the ci.yml
+# change is the owner's PRE-promotion workflow_dispatch gate (pre_promotion_ci_dispatch above; LEDGER
+# §2 row S-14, gate-r2 R2-C-2/R2-H-2). The parent promotes only after that run is green.
+branch: null
+
+# F-1: parent writes the `Phase <major.minor.patch>` series here BEFORE dispatch (AGENTS.md:16).
+# Still null at M0 = blocked_precondition — do not invent a phase number.
+commit_series: null
+
+# TRUST-MODEL ACK (gate-r5 R5-H-1; brief §6 F-8): PARENT-owned, written BEFORE dispatch — the dated,
+# commit-stamped enumeration of repository write-access principals + the owner's assertion that none
+# of them authors this candidate (or a pointer to that record). Null at M0 = blocked_precondition.
+# Re-confirmed at promotion if access changed; final state lands in the closing receipt.
+ratchet_trust_model_ack: null
+# CONTROL MANIFEST pin (gate-r8 R8-C-1/R8-H-1; STRUCTURED gate-r10 R10-H-2; PARENT fills at
+# dispatch): {path: <canonical absolute manifest path>, sha256: <hex>} matching the PARENT DISPATCH
+# RECEIPT (gate-r10 R10-C-1) — the final gate's sole source for lenses/max_fix_rounds/control hashes;
+# the bridge field-checks this pin against the receipt. Null at M0 = blocked_precondition. On the
+# control-file preflight list: no package may touch it; manifest surrogates in base..A are rejected.
+control_manifest: null
+
+owner_gates:
+  # informational — NO milestone below carries an `owner_gate:` field. The harness treats a populated
+  # milestone `owner_gate:` as an UNCONDITIONAL STOP (SELF-REVIEW-HARNESS.md step 4 / condition B);
+  # conditional logic lives in the milestone text (safe encoding copied from es-wave-a0/ui-wave0).
+  - id: base-pin-and-3c-ancestry
+    question: "base_sha + dpa_3c_merge_sha (+ dpa_3c_reviewed_sha when merge != reviewed tip) are parent-supplied pins; M0 verifies existence, ancestry, the wave3-3c-3d M3 status: passed + parseable ACCEPT verdict + commit equality (M3.commit == dpa_3c_merge_sha, or == dpa_3c_reviewed_sha when set — gate-r2 R2-H-4, gate-r3 R3-H-1) + the reviewed-tip -> merge -> base ancestry chain, and the S0 seam at the exact 3C SHA. Folding P1 into the 3C session is forbidden (gate-r1 H-1)."
+    status: satisfiable_by_M0
+  - id: pre-promotion-ci-dispatch
+    question: "Owner-executed PRE-promotion gate (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2): before the parent merges this package to dev, a workflow_dispatch run on EXACTLY the accepted candidate SHA must be green with the new Architecture job executed; the parent merges exactly that SHA, then records the receipt in pre_promotion_ci_dispatch in the POST-promotion admin commit. No green run = promotion blocked. Parent/owner-side; fires at promotion, not during the wave."
+    blocks_milestone: none
+    status: post_acceptance
+  - id: baseline-re-pin-after-promotion
+    question: "Bootstrap + re-pin (gate-r2 R2-C-1(iv); authority gate-r3 R3-C-1; durable ref gate-r4 R4-H-2): at first promotion the OWNER sets DPA_BASELINE_PROTECTED_BLOB to the gate-reviewed seed blob hash AND pushes the durable pin tag reaching the protected commit; after each promotion that shrinks the baseline the OWNER updates variable + tag together and the parent updates the YAML mirror block in the post-promotion admin commit. Never the executor, never CI, never a candidate diff (brief §6 F-8 — incl. the honest trust-model assertion the owner makes at dispatch, gate-r4 R4-H-1)."
+    blocks_milestone: none
+    status: post_acceptance
+  - id: F-1-phase-series
+    question: "commit_series null at M0 = blocked_precondition (brief §5/§6 F-1)."
+    status: pre_dispatch
+  - id: schema-unstatable-reference-rule
+    question: "If a target table's schema makes the per-table reference rule unstatable without a migration, that is STOP condition C (blocked_architecture) — never a rule the executor invents. Conditional; fires only if M1 hits it."
+    blocks_milestone: none
+    status: conditional
+  - id: baseline-growth-request
+    question: "The anti-growth ratchet (gate-r1 C-4) makes any ADDED baseline entry a CI failure. A genuine future need to grow the baseline is an owner/parent decision on the record — this wave never adds one. Conditional; should not fire in this wave."
+    blocks_milestone: none
+    status: conditional
+
+milestones:
+  - id: M0
+    title: "Preconditions (SETUP-ONLY, no bridge review): (1) base_sha + dpa_3c_merge_sha non-null, dpa_3c_merge_sha verified an ANCESTOR of base_sha (git merge-base --is-ancestor); (2) ACCEPTED-3C proof (gate-r2 R2-H-4; equality hardened gate-r3 R3-H-1): docs/handoff/progress/wave3-3c-3d.progress.yaml M3 reads status: passed, its verdict: path resolves to a parseable ACCEPT verdict artifact, and its recorded commit EQUALS dpa_3c_merge_sha — or, when dpa_3c_reviewed_sha is set, its recorded commit EQUALS dpa_3c_reviewed_sha (exact equality — an arbitrary ancestor can never stand in for the reviewed tip) AND reviewed-tip -> merge-commit -> base_sha ancestry holds (both hops, git merge-base --is-ancestor); ancestry+seam alone is NOT sufficient (an intermediate/rejected 3C commit also carries the seam); (3) S0 seam re-verified at the EXACT dpa_3c_merge_sha AND at base_sha (recordMovement signature with ?StockMovementReferenceType $referenceType / ?string $referenceId + the assertReferenceLinkagePaired call — git show <sha>:apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php); (4) fresh worktree/branch created from base_sha — this run is NOT the 3C session (gate-r1 H-1); (5) commit_series non-null; (6) ratchet_trust_model_ack non-null (gate-r5 R5-H-1 — the F-8 principal enumeration + non-authorship assertion is an M0 artifact, not prose); (7) control_manifest non-null and the manifest file present at base with a matching sha256 (gate-r8 R8-H-1). Any failure: status blocked_precondition, STOP. Completion = status passed with the pins echoed into the handback header; no adversarial register is produced."
+    review_lenses: []
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M1
+    title: "Scanner + per-table reference rules (docblocked, gate-reviewed) + the FULL write-mechanism fixture/tamper matrix (TDD: fixtures first). Vocabulary per brief §2 deliverables 1+6 (gate-r1 H-4): Eloquent create / firstOrCreate / updateOrCreate / update / save / delete / increment / decrement, DB::table() query-builder writes, raw SQL — one positive + one negative fixture per mechanism per applicable table, explicitly covering the live StockLevel::firstOrCreate (StockAdjustmentService.php:1574-1590) and BatchStock::firstOrCreate (StockAdjustmentService.php:1838-1863; BatchStockService.php:88-105,322-335) mechanisms. Handback carries the mechanism-by-table coverage table."
+    review_lenses: [stock-gl-interaction, inventory-costing]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M2
+    title: "Baseline generation via the TWO-PHASE PINNED protocol (gate-r2 R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4; --write-baseline bootstrap ONLY, in a DEDICATED SEED COMMIT; sorted, stable, line-number-free keys). ORDER INSIDE THIS MILESTONE: commit 1 = seed commit; commit 2 = mirror pins (dpa_baseline_seed_commit + dpa_baseline_protected_blob + the PRE-ALLOCATED dpa_baseline_pin_tag NAME, gate-r5 R5-C-2) + checker metadata; ONLY THEN the bridge review, whose verdict covers both commits (seed reviewed against the scanner output + register cross-check); a seed-changing fix round RECREATES the same two-step topology (seed-revision commit, then a distinct metadata commit, then BOTH re-reviewed — gate-r4 R4-H-3; a single self-identifying fix commit is forbidden). THREE-direction ratchet: growth FAILS, stale FAILS, and the ANTI-GROWTH check — the CI checker compares PARSED KEY SETS of the working baseline against the blob named by the OWNER-SET repository variable DPA_BASELINE_PROTECTED_BLOB (git cat-file blob \"$DPA_BASELINE_PROTECTED_BLOB\"; never the YAML, never a branch name), FAILING on any ADDED key, so 'new violation + regenerated matching baseline entry in one change' cannot pass; FAIL CLOSED on unset variable / unfetchable blob / YAML-mirror drift; the before-state IS the variable-held blob (PR-vs-push ambiguity moot); bootstrap + re-pins are owner variable writes at promotion (brief §6 F-8). Tamper case 5 (plant violation + matching baseline key together -> FAIL against the variable-held comparison; plus mirror-drift -> FAIL, unset variable -> FAIL via isolated env -u subshell) demonstrated. LOCAL green runs use the authority setup export (derive the reviewed seed blob, assert == mirror, export under the checker's env name — gate-r4 R4-H-4); the CI step maps ${{ vars.DPA_BASELINE_PROTECTED_BLOB }} into the checker env and fetches the durable pin tag explicitly before resolving the blob (gate-r4 R4-H-2). Plus the baseline<->DPA-register cross-check table: every register violator the scan misses is investigated and dispositioned."
+    review_lenses: [stock-gl-interaction, inventory-costing]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+  - id: M3
+    title: "CI wiring (lean static-only job, no `if:`, runs the Architecture guard + tamper tests in the same lane — stating the TRUE event graph, gate-r2 R2-C-2: the workflow starts on PR->main, PR->dev, push->main and workflow_dispatch ONLY (ci.yml:3-8); a direct dev push never starts it (:740-747)) + all-checks-pass `needs` MEMBERSHIP with the skipped-job-semantics comment (gate-r1 H-9; mirror CODEX-DISPATCH-ui-wave0-2026-08-11.md:240-247) + EVENT-GRAPH ACCEPTANCE CHECK (gate-r2 R2-C-2; receipt semantics gate-r3 R3-C-2): the handback names the exact job id(s) the owner's pre-promotion workflow_dispatch run must show executed (run on EXACTLY the accepted SHA, which is merged unchanged; receipt recorded in pre_promotion_ci_dispatch in the post-promotion admin commit; promotion blocked without a green run) + WHOLE-PACKAGE GATE: rerun the full accumulated evidence with EVERY lens this package used over the integrated branch (harness final-milestone obligation) — each green invocation preceded by the LOCAL AUTHORITY SETUP export (derive the reviewed seed blob, assert == mirror, export DPA_BASELINE_PROTECTED_BLOB — gate-r4 R4-H-4). Scope proof via git diff --stat <base_sha>..HEAD + the path allowlist check (gate-r1 M-2): only apps/api/tests/Architecture/**, .github/workflows/ci.yml, docs/handoff/** may appear. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
+    review_lenses: [stock-gl-interaction, inventory-costing]
+    status: pending
+    fix_rounds: 0
+    commit: null
+    verdict: null
+    last_verdict: null
+
+status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers: []

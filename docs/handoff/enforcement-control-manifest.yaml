@@ -1,0 +1,49 @@
+# ENFORCEMENT CONTROL MANIFEST (gate-r8 R8-C-1/R8-H-1 of CODEX-DISPATCH-enforcement-guards-2026-08-12.md r16)
+# PARENT/OWNER-owned. Committed BEFORE dispatch (part of base_sha) and listed in the control-file
+# preflight: ANY candidate change to this file (or any control file below) in base_sha..A = FAIL.
+# The parent's final-gate bridge (scripts/adversarial-review-final.sh) verifies EVERY control input
+# against these sha256 pins before any final review runs, and sources every immutable review control
+# (lenses, max_fix_rounds, final milestone id) from HERE — never from candidate progress YAML.
+# ⚠️ brief_sha256 is re-pinned by the parent at dispatch time (the brief's own revisions move it);
+#    all values below are for the r16 working tree and MUST be refreshed in the pre-dispatch commit.
+controls:
+  bridge_final_sha256: 55ca88b0f9de917a48c8d6b2e4e0cbf8b8a38c29e67a75b696f4419566864c88
+  brief_path: docs/handoff/CODEX-DISPATCH-enforcement-guards-2026-08-12.md
+  brief_sha256: 63cc3e182d0ab1bd9a2c03f147cb4bd786aa708f8b9f8e234a567cab4261c6c8
+  harness_path: docs/handoff/SELF-REVIEW-HARNESS.md
+  harness_sha256: 6086d86de2b4302233d7e4e2f9879002c06ff87419cfef5732b9c61f2e238c15
+lens_contracts:
+  stock-gl-interaction:
+    path: .claude/agents/stock-gl-interaction-reviewer.md
+    sha256: 7e1c3c7c2c2dbdedcfaab8aba0ce19803e87f798fbf057a527d97a030fedaf9e
+  inventory-costing:
+    path: .claude/agents/inventory-costing-reviewer.md
+    sha256: 7f7691e86715d97e8c58bef1dc13b1b5218aa19841c53417e6f5651f1e5829ea
+  treasury:
+    path: .claude/agents/treasury-reviewer.md
+    sha256: 408258d068f2ef640b701533f985f0e7ab378a94a0583bab4f808e0727b35d5d
+  fiscal-pos:
+    path: .claude/agents/fiscal-pos-reviewer.md
+    sha256: 419ac2083583210ff007956a00cdfded8de009cc763cdd2563411c24372b5a82
+  frontend-conventions:
+    path: .claude/agents/frontend-conventions-reviewer.md
+    sha256: 278596dbc07e82ece964897d021d2d136dce59f136519578c9a256b39da45385
+  tenancy-authz:
+    path: .claude/agents/tenancy-authz-reviewer.md
+    sha256: 9e2e444acf0b0de7b70f053eaf9948be2f001eb38de132a15103976d78b3a345
+packages:
+  p1:
+    progress_path: docs/handoff/progress/enforcement-p1.progress.yaml
+    final_milestone: M3
+    lenses: stock-gl-interaction,inventory-costing
+    max_fix_rounds: "5"
+  p2:
+    progress_path: docs/handoff/progress/enforcement-p2.progress.yaml
+    final_milestone: M4
+    lenses: frontend-conventions,tenancy-authz
+    max_fix_rounds: "5"
+  p3:
+    progress_path: docs/handoff/progress/enforcement-p3.progress.yaml
+    final_milestone: M3
+    lenses: treasury,fiscal-pos,stock-gl-interaction,inventory-costing
+    max_fix_rounds: "5"
