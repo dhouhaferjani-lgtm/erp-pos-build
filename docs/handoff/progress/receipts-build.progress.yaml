@@ -75,11 +75,11 @@ milestones:
     title: "WAVE 2 (spec §7.5 wave 2): S-4, S-5 (the intentional show() reshape), S-12, S-11 (show/PDF half) - screens (b) receipt detail /pos/receipts/:id and (c) refunds & voids register /pos/receipts/refunds incl. its three capability-banner states and the reprint confirm dialog + reprint audit surface - CL-3 (voucher links heal here, proven by test, never assumed) + CL-4 - BT-6, BT-7, BT-12(show/PDF), BT-13..BT-15, BT-17 - FT-4..FT-8, FT-12, FT-13. Close with the A0 STOP-AND-CHECK for M2b (owner_gates: A0-dependency-wave-2b)."
     review_lenses: [fiscal-pos, frontend-conventions, treasury, tenancy-authz, general]
     status: passed
-    fix_rounds: 4
-    commit: 59cfb57cb
-    verdict: docs/handoff/reviews/receipts-build/M2-round4.md
+    fix_rounds: 5
+    commit: 78928eafc
+    verdict: docs/handoff/reviews/receipts-build/M2-terminal-round2.md
     last_verdict: accept
-    updated: 80796c29a
+    updated: 78928eafc
   - id: M2b
     title: "WAVE 2b - CONDITIONAL, runs ONLY if the M2-close check finds Lane A0 landed on your base: screen (d) chain-verify panel + FT-9, with OI-15's mandatory re-read of the post-A0 verify-chain response shape IN CODE before freezing copy, i18n keys or tests. If A0 has not landed: skip, set this milestone status blocked_owner with the observed A0 state in blockers, and treat waves 1+2 as the delivered scope (that is the specced outcome, not a failure)."
     review_lenses: [fiscal-pos, frontend-conventions, general]
@@ -120,6 +120,8 @@ findings:
   - "M2 review round 4 ACCEPTED M2 with an empty blocking set; its register is docs/handoff/reviews/receipts-build/M2-round4.md."
   - "Parent terminal audit CHANGES-REQUIRED was repaired in d9d129d09: PostgreSQL-safe receipt-reporting fixtures, visible voided state, exclusive-window copy, route-navigation semantics, company hydration gate, and nullable legacy metadata guards."
   - "Parent terminal-audit residuals are grouped in docs/superpowers/tickets/2026-08-18-receipt-reporting-terminal-audit-followups.md; the ticket commit contains no production or test code."
+  - "Parent terminal narrow re-audit round 1 CHANGES-REQUIRED was repaired in 78928eafc; its list-row allowlist P2 and P3 observations are recorded in docs/handoff/reviews/receipts-build/M2-terminal-round1.md."
+  - "Parent terminal narrow re-audit round 2 ACCEPTED the fiscal-pos/frontend-conventions repair range; its register and remaining P3 traceability/refund-row-shape notes are docs/handoff/reviews/receipts-build/M2-terminal-round2.md."
   - "Terminal-audit follow-up: returned_quantity on a location-scoped original is derived only from visible lineage, so a cross-location child (low reachability under current writers) can under-report the historical tally."
   - "Terminal-audit follow-up: a normalized pre-fiscal return displays its discount as a negative reversal adjustment without a dedicated explanatory caption."
   - "Terminal-audit follow-up: the normalized web detail shows a pre-fiscal return as a positive magnitude while the immutable fiscal PDF duplicate retains its stored negative sign."

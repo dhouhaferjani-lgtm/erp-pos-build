@@ -173,6 +173,9 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 ### Commit
 
 - `d9d129d09` — Phase 1.2.19: Repair receipt terminal audit findings
+- `236938c56` — Phase 1.2.20: Record receipt terminal audit follow-ups
+- `b1108f194` — Phase 1.2.21: Record receipt terminal re-audit findings
+- `78928eafc` — Phase 1.2.22: Lock the receipt list reporting contract
 
 ### Closed findings
 
@@ -190,5 +193,7 @@ Wave-1 expected limitation: voucher receipt links remain dead until CL-3/CL-4 in
 - Focused receipt-list/refund-list/detail Vitest: **3 files, 28 tests**.
 - Production PHPStan level 8, touched-file Pint, changed-file ESLint, TypeScript, EN/FR key parity, generated-types regeneration, and `pnpm --filter @autoerp/web build`: **PASS**.
 - React Doctor narrowed to `af176b09e..d9d129d09`: **100/100, no issues**. Its initial branch-to-main scan was intentionally discarded because it covered 2,428 files outside this fix range.
+- Round-1 narrow re-audit: **CHANGES-REQUIRED** on one P2 — the visible `is_voided` list field was missing from the frozen exhaustive allowlist and the base row lacked an exact key-set guard. `78928eafc` amends the contract, locks all 17 base-row keys, and improves the EN exclusive-window assertion. The new envelope assertion passes PostgreSQL (**1 test, 9 assertions**) and the focused receipt-list UI suite passes (**12 tests**).
+- Round-2 narrow re-audit: **ACCEPT**, register at `docs/handoff/reviews/receipts-build/M2-terminal-round2.md`. All remaining findings are P3 and retained in that register, including the narrower refund-enrichment row-key coverage opportunity.
 
 M2b remains `blocked_owner` on Lane A0. This repair does not add the chain-verification panel or touch any parent-owned merge resolution, permissions-map regeneration, seeder conflict, or PDF/page sign-discrepancy ledger item.
