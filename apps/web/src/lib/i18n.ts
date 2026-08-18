@@ -30,7 +30,6 @@ import enPartsCatalog from '../locales/en/parts-catalog.json'
 import enLoyalty from '../locales/en/loyalty.json'
 import enCompliance from '../locales/en/compliance.json'
 import enWithholding from '../locales/en/withholding.json'
-import enMarketing from '../locales/en/marketing.json'
 import enCountries from '../locales/en/countries.json'
 import enProgression from '../locales/en/progression.json'
 import enSmartPrompts from '../locales/en/smart-prompts.json'
@@ -86,7 +85,6 @@ import frPartsCatalog from '../locales/fr/parts-catalog.json'
 import frLoyalty from '../locales/fr/loyalty.json'
 import frCompliance from '../locales/fr/compliance.json'
 import frWithholding from '../locales/fr/withholding.json'
-import frMarketing from '../locales/fr/marketing.json'
 import frCountries from '../locales/fr/countries.json'
 import frProgression from '../locales/fr/progression.json'
 import frSmartPrompts from '../locales/fr/smart-prompts.json'
@@ -194,7 +192,6 @@ const resources = {
     loyalty: enLoyalty,
     compliance: enCompliance,
     withholding: enWithholding,
-    marketing: enMarketing,
     countries: enCountries,
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
@@ -251,7 +248,6 @@ const resources = {
     loyalty: frLoyalty,
     compliance: frCompliance,
     withholding: frWithholding,
-    marketing: frMarketing,
     countries: frCountries,
     progression: frProgression,
     'smart-prompts': frSmartPrompts,
@@ -399,7 +395,6 @@ const resources = {
     loyalty: enLoyalty,
     compliance: enCompliance,
     withholding: enWithholding,
-    marketing: enMarketing,
     countries: enCountries,
     progression: enProgression,
     'smart-prompts': enSmartPrompts,
@@ -439,7 +434,7 @@ void i18n
     resources,
     fallbackLng: 'en',
     defaultNS: 'common',
-    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'marketing', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'stock-adjustments', 'replenishment', 'admin', 'purchases', 'documentIngestions', 'notifications', 'locations', 'support-access'],
+    ns: ['common', 'auth', 'sales', 'inventory', 'treasury', 'validation', 'pricing', 'finance', 'expenses', 'income', 'import', 'settings', 'uom', 'products', 'parapharmacy', 'batches', 'pos', 'catalog', 'menu', 'promotions', 'coupons', 'categories', 'crm', 'parts-catalog', 'loyalty', 'compliance', 'withholding', 'countries', 'progression', 'smart-prompts', 'enrichment', 'workshop-bundles', 'workshop-technicians', 'workshop-work-orders', 'scheduling', 'vehicles', 'vehicle-ownership', 'pickers', 'documents', 'vouchers', 'refund-policies', 'deposits', 'customer-history-audit', 'channels', 'reports', 'stock-transfers', 'stock-adjustments', 'replenishment', 'admin', 'purchases', 'documentIngestions', 'notifications', 'locations', 'support-access'],
 
     detection: {
       order: ['querystring', 'localStorage', 'navigator'],

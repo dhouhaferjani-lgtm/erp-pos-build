@@ -95,7 +95,6 @@ const OwnerDashboardPage = lazy(() => import('../features/owner-dashboard').then
 // Hub pages
 const InventoryHubPage = lazy(() => import('../features/inventory/pages/InventoryHubPage').then((m) => ({ default: m.InventoryHubPage })))
 const PosHubPage = lazy(() => import('../features/pos/pages/PosHubPage').then((m) => ({ default: m.PosHubPage })))
-const MarketingHubPage = lazy(() => import('../features/marketing').then((m) => ({ default: m.MarketingHubPage })))
 const FinanceHubPage = lazy(() => import('../features/finance/pages/FinanceHubPage').then((m) => ({ default: m.FinanceHubPage })))
 const CashMovementsReportPage = lazy(() => import('../features/finance/pages/CashMovementsReportPage').then((m) => ({ default: m.CashMovementsReportPage })))
 const LaneSeparationReportPage = lazy(() => import('../features/finance/pages/LaneSeparationReportPage').then((m) => ({ default: m.LaneSeparationReportPage })))
@@ -1973,16 +1972,6 @@ export function AppRoutes() {
                 <OwnerDashboardPage />
               </SuspenseWrapper>
             </RequirePermission>
-          }
-        />
-
-        {/* Marketing Hub */}
-        <Route
-          path="marketing"
-          element={
-            <SuspenseWrapper>
-              <MarketingHubPage />
-            </SuspenseWrapper>
           }
         />
 

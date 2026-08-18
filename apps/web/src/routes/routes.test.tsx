@@ -78,6 +78,23 @@ describe('route module guards', () => {
     expect(posHubSource).toContain("href: '/pos/shift-history'")
   })
 
+  it('removes the duplicate marketing hub while retaining its six sidebar destinations', () => {
+    const retiredMarketingPath = ['/mark', 'eting'].join('')
+    const retiredMarketingPage = ['Marketing', 'HubPage'].join('')
+    expect(routesSource).not.toContain(`path="${retiredMarketingPath}"`)
+    expect(routesSource).not.toContain(retiredMarketingPage)
+    for (const destination of [
+      '/crm/companies',
+      '/crm/contacts',
+      '/pos/loyalty/programs',
+      '/pos/loyalty/members',
+      '/pos/promotions',
+      '/pos/coupons',
+    ]) {
+      expect(sidebarSource).toContain(`href: '${destination}'`)
+    }
+  })
+
   it('does not register the legacy bank reconciliation route', () => {
     expect(routesSource).not.toContain('path="reconciliation"')
     expect(routesSource).not.toContain('BankReconciliationPage')
