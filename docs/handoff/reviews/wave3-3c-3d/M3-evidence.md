@@ -199,3 +199,57 @@ One first-attempt PostgreSQL schema reset hit the local server's
 `max_locks_per_transaction` limit before application code. No stale test
 process or backend remained; the isolated retry passed all 14 projected-refund
 tests and is the result recorded above.
+
+## Adversarial round 2 remediation
+
+Round 2 identified two further intentional no-movement populations in POS
+D-f, an unscoped anti-join, and four evidence/hardening gaps. The scoped fix is
+`a59263411c00a009bff6a3ca615cb928f42125fe`:
+
+- Projected POS lines now capture whether the exact
+  company/location/product/variant stock grain exists. Sales without that
+  grain record `stock_movement_expected = false`; the same captured decision
+  skips their stock branch. Scrap refunds additionally require the product to
+  remain active, so the established archived-product/no-movement behavior is
+  represented rather than reported forever. Positive scrap remains expected
+  and is covered with its movement.
+- The POS anti-join now scopes matching movements by tenant and company. A
+  forged same-receipt movement in another company no longer silences the real
+  finding.
+- Projection writes normalize the observability-only disposition with
+  `ReturnLineDisposition::tryFrom(...)?->value`, preserving the rule that a
+  projector does not reject a sealed event through an enum cast.
+- The inert interactive-return marker write and claims were removed: those
+  lines have negative quantities and are outside D-f's positive-quantity sale
+  population.
+- Removal of D-e's temporary `inventory_counting` exclusion is pinned to T21
+  in
+  `docs/superpowers/tickets/2026-08-18-remove-counting-detector-exclusion-with-t21.md`
+  and the release note.
+
+Red-first reproduced the two behavioral defects: the no-stock-grain sale
+stored `true` instead of `false`, and a cross-company movement made D-f exit 0
+instead of 1. The archived-product scrap case was then pinned at the writer
+boundary. Fresh PostgreSQL results are:
+
+```text
+PosCoreReceiptProjectionRefundDispositionStockTest: 15 passed (72 assertions)
+CheckCogsCoverageCommandTest: 22 passed (43 assertions)
+CogsRelocationCharacterisationTest: 15 passed (54 assertions)
+Pint (round-2 touched PHP): pass
+PHPStan level 8 (round-2 touched production PHP): [OK] No errors
+deptrac: 127 (unchanged from accepted M2 and M3 round 1)
+git diff --check: pass
+.github/workflows/** changes: 0
+```
+
+Reverting `a59263411c00a009bff6a3ca615cb928f42125fe` while retaining the
+three covering tests reproduced each intended failure:
+
+```text
+sale without stock grain: true is false (1 failed)
+archived-product scrap: true is false (1 failed)
+cross-company movement: expected exit 1, received 0 (1 failed)
+```
+
+`git revert --abort` restored the exact commit and a clean worktree.

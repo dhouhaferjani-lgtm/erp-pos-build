@@ -302,3 +302,27 @@ Fresh PostgreSQL verification is detector `20/41`, projected refund `14/69`,
 interactive disposition `5/19`, return flow `21/119`, and movement
 characterisation `15/54`. Pint and touched-file PHPStan pass; deptrac remains
 127; no workflow file changed.
+
+### M3 adversarial round 2 remediation
+
+Round 2 found two remaining intentional no-movement populations: a sale at a
+location without the product's stock grain, and a scrap refund after the
+product is archived. `a59263411` captures the exact stock-grain outcome once,
+persists it on the receipt line, and uses the same decision to drive the stock
+branch. Active scrap remains movement-expected; archived scrap and no-grain
+sales are explicitly movementless. D-f's POS anti-join is now tenant- and
+company-scoped, and a cross-company collision fixture proves it cannot hide a
+finding.
+
+The same scoped fix normalizes raw disposition values before assigning the
+enum-cast projection column, removes the inert interactive marker (interactive
+return quantities are negative and outside D-f), and records the required T21
+removal of D-e's temporary `inventory_counting` exclusion in a dedicated
+ticket. The release note now enumerates the intentional outcome set.
+
+Fresh PostgreSQL verification is projected refund `15/72`, detector `22/43`,
+and movement characterization `15/54`. Pint and touched-production PHPStan
+pass; deptrac remains 127; `git diff --check` passes; no workflow file changed.
+Revert-replay of `a59263411` made all three distinguishing tests fail: both
+movementless outcomes stored `true`, and a foreign-company movement suppressed
+the detector. Aborting the revert restored a clean tree.
