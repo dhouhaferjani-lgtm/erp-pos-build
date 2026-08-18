@@ -777,3 +777,10 @@ The M5 fix is documentation-only: owner ruling, deployment sequencing, provision
 cache-note correction, and carried-P3 records. It changes no production or test behavior, so a
 production revert/replay is not applicable; `git diff --check` and exact contract-content assertions
 cover the documentary fix.
+
+### M5 round 2 tool error
+
+The round-2 four-lens bridge exited 3 and wrote only `# REVIEW TOOL ERROR (milestone M5, round 2)`.
+Per the harness, this is recorded fail-closed as CHANGES-REQUIRED and consumes fix round 2. It emitted
+no implementation finding, so no speculative production or test change is made before round 3; the
+fresh accumulated evidence above remains the reviewed tree's evidence.
