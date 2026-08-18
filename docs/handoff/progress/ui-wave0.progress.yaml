@@ -48,16 +48,16 @@ milestones:
   - id: M1
     title: "T1 (CX-4) - component-graph-aware listing re-census: apps/web/tools/audit-listing-census.mjs (pure exported functions + main), its node --test suite, and the report at docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md. Discovery rule stated and not hardcoded to 46; import-following into organisms; orphan reachability incl. parameterized routes and breadcrumb parents; always exit 0 and NOT chained into `lint` or CI. Supersedes UI-28/UI-29/UI-34 with method-per-number."
     review_lenses: [frontend-conventions, general]
-    status: in_progress
-    updated: 72c0207b4
-    fix_rounds: 2
+    status: passed
+    updated: 4c847a414
+    fix_rounds: 3
     commit: 72c0207b41afdda1fa18cbec109a33ef7456bebb
-    verdict: docs/handoff/reviews/ui-wave0/M1-round2.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/ui-wave0/M1-round3.md
+    last_verdict: ACCEPT
   - id: M2
     title: "T2 (UI-11) - gen-route-manifest.mjs resolves through the local KeyedByRouteId wrapper so /sales/invoices/:id records InvoiceDetailPage. NO manifest file is committed here (T3 owns scripts/factory/manifests/)."
     review_lenses: [frontend-conventions, general]
-    status: pending
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -148,3 +148,4 @@ findings:
   - "Deterministic full apps/web pnpm test (--maxWorkers=1) after remediation: 4,224 passed, 5 failed, 1 skipped, 3 todo; the only failing files are the three enumerated exception candidates above. Four-worker evidence is superseded because round-1 review reproduced load-induced flakes. pnpm typecheck and pnpm lint pass; React Doctor changed-scope scan reports 100/100 with no issues."
   - "M1 round-1 review found that the 46-page filename population was inherited rather than independent, a material route-mounted non-detail DataTable surface was outside that cohort, seven action/form routes had resolvable prefix-dynamic links, and the empty-state predicate could span unrelated comparisons. Commit 5383a2467 discloses the scope boundaries, resolves the bounded link patterns, tightens the predicate, and adds regression tests."
   - "M1 round-2 review confirmed the round-1 repairs, then identified five more raw action/form false negatives beyond the bounded expression model, a broken audit-source pointer, an undisclosed prop-union approximation, and an unreproducible secondary-surface count. Commit 72c0207b4 separates the raw 27 from the 22 remaining after manual call-flow review, attributes all five live links, fixes the pointer/method, and adopts a conservative reproducible 33-page secondary-surface rule."
+  - "M1 round-3 bridge ACCEPTED the milestone and independently reproduced 46 listings, 271 route records, 27 raw candidates, all distributions, 12/12 tests in both runners, and zero production changes. Its close-before-merge P2 remains open for the parent terminal audit: applying the report's stated conservative secondary-surface rule literally yields 35 rather than 33; the report path ordinal collision also remains the parent's merge-time decision."

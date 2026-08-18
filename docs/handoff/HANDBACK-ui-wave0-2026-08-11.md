@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M1 review pending
+# UI Wave 0 implementer report — M1 accepted, M2 in progress
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b passed; M1 implementation is committed and awaiting bridge review.
+- Wave status: M0b and M1 passed; M2 is in progress.
 
 ## M0 repin
 
@@ -145,4 +145,6 @@ M1 verification:
 
 M1 bridge round 1 (`docs/handoff/reviews/ui-wave0/M1-round1.md`) returned `CHANGES-REQUIRED`. Its two P2 and three substantive P3 findings are addressed by `5383a2467`: the report discloses the inherited population and graph limits; the extractor resolves conditional base paths and literal props supplied to shared navigation components; and the empty-state classifier now evaluates the relevant AST comparison rather than spanning arbitrary condition text.
 
-M1 bridge round 2 (`docs/handoff/reviews/ui-wave0/M1-round2.md`) also returned `CHANGES-REQUIRED`. Commit `72c0207b41afdda1fa18cbec109a33ef7456bebb` (`Phase 0.1.5: Clarify M1 reachability evidence`) addresses its evidence findings: the report distinguishes the raw 27 scanner candidates from the 22 remaining after manual review; identifies the four shared-document Add targets and income edit link; corrects the inherited-rule source to `02-design-system-consistency.md:66`; documents the literal-prop union approximation; changes the secondary-surface claim to a conservative 33 with an explicit reproduction rule; and reconciles the timing and test-count evidence. Bridge round 3 is pending. M2 and later milestones have not started.
+M1 bridge round 2 (`docs/handoff/reviews/ui-wave0/M1-round2.md`) also returned `CHANGES-REQUIRED`. Commit `72c0207b41afdda1fa18cbec109a33ef7456bebb` (`Phase 0.1.5: Clarify M1 reachability evidence`) addresses its evidence findings: the report distinguishes the raw 27 scanner candidates from the 22 remaining after manual review; identifies the four shared-document Add targets and income edit link; corrects the inherited-rule source to `02-design-system-consistency.md:66`; documents the literal-prop union approximation; changes the secondary-surface claim to a conservative 33 with an explicit reproduction rule; and reconciles the timing and test-count evidence.
+
+M1 bridge round 3 (`docs/handoff/reviews/ui-wave0/M1-round3.md`) returned `ACCEPT`. The reviewer independently reproduced 46 listings, 271 route records, the 27 raw-candidate split, every listing distribution, 12/12 tests under both runners, and zero production changes. Two terminal-audit items remain explicit: applying the report's stated secondary-surface rule literally produced 35 rather than the reported 33 (P2 close-before-merge), and the mandated `17-` report ordinal collides with an owner-untracked session file. The tool's known five-link manual correction remains disclosed rather than implemented in the analyzer. M2 is now in progress; later milestones have not started.
