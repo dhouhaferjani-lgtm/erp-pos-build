@@ -9,7 +9,10 @@ use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimRequiresTransactionE
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use Closure;
+use FilesystemIterator;
 use Illuminate\Support\Facades\DB;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
 use ReflectionClass;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -62,8 +65,53 @@ final class DeliveryNoteBillingClaimServiceShapeTest extends TestCase
         $set = new ReflectionClass(self::SET);
         $this->assertTrue($request->isReadOnly());
         $this->assertTrue($set->isReadOnly());
-        $this->assertFalse($set->getConstructor()?->isPublic() ?? true, 'Production callers must not construct claim sets.');
+        $this->assertFalse(
+            $set->getConstructor()?->isPublic() ?? true,
+            'The private constructor must block direct new DeliveryNoteClaimSet(...).',
+        );
         $this->assertSame('int', (string) $set->getMethod('count')->getReturnType());
+    }
+
+    public function test_literal_claim_set_factory_has_no_external_app_call_sites(): void
+    {
+        $allowedPath = realpath(app_path('Modules/Document/Domain/Services/Billing/DeliveryNoteBillingClaimService.php'));
+        $externalCallSites = [];
+        $files = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(app_path(), FilesystemIterator::SKIP_DOTS),
+        );
+
+        foreach ($files as $file) {
+            if (! $file->isFile()
+                || $file->getExtension() !== 'php'
+                || $file->getRealPath() === $allowedPath) {
+                continue;
+            }
+
+            $contents = file_get_contents($file->getPathname());
+            if ($contents === false) {
+                continue;
+            }
+
+            $executableCode = '';
+            foreach (token_get_all($contents) as $token) {
+                if (is_array($token)
+                    && in_array($token[0], [T_COMMENT, T_DOC_COMMENT, T_CONSTANT_ENCAPSED_STRING, T_ENCAPSED_AND_WHITESPACE], true)) {
+                    continue;
+                }
+
+                $executableCode .= is_array($token) ? $token[1] : $token;
+            }
+
+            if (preg_match('/\\bDeliveryNoteClaimSet\\s*::\\s*fromReservation\\s*\\(/', $executableCode) === 1) {
+                $externalCallSites[] = $file->getPathname();
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $externalCallSites,
+            'Literal DeliveryNoteClaimSet::fromReservation(...) app/ calls must stay inside DeliveryNoteBillingClaimService.',
+        );
     }
 
     public function test_claim_refuses_to_write_without_an_open_caller_transaction(): void

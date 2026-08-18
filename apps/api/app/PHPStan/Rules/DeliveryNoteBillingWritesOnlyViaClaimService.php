@@ -32,9 +32,13 @@ use PHPStan\Type\VerbosityLevel;
  * table names, payload keys, merged/spread arrays, dynamic method dispatch,
  * generic unresolved builders, or raw PDO. Literal SQL matching is substring
  * based rather than a SQL parser. A green build makes no claim beyond those
- * explicitly covered forms. The rule also confines the claim-set issuance
- * factory to the claim service, complementing its private constructor so app/
- * production callers cannot manufacture the service-owned count handle.
+ * explicitly covered forms. DeliveryNoteClaimSet's private constructor blocks
+ * direct `new`; PHP has no friend visibility that would restrict its public
+ * issuance factory to one service. This rule therefore reports literal static
+ * `DeliveryNoteClaimSet::fromReservation(...)` calls in analysed app/ code when
+ * they occur outside the claim service. Dynamic/non-literal dispatch and calls
+ * outside analysed app/ code remain uncovered; enforcing those at runtime would
+ * require an undesirable backtrace/friend-style hack.
  *
  * @implements Rule<Expr>
  */
@@ -54,7 +58,7 @@ final class DeliveryNoteBillingWritesOnlyViaClaimService implements Rule
 
     private const SET_FQCN = 'App\\Modules\\Document\\Domain\\Services\\Billing\\DeliveryNoteClaimSet';
 
-    private const SET_MESSAGE = 'DeliveryNoteClaimSet instances may only be issued by '.self::ALLOWED_CLASS.'.';
+    private const SET_MESSAGE = 'Literal DeliveryNoteClaimSet::fromReservation(...) calls in app/ must go through '.self::ALLOWED_CLASS.'.';
 
     public function getNodeType(): string
     {

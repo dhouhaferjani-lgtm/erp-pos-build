@@ -17,7 +17,10 @@ final readonly class DeliveryNoteClaimSet
     ) {}
 
     /**
-     * @internal Reserved claim sets are issued only by the billing claim service.
+     * The private constructor blocks direct `new`, but PHP cannot make this
+     * public factory visible to only the billing claim service. The app/ PHPStan
+     * rule and structural audit gate literal static calls outside that service;
+     * dynamic/non-literal dispatch and calls outside app/ remain uncovered.
      *
      * @param  list<string>  $deliveryNoteIds
      */

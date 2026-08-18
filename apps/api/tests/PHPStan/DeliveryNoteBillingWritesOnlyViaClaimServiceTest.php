@@ -13,6 +13,8 @@ final class DeliveryNoteBillingWritesOnlyViaClaimServiceTest extends RuleTestCas
 {
     private const MESSAGE = 'Delivery-note billing writes must go through App\\Modules\\Document\\Domain\\Services\\Billing\\DeliveryNoteBillingClaimService.';
 
+    private const SET_MESSAGE = 'Literal DeliveryNoteClaimSet::fromReservation(...) calls in app/ must go through App\\Modules\\Document\\Domain\\Services\\Billing\\DeliveryNoteBillingClaimService.';
+
     protected function getRule(): Rule
     {
         return new DeliveryNoteBillingWritesOnlyViaClaimService;
@@ -55,6 +57,14 @@ final class DeliveryNoteBillingWritesOnlyViaClaimServiceTest extends RuleTestCas
                 __DIR__.'/Fixtures/DeliveryNoteBillingUnrelatedModelFixture.php',
             ],
             [],
+        );
+    }
+
+    public function test_reports_auxiliary_external_literal_claim_set_issuance(): void
+    {
+        $this->analyse(
+            [__DIR__.'/Fixtures/DeliveryNoteClaimSetExternalIssuanceFixture.php'],
+            [[self::SET_MESSAGE, 14]],
         );
     }
 }
