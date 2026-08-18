@@ -326,3 +326,26 @@ pass; deptrac remains 127; `git diff --check` passes; no workflow file changed.
 Revert-replay of `a59263411` made all three distinguishing tests fail: both
 movementless outcomes stored `true`, and a foreign-company movement suppressed
 the detector. Aborting the revert restored a clean tree.
+
+### M3 adversarial round 3 remediation
+
+Round 3 caught a real regression outside the previous evidence set: applying
+the product-level no-grain exception to variant lines suppressed both the
+existing variant warning and D-f. `0f99bde9e` now distinguishes the two. A
+missing product-level location grain remains the temporary movementless
+classification; a missing variant grain stays movement-expected, reaches the
+locked writer, warns, and remains visible to D-f. The unlocked snapshot no
+longer gates the sale writer, closing the concurrent-grain race.
+
+The generic movementless-refund warning was removed. Routine `not_received`
+and benign missing-grain outcomes are silent, while the regulated
+never-restock case regains its distinct argument-checked warning. The remaining
+product-level location-grain approximation has a named Inventory + Product
+architecture owner and removal trigger in a dedicated ticket.
+
+All 14 `PosCoreReceiptProjection*Test.php` files were run individually on
+PostgreSQL and pass `84/323`, including the previously red variant file.
+Detector remains `22/43`, movement characterization `15/54`, Pint and
+touched-production PHPStan pass, deptrac remains 127, and no workflow file was
+changed. Revert-replay makes the variant flag and never-restock warning tests
+red and aborting it restores a clean tree.

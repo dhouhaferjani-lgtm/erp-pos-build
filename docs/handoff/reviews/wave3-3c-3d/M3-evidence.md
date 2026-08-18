@@ -253,3 +253,44 @@ cross-company movement: expected exit 1, received 0 (1 failed)
 ```
 
 `git revert --abort` restored the exact commit and a clean worktree.
+
+## Adversarial round 3 remediation
+
+Round 3 found that the product-level no-grain outcome had been applied too
+broadly to variant lines and had also bypassed the sale writer's locked lookup.
+The scoped fix is `0f99bde9e12558d8baa51a9ebfa890526f60ddef`:
+
+- A product-level line without an exact location grain retains the established
+  `stock_movement_expected = false` classification. A variant line without its
+  exact variant grain remains `true`: the locked writer runs, preserves the
+  no-fallback invariant, emits its variant-scoped warning, and D-f continues to
+  report the missing movement.
+- The unlocked snapshot no longer gates the sale decrement call. The writer's
+  locked lookup remains authoritative, so a concurrently-created grain is not
+  skipped.
+- Routine `not_received`, missing product-level grain, and archived-product
+  refund outcomes are silent. The regulated `RestockPolicy::Never` case again
+  emits its distinct warning, pinned by an argument-sensitive assertion.
+- The temporary product-level location-grain approximation has an owner and
+  removal trigger in
+  `docs/superpowers/tickets/2026-08-18-pos-location-stock-tracking-classification.md`.
+
+Red-first produced `false is true` for the missing-variant line's detector flag
+and no matching never-restock warning. Every dedicated projection test file was
+then run individually on PostgreSQL to avoid cross-file database pollution:
+
+```text
+PosCoreReceiptProjection*Test.php (14 files): 84 passed (323 assertions)
+CheckCogsCoverageCommandTest: 22 passed (43 assertions)
+CogsRelocationCharacterisationTest: 15 passed (54 assertions)
+Pint (round-3 touched PHP): pass
+PHPStan level 8 (round-3 touched production PHP): [OK] No errors
+deptrac: 127 (unchanged)
+git diff --check: pass
+.github/workflows/** changes: 0
+```
+
+Reverting `0f99bde9e12558d8baa51a9ebfa890526f60ddef` while retaining the two
+covering assertions reproduced both failures: the variant line persisted
+`stock_movement_expected = false`, and the regulated refund emitted no warning
+matching `never-restock`. `git revert --abort` restored a clean tree.
