@@ -42,7 +42,9 @@ The repeat's 19 failing files were:
 18. `src/features/pos/pages/POSPage/POSPage.test.tsx`
 19. `src/features/treasury/hooks/__tests__/cashPositionAndMovementsTenantScope.test.tsx`
 
-## Confirmed hard-stop finding
+## Enumerated real-defect exceptions
+
+### 1. Arabic locale coverage — owner-confirmed
 
 `pnpm exec vitest run src/__tests__/i18n/arLocaleCoverage.test.ts` reproduces 3 failures and 7 passes in isolation:
 
@@ -60,10 +62,46 @@ A test-only edit could only remove namespaces or allow missing keys, masking the
 
 Parent ruling 2026-08-18 confirms this as an enumerated real-defect exception owned by `CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md`; Arabic parity remains outside launch scope. M0b resumed to classify and repair the remaining failing files. Every exception must be independently confirmed by the bridge review.
 
+### 2. Offset pagination meta consolidation — bridge confirmation pending
+
+`tools/__tests__/offset-pagination-meta-consolidation.test.mjs` is a valid architecture test and remains unchanged. It identifies the inline pagination shape at `src/features/treasury/statements/api.ts:112`, reintroduced after the shared `OffsetPaginationMeta` consolidation. Matching the test to production would conceal duplicated production type ownership, so this is a real product-code regression rather than stale test debt.
+
+- Owning lane: `CODEX-replenishment-followups-2026-07-12.md`, Wave B — pagination-meta consolidation.
+- Production site: `StatementListResponse.meta` in `src/features/treasury/statements/api.ts`.
+- Disposition: enumerated candidate exception; M0b bridge must confirm.
+
+### 3. Shared singleton cross-tenant invalidation — bridge confirmation pending
+
+`src/components/__tests__/SharedSingletons.tenantScope.test.tsx` is a valid tenant-isolation test and remains unchanged. `AddQuickProductModal` currently calls `invalidateQueries({ queryKey: ['products'] })`, which also marks a seeded foreign-tenant product cache entry invalid. Changing the assertion to accept that behavior would weaken the existing tenant boundary.
+
+- Owning lane: promoted tenant-scoped invalidation sweep, commit `cc1332fd5266a52397656e39d09d8fc8200c5e34`.
+- Production site: `src/components/organisms/AddQuickProductModal/AddQuickProductModal.tsx:209`.
+- Disposition: enumerated candidate exception; M0b bridge must confirm.
+
+None of these defects invalidates the UI audit tasks dispatched in M1–M8.
+
+## Tests-only remediation
+
+Commit `3e87358c5197cbee1fbff10c4c63fef119da9f99` (`Phase 0.0b.3: Align stale web tests`) changes 17 test files and zero production files. Each corrected expectation or harness carries a one-line citation to the promoted lane that changed the behavior. The repairs cover:
+
+- L3 location-scoped keys, filters, and report request parameters.
+- UoM unit-precision quantity display.
+- Generated permission-map ordering and authorized-role fixtures.
+- Repository company-config, statement-reconciliation, stock-rebalancing, and transaction-location harnesses.
+- Partner edit hydration before bank-account interaction.
+
+The complete repaired subset passes: 52 suites and 159 tests.
+
+## M0b verification evidence
+
+- `pnpm test -- --maxWorkers=4 --reporter=json`: 4,224 passed, 5 failed, 1 skipped, 3 todo. The five failed assertions belong only to the three enumerated exception files above.
+- The unconstrained full run also reproduced all three exception files; five additional timing/contention failures passed in a focused rerun and were not classified as defects. The one deterministic partner hydration race was repaired test-only and now passes in isolation.
+- `pnpm typecheck`: pass.
+- `pnpm lint`: pass with the repository's pre-existing warning inventory; TanStack keys report 0 new/0 stale, design-system audit 0 new/0 stale, quantity audit 0 new/0 stale, and all custom ESLint rule tests pass.
+- `npx react-doctor@latest --verbose --scope changed --base d682b38ec9761a917b9716428091a482745795f6`: 100/100, no issues across 17 changed web files.
+
 ## Scope and review state
 
-- Test-only remediation is in progress; production files remain off-limits.
-- No production files changed.
-- The known UoM quantity and L3 `locationScopedKey` stale expectations remain in the working inventory.
-- The M0b bridge review is pending completion of classification and test-only repairs.
+- Test-only remediation and local verification are complete; production files remain unchanged.
+- The M0b bridge review is pending and must confirm both candidate exception classifications.
 - M1 and all later milestones remain pending.
