@@ -291,33 +291,122 @@ function containsJsx(node) {
 /** @param {ts.SourceFile} source */
 function hasBespokeEmptyState(source) {
   let found = false
-  /** @param {string} condition */
+  /** @param {ts.Expression} expression */
+  function unwrap(expression) {
+    if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isNonNullExpression(expression)) {
+      return unwrap(expression.expression)
+    }
+    return expression
+  }
+  /** @param {ts.Expression} expression */
+  function isLengthValue(expression) {
+    const value = unwrap(expression)
+    if (ts.isPropertyAccessExpression(value) && value.name.text === 'length') return true
+    return ts.isBinaryExpression(value) &&
+      value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken &&
+      isLengthValue(value.left) &&
+      ts.isNumericLiteral(unwrap(value.right)) &&
+      Number(unwrap(value.right).text) === 0
+  }
+  /** @param {ts.Expression} expression */
+  function lengthRoot(expression) {
+    const value = unwrap(expression)
+    if (ts.isPropertyAccessExpression(value) && value.name.text === 'length') return value.expression.getText(source)
+    if (ts.isBinaryExpression(value) && value.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+      return lengthRoot(value.left)
+    }
+    return null
+  }
+  /** @param {ts.Expression} expression */
+  function conditionLengthRoot(expression) {
+    const value = unwrap(expression)
+    if (!ts.isBinaryExpression(value)) return lengthRoot(value)
+    return lengthRoot(value.left) ?? lengthRoot(value.right)
+  }
+  /** @param {string | null} left @param {string | null} right */
+  function sameValueRoot(left, right) {
+    return left !== null && right !== null && (left === right || left.startsWith(`${right}.`) || right.startsWith(`${left}.`))
+  }
+  /** @param {ts.Expression} expression */
+  function absentRoot(expression) {
+    const value = unwrap(expression)
+    if (!ts.isPrefixUnaryExpression(value) || value.operator !== ts.SyntaxKind.ExclamationToken) return null
+    const operand = unwrap(value.operand)
+    return ts.isIdentifier(operand) || ts.isPropertyAccessExpression(operand) ? operand.getText(source) : null
+  }
+  /** @param {ts.Expression} expression */
+  function presentRoot(expression) {
+    const value = unwrap(expression)
+    return ts.isIdentifier(value) || ts.isPropertyAccessExpression(value) ? value.getText(source) : null
+  }
+  /** @param {ts.Expression} expression */
+  function numberValue(expression) {
+    const value = unwrap(expression)
+    return ts.isNumericLiteral(value) ? Number(value.text) : null
+  }
+  /** @param {ts.Expression} condition */
   function emptyBranch(condition) {
-    if (/(?:!\s*[\w?.]+\.length|length[\s\S]*(?:===?\s*0|<=\s*0|<\s*1))/.test(condition)) return 'true'
-    if (/length[\s\S]*(?:!==?\s*0|>\s*0|>=\s*1)/.test(condition)) return 'false'
+    const expression = unwrap(condition)
+    if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken && isLengthValue(expression.operand)) {
+      return 'true'
+    }
+    if (!ts.isBinaryExpression(expression)) return null
+    if (expression.operatorToken.kind === ts.SyntaxKind.BarBarToken) {
+      const leftEmpty = emptyBranch(expression.left)
+      const rightEmpty = emptyBranch(expression.right)
+      if (leftEmpty === 'true' && sameValueRoot(absentRoot(expression.right), conditionLengthRoot(expression.left))) return 'true'
+      if (rightEmpty === 'true' && sameValueRoot(absentRoot(expression.left), conditionLengthRoot(expression.right))) return 'true'
+      return null
+    }
+    if (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      const leftEmpty = emptyBranch(expression.left)
+      const rightEmpty = emptyBranch(expression.right)
+      if (leftEmpty === 'true' || rightEmpty === 'true') return 'true'
+      if (leftEmpty === 'false' && sameValueRoot(presentRoot(expression.right), conditionLengthRoot(expression.left))) return 'false'
+      if (rightEmpty === 'false' && sameValueRoot(presentRoot(expression.left), conditionLengthRoot(expression.right))) return 'false'
+      return null
+    }
+    let operator = expression.operatorToken.kind
+    let numeric = numberValue(expression.right)
+    let lengthOnLeft = isLengthValue(expression.left)
+    if (!lengthOnLeft && isLengthValue(expression.right)) {
+      numeric = numberValue(expression.left)
+      lengthOnLeft = true
+      const inverse = new Map([
+        [ts.SyntaxKind.LessThanToken, ts.SyntaxKind.GreaterThanToken],
+        [ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanEqualsToken],
+        [ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.LessThanToken],
+        [ts.SyntaxKind.GreaterThanEqualsToken, ts.SyntaxKind.LessThanEqualsToken],
+      ])
+      operator = inverse.get(operator) ?? operator
+    }
+    if (!lengthOnLeft || numeric === null) return null
+    if ([ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken].includes(operator) && numeric === 0) return 'true'
+    if (operator === ts.SyntaxKind.LessThanEqualsToken && numeric === 0) return 'true'
+    if (operator === ts.SyntaxKind.LessThanToken && numeric === 1) return 'true'
+    if ([ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(operator) && numeric === 0) return 'false'
+    if (operator === ts.SyntaxKind.GreaterThanToken && numeric === 0) return 'false'
+    if (operator === ts.SyntaxKind.GreaterThanEqualsToken && numeric === 1) return 'false'
     return null
   }
   /** @param {ts.Node} node */
   function visit(node) {
     if (found) return
     if (ts.isIfStatement(node)) {
-      const condition = node.expression.getText(source)
-      if (emptyBranch(condition) === 'true' && containsJsx(node.thenStatement)) {
+      if (emptyBranch(node.expression) === 'true' && containsJsx(node.thenStatement)) {
         found = true
         return
       }
     }
     if (ts.isConditionalExpression(node)) {
-      const condition = node.condition.getText(source)
-      const branch = emptyBranch(condition)
+      const branch = emptyBranch(node.condition)
       if ((branch === 'true' && containsJsx(node.whenTrue)) || (branch === 'false' && containsJsx(node.whenFalse))) {
         found = true
         return
       }
     }
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
-      const condition = node.left.getText(source)
-      if (emptyBranch(condition) === 'true' && containsJsx(node.right)) {
+      if (emptyBranch(node.left) === 'true' && containsJsx(node.right)) {
         found = true
         return
       }
@@ -481,21 +570,12 @@ export function extractRoutes(routeCode) {
 }
 
 /**
- * @param {ts.TemplateExpression} expression
- * @returns {string}
- */
-function templatePath(expression) {
-  let value = expression.head.text
-  for (const span of expression.templateSpans) value += `:param${span.literal.text}`
-  return value
-}
-
-/**
  * @param {string} filename
  * @param {string} code
+ * @param {Map<string, Set<string>>} [knownBindings]
  * @returns {Array<{sourceFile: string, target: string}>}
  */
-export function extractRouteReferences(filename, code) {
+export function extractRouteReferences(filename, code, knownBindings = new Map()) {
   const source = parseSource(code, filename)
   const targets = new Set()
   const bindings = new Map()
@@ -509,16 +589,58 @@ export function extractRouteReferences(filename, code) {
   }
   collectBindings(source)
 
+  /**
+   * Resolve only statically bounded path fragments. An unresolved expression
+   * can stand for one route segment after an absolute prefix, but it cannot
+   * invent the absolute prefix itself.
+   *
+   * @param {ts.Expression | ts.JsxAttributeValue | undefined} expression
+   * @param {Set<string>} [seen]
+   * @returns {string[]}
+   */
+  function expressionPaths(expression, seen = new Set()) {
+    if (!expression) return []
+    if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return [expression.text]
+    if (ts.isJsxExpression(expression)) return expression.expression ? expressionPaths(expression.expression, seen) : []
+    if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isNonNullExpression(expression)) {
+      return expressionPaths(expression.expression, seen)
+    }
+    if (ts.isConditionalExpression(expression)) {
+      return [...new Set([
+        ...expressionPaths(expression.whenTrue, new Set(seen)),
+        ...expressionPaths(expression.whenFalse, new Set(seen)),
+      ])]
+    }
+    if (ts.isIdentifier(expression)) {
+      if (seen.has(expression.text)) return []
+      const nextSeen = new Set(seen).add(expression.text)
+      const local = expressionPaths(bindings.get(expression.text), nextSeen)
+      return local.length > 0 ? local : [...(knownBindings.get(expression.text) ?? [])]
+    }
+    if (ts.isTemplateExpression(expression)) {
+      let candidates = [expression.head.text]
+      for (const span of expression.templateSpans) {
+        const resolved = expressionPaths(span.expression, new Set(seen))
+        const values = resolved.length > 0
+          ? resolved
+          : candidates.some((candidate) => candidate.startsWith('/'))
+            ? [':param']
+            : []
+        if (values.length === 0) return []
+        candidates = candidates.flatMap((candidate) => values.map((value) => `${candidate}${value}${span.literal.text}`))
+      }
+      return candidates
+    }
+    return []
+  }
+
   /** @param {ts.Expression | ts.JsxAttributeValue | undefined} expression */
   function addExpression(expression) {
     if (!expression) return
-    let candidate = null
-    if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) candidate = expression.text
-    if (ts.isTemplateExpression(expression)) candidate = templatePath(expression)
-    if (ts.isJsxExpression(expression) && expression.expression) addExpression(expression.expression)
-    if (ts.isIdentifier(expression)) addExpression(bindings.get(expression.text))
-    if (candidate?.startsWith('/') && !candidate.startsWith('//') && !/\s/.test(candidate)) {
-      targets.add(normalizeRoutePath(candidate))
+    for (const candidate of expressionPaths(expression)) {
+      if (candidate.startsWith('/') && !candidate.startsWith('//') && !/\s/.test(candidate)) {
+        targets.add(normalizeRoutePath(candidate))
+      }
     }
   }
 
@@ -542,6 +664,46 @@ export function extractRouteReferences(filename, code) {
   return [...targets].sort().map((target) => ({ sourceFile: filename, target }))
 }
 
+/**
+ * Collect literal JSX props by component name so a shared component's own
+ * navigation can resolve the finite paths supplied by its production callers.
+ *
+ * @param {Map<string, string>} sources
+ * @returns {Map<string, Map<string, Set<string>>>}
+ */
+function collectStaticJsxPropBindings(sources) {
+  const byComponent = new Map()
+  for (const [filename, code] of sources) {
+    if (!/\bbasePath\s*=/.test(code)) continue
+    const source = parseSource(code, filename)
+    /** @param {ts.Node} node */
+    function visit(node) {
+      if (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) {
+        const component = jsxName(node.tagName)
+        for (const property of node.attributes.properties) {
+          if (!ts.isJsxAttribute(property) || !property.initializer) continue
+          if (property.name.getText(source) !== 'basePath') continue
+          let value = null
+          if (ts.isStringLiteral(property.initializer)) value = property.initializer.text
+          if (ts.isJsxExpression(property.initializer) && property.initializer.expression && ts.isStringLiteral(property.initializer.expression)) {
+            value = property.initializer.expression.text
+          }
+          if (!value?.startsWith('/') || value.startsWith('//') || /\s/.test(value)) continue
+          const componentBindings = byComponent.get(component) ?? new Map()
+          const propertyName = property.name.getText(source)
+          const values = componentBindings.get(propertyName) ?? new Set()
+          values.add(value)
+          componentBindings.set(propertyName, values)
+          byComponent.set(component, componentBindings)
+        }
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(source)
+  }
+  return byComponent
+}
+
 /** @param {string} routePath @param {string} target */
 function routeMatchesReference(routePath, target) {
   const routeSegments = normalizeRoutePath(routePath).split('/').filter(Boolean)
@@ -557,9 +719,13 @@ function routeMatchesReference(routePath, target) {
  * @param {Map<string, string>} inputSources
  */
 export function analyzeRouteReachability(routeCode, inputSources) {
+  const propBindings = collectStaticJsxPropBindings(inputSources)
   const references = [...inputSources]
     .filter(([filename]) => normalizeFile(filename) !== ROUTES_FILE)
-    .flatMap(([filename, code]) => extractRouteReferences(normalizeFile(filename), code))
+    .flatMap(([filename, code]) => {
+      const component = path.posix.basename(normalizeFile(filename)).replace(/\.[^.]+$/, '')
+      return extractRouteReferences(normalizeFile(filename), code, propBindings.get(component))
+    })
 
   return extractRoutes(routeCode).map((route) => {
     const inboundReferences = references

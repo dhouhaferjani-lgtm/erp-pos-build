@@ -12,17 +12,19 @@
 cd apps/web && node tools/audit-listing-census.mjs
 ```
 
-The scan is local-only, completes in about 1–2 seconds on the execution host, and always exits 0 because it is analysis tooling rather than a CI ratchet. Its stdout contains the complete 46-page table and all 271 registered route records.
+The scan is local-only, completes in roughly five seconds on the execution host, and always exits 0 because it is analysis tooling rather than a CI ratchet. Its stdout contains the complete 46-page table and all 271 registered route records.
 
 ## Method
 
-Listing discovery is filesystem-derived: every production TSX file under `src/features/` whose basename ends in `ListPage`, `ListView`, `QueuePage`, or `IndexPage`. The rule discovers 46 pages at this base; the number is an output, not an allowlist.
+For comparability, listing discovery intentionally inherits the filename rule from the original audit (`02-route-listing-inventory.md:66`): every production TSX file under `src/features/` whose basename ends in `ListPage`, `ListView`, `QueuePage`, or `IndexPage`. This is not an independent proof of the complete listing-page population. The rule discovers 46 pages at this base (44 `ListPage`, two `QueuePage`, and zero `ListView` or `IndexPage` matches); the number is an output, not an allowlist.
 
 For each page the scanner parses TypeScript/JSX, follows rendered feature-local imports whose component role is a list, table, grid, queue, result, filter, or view, and classifies the combined rendered graph. Shared primitives are recorded at their call site but not traversed internally, preventing every `DataTable` caller from inheriting optional behavior it did not request. Every positive verdict records the source file that supplied it.
 
+The component-role filter is deliberately narrow: 43 of 46 rows remain file-local, while only Enrichment Queue, Expenses, and Workshop Bundles traverse one rendered child. A differently named body component is therefore outside this scanner's graph. The inherited filename rule also excludes 39 route-mounted, non-detail pages that render `DataTable`, including `StockLevelsPage`, `StockMovementsPage`, `UsersPage`, `RolesPage`, `TenantsPage`, `AuditLogsPage`, `ShiftHistoryPage`, `WithholdingRulesPage`, `EntryExitNotesPage`, `ImportHistoryPage`, and `PaymentMethodsPage`. Wave 3 planning must include that secondary surface or first broaden the population rule; the 46-row distributions below are decision-grade only for the inherited cohort.
+
 Reachability is derived from the JSX route tree in `src/routes/index.tsx` and navigation references in production source: `to`, `href`, `navigate(...)`, breadcrumb maps, and the central `entityRoutes` builders. Route parameters and dynamic links are segment-matched; an unconstrained template such as `/${section}/${slug}` cannot make unrelated literal paths reachable. Redirects, layout shells, and external auth/legal entry routes are reported but excluded from the orphan set.
 
-## Decision-grade summary
+## Decision-grade summary for the inherited cohort
 
 ```json
 {
@@ -53,8 +55,8 @@ Reachability is derived from the JSX route tree in `src/routes/index.tsx` and na
   "orphan_candidates": {
     "view": 15,
     "parameterized_view": 4,
-    "action_or_form": 15,
-    "total": 34
+    "action_or_form": 8,
+    "total": 27
   }
 }
 ```
@@ -122,7 +124,7 @@ This compact table is machine-readable Markdown. `B` means the shared SearchInpu
 
 ## Orphan reachability
 
-The scanner emits 34 orphan candidates after removing redirects, layout shells, and external entry routes. Structural roles keep the result auditable:
+The scanner emits 27 orphan candidates after removing redirects, layout shells, and external entry routes. Structural roles keep the result auditable. This corrects seven false action/form candidates from the first re-census draft: conditional partner base paths and literal `basePath` props passed into shared document action components are now resolved, while unconstrained prefix templates remain excluded.
 
 | Route | Component | Role | Finding/disposition |
 |---|---|---|---|
@@ -135,16 +137,9 @@ The scanner emits 34 orphan candidates after removing redirects, layout shells, 
 | `/inventory/delivery-notes/new` | `DocumentForm` | action/form | static candidate; call-flow follow-up |
 | `/inventory/replenishment/new` | `ReplenishmentCapturePage` | action/form | static candidate; call-flow follow-up |
 | `/inventory/return-notes/new` | `CreateReturnNotePage` | action/form | static candidate; call-flow follow-up |
-| `/purchases/orders/:id/edit` | `DocumentForm` | action/form | static candidate; call-flow follow-up |
-| `/purchases/suppliers/:id/edit` | `CustomerForm` | action/form | static candidate; call-flow follow-up |
-| `/purchases/suppliers/new` | `CustomerForm` | action/form | static candidate; call-flow follow-up |
 | `/sales/credit-notes/create` | `CreateCreditNotePage` | action/form | static candidate; call-flow follow-up |
 | `/sales/credit-notes/new` | `DocumentForm` | action/form | static candidate; call-flow follow-up |
-| `/sales/customers/:id/edit` | `CustomerForm` | action/form | static candidate; call-flow follow-up |
-| `/sales/invoices/:id/edit` | `DocumentForm` | action/form | static candidate; call-flow follow-up |
-| `/sales/orders/:id/edit` | `DocumentForm` | action/form | static candidate; call-flow follow-up |
 | `/sales/orders/new` | `DocumentForm` | action/form | static candidate; call-flow follow-up |
-| `/sales/quotes/:id/edit` | `DocumentForm` | action/form | static candidate; call-flow follow-up |
 | `/finance` | `FinanceHubPage` | view | UI-33 hub |
 | `/marketing` | `MarketingHubPage` | view | UI-33 hub |
 | `/pos/shifts` | `POSShiftsPage` | view | UI-34 |
@@ -161,11 +156,11 @@ The scanner emits 34 orphan candidates after removing redirects, layout shells, 
 | `/settings/compliance/fraud-settings` | `FraudSettingsPage` | view | UI-09 compliance cluster |
 | `/settings/compliance/quarantine-resolution` | `QuarantineResolveAssistPage` | view | UI-09 compliance cluster |
 
-The 15 action/form rows remain candidates rather than confirmed UI-34 orphans because a static navigation scan cannot prove reachability through opaque callback values or server-originated links. They stay visible instead of being silently discarded. The seven UI-34 views, both UI-33 hubs, the CX-1 workflow, the three CX-2 parameterized views, the compliance cluster, and the claimed lane-separation page all reproduce with zero inbound UI references.
+The eight action/form rows remain candidates rather than confirmed UI-34 orphans because a static navigation scan cannot prove reachability through opaque callback values or server-originated links. They stay visible instead of being silently discarded. The seven UI-34 views, both UI-33 hubs, the CX-1 workflow, the three CX-2 parameterized views, the compliance cluster, and the claimed lane-separation page all reproduce with zero inbound UI references.
 
 ## Which prior rows are now decision-grade
 
-- Pagination, empty-state, filter-pattern, `ListPageLayout`, and `DataTable` distributions are decision-grade at the pinned base because each row is graph-derived and source-attributed.
+- Pagination, empty-state, filter-pattern, `ListPageLayout`, and `DataTable` distributions are decision-grade for the inherited 46-page cohort at the pinned base because each row is graph-derived and source-attributed. They are not whole-product coverage figures because of the disclosed filename and component-role boundaries.
 - The seven-view UI-34 set and the named hub/CX/compliance clusters are decision-grade because the tool includes parameterized routes and positive breadcrumb/back-link evidence.
-- The 15 action/form candidates are intentionally not promoted to confirmed orphans without call-flow resolution.
+- The eight action/form candidates are intentionally not promoted to confirmed orphans without call-flow resolution.
 - The withdrawn “~57 person-days” estimate remains withdrawn; this census measures scope and does not invent an estimation model.

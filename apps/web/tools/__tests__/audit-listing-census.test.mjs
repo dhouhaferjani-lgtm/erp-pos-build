@@ -86,6 +86,20 @@ describe('component-graph-aware listing classification', () => {
     })
   })
 
+  it('does not confuse a later zero comparison with the list-length branch', () => {
+    const files = new Map([
+      ['src/features/example/pages/ExampleListPage.tsx', `
+        export function ExampleListPage({ items, mode }) {
+          return items.length > 0 && mode === 0 ? <div>Rows</div> : null
+        }
+      `],
+    ])
+
+    const result = classifyListingPage('src/features/example/pages/ExampleListPage.tsx', files)
+
+    assert.equal(result.emptyState, null)
+  })
+
   it('classifies filter primitives rendered by an organism', () => {
     const files = new Map([
       ['src/features/example/pages/ExampleListPage.tsx', `
@@ -193,6 +207,51 @@ describe('route reachability', () => {
     const result = analyzeRouteReachability(routes, sources)
 
     assert.equal(result[0]?.orphaned, true)
+  })
+
+  it('resolves conditional base paths and literal props used by shared navigation components', () => {
+    const routes = `
+      import { Routes, Route } from 'react-router-dom'
+      export function AppRoutes() {
+        return <Routes>
+          <Route path="/purchases/suppliers/new" element={<SupplierForm />} />
+          <Route path="/sales/customers/:id/edit" element={<CustomerForm />} />
+          <Route path="/sales/quotes/:id/edit" element={<DocumentForm />} />
+        </Routes>
+      }
+    `
+    const sources = new Map([
+      ['src/features/partners/PartnerListPage.tsx', `
+        export function PartnerListPage({ supplier }) {
+          const basePath = supplier ? '/purchases/suppliers' : '/sales/customers'
+          return <Link to={\`${'${basePath}'}/new\`}>New</Link>
+        }
+      `],
+      ['src/features/partners/PartnerDetailPage.tsx', `
+        export function PartnerDetailPage({ supplier, partner }) {
+          const basePath = supplier ? '/purchases/suppliers' : '/sales/customers'
+          return <Link to={\`${'${basePath}'}/${'${partner.id}'}/edit\`}>Edit</Link>
+        }
+      `],
+      ['src/features/documents/quotes/QuoteDetailPage.tsx', `
+        export function QuoteDetailPage() {
+          return <DocumentActionBar basePath="/sales/quotes" />
+        }
+      `],
+      ['src/features/documents/components/DocumentActionBar.tsx', `
+        export function DocumentActionBar({ basePath, document }) {
+          return <Link to={\`${'${basePath}'}/${'${document.id}'}/edit\`}>Edit</Link>
+        }
+      `],
+    ])
+
+    const result = analyzeRouteReachability(routes, sources)
+
+    assert.deepEqual(result.map(({ path, orphaned }) => ({ path, orphaned })), [
+      { path: '/purchases/suppliers/new', orphaned: false },
+      { path: '/sales/customers/:id/edit', orphaned: false },
+      { path: '/sales/quotes/:id/edit', orphaned: false },
+    ])
   })
 
   it('counts a breadcrumb parent as an inbound path', () => {
