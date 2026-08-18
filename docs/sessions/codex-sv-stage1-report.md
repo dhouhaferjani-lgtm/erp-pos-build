@@ -698,10 +698,43 @@ The list was read, not inferred. Production/test paths map only to SV-1, SV-9, S
 
 ### Deploy obligation
 
-On the next `origin/dev` promotion, run unattended `tenants:migrate`. Migration `2026_08_12_100000_enable_blind_cash_count_for_existing_settings.php` changes every persisted `require_blind_cash_count=false` row to true and changes the PostgreSQL column default to true. Verify each tenant's warning log contains `SV-9 BLIND COUNT BACKFILL COMPLETE:` with tenant, changed, and skipped counts; rerunning must report `changed=0`. The migration intentionally re-enables deliberate false rows because the schema has no provenance discriminator and the binding ruling is ON everywhere. It does not enable the Treasury GL flag.
+**Hard precondition:** deploy the SV-11 POS device build containing the whole-drawer instruction to
+the fleet and record rollout evidence before the SV-9 migration reaches any promotion. This is binding,
+not advisory. A push to `origin/dev` deploys the API and runs `tenants:migrate` unattended, so the
+server change must not be pushed or merged into that promotion path first. Missing SV-11 fleet-rollout
+evidence blocks promotion. The parent program is mirroring this dependency into its LEDGER
+device-owes stack; this lane's deploy record is
+`docs/superpowers/tickets/2026-08-12-sv9-blind-count-default-deploy.md`.
+
+After that precondition is satisfied, the promotion runs unattended `tenants:migrate`. Migration
+`2026_08_12_100000_enable_blind_cash_count_for_existing_settings.php` changes every persisted
+`require_blind_cash_count=false` row to true and changes the PostgreSQL column default to true. Verify
+each tenant's warning log contains `SV-9 BLIND COUNT BACKFILL COMPLETE:` with tenant, changed, and
+skipped counts; rerunning must report `changed=0`. The migration intentionally re-enables deliberate
+false rows because the schema has no provenance discriminator and the binding ruling is ON everywhere.
+It does not enable the Treasury GL flag.
 
 ### M5 round 1 owner stop
 
 The four-lens gate reproduced the implementation and evidence but returned two P2s. First, the deploy record does not yet state the cross-artifact ordering requirement: the POS build containing the SV-11 whole-drawer instruction must reach devices before the SV-9 server migration enables blind counting, especially for retail tenants previously persisted false. Second, M4's policy-unavailable state is a real fiscal-availability change: when online settings and local cache are both absent, it blocks shift close and Z generation. The disclosure direction is safe, but approving that operational behavior or specifying an audited recovery is owner-owed and exceeds SV-10's narrow-fix permission.
 
 Per harness STOP condition B, M5 and the wave are `blocked_owner` pending that explicit ruling. No fallback, default policy, or removal of the block is inferred. Round 1 also records four non-blocking P3s for the resumed pass: the already disclosed one-minor-unit reveal mismatch; a stale device-cache sentence in the SV-9 deploy ticket; hardening the partial Arabic compliance merge; and the dead-parameter `defaultsForVertical()` compatibility API.
+
+### M5 owner ruling and resume
+
+The owner approved Option 1: fail-closed stands. An unsynced device with no cached fraud policy blocks
+shift close and Z generation until policy sync succeeds. The state is limited to a never-synced or
+wiped device, while the alternative would seal a Z under an unknown fraud policy and recreate the
+silent-bypass class this program is intended to eliminate. No production behavior changes in this
+resume; the existing disclosure-safe implementation is now explicitly ruled.
+
+The Windows installation runbook now makes one successful cash-count policy sync a provisioning gate
+before the first shift close or Z generation. The SV-9 deploy ticket records the SV-11-fleet-first
+ordering as a hard promotion precondition and corrects its stale cache note: without a cached policy,
+the whole end-of-day preview is withheld and close/Z generation is blocked.
+
+The two M4-round5 policy-unavailable display P3s remain carried in
+`docs/superpowers/tickets/2026-08-17-blind-count-policy-unavailable-close.md`: a pending refresh can
+blank the body during `confirming`, and a failed refresh can show a false policy-not-synced error with
+an inert Cancel action while confirmation is already in flight. They remain non-disclosing,
+non-blocking UX defects; no claim is made that they were fixed.
