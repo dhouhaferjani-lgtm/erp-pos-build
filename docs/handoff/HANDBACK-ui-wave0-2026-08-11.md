@@ -307,3 +307,5 @@ Route manifest drift — run: node scripts/factory/gen-route-manifest.mjs && com
 ```
 
 That exit 1 is the explicitly permitted M3 intermediate state. M4 owns the single regeneration and drift-CI work.
+
+M3 bridge round 1 (`docs/handoff/reviews/ui-wave0/M3-round1.md`) ended in a blank review-tool error with no findings and no parseable verdict. The harness therefore records it as `CHANGES-REQUIRED`; no code fix was possible, and round 2 retries the read-only gate.
