@@ -67,7 +67,7 @@ milestones:
     review_lenses: [inventory-costing, fiscal-pos]
     status: review
     fix_rounds: 5
-    commit: 3b22936aa
+    commit: 2bd9595d9ec1903826fbd4515f993a1b45005b31
     verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
     last_verdict: CHANGES-REQUIRED
   - id: M3

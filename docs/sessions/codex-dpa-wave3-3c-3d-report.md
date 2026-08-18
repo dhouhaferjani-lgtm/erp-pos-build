@@ -193,7 +193,8 @@ They are explicitly base drift, while touched-file PHPStan is clean.
 
 ## M2 — atomic inventory-movement COGS cutover
 
-M2 delivers T14–T17: DN, RN, and both live POS writers now capture movement
+The complete cutover and all scoped remediation are one D-13 atomic commit,
+`2bd9595d9`. M2 delivers T14–T17: DN, RN, and both live POS writers now capture movement
 costs and defer movement-keyed inventory GL to the owning root tail; projected
 and interactive refund/scrap paths use the original sale movement basis;
 voucher posting occurs after stock projection; the invoice-keyed legacy COGS
@@ -228,3 +229,9 @@ Delivery Note +6, Refund +1, Return Note +4. No baseline was changed. P3-6,
 P3-8, P3-9, and P3-10 have dedicated tickets; P3-10 explicitly requires the
 non-vacuous per-tenant duplicate-count check before promotion. No workflow file
 was modified.
+
+Post-squash verification preserves the ruled totals: the six real-root files
+pass 69 tests / 310 assertions when the POS real-root class is isolated from
+the committed fixtures of the preceding five files; the wrapper trio passes
+41 / 218; Goods Receipt ordering passes 12 / 42. Pint and touched-file PHPStan
+pass, `git diff --check` is clean, and deptrac remains the reconciled 127.

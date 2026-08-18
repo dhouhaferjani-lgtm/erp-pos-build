@@ -28,9 +28,9 @@ edits:
 - a POS refund after live cost moved from 3 to 12 restored and wrote off at 12,
   rather than the original sale movement cost of 3.
 
-After the atomic commit was green, `git revert --no-commit f848dab39` (the
-reachable amended commit with the same implementation tree) was applied while
-retaining the new covering tests. The selected replay produced
+During red/green development, `git revert --no-commit f848dab39` (the original
+pre-squash cutover identifier) was applied while retaining the new covering
+tests. The selected replay produced
 `10 failed (17 assertions)` for cause-specific expectations:
 
 ```text
@@ -76,8 +76,8 @@ InventoryGlPostingSeamTest: 25 passed (100 assertions)
 PHPStan targeted changed production files: [OK] No errors
 ```
 
-The scoped fix commit was also revert-replayed with
-`git revert --no-commit 28a2d854b` while retaining its covering tests. The
+The original round-one fix commit was also revert-replayed with
+`git revert --no-commit 28a2d854b` before the D-13 squash, while retaining its covering tests. The
 selected replay produced five expected failures: delayed device events were
 again classified historical, pre-cutover refunds were again classified live,
 interactive returns used the mutated live product cost (12 rather than 2.5),
@@ -116,8 +116,8 @@ Targeted changed-production PHPStan: [OK] No errors
 Pint + git diff --check: pass
 ```
 
-The round-three fix commit was revert-replayed with
-`git revert --no-commit 55e03c025` while retaining its covering tests. On the
+The original round-three fix commit was revert-replayed with
+`git revert --no-commit 55e03c025` before the D-13 squash, while retaining its covering tests. On the
 required PostgreSQL port 5432, the replay produced the four expected behavioral
 failures: projected receipt cost was null, the legacy null-cost refund was not
 historical, C-5 leaked its buffered movement at the request boundary, and a
@@ -293,3 +293,25 @@ PHPStan (five touched production/migration files): [OK] No errors
 deptrac ratchet: 127 current, 116 at M1, 99 baseline
 git diff --check: pass
 ```
+
+The D-13 rewrite then combined the original cutover and all three remediation
+commits into the single atomic commit `2bd9595d9`; the four superseded commit
+identifiers are no longer ancestors of `HEAD`. The final tree matched the
+pre-squash tree exactly. Fresh verification from the rewritten history produced:
+
+```text
+Five real-root files in one PostgreSQL process: 58 passed (268 assertions)
+PosReturnScrapWriteOffTest in an isolated PostgreSQL process: 11 passed (42 assertions)
+Ruled six-file total: 69 passed (307 + 3 = 310 assertions)
+Three wrapper-transaction files: 41 passed (218 assertions)
+GoodsReceiptGlPostingOrderTest: 12 passed (42 assertions)
+Pint (atomic-commit PHP paths): pass
+PHPStan (round-8 production/migration paths): [OK] No errors
+deptrac ratchet: 127 current, 116 at M1, 99 baseline
+git diff --check: pass
+```
+
+The first combined post-squash run reached 68 passes before one POS test's
+`setUp()` collided on a Faker-generated tenant slug committed by earlier
+real-root classes. Running that class in its required isolated process passed
+all 11 tests; no product assertion failed.
