@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:8546d7436a07718e3e10ec6ff0ff6a2bfd5c32bf57f09a1fa5d84211ec9cf6a0
+// Source hash: sha256:8ed8c461b1f172471264fd27fd375b3e6cc1d86102d8296fde4f52b0a3d7ed6e
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -243,6 +243,7 @@ export const PERMISSIONS = {
   'scheduling.appointments.view': ['accountant', 'admin', 'manager', 'operator', 'technician'],
   'scheduling.bays.manage': ['admin', 'manager'],
   'scheduling.bays.view': ['accountant', 'admin', 'manager', 'operator', 'technician'],
+  'settings.fiscal.update': ['admin'],
   'settings.manage': ['admin', 'manager'],
   'settings.update': ['admin'],
   'settings.view': ['admin', 'manager', 'viewer'],
