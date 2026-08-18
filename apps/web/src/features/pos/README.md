@@ -1,5 +1,7 @@
 # POS Feature Module
 
+> Superseded 2026-08-11: `ShiftDashboardPage` was deleted; use `/pos/shift-history` for the supported web-admin surface.
+
 Complete Point of Sale component library built with Test-Driven Development (TDD) and Atomic Design principles.
 
 ## Architecture

@@ -388,41 +388,6 @@
     "amount": "Montant",
     "print": "Imprimer"
   },
-  "shiftDashboard": {
-    "shiftNumber": "Caisse #{{number}}",
-    "statusOpen": "OUVERTE",
-    "cashier": "Caissier",
-    "openingBalance": "Fond de caisse",
-    "expectedCash": "Espèces attendues",
-    "duration": "Durée",
-    "cashDeposit": "Dépôt",
-    "cashPayout": "Retrait",
-    "xReport": "Rapport X",
-    "closeShift": "Fermer la caisse",
-    "openShift": "Ouvrir la caisse",
-    "noActiveShift": "Aucune caisse ouverte",
-    "noActiveShiftDescription": "Ouvrez une caisse pour commencer les opérations",
-    "deviceAuthorityNotice": "Ce terminal ouvre et ferme les caisses sur l'appareil de caisse. Utilisez l'appareil de caisse pour ouvrir ou fermer une caisse.",
-    "deviceAuthorityNoActiveShiftDescription": "Les caisses de ce terminal sont gérées sur l'appareil de caisse.",
-    "actualCashCount": "Espèces comptées",
-    "variance": "Écart",
-    "amount": "Montant",
-    "reason": "Motif"
-  },
-  "shifts": {
-    "toasts": {
-      "shiftOpened": "Caisse ouverte avec succès",
-      "openFailed": "Échec de l'ouverture de la caisse",
-      "shiftClosed": "Caisse fermée avec succès",
-      "closeFailed": "Échec de la fermeture de la caisse",
-      "depositRecorded": "Dépôt enregistré",
-      "depositFailed": "Échec de l'enregistrement du dépôt",
-      "payoutRecorded": "Retrait enregistré",
-      "payoutFailed": "Échec de l'enregistrement du retrait",
-      "xReportGenerated": "Rapport X généré",
-      "xReportFailed": "Échec de la génération du rapport X"
-    }
-  },
   "cashTendered": {
     "title": "Paiement Espèces",
     "amountDue": "Montant Dû",

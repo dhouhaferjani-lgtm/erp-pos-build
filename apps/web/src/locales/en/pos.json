@@ -388,41 +388,6 @@
     "amount": "Amount",
     "print": "Print"
   },
-  "shiftDashboard": {
-    "shiftNumber": "Shift #{{number}}",
-    "statusOpen": "OPEN",
-    "cashier": "Cashier",
-    "openingBalance": "Opening Balance",
-    "expectedCash": "Expected Cash",
-    "duration": "Duration",
-    "cashDeposit": "Cash Deposit",
-    "cashPayout": "Cash Payout",
-    "xReport": "X Report",
-    "closeShift": "Close Shift",
-    "openShift": "Open Shift",
-    "noActiveShift": "No Active Shift",
-    "noActiveShiftDescription": "Start a new shift to begin operations",
-    "deviceAuthorityNotice": "This terminal opens and closes shifts on the POS device. Use the POS device to start or end a shift.",
-    "deviceAuthorityNoActiveShiftDescription": "Shifts for this terminal are managed on the POS device.",
-    "actualCashCount": "Actual Cash Count",
-    "variance": "Variance",
-    "amount": "Amount",
-    "reason": "Reason"
-  },
-  "shifts": {
-    "toasts": {
-      "shiftOpened": "Shift opened successfully",
-      "openFailed": "Failed to open shift",
-      "shiftClosed": "Shift closed successfully",
-      "closeFailed": "Failed to close shift",
-      "depositRecorded": "Cash deposit recorded",
-      "depositFailed": "Failed to record deposit",
-      "payoutRecorded": "Cash payout recorded",
-      "payoutFailed": "Failed to record payout",
-      "xReportGenerated": "X-Report generated",
-      "xReportFailed": "Failed to generate X-Report"
-    }
-  },
   "cashTendered": {
     "title": "Cash Payment",
     "amountDue": "Amount Due",

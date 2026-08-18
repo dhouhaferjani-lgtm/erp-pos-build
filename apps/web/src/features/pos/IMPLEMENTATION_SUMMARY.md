@@ -1,5 +1,7 @@
 # POS Feature Implementation Summary
 
+> Superseded 2026-08-11: `ShiftDashboardPage` was deleted; use `/pos/shift-history` for the supported web-admin surface.
+
 **Date**: 2026-01-09
 **Status**: ✅ COMPLETE
 **Methodology**: Test-Driven Development (TDD) + Atomic Design

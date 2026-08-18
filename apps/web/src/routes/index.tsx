@@ -281,7 +281,6 @@ const CrmContactDetailPage = lazy(() => import('../features/crm/pages/ContactDet
 // POS module
 const POSTerminalsPage = lazy(() => import('../pages/POS/Terminals').then((m) => ({ default: m.TerminalsPage })))
 const POSTransactionsPage = lazy(() => import('../pages/POS/POSTransactions').then((m) => ({ default: m.POSTransactions })))
-const POSShiftsPage = lazy(() => import('../pages/POS/POSShiftsDashboard').then((m) => ({ default: m.POSShiftsDashboard })))
 const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPage/ShiftHistoryPage').then((m) => ({ default: m.ShiftHistoryPage })))
 const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
 const AnalyticsDashboardPage = lazy(() => import('../features/pos/pages/AnalyticsDashboardPage').then((m) => ({ default: m.AnalyticsDashboardPage })))
@@ -3172,18 +3171,6 @@ export function AppRoutes() {
             <RequirePermission permission="pos.operate_terminal">
               <SuspenseWrapper>
                 <POSTransactionsPage />
-              </SuspenseWrapper>
-            </RequirePermission>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/pos/shifts"
-        element={
-          <RequireAuth>
-            <RequirePermission permission="pos.manage_shifts">
-              <SuspenseWrapper>
-                <POSShiftsPage />
               </SuspenseWrapper>
             </RequirePermission>
           </RequireAuth>

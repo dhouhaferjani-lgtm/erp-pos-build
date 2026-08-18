@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const routesSource = readFileSync(`${process.cwd()}/src/routes/index.tsx`, 'utf8')
+const sidebarSource = readFileSync(`${process.cwd()}/src/components/organisms/Sidebar/Sidebar.tsx`, 'utf8')
+const posHubSource = readFileSync(`${process.cwd()}/src/features/pos/pages/PosHubPage.tsx`, 'utf8')
 
 function routeBranch(path: string): string {
   const start = routesSource.indexOf(`<Route path="${path}">`)
@@ -62,6 +64,18 @@ describe('route module guards', () => {
     expect(idx).toBeGreaterThanOrEqual(0)
     const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
     expect(fragment).toContain('<ModuleGuard module="Menu">')
+  })
+
+  it('keeps shift history reachable while the retired web shift console is absent', () => {
+    const retiredShiftPath = ['/pos', '/shifts'].join('')
+    const retiredShiftPage = ['POS', 'Shifts', 'Page'].join('')
+    expect(routesSource).not.toContain(`path="${retiredShiftPath}"`)
+    expect(routesSource).not.toContain(retiredShiftPage)
+    expect(routesSource).toContain('path="shift-history"')
+    expect(routesSource).toContain('<ShiftHistoryPage />')
+    expect(routesSource).toContain('<Route path="*" element={<Navigate to="/dashboard" replace />} />')
+    expect(sidebarSource).toContain("href: '/pos/shift-history'")
+    expect(posHubSource).toContain("href: '/pos/shift-history'")
   })
 
   it('does not register the legacy bank reconciliation route', () => {

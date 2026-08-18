@@ -99,7 +99,7 @@ describe('posShiftBalanceInvalidationPredicate (callsite .842)', () => {
 
 describe('POS useQuery shapes carry tenant_id + company_id', () => {
   function ShiftQueryProbe() {
-    // Mirrors POSShiftsDashboard L48 + POSTransactions L128 shape.
+    // Mirrors the POSTransactions shift query shape.
     const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
     const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
     useQuery({

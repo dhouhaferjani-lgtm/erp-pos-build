@@ -10,8 +10,8 @@
  * mismatch by matching on `queryKey[0]` + `queryKey[1]` plus the
  * tenant/company tail.
  *
- * Used by POSShiftsDashboard (`invalidateShiftData`) and POSTransactions
- * (post-receipt cleanup, modal `onSuccess`) to cascade-invalidate every
+ * Used by POSTransactions (post-receipt cleanup, modal `onSuccess`) to
+ * cascade-invalidate every
  * shift / shift-balance entry for the active tenant + company.
  */
 export function posShiftInvalidationPredicate(
