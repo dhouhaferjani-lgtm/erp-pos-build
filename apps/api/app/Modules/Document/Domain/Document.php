@@ -640,6 +640,31 @@ class Document extends Model
     }
 
     /**
+     * Restrict a delivery-note query to records without an invoice stamp.
+     *
+     * PostgreSQL compiles this JSON selector as `payload->>'invoiced_at' IS NULL`,
+     * which deliberately treats an absent key and JSON null alike.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereDeliveryNoteUninvoiced(Builder $query): Builder
+    {
+        return $query->whereNull('payload->invoiced_at');
+    }
+
+    /**
+     * Restrict a delivery-note query to records with an invoice stamp.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereDeliveryNoteInvoiced(Builder $query): Builder
+    {
+        return $query->whereNotNull('payload->invoiced_at');
+    }
+
+    /**
      * Scope to filter credit notes
      *
      * @param  Builder<static>  $query

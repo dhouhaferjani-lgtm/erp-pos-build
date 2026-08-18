@@ -168,7 +168,7 @@ export function groupDeliveryNotesByPartner(
   const grouped = new Map<string, DeliveryNote[]>()
 
   for (const dn of deliveryNotes) {
-    const partnerId = dn.partner_id
+    const partnerId = dn.partner_id ?? 'unassigned'
     const existing = grouped.get(partnerId) ?? []
     grouped.set(partnerId, [...existing, dn])
   }

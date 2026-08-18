@@ -24,7 +24,9 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use App\Support\Traits\PaginatesResults;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -94,22 +96,40 @@ class DeliveryNoteController extends Controller
     public function index(Request $request): JsonResponse
     {
         $params = $this->getPaginationParams($request);
+        $company = $this->companyContext->requireCompany();
 
-        $query = $this->baseQuery()->ofType(DocumentType::DeliveryNote);
+        $query = $this->baseQuery()
+            ->ofType(DocumentType::DeliveryNote)
+            ->where('currency', $company->currency);
 
         // Apply common filters from the trait
         $query = $this->applyFilters($query, $request);
+        $query = $this->applyDeliveryNoteFilters($query, $request);
+
+        $aggregates = $request->query('with_aggregates') === '1'
+            ? $this->deliveryNoteAggregates(clone $query, $company->currency)
+            : null;
 
         // Order by created_at desc and id for consistent cursor pagination (in case created_at is the same)
         $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+
+        if ($request->query->has('page')) {
+            $paginator = $query->with('vehicleContext')->paginate($params['per_page']);
+            $response = $this->formatOffsetPaginatedResponse($paginator, null, $aggregates);
+            $response['data'] = $paginator->getCollection()
+                ->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false, $this->scale()))
+                ->all();
+
+            return response()->json($response);
+        }
 
         // Use cursor pagination with vehicleContext eager loaded
         $paginator = $query->with('vehicleContext')->cursorPaginate($params['per_page'], ['*'], 'cursor', $params['cursor']);
 
         // Transform items
-        $items = collect($paginator->items())->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false, $this->scale()))->all();
+        $items = $paginator->getCollection()->map(fn (Document $doc): DocumentData => DocumentData::fromModel($doc, false, $this->scale()))->all();
 
-        return response()->json([
+        $response = [
             'data' => $items,
             'meta' => [
                 'per_page' => $paginator->perPage(),
@@ -119,7 +139,52 @@ class DeliveryNoteController extends Controller
                 'next' => $paginator->nextCursor()?->encode(),
                 'prev' => $paginator->previousCursor()?->encode(),
             ],
-        ]);
+        ];
+        if ($aggregates !== null) {
+            $response['aggregates'] = $aggregates;
+        }
+
+        return response()->json($response);
+    }
+
+    /**
+     * @param  Builder<Document>  $query
+     * @return Builder<Document>
+     */
+    private function applyDeliveryNoteFilters(Builder $query, Request $request): Builder
+    {
+        if ($request->query('uninvoiced') === '1') {
+            $query->whereDeliveryNoteUninvoiced();
+        } elseif ($request->query('invoiced') === '1') {
+            $query->whereDeliveryNoteInvoiced();
+        }
+
+        $locationId = $request->query('location_id');
+        if (is_string($locationId) && $locationId !== '') {
+            $query->where('location_id', $locationId);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @param  Builder<Document>  $query
+     * @return array{count: int, total: string, currency: string}
+     */
+    private function deliveryNoteAggregates(Builder $query, string $currency): array
+    {
+        $scale = $this->scaleResolver->getScale($currency);
+        $count = (clone $query)->count();
+        $total = (clone $query)
+            ->toBase()
+            ->selectRaw('CAST(COALESCE(SUM(total), 0) AS TEXT) AS aggregate_total')
+            ->value('aggregate_total');
+
+        return [
+            'count' => $count,
+            'total' => CurrencyScale::bcformatStrict((string) ($total ?? '0'), $scale),
+            'currency' => $currency,
+        ];
     }
 
     /**

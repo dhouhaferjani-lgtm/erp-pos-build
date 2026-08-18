@@ -85,11 +85,6 @@ function deliveryNoteFixture(id: string): DeliveryNote {
     status: 'confirmed',
     partner_id: 'partner-1',
     partner_name: 'Partner',
-    partner: {
-      id: 'partner-1',
-      name: 'Partner',
-      type: 'customer',
-    },
     document_date: '2026-05-11',
     subtotal: '100.000',
     tax_amount: '0.000',

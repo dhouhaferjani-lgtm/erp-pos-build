@@ -65,10 +65,7 @@ class UninvoicedDeliveryNoteService
             ->where('company_id', $companyId)
             ->where('type', DocumentType::DeliveryNote)
             ->where('status', DocumentStatus::Confirmed)
-            ->where(function ($q) {
-                $q->whereNull('payload->invoiced_at')
-                    ->orWhereJsonContains('payload', ['invoiced_at' => null]);
-            })
+            ->whereDeliveryNoteUninvoiced()
             ->with('partner:id,name');
 
         if ($fromDate !== null) {

@@ -8,41 +8,8 @@ import { api, apiGet, apiPost } from '@/lib/api'
 /**
  * Delivery Note document type
  */
-export interface DeliveryNote {
-  id: string
-  document_number: string
-  type: 'delivery_note'
-  status: 'draft' | 'confirmed' | 'cancelled'
-  partner_id: string
-  partner_name: string | null
-  partner?: {
-    id: string
-    name: string
-    type: string
-  }
-  document_date: string
-  subtotal: string | null
-  tax_amount: string | null
-  total: string | null
-  currency: string
-  lines: DeliveryNoteLine[]
-  payload?: {
-    invoiced_at?: string
-    invoice_id?: string
-  }
-  created_at: string
-  updated_at: string
-}
-
-export interface DeliveryNoteLine {
-  id: string
-  line_number: number
-  description: string
-  quantity: string
-  unit_price: string
-  tax_rate: string
-  line_total: string
-}
+export type DeliveryNote = App.Modules.Document.Application.DTOs.DocumentData
+export type DeliveryNoteLine = App.Modules.Document.Application.DTOs.DocumentLineData
 
 /**
  * Response from consolidation endpoint
@@ -95,10 +62,10 @@ export async function getInvoiceableDeliveryNotes(partnerId?: string): Promise<D
   const deliveryNotes = await apiGet<DeliveryNote[]>('/delivery-notes', {
     status: 'confirmed',
     partner_id: partnerId,
+    uninvoiced: 1,
   })
 
-  // Filter out already invoiced delivery notes
-  return deliveryNotes.filter(dn => !dn.payload?.invoiced_at)
+  return deliveryNotes
 }
 
 /**
