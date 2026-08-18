@@ -202,6 +202,7 @@ final class ReceiptController extends Controller
                 invoice_type_code: $isLegacyReturn ? 'REFUND' : $receipt->invoice_type_code,
                 receipt_type: $receipt->receipt_type->value,
                 training_flag: $receipt->training_flag,
+                is_voided: $receipt->is_voided,
                 fiscal_status: $receipt->fiscal_status->value,
                 location_id: $receipt->location_id,
                 location_name: $receipt->location->name,

@@ -29,8 +29,8 @@ export function ReceiptDetailPage() {
   const { t } = useTranslation(['pos', 'common'])
   const { hasTenantScope } = usePosTenantScope()
   const currentCompanyId = useCompanyStore((state) => state.currentCompanyId)
-  const companyTimezone = useCompanyStore((state) => (
-    state.companies.find((company) => company.id === currentCompanyId)?.timezone
+  const activeCompany = useCompanyStore((state) => (
+    state.companies.find((company) => company.id === currentCompanyId) ?? null
   ))
   const [reprintAction, setReprintAction] = useState<ReprintAction | null>(null)
   const receiptPrint = useReceiptPrint()
@@ -38,7 +38,7 @@ export function ReceiptDetailPage() {
   const receiptQuery = useQuery({
     queryKey: tenantScopedKey(['pos', 'receipts', 'detail', id]),
     queryFn: () => getReceipt(id),
-    enabled: hasTenantScope && id !== '',
+    enabled: hasTenantScope && activeCompany !== null && id !== '',
   })
 
   if (!hasTenantScope) {
@@ -50,6 +50,7 @@ export function ReceiptDetailPage() {
     )
   }
 
+  if (!activeCompany) return <Spinner fullScreen message={t('common:loading')} />
   if (receiptQuery.isLoading) return <Spinner fullScreen message={t('common:loading')} />
   if (receiptQuery.isError || !receiptQuery.data) {
     return (
@@ -61,7 +62,7 @@ export function ReceiptDetailPage() {
   }
 
   const receipt = receiptQuery.data
-  const dateOptions = companyTimezone ? { timeZone: companyTimezone } : undefined
+  const dateOptions = { timeZone: activeCompany.timezone }
 
   const lineColumns: DataTableColumn<DetailLine>[] = [
     {
@@ -169,6 +170,9 @@ export function ReceiptDetailPage() {
                 {t(`pos:receipts.types.${receipt.invoice_type_code}`)}
               </StatusBadge>
             )}
+            {receipt.is_voided ? (
+              <StatusBadge tone="danger">{t('pos:receipts.fiscalStatuses.voided')}</StatusBadge>
+            ) : null}
             <StatusBadge>{t(`pos:receipts.fiscalStatuses.${receipt.fiscal_status}`)}</StatusBadge>
           </div>
         </div>
@@ -229,7 +233,9 @@ export function ReceiptDetailPage() {
                       : t('pos:receiptReporting.refunds.placeholder')}
                   </p>
                   <p className={cn('mt-0.5 text-xs', colorTokens.text.muted)}>
-                    {t(`pos:receiptReporting.refunds.reasonSources.${refund.refund_reason_source}`)}
+                    {refund.refund_reason_source
+                      ? t(`pos:receiptReporting.refunds.reasonSources.${refund.refund_reason_source}`)
+                      : t('pos:receiptReporting.refunds.placeholder')}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

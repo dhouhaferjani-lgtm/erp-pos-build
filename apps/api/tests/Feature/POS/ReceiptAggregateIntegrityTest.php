@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptVatDetail;
@@ -18,15 +19,14 @@ final class ReceiptAggregateIntegrityTest extends ReceiptReportingTestCase
         ?string $roundingAdjustment,
         string $expectedTotal,
     ): void {
-        $receipt = $this->createReceipt();
-        $receipt->forceFill([
+        $receipt = $this->createReceipt(attributes: [
             'currency' => 'TND',
             'subtotal' => '10.000',
             'tax_amount' => '1.900',
             'discount_amount' => '0.500',
             'cash_rounding_adjustment' => $roundingAdjustment,
             'total' => $expectedTotal,
-        ])->saveQuietly();
+        ]);
 
         $this->createVatDetail($receipt, '7.00', '4.000', '0.280', '4.280');
         $this->createVatDetail($receipt, '19.00', '6.000', '1.620', '7.620');
@@ -71,9 +71,11 @@ final class ReceiptAggregateIntegrityTest extends ReceiptReportingTestCase
 
     public function test_pre_fiscal_return_detail_projects_one_consistent_magnitude_document(): void
     {
-        $receipt = $this->createReceipt('SALE');
-        $receipt->forceFill([
+        $original = $this->createReceipt('SALE');
+        $receipt = $this->createReceipt('SALE', attributes: [
             'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $original->id,
+            'return_reason' => ReturnReason::Other,
             'fiscal_event_id' => null,
             'currency' => 'TND',
             'subtotal' => '-5.000',
@@ -81,7 +83,7 @@ final class ReceiptAggregateIntegrityTest extends ReceiptReportingTestCase
             'discount_amount' => '0.500',
             'cash_rounding_adjustment' => null,
             'total' => '-5.750',
-        ])->saveQuietly();
+        ]);
         ReceiptLine::create([
             'receipt_id' => $receipt->id,
             'line_number' => 1,

@@ -60,6 +60,10 @@ final class ReceiptIndexEnvelopeTest extends TestCase
             'invoice_type_code' => 'SALE',
             'training_flag' => false,
             'currency' => 'TND',
+            'subtotal' => '10.000',
+            'tax_amount' => '2.345',
+            'discount_amount' => '0.000',
+            'cash_rounding_adjustment' => null,
             'total' => '12.3450',
         ]);
 

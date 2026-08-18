@@ -4,6 +4,7 @@ import i18n from '@/lib/i18n'
 import { renderWithProviders } from '@/test/renderWithProviders'
 import { RefundReceiptListPage } from './RefundReceiptListPage'
 import { fetchReceiptFilterOptions, fetchRefundReceipts } from '../../api/receiptApi'
+import type { RefundReceiptListItem } from '../../api/receiptApi'
 
 vi.mock('../../api/receiptApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/receiptApi')>()
@@ -48,6 +49,7 @@ const refundRow = {
   invoice_type_code: 'REFUND',
   receipt_type: 'return',
   training_flag: false,
+  is_voided: false,
   fiscal_status: 'fiscalized',
   location_id: 'loc-1',
   location_name: 'Tunis',
@@ -109,7 +111,7 @@ describe('RefundReceiptListPage', () => {
     })
   })
 
-  it('marks only the refunds tab as the current page', async () => {
+  it('marks only the refunds route link as the current page', async () => {
     vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({
       terminals: [{ ...baseTerminal, v4_refund_authoring_enabled: true, v4_refund_authoring_acknowledged_at: '2026-08-17T10:00:00Z' }],
       cashiers: [],
@@ -117,9 +119,38 @@ describe('RefundReceiptListPage', () => {
 
     renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
 
-    await screen.findByRole('tab', { name: 'Refunds & voids' })
-    expect(screen.getByRole('tab', { name: 'Receipts' })).not.toHaveAttribute('aria-current')
-    expect(screen.getByRole('tab', { name: 'Refunds & voids' })).toHaveAttribute('aria-current', 'page')
+    const navigation = await screen.findByRole('navigation', { name: 'Receipt registers' })
+    expect(navigation).not.toHaveAttribute('role', 'tablist')
+    expect(screen.getByRole('link', { name: 'Receipts' })).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('link', { name: 'Refunds & voids' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('labels a legacy-voided refund row', async () => {
+    vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({ terminals: [{ ...baseTerminal }], cashiers: [] })
+    vi.mocked(fetchRefundReceipts).mockResolvedValue({
+      data: [{ ...refundRow, is_voided: true }],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: null, to: null },
+    })
+
+    renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
+
+    expect(await screen.findByText('Voided')).toBeVisible()
+  })
+
+  it('degrades nullable legacy reason metadata and alerts without crashing', async () => {
+    vi.mocked(fetchReceiptFilterOptions).mockResolvedValue({ terminals: [{ ...baseTerminal }], cashiers: [] })
+    const nullableLegacyRow: RefundReceiptListItem = { ...refundRow }
+    Reflect.set(nullableLegacyRow, 'refund_reason_source', null)
+    Reflect.set(nullableLegacyRow, 'refund_policy_alerts', null)
+    vi.mocked(fetchRefundReceipts).mockResolvedValue({
+      data: [nullableLegacyRow],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: null, to: null },
+    })
+
+    renderWithProviders(<RefundReceiptListPage />, { route: '/pos/receipts/refunds' })
+
+    expect(await screen.findByRole('link', { name: 'TN-POS-R-0001' })).toBeVisible()
+    expect(screen.queryByText(/alert$/)).not.toBeInTheDocument()
   })
 
   it('reveals the recorded policy-alert context while null and empty alerts stay quiet', async () => {

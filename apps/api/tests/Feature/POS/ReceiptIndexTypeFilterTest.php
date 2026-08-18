@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use Tests\Feature\POS\Support\ReceiptReportingTestCase;
 
 final class ReceiptIndexTypeFilterTest extends ReceiptReportingTestCase
@@ -27,11 +28,17 @@ final class ReceiptIndexTypeFilterTest extends ReceiptReportingTestCase
 
     public function test_legacy_return_axis_matches_the_refund_void_union(): void
     {
-        $this->createReceipt('SALE');
-        $refund = $this->createReceipt('REFUND');
-        $refund->forceFill(['receipt_type' => ReceiptType::Return])->saveQuietly();
-        $void = $this->createReceipt('VOID');
-        $void->forceFill(['receipt_type' => ReceiptType::Return])->saveQuietly();
+        $sale = $this->createReceipt('SALE');
+        $this->createReceipt('REFUND', attributes: [
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $sale->id,
+            'return_reason' => ReturnReason::Other,
+        ]);
+        $this->createReceipt('VOID', attributes: [
+            'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $sale->id,
+            'return_reason' => ReturnReason::Other,
+        ]);
 
         $newAxis = $this->getJson('/api/v1/pos/receipts?invoice_type_codes[]=REFUND&invoice_type_codes[]=VOID')
             ->assertOk()
@@ -71,15 +78,18 @@ final class ReceiptIndexTypeFilterTest extends ReceiptReportingTestCase
     public function test_pre_fiscal_return_is_excluded_from_sales_and_projected_into_refunds(): void
     {
         $sale = $this->createReceipt('SALE');
-        $legacyReturn = $this->createReceipt('SALE');
-        $legacyReturn->forceFill([
+        $legacyReturn = $this->createReceipt('SALE', attributes: [
             'receipt_type' => ReceiptType::Return,
             'original_receipt_id' => $sale->id,
             'return_reason' => 'defective',
             'fiscal_event_id' => null,
             'currency' => 'TND',
+            'subtotal' => '-5.250',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'cash_rounding_adjustment' => null,
             'total' => '-5.250',
-        ])->saveQuietly();
+        ]);
 
         $sales = $this->getJson('/api/v1/pos/receipts')->assertOk()->json('data.data');
         $refunds = $this->getJson('/api/v1/pos/receipts?invoice_type_codes[]=REFUND&invoice_type_codes[]=VOID')
@@ -95,15 +105,35 @@ final class ReceiptIndexTypeFilterTest extends ReceiptReportingTestCase
 
     public function test_receipt_number_search_treats_percent_and_underscore_as_literals(): void
     {
-        $matching = $this->createReceipt();
-        $matching->forceFill(['receipt_number' => 'TN-%_SPECIAL'])->saveQuietly();
-        $other = $this->createReceipt();
-        $other->forceFill(['receipt_number' => 'TN-XXSPECIAL'])->saveQuietly();
+        $matching = $this->createReceipt(attributes: ['receipt_number' => 'TN-%_SPECIAL']);
+        $this->createReceipt(attributes: ['receipt_number' => 'TN-XXSPECIAL']);
 
         $rows = $this->getJson('/api/v1/pos/receipts?receipt_number=%25_')
             ->assertOk()
             ->json('data.data');
 
         $this->assertSame([$matching->id], array_column($rows, 'id'));
+    }
+
+    public function test_voided_filter_emits_the_visible_voided_state(): void
+    {
+        $live = $this->createReceipt('SALE');
+        $voided = $this->createReceipt('SALE', attributes: [
+            'is_voided' => true,
+            'voided_at' => now(),
+            'voided_by' => $this->user->id,
+        ]);
+
+        $this->getJson('/api/v1/pos/receipts?is_voided=1')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $voided->id)
+            ->assertJsonPath('data.data.0.is_voided', true);
+
+        $this->getJson('/api/v1/pos/receipts?is_voided=0')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.data')
+            ->assertJsonPath('data.data.0.id', $live->id)
+            ->assertJsonPath('data.data.0.is_voided', false);
     }
 }

@@ -64,12 +64,16 @@ abstract class ReceiptReportingTestCase extends TestCase
         ]);
     }
 
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
     protected function createReceipt(
         string $invoiceTypeCode = 'SALE',
         bool $training = false,
         ?Location $location = null,
         FiscalStatus $fiscalStatus = FiscalStatus::Fiscalized,
         ?string $postedAt = null,
+        array $attributes = [],
     ): Receipt {
         $location ??= $this->location;
 
@@ -81,7 +85,7 @@ abstract class ReceiptReportingTestCase extends TestCase
                 'location_id' => $location->id,
             ]);
 
-        return Receipt::factory()->create([
+        return Receipt::factory()->create(array_merge([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'location_id' => $location->id,
@@ -91,6 +95,6 @@ abstract class ReceiptReportingTestCase extends TestCase
             'training_flag' => $training,
             'fiscal_status' => $fiscalStatus,
             'posted_at' => $postedAt ?? now(),
-        ]);
+        ], $attributes));
     }
 }

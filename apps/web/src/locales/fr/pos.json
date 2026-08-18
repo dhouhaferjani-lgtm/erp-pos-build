@@ -426,7 +426,7 @@
     "includeTraining": "Inclure les tickets de formation",
     "trainingIncluded": "Tickets de formation inclus",
     "tableLabel": "Registre des tickets",
-    "resolvedWindow": "Période résolue : du {{from}} au {{to}}",
+    "resolvedWindow": "Période résolue : à partir du {{from}}, avant {{to}}",
     "types": {
       "SALE": "Vente",
       "TRAINING": "Formation",

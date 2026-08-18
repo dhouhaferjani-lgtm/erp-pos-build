@@ -28,17 +28,14 @@ final class ReceiptResourceNoCanonicalBytesRecursiveTest extends ReceiptReportin
 
     private function createReturn(Receipt $original, string $invoiceTypeCode): Receipt
     {
-        $receipt = $this->createReceipt($invoiceTypeCode);
-        $receipt->forceFill([
+        return $this->createReceipt($invoiceTypeCode, attributes: [
             'receipt_type' => ReceiptType::Return,
             'original_receipt_id' => $original->id,
             'return_reason' => ReturnReason::Other,
             'canonical_bytes' => '{"must_not_leak":true}',
             'vat_breakdown_hash' => str_repeat('c', 64),
             'payment_methods_hash' => str_repeat('d', 64),
-        ])->saveQuietly();
-
-        return $receipt;
+        ]);
     }
 
     /** @param array<string, mixed> $node */

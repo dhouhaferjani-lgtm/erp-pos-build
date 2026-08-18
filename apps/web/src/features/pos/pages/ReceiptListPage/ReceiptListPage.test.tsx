@@ -62,6 +62,7 @@ const row = {
   invoice_type_code: 'TRAINING',
   receipt_type: 'sale',
   training_flag: true,
+  is_voided: false,
   fiscal_status: 'fiscalized',
   location_id: 'loc-1',
   location_name: 'Tunis',
@@ -108,6 +109,23 @@ describe('ReceiptListPage', () => {
     expect(screen.queryByText('VOID')).not.toBeInTheDocument()
     expect(printReceipt).not.toHaveBeenCalled()
     expect(downloadReceipt).not.toHaveBeenCalled()
+  })
+
+  it('labels a legacy-voided sale instead of presenting it as live gross', async () => {
+    vi.mocked(fetchReceipts).mockResolvedValue({
+      data: [{ ...row, invoice_type_code: 'SALE', training_flag: false, is_voided: true }],
+      meta: { current_page: 1, last_page: 1, per_page: 25, total: 1, from: null, to: null },
+    })
+
+    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts' })
+
+    expect(await screen.findByText('Voided')).toBeVisible()
+  })
+
+  it('describes the resolved server window with its exclusive upper bound', async () => {
+    renderWithProviders(<ReceiptListPage />, { route: '/pos/receipts' })
+
+    expect(await screen.findByText(/Resolved window:/)).toHaveTextContent('before')
   })
 
   it('sends SALE only until training is explicitly enabled', async () => {

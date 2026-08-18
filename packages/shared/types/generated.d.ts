@@ -1589,6 +1589,7 @@ posted_at: string;
 invoice_type_code: string;
 receipt_type: string;
 training_flag: boolean;
+is_voided: boolean;
 fiscal_status: string;
 location_id: string;
 location_name: string | null;

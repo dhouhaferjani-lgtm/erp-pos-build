@@ -15,8 +15,7 @@ final class ReceiptShowRefundLineageTest extends ReceiptReportingTestCase
 {
     public function test_detail_emits_allowlisted_bidirectional_lineage_with_magnitude_totals(): void
     {
-        $original = $this->createReceipt('SALE');
-        $original->forceFill(['currency' => 'TND'])->saveQuietly();
+        $original = $this->createReceipt('SALE', attributes: ['currency' => 'TND']);
         $middle = $this->createRelatedReceipt('REFUND', $original, '-5.250', ReturnReason::Defective);
         $child = $this->createRelatedReceipt('VOID', $middle, '2.000', ReturnReason::WrongItem);
 
@@ -49,12 +48,11 @@ final class ReceiptShowRefundLineageTest extends ReceiptReportingTestCase
         $otherLocation = Location::factory()->create(['company_id' => $this->company->id]);
         $original = $this->createReceipt('SALE', location: $otherLocation);
         $refund = $this->createRelatedReceipt('REFUND', $original, '-3.000', ReturnReason::Other);
-        $hiddenChild = $this->createReceipt('VOID', location: $otherLocation);
-        $hiddenChild->forceFill([
+        $hiddenChild = $this->createReceipt('VOID', location: $otherLocation, attributes: [
             'receipt_type' => ReceiptType::Return,
             'original_receipt_id' => $refund->id,
             'return_reason' => ReturnReason::WrongItem,
-        ])->saveQuietly();
+        ]);
 
         UserCompanyMembership::query()
             ->where('user_id', $this->user->id)
@@ -74,16 +72,17 @@ final class ReceiptShowRefundLineageTest extends ReceiptReportingTestCase
         string $total,
         ReturnReason $reason,
     ): Receipt {
-        $receipt = $this->createReceipt($invoiceTypeCode);
-        $receipt->forceFill([
+        return $this->createReceipt($invoiceTypeCode, attributes: [
             'receipt_type' => ReceiptType::Return,
             'original_receipt_id' => $original->id,
             'return_reason' => $reason,
+            'subtotal' => $total,
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'cash_rounding_adjustment' => null,
             'total' => $total,
             'currency' => 'TND',
-        ])->saveQuietly();
-
-        return $receipt;
+        ]);
     }
 
     private function moneyMagnitude(string $value): string

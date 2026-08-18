@@ -20,6 +20,18 @@ vi.mock('../../hooks/usePosTenantScope', () => ({
   usePosTenantScope: () => ({ tenantId: 'tenant-1', companyId: 'company-1', hasTenantScope: true }),
 }))
 
+const companyState = vi.hoisted(() => ({
+  currentCompanyId: 'company-1' as string | null,
+  companies: [{ id: 'company-1', timezone: 'Africa/Tunis' }],
+}))
+
+vi.mock('@/stores/companyStore', () => ({
+  useCompanyStore: Object.assign(
+    (selector: (state: { currentCompanyId: string | null; companies: { id: string; timezone: string }[] }) => unknown) => selector(companyState),
+    { getState: () => companyState },
+  ),
+}))
+
 const detail: ReceiptDetail = {
   id: 'receipt-1',
   receipt_number: 'TN-POS-0001',
@@ -109,6 +121,8 @@ describe('ReceiptDetailPage', () => {
     vi.clearAllMocks()
     vi.mocked(printReceipt).mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }))
     vi.mocked(downloadReceipt).mockResolvedValue()
+    companyState.currentCompanyId = 'company-1'
+    companyState.companies = [{ id: 'company-1', timezone: 'Africa/Tunis' }]
     Object.defineProperty(window.URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:receipt') })
     Object.defineProperty(window.URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
   })
@@ -133,6 +147,21 @@ describe('ReceiptDetailPage', () => {
     expect(screen.getByText('AUTH-001')).toBeVisible()
     expect(printReceipt).not.toHaveBeenCalled()
     expect(downloadReceipt).not.toHaveBeenCalled()
+  })
+
+  it('labels a legacy-voided receipt on the detail surface', async () => {
+    renderDetail({ ...detail, is_voided: true })
+
+    expect(await screen.findByText('Voided')).toBeVisible()
+  })
+
+  it('waits for the active company before requesting or rendering fiscal timestamps', () => {
+    companyState.companies = []
+
+    renderDetail()
+
+    expect(getReceipt).not.toHaveBeenCalled()
+    expect(screen.queryByRole('heading', { name: 'TN-POS-0001' })).not.toBeInTheDocument()
   })
 
   it('requires confirmation for every print and issues exactly one request after confirmation', async () => {

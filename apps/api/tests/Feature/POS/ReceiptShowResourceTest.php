@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\POS\Domain\Enums\ReceiptType;
+use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\ReceiptLine;
 use App\Modules\POS\Domain\ReceiptPayment;
 use App\Modules\POS\Domain\ReceiptVatDetail;
@@ -18,8 +19,7 @@ final class ReceiptShowResourceTest extends ReceiptReportingTestCase
 {
     public function test_show_emits_the_exact_allowlisted_detail_shape_from_historical_snapshots(): void
     {
-        $receipt = $this->createReceipt();
-        $receipt->forceFill([
+        $receipt = $this->createReceipt(attributes: [
             'currency' => 'TND',
             'subtotal' => '10.000',
             'tax_amount' => '1.900',
@@ -31,7 +31,7 @@ final class ReceiptShowResourceTest extends ReceiptReportingTestCase
             'notes' => 'Historical note',
             'canonical_bytes' => '{"secret":"sealed"}',
             'refund_policy_alerts' => [],
-        ])->saveQuietly();
+        ]);
 
         $line = ReceiptLine::create([
             'receipt_id' => $receipt->id,
@@ -148,13 +148,19 @@ final class ReceiptShowResourceTest extends ReceiptReportingTestCase
 
     public function test_show_normalizes_a_pre_fiscal_return_to_a_refund_with_a_magnitude_total(): void
     {
-        $receipt = $this->createReceipt('SALE');
-        $receipt->forceFill([
+        $original = $this->createReceipt('SALE');
+        $receipt = $this->createReceipt('SALE', attributes: [
             'receipt_type' => ReceiptType::Return,
+            'original_receipt_id' => $original->id,
+            'return_reason' => ReturnReason::Other,
             'fiscal_event_id' => null,
+            'subtotal' => '-5.250',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'cash_rounding_adjustment' => null,
             'total' => '-5.250',
             'currency' => 'TND',
-        ])->saveQuietly();
+        ]);
 
         $this->getJson('/api/v1/pos/receipts/'.$receipt->id)
             ->assertOk()

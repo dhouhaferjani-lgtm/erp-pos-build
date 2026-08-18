@@ -194,15 +194,12 @@ final class RefundReportingFieldsTest extends ReceiptReportingTestCase
         ReturnReason $reason,
         ?FiscalEvent $fiscalEvent = null,
     ): Receipt {
-        $receipt = $this->createReceipt($invoiceTypeCode);
-        $receipt->forceFill([
+        return $this->createReceipt($invoiceTypeCode, attributes: [
             'receipt_type' => ReceiptType::Return,
             'original_receipt_id' => $original->id,
             'return_reason' => $reason,
             'fiscal_event_id' => $fiscalEvent?->id,
             'refund_policy_alerts' => null,
-        ])->saveQuietly();
-
-        return $receipt;
+        ]);
     }
 }

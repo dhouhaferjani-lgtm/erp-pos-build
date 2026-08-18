@@ -39,10 +39,14 @@ final class ReceiptFilterOptionsTest extends ReceiptReportingTestCase
             'location_id' => $otherCompanyLocation->id,
             'code' => 'CROSS-COMPANY',
         ]);
-        $old = $this->createReceipt(postedAt: '2026-08-16 08:00:00 UTC');
-        $old->forceFill(['cashier_name' => 'Old snapshot'])->saveQuietly();
-        $latest = $this->createReceipt(postedAt: '2026-08-17 08:00:00 UTC');
-        $latest->forceFill(['cashier_name' => 'Latest snapshot'])->saveQuietly();
+        $this->createReceipt(
+            postedAt: '2026-08-16 08:00:00 UTC',
+            attributes: ['cashier_name' => 'Old snapshot'],
+        );
+        $this->createReceipt(
+            postedAt: '2026-08-17 08:00:00 UTC',
+            attributes: ['cashier_name' => 'Latest snapshot'],
+        );
 
         UserCompanyMembership::query()
             ->where('user_id', $this->user->id)

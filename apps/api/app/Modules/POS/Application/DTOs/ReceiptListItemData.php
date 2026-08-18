@@ -17,6 +17,7 @@ final class ReceiptListItemData extends Data
         public readonly string $invoice_type_code,
         public readonly string $receipt_type,
         public readonly bool $training_flag,
+        public readonly bool $is_voided,
         public readonly string $fiscal_status,
         public readonly string $location_id,
         public readonly ?string $location_name,

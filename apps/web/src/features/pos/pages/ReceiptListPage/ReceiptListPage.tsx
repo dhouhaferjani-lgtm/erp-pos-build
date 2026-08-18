@@ -139,8 +139,15 @@ function ReceiptRegister({ companyTimezone }: { companyTimezone: string }) {
       {
         key: 'type',
         header: t('pos:receipts.type'),
-        render: (receipt) => receipt.invoice_type_code === 'SALE' ? null : (
-          <StatusBadge tone="warning">{t(`pos:receipts.types.${receipt.invoice_type_code}`)}</StatusBadge>
+        render: (receipt) => receipt.invoice_type_code === 'SALE' && !receipt.is_voided ? null : (
+          <div className="flex flex-wrap gap-1">
+            {receipt.invoice_type_code === 'SALE' ? null : (
+              <StatusBadge tone="warning">{t(`pos:receipts.types.${receipt.invoice_type_code}`)}</StatusBadge>
+            )}
+            {receipt.is_voided ? (
+              <StatusBadge tone="danger">{t('pos:receipts.fiscalStatuses.voided')}</StatusBadge>
+            ) : null}
+          </div>
         ),
       },
     ]

@@ -18,7 +18,6 @@ export function ReceiptRegisterTabs({ active }: ReceiptRegisterTabsProps) {
     <nav
       aria-label={t('receiptReporting.tabs.label')}
       className={cn('mb-5 flex border-b', colorTokens.border.subtle)}
-      role="tablist"
     >
       {tabs.map((tab) => {
         const selected = active === tab.key
@@ -27,8 +26,6 @@ export function ReceiptRegisterTabs({ active }: ReceiptRegisterTabsProps) {
             key={tab.key}
             to={tab.to}
             end={tab.key === 'receipts'}
-            role="tab"
-            aria-selected={selected}
             className={cn(
               'border-b-2 px-4 py-2.5 text-sm font-medium transition-colors',
               selected

@@ -73,17 +73,23 @@ function RefundPolicyAlertDetails({ alerts, currency }: { alerts: readonly unkno
   )
 }
 
-function RefundReason({ reason, source }: { reason: string | null; source: string }) {
+function RefundReason({ reason, source }: { reason: string | null; source: string | null }) {
   const { t } = useTranslation(['pos', 'common'])
 
   return (
     <div>
       <p>{reason ?? t('pos:receiptReporting.refunds.placeholder')}</p>
       <p className={cn('mt-0.5 text-xs', colorTokens.text.muted)}>
-        {t(`pos:receiptReporting.refunds.reasonSources.${source}`)}
+        {source
+          ? t(`pos:receiptReporting.refunds.reasonSources.${source}`)
+          : t('pos:receiptReporting.refunds.placeholder')}
       </p>
     </div>
   )
+}
+
+function normalizeRefundPolicyAlerts(alerts: unknown): readonly unknown[] {
+  return Array.isArray(alerts) ? alerts : []
 }
 
 export function RefundReceiptListPage() {
@@ -162,7 +168,18 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
       ),
     },
     { key: 'date', header: t('pos:receipts.date'), render: (row) => formatDateTime(row.posted_at, { timeZone: companyTimezone }) },
-    { key: 'type', header: t('pos:receipts.type'), render: (row) => <StatusBadge tone="warning">{t(`pos:receipts.types.${row.invoice_type_code}`)}</StatusBadge> },
+    {
+      key: 'type',
+      header: t('pos:receipts.type'),
+      render: (row) => (
+        <div className="flex flex-wrap gap-1">
+          <StatusBadge tone="warning">{t(`pos:receipts.types.${row.invoice_type_code}`)}</StatusBadge>
+          {row.is_voided ? (
+            <StatusBadge tone="danger">{t('pos:receipts.fiscalStatuses.voided')}</StatusBadge>
+          ) : null}
+        </div>
+      ),
+    },
     {
       key: 'original',
       header: t('pos:receiptReporting.refunds.originalReceipt'),
@@ -185,14 +202,18 @@ function RefundReceiptRegister({ companyTimezone }: { companyTimezone: string })
     {
       key: 'alerts',
       header: t('pos:receiptReporting.refunds.alerts'),
-      render: (row) => row.refund_policy_alerts.length > 0 ? (
-        <details>
-          <summary className={cn('cursor-pointer text-sm font-medium', colorTokens.intent.warning.textStrong)}>
-            {t('pos:receiptReporting.refunds.alertCount', { count: row.refund_policy_alerts.length })}
-          </summary>
-          <RefundPolicyAlertDetails alerts={row.refund_policy_alerts} currency={row.currency} />
-        </details>
-      ) : t('common:notAvailable'),
+      render: (row) => {
+        const alerts = normalizeRefundPolicyAlerts(row.refund_policy_alerts)
+
+        return alerts.length > 0 ? (
+          <details>
+            <summary className={cn('cursor-pointer text-sm font-medium', colorTokens.intent.warning.textStrong)}>
+              {t('pos:receiptReporting.refunds.alertCount', { count: alerts.length })}
+            </summary>
+            <RefundPolicyAlertDetails alerts={alerts} currency={row.currency} />
+          </details>
+        ) : t('common:notAvailable')
+      },
     },
   ], [companyTimezone, t])
 
