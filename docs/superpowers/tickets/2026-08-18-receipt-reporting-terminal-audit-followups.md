@@ -33,8 +33,9 @@ is an ordinary live sale.
 
 ## 5 — `alertCount` does not follow the locale plural-suffix convention
 
-Replace the single interpolated alert-count key with the repository's plural-aware
-suffix convention in every supported locale, then cover singular and plural rendering.
+The locale currently has a bare `alertCount` singular fallback plus `alertCount_other`.
+Replace the bare key with the repository's explicit `_one` suffix convention in every
+supported locale, then cover singular and plural rendering.
 
 ## 6 — Cashier filter options are not training-filtered
 
