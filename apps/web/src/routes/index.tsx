@@ -1245,11 +1245,13 @@ export function AppRoutes() {
           <Route
             path="delivery-notes/consolidate"
             element={
-              <RequirePermission permission="sales.create">
-                <SuspenseWrapper>
-                  <DeliveryNoteConsolidationPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <ModuleGuard module="Sales">
+                <RequirePermission permission="invoices.create">
+                  <SuspenseWrapper>
+                    <DeliveryNoteConsolidationPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
             }
           />
           <Route

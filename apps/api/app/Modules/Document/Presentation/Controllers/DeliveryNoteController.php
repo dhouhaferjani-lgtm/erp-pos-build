@@ -7,6 +7,7 @@ namespace App\Modules\Document\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
+use App\Modules\Compliance\Services\UninvoicedDeliveryNoteService;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -58,6 +59,7 @@ class DeliveryNoteController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly LocationContext $locationContext,
+        private readonly UninvoicedDeliveryNoteService $uninvoicedDeliveryNoteService,
         private readonly DocumentNumberingService $numberingService,
         private readonly DeliveryNoteService $deliveryNoteService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
@@ -149,6 +151,20 @@ class DeliveryNoteController extends Controller
         }
 
         return response()->json($response);
+    }
+
+    /**
+     * List delivery notes that have not yet been invoiced.
+     *
+     * GET /api/v1/delivery-notes/uninvoiced
+     */
+    public function uninvoiced(): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+
+        return response()->json([
+            'data' => $this->uninvoicedDeliveryNoteService->getUninvoicedDeliveryNotes($company->id),
+        ]);
     }
 
     /**

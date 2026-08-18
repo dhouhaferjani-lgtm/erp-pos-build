@@ -18,6 +18,8 @@ import {
 import type { DeliveryNote } from '../api/deliveryNotes'
 import { getErrorMessage } from '@/lib/api'
 import { useCompany } from '@/hooks/useCompany'
+import { usePermissions } from '@/hooks/usePermissions'
+import { useCompanyConfig } from '@/contexts'
 import { colorClasses } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 
@@ -46,6 +48,8 @@ export function DeliveryNoteConsolidation({
   const { t } = useTranslation()
   const navigate = useNavigate()
   const { currentCompany } = useCompany()
+  const { hasModule } = useCompanyConfig()
+  const { hasPermission } = usePermissions()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
 
@@ -58,6 +62,7 @@ export function DeliveryNoteConsolidation({
 
   // Consolidation mutation
   const consolidateMutation = useConsolidateDeliveryNotes()
+  const canConsolidate = hasModule('Sales') && hasPermission('invoices.create')
 
   // Group delivery notes by partner
   const groupedByPartner = useMemo(
@@ -319,7 +324,7 @@ export function DeliveryNoteConsolidation({
       </div>
 
       {/* Selection summary and actions */}
-      {selectedDeliveryNotes.length > 0 && (
+      {selectedDeliveryNotes.length > 0 && canConsolidate && (
         <div className={`rounded-lg border ${colorClasses.borderBlue200} ${colorClasses.bgBlue50} p-4`}>
           <div className="flex items-center justify-between">
             <div>
