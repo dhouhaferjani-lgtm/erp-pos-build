@@ -49,11 +49,11 @@ milestones:
     title: "T1 (CX-4) - component-graph-aware listing re-census: apps/web/tools/audit-listing-census.mjs (pure exported functions + main), its node --test suite, and the report at docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md. Discovery rule stated and not hardcoded to 46; import-following into organisms; orphan reachability incl. parameterized routes and breadcrumb parents; always exit 0 and NOT chained into `lint` or CI. Supersedes UI-28/UI-29/UI-34 with method-per-number."
     review_lenses: [frontend-conventions, general]
     status: in_progress
-    updated: 751255324
-    fix_rounds: 0
-    commit: 7512553248a91c9be99f03265158d5bd8554d4de
-    verdict: null
-    last_verdict: null
+    updated: 5383a2467
+    fix_rounds: 1
+    commit: 5383a246753b5820b5f9ca4de51ae1f03c6b9f0f
+    verdict: docs/handoff/reviews/ui-wave0/M1-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M2
     title: "T2 (UI-11) - gen-route-manifest.mjs resolves through the local KeyedByRouteId wrapper so /sales/invoices/:id records InvoiceDetailPage. NO manifest file is committed here (T3 owns scripts/factory/manifests/)."
     review_lenses: [frontend-conventions, general]
@@ -146,3 +146,4 @@ findings:
   - "Candidate exception for M0b bridge confirmation: src/components/__tests__/SharedSingletons.tenantScope.test.tsx correctly detects AddQuickProductModal invalidating the foreign-tenant products cache through the bare ['products'] prefix at AddQuickProductModal.tsx:209. Historical lane: promoted tenant-scoped invalidation sweep cc1332fd, which missed this tenantScope-pinned site. Forward owner: the parent terminal audit must route this launch-program tenant-isolation finding to a live production-fix lane before merge; it is not accepted as a standing gap. The test remains unchanged."
   - "Tests-only remediation commit 3e87358c5197cbee1fbff10c4c63fef119da9f99 plus review-fix commit 62c75bf7093f6127efbef5f4397be29006e80643 update 17 stale or racy test files and change zero production files. The repaired set passed 168/168 tests."
   - "Deterministic full apps/web pnpm test (--maxWorkers=1) after remediation: 4,224 passed, 5 failed, 1 skipped, 3 todo; the only failing files are the three enumerated exception candidates above. Four-worker evidence is superseded because round-1 review reproduced load-induced flakes. pnpm typecheck and pnpm lint pass; React Doctor changed-scope scan reports 100/100 with no issues."
+  - "M1 round-1 review found that the 46-page filename population was inherited rather than independent, 39 route-mounted non-detail DataTable pages were outside that cohort, seven action/form routes had resolvable prefix-dynamic links, and the empty-state predicate could span unrelated comparisons. Commit 5383a2467 discloses the scope boundaries, resolves the bounded link patterns, tightens the predicate, and adds regression tests."

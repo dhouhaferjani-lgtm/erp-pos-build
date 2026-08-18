@@ -121,25 +121,26 @@ The complete repaired subset passes: 17 files and 168 tests.
 
 ## M1 — T1 component-graph-aware listing census
 
-Commit `7512553248a91c9be99f03265158d5bd8554d4de` (`Phase 0.1.1: Build graph-aware listing census`) adds exactly the three T1 deliverables:
+Commit `7512553248a91c9be99f03265158d5bd8554d4de` (`Phase 0.1.1: Build graph-aware listing census`) adds exactly the three T1 deliverables. Review-fix commit `5383a246753b5820b5f9ca4de51ae1f03c6b9f0f` (`Phase 0.1.3: Resolve M1 review findings`) tightens the analyzer and report without touching production source:
 
 - `apps/web/tools/audit-listing-census.mjs`: filesystem discovery, feature-local rendered-import traversal, source-attributed listing classification, route-tree extraction, and navigation-reference reachability. It is not chained into lint or CI and exits 0 as an analysis tool.
-- `apps/web/tools/__tests__/audit-listing-census.test.mjs`: ten tests runnable under both `node --test` and Vitest, including nested organism pagination, empty state, filters, dynamic param links, generic-template rejection, breadcrumbs, and the real Expense/Bundles worked examples.
+- `apps/web/tools/__tests__/audit-listing-census.test.mjs`: 12 tests runnable under both `node --test` and Vitest, including nested organism pagination, empty state, filters, dynamic param links, bounded prefix-dynamic links, generic-template rejection, compound-condition protection, breadcrumbs, and the real Expense/Bundles worked examples.
 - `docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md`: reproducible report and machine-readable tables.
 
 Red-first evidence: `node --test tools/__tests__/audit-listing-census.test.mjs` initially failed with `ERR_MODULE_NOT_FOUND` before the tool existed. After implementation, Node reports 10/10 and Vitest reports 10/10.
 
-The real scan discovers 46 listing pages in about 1–2 seconds. It re-derives 22 pages with pagination and 24 without; 45 pages with an empty-state mechanism and one redirect stub without; the six primary filter patterns; `ListPageLayout` at 12/46; and `DataTable` at 35/46. The route pass scans 271 registered records and retains 34 transparent candidates: 15 views, 4 parameterized views, and 15 action/forms requiring call-flow follow-up. UI-34 remains seven top-level views, while the parameterized Ecommerce cluster is included rather than excluded.
+The real scan discovers 46 listing pages in roughly five seconds. It re-derives 22 pages with pagination and 24 without; 45 pages with an empty-state mechanism and one redirect stub without; the six primary filter patterns; `ListPageLayout` at 12/46; and `DataTable` at 35/46. The report now states that this filename population is inherited from the original audit, not an independent whole-product population proof: 43/46 graphs remain file-local, the `ListView` and `IndexPage` suffixes match zero files, and 39 route-mounted non-detail `DataTable` pages sit outside the cohort. The route pass scans 271 registered records and retains 27 transparent candidates: 15 views, four parameterized views, and eight action/forms requiring call-flow follow-up. Seven false action/form candidates are now reachable through bounded conditional or literal-prop base paths. UI-34 remains seven top-level views, while the parameterized Ecommerce cluster is included rather than excluded.
 
 M1 verification:
 
-- `node --test tools/__tests__/audit-listing-census.test.mjs`: 10/10 pass.
-- `pnpm exec vitest run tools/__tests__/audit-listing-census.test.mjs`: 10/10 pass.
-- `node tools/audit-listing-census.mjs`: exit 0; 46 listing rows and 34 orphan-candidate rows agree with the committed report.
+- `node --test tools/__tests__/audit-listing-census.test.mjs`: 12/12 pass.
+- `pnpm exec vitest run tools/__tests__/audit-listing-census.test.mjs`: 12/12 pass.
+- `node tools/audit-listing-census.mjs`: exit 0; 46 listing rows and 27 orphan-candidate rows agree with the committed report.
 - First full `pnpm test -- --maxWorkers=1` run: the three reviewed exceptions plus one stock-transfer FEFO timing miss; that file then passed 7/7 in isolation.
 - Clean full repeat: 4,234 passed, 5 failed, 1 skipped, 3 todo; the failing files are exactly the three M0b bridge-confirmed exceptions.
+- Post-review-fix full run: 4,236 passed, 5 failed, 1 skipped, 3 todo; the two-test increase is the new M1 regression coverage and the failing files remain exactly the three M0b bridge-confirmed exceptions.
 - `pnpm typecheck`: pass.
 - `pnpm lint`: pass with 0 errors and the existing 6,530 warnings; key/design/quantity audits and custom rules remain clean.
 - React Doctor changed-scope scan: 100/100, no issues.
 
-M1 bridge review is pending. M2 and later milestones have not started.
+M1 bridge round 1 (`docs/handoff/reviews/ui-wave0/M1-round1.md`) returned `CHANGES-REQUIRED`. Its two P2 and three substantive P3 findings are addressed by `5383a2467`: the report discloses the inherited population and graph limits; the extractor resolves conditional base paths and literal props supplied to shared navigation components; and the empty-state classifier now evaluates the relevant AST comparison rather than spanning arbitrary condition text. The greenfield red-evidence note and owner-path collision remain accurately recorded. Bridge round 2 is pending. M2 and later milestones have not started.
