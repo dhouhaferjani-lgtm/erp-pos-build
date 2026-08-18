@@ -40,9 +40,9 @@ milestones:
     review_lenses: [frontend-conventions, general]
     authority: docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md
     status: in_progress
-    updated: 62c75bf70
+    updated: 61d9dce8a
     fix_rounds: 1
-    commit: 62c75bf7093f6127efbef5f4397be29006e80643
+    commit: 61d9dce8a576a2c6d0af267424532c635d34e20b
     verdict: docs/handoff/reviews/ui-wave0/M0b-round1.md
     last_verdict: CHANGES-REQUIRED
   - id: M1
