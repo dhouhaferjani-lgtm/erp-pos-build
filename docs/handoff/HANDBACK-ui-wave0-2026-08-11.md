@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M0b in progress
+# UI Wave 0 implementer report — M1 review pending
 
 ## Header
 
@@ -6,9 +6,9 @@
 - Branch: `codex/ui-wave0-2026-08-11`
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/ui-wave0`
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
-- Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`
+- Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: `in_progress` in M0b; M1 has not started.
+- Wave status: M0b passed; M1 implementation is committed and awaiting bridge review.
 
 ## M0 repin
 
@@ -63,23 +63,23 @@ A test-only edit could only remove namespaces or allow missing keys, masking the
 
 Parent ruling 2026-08-18 confirms this as an enumerated real-defect exception owned by `CODEX-DISPATCH-arabic-i18n-backfill-2026-08-10.md`; Arabic parity remains outside launch scope. M0b resumed to classify and repair the remaining failing files. Every exception must be independently confirmed by the bridge review.
 
-### 2. Offset pagination meta consolidation — bridge confirmation pending
+### 2. Offset pagination meta consolidation — bridge-confirmed
 
 `tools/__tests__/offset-pagination-meta-consolidation.test.mjs` is a valid architecture test and remains unchanged. It identifies the inline pagination shape at `src/features/treasury/statements/api.ts:112`, reintroduced after the shared `OffsetPaginationMeta` consolidation. Matching the test to production would conceal duplicated production type ownership, so this is a real product-code regression rather than stale test debt.
 
 - Historical owning lane: `CODEX-replenishment-followups-2026-07-12.md`, Wave B — pagination-meta consolidation (closed).
 - Forward owner: the parent terminal audit must route this to a live production-fix lane before merge; it is not accepted as a standing gap.
 - Production site: `StatementListResponse.meta` in `src/features/treasury/statements/api.ts`.
-- Disposition: enumerated candidate exception; M0b bridge must confirm.
+- Disposition: enumerated real-defect exception confirmed by the M0b round-2 bridge.
 
-### 3. Shared singleton cross-tenant invalidation — bridge confirmation pending
+### 3. Shared singleton cross-tenant invalidation — bridge-confirmed
 
 `src/components/__tests__/SharedSingletons.tenantScope.test.tsx` is a valid tenant-isolation test and remains unchanged. `AddQuickProductModal` currently calls `invalidateQueries({ queryKey: ['products'] })`, which also marks a seeded foreign-tenant product cache entry invalid. The `cc1332fd` sweep explicitly preserved four tenant-precise invalidations protected by tenant-scope tests but missed this already-pinned site. Changing the assertion to accept that behavior would weaken the existing tenant boundary.
 
 - Historical owning lane: promoted tenant-scoped invalidation sweep, commit `cc1332fd5266a52397656e39d09d8fc8200c5e34` (closed and causal, not a forward owner).
 - Forward owner: the parent terminal audit must route this launch-program tenant-isolation defect to a live production-fix lane before merge; it is not accepted as a standing gap.
 - Production site: `src/components/organisms/AddQuickProductModal/AddQuickProductModal.tsx:209`.
-- Disposition: enumerated candidate exception; M0b bridge must confirm.
+- Disposition: enumerated real-defect exception confirmed by the M0b round-2 bridge.
 
 Failure scenario: a quick-product create under tenant A marks a cached tenant-B product slot invalid. On a later tenant switch, that invalidated slot refetches under the then-active session and risks repopulating a tenant-B-keyed entry from the wrong tenant response. The forward fix should use the tenant-precise invalidation pattern already preserved at the four explicit exception sites in `cc1332fd`.
 
@@ -117,4 +117,29 @@ The complete repaired subset passes: 17 files and 168 tests.
 
 - Test-only remediation and local verification are complete; production files remain unchanged.
 - M0b is bridge-accepted with the three enumerated real-defect exceptions above.
-- M1 and all later milestones remain pending; later test gates use `--maxWorkers=1` and inherit only those reviewed exceptions unless a new real defect is individually confirmed.
+- Later test gates use `--maxWorkers=1` and inherit only those reviewed exceptions unless a new real defect is individually confirmed.
+
+## M1 — T1 component-graph-aware listing census
+
+Commit `7512553248a91c9be99f03265158d5bd8554d4de` (`Phase 0.1.1: Build graph-aware listing census`) adds exactly the three T1 deliverables:
+
+- `apps/web/tools/audit-listing-census.mjs`: filesystem discovery, feature-local rendered-import traversal, source-attributed listing classification, route-tree extraction, and navigation-reference reachability. It is not chained into lint or CI and exits 0 as an analysis tool.
+- `apps/web/tools/__tests__/audit-listing-census.test.mjs`: ten tests runnable under both `node --test` and Vitest, including nested organism pagination, empty state, filters, dynamic param links, generic-template rejection, breadcrumbs, and the real Expense/Bundles worked examples.
+- `docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md`: reproducible report and machine-readable tables.
+
+Red-first evidence: `node --test tools/__tests__/audit-listing-census.test.mjs` initially failed with `ERR_MODULE_NOT_FOUND` before the tool existed. After implementation, Node reports 10/10 and Vitest reports 10/10.
+
+The real scan discovers 46 listing pages in about 1–2 seconds. It re-derives 22 pages with pagination and 24 without; 45 pages with an empty-state mechanism and one redirect stub without; the six primary filter patterns; `ListPageLayout` at 12/46; and `DataTable` at 35/46. The route pass scans 271 registered records and retains 34 transparent candidates: 15 views, 4 parameterized views, and 15 action/forms requiring call-flow follow-up. UI-34 remains seven top-level views, while the parameterized Ecommerce cluster is included rather than excluded.
+
+M1 verification:
+
+- `node --test tools/__tests__/audit-listing-census.test.mjs`: 10/10 pass.
+- `pnpm exec vitest run tools/__tests__/audit-listing-census.test.mjs`: 10/10 pass.
+- `node tools/audit-listing-census.mjs`: exit 0; 46 listing rows and 34 orphan-candidate rows agree with the committed report.
+- First full `pnpm test -- --maxWorkers=1` run: the three reviewed exceptions plus one stock-transfer FEFO timing miss; that file then passed 7/7 in isolation.
+- Clean full repeat: 4,234 passed, 5 failed, 1 skipped, 3 todo; the failing files are exactly the three M0b bridge-confirmed exceptions.
+- `pnpm typecheck`: pass.
+- `pnpm lint`: pass with 0 errors and the existing 6,530 warnings; key/design/quantity audits and custom rules remain clean.
+- React Doctor changed-scope scan: 100/100, no issues.
+
+M1 bridge review is pending. M2 and later milestones have not started.

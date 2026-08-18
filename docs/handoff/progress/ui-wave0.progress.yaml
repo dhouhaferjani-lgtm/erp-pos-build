@@ -48,9 +48,10 @@ milestones:
   - id: M1
     title: "T1 (CX-4) - component-graph-aware listing re-census: apps/web/tools/audit-listing-census.mjs (pure exported functions + main), its node --test suite, and the report at docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md. Discovery rule stated and not hardcoded to 46; import-following into organisms; orphan reachability incl. parameterized routes and breadcrumb parents; always exit 0 and NOT chained into `lint` or CI. Supersedes UI-28/UI-29/UI-34 with method-per-number."
     review_lenses: [frontend-conventions, general]
-    status: pending
+    status: in_progress
+    updated: 751255324
     fix_rounds: 0
-    commit: null
+    commit: 7512553248a91c9be99f03265158d5bd8554d4de
     verdict: null
     last_verdict: null
   - id: M2
