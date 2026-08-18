@@ -84,3 +84,16 @@ The legacy treasury repair procedure is corrected in
 `accounting:seed-charts --dry-run` legacy diagnostic remains available, its output is not assigned-
 template parity and cannot be applied, `country-defaults:verify` is the assignment-health successor,
 and live-chart repair requires a reviewed one-off migration.
+
+## Terminal-audit F-10 note (parent, 2026-08-18): the `transactionLevel()` guards are construction-guaranteed tripwires, NOT test-proven controls
+
+`TemplatePublishingService::assertAuditTransaction()` (:379-384), `TemplateAssignmentService`
+(:252-257) and `AdminTemplateAccount` (:39-47) refuse writes outside an active central
+transaction. No test exercises the refusal branch: under `RefreshDatabase` an outer transaction
+is always open, so `transactionLevel() < 1` is unreachable in the test lane, and every production
+call site sits inside the service's own `$connection->transaction(...)` closure, so the branch is
+also unreachable by construction in production. These guards are tripwires against a future
+refactor dropping the transaction wrapper — do not cite them as proven isolation controls. If
+coverage is ever wanted, the repo idiom is popping the RefreshDatabase transaction to reach
+level 0 (`TreasuryMovementServiceRecordTest.php:380-386`; hazard documented by name in
+`ReverseCustomerAdvanceJournalEntryTest.php:182-191`).
