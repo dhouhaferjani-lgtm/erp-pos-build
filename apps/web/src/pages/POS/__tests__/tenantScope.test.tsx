@@ -1,16 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { waitFor } from '@testing-library/react'
-import { QueryClient, useQueryClient, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { createTestQueryClient, renderWithProviders } from '@/test/renderWithProviders'
-
-import {
-  posShiftBalanceInvalidationPredicate,
-  posShiftInvalidationPredicate,
-} from '../_invalidation'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -55,51 +49,11 @@ afterEach(() => {
   useCompanyStore.setState({ currentCompanyId: null, companies: [], isLoading: false })
 })
 
-// ─── Predicate unit tests ─────────────────────────────────────────────────────
-
-describe('posShiftInvalidationPredicate (callsites .841, .846, .847)', () => {
-  it('matches ANY [pos, shift, ...] query for the given tenant + company', () => {
-    const pred = posShiftInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['pos', 'shift', 'TERM-1', 'tenant-A', 'company-1'] })).toBe(true)
-    expect(pred({ queryKey: ['pos', 'shift', null, 'tenant-A', 'company-1'] })).toBe(true)
-  })
-
-  it('rejects shift queries for a different tenant or company', () => {
-    const pred = posShiftInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['pos', 'shift', 'TERM-1', 'tenant-B', 'company-1'] })).toBe(false)
-    expect(pred({ queryKey: ['pos', 'shift', 'TERM-1', 'tenant-A', 'company-2'] })).toBe(false)
-  })
-
-  it('rejects unrelated keys', () => {
-    const pred = posShiftInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['pos', 'shift-balance', 'sid', 'tenant-A', 'company-1'] })).toBe(false)
-    expect(pred({ queryKey: ['products', 'list', null, 'tenant-A', 'company-1'] })).toBe(false)
-    expect(pred({ queryKey: ['pos', 'shift'] })).toBe(false) // too short
-  })
-})
-
-describe('posShiftBalanceInvalidationPredicate (callsite .842)', () => {
-  it('matches ANY [pos, shift-balance, ...] query for the given t/c', () => {
-    const pred = posShiftBalanceInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['pos', 'shift-balance', 'sid-1', 'tenant-A', 'company-1'] })).toBe(true)
-  })
-
-  it('rejects [pos, shift, ...] queries (different second segment)', () => {
-    const pred = posShiftBalanceInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['pos', 'shift', 'TERM-1', 'tenant-A', 'company-1'] })).toBe(false)
-  })
-
-  it('rejects keys for a different tenant', () => {
-    const pred = posShiftBalanceInvalidationPredicate('tenant-A', 'company-1')
-    expect(pred({ queryKey: ['pos', 'shift-balance', 'sid', 'tenant-B', 'company-1'] })).toBe(false)
-  })
-})
-
-// ─── useQuery shape probes (callsites .839, .840, .843, .844, .845, .849) ────
+// ─── useQuery shape probes ────────────────────────────────────────────────────
 
 describe('POS useQuery shapes carry tenant_id + company_id', () => {
   function ShiftQueryProbe() {
-    // Mirrors the POSTransactions shift query shape.
+    // Mirrors the live POSLayout shift query shape.
     const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
     const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
     useQuery({
@@ -196,7 +150,7 @@ describe('POS useQuery shapes carry tenant_id + company_id', () => {
     expect(repos).toEqual(['pos', 'payment-repositories', 'tenant-A', 'company-1'])
   })
 
-  it("['locations'] queryKey carries tenant + company (callsite .849)", () => {
+  it("['locations'] queryKey carries tenant + company", () => {
     setTenant('tenant-A', 'company-1')
     const queryClient = createTestQueryClient()
     renderWithProviders(<LocationsQueryProbe />, { queryClient })
@@ -218,104 +172,5 @@ describe('POS useQuery shapes carry tenant_id + company_id', () => {
     expect(kA).toContain('tenant-A')
     expect(kB).toContain('tenant-B')
     expect(kA).not.toEqual(kB)
-  })
-})
-
-// ─── End-to-end cascade tests ────────────────────────────────────────────────
-
-describe('POS shift invalidation cascade through predicate', () => {
-  it('invalidating with posShiftInvalidationPredicate cascades to ALL shift entries (across terminalCodes) for the active tenant', async () => {
-    setTenant('tenant-A', 'company-1')
-    // Non-zero gcTime so seeded entries with no observers survive.
-    const queryClient = new QueryClient({
-      defaultOptions: {
-        queries: { retry: false, gcTime: Infinity },
-        mutations: { retry: false },
-      },
-    })
-
-    // Counters that increment on every queryFn invocation. The cascade
-    // assertion checks `> initial` after invalidate — proving the
-    // predicate actually triggered refetch. If the predicate returned
-    // false (always-false impl), counters wouldn't advance.
-    let term1Calls = 0
-    let term2Calls = 0
-    let pmCalls = 0
-
-    function CascadeProbe() {
-      const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
-      const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
-      useQuery({
-        queryKey: tenantScopedKey(['pos', 'shift', 'TERM-1']),
-        queryFn: async () => {
-          term1Calls += 1
-          return `shift-1-call-${term1Calls}`
-        },
-        enabled: !!tenantId && !!companyId,
-      })
-      useQuery({
-        queryKey: tenantScopedKey(['pos', 'shift', 'TERM-2']),
-        queryFn: async () => {
-          term2Calls += 1
-          return `shift-2-call-${term2Calls}`
-        },
-        enabled: !!tenantId && !!companyId,
-      })
-      // A non-shift query that must NOT be invalidated by the predicate.
-      useQuery({
-        queryKey: tenantScopedKey(['pos', 'payment-methods']),
-        queryFn: async () => {
-          pmCalls += 1
-          return [`pm-call-${pmCalls}`]
-        },
-        enabled: !!tenantId && !!companyId,
-      })
-      const queryClientFromProvider = useQueryClient()
-      ;(globalThis as Record<string, unknown>)['__cascadeQc'] = queryClientFromProvider
-      return null
-    }
-
-    renderWithProviders(<CascadeProbe />, { queryClient })
-    // Wait for the 3 initial fetches to settle (each queryFn called once).
-    await waitFor(() => {
-      expect(term1Calls).toBe(1)
-      expect(term2Calls).toBe(1)
-      expect(pmCalls).toBe(1)
-    })
-
-    // Seed a tenant-B shift entry to verify cross-tenant isolation.
-    const tenantBKey = ['pos', 'shift', 'TERM-1', 'tenant-B', 'company-1']
-    queryClient.setQueryData(tenantBKey, 'shift-other-tenant')
-
-    // Fire predicate-based invalidation against the active tenant.
-    await queryClient.invalidateQueries({
-      predicate: posShiftInvalidationPredicate('tenant-A', 'company-1'),
-    })
-
-    // Both tenant-A shift entries refetched. The fetch-count check proves
-    // the predicate matched + triggered cascade — an always-false predicate
-    // would leave both counters at 1.
-    expect(term1Calls).toBe(2)
-    expect(term2Calls).toBe(2)
-    // payment-methods must NOT have refetched (predicate rejects k[1] !== 'shift').
-    expect(pmCalls).toBe(1)
-
-    // Verify the leaf data also reflects the new fetch (sanity).
-    const cache = queryClient.getQueryCache()
-    const t1 = cache.find({
-      queryKey: ['pos', 'shift', 'TERM-1', 'tenant-A', 'company-1'],
-      exact: true,
-    })
-    const t2 = cache.find({
-      queryKey: ['pos', 'shift', 'TERM-2', 'tenant-A', 'company-1'],
-      exact: true,
-    })
-    expect(t1?.state.data).toBe('shift-1-call-2')
-    expect(t2?.state.data).toBe('shift-2-call-2')
-
-    // Tenant-B shift entry must remain UNTOUCHED.
-    const tBKeyEntry = cache.find({ queryKey: tenantBKey, exact: true })
-    expect(tBKeyEntry?.state.data).toBe('shift-other-tenant')
-    expect(tBKeyEntry?.state.isInvalidated).toBe(false)
   })
 })

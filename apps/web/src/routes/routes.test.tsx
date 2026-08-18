@@ -80,7 +80,7 @@ describe('route module guards', () => {
   })
 
   it('removes the duplicate marketing hub while retaining its six sidebar destinations', () => {
-    const retiredMarketingPath = ['/mark', 'eting'].join('')
+    const retiredMarketingPath = ['mark', 'eting'].join('')
     const retiredMarketingPage = ['Marketing', 'HubPage'].join('')
     expect(routesSource).not.toContain(`path="${retiredMarketingPath}"`)
     expect(routesSource).not.toContain(retiredMarketingPage)

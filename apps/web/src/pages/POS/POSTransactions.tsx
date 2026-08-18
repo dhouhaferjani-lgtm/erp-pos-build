@@ -15,7 +15,7 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
  * `NEW_SALE_AUTHORING_RETIRED` for all callers.
  *
  * Read-only receipt browsing and PDF download remain functional via
- * other pages (e.g., POS shifts dashboard). Refund Phase 6 quarantined
+ * other shop-management pages. Refund Phase 6 quarantined
  * the web-admin void/return surface (ReceiptSearchPage + ReturnItemsModal
  * — it 422'd on every submit); post-seal corrections happen on the
  * desktop POS refund flow. The web-POS device-authority parity is
