@@ -793,3 +793,11 @@ confirming the failure is the external reviewer service rather than the M5 promp
 The process table also showed a shared Claude invocation in an explicit backoff. Per the fail-closed
 harness, round 3 consumes fix round 3; no implementation change is inferred from the unavailable
 reviewer.
+
+### M5 round 4 tool error
+
+After the shared backoff cleared, a minimal direct probe returned `OK`; round 4 was then invoked against
+the committed tree. It nevertheless exited 3 after its review interval and wrote only the tool-error
+heading. Other adversarial-review processes were concurrently active on the host. The failure remains
+tool-level with no reviewer content, is recorded fail-closed, and consumes fix round 4 without a
+speculative implementation change.
