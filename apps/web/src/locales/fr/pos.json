@@ -233,7 +233,8 @@
     },
     "disposition": {
       "title": "La caisse fonctionne dans l'application de bureau",
-      "body": "Les ventes sont désormais encaissées dans l'application de caisse IziPOS pour ordinateur. Depuis le web, vous pouvez consulter les tickets, effectuer les retours et télécharger les PDF depuis les écrans de gestion de la boutique."
+      "body": "Les ventes sont encaissées dans l'application de caisse IziPOS pour ordinateur. Le registre web reste disponible pour consulter les tickets.",
+      "receiptsLink": "Ouvrir le registre des tickets"
     }
   },
   "shiftHistory": {
@@ -263,6 +264,96 @@
       "dateRange": "Période",
       "from": "Du",
       "to": "Au"
+    }
+  },
+  "receiptReporting": {
+    "tabs": {
+      "label": "Registres des tickets",
+      "receipts": "Tickets",
+      "refunds": "Remboursements et annulations"
+    },
+    "reprint": {
+      "title": "Créer un duplicata ?",
+      "auditConsequence": "Cette action produit un duplicata. Il est enregistré dans le journal fiscal des réimpressions avec un numéro de copie et reste visible par votre comptable.",
+      "confirmPrint": "Imprimer le duplicata",
+      "confirmDownload": "Télécharger le duplicata"
+    },
+    "detail": {
+      "backToRegister": "Retour au registre des tickets",
+      "notFoundTitle": "Ticket introuvable",
+      "notFoundDescription": "Ce ticket est indisponible ou hors de votre périmètre d'emplacements autorisé.",
+      "printDuplicate": "Imprimer le duplicata",
+      "downloadDuplicate": "Télécharger le duplicata",
+      "summary": "Résumé du ticket",
+      "subtotal": "Sous-total",
+      "discount": "Remise",
+      "rounding": "Arrondi espèces",
+      "lines": "Lignes",
+      "product": "Produit",
+      "quantity": "Quantité",
+      "unitPriceInclVat": "Prix unitaire (TVA incluse)",
+      "vatRate": "Taux de TVA",
+      "lineNet": "Net de la ligne",
+      "returnedQuantity": "Quantité retournée",
+      "percentValue": "{{value}} %",
+      "vatBreakdown": "Ventilation de la TVA",
+      "netAmount": "Montant net",
+      "vatAmount": "Montant de TVA",
+      "grossAmount": "Montant TTC",
+      "payments": "Paiements",
+      "paymentMethod": "Moyen de paiement",
+      "cardLastFour": "Quatre derniers chiffres",
+      "instrumentSerial": "Numéro de série de l'instrument",
+      "reference": "Référence",
+      "authorizationCode": "Code d'autorisation",
+      "amount": "Montant",
+      "changeDue": "Monnaie rendue",
+      "lineage": "Traçabilité du remboursement",
+      "originalReceipt": "Ticket d'origine",
+      "noLineage": "Aucune traçabilité de remboursement n'est enregistrée pour ce ticket.",
+      "fiscalProvenance": "Provenance fiscale",
+      "fiscalHash": "Hachage fiscal",
+      "previousHash": "Hachage précédent",
+      "chainSequence": "Séquence de chaîne",
+      "receiptYear": "Année du ticket",
+      "fiscalEvent": "Événement fiscal",
+      "syncedAt": "Synchronisé le"
+    },
+    "refunds": {
+      "title": "Remboursements et annulations",
+      "description": "Consulter les tickets de remboursement et d'annulation séparément des ventes",
+      "refundReceipt": "Ticket de remboursement #",
+      "originalReceipt": "Ticket d'origine #",
+      "reason": "Motif du remboursement",
+      "destination": "Destination du remboursement",
+      "amount": "Montant",
+      "alerts": "Alertes de politique",
+      "alertCount": "{{count}} alerte",
+      "alertCount_other": "{{count}} alertes",
+      "recordedAlert": "Alerte de politique enregistrée",
+      "originalDiscount": "Remise de la transaction d'origine",
+      "fiscalEvent": "Événement fiscal",
+      "alertTypes": {
+        "nonZeroOriginalTransactionDiscount": "La transaction d'origine comprenait une remise"
+      },
+      "capabilityTitle": "Capacité de remboursement des terminaux",
+      "noTerminals": "Aucun terminal n'est disponible dans le périmètre d'emplacements sélectionné.",
+      "emptyTitle": "Aucun remboursement ou annulation pour cette période",
+      "emptyDescription": "Les remboursements et annulations apparaissent ici lorsqu'un terminal activé les enregistre.",
+      "tableLabel": "Registre des remboursements et annulations",
+      "placeholder": "—",
+      "capability": {
+        "notEnabled": "Les remboursements ne sont pas activés sur {{terminal}} — l'appareil ne peut pas en traiter.",
+        "awaiting": "{{terminal}} est activé et attend l'accusé de réception de l'appareil.",
+        "active": "{{terminal}} actif depuis le {{date}}."
+      },
+      "reasonSources": {
+        "canonical": "Motif enregistré dans l'événement fiscal",
+        "legacy_enum": "Classification historique — pas un texte saisi"
+      },
+      "destinations": {
+        "cash": "Espèces"
+      }
     }
   },
   "zReports": {
@@ -320,32 +411,50 @@
       "genesisReport": "Ceci est le premier rapport Z (genèse) pour ce terminal"
     }
   },
-  "receiptSearch": {
+  "receipts": {
     "title": "Tickets",
-    "description": "Rechercher et gérer les tickets de caisse",
+    "description": "Consulter les tickets fiscaux par journée, terminal et caissier",
     "receiptNumber": "Ticket #",
     "terminal": "Terminal",
     "cashier": "Caissier",
     "date": "Date",
+    "type": "Type",
+    "location": "Emplacement",
     "total": "Total",
     "status": "Statut",
-    "active": "Actif",
-    "voided": "Annulé",
     "searchPlaceholder": "Rechercher par numéro de ticket...",
-    "noReceipts": "Aucun ticket trouvé",
-    "noReceiptsDescription": "Aucun ticket ne correspond à vos filtres actuels.",
-    "void": "Annuler",
-    "voidReceipt": "Annuler le Ticket",
-    "voidConfirm": "Êtes-vous sûr de vouloir annuler ce ticket ? Cette action inversera les mouvements de stock et créera des écritures comptables d'annulation.",
-    "voidReason": "Raison de l'annulation",
-    "voidReasonPlaceholder": "Entrez la raison...",
-    "voidSuccess": "Ticket annulé avec succès",
-    "voidError": "Échec de l'annulation du ticket",
+    "includeTraining": "Inclure les tickets de formation",
+    "trainingIncluded": "Tickets de formation inclus",
+    "tableLabel": "Registre des tickets",
+    "resolvedWindow": "Période résolue : à partir du {{from}}, avant {{to}}",
+    "types": {
+      "SALE": "Vente",
+      "TRAINING": "Formation",
+      "REFUND": "Remboursement",
+      "VOID": "Annulation"
+    },
+    "fiscalStatuses": {
+      "pending_seal": "En attente de scellement",
+      "fiscalized": "Fiscalisé",
+      "voided": "Annulé",
+      "pending_sync": "En attente de synchronisation",
+      "synced": "Synchronisé",
+      "sync_failed": "Échec de synchronisation"
+    },
+    "empty": {
+      "dayTitle": "Aucun ticket de caisse pour le moment",
+      "dayDescription": "Les tickets de vente sont créés sur la caisse et apparaissent ici après synchronisation.",
+      "filteredTitle": "Aucun ticket ne correspond à ces filtres",
+      "filteredDescription": "Supprimez un ou plusieurs filtres pour élargir le registre.",
+      "noScopeTitle": "Sélectionnez une société pour consulter les tickets",
+      "noScopeDescription": "Choisissez une société et un périmètre d'emplacements avant d'ouvrir le registre."
+    },
     "filters": {
       "terminal": "Terminal",
       "status": "Statut",
       "type": "Type",
       "allTerminals": "Tous les terminaux",
+      "allCashiers": "Tous les caissiers",
       "allStatuses": "Tous les statuts",
       "allTypes": "Tous les types",
       "salesOnly": "Ventes uniquement",

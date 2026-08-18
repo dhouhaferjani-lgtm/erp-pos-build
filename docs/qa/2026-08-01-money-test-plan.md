@@ -130,12 +130,13 @@ when computing an expected number:
 
 ### 0.3 Known-defect register — expected FAILURES that are already ticketed
 
-These are open, ticketed defects at authoring time. If the campaign reproduces one, record
-`FAIL (known — <ticket>)`, do **not** open a duplicate, and do **not** silently pass it.
+These were ticketed defects at authoring time. Unless a row is marked **RESOLVED**, if the campaign
+reproduces one record `FAIL (known — <ticket>)`, do **not** open a duplicate, and do **not** silently
+pass it. Resolved rows remain here as regression provenance.
 
 | Ticket | Defect | Campaign impact |
 |---|---|---|
-| `docs/superpowers/tickets/2026-08-01-positive-refund-total-consumers.md` | 5 aggregates `SUM(pos_receipts.total)` with **no `receipt_type` filter**: `PosAnalyticsService.php:37` (net_sales), `:165` (getSalesByTimePeriod), `:194-195` (getCashierPerformance), `:312` (getCustomerAnalytics); `GrandtotalService.php:174` (lifetime_sales). Same class, different column: `ReportGenerationService.php:500` (`pos_receipt_payments.amount`, shift-close reconciliation). With v4 POSITIVE refunds these **ADD** instead of subtracting. **HARD PRE-ENABLE GATE.** | Directly targeted by `MTP-AGG-*`. If v4 authoring is still inert on staging, these read correct — the mixed-window cases are the only ones that expose them. |
+| `docs/superpowers/tickets/2026-08-01-positive-refund-total-consumers.md` | **RESOLVED 2026-08-17.** Receipt aggregates now normalize return rows with `-ABS(...)` (or branch on `ReceiptType::Return`) across `PosAnalyticsService`, `GrandtotalService`, and shift-close reconciliation. | `MTP-AGG-*` remains mandatory regression coverage for mixed legacy-negative and v4-positive return windows. This ticket is no longer an open pre-enable gate. |
 | `docs/superpowers/tickets/2026-07-31-cashdrawer-v3-expected-cash-blind.md` | `CashDrawerService::calculateExpectedCash()` (`:387-413`) sums only `pos_cash_drawer_operations`; **no v3 path writes those rows** → opening-float-only expected cash, and `ShiftManagementService.php:168-182` **persists** that wrong variance on close. Also `scale()` uses a no-arg `getScale()` (`:48-51`) — fatal if queued. | `MTP-CASH-*` will show expected_cash ≈ opening float on v3 shifts. Expected known-fail. |
 | `docs/superpowers/tickets/2026-08-01-device-z-sale-branch-gross-as-net.md` | Device Z/EOD/X **SALE** branch treats gross `line_total` as net → net overstated by the VAT amount per taxed line inside signed Z_REPORT/X_REPORT events. **Totals are correct; the net/VAT decomposition is not.** Refund branch is now correct, so a fully-refunded taxed sale leaves a `+VAT / −0` residue. | `MTP-ZRP-*` decomposition cases. Assert totals strictly; record decomposition mismatch as known-fail with the exact residue. |
 | `docs/superpowers/tickets/2026-07-31-treasury-bridge-training-money-legs.md` | `TreasuryReceiptBridge.php:401-402` — only the cash-rounding / tolerance write-off entries sit behind the training gate. The **tender-leg loop above it is NOT training-gated**, so a TRAINING sale creates real Payment rows, GL entries and repository movements. | `MTP-TRN-01`. **Do not take training receipts during the rest of the campaign** unless the fix landed. |
@@ -1141,10 +1142,10 @@ every line `disposition = 'restock'`. Legacy returns are **negative**. Drawer le
 
 ### F.6 `AGG` — receipt_type-aware aggregates (the v4-positive-refund consumer gate)
 
-> **This is the HARD PRE-ENABLE GATE.** Ticket
-> `docs/superpowers/tickets/2026-08-01-positive-refund-total-consumers.md` lists five aggregates
+> **Resolved pre-enable gate; retained as mandatory regression coverage.** Ticket
+> `docs/superpowers/tickets/2026-08-01-positive-refund-total-consumers.md` recorded five aggregates
 > that blended `SUM(pos_receipts.total)` with no `receipt_type` filter, plus one on
-> `pos_receipt_payments.amount`. The branch fixes them with a `netOfReturns()` helper
+> `pos_receipt_payments.amount`. The current code fixes them with a `netOfReturns()` helper
 > (`CASE WHEN receipt_type = 'return' THEN -ABS({col}) ELSE {col} END`). **Every case here is
 > asserted on a MIXED window containing at least one sale and at least one v4 POSITIVE refund** —
 > a sale-only window cannot distinguish a fixed aggregate from a broken one.
@@ -1703,4 +1704,3 @@ never be silently marked PASS. Reproductions of the §0.3 known defects are reco
 `FAIL (known — <ticket>)` and are assessed by the owner against the existing tickets, not re-filed.
 
 <!-- SECTION-Y-END -->
-

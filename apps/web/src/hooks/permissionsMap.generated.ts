@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:73a4c4aa82a22ee5c2987b4836de7f9085fec3f61113ba41c856a2adf2fc0f68
+// Source hash: sha256:8546d7436a07718e3e10ec6ff0ff6a2bfd5c32bf57f09a1fa5d84211ec9cf6a0
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -54,7 +54,7 @@ export const PERMISSIONS = {
   'deliveries.create': ['admin', 'manager', 'operator'],
   'deliveries.delete': ['admin', 'manager'],
   'deliveries.edit': ['admin', 'manager', 'operator'],
-  'deliveries.view': ['admin', 'cashier', 'manager', 'operator', 'viewer'],
+  'deliveries.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
   'document-ingestions.commit': ['accountant', 'admin', 'manager'],
   'document-ingestions.create': ['accountant', 'admin', 'manager'],
   'document-ingestions.reject': ['accountant', 'admin', 'manager'],
@@ -185,8 +185,8 @@ export const PERMISSIONS = {
   'pos.tolerance.apply': ['admin', 'cashier', 'manager'],
   'pos.transfer_voucher': ['admin'],
   'pos.view_cross_location_stock': ['admin', 'manager'],
-  'pos.view_receipts': ['admin', 'cashier', 'manager'],
-  'pos.view_reports': ['admin', 'manager'],
+  'pos.view_receipts': ['accountant', 'admin', 'cashier', 'manager'],
+  'pos.view_reports': ['accountant', 'admin', 'manager'],
   'pos.void_receipts': ['admin', 'manager'],
   'pos.void_voucher': ['admin', 'manager'],
   'pos_held_orders.create': ['admin', 'cashier', 'manager'],
@@ -243,7 +243,6 @@ export const PERMISSIONS = {
   'scheduling.appointments.view': ['accountant', 'admin', 'manager', 'operator', 'technician'],
   'scheduling.bays.manage': ['admin', 'manager'],
   'scheduling.bays.view': ['accountant', 'admin', 'manager', 'operator', 'technician'],
-  'settings.fiscal.update': ['admin'],
   'settings.manage': ['admin', 'manager'],
   'settings.update': ['admin'],
   'settings.view': ['admin', 'manager', 'viewer'],

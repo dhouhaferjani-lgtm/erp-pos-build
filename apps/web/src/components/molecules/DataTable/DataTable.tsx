@@ -70,6 +70,8 @@ export interface DataTableProps<T> {
   /** Custom empty-state node; overrides `emptyTitle`/`emptyDescription`. */
   emptyState?: React.ReactNode
   onRowClick?: (row: T) => void
+  /** Optional per-row treatment (for example, a muted training row). */
+  getRowClassName?: (row: T, index: number) => string | undefined
   /** Opt-in row selection. When provided, a leading checkbox column renders. */
   selection?: DataTableSelection<T>
   /** Accessible name for the rendered table. */
@@ -137,6 +139,7 @@ export function DataTable<T>(props: DataTableProps<T> | DataTableMarkupProps): R
     emptyDescription,
     emptyState,
     onRowClick,
+    getRowClassName,
     selection,
     ariaLabel,
     className,
@@ -233,6 +236,7 @@ export function DataTable<T>(props: DataTableProps<T> | DataTableMarkupProps): R
             className={cn(
               tokens.table.rowHover,
               isInteractive && 'cursor-pointer',
+              getRowClassName?.(row, rowIndex),
             )}
             onClick={handleClick}
             onKeyDown={handleKeyDown}

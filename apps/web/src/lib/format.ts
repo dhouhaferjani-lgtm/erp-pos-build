@@ -280,6 +280,41 @@ export function formatDate(
   }).format(d)
 }
 
+export interface DateTimeFormatOptions {
+  locale?: string
+  timeZone?: string
+}
+
+/** Resolve an instant to its calendar date in a business timezone. */
+export function calendarDateInTimeZone(timeZone: string, date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${value('year')}-${value('month')}-${value('day')}`
+}
+
+/** Format an instant with the shared UI locale and an explicit business timezone. */
+export function formatDateTime(
+  date: string | Date,
+  options?: DateTimeFormatOptions,
+): string {
+  const value = typeof date === 'string' ? new Date(date) : date
+  if (isNaN(value.getTime())) return ''
+
+  return new Intl.DateTimeFormat(options?.locale ?? i18n.language, {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    ...(options?.timeZone ? { timeZone: options.timeZone } : {}),
+  }).format(value)
+}
+
 /**
  * Format percentage
  */

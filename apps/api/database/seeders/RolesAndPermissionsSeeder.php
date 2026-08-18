@@ -794,11 +794,12 @@ class RolesAndPermissionsSeeder extends Seeder
                 'taxation.tax_configurations.manage',
                 'taxation.withholding_rules.manage',
                 'withholding.view', 'withholding.create', 'withholding.update',
-                // Read access to the DN consolidation billing queue (owner-ruled
-                // OI-1a; minimal slice landed by the parent orchestrator to clear
-                // the DN lane's F-1 gate — the full 3-key accountant edit stays
-                // owned by the POS-receipts lane and merges over this cleanly).
+                // Accountant read access ruled 2026-08-12 (OI-1a + receipts spec):
+                // deliveries.view (DN consolidation billing queue — minimal slice
+                // pre-landed by the parent to clear the DN lane's F-1 gate) plus
+                // the POS receipt-reporting pair delivered by the receipts wave.
                 'deliveries.view',
+                'pos.view_receipts', 'pos.view_reports',
                 'audit.view',
                 'compliance.export_jet', 'compliance.verify_chains', 'compliance.view_reprint_log',
                 // Accountant has read-only audit access to fraud detection.

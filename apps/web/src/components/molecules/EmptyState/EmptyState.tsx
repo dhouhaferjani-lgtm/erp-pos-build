@@ -6,9 +6,10 @@ interface EmptyStateProps {
   title: string
   description?: string
   icon?: React.ReactNode
+  action?: React.ReactNode
 }
 
-export function EmptyState({ title, description, icon }: EmptyStateProps) {
+export function EmptyState({ title, description, icon, action }: EmptyStateProps) {
   const { t } = useTranslation()
 
   return (
@@ -18,6 +19,7 @@ export function EmptyState({ title, description, icon }: EmptyStateProps) {
       <p className={`${colorTokens.text.subtle} max-w-md`}>
         {description ?? t('common.noData')}
       </p>
+      {action ? <div className="mt-4">{action}</div> : null}
     </div>
   )
 }

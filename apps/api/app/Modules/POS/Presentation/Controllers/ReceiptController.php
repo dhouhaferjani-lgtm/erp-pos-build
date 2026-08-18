@@ -6,15 +6,21 @@ namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Company\Services\LocationContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\DTOs\ReceiptDetailData;
+use App\Modules\POS\Application\DTOs\ReceiptListItemData;
+use App\Modules\POS\Application\DTOs\ReceiptOriginalLineageData;
+use App\Modules\POS\Application\DTOs\ReceiptReturnLineageData;
 use App\Modules\POS\Application\Services\ReceiptCreationService;
 use App\Modules\POS\Application\Services\ReceiptPaymentService;
 use App\Modules\POS\Application\Services\ReceiptPdfService;
 use App\Modules\POS\Application\Services\ReceiptPrintAuditService;
 use App\Modules\POS\Application\Services\ReceiptQrTokenIssuanceService;
 use App\Modules\POS\Application\Services\ReceiptReturnService;
+use App\Modules\POS\Application\Services\RefundReportingEnricher;
 use App\Modules\POS\Domain\Enums\ConsumptionMode;
 use App\Modules\POS\Domain\Enums\PrintMethod;
 use App\Modules\POS\Domain\Enums\RefundDestination;
@@ -24,13 +30,17 @@ use App\Modules\POS\Domain\Exceptions\DiscountNotAllowedException;
 use App\Modules\POS\Domain\Exceptions\LegacyCorrectionRetiredException;
 use App\Modules\POS\Domain\Exceptions\ShiftNotOpenException;
 use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Presentation\Requests\IndexReceiptsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptPaymentsRequest;
 use App\Modules\POS\Presentation\Requests\StoreReceiptRequest;
 use App\Modules\POS\Presentation\Requests\StoreReturnRequest;
 use App\Modules\Voucher\Application\Services\VoucherLookupService;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\QuantityScale;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -45,6 +55,9 @@ final class ReceiptController extends Controller
 {
     public function __construct(
         private readonly CompanyContext $companyContext,
+        private readonly LocationContext $locationContext,
+        private readonly CurrencyScaleResolverInterface $currencyScaleResolver,
+        private readonly RefundReportingEnricher $refundReportingEnricher,
         private readonly ReceiptCreationService $receiptCreationService,
         private readonly ReceiptPdfService $receiptPdfService,
         private readonly ReceiptPrintAuditService $receiptPrintAuditService,
@@ -59,77 +72,157 @@ final class ReceiptController extends Controller
      *
      * GET /api/v1/pos/receipts
      */
-    public function index(Request $request): JsonResponse
+    public function index(IndexReceiptsRequest $request): JsonResponse
     {
         Gate::authorize('pos.view_receipts');
 
-        $companyId = $this->companyContext->getCompanyId();
+        $company = $this->companyContext->requireCompany();
+        $companyId = $company->id;
+        $validated = $request->validated();
 
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
         $query = Receipt::where('company_id', $companyId)
-            ->with(['terminal']);
+            ->with([
+                'location:id,name',
+                'terminal:id,code',
+                'originalReceipt' => function ($originalQuery) use ($companyId, $allowedLocationIds): void {
+                    $originalQuery->where('company_id', $companyId);
+                    if ($allowedLocationIds !== null) {
+                        $originalQuery->whereIn('location_id', $allowedLocationIds);
+                    }
+                },
+            ]);
+
+        $requestedLocationIds = $validated['location_ids'] ?? null;
+        if ($allowedLocationIds !== null) {
+            $effectiveLocationIds = $requestedLocationIds === null
+                ? $allowedLocationIds
+                : array_values(array_intersect($allowedLocationIds, $requestedLocationIds));
+            $query->whereIn('location_id', $effectiveLocationIds);
+        } elseif ($requestedLocationIds !== null) {
+            $query->whereIn('location_id', $requestedLocationIds);
+        }
 
         // Filters
-        if ($request->filled('terminal_id')) {
-            $query->where('terminal_id', $request->input('terminal_id'));
+        if (! empty($validated['terminal_id'])) {
+            $query->where('terminal_id', $validated['terminal_id']);
         }
 
-        if ($request->filled('cashier_id')) {
-            $query->where('cashier_id', $request->input('cashier_id'));
+        if (! empty($validated['cashier_id'])) {
+            $query->where('cashier_id', $validated['cashier_id']);
         }
 
-        if ($request->filled('receipt_number')) {
-            $query->where('receipt_number', 'like', '%'.$request->input('receipt_number').'%');
+        if (! empty($validated['receipt_number'])) {
+            $escapedReceiptNumber = addcslashes($validated['receipt_number'], '\\%_');
+            $query->whereRaw("receipt_number LIKE ? ESCAPE '\\'", ['%'.$escapedReceiptNumber.'%']);
         }
 
-        if ($request->filled('customer_id')) {
-            $query->where('partner_id', $request->input('customer_id'));
+        if (! empty($validated['customer_id'])) {
+            $query->where('partner_id', $validated['customer_id']);
         }
 
-        if ($request->filled('contact_id')) {
-            $query->where('contact_id', $request->input('contact_id'));
+        if (! empty($validated['contact_id'])) {
+            $query->where('contact_id', $validated['contact_id']);
         }
 
-        if ($request->has('is_voided')) {
-            $query->where('is_voided', filter_var($request->input('is_voided'), FILTER_VALIDATE_BOOLEAN));
+        if (array_key_exists('is_voided', $validated)) {
+            $query->where('is_voided', $request->boolean('is_voided'));
         }
 
-        if ($request->filled('receipt_type')) {
-            $query->where('receipt_type', $request->input('receipt_type'));
+        $legacyReceiptType = $validated['receipt_type'] ?? null;
+        $usesLegacyReceiptType = is_string($legacyReceiptType) && ! isset($validated['invoice_type_codes']);
+        if ($usesLegacyReceiptType) {
+            $query->where('receipt_type', $legacyReceiptType);
+        } else {
+            /** @var list<string> $invoiceTypeCodes */
+            $invoiceTypeCodes = $validated['invoice_type_codes']
+                ?? ($request->boolean('include_training') ? ['SALE', 'TRAINING'] : ['SALE']);
+            $includesRefund = in_array('REFUND', $invoiceTypeCodes, true);
+
+            $query->where(function (Builder $typeQuery) use ($invoiceTypeCodes, $includesRefund): void {
+                $typeQuery->where(function (Builder $currentTypeQuery) use ($invoiceTypeCodes): void {
+                    $currentTypeQuery
+                        ->whereIn('invoice_type_code', $invoiceTypeCodes)
+                        ->where(function (Builder $notLegacyReturn): void {
+                            $notLegacyReturn
+                                ->where('receipt_type', '!=', 'return')
+                                ->orWhereNotNull('fiscal_event_id')
+                                ->orWhere('invoice_type_code', '!=', 'SALE');
+                        });
+                });
+
+                if ($includesRefund) {
+                    $typeQuery->orWhere(function (Builder $legacyReturnQuery): void {
+                        $legacyReturnQuery
+                            ->where('receipt_type', 'return')
+                            ->whereNull('fiscal_event_id')
+                            ->where('invoice_type_code', 'SALE');
+                    });
+                }
+            });
         }
 
-        if ($request->filled('from_date')) {
-            $query->where('posted_at', '>=', $request->input('from_date'));
+        if (! $request->boolean('include_training') || $usesLegacyReceiptType) {
+            $query->where('training_flag', false);
         }
 
-        if ($request->filled('to_date')) {
-            $query->where('posted_at', '<=', $request->input('to_date').' 23:59:59');
+        if (isset($validated['fiscal_status'])) {
+            $query->where('fiscal_status', $validated['fiscal_status']);
+        }
+
+        $from = isset($validated['from_date']) && is_string($validated['from_date'])
+            ? $this->dateBoundary($validated['from_date'], $company->timezone)->utc()
+            : null;
+        $to = isset($validated['to_date']) && is_string($validated['to_date'])
+            ? $this->dateBoundary($validated['to_date'], $company->timezone)->addDay()->utc()
+            : null;
+
+        if ($from !== null) {
+            $query->where('posted_at', '>=', $from);
+        }
+
+        if ($to !== null) {
+            $query->where('posted_at', '<', $to);
         }
 
         $receipts = $query->orderByDesc('posted_at')
-            ->paginate((int) $request->input('per_page', 20));
+            ->paginate((int) ($validated['per_page'] ?? 25));
+        $refundReporting = $this->refundReportingEnricher->enrich($receipts->getCollection());
 
-        // Transform receipt data to include terminal_code
-        $items = collect($receipts->items())->map(function (Receipt $receipt) {
-            return [
-                'id' => $receipt->id,
-                'receipt_number' => $receipt->receipt_number,
-                'receipt_type' => $receipt->receipt_type->value ?? 'sale',
-                'original_receipt_id' => $receipt->original_receipt_id,
-                'return_reason' => $receipt->return_reason?->value,
-                'terminal_id' => $receipt->terminal_id,
-                'terminal_code' => $receipt->terminal->code ?? '',
-                'cashier_name' => $receipt->cashier_name,
-                'subtotal' => $receipt->subtotal,
-                'tax_amount' => $receipt->tax_amount,
-                'total' => $receipt->total,
-                'currency' => $receipt->currency,
-                'customer_name' => $receipt->customer_name,
-                'partner_id' => $receipt->partner_id,
-                'contact_id' => $receipt->contact_id,
-                'posted_at' => $receipt->posted_at->toISOString(),
-                'is_voided' => $receipt->is_voided,
-                'void_reason' => $receipt->void_reason,
-            ];
+        $items = collect($receipts->items())->map(function (Receipt $receipt) use ($refundReporting): array {
+            $moneyScale = $this->currencyScaleResolver->getScale($receipt->currency);
+            $isLegacyReturn = $receipt->receipt_type->value === 'return'
+                && $receipt->fiscal_event_id === null
+                && $receipt->invoice_type_code === 'SALE';
+
+            $row = (new ReceiptListItemData(
+                id: $receipt->id,
+                receipt_number: $receipt->receipt_number,
+                posted_at: $receipt->posted_at->utc()->format('Y-m-d\TH:i:s.u\Z'),
+                invoice_type_code: $isLegacyReturn ? 'REFUND' : $receipt->invoice_type_code,
+                receipt_type: $receipt->receipt_type->value,
+                training_flag: $receipt->training_flag,
+                is_voided: $receipt->is_voided,
+                fiscal_status: $receipt->fiscal_status->value,
+                location_id: $receipt->location_id,
+                location_name: $receipt->location->name,
+                terminal_id: $receipt->terminal_id,
+                terminal_code: $receipt->terminal->code,
+                cashier_id: $receipt->cashier_id,
+                cashier_name: $receipt->cashier_name,
+                total: $isLegacyReturn
+                    ? $this->receiptTotalMagnitude($receipt)
+                    : CurrencyScale::bcformatStrict((string) $receipt->total, $moneyScale),
+                currency: $receipt->currency,
+                original_receipt_id: $receipt->original_receipt_id,
+            ))->toArray();
+
+            $reporting = $refundReporting[$receipt->id] ?? null;
+            if ($reporting !== null) {
+                $row = array_merge($row, $reporting->toArray());
+            }
+
+            return $row;
         });
 
         return response()->json([
@@ -140,9 +233,21 @@ final class ReceiptController extends Controller
                     'last_page' => $receipts->lastPage(),
                     'per_page' => $receipts->perPage(),
                     'total' => $receipts->total(),
+                    'from' => $from?->toISOString(),
+                    'to' => $to?->toISOString(),
                 ],
             ],
         ]);
+    }
+
+    private function dateBoundary(string $date, string $timezone): CarbonImmutable
+    {
+        $boundary = CarbonImmutable::createFromFormat('!Y-m-d', $date, $timezone);
+        if (! $boundary instanceof CarbonImmutable) {
+            throw new \LogicException('Validated receipt date could not be parsed.');
+        }
+
+        return $boundary;
     }
 
     // DPA V9 (owner ruling D3 — SUNSET): `void()` and `ReceiptVoidService`
@@ -470,41 +575,67 @@ final class ReceiptController extends Controller
     {
         Gate::authorize('pos.view_receipts');
 
-        $companyId = $this->companyContext->getCompanyId();
+        $companyId = $this->companyContext->requireCompany()->id;
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
 
-        $receipt = Receipt::with([
-            'company',
+        $receiptQuery = Receipt::with([
             'location',
             'terminal',
-            'cashier',
-            'lines.product',
+            'lines.product.unitOfMeasure',
             'vatDetails',
-            'payments.paymentMethod',
-            'returnReceipts' => function ($query): void {
-                $query->where('is_voided', false)->with('lines');
+            'payments',
+            'originalReceipt' => function ($query) use ($companyId, $allowedLocationIds): void {
+                $this->scopeRelatedReceipt($query, $companyId, $allowedLocationIds);
+            },
+            'returnReceipts' => function ($query) use ($companyId, $allowedLocationIds): void {
+                $this->scopeRelatedReceipt($query, $companyId, $allowedLocationIds);
+                $query->where('is_voided', false)->with(['lines', 'originalReceipt']);
             },
         ])
-            ->where('company_id', $companyId)
-            ->findOrFail($id);
+            ->where('company_id', $companyId);
+        $this->applyAllowedLocationScope($receiptQuery, $companyId);
+        $receipt = $receiptQuery->findOrFail($id);
 
         // Calculate already-returned quantities per line
         $returnedQuantities = $this->calculateReturnedQuantities($receipt);
-        $zeroQuantity = QuantityScale::formatForUnit('0', null);
+        $returnReporting = $this->refundReportingEnricher->enrich($receipt->returnReceipts);
+        $returnReceipts = $receipt->returnReceipts
+            ->filter(static fn (Receipt $returnReceipt): bool => isset($returnReporting[$returnReceipt->id]))
+            ->map(function (Receipt $returnReceipt) use ($returnReporting): ReceiptReturnLineageData {
+                $reporting = $returnReporting[$returnReceipt->id];
 
-        // Build response with returned_quantity on each line
-        $receiptData = $receipt->toArray();
-        $receiptData['lines'] = $receipt->lines->map(function ($line) use ($returnedQuantities, $zeroQuantity) {
-            $lineData = $line->toArray();
-            $lineData['returned_quantity'] = $returnedQuantities[$line->id] ?? $zeroQuantity;
+                return new ReceiptReturnLineageData(
+                    id: $returnReceipt->id,
+                    receipt_number: $returnReceipt->receipt_number,
+                    posted_at: $returnReceipt->posted_at->toIso8601String(),
+                    invoice_type_code: $this->reportingInvoiceTypeCode($returnReceipt),
+                    total: $this->receiptTotalMagnitude($returnReceipt),
+                    currency: $returnReceipt->currency,
+                    refund_reason: $reporting->refund_reason,
+                    refund_reason_source: $reporting->refund_reason_source,
+                    refund_destination: $reporting->refund_destination,
+                );
+            })->values()->all();
 
-            return $lineData;
-        })->values()->toArray();
+        $originalReceipt = $receipt->originalReceipt;
+        $originalLineage = $originalReceipt === null ? null : new ReceiptOriginalLineageData(
+            id: $originalReceipt->id,
+            receipt_number: $originalReceipt->receipt_number,
+            posted_at: $originalReceipt->posted_at->toIso8601String(),
+            total: $this->receiptTotalMagnitude($originalReceipt),
+            currency: $originalReceipt->currency,
+        );
 
-        // Remove the returnReceipts from the response (internal use only)
-        unset($receiptData['return_receipts']);
+        $receiptData = ReceiptDetailData::fromReceipt(
+            receipt: $receipt,
+            currencyScaleResolver: $this->currencyScaleResolver,
+            returnedQuantities: $returnedQuantities,
+            returnReceipts: array_values($returnReceipts),
+            originalReceipt: $originalLineage,
+        );
 
         return response()->json([
-            'data' => $receiptData,
+            'data' => $receiptData->toArray(),
         ]);
     }
 
@@ -531,6 +662,38 @@ final class ReceiptController extends Controller
             : bcadd($value, '0', 4); // precision-ok: 4 = canonical quantity storage scale
     }
 
+    private function receiptTotalMagnitude(Receipt $receipt): string
+    {
+        $scale = $this->currencyScaleResolver->getScale($receipt->currency);
+        $total = (string) $receipt->total;
+        $magnitude = bccomp($total, '0', $scale) < 0
+            ? bcsub('0', $total, $scale)
+            : bcadd($total, '0', $scale);
+
+        return CurrencyScale::bcformatStrict($magnitude, $scale);
+    }
+
+    private function reportingInvoiceTypeCode(Receipt $receipt): string
+    {
+        return $receipt->receipt_type->value === 'return'
+            && $receipt->fiscal_event_id === null
+            && $receipt->invoice_type_code === 'SALE'
+                ? 'REFUND'
+                : $receipt->invoice_type_code;
+    }
+
+    /**
+     * @param  mixed  $query  Eager-loading supplies a relation rather than an Eloquent builder.
+     * @param  array<int, string>|null  $allowedLocationIds
+     */
+    private function scopeRelatedReceipt(mixed $query, string $companyId, ?array $allowedLocationIds): void
+    {
+        $query->where('company_id', $companyId);
+        if ($allowedLocationIds !== null) {
+            $query->whereIn('location_id', $allowedLocationIds);
+        }
+    }
+
     /**
      * Calculate already-returned quantities per original line ID.
      *
@@ -538,7 +701,7 @@ final class ReceiptController extends Controller
      * Uses original_line_id for precise matching when available, falls back to
      * product attribute matching for legacy return lines.
      *
-     * @return array<string, string> Map of original line ID to returned quantity
+     * @return array<string, numeric-string> Map of original line ID to returned quantity
      */
     private function calculateReturnedQuantities(Receipt $receipt): array
     {
@@ -593,10 +756,11 @@ final class ReceiptController extends Controller
         // the scope against future schema changes.
         $company = $this->companyContext->requireCompany();
 
-        $receipt = Receipt::query()
+        $receiptQuery = Receipt::query()
             ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->findOrFail($id);
+            ->where('company_id', $company->id);
+        $this->applyAllowedLocationScope($receiptQuery, $company->id);
+        $receipt = $receiptQuery->findOrFail($id);
 
         /** @var User $user */
         $user = Auth::user();
@@ -626,10 +790,11 @@ final class ReceiptController extends Controller
         // F.2 — defense-in-depth tenant_id scope (mirrors downloadPdf).
         $company = $this->companyContext->requireCompany();
 
-        $receipt = Receipt::query()
+        $receiptQuery = Receipt::query()
             ->where('tenant_id', $company->tenant_id)
-            ->where('company_id', $company->id)
-            ->findOrFail($id);
+            ->where('company_id', $company->id);
+        $this->applyAllowedLocationScope($receiptQuery, $company->id);
+        $receipt = $receiptQuery->findOrFail($id);
 
         /** @var User $user */
         $user = Auth::user();
@@ -645,6 +810,17 @@ final class ReceiptController extends Controller
         $filename = $this->receiptPdfService->getFilename($receipt);
 
         return $pdf->stream($filename);
+    }
+
+    /**
+     * @param  Builder<Receipt>  $query
+     */
+    private function applyAllowedLocationScope(Builder $query, string $companyId): void
+    {
+        $allowedLocationIds = $this->locationContext->getAllowedLocationIds($companyId);
+        if ($allowedLocationIds !== null) {
+            $query->whereIn('location_id', $allowedLocationIds);
+        }
     }
 
     /**

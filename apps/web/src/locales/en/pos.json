@@ -213,7 +213,8 @@
     },
     "disposition": {
       "title": "Point of sale runs in the desktop app",
-      "body": "Sales are now rung up in the IziPOS desktop checkout app. From the web you can browse receipts, process returns, and download PDFs from the shop-management screens."
+      "body": "Sales are rung up in the IziPOS desktop checkout app. The web register remains available for receipt review.",
+      "receiptsLink": "Open receipt register"
     }
   },
   "productInfo": {
@@ -263,6 +264,96 @@
       "dateRange": "Date Range",
       "from": "From",
       "to": "To"
+    }
+  },
+  "receiptReporting": {
+    "tabs": {
+      "label": "Receipt registers",
+      "receipts": "Receipts",
+      "refunds": "Refunds & voids"
+    },
+    "reprint": {
+      "title": "Create a duplicate ticket?",
+      "auditConsequence": "This produces a duplicate ticket. The duplicate is recorded in the fiscal reprint log with a copy number and is visible to your accountant.",
+      "confirmPrint": "Print duplicate",
+      "confirmDownload": "Download duplicate"
+    },
+    "detail": {
+      "backToRegister": "Back to receipt register",
+      "notFoundTitle": "Receipt not found",
+      "notFoundDescription": "This receipt is unavailable or outside your permitted location scope.",
+      "printDuplicate": "Print duplicate",
+      "downloadDuplicate": "Download duplicate",
+      "summary": "Receipt summary",
+      "subtotal": "Subtotal",
+      "discount": "Discount",
+      "rounding": "Cash rounding",
+      "lines": "Lines",
+      "product": "Product",
+      "quantity": "Quantity",
+      "unitPriceInclVat": "Unit price (incl. VAT)",
+      "vatRate": "VAT rate",
+      "lineNet": "Line net",
+      "returnedQuantity": "Returned quantity",
+      "percentValue": "{{value}}%",
+      "vatBreakdown": "VAT breakdown",
+      "netAmount": "Net amount",
+      "vatAmount": "VAT amount",
+      "grossAmount": "Gross amount",
+      "payments": "Payments",
+      "paymentMethod": "Payment method",
+      "cardLastFour": "Card last four",
+      "instrumentSerial": "Instrument serial",
+      "reference": "Reference",
+      "authorizationCode": "Authorization code",
+      "amount": "Amount",
+      "changeDue": "Change due",
+      "lineage": "Refund lineage",
+      "originalReceipt": "Original receipt",
+      "noLineage": "No refund lineage is recorded for this receipt.",
+      "fiscalProvenance": "Fiscal provenance",
+      "fiscalHash": "Fiscal hash",
+      "previousHash": "Previous hash",
+      "chainSequence": "Chain sequence",
+      "receiptYear": "Receipt year",
+      "fiscalEvent": "Fiscal event",
+      "syncedAt": "Synced at"
+    },
+    "refunds": {
+      "title": "Refunds & voids",
+      "description": "Review refund and void receipts separately from sales",
+      "refundReceipt": "Refund receipt #",
+      "originalReceipt": "Original receipt #",
+      "reason": "Refund reason",
+      "destination": "Refund destination",
+      "amount": "Amount",
+      "alerts": "Policy alerts",
+      "alertCount": "{{count}} alert",
+      "alertCount_other": "{{count}} alerts",
+      "recordedAlert": "Recorded policy alert",
+      "originalDiscount": "Original transaction discount",
+      "fiscalEvent": "Fiscal event",
+      "alertTypes": {
+        "nonZeroOriginalTransactionDiscount": "Original transaction included a discount"
+      },
+      "capabilityTitle": "Terminal refund capability",
+      "noTerminals": "No terminals are available in the selected location scope.",
+      "emptyTitle": "No refunds or voids match this period",
+      "emptyDescription": "Refunds and voids appear here after an enabled terminal records them.",
+      "tableLabel": "Refunds and voids register",
+      "placeholder": "—",
+      "capability": {
+        "notEnabled": "Refunds are not enabled on {{terminal}} — the device cannot process one.",
+        "awaiting": "{{terminal}} is enabled and awaiting device acknowledgement.",
+        "active": "{{terminal}} active since {{date}}."
+      },
+      "reasonSources": {
+        "canonical": "Reason recorded in the fiscal event",
+        "legacy_enum": "Legacy classification — not authored text"
+      },
+      "destinations": {
+        "cash": "Cash"
+      }
     }
   },
   "zReports": {
@@ -320,32 +411,50 @@
       "genesisReport": "This is the first Z-report (genesis) for this terminal"
     }
   },
-  "receiptSearch": {
+  "receipts": {
     "title": "Receipts",
-    "description": "Search and manage POS receipts",
+    "description": "Review fiscal receipts by business day, terminal, and cashier",
     "receiptNumber": "Receipt #",
     "terminal": "Terminal",
     "cashier": "Cashier",
     "date": "Date",
+    "type": "Type",
+    "location": "Location",
     "total": "Total",
     "status": "Status",
-    "active": "Active",
-    "voided": "Voided",
     "searchPlaceholder": "Search by receipt number...",
-    "noReceipts": "No receipts found",
-    "noReceiptsDescription": "No receipts match your current filters.",
-    "void": "Void",
-    "voidReceipt": "Void Receipt",
-    "voidConfirm": "Are you sure you want to void this receipt? This action will reverse stock movements and create reversal GL entries.",
-    "voidReason": "Reason for voiding",
-    "voidReasonPlaceholder": "Enter reason...",
-    "voidSuccess": "Receipt voided successfully",
-    "voidError": "Failed to void receipt",
+    "includeTraining": "Include training receipts",
+    "trainingIncluded": "Training receipts included",
+    "tableLabel": "Receipt register",
+    "resolvedWindow": "Resolved window: from {{from}}, ending before {{to}}",
+    "types": {
+      "SALE": "Sale",
+      "TRAINING": "Training",
+      "REFUND": "Refund",
+      "VOID": "Void"
+    },
+    "fiscalStatuses": {
+      "pending_seal": "Pending seal",
+      "fiscalized": "Fiscalized",
+      "voided": "Voided",
+      "pending_sync": "Pending sync",
+      "synced": "Synced",
+      "sync_failed": "Sync failed"
+    },
+    "empty": {
+      "dayTitle": "No POS receipts yet",
+      "dayDescription": "Sales receipts are created on the POS device and appear here after they sync.",
+      "filteredTitle": "No receipts match these filters",
+      "filteredDescription": "Clear one or more filters to broaden the register.",
+      "noScopeTitle": "Select a company to view receipts",
+      "noScopeDescription": "Choose a company and location scope before opening the receipt register."
+    },
     "filters": {
       "terminal": "Terminal",
       "status": "Status",
       "type": "Type",
       "allTerminals": "All Terminals",
+      "allCashiers": "All Cashiers",
       "allStatuses": "All Statuses",
       "allTypes": "All Types",
       "salesOnly": "Sales Only",

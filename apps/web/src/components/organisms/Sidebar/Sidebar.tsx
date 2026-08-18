@@ -232,14 +232,15 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         // Web new-sale POS is retired — checkout runs in the IziPOS desktop app.
         // The /pos/transactions route stays registered as a translated info page
         // for deep links, but is intentionally not surfaced in the web nav.
-        { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, permission: 'pos' },
-        { key: 'tables', href: '/pos/tables', icon: LayoutGrid, module: 'Tables', permission: 'pos' },
-        { key: 'kitchen', href: '/pos/kitchen', icon: ChefHat, module: 'Menu', permission: 'pos' },
-        { key: 'terminals', href: '/pos/terminals', icon: Monitor, permission: 'pos' },
-        { key: 'shiftHistory', href: '/pos/shift-history', icon: History, permission: 'pos' },
-        { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, permission: 'pos' },
+        { key: 'posOrders', href: '/pos/orders', icon: ClipboardList, permission: 'pos.operate_terminal' },
+        { key: 'tables', href: '/pos/tables', icon: LayoutGrid, module: 'Tables', permission: 'pos.manage_tables' },
+        { key: 'kitchen', href: '/pos/kitchen', icon: ChefHat, module: 'Menu', permission: 'pos.operate_terminal' },
+        { key: 'terminals', href: '/pos/terminals', icon: Monitor, permission: 'pos.manage_terminals' },
+        { key: 'shiftHistory', href: '/pos/shift-history', icon: History, permission: 'pos.manage_shifts' },
+        { key: 'receipts', labelKey: 'common:navigation.posReceipts', href: '/pos/receipts', icon: Receipt, permission: 'pos.view_receipts' },
+        { key: 'zReports', href: '/pos/z-reports', icon: FileCheck, permission: 'pos.view_reports' },
         { key: 'vouchers', href: '/pos/vouchers', icon: Ticket, permission: 'pos' },
-        { key: 'analytics', href: '/pos/analytics', icon: BarChart3, permission: 'pos' },
+        { key: 'analytics', href: '/pos/analytics', icon: BarChart3, permission: 'pos.view_reports' },
       ],
     },
     // E-commerce — external sales channels. Gated on the Ecommerce extra.
@@ -353,6 +354,13 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
       href: '/settings/support-access',
       icon: ShieldCheck,
       permission: 'support-access',
+      section: 'bottom',
+    },
+    {
+      key: 'complianceExport',
+      href: '/settings/compliance/export',
+      icon: FileCheck,
+      permission: 'compliance',
       section: 'bottom',
     },
     {

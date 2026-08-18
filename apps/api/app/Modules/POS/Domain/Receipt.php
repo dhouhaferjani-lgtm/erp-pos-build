@@ -308,7 +308,7 @@ class Receipt extends Model
      */
     public function terminal(): BelongsTo
     {
-        return $this->belongsTo(Terminal::class, 'terminal_id');
+        return $this->belongsTo(Terminal::class, 'terminal_id')->withTrashed();
     }
 
     /**

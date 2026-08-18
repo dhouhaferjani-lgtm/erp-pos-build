@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router-dom'
 import { AlertCircle } from 'lucide-react'
 import { colors, textColors } from '@/lib/designTokens'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
@@ -14,8 +15,7 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
  * and `POST /api/v1/pos/orders/{id}/close` return HTTP 410 Gone with
  * `NEW_SALE_AUTHORING_RETIRED` for all callers.
  *
- * Read-only receipt browsing and PDF download remain functional via
- * other pages (e.g., POS shifts dashboard). Refund Phase 6 quarantined
+ * Read-only receipt browsing is available at `/pos/receipts`. Refund Phase 6 quarantined
  * the web-admin void/return surface (ReceiptSearchPage + ReturnItemsModal
  * — it 422'd on every submit); post-seal corrections happen on the
  * desktop POS refund flow. The web-POS device-authority parity is
@@ -42,9 +42,15 @@ export function POSTransactions() {
         <p className={textColors.tertiary}>
           {t('pos:transactions.disposition.body', {
             defaultValue:
-              'Sales are now rung up in the IziPOS desktop checkout app. From the web you can browse receipts, process returns, and download PDFs from the shop-management screens.',
+              'Sales are rung up in the IziPOS desktop checkout app. The web register remains available for receipt review.',
           })}
         </p>
+        <Link
+          to="/pos/receipts"
+          className={`mt-5 inline-flex font-medium hover:underline ${colorTokens.intent.primary.textStrong}`}
+        >
+          {t('pos:transactions.disposition.receiptsLink')}
+        </Link>
       </div>
     </div>
   )
