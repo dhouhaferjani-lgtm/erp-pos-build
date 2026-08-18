@@ -5,17 +5,22 @@ review_register: .superpowers/sdd/HANDOVER-document-per-action-remediation-2026-
 reviewer_model: opus
 max_fix_rounds: 5
 
-# Human resume authorization (2026-08-17): after STOP A was recorded at
-# M2-round6, the owner asked Codex to continue. Rounds 4-6 contained tool errors
-# only, not findings. The five fix rounds remain immutable; one fresh parseable
-# review verdict is allowed. Any substantive CHANGES-REQUIRED verdict restores
-# STOP A immediately because no fix budget remains.
+# Human/orchestrator resume authorizations. The five fix rounds remain immutable.
 review_resume:
-  milestone: M2
-  after_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round6.md
-  scope: reviewer_tool_retry_only
-  consumed_by_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
-  result: substantive_changes_required_stop_a
+  - milestone: M2
+    authorized: 2026-08-17
+    after_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round6.md
+    scope: reviewer_tool_retry_only
+    consumed_by_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
+    result: substantive_changes_required_stop_a
+  - milestone: M2
+    authorized: 2026-08-18
+    after_verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
+    authority: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-18-m2-stop-a.md
+    scope: stop_a_scoped_fix_round
+    review_round: 8
+    consumed_by_verdict: null
+    result: in_progress
 
 # Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
 base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
@@ -60,7 +65,7 @@ milestones:
   - id: M2
     title: "THE CUTOVER COMMIT (one commit, no split): T14 + T15 + T16 + T16b + T16d + T16e + T17. Re-run citation inventory before this milestone (unresolved must be 0)."
     review_lenses: [inventory-costing, fiscal-pos]
-    status: blocked_review
+    status: review
     fix_rounds: 5
     commit: 3b22936aa
     verdict: docs/handoff/reviews/wave3-3c-3d/M2-round7.md
@@ -91,12 +96,8 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: blocked_review      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
-blockers:
-  - "Harness STOP A: M2 remains CHANGES-REQUIRED after max_fix_rounds=5. The owner-authorized reviewer-tool retry produced a substantive round-7 verdict, so the retry authorization is consumed and no fix budget remains. Latest register: docs/handoff/reviews/wave3-3c-3d/M2-round7.md."
-  - "P2 finding 1: ReceiptReturnService's interactive refund path reads the original sale basis through pos_receipt_lines.unit_cost numeric(15,4), not the original stock_movements.unit_cost numeric(19,6), creating a rounding residual and violating settled R-1 option (a)."
-  - "P2 finding 2: InventoryGlPostingBoundaryGuard is enabled only by six opt-in test classes, restoring register-dependence contrary to mandatory R-2; the reviewer identifies transactionLevel() === 0 at RequestHandled as the universal real-root discriminator."
-  - "P3 findings 3-10 remain recorded in round 7: missing post-watermark POS null-cost ratchet, missing M2 report/deptrac evidence, unsquashed atomic cutover history, and retained fiscal/test/legacy edge-case notes."
+blockers: []
