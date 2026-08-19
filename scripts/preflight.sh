@@ -194,12 +194,15 @@ echo -e "\n${YELLOW}Running i18n completeness gate...${NC}"
 pnpm audit:i18n:local
 echo -e "${GREEN}✓ i18n completeness passed${NC}"
 
-echo -e "\n${YELLOW}Running web ESLint rule tests...${NC}"
-# docs/conventions/08-DETECTOR-LIVENESS.md: the web RuleTester suites gate merges
-# via a frontend-lint step; preflight must be able to reproduce that failure
-# locally. Only the POS half ran here before.
+echo -e "\n${YELLOW}Running web detector-liveness suites...${NC}"
+# docs/conventions/08-DETECTOR-LIVENESS.md: these two suites gate merges via one
+# frontend-lint step, and preflight must reproduce that failure locally — a gate
+# a developer cannot reproduce is a gate that gets disabled. Only the POS half of
+# `test:eslint-rules` ran here before, and `test:tools` ran nowhere.
+# BOTH halves, matching the CI step's `pnpm test:eslint-rules && pnpm test:tools`.
 pnpm test:eslint-rules
-echo -e "${GREEN}✓ Web ESLint rule tests passed${NC}"
+pnpm test:tools
+echo -e "${GREEN}✓ Web detector-liveness suites passed${NC}"
 
 echo -e "\n${YELLOW}Running POS ESLint rule tests...${NC}"
 ( cd "$ROOT_DIR/apps/pos" && pnpm test:eslint-rules )

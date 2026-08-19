@@ -12,6 +12,7 @@ import {
   auditRoot,
   entryKey,
   flattenKeys,
+  KNOWN_UNWIRED_LOCALE_FILES,
   missingScannedSurface,
   parseI18nWiring,
   partitionByBaseline,
@@ -392,7 +393,8 @@ describe('audit-i18n-completeness — edge cases the pinned surface cannot see',
     // finding has nothing to be missed. The 12 fully-translated production
     // namespaces are exactly the exposed ones — the files the gate most wants
     // to protect. The English locale directory is the backstop.
-    expect(structural.join('\n')).toContain('locales/en/orphan.json has no namespace');
+    expect(structural.join('\n')).toContain('locales/en/orphan.json');
+    expect(structural.join('\n')).toContain('no namespace "orphan" in the `ns` array');
   });
 
   it('does NOT treat ordinary keys that merely end in a category name as plurals', () => {
@@ -411,5 +413,72 @@ describe('audit-i18n-completeness — edge cases the pinned surface cannot see',
 
   it('DOES treat an `_one`/`_other` pair as a plural family', () => {
     expect(keys).toContain('fr|gamma|plural|items_many');
+  });
+});
+
+describe('audit-i18n-completeness — spread ORDER decides who wins', () => {
+  // `{ ...arBeta, ...enBeta }` applies English LAST, so English wins every key
+  // and nothing the locale authored is ever served. A classifier that only asks
+  // WHICH identifiers appear cannot see that — and would then trust the locale
+  // file wholesale for a namespace rendered 100% in English.
+  //
+  // The fixture authors EVERY English key in locales/ar/beta.json, so a
+  // file-based diff reports full parity. Measured against the pre-fix scanner
+  // at 0e9e18540: kind = english-spread, zero `aliased` entry.
+  //
+  // On the production tree the same single-token edit
+  // (`notifications: { ...arNotifications, ...enNotifications }`) produced
+  // `kind = english-spread` and ZERO findings for a namespace that would then
+  // be served entirely in English.
+  const ORDER_ROOT = path.join(
+    __dirname,
+    '..',
+    '__fixtures__',
+    'i18n-completeness',
+    'spread-order',
+  );
+
+  it('the fixture is English-last and the locale file is COMPLETE', () => {
+    const src = readFileSync(path.join(ORDER_ROOT, 'lib', 'i18n.ts'), 'utf8');
+    expect(src).toContain('beta: { ...arBeta, ...enBeta }');
+    const arBeta = JSON.parse(
+      readFileSync(path.join(ORDER_ROOT, 'locales', 'ar', 'beta.json'), 'utf8'),
+    );
+    const enBeta = JSON.parse(
+      readFileSync(path.join(ORDER_ROOT, 'locales', 'en', 'beta.json'), 'utf8'),
+    );
+    // Nothing is missing from a file-diff point of view — that is the trap.
+    expect(flattenKeys(enBeta).every((k) => flattenKeys(arBeta).includes(k))).toBe(true);
+  });
+
+  it('classifies English-last as en-aliased, not english-spread', () => {
+    const { wiring } = auditRoot(ORDER_ROOT);
+    expect(wiring.assignments.ar.beta.kind).toBe('en-aliased');
+  });
+
+  it('reports the namespace as untranslated despite the complete locale file', () => {
+    const keys = auditRoot(ORDER_ROOT).findings.map(entryKey);
+    expect(keys).toContain('ar|beta|aliased|*');
+    expect(keys.filter((k) => k.startsWith('ar|beta|plural'))).toEqual([]);
+  });
+
+  it('keeps English-FIRST spreads meaningful (prod-shaped is unaffected)', () => {
+    const { wiring } = auditRoot(FIXTURE_ROOT);
+    expect(wiring.assignments.ar.beta.kind).toBe('english-spread');
+  });
+});
+
+describe('audit-i18n-completeness — the orphan backstop cannot be quietly widened', () => {
+  it('KNOWN_UNWIRED_LOCALE_FILES holds exactly the one reasoned exception', () => {
+    // Adding a namespace to this Set disables the backstop for it permanently.
+    // Per docs/conventions/08-DETECTOR-LIVENESS.md, the silencer needs a test
+    // that goes red when it grows.
+    expect([...KNOWN_UNWIRED_LOCALE_FILES].sort()).toEqual(['users']);
+  });
+
+  it('watches every locale directory, not just en', () => {
+    // Deleting the English file along with the wiring would otherwise escape.
+    const src = readFileSync(SCRIPT, 'utf8');
+    expect(src).not.toMatch(/const enLocaleDir/);
   });
 });

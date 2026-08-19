@@ -300,9 +300,14 @@ harm the quiet window exists to prevent — so the violation is closed here:
  export interface StatementListResponse {
    data: BankStatementSummary[]
 -  meta: { current_page: number; last_page: number; per_page: number; total: number }
-+  meta: OffsetPaginationMeta
++  meta: Pick<OffsetPaginationMeta, 'current_page' | 'last_page' | 'per_page' | 'total'>
  }
 ```
+
+> **This block shows the SHIPPED shape.** The M1 round-1 gate correctly rejected a first
+> attempt that used the bare `OffsetPaginationMeta`, which would have declared `from`/`to`
+> that `BankStatementController::index` never emits — see §M1(14). Quote THIS diff in the
+> M3 announcement, not the round-1 one.
 
 Scope justification and containment: type-only; one interface; the type is a **response** type
 (`api.get<StatementListResponse>`, `api.ts:178`) with **no construction sites** (`grep -rn
@@ -580,3 +585,114 @@ A `{{count}}`-only rule was tried first and **rejected**: it silently dropped th
 `fr|sales|plural|partners.countLabels.*_many` findings. The shipped rule regenerates a baseline
 **byte-identical** to the pinned one, so it removes a false-positive class without weakening any live
 detection. New `edge-cases` fixture pins all four rows.
+
+---
+
+## M1 fix round 3 — response to `docs/handoff/reviews/enforcement-p2/M1-round3-attempt2.md`
+
+Round 3 attempt 1 was a **tool error**, not a review: `scripts/adversarial-review.sh` exited 3 with
+`no stdin data received in 3s`. The stub is preserved at `M1-round3.md`; the real round-3 register is
+`M1-round3-attempt2.md`, produced by re-invoking the same command with `< /dev/null`. Per the harness a
+tool error is fail-closed and never a pass; it is not a substantive fix round, so it did not consume a
+`fix_rounds` increment.
+
+Verdict at round 3: **CHANGES-REQUIRED** — 0 P1, 1 P2 (required), 1 further required item, 7 notes.
+All three round-2 findings verified CLOSED by re-execution. **Every round-3 fix is again
+BASELINE-NEUTRAL** (regenerated baseline byte-identical, 2 917 entries), so no seed revision, no
+two-commit re-pin, no new pin tag.
+
+### (30) ⚠️ R3-1 (P2) — spread ORDER decides who wins, and the classifier ignored it
+
+Confirmed, and the sharpest finding of the wave. `classifyAssignment` decided `english-spread` from
+*which* identifiers appeared, never from their **order**. In `{ ...arX, ...enX }` English is applied
+last and wins **every** key — nothing the locale authored is ever served — yet the audit then trusted
+`locales/<locale>/<ns>.json` wholesale.
+
+Measured on the production tree, a single-token edit to `src/lib/i18n.ts`:
+
+```
+    notifications: { ...arNotifications, ...enNotifications },
+
+PRE-FIX  kind ar.notifications = english-spread ; ar|notifications findings: 0
+POST-FIX kind ar.notifications = en-aliased     ; ar|notifications findings: ["ar|notifications|aliased|*"]
+```
+
+`ar/notifications.json` holds 20 keys, none absent from `en`, so pre-fix **every Arabic user would see
+English for the whole namespace with the detector silent**.
+
+Why this is worse than a static parsing limitation, and why my round-1 residual disclosure did **not**
+cover it (the reviewer is right): that residual scoped out *"a key authored under a subtree that is
+not spread"* — bounded, per-key. This is **total, per-namespace, and a regression vector** (an edit,
+not a pre-existing shape). Worse, it converges on the bad outcome: "spread `en` last so untranslated
+keys fall back" is a natural — and wrong, `fallbackLng: 'en'` already does it — edit, and for a new
+namespace the `missing` findings *force* the locale file to be completed, after which the gate goes
+green over a namespace that is entirely English.
+
+Fixed with `spreadsWithDepth()` + order-aware classification: an `...en*` spread applied AFTER a
+same-locale spread **at the same brace depth** classifies the namespace `en-aliased`. Depth-aware
+because the production graph nests (`sections`, `company`, `fraudSettings`, `overview.upcoming.buckets`).
+
+**Baseline-neutral by measurement:** production is uniformly `en`-first at every depth, so zero live
+findings move. New `spread-order` fixture pins it — and authors **every** English key in
+`locales/ar/beta.json`, so a file-based diff would report full parity; the assertion is that the audit
+reports `ar|beta|aliased|*` anyway. Red-first against `0e9e18540`: `english-spread`, no `aliased` entry.
+
+### (31) ⚠️ R3-2 — the named deliverable-4 tamper proof was genuinely missing. Run and pasted now.
+
+Correct and fairly caught: the brief (`:348`) requires *"plant a deliberately failing rule test → run
+the exact command the CI step invokes → it fails; revert → green; paste both outputs."* §M1(5) argued
+step-vs-job and §M1(7) enumerated *pre-existing* audit-script tamper tests (deliverable 2 — a different
+requirement). Neither was this proof. It was executed during M1 but never recorded, which is the same
+thing as not having it.
+
+**RED** — planted an invalid case the rule does not flag (`parseFloat(width)`, a non-monetary name):
+
+```
+$ pnpm test:eslint-rules && pnpm test:tools
+EXIT=1
+AssertionError [ERR_ASSERTION]: Should have 1 error but had 0: []
+```
+
+**GREEN** — reverted, same command:
+
+```
+$ pnpm test:eslint-rules && pnpm test:tools
+EXIT=0
+no-dead-tailwind-token-interpolation: all RuleTester cases passed (5 valid, 5 invalid)
+no-hardcoded-step:                    all RuleTester cases passed (6 valid, 3 invalid)
+no-literal-decimal-places:            all RuleTester cases passed (6 valid, 3 invalid)
+no-parsefloat-on-money:               all RuleTester cases passed (8 valid, 5 invalid)
+no-untranslated-literal:              all RuleTester cases passed (10 valid, 6 invalid)
+no-hardcoded-entity-route:            all RuleTester cases passed (8 valid, 4 invalid)
+ Test Files  7 passed (7)
+      Tests  140 passed (140)
+```
+
+The `&&` in the CI step propagates the non-zero exit — the new step is not a decorative green.
+
+### (32) R3-3, R3-4, R3-5 (P3) — closed in the same touch
+
+- **R3-3 orphan backstop watched only `locales/en/`.** Deleting the English file along with the wiring
+  escaped it, orphaning the other locales' files unscanned. Now unions filenames across **every**
+  locale directory and names the offending files.
+- **R3-4 `KNOWN_UNWIRED_LOCALE_FILES` was an untested silencer.** A test now pins it to exactly
+  `{'users'}` — per this package's own `08-DETECTOR-LIVENESS.md` checklist, the silencer goes red when
+  it grows. A second test asserts the backstop is not `en`-only.
+- **R3-5 `countBraces` ran on `raw`, not the stripped `code`.** A comment carrying an unbalanced brace
+  desynchronised the line walk (38 structural failures when probed — fail-closed, but the
+  comment-blindness was only half-applied). Both the initial and the continuation count now run on
+  `stripComments(...)`.
+
+### (33) R3-6 to R3-9 (P3 notes) — dispositions
+
+- **R3-6 plural narrowing loses a family authoring exactly one non-`_other` form with no `{{count}}`.**
+  Accepted, `lost: 0` verified live. The trade is deliberate: a false positive on `step_one` is a hard
+  CI failure for an innocent lane with no escape short of an owner re-pin; this narrowing is silent and
+  mostly re-surfaces as a `missing` finding from the English side. **Named out loud in the M3
+  announcement.**
+- **R3-7 `ar=4702` counted keys behind aliases.** Output now reads
+  `ar=4702 authored (1998 behind aliases)`, so the two numbers no longer read as a partition.
+- **R3-8 preflight ran only half the CI step.** `scripts/preflight.sh` now runs **both**
+  `pnpm test:eslint-rules` and `pnpm test:tools`, matching the CI step exactly.
+- **R3-9 the deviation record still showed the rejected shape.** §M1(6)'s diff now shows the shipped
+  `Pick<>` form with a pointer to §M1(14), so the M3 announcement cannot quote the wrong one.

@@ -186,11 +186,16 @@ export function parseI18nWiring(root) {
       }
       const ns = nsOpen[2];
       let raw = nsOpen[3];
-      let depth = countBraces(raw);
+      // Depth counting runs on COMMENT-STRIPPED text: a trailing comment carrying
+      // an unbalanced brace (`// see the ar bundle in {locales/ar`) otherwise
+      // desynchronises the whole line walk. It fails closed (38 structural
+      // failures when probed) rather than going silently green, but the same
+      // one-token fix that made classification comment-blind applies here.
+      let depth = countBraces(stripComments(raw));
       while (depth > 0 && i + 1 < lines.length) {
         i += 1;
         raw += `\n${lines[i]}`;
-        depth += countBraces(lines[i]);
+        depth += countBraces(stripComments(lines[i]));
       }
       assignments[locale][ns] = {
         raw,
@@ -229,15 +234,75 @@ function stripComments(raw) {
   return raw.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
 }
 
-function classifyAssignment(locale, raw) {
-  const idents = raw.match(/\b[a-z]{2}[A-Z][A-Za-z0-9]*/g) ?? [];
+/**
+ * Collect every `...identifier` spread with the brace depth it sits at.
+ *
+ * Order matters and depth matters: in `{ ...arX, ...enX }` the English object is
+ * applied LAST, so English wins every key and nothing the locale authored is
+ * ever served. Classification that only asks WHICH identifiers appear cannot see
+ * that — and the audit would then trust `locales/<locale>/<ns>.json` wholesale
+ * for a namespace rendered 100% in English.
+ *
+ * @returns {Array<{depth: number, prefix: string}>} in source order
+ */
+function spreadsWithDepth(code) {
+  const out = [];
+  let depth = 0;
+  const re = /\{|\}|\.\.\.\s*([A-Za-z_$][A-Za-z0-9_$]*)/g;
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    if (m[0] === '{') depth += 1;
+    else if (m[0] === '}') depth -= 1;
+    else out.push({ depth, prefix: m[1].slice(0, 2) });
+  }
+  return out;
+}
+
+/**
+ * Classify a `(locale, namespace)` assignment by AUTHORED PROVENANCE.
+ *
+ *   own            — references only same-locale bundles
+ *   en-aliased     — English is what the runtime actually serves: either a bare
+ *                    `ns: enX` alias, or a spread where an `...en*` is applied
+ *                    AFTER a same-locale spread at the same depth (English wins)
+ *   english-spread — `{ ...enX, ...localeX }`, English first: the locale's own
+ *                    keys do override, so the file-based diff is meaningful
+ *   unknown        — unrecognised shape; treated as aliased, fail closed
+ *
+ * The order rule is not hypothetical hardening: "spread `en` last so untranslated
+ * keys fall back" is a natural (and wrong — `fallbackLng: 'en'` already does it)
+ * edit, and it converges on the worst outcome, because the `missing` findings
+ * force the locale file to be completed and only THEN does the gate go green over
+ * a namespace that is entirely English.
+ */
+function classifyAssignment(locale, code) {
+  if (locale === 'en') return 'own';
+
   const prefix = locale.slice(0, 2);
+  const idents = code.match(/\b[a-z]{2}[A-Z][A-Za-z0-9]*/g) ?? [];
   const own = idents.some((id) => id.startsWith(prefix));
   const english = idents.some((id) => id.startsWith('en'));
-  if (locale === 'en') return 'own';
-  if (own && english) return 'english-spread';
+
+  if (own && english) {
+    // English-last at ANY brace depth means English wins there.
+    const spreads = spreadsWithDepth(code);
+    const byDepth = new Map();
+    spreads.forEach((sp, index) => {
+      if (!byDepth.has(sp.depth)) byDepth.set(sp.depth, { en: -1, own: -1 });
+      const seen = byDepth.get(sp.depth);
+      if (sp.prefix === 'en') seen.en = index;
+      else if (sp.prefix === prefix) seen.own = index;
+    });
+    for (const { en, own: ownIndex } of byDepth.values()) {
+      if (en > -1 && ownIndex > -1 && en > ownIndex) return 'en-aliased';
+    }
+
+    return 'english-spread';
+  }
+
   if (own) return 'own';
   if (english) return 'en-aliased';
+
   return 'unknown';
 }
 
@@ -359,19 +424,29 @@ export function auditRoot(root) {
   // either when the namespace holds no pinned findings — which is exactly the
   // case for the fully-translated namespaces, i.e. the ones whose regression the
   // gate most wants to catch. The English locale directory is the backstop.
-  const enLocaleDir = path.join(root, 'locales', 'en');
-  if (fs.existsSync(enLocaleDir)) {
-    for (const file of fs.readdirSync(enLocaleDir)) {
-      if (!file.endsWith('.json')) continue;
-      const ns = file.slice(0, -'.json'.length);
-      if (wiring.namespaces.includes(ns)) continue;
-      if (KNOWN_UNWIRED_LOCALE_FILES.has(ns)) continue;
-      structural.push(
-        `locale file locales/en/${file} has no namespace in the \`ns\` array — either wire it up, ` +
-          'delete it, or record it in KNOWN_UNWIRED_LOCALE_FILES with a reason. An unscanned ' +
-          'translation file is a namespace the gate cannot protect.',
-      );
+  // Union across EVERY locale directory, not just `en`: deleting the English file
+  // along with the wiring would otherwise escape the backstop, leaving the other
+  // locales' files orphaned on disk and unscanned.
+  const orphanOwners = new Map();
+  if (fs.existsSync(localesDir)) {
+    for (const entry of fs.readdirSync(localesDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('__')) continue;
+      for (const file of fs.readdirSync(path.join(localesDir, entry.name))) {
+        if (!file.endsWith('.json')) continue;
+        const ns = file.slice(0, -'.json'.length);
+        if (wiring.namespaces.includes(ns)) continue;
+        if (KNOWN_UNWIRED_LOCALE_FILES.has(ns)) continue;
+        if (!orphanOwners.has(ns)) orphanOwners.set(ns, []);
+        orphanOwners.get(ns).push(`locales/${entry.name}/${file}`);
+      }
     }
+  }
+  for (const [ns, files] of [...orphanOwners].sort()) {
+    structural.push(
+      `translation file(s) ${files.sort().join(', ')} have no namespace "${ns}" in the \`ns\` array — ` +
+        'either wire it up, delete them, or record the namespace in KNOWN_UNWIRED_LOCALE_FILES with a ' +
+        'reason. An unscanned translation file is a namespace the gate cannot protect.',
+    );
   }
 
   for (const ns of wiring.namespaces) {
@@ -688,9 +763,15 @@ function main() {
   if (opts.json) {
     console.log(JSON.stringify({ stats, fresh, covered, stale, findings }, null, 2));
   } else if (!failed) {
+    // Report WIRED keys, not the raw authored count: 1998 of Arabic's authored
+    // keys sit behind whole-namespace English aliases and are never served, so
+    // a single `ar=4702` reads as coverage it does not have.
     const perLocale = Object.entries(stats.keysPerLocale)
-      .map(([l, n]) => `${l}=${n}`)
-      .join(' ');
+      .map(([l, n]) => {
+        const behind = stats.keysBehindAliases[l] ?? 0;
+        return behind > 0 ? `${l}=${n} authored (${behind} behind aliases)` : `${l}=${n}`;
+      })
+      .join(', ');
     const aliased = Object.entries(stats.aliasedNamespaces)
       .filter(([, n]) => n > 0)
       .map(([l, n]) => `${l}: ${n} ns / ${stats.keysBehindAliases[l]} keys served in English`)
