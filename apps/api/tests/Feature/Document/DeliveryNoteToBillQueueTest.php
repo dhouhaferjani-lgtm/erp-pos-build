@@ -135,6 +135,8 @@ final class DeliveryNoteToBillQueueTest extends TestCase
             ->assertJsonPath('meta.last_page', 2)
             ->assertJsonPath('meta.total', 2)
             ->assertJsonPath('meta.per_page', 1)
+            ->assertJsonPath('scope.location_id', $this->locationA->id)
+            ->assertJsonPath('scope.can_view_all_locations', true)
             ->assertJsonPath('summary.grand_total', '175.000')
             ->assertJsonPath('summary.grand_count', 2)
             ->assertJsonPath('summary.currency', 'TND');
@@ -178,6 +180,11 @@ final class DeliveryNoteToBillQueueTest extends TestCase
         $this->deliveryNote($this->periodicPartner, $this->locationB, 'DN-EXPAND-WRONG-LOCATION', '2026-04-01', '900.000');
 
         $query = http_build_query(['location_id' => $this->locationA->id, 'page' => 1, 'per_page' => 1]);
+        $summary = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced?'.http_build_query([
+            'location_id' => $this->locationA->id,
+            'page' => 1,
+            'per_page' => 25,
+        ]));
         $pageOne = $this->actingAs($this->user)->getJson("/api/v1/delivery-notes/uninvoiced/{$this->periodicPartner->id}?{$query}");
         $pageTwo = $this->actingAs($this->user)->getJson("/api/v1/delivery-notes/uninvoiced/{$this->periodicPartner->id}?".http_build_query([
             'location_id' => $this->locationA->id,
@@ -197,6 +204,8 @@ final class DeliveryNoteToBillQueueTest extends TestCase
         $pageTwo->assertOk()
             ->assertJsonPath('data.0.id', $newest->id)
             ->assertJsonPath('meta.current_page', 2);
+        $this->assertSame($summary->json('data.0.delivery_note_count'), $pageOne->json('summary.count'));
+        $this->assertSame($summary->json('data.0.total'), $pageOne->json('summary.total'));
     }
 
     public function test_location_and_filter_validation_never_silently_widens_the_queue(): void
@@ -225,7 +234,8 @@ final class DeliveryNoteToBillQueueTest extends TestCase
             ->assertUnprocessable();
         $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced?location_id=not-a-uuid')
             ->assertUnprocessable()
-            ->assertJsonPath('errors.location_id.0', 'The location id field must be a valid UUID.');
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath('error.errors.location_id.0', 'The location id field must be a valid UUID.');
         $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced?partner_search=a')
             ->assertUnprocessable();
 

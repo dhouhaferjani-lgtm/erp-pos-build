@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, FileCheck2 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/atoms/Button'
 import { Input } from '@/components/atoms/Input'
@@ -16,6 +17,7 @@ import { useCurrency, formatAmount } from '@/hooks/useCurrency'
 import { useLocation } from '@/hooks/useLocation'
 import { usePermissions } from '@/hooks/usePermissions'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { getErrorMessage } from '@/lib/api'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { cn } from '@/lib/utils'
 import {
@@ -30,8 +32,112 @@ import {
   useToBillPartnerRows,
   useToBillQueue,
 } from '../hooks/useDeliveryNotes'
+import {
+  parseDeliveryNoteBillingRefusal,
+  type DeliveryNoteBillingRefusal,
+} from '../deliveryNoteBillingRefusal'
 
 const bucketOrder: ToBillAgingBucket[] = ['0_30', '31_60', '61_90', '90_plus']
+
+interface ToBillAttemptRefusal {
+  details: DeliveryNoteBillingRefusal
+  attemptedIds: string[]
+}
+
+function ToBillRefusalAlert({
+  attempt,
+  isPending,
+  onRetry,
+}: {
+  attempt: ToBillAttemptRefusal
+  isPending: boolean
+  onRetry: () => void
+}) {
+  const { t } = useTranslation('sales')
+  const refusedIds = new Set(attempt.details.documents.map((document) => document.id))
+  const remainingCount = attempt.attemptedIds.filter((id) => !refusedIds.has(id)).length
+
+  return (
+    <div
+      role="alert"
+      className={cn(
+        'rounded-lg border p-4',
+        colorTokens.intent.danger.borderSubtle,
+        colorTokens.intent.danger.bgSubtle,
+      )}
+    >
+      <p className={cn('font-medium', colorTokens.intent.danger.textStrong)}>
+        {t('deliveryNotes.consolidation.billingRefusal.title')}
+      </p>
+      <p className={cn('mt-1 text-sm', colorTokens.intent.danger.text)}>
+        {t('deliveryNotes.consolidation.billingRefusal.guarantee')}
+      </p>
+      <ul className="mt-3 space-y-2">
+        {attempt.details.documents.map((document) => {
+          const laneLabel = document.invoiced_via === null
+            ? t('deliveryNotes.consolidation.billingRefusal.billedBy.unknown')
+            : t(`deliveryNotes.consolidation.billingRefusal.billedBy.${document.invoiced_via}`, {
+                defaultValue: t('deliveryNotes.consolidation.billingRefusal.billedBy.unknown'),
+              })
+
+          return (
+            <li
+              key={document.id}
+              className={cn(
+                'rounded-md border p-3',
+                colorTokens.intent.danger.borderSubtle,
+                colorTokens.surface.base,
+              )}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className={cn('font-medium', colorTokens.text.primary)}>
+                    {document.document_number}
+                  </p>
+                  <p className={cn('mt-1 text-sm', colorTokens.text.muted)}>
+                    {document.invoice_date ?? '—'} {' · '} {laneLabel}
+                  </p>
+                </div>
+                {document.invoice_id !== null && document.invoice_number !== null ? (
+                  <Link
+                    to={entityRoutes.document(document.invoice_id, { documentType: 'invoice' })}
+                    className={cn(
+                      'text-sm font-medium',
+                      colorTokens.intent.primary.text,
+                      colorTokens.intent.primary.textHoverStrongest,
+                    )}
+                  >
+                    {t('deliveryNotes.consolidation.billingRefusal.openInvoice', {
+                      number: document.invoice_number,
+                    })}
+                  </Link>
+                ) : (
+                  <span className={cn('text-sm', colorTokens.text.muted)}>
+                    {document.invoice_number
+                      ?? t('deliveryNotes.consolidation.billingRefusal.invoiceUnavailable')}
+                  </span>
+                )}
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+      {remainingCount > 0 ? (
+        <Button
+          variant="dangerOutline"
+          size="sm"
+          className="mt-3"
+          onClick={onRetry}
+          disabled={isPending}
+        >
+          {t('deliveryNotes.consolidation.billingRefusal.removeAndRetry', {
+            count: attempt.details.documents.length,
+          })}
+        </Button>
+      ) : null}
+    </div>
+  )
+}
 
 interface PartnerGroupProps {
   group: ToBillPartnerGroup
@@ -186,7 +292,7 @@ function ToBillPartnerGroupCard({
 export function ToBillPage() {
   const { t } = useTranslation('sales')
   const { format: formatMoney } = useCurrency()
-  const { currentLocationId, isLoading: locationLoading } = useLocation()
+  const { currentLocation, currentLocationId, isLoading: locationLoading } = useLocation()
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
   const [partnerSearch, setPartnerSearch] = useState('')
@@ -195,13 +301,16 @@ export function ToBillPage() {
   const [periodicOnly, setPeriodicOnly] = useState(false)
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
+  const [allLocations, setAllLocations] = useState(false)
   const [confirmation, setConfirmation] = useState<ToBillPartnerGroup | null>(null)
+  const [billingRefusal, setBillingRefusal] = useState<ToBillAttemptRefusal | null>(null)
   const [isPreparingInvoice, setIsPreparingInvoice] = useState(false)
   const consolidation = useConsolidateDeliveryNotes()
   const canCreateInvoice = hasPermission('invoices.create')
+  const trimmedPartnerSearch = partnerSearch.trim()
   const params: ToBillQueueParams = {
-    locationId: currentLocationId,
-    partnerSearch,
+    locationId: allLocations ? 'all' : currentLocationId,
+    partnerSearch: trimmedPartnerSearch.length >= 2 ? trimmedPartnerSearch : '',
     dateFrom,
     dateTo,
     periodicOnly,
@@ -215,15 +324,48 @@ export function ToBillPage() {
     setPage(1)
   }
 
+  const submitAttempt = async (ids: string[]) => {
+    try {
+      const response = await consolidation.mutateAsync(ids)
+      setBillingRefusal(null)
+      setConfirmation(null)
+      void navigate(entityRoutes.document(response.data.id, { documentType: 'invoice' }))
+    } catch (error) {
+      const refusal = parseDeliveryNoteBillingRefusal(error)
+      if (refusal !== null) {
+        setBillingRefusal({ details: refusal, attemptedIds: ids })
+        setConfirmation(null)
+      }
+    }
+  }
+
   const confirmCreate = async () => {
     if (confirmation === null) return
 
     setIsPreparingInvoice(true)
     try {
-      const deliveryNotes = await getAllToBillPartnerRows(confirmation.partner_id, params)
-      const response = await consolidation.mutateAsync(deliveryNotes.map((deliveryNote) => deliveryNote.id))
-      setConfirmation(null)
-      void navigate(entityRoutes.document(response.data.id, { documentType: 'invoice' }))
+      let deliveryNotes: ToBillDeliveryNote[]
+      try {
+        deliveryNotes = await getAllToBillPartnerRows(confirmation.partner_id, params)
+      } catch (error) {
+        toast.error(getErrorMessage(error))
+        return
+      }
+      await submitAttempt(deliveryNotes.map((deliveryNote) => deliveryNote.id))
+    } finally {
+      setIsPreparingInvoice(false)
+    }
+  }
+
+  const retryAfterRefusal = async () => {
+    if (billingRefusal === null) return
+    const refusedIds = new Set(billingRefusal.details.documents.map((document) => document.id))
+    const remainingIds = billingRefusal.attemptedIds.filter((id) => !refusedIds.has(id))
+    if (remainingIds.length === 0) return
+
+    setIsPreparingInvoice(true)
+    try {
+      await submitAttempt(remainingIds)
     } finally {
       setIsPreparingInvoice(false)
     }
@@ -249,7 +391,7 @@ export function ToBillPage() {
                   {formatMoney(summary?.total ?? '0')}
                 </p>
                 <p className={cn('text-xs', colorTokens.text.muted)}>
-                  {t('toBill.groupCount', { count: summary?.count ?? 0 })}
+                  {t('toBill.summaryGroupCount', { count: summary?.count ?? 0 })}
                 </p>
               </div>
             )
@@ -262,11 +404,36 @@ export function ToBillPage() {
               {formatMoney(query.data?.summary.grand_total ?? '0')}
             </p>
             <p className={cn('text-xs', colorTokens.text.muted)}>
-              {t('toBill.groupCount', { count: query.data?.summary.grand_count ?? 0 })}
+              {t('toBill.summaryGroupCount', { count: query.data?.summary.grand_count ?? 0 })}
             </p>
           </div>
         </div>
       </section>
+
+      {query.data ? (
+        <div className={cn('flex flex-wrap items-center justify-between gap-3 text-sm', colorTokens.text.muted)}>
+          <p>
+            {allLocations || currentLocationId === null
+              ? t('toBill.scope.allDisclosure', { currency: query.data.summary.currency })
+              : t('toBill.scope.currentDisclosure', {
+                  currency: query.data.summary.currency,
+                  location: currentLocation?.name ?? t('toBill.scope.currentLocation'),
+                })}
+          </p>
+          {query.data.scope.can_view_all_locations && currentLocationId !== null ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setAllLocations((current) => !current)
+                setPage(1)
+              }}
+            >
+              {allLocations ? t('toBill.scope.currentLocation') : t('toBill.scope.allLocations')}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <section className={cn('rounded-xl border p-4', colorTokens.border.subtle, colorTokens.surface.base)}>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -313,6 +480,14 @@ export function ToBillPage() {
       <p className={cn('whitespace-pre-line text-sm', colorTokens.text.muted)}>
         {t('deliveryNotes.partnerTab.coexistence')}
       </p>
+
+      {billingRefusal !== null ? (
+        <ToBillRefusalAlert
+          attempt={billingRefusal}
+          isPending={isPreparingInvoice || consolidation.isPending}
+          onRetry={() => { void retryAfterRefusal() }}
+        />
+      ) : null}
 
       {query.error ? (
         <QueryError error={query.error} onRetry={() => { void query.refetch() }} title={t('toBill.loadError')} />

@@ -168,7 +168,7 @@ class DeliveryNoteController extends Controller
         $company = $this->companyContext->requireCompany();
         $filters = $this->toBillFilters($request, $company);
 
-        return response()->json($this->uninvoicedDeliveryNoteService->getToBillSummary(
+        $response = $this->uninvoicedDeliveryNoteService->getToBillSummary(
             $company->id,
             $filters['location_id'],
             $filters['date_from'],
@@ -177,7 +177,13 @@ class DeliveryNoteController extends Controller
             $filters['periodic_only'],
             $filters['page'],
             $filters['per_page'],
-        ));
+        );
+        $response['scope'] = [
+            'location_id' => $filters['location_id'],
+            'can_view_all_locations' => $filters['can_view_all_locations'],
+        ];
+
+        return response()->json($response);
     }
 
     /**
@@ -212,6 +218,7 @@ class DeliveryNoteController extends Controller
     /**
      * @return array{
      *   location_id: string|null,
+     *   can_view_all_locations: bool,
      *   date_from: Carbon|null,
      *   date_to: Carbon|null,
      *   partner_search: string|null,
@@ -227,8 +234,13 @@ class DeliveryNoteController extends Controller
             $request->merge(['partner_search' => trim($partnerSearch)]);
         }
 
+        $locationRules = ['nullable', 'string'];
+        if ($request->query('location_id') !== 'all') {
+            $locationRules[] = 'uuid';
+        }
+
         $validated = $request->validate([
-            'location_id' => ['nullable', 'string'],
+            'location_id' => $locationRules,
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
             'partner_search' => ['nullable', 'string', 'min:2', 'max:120'],
@@ -241,9 +253,10 @@ class DeliveryNoteController extends Controller
             ? (string) $validated['location_id']
             : null;
         $locationId = null;
+        $canViewAllLocations = $this->locationContext->getAllowedLocationIds($company->id) === null;
 
         if ($requestedLocation === 'all') {
-            if ($this->locationContext->getAllowedLocationIds($company->id) !== null) {
+            if (! $canViewAllLocations) {
                 throw ValidationException::withMessages([
                     'location_id' => ['All locations is outside your allowed scope.'],
                 ]);
@@ -266,6 +279,7 @@ class DeliveryNoteController extends Controller
 
         return [
             'location_id' => $locationId,
+            'can_view_all_locations' => $canViewAllLocations,
             'date_from' => isset($validated['date_from']) ? Carbon::createFromFormat('Y-m-d', (string) $validated['date_from']) : null,
             'date_to' => isset($validated['date_to']) ? Carbon::createFromFormat('Y-m-d', (string) $validated['date_to']) : null,
             'partner_search' => isset($validated['partner_search']) ? (string) $validated['partner_search'] : null,

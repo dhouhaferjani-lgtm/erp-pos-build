@@ -117,12 +117,14 @@ export function usePartnerDeliveryNotes({
 export function useToBillQueue(params: ToBillQueueParams) {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
-  const locationScope = params.locationId === null ? [] : [params.locationId]
+  const locationScope = params.locationId === null || params.locationId === 'all'
+    ? 'all'
+    : [params.locationId]
 
   return useQuery({
     queryKey: locationScopedKey(['delivery-notes-to-bill', 'summary', params], locationScope),
     queryFn: () => getToBillQueue(params),
-    enabled: tenantId !== null && companyId !== null && params.locationId !== null,
+    enabled: tenantId !== null && companyId !== null,
   })
 }
 
@@ -133,7 +135,9 @@ export function useToBillPartnerRows(
 ) {
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
-  const locationScope = params.locationId === null ? [] : [params.locationId]
+  const locationScope = params.locationId === null || params.locationId === 'all'
+    ? 'all'
+    : [params.locationId]
 
   return useQuery({
     queryKey: locationScopedKey(
@@ -141,7 +145,7 @@ export function useToBillPartnerRows(
       locationScope,
     ),
     queryFn: () => getToBillPartnerRows(partnerId, params),
-    enabled: enabled && tenantId !== null && companyId !== null && params.locationId !== null,
+    enabled: enabled && tenantId !== null && companyId !== null,
   })
 }
 

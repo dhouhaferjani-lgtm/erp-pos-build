@@ -44,6 +44,7 @@ describe('useToBillQueue location and tenant scope', () => {
     vi.mocked(getToBillQueue).mockResolvedValue({
       data: [],
       meta: { current_page: 1, last_page: 1, total: 0, per_page: 25 },
+      scope: { location_id: 'location-1', can_view_all_locations: false },
       summary: { buckets: [], grand_total: '0.000', grand_count: 0, currency: 'TND' },
     })
   })

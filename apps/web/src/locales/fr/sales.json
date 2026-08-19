@@ -699,6 +699,8 @@
     "groupLabel": "Groupe de facturation de {{partner}}",
     "groupCount_one": "{{count}} bon de livraison",
     "groupCount_other": "{{count}} bons de livraison",
+    "summaryGroupCount_one": "{{count}} groupe client",
+    "summaryGroupCount_other": "{{count}} groupes clients",
     "oldest": "Plus ancien : {{date}}",
     "periodic": "Facturé périodiquement",
     "noPartnerCode": "Aucun code client",
@@ -718,6 +720,12 @@
       "dateFrom": "Date de début",
       "dateTo": "Date de fin",
       "periodicOnly": "Facturés périodiquement uniquement"
+    },
+    "scope": {
+      "allLocations": "Tous les emplacements",
+      "currentLocation": "Emplacement actuel",
+      "currentDisclosure": "Affichage des bons de livraison en {{currency}} pour {{location}}. Les bons sans emplacement ou dans une autre devise sont exclus.",
+      "allDisclosure": "Affichage de tous les emplacements en {{currency}}. Les bons dans une autre devise sont exclus."
     },
     "confirm": {
       "title": "Créer une facture pour {{partner}} ?",

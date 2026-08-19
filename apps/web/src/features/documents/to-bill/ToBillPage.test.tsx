@@ -63,6 +63,7 @@ const queue: ToBillQueueResponse = {
     },
   ],
   meta: { current_page: 1, last_page: 2, total: 3, per_page: 2 },
+  scope: { location_id: 'location-1', can_view_all_locations: false },
   summary: {
     buckets: [
       { bucket: '0_30', count: 1, total: '25.000' },
@@ -144,6 +145,7 @@ describe('ToBillPage', () => {
     expect(within(oldGroup).getByText('Billed periodically')).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /Create invoice/ })).toHaveLength(2)
     expect(screen.queryByRole('button', { name: /Bill everyone/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'All locations' })).not.toBeInTheDocument()
   })
 
   it('applies search, date, and billed-periodically filters to the group query', async () => {
@@ -249,7 +251,7 @@ describe('ToBillPage', () => {
       'href',
       '/sales/invoices/invoice-taker',
     )
-    expect(within(refusal)).toHaveTextContent('No invoice was created. No invoice number was used.')
+    expect(refusal).toHaveTextContent('No invoice was created. No invoice number was used.')
 
     await user.click(within(refusal).getByRole('button', { name: 'Remove these 1 and retry' }))
     await waitFor(() => {

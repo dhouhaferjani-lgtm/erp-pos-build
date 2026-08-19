@@ -83,6 +83,10 @@ interface OffsetMeta {
 export interface ToBillQueueResponse {
   data: ToBillPartnerGroup[]
   meta: OffsetMeta
+  scope: {
+    location_id: string | null
+    can_view_all_locations: boolean
+  }
   summary: {
     buckets: { bucket: ToBillAgingBucket; count: number; total: string }[]
     grand_total: string
@@ -209,17 +213,42 @@ function toBillApiParams(params: ToBillQueueParams) {
 }
 
 export async function getToBillQueue(params: ToBillQueueParams): Promise<ToBillQueueResponse> {
-  return apiGet<ToBillQueueResponse>('/delivery-notes/uninvoiced', toBillApiParams(params))
+  const response = await api.get<ToBillQueueResponse>('/delivery-notes/uninvoiced', {
+    params: toBillApiParams(params),
+  })
+  return response.data
 }
 
 export async function getToBillPartnerRows(
   partnerId: string,
   params: ToBillQueueParams,
 ): Promise<ToBillPartnerRowsResponse> {
-  return apiGet<ToBillPartnerRowsResponse>(
+  const response = await api.get<ToBillPartnerRowsResponse>(
     `/delivery-notes/uninvoiced/${partnerId}`,
-    toBillApiParams(params),
+    { params: toBillApiParams(params) },
   )
+  return response.data
+}
+
+async function getRemainingToBillPartnerPages(
+  partnerId: string,
+  params: ToBillQueueParams,
+  pages: number[],
+): Promise<ToBillPartnerRowsResponse[]> {
+  if (pages.length === 0) return []
+
+  const responses = Array<ToBillPartnerRowsResponse>(pages.length)
+  let nextIndex = 0
+  const fetchNext = async (): Promise<void> => {
+    while (nextIndex < pages.length) {
+      const index = nextIndex
+      nextIndex += 1
+      responses[index] = await getToBillPartnerRows(partnerId, { ...params, page: pages[index] })
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(4, pages.length) }, fetchNext))
+  return responses
 }
 
 export async function getAllToBillPartnerRows(
@@ -228,11 +257,10 @@ export async function getAllToBillPartnerRows(
 ): Promise<ToBillDeliveryNote[]> {
   const perPage = 100
   const first = await getToBillPartnerRows(partnerId, { ...params, page: 1, perPage })
-  const remainingPages = await Promise.all(
-    Array.from(
-      { length: Math.max(0, first.meta.last_page - 1) },
-      (_, index) => getToBillPartnerRows(partnerId, { ...params, page: index + 2, perPage }),
-    ),
+  const remainingPages = await getRemainingToBillPartnerPages(
+    partnerId,
+    { ...params, perPage },
+    Array.from({ length: Math.max(0, first.meta.last_page - 1) }, (_, index) => index + 2),
   )
 
   return [first, ...remainingPages].flatMap((response) => response.data)

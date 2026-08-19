@@ -699,6 +699,8 @@
     "groupLabel": "{{partner}} billing group",
     "groupCount_one": "{{count}} delivery note",
     "groupCount_other": "{{count}} delivery notes",
+    "summaryGroupCount_one": "{{count}} customer group",
+    "summaryGroupCount_other": "{{count}} customer groups",
     "oldest": "Oldest: {{date}}",
     "periodic": "Billed periodically",
     "noPartnerCode": "No customer code",
@@ -718,6 +720,12 @@
       "dateFrom": "From date",
       "dateTo": "To date",
       "periodicOnly": "Billed periodically only"
+    },
+    "scope": {
+      "allLocations": "All locations",
+      "currentLocation": "Current location",
+      "currentDisclosure": "Showing {{currency}} delivery notes for {{location}}. Unassigned-location and other-currency notes are excluded.",
+      "allDisclosure": "Showing all locations in {{currency}}. Other-currency notes are excluded."
     },
     "confirm": {
       "title": "Create invoice for {{partner}}?",
