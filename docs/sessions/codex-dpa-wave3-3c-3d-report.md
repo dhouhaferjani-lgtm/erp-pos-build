@@ -470,3 +470,10 @@ creation despite the chart containing `75`. The template-only overlay now
 selects from the parent families actually present in the seeded chart while
 legacy/backfill repair retains its strict country-map refusal. The cross-plan
 case is red-first and the full Country Defaults directories remain green.
+
+Round 5 closed the remaining third-plan case. If a legally published custom
+template has neither supported revenue-family parent and omits the SOFT gain,
+company creation now succeeds with REQUIRED shrinkage intact and emits a stable
+tenant/company/country warning for the skipped optional gain. Parent candidates
+must match the account type. The strict legacy repair command remains unchanged
+and is now explicitly scoped to pre-G2 charts in the deploy checklist.

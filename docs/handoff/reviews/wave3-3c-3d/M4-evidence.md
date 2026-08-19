@@ -273,3 +273,29 @@ PHPStan level 8 on round-4 production paths:         [OK] No errors
 Round-4 revert-replay removed `e28562448` while test commit `bbe846284` remained. The cross-plan
 PostgreSQL guard errored on missing parent `7000`; aborting the revert restored the exact committed tip
 and the same test passed, resolving the new gain account beneath `75`.
+
+## Adversarial round 5 remediation
+
+The final fix round covers a legally published third-plan template whose revenue root is `9000` and which
+omits the SOFT gain purpose. Before implementation, the PostgreSQL guard errored on missing parent `7000`.
+Template provisioning now keeps REQUIRED shrinkage fail-closed but warns and skips only the optional gain
+when no same-type `75`/`7000` parent exists. The stable warning includes tenant, company, and country.
+Known plan parents are required to match the variance account type, preventing a revenue gain from being
+grafted beneath an expense-typed lookalike code.
+
+The deploy checklist now distinguishes template/assignment verification from required per-company chart
+health and the optional-gain warning, and it reserves the strict country-derived repair command for the
+pre-G2 legacy path. The stale `Consumption` docblock now describes the exhaustive `Neither` classification
+rather than a removed default arm.
+
+Fresh round-5 verification:
+
+```text
+RED — third-plan template without optional gain parent: 1 test, 1 error (missing parent 7000)
+GREEN — both template-overlay edge cases:              2 tests, 5 assertions
+GREEN — Country Defaults feature + unit directories: 222 tests, 1842 assertions
+GREEN — accounting provisioning + movement routing:   75 tests, 420 assertions
+Pint on round-5 production + test paths:              pass
+PHPStan level 8 on round-5 production paths:          [OK] No errors
+deptrac tip:                                           174 violations, RESULT: FAIL (inherited)
+```

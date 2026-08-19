@@ -154,8 +154,8 @@ enum MovementReason: string
      *   BatchWriteOffService already posts the Dr Shrinkage / Cr Inventory leg this
      *   document does not (GL is deferred to G1). Routing it here would LOSE a
      *   journal entry that exists today.
-     * - `Consumption` (D7b) — `requiresGLEntry()` and `affectsCOGS()` are both
-     *   false via the `default` arms, so offering it would be a silent value leak
+     * - `Consumption` (D7b) — `requiresGLEntry()` is false and the exhaustive
+     *   `glCounterFamily()` match classifies it as `Neither`, so offering it would be a silent value leak
      *   the moment G1 lands. Internal consumption is represented by
      *   `AdjustmentNegative` in v1 (an inventory-adjustment leg, no COGS leg) —
      *   NEVER by `WriteOff`, whose shrinkage counter-family would produce a

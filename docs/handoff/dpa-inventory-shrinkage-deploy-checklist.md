@@ -26,20 +26,24 @@ The command reports the company and exact refusal. Repair the chart deliberately
 purpose to an existing valid account, free a claimed `6586`/`7586`, or add the missing approved parent.
 Then rerun the command and the detector before promotion. A non-TN/FR custom PCG-shaped template is
 intentionally fail-loud if it does not contain the Generic `6000`/`7000` parents; do not silently infer
-a country map from visual chart shape.
+a country map from visual chart shape. This strict command is the pre-G2 legacy-chart repair path. After
+template provisioning is enabled, repair a cross-plan template overlay through a reviewed migration or
+template correction; do not inject a country-derived root into a different chart plan.
 
 ## Scope boundaries
 
 - Do not edit or re-pin the three frozen legacy seeders.
 - Normal registration and second-company creation call `ChartOfAccountsService`, which installs both
-  approved purposes atomically after either the frozen legacy seeder or an assigned template. For an
-  assigned template, this is an explicit two-account certified-template overlay: it selects `65`/`75` or
-  `6000`/`7000` from the chart actually seeded, so a legal country-to-plan mismatch does not abort company
-  creation. `country-defaults:verify` validates the template and assignment; the per-company chart-health
-  detector validates the resulting overlay. No production writer calls a frozen seeder directly. Raw
-  calls exist only in the rollback-owned preview, golden exporter/tests, and historical migrations; any
-  future direct writer must use the same guarded no-entry compatibility contract until the idempotent
-  command is run.
+  approved purposes atomically after the frozen legacy seeder. For an assigned template, this is an
+  explicit post-template overlay: REQUIRED shrinkage must already exist or be installable beneath a
+  same-type `65`/`6000` parent; the SOFT gain is installed beneath a same-type `75`/`7000` parent when one
+  exists. A third-plan chart without those revenue parents remains usable and emits
+  `INVENTORY-VARIANCE-TEMPLATE-OVERLAY skipped optional gain` instead of aborting company creation.
+  `country-defaults:verify` validates the template and assignment; per-company chart health validates the
+  REQUIRED shrinkage purpose, while the warning token identifies an omitted optional gain. No production
+  writer calls a frozen seeder directly. Raw calls exist only in the rollback-owned preview, golden
+  exporter/tests, and historical migrations; any future direct writer must use the same guarded no-entry
+  compatibility contract until the idempotent command is run.
 - Historical Damage/Expiry/WriteOff entries remain in COGS (`601`/`603`); entries after this cutover land
   in shrinkage (`6586`). Period-over-period COGS, expense reports, and expert-comptable exports spanning
   the cutover therefore show a deliberate step change; do not restate hash-sealed historical journals.

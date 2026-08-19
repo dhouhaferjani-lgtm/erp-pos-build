@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Str;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 
 /**
@@ -18,7 +19,10 @@ use RuntimeException;
  */
 final class InventoryVarianceAccountProvisioner
 {
-    public function __construct(private readonly DatabaseManager $database) {}
+    public function __construct(
+        private readonly DatabaseManager $database,
+        private readonly LoggerInterface $logger,
+    ) {}
 
     public function provisionCompany(string $companyId, string $tenantId, string $countryCode): void
     {
@@ -35,10 +39,24 @@ final class InventoryVarianceAccountProvisioner
     public function provisionTemplateCompany(string $companyId, string $tenantId, string $countryCode): void
     {
         foreach ($this->definitions($countryCode) as $definition) {
+            $resolved = $this->resolveTemplateParent($companyId, $definition);
+            if ($resolved === null && $definition['purpose'] === SystemAccountPurpose::InventoryGainIncome->value) {
+                $this->logger->warning(
+                    'INVENTORY-VARIANCE-TEMPLATE-OVERLAY skipped optional gain: no compatible revenue parent.',
+                    [
+                        'tenant_id' => $tenantId,
+                        'company_id' => $companyId,
+                        'country_code' => strtoupper($countryCode),
+                    ],
+                );
+
+                continue;
+            }
+
             $this->applyDefinition(
                 $companyId,
                 $tenantId,
-                $this->resolveTemplateParent($companyId, $definition),
+                $resolved ?? $definition,
                 false,
             );
         }
@@ -153,19 +171,30 @@ final class InventoryVarianceAccountProvisioner
 
     /**
      * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
-     * @return array{code: string, name: string, type: string, parent_code: string, purpose: string}
+     * @return array{code: string, name: string, type: string, parent_code: string, purpose: string}|null
      */
-    private function resolveTemplateParent(string $companyId, array $definition): array
+    private function resolveTemplateParent(string $companyId, array $definition): ?array
     {
+        $accounts = $this->database->table('accounts')->where('company_id', $companyId);
+        $alreadyUsableWithoutParent = (clone $accounts)
+            ->where(function ($query) use ($definition): void {
+                $query->where('system_purpose', $definition['purpose'])
+                    ->orWhere('code', $definition['code']);
+            })
+            ->exists();
+        if ($alreadyUsableWithoutParent) {
+            return $definition;
+        }
+
         $familyParents = $definition['purpose'] === SystemAccountPurpose::InventoryShrinkageExpense->value
             ? ['65', '6000']
             : ['75', '7000'];
         $candidates = array_values(array_unique([$definition['parent_code'], ...$familyParents]));
 
         foreach ($candidates as $parentCode) {
-            $exists = $this->database->table('accounts')
-                ->where('company_id', $companyId)
+            $exists = (clone $accounts)
                 ->where('code', $parentCode)
+                ->where('type', $definition['type'])
                 ->exists();
             if (! $exists) {
                 continue;
@@ -180,6 +209,6 @@ final class InventoryVarianceAccountProvisioner
             return $definition;
         }
 
-        return $definition;
+        return null;
     }
 }
