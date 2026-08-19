@@ -28,9 +28,15 @@ The sidebar shows a user only the nav items their tenant's enabled modules
 **and** their role both allow. Two independent gates are applied to every item.
 
 **The sidebar is not a security boundary.** It decides *visibility*. Access is
-enforced on the route (`ModuleGuard` + `RequirePermission`) and again on the
-API (`module:<Name>` middleware + permission checks). A nav item that is
-correctly hidden but whose route is unguarded is still a bug — see
+*supposed* to be enforced on the route (`ModuleGuard` + `RequirePermission`) and
+again on the API (`module:<Name>` middleware + permission checks).
+
+**That is the rule, and it is not yet universal — read it as a target, not as a
+description of the current tree.** Measured against the generated manifest this
+document reconciles below (`scripts/factory/manifests/routes-web.yaml`,
+265 records): **34 of 265 web routes carry neither a `module_gate` nor a
+`permission`**, and **138 of 265 carry no `module_gate` at all**. A nav item
+that is correctly hidden but whose route is unguarded is still a bug — see
 [vertical-module-gating.md](vertical-module-gating.md) for the both-layers rule.
 
 ---
@@ -172,9 +178,12 @@ then hidden downstream by its own module gate, because none of `Vehicle`,
 
 **2. The label some items render.** `VERTICAL_NAV_KEYS` maps a nav key to a
 vertical-flavoured label key; when the catalog vertical is not `generic`, that
-item's label resolves through `catalog:vertical.<vertical>.<key>` instead of
-the default `navigation.<key>`. It currently covers `compositeItems` and
-`modifierGroups` only. The top-level `catalog` group deliberately does **not**
+item's label resolves through
+`catalog:vertical.<vertical>.<VERTICAL_NAV_KEYS[key]>` instead of the default
+`navigation.<key>`. `getNavLabel` interpolates the map's **value**, not the nav
+key — so `modifierGroups` resolves to `catalog:vertical.<vertical>.modifierGroup`
+(singular), while `compositeItems` maps to itself. It currently covers
+`compositeItems` and `modifierGroups` only. The top-level `catalog` group deliberately does **not**
 adapt — it is the whole what-you-sell group, not the composite-items entry.
 
 Label resolution order, from `getNavLabel`:
@@ -346,8 +355,13 @@ The component-graph-aware re-census
 finding `CX-4`) derives reachability from the route tree plus navigation
 references in production source. At the wave's pinned base
 `d682b38ec9761a917b9716428091a482745795f6` it left 22 candidates after manual
-call-flow review. Four of them are the Wave 0 deletions above. Still present in
-the manifest and still without an inbound UI reference:
+call-flow review, split by the report into **15 views, four parameterized views
+and three action/forms**. Four of the 15 views are the Wave 0 deletions above,
+so **18 remain**, and all 18 are listed here — 11 views, four parameterized
+views, three action/forms:
+
+**Views (11)** — still present in the manifest and still without an inbound UI
+reference:
 
 - `/growth`, `/growth/modules`
 - `/scheduling/capacity`
@@ -356,10 +370,23 @@ the manifest and still without an inbound UI reference:
 - `/finance/lane-separation` (claimed by the DN-consolidation lane)
 - the four `/settings/compliance/*` pages (`UI-09` cluster)
 
+**Parameterized views (4)** — the report records these as reproducing with zero
+inbound UI references, on the same footing as the views above:
+
+- `/channels/:id/orders`, `/channels/:id/products`, `/channels/:id/sync`
+  (the `CX-2` cluster)
+- `/inventory/return-notes/:id`
+
+**Action/forms (3)** — weaker evidence: no inbound reference was *found*, but
+the scanner's expression model cannot resolve every call flow, so these are
+unresolved rather than confirmed orphaned:
+
+- `/expenses/:id/edit`, `/inventory/replenishment/new`, `/sales/credit-notes/new`
+
 These are **candidates, not rulings**. Regenerate before acting on the list —
 the report's method section documents its own limits (it does not resolve
-object-map element access or paths returned from local pure functions, so three
-action/form routes remain unresolved rather than confirmed orphaned).
+object-map element access or paths returned from local pure functions, which is
+why the three action/form routes stay unresolved).
 
 There is still **no automated route↔nav coverage check** (`UI-39`). Nothing in
 CI would catch the next orphan, so this reconciliation is manual and must be
@@ -376,7 +403,7 @@ redone when routes change.
 - [`../api/company-config.md`](../api/company-config.md) — the company-config API
 - [`../conventions/02-NAVIGATION-ROUTING.md`](../conventions/02-NAVIGATION-ROUTING.md) — adding a page to the dashboard
 - [`../conventions/03-AUTHORIZATION.md`](../conventions/03-AUTHORIZATION.md) — the permission system
-- **Audit of record:** [`../sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md) — `docs/sessions/` is gitignored, so the executive report is a session artefact and may be absent from a fresh clone; the re-census linked above is tracked (force-added)
+- **Audit of record:** `00-EXECUTIVE-REPORT.md`, a session artefact under `docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/`. It is **not tracked in this repository** (`docs/sessions/` is gitignored, `.gitignore:58`), so it is named rather than linked — a link would dangle in every clone. The re-census linked above *is* tracked (force-added)
 
 ---
 

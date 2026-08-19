@@ -250,12 +250,12 @@ transitions.slow   // duration-300
 > Nothing in this section is enforced by a lint rule or a ratchet today, and no
 > page-migration wave is scheduled. Treat it as the agreed target shape, not as
 > a rule you are already in breach of. Source: the UI presentation audit of
-> record, [`docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md)
-> §D, which is where the finding `UI-44` ("no listing-page composition guidance
-> exists") is recorded. Note that `docs/sessions/` is gitignored, so the audit
-> files are session artefacts: the re-census linked below is tracked (it was
-> force-added), the executive report is not and may be absent from a fresh
-> clone.
+> record — `00-EXECUTIVE-REPORT.md`, a session artefact under
+> `docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/` which is **not tracked in
+> this repository** (`docs/sessions/` is gitignored, `.gitignore:58`) and is
+> therefore deliberately referenced by name rather than linked. Its §D is where
+> the finding `UI-44` ("no listing-page composition guidance exists") is
+> recorded. The re-census linked below *is* tracked (it was force-added).
 
 Before this section, this document covered colours, typography, spacing and
 composed element tokens only — there was no written guidance for how a list or
@@ -273,7 +273,8 @@ These are all real and importable now. The canon below composes **only** these.
 | `DataTable` | `components/molecules/DataTable/` | The canonical list table; owns loading skeletons and the empty state |
 | `EmptyState` | `components/molecules/EmptyState/` | Standalone empty-state block, also rendered internally by `DataTable` |
 | `OffsetPagination` | `components/ui/OffsetPagination.tsx` | Offset/page-number pagination controls |
-| `FilterPanel` | `components/ui/FilterPanel.tsx` | The one purpose-built filter container |
+| `FilterPanel` | `components/ui/FilterPanel.tsx` | The only purpose-built filter container — but adopted by exactly **one** feature page today (`features/inventory/ProductListPage.tsx`); it is the canonical container by design, not by usage |
+| `ActiveFilters` | `components/ui/ActiveFilters.tsx` | The applied-filter chip row with per-chip and clear-all removal. Rendered internally by `FilterPanel`, and used directly by four feature surfaces (`features/inventory/ProductListPage.tsx`, `features/menu/pages/MenuListPage.tsx`, `features/parts-catalog/components/organisms/FilterSidebar.tsx` and `…/TireDimensionSearch.tsx`). Do not hand-roll a chip row |
 | `SearchInput` | `components/molecules/SearchInput/` | Debounced search box |
 | `FilterTabs` | `components/molecules/FilterTabs/` | Tab-style segmented filter |
 | `ui/filters/*` | `components/ui/filters/` | Filter primitives: `SearchFilter`, `EnumFilter`, `BooleanFilter`, `RangeFilter`, `DateRangeFilter` |
@@ -336,7 +337,9 @@ knowing they are missing wastes a reviewer's time.
 - **`FilterBar`** — a thin wrapper over `FilterPanel` + `SearchInput` +
   `FilterTabs` + the `ui/filters/*` primitives, so a page composes one component
   instead of hand-assembling four. **Not built.** Until it exists, assemble the
-  filter slot from the existing primitives directly.
+  filter slot from the existing primitives directly — including `ActiveFilters`
+  for the applied-filter chip row, which already exists and must not be
+  re-implemented by hand.
 - **`DataTableColumn.sortable`** — sorting absorbed into the column descriptor
   so pages stop wiring their own sort headers. **Not built**: `DataTableColumn`
   today exposes `key`, `header`, `align`, `numeric`, `render`, `accessor`,
@@ -392,4 +395,4 @@ tones genuinely cannot express.
 
 *Last Updated: 2026-08-19*
 *Source: `apps/web/src/lib/designTokens.ts`*
-*Listing-page canon: [`00-EXECUTIVE-REPORT.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md) §D (audit of record)*
+*Listing-page canon: `00-EXECUTIVE-REPORT.md` §D — the audit of record, a session artefact under `docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/` that is not tracked in this repository (hence named, not linked)*
