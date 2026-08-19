@@ -87,14 +87,16 @@ feature/
 ---
 
 ### Documents Feature (selected pages)
-**Purpose**: Unified document management (the feature holds 12 page components across its
-type-specific subdirectories; the load-bearing ones for this doc are listed)
+**Purpose**: Unified document management (the feature holds 12 page components — 4 at the feature
+root, 8 in type-specific subdirectories; the load-bearing ones for this doc are listed)
 
 **Pages**:
 - `DocumentListPage` - List with type filter
-- `DocumentForm` - Create/edit
 - `DeliveryNoteDetailPage` - Delivery note view with billing attribution
 - `ToBillPage` - Un-invoiced delivery notes grouped by customer (`/sales/to-bill`)
+
+`DocumentForm` - create/edit form component (`DocumentForm.tsx`), not a `*Page.tsx` and not one of
+the 12 counted above.
 
 > `DeliveryNoteConsolidationPage` was retired: the standalone
 > `/inventory/delivery-notes/consolidate` page, its component and its barrel

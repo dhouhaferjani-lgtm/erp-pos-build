@@ -734,8 +734,22 @@ Fix round 1 is RED `2bbc28b69` + GREEN `cdec3a5a2`.
   certifying. The two lint warnings its deletion removed are `no-unnecessary-condition`, not
   precision warnings. ESCALATION (M4-round2 N2, parent-ledgered): re-deriving this exposed that
   `apps/web/eslint-rules/no-parsefloat-on-money.js:29-40` bails at `:66` on a `LogicalExpression`
-  argument, so `parseFloat(x.total ?? '0')` is invisible to the rule-19 guard — 22 live sites today
-  incl. `DocumentListPage.tsx:199-200,264-265`. Owned by the parent as a guard-gap ticket
+  argument, so `parseFloat(x.total ?? '0')` is invisible to the rule-19 guard — count corrected
+  M4 round 3 (R3-a): re-deriving with the rule's actual `MONEY_NAME` regex over every
+  `parseFloat(x ?? …)` / `parseFloat(x || …)` / `Number(x || …)` with an identifier or member-expression
+  left operand yields **26 sites, 25 of them in live source** (the 26th is
+  `features/pos/__fixtures__/productInfo.ts:119`), incl. `DocumentListPage.tsx:199-200,264-265`,
+  `pos/molecules/DiscountInput/DiscountInput.tsx:294,298`,
+  `pos/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx:315,327`,
+  `pos/organisms/TransactionCart/TransactionCart.tsx:321,328`,
+  `inventory/components/ProductDocumentsTab.tsx:150,154`, `documents/CreateReturnNotePage.tsx:481`,
+  `documents/invoices/InvoiceDetailPage.tsx:420,429,430`,
+  `documents/purchase-orders/PurchaseOrderDetailPage.tsx:321-323`,
+  `documents/sales-orders/SalesOrderDetailPage.tsx:373-375`,
+  `documents/components/CreateCreditNoteForm.tsx:147` and
+  `documents/components/costing/LandedCostBreakdown.tsx:104,105`. The earlier "22" errs toward
+  understating exposure; the ticket should carry "≥25 live sites — re-derive at ticket time", since
+  the count moves with every burn-down. Owned by the parent as a guard-gap ticket
   (coordinates with enforcement-P2's RuleTester deliverable). The orphaned assertions were
   adjusted rather than dropped wholesale: the `getInvoiceableDeliveryNotes` describe block leaves
   `api/deliveryNotes.test.ts` with its now-unused `apiGet` mock, and the invoiceable probe leaves the

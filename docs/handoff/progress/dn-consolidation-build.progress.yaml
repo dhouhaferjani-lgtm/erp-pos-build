@@ -114,16 +114,16 @@ milestones:
   - id: M4
     title: "M4 - Retirement + frequency (runs strictly AFTER both M2 and M3 have passed): delete /inventory/delivery-notes/consolidate (route + page + component + barrel export); retire the consolidation_frequency selector and relax CreatePartnerRequest ONLY; re-label invoice_consolidation (en + fr). Grep proves zero remaining references; the diff contains NO partner migration."
     review_lenses: [frontend-conventions, general]
-    status: review
-    fix_rounds: 2
-    commit: cdec3a5a2   # code delta unchanged in round 2 — the round-2 findings were record-only, fixed parent-side
-    verdict: docs/handoff/reviews/dn-consolidation-build/M4-round1.md
-    last_verdict: CHANGES-REQUIRED
+    status: passed
+    fix_rounds: 3
+    commit: cdec3a5a2   # code delta unchanged in rounds 2-3 — those findings were record-only, fixed parent-side
+    verdict: docs/handoff/reviews/dn-consolidation-build/M4-round3.md   # R3-c: pointer corrected from M4-round1.md
+    last_verdict: ACCEPT
     updated: cdec3a5a2
   - id: M5
     title: "WHOLE-BRANCH GATE (no new implementation): re-run the §6 verification contract over the integrated branch - preflight with PREFLIGHT_TEST_PATHS and PREFLIGHT_VITEST_PATHS both set (never PREFLIGHT_SCOPE=full), all §6.1 backend tests by path, the §6.2 concurrency test, §6.3 frontend tests, the E2E run or its named blocker - plus the LOCK INVENTORY AS BUILT re-derived from code (every lock kind, acquisition point, acyclicity argument, and the explicit statement that no writer reaches invoice creation before its claims succeed), the OI-14 four-vanishing-artefacts proof, and the OI-8 conditions 1-4 evidence plus the recorded status of proposals 5-7. Every lens once more over the whole branch. Failure of any item blocks."
     review_lenses: [tenancy-authz, treasury, inventory-costing, frontend-conventions, general]
-    status: pending
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -158,4 +158,5 @@ findings:
   - "STALE PIN — M4 round-1 finding 7 (P3), for M5/parent: preflight_policy.expected_inherited_residuals pins two C-3 PHPStan findings at CopiesDocumentData.php:309 and :310, and NEITHER REPRODUCES. Re-verified in M4 fix round 1: after `phpstan clear-result-cache`, `phpstan analyse app/Modules/Document/Domain/Services/Conversion/Concerns/CopiesDocumentData.php --level=8` is [OK] No errors, and `git diff --stat 60df88a01..HEAD` on that path is empty. This is not an evasion (no ignoreErrors block, no rule removed, no baseline absorption) and not an M4 effect — the pin itself was inaccurate when written. M5 must RE-DERIVE the differential baseline from the pinned base rather than inherit these two entries."
   - "M4 round-1 finding 8 (P3), recorded not fixed: B2BFieldsSection.tsx:211-213 help text restates its label verbatim and is not linked to the checkbox via aria-describedby. Literal compliance with spec §5, so not a deviation."
   - "M4 round-1 finding 2, unconstrained-uuid-param survey of the SAME routes.php, recorded not fixed because this wave did not touch these params: POST /delivery-notes/{deliveryNote}/confirm (:292) and the documents/{document}/* sub-resources (:327, :331, :335, :339, :343, :348, :353, :358, :363, :368, :372, :377, :381) all bind a raw segment with no whereUuid. None is reachable from a retired path, but each carries the same PostgreSQL 22P02 shape."
+  - "M4 bridge round 3 at 6caec2e93 returned ACCEPT on the record-only delta. Its three P3 residuals are closed in the M5 opening commit: R3-a (handback finding-4 escalation re-derived to 26 sites / 25 in live source, ticket to carry '>=25 - re-derive at ticket time'), R3-b (frontend.md now says 12 page components = 4 at the feature root + 8 in type-specific subdirectories, and DocumentForm is labelled a form component outside the count), R3-c (M4 verdict pointer moved from M4-round1.md to M4-round3.md, last_verdict ACCEPT, fix_rounds 3)."
   - "M3 round-1 findings 8-12 are now recorded in the handback (they previously had no per-finding record): uncapped page fan-out at api/deliveryNotes.ts:216-230 (a cap was written then deliberately reverted as out-of-scope; perPage=100 bounds page SIZE, not FAN-OUT — last_page-1 requests go through one uncapped Promise.all), hardcoded English validation message at DeliveryNoteController.php:274, single-partner-group reconciliation fixture at DeliveryNoteToBillQueueTest.php:176-208, UTC-midnight new Date('YYYY-MM-DD').toLocaleDateString() rendering at ToBillPage.tsx:182 and :231, and the unresolvable-partner LogicException 500 at Compliance/Services/UninvoicedDeliveryNoteService.php:151."
