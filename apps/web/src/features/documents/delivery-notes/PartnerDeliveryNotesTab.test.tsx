@@ -167,6 +167,115 @@ describe('PartnerDeliveryNotesTab', () => {
     })
   })
 
+  it('keeps complete attribution in the alert when a refused delivery note is off page', async () => {
+    const user = userEvent.setup()
+    mockUsePartnerDeliveryNotes.mockImplementation((params: { page: number }) => ({
+      data: response(params.page === 2 ? [deliveryNote('011')] : [deliveryNote('001')], {
+        meta: {
+          current_page: params.page,
+          last_page: 2,
+          total: 2,
+          per_page: 1,
+          from: params.page,
+          to: params.page,
+        },
+      }),
+      isLoading: false,
+      isError: false,
+    }))
+    mockMutateAsync.mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'DELIVERY_NOTE_ALREADY_INVOICED',
+            details: {
+              documents: [{
+                id: '001',
+                document_number: 'DN-001',
+                invoice_id: 'invoice-1',
+                invoice_number: 'INV-001',
+                invoice_date: '2026-08-12',
+                invoiced_via: 'order_conversion',
+              }],
+            },
+          },
+        },
+      },
+    })
+    renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select DN-001' }))
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await user.click(await screen.findByRole('checkbox', { name: 'Select DN-011' }))
+    await user.click(screen.getByRole('button', { name: 'Create invoice from selected (2)' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(within(alert).getByText('DN-001')).toBeInTheDocument()
+    expect(within(alert).getByText(/2026-08-12/)).toBeInTheDocument()
+    expect(within(alert).getByText('Billed from sales order')).toBeInTheDocument()
+    expect(within(alert).getByRole('link', { name: 'Open INV-001' })).toHaveAttribute(
+      'href',
+      '/sales/invoices/invoice-1',
+    )
+  })
+
+  it('keeps the refusal guarantee visible when every selected row was refused', async () => {
+    const user = userEvent.setup()
+    mockUsePartnerDeliveryNotes.mockReturnValue({
+      data: response([deliveryNote('001')]),
+      isLoading: false,
+      isError: false,
+    })
+    mockMutateAsync.mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'DELIVERY_NOTE_ALREADY_INVOICED',
+            details: { documents: [{ id: '001', document_number: 'DN-001' }] },
+          },
+        },
+      },
+    })
+    renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Select DN-001' }))
+    await user.click(screen.getByRole('button', { name: 'Create invoice from selected (1)' }))
+    await user.click(await screen.findByRole('button', { name: /Remove .*1.*retry/ }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'No invoice was created. No invoice number was used.',
+    )
+    expect(mockMutateAsync).toHaveBeenCalledTimes(1)
+  })
+
+  it('formats each row total in the delivery note currency', () => {
+    mockUsePartnerDeliveryNotes.mockReturnValue({
+      data: response([deliveryNote('eur', { currency: 'EUR', total: '99.875' })]),
+      isLoading: false,
+      isError: false,
+    })
+
+    renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
+
+    expect(screen.getByText(/99[,.]88 EUR/)).toBeInTheDocument()
+    expect(screen.queryByText('TND 99.875')).not.toBeInTheDocument()
+  })
+
+  it('discloses that aggregate count and total are company-currency scoped', () => {
+    renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
+
+    expect(screen.getByText('(3 TND delivery notes)')).toBeInTheDocument()
+  })
+
+  it('renders the complete four-line coexistence guidance', () => {
+    renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
+
+    expect(screen.getByText(/Bill from the sales order when the whole order goes out/)).toBeInTheDocument()
+    expect(screen.getByText(/Bill from delivery notes when you deliver repeatedly/)).toBeInTheDocument()
+  })
+
   it('reaches the second offset page', async () => {
     const user = userEvent.setup()
     mockUsePartnerDeliveryNotes.mockImplementation((params: { page: number }) => ({
@@ -202,7 +311,7 @@ describe('PartnerUnbilledBalanceLine', () => {
       isError: false,
     })
 
-    renderWithProviders(<PartnerUnbilledBalanceLine partnerId="partner-1" />, {
+    const { container } = renderWithProviders(<PartnerUnbilledBalanceLine partnerId="partner-1" />, {
       route: '/sales/customers/partner-1',
     })
 
@@ -212,7 +321,9 @@ describe('PartnerUnbilledBalanceLine', () => {
       '/sales/customers/partner-1?tab=delivery-notes',
     )
     expect(screen.getByText('TND 300.750')).toBeInTheDocument()
-    expect(screen.getByText('(3 delivery notes)')).toBeInTheDocument()
+    expect(screen.getByText('(3 TND delivery notes)')).toBeInTheDocument()
+    expect(container.querySelector('dt')).toBeInTheDocument()
+    expect(container.querySelector('dd')).toBeInTheDocument()
   })
 
   it('shows the same aggregate total in the balance line and default tab summary', () => {

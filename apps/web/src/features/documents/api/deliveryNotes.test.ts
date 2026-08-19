@@ -51,6 +51,7 @@ describe('getPartnerDeliveryNotes', () => {
     expect(mockApi.get).toHaveBeenCalledWith('/delivery-notes', {
       params: {
         partner_id: 'partner-42',
+        status: 'confirmed',
         uninvoiced: 1,
         page: 2,
         per_page: 10,
