@@ -457,13 +457,101 @@ milestones:
     #     member of the terminal's company, so CompanyContextMiddleware cannot be
     #     what refuses) and asserts error.code === 'FORBIDDEN', so a
     #     NO_COMPANY_ACCESS 403 can never impersonate the permission gate's.
-    status: in_progress
+    #
+    # DELIVERED 2026-08-19. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M5-implementation-evidence.md.
+    #   75f978674 — open M5, close M4, the five M4 round-1 sweeps
+    #   c533f005a — the two program-wide event ratchets (LAST CODE COMMIT of the lane)
+    #   (this commit) — whole-lane evidence, the A0 exit statement, ledger to review
+    #
+    # RATCHET 1 — apps/api/tests/Architecture/OrphanedEventRatchetTest.php.
+    #   THE NUMBER IS 75, NOT 14. The brief's "14" traces to the handover's V2
+    #   requirement ("this register already contains 14 of those") and is a count
+    #   of ES REGISTER ROWS carrying the DEAD-EVENT class — 16 of them today,
+    #   several naming many classes each (ES-75 names ten, ES-86 names six). The
+    #   code-measured population under the handover's own definition ("emitted
+    #   with zero registered listeners") is 75, enumerated BY NAME, each entry
+    #   with a register row or an explicit "no register row" marker. About forty
+    #   were never registered as findings at all: the entire Scheduling emission
+    #   surface (6/6), six Taxation events, seven WorkOrder lifecycle events
+    #   sitting beside seven siblings that DO have listeners, the Catalog
+    #   attribute/variant surface, Product created/updated/deleted, four Voucher
+    #   lifecycle events, the Technician module's own emissions.
+    #   Event::hasListeners() CANNOT be used: spatie/laravel-event-sourcing
+    #   registers a global `*` subscriber, so it returns true for every string
+    #   including a class that does not exist. The check reads the dispatcher's
+    #   explicit listener map by reflection and ASSERTS both assumptions that
+    #   holds up (the wildcard set is exactly Spatie's; the Projectionist is
+    #   empty).
+    #   Blind spots named in the test: the OPPOSITE orphan (a listener with no
+    #   emitter — ES-21's ReceiptVoided, which this ratchet would NOT have
+    #   caught), the never-emitted class, indirect consumption, dispatch outside
+    #   app/.
+    #   CORRECTION TO A CORRECTION: ES-REGISTER-CORRECTIONS-2026-08-11.md:61 says
+    #   the sampled ES-88 events "exist and are emitted", citing
+    #   PointsExpired.php:9-45 — the class's OWN definition file. Grepped across
+    #   the whole backend including tests, PointsExpired has two references, both
+    #   inside its own file. It is never emitted.
+    #   TAMPER PROOF: throwaway 76th orphan -> RED naming it (1 failed) ->
+    #   deleted -> 4 passed. Tree clean.
+    #
+    # RATCHET 2 — apps/api/tests/Architecture/ProjectorEmissionRatchetTest.php.
+    #   ZERO of six registered POS-projection projectors emit a domain event, so
+    #   it ships as an enumerated SKIP-LIST, not a hard assertion (R-10): a red
+    #   wall is how a check gets group-excluded. Each entry names the register row
+    #   that will delete it — PosCoreReceiptProjection (ES-01), ZReportProjection
+    #   (ES-04), ZSessionLifecycleProjection (ES-03 + ES-02 + ES-05, three rows
+    #   one class) — and the three that have NO register row
+    #   (AccountCharge/AccountPayment/DepositReceipt) are marked an OPEN QUESTION
+    #   for A1 with an explicit instruction not to invent an event for them.
+    #   "Writes a POS projection" is decided by module OWNERSHIP, stated as a
+    #   criterion: a table grep cannot separate TreasuryReceiptBridge READING
+    #   pos_receipts from PosCoreReceiptProjection writing it. The full registered
+    #   set is pinned on BOTH sides of the partition.
+    #   TAMPER PROOF, both directions: registering a silent POS projector -> RED
+    #   (2 failed, both the skip-list and the registered-set assertions);
+    #   making a baselined projector EMIT -> also RED (1 failed), forcing the
+    #   baseline line and its register row to be closed by hand. Reverted, green.
+    #
+    # CI. tests/Architecture only ran under `workflow_dispatch`, so a ratchet
+    # placed there alone would never gate an ordinary push. .github/workflows/ci.yml
+    # gains ONE backend-test step running exactly the two ratchet files by path —
+    # not the directory, which carries unrelated inherited baseline failures.
+    # Both files are SQLite-safe and verified green on the default driver.
+    #
+    # WHOLE-LANE EVIDENCE (merge-base a5520f23ca39209f5b517723037e9516808f2bca).
+    # 18 production files, 19 test files, 1 CI workflow. ZERO migrations, config,
+    # seeders, front-end, onQueue. All five zero-line gates hold over the FULL
+    # lane, not merely within the milestone that promised each: ZReportHashService
+    # (R-1), OutboxIngestor (:815 PARAM_STR untouched), ParseFailureResolutionService
+    # (R-9/D-8), EnqueueResolvedEventProjectionsCommand (F16-7),
+    # RolesAndPermissionsSeeder (ES-42 no reseed).
+    # Every touched test file re-run on PG by path; every count a milestone
+    # register recorded reproduces exactly, the one change being
+    # FiscalEventIngestionEndpointTest 66 -> 69 assertions from the F-7 sweep.
+    # pint --test pass on all 37 changed PHP files; phpstan level 8 [OK] on all 18
+    # changed production files. Default-driver cross-check green.
+    # INHERITED REDS PROVEN INHERITED, not asserted: `git checkout <merge-base> --
+    # apps/api/app apps/api/tests`, re-ran the five red suites, got an IDENTICAL
+    # 14-failure result test for test and assertion for assertion
+    # (TreasuryDepositBridgeTest 9, AccountStatusChangedServerOnlyTest 1,
+    # DepositReceiptAppendTest 1, Task33FiscalFullFlowVerificationTest 1,
+    # ReceiptReturnRefactorV3Test 2). Restored; tree clean.
+    # Harness note worth carrying: VerifyEventChainFleetCommandDbPerTenantTest
+    # needs DB_CENTRAL_DATABASE set to the scratch DB (.env pins `iziposcentral`,
+    # which does not exist there); with it, 1 passed (8 assertions).
+    #
+    # A0 EXIT STATEMENT: in the report and in §5 of the M5 evidence. Seven tamper
+    # shapes demonstrated red with green controls, as of the last CODE commit
+    # c533f005ae2c9a80302089f9d92b1f6542fc2f21.
+    status: review
     fix_rounds: 0
-    commit: null
+    # Milestone slice for the reviewer: 9fdd9bc08..HEAD
+    commit: c533f005a
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: review      # pending | in_progress | review | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 
 # TAKEOVER, 2026-08-19. The Codex executor's quota was exhausted mid-STOP-C.
 # The parent orchestrator's implementation agent took over in this same
