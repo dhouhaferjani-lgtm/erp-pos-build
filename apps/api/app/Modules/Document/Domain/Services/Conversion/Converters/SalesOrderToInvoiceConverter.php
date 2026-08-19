@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingConcurrencyRetrier;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
@@ -78,6 +79,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         private readonly StripSubToleranceDiscountsService $discountStripper,
         private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
         private readonly DeliveryNoteBillingClaimService $billingClaimService,
+        private readonly DeliveryNoteBillingConcurrencyRetrier $billingConcurrencyRetrier,
     ) {}
 
     public function sourceType(): DocumentType
@@ -149,7 +151,13 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         /** @var string|null $actorUserId */
         $actorUserId = $options['actor_user_id'] ?? null;
 
-        return DB::transaction(function () use ($source, $partial, $lineIds, $actorUserId): Document {
+        $payload = $source->payload ?? [];
+        $knownDeliveryNoteIds = is_array($payload['delivery_note_ids'] ?? null)
+            ? array_values(array_map('strval', $payload['delivery_note_ids']))
+            : [];
+        $attributedId = $knownDeliveryNoteIds[0] ?? $source->id;
+
+        return $this->billingConcurrencyRetrier->run($attributedId, function () use ($source, $partial, $lineIds, $actorUserId): Document {
             // Global SO lock order, Layer 0b step 2: immediately after BEGIN,
             // serialize the same order before scenario detection can take the
             // delivery-note sequence row or mutate source lines/payload.

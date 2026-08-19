@@ -12,6 +12,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingConcurrencyRetrier;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
@@ -19,7 +20,6 @@ use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
@@ -62,6 +62,7 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
         protected readonly CurrencyScaleResolverInterface $scaleResolver,
         protected readonly TaxCalculationService $taxCalculationService,
         private readonly DeliveryNoteBillingClaimService $billingClaimService,
+        private readonly DeliveryNoteBillingConcurrencyRetrier $billingConcurrencyRetrier,
         private readonly CompanyContext $companyContext,
     ) {}
 
@@ -125,7 +126,7 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
             : [$source->id];
         $isConsolidation = $deliveryNoteIds !== null && count($deliveryNoteIds) > 0;
 
-        return DB::transaction(function () use ($ids, $isConsolidation, $source): Document {
+        return $this->billingConcurrencyRetrier->run($ids[0], function () use ($ids, $isConsolidation, $source): Document {
             $deliveryNotes = $this->loadAndValidateDeliveryNotes($ids, $source->id);
 
             return $isConsolidation
