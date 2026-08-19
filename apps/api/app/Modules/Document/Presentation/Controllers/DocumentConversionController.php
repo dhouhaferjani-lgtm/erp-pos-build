@@ -101,7 +101,7 @@ class DocumentConversionController extends Controller
                     'message' => $e->getMessage(),
                     'details' => $this->deliveryNoteFailureDetails([[
                         'id' => $e->deliveryNoteId,
-                        'document_number' => '',
+                        'document_number' => $e->deliveryNoteNumber,
                         'reason' => 'claim_lost',
                     ]], $id),
                 ],
@@ -327,7 +327,7 @@ class DocumentConversionController extends Controller
                     'message' => $e->getMessage(),
                     'details' => $this->deliveryNoteFailureDetails([[
                         'id' => $e->deliveryNoteId,
-                        'document_number' => '',
+                        'document_number' => $e->deliveryNoteNumber,
                         'reason' => 'claim_lost',
                     ]]),
                 ],

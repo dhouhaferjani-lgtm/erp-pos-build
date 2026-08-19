@@ -23,12 +23,14 @@ use App\Modules\Product\Domain\Enums\ProductType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Database\Connection;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PDOException;
 use PHPUnit\Framework\AssertionFailedError;
+use RuntimeException;
 use Tests\TestCase;
 use Throwable;
 
@@ -38,6 +40,9 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
 
     /** @var list<string> */
     private array $clonedConnections = [];
+
+    /** @var list<int> */
+    private array $ownedChildPids = [];
 
     private Company $company;
 
@@ -103,6 +108,10 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
 
     protected function tearDown(): void
     {
+        foreach ($this->ownedChildPids as $pid) {
+            $this->terminateAndReap($pid);
+        }
+
         foreach ($this->clonedConnections as $name) {
             try {
                 $connection = DB::connection($name);
@@ -150,78 +159,176 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
         return DB::getDriverName() === 'pgsql' ? [] : [config('database.default')];
     }
 
-    public function test_deadlock_and_serialization_failures_are_retried_at_most_twice(): void
+    public function test_real_query_pdo_nested_and_deadlock_exception_shapes_are_retried_at_most_twice(): void
     {
         if (DB::getDriverName() !== 'pgsql') {
             $this->markTestSkipped('Billing-claim concurrency policy requires PostgreSQL.');
         }
 
-        foreach (['40P01', '40001'] as $sqlState) {
+        $faults = [
+            'direct QueryException' => fn (): bool => DB::statement("DO \$\$ BEGIN RAISE EXCEPTION 'direct fault' USING ERRCODE = '40001'; END \$\$"),
+            'raw PDOException' => fn (): int|false => DB::connection()->getPdo()->exec("DO \$\$ BEGIN RAISE EXCEPTION 'pdo fault' USING ERRCODE = '40P01'; END \$\$"),
+            'nested wrapper' => function (): never {
+                try {
+                    DB::connection()->getPdo()->exec("DO \$\$ BEGIN RAISE EXCEPTION 'wrapped fault' USING ERRCODE = '40001'; END \$\$");
+                } catch (PDOException $exception) {
+                    throw new RuntimeException('application wrapper', 0, $exception);
+                }
+
+                throw new RuntimeException('The wrapped PostgreSQL fault did not fire.');
+            },
+            'Laravel DeadlockException' => fn (): mixed => DB::transaction(
+                fn (): bool => DB::statement("DO \$\$ BEGIN RAISE EXCEPTION 'deadlock detected by nested transaction probe' USING ERRCODE = '40P01'; END \$\$"),
+            ),
+        ];
+
+        foreach ($faults as $shape => $fault) {
             $attempts = 0;
             $retrier = new DeliveryNoteBillingConcurrencyRetrier(DB::connection());
 
-            $result = $retrier->run('00000000-0000-0000-0000-000000000001', function () use (&$attempts, $sqlState): string {
-                $attempts++;
-                if ($attempts < 3) {
-                    throw $this->queryException($sqlState);
+            try {
+                $retrier->run('00000000-0000-0000-0000-000000000001', function () use (&$attempts, $fault): never {
+                    $attempts++;
+                    $fault();
+
+                    throw new RuntimeException('The PostgreSQL fault did not fire.');
+                });
+                $this->fail("{$shape} must be translated after the finite retry budget.");
+            } catch (DeliveryNoteAlreadyClaimedException $exception) {
+                $this->assertSame('00000000-0000-0000-0000-000000000001', $exception->deliveryNoteId);
+                if ($shape === 'Laravel DeadlockException') {
+                    $this->assertInstanceOf(DeadlockException::class, $exception->getPrevious());
                 }
+            }
 
-                return 'converted';
-            });
-
-            $this->assertSame('converted', $result);
-            $this->assertSame(3, $attempts, "{$sqlState} must receive two retries and no fourth attempt.");
+            $this->assertSame(3, $attempts, "{$shape} must receive two retries and no fourth attempt.");
         }
     }
 
-    public function test_exhausted_retryable_failure_becomes_an_attributed_billing_refusal(): void
+    public function test_commit_time_serialization_failure_retries_in_a_fresh_transaction(): void
     {
         if (DB::getDriverName() !== 'pgsql') {
             $this->markTestSkipped('Billing-claim concurrency policy requires PostgreSQL.');
         }
 
-        $deliveryNoteId = '00000000-0000-0000-0000-000000000002';
+        DB::statement('CREATE TEMP SEQUENCE dn_retry_commit_fault_sequence');
+        DB::statement('CREATE TEMP TABLE dn_retry_commit_fault_probe (id integer)');
+        DB::unprepared(<<<'SQL'
+CREATE OR REPLACE FUNCTION pg_temp.dn_retry_raise_once_at_commit()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF nextval('pg_temp.dn_retry_commit_fault_sequence') = 1 THEN
+        RAISE EXCEPTION 'forced commit serialization failure' USING ERRCODE = '40001';
+    END IF;
+    RETURN NEW;
+END;
+$$
+SQL);
+        DB::statement(<<<'SQL'
+CREATE CONSTRAINT TRIGGER dn_retry_raise_once_at_commit
+AFTER INSERT ON dn_retry_commit_fault_probe
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION pg_temp.dn_retry_raise_once_at_commit()
+SQL);
+
         $attempts = 0;
+        $transactionIds = [];
         $retrier = new DeliveryNoteBillingConcurrencyRetrier(DB::connection());
 
-        try {
-            $retrier->run($deliveryNoteId, function () use (&$attempts): never {
-                $attempts++;
+        $result = $retrier->run('00000000-0000-0000-0000-000000000002', function () use (&$attempts, &$transactionIds): string {
+            $attempts++;
+            $transactionIds[] = (string) DB::selectOne('SELECT txid_current() AS id')->id;
+            DB::table('dn_retry_commit_fault_probe')->insert(['id' => $attempts]);
 
-                throw $this->queryException('40P01');
-            });
-            $this->fail('An exhausted deadlock retry must surface an attributed billing refusal.');
-        } catch (DeliveryNoteAlreadyClaimedException $exception) {
-            $this->assertSame($deliveryNoteId, $exception->deliveryNoteId);
-            $this->assertInstanceOf(QueryException::class, $exception->getPrevious());
-            $this->assertStringNotContainsString('SQLSTATE', $exception->getMessage());
-        }
+            return 'converted';
+        });
 
-        $this->assertSame(3, $attempts, 'The initial attempt plus two retries is the hard ceiling.');
+        $this->assertSame('converted', $result);
+        $this->assertSame(2, $attempts);
+        $this->assertCount(2, array_unique($transactionIds), 'A commit-time retry must begin a fresh PostgreSQL transaction.');
+        $this->assertSame([2], DB::table('dn_retry_commit_fault_probe')->pluck('id')->all());
     }
 
-    public function test_unrelated_database_errors_are_not_retried_or_translated(): void
+    public function test_unrelated_real_database_error_is_not_retried_or_translated(): void
     {
         if (DB::getDriverName() !== 'pgsql') {
             $this->markTestSkipped('Billing-claim concurrency policy requires PostgreSQL.');
         }
 
         $attempts = 0;
-        $expected = $this->queryException('23503');
         $retrier = new DeliveryNoteBillingConcurrencyRetrier(DB::connection());
 
         try {
-            $retrier->run('00000000-0000-0000-0000-000000000003', function () use (&$attempts, $expected): never {
+            $retrier->run('00000000-0000-0000-0000-000000000003', function () use (&$attempts): never {
                 $attempts++;
+                DB::statement("DO \$\$ BEGIN RAISE EXCEPTION 'unrelated fault' USING ERRCODE = '23503'; END \$\$");
 
-                throw $expected;
+                throw new RuntimeException('The PostgreSQL fault did not fire.');
             });
             $this->fail('An unrelated database failure must propagate unchanged.');
-        } catch (QueryException $actual) {
-            $this->assertSame($expected, $actual);
+        } catch (QueryException $exception) {
+            $this->assertSame('23503', $exception->errorInfo[0]);
         }
 
         $this->assertSame(1, $attempts);
+    }
+
+    public function test_sales_order_commit_exhaustion_returns_exact_attributed_http_422(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Billing-claim concurrency policy requires PostgreSQL.');
+        }
+
+        $order = $this->salesOrder();
+        DB::unprepared(<<<'SQL'
+        CREATE OR REPLACE FUNCTION pg_temp.dn_retry_raise_on_document_commit()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            RAISE EXCEPTION 'forced document commit serialization failure' USING ERRCODE = '40001';
+        END;
+        $$
+        SQL);
+        DB::statement(<<<'SQL'
+        CREATE CONSTRAINT TRIGGER dn_retry_raise_on_document_commit
+        AFTER INSERT ON documents
+        DEFERRABLE INITIALLY DEFERRED
+        FOR EACH ROW EXECUTE FUNCTION pg_temp.dn_retry_raise_on_document_commit()
+        SQL);
+
+        try {
+            $response = $this->withoutMiddleware()
+                ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
+        } finally {
+            $pdo = DB::connection()->getPdo();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            DB::statement('DROP TRIGGER IF EXISTS dn_retry_raise_on_document_commit ON documents');
+        }
+
+        $payload = $response->json();
+        $response->assertStatus(422);
+        $this->assertSame('DELIVERY_NOTE_ALREADY_INVOICED', $payload['error']['code']);
+        $this->assertCount(1, $payload['error']['details']['documents']);
+        $details = $payload['error']['details']['documents'][0];
+        $this->assertTrue(Str::isUuid($details['id']));
+        $this->assertNotSame($order->id, $details['id'], 'A sales-order UUID must never be reported as a delivery-note UUID.');
+        $this->assertNotSame('', $details['document_number'], 'Rolled-back auto-created DN attribution must retain its attempted number.');
+        $this->assertSame('claim_lost', $details['reason']);
+        $this->assertNull($details['invoice_id']);
+        $this->assertNull($details['invoice_number']);
+        $this->assertNull($details['invoice_date']);
+        $this->assertNull($details['invoiced_via']);
+        $this->assertSame(
+            'Delivery note '.$details['id'].' has already been claimed for billing.',
+            $payload['error']['message'],
+        );
+        $this->assertSame(0, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::DeliveryNote)->count());
+        $this->assertSame(0, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::Invoice)->count());
     }
 
     public function test_overlapping_consolidations_serialize_at_the_seeded_sequence_barrier(): void
@@ -238,6 +345,7 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
 
         $this->assertSame('success', $results[0]['outcome']);
         $this->assertSame('refused', $results[1]['outcome']);
+        $this->assertSame($results[0]['invoice_id'], $results[1]['winner_invoice_id']);
         $this->assertSame(DeliveryNoteBillingLane::Consolidation->value, $results[1]['winner_lane']);
         $this->assertFinalisedExactlyOnce($ids, DeliveryNoteBillingLane::Consolidation);
     }
@@ -263,7 +371,10 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
         );
 
         $this->assertSame('success', $results[0]['outcome']);
-        $this->assertNotSame('success', $results[1]['outcome']);
+        $this->assertSame('error', $results[1]['outcome']);
+        $this->assertSame(RuntimeException::class, $results[1]['exception']);
+        $this->assertSame('Sales order has already been fully invoiced', $results[1]['message']);
+        $this->assertNull($results[1]['sqlstate']);
         $this->assertSame(1, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::Invoice)->count());
         $this->assertSame(1, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::DeliveryNote)->count());
         $this->assertSame(1, (int) DB::table('document_sequences')
@@ -272,6 +383,26 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
             ->sum('last_number'));
         $this->assertSame(1, $this->invoiceSequenceAggregate());
         $this->assertStringNotContainsString('40P01', json_encode($results, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_failed_backend_pid_publication_is_bounded_and_reaps_the_owned_child(): void
+    {
+        $this->requireProcessPostgres();
+        $startedAt = microtime(true);
+
+        try {
+            $this->spawnConversion(
+                ['lane' => 'consolidation', 'source_id' => Str::uuid()->toString(), 'delivery_note_ids' => []],
+                publishBackendPid: false,
+                publicationTimeoutSeconds: 0.1,
+            );
+            $this->fail('A child that does not publish its backend pid must fail startup.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Child did not publish its PostgreSQL backend pid within the bounded deadline.', $exception->getMessage());
+        }
+
+        $this->assertLessThan(2.0, microtime(true) - $startedAt);
+        $this->assertSame([], $this->ownedChildPids, 'The parent must reap a child even when startup publication fails.');
     }
 
     public function test_integrity_regression_net_detects_both_marker_payload_disagreement_directions(): void
@@ -342,6 +473,7 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
             : DeliveryNoteBillingLane::OrderConversion;
         $this->assertSame('success', $results[0]['outcome']);
         $this->assertSame('refused', $results[1]['outcome']);
+        $this->assertSame($results[0]['invoice_id'], $results[1]['winner_invoice_id']);
         $this->assertSame($expectedLane->value, $results[1]['winner_lane']);
         $this->assertStringNotContainsString('40P01', json_encode($results, JSON_THROW_ON_ERROR));
         $this->assertFinalisedExactlyOnce([$deliveryNote->id], $expectedLane);
@@ -357,6 +489,7 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
         $control = $this->cloneConnection('dn_billing_control_'.Str::lower(Str::random(8)));
         $children = [];
         $control->beginTransaction();
+        $controlBackendPid = (int) $control->selectOne('SELECT pg_backend_pid() AS pid')->pid;
         $locked = $control->select(
             'SELECT id FROM document_sequences WHERE company_id = ? AND type = ? AND year IN (?, ?) FOR UPDATE',
             [$this->company->id, DocumentType::Invoice->value, ...$this->sequenceYears],
@@ -372,7 +505,11 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
 
             $children[] = $this->spawnConversion($second);
             $this->startChild($children[1]);
-            $this->waitForLock($children[1]['backend_pid']);
+            $this->waitForProductionOwnerBlock(
+                $children[1]['backend_pid'],
+                $children[0]['backend_pid'],
+                $controlBackendPid,
+            );
             $this->assertSame(0, pcntl_waitpid($children[1]['pid'], $status, WNOHANG), 'Process B must remain unfinished while A owns or awaits earlier locks.');
 
             $control->commit();
@@ -402,8 +539,11 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
      * @param  array{lane: string, source_id: string, delivery_note_ids: list<string>}  $job
      * @return array{pid: int, backend_pid: int, start_socket: resource, result_file: string, reaped: bool}
      */
-    private function spawnConversion(array $job): array
-    {
+    private function spawnConversion(
+        array $job,
+        bool $publishBackendPid = true,
+        float $publicationTimeoutSeconds = 5.0,
+    ): array {
         $sockets = stream_socket_pair(STREAM_PF_UNIX, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
         $this->assertNotFalse($sockets);
         [$parentSocket, $childSocket] = $sockets;
@@ -419,6 +559,13 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
             fclose($parentSocket);
             DB::disconnect();
 
+            if (! $publishBackendPid) {
+                pcntl_signal(SIGTERM, SIG_IGN);
+                while (true) {
+                    usleep(100_000);
+                }
+            }
+
             try {
                 DB::reconnect();
                 DB::statement("SET lock_timeout = '8s'");
@@ -427,7 +574,10 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
                 app(CompanyContext::class)->setCompanyId($this->company->id);
                 $backendPid = (int) DB::selectOne('SELECT pg_backend_pid() AS pid')->pid;
                 fwrite($childSocket, $backendPid."\n");
-                fread($childSocket, 1);
+                stream_set_timeout($childSocket, 5);
+                if (fread($childSocket, 1) !== '1') {
+                    throw new RuntimeException('Child did not receive its bounded conversion start signal.');
+                }
                 fclose($childSocket);
 
                 $source = Document::query()->findOrFail($job['source_id']);
@@ -469,9 +619,16 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
         $this->assertGreaterThan(0, $pid, 'Only the parent may return from spawnConversion.');
 
         fclose($childSocket);
-        stream_set_timeout($parentSocket, 5);
-        $backendPid = (int) trim((string) fgets($parentSocket));
-        $this->assertGreaterThan(0, $backendPid, 'Child did not publish its PostgreSQL backend pid.');
+        $this->ownedChildPids[] = $pid;
+
+        try {
+            $backendPid = $this->awaitBackendPid($parentSocket, $publicationTimeoutSeconds);
+        } catch (Throwable $exception) {
+            fclose($parentSocket);
+            $this->terminateAndReap($pid);
+
+            throw $exception;
+        }
 
         return [
             'pid' => $pid,
@@ -507,6 +664,56 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
         $this->fail("PostgreSQL backend {$backendPid} did not enter the required bounded lock wait.");
     }
 
+    private function waitForProductionOwnerBlock(int $backendPid, int $ownerBackendPid, int $controlBackendPid): object
+    {
+        $deadline = microtime(true) + 5.0;
+        do {
+            $activity = DB::selectOne(<<<'SQL'
+SELECT
+    activity.wait_event_type,
+    activity.wait_event,
+    activity.query,
+    ? = ANY(pg_blocking_pids(activity.pid)) AS blocked_by_owner,
+    ? = ANY(pg_blocking_pids(activity.pid)) AS blocked_by_control,
+    EXISTS (
+        SELECT 1
+        FROM pg_locks relation_lock
+        JOIN pg_class relation ON relation.oid = relation_lock.relation
+        WHERE relation_lock.pid = activity.pid
+          AND relation.relname = 'documents'
+          AND relation_lock.mode = 'RowShareLock'
+          AND relation_lock.granted
+    ) AS holds_documents_relation_lock,
+    EXISTS (
+        SELECT 1
+        FROM pg_locks transaction_lock
+        WHERE transaction_lock.pid = activity.pid
+          AND transaction_lock.locktype = 'transactionid'
+          AND NOT transaction_lock.granted
+    ) AS awaits_owner_transaction
+FROM pg_stat_activity activity
+WHERE activity.pid = ?
+SQL, [$ownerBackendPid, $controlBackendPid, $backendPid]);
+
+            if ($activity !== null
+                && $activity->wait_event_type === 'Lock'
+                && (bool) $activity->blocked_by_owner
+                && ! (bool) $activity->blocked_by_control
+                && (bool) $activity->holds_documents_relation_lock
+                && (bool) $activity->awaits_owner_transaction
+                && str_contains(strtolower((string) $activity->query), 'documents')
+                && str_contains(strtolower((string) $activity->query), 'for update')) {
+                return $activity;
+            }
+            usleep(20_000);
+        } while (microtime(true) < $deadline);
+
+        $this->fail(
+            "PostgreSQL backend {$backendPid} was not directly blocked by conversion owner {$ownerBackendPid} "
+            .'on the production documents FOR UPDATE claim path.',
+        );
+    }
+
     /**
      * @param  array{pid: int, result_file: string, reaped: bool}  $child
      * @return array<string, mixed>
@@ -518,6 +725,7 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
             $waited = pcntl_waitpid($child['pid'], $status, WNOHANG);
             if ($waited === $child['pid']) {
                 $child['reaped'] = true;
+                $this->forgetOwnedChild($child['pid']);
                 $this->assertTrue(pcntl_wifexited($status));
                 $this->assertSame(0, pcntl_wexitstatus($status));
                 $payload = json_decode((string) file_get_contents($child['result_file']), true, 512, JSON_THROW_ON_ERROR);
@@ -535,10 +743,65 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
 
     private function terminateAndReap(int $pid): void
     {
-        if (pcntl_waitpid($pid, $status, WNOHANG) === 0) {
-            posix_kill($pid, SIGTERM);
-            pcntl_waitpid($pid, $status);
+        if ($this->waitForProcessExit($pid, 0.0)) {
+            $this->forgetOwnedChild($pid);
+
+            return;
         }
+
+        posix_kill($pid, SIGTERM);
+        if (! $this->waitForProcessExit($pid, 0.25)) {
+            posix_kill($pid, SIGKILL);
+            if (! $this->waitForProcessExit($pid, 1.0)) {
+                throw new RuntimeException("Child {$pid} could not be reaped after SIGKILL.");
+            }
+        }
+
+        $this->forgetOwnedChild($pid);
+    }
+
+    /** @param resource $socket */
+    private function awaitBackendPid($socket, float $timeoutSeconds): int
+    {
+        $read = [$socket];
+        $write = [];
+        $except = [];
+        $seconds = (int) floor($timeoutSeconds);
+        $microseconds = (int) (($timeoutSeconds - $seconds) * 1_000_000);
+        $ready = stream_select($read, $write, $except, $seconds, $microseconds);
+        if ($ready !== 1) {
+            throw new RuntimeException('Child did not publish its PostgreSQL backend pid within the bounded deadline.');
+        }
+
+        $line = fgets($socket);
+        $backendPid = is_string($line) ? (int) trim($line) : 0;
+        if ($backendPid <= 0) {
+            throw new RuntimeException('Child did not publish a valid PostgreSQL backend pid.');
+        }
+
+        return $backendPid;
+    }
+
+    private function waitForProcessExit(int $pid, float $timeoutSeconds): bool
+    {
+        $deadline = microtime(true) + $timeoutSeconds;
+        do {
+            $waited = pcntl_waitpid($pid, $status, WNOHANG);
+            if ($waited === $pid || $waited === -1) {
+                return true;
+            }
+            usleep(10_000);
+        } while (microtime(true) < $deadline);
+
+        return false;
+    }
+
+    private function forgetOwnedChild(int $pid): void
+    {
+        $this->ownedChildPids = array_values(array_filter(
+            $this->ownedChildPids,
+            static fn (int $ownedPid): bool => $ownedPid !== $pid,
+        ));
     }
 
     private function assertFinalisedExactlyOnce(array $deliveryNoteIds, DeliveryNoteBillingLane $lane): void
@@ -707,13 +970,5 @@ final class DeliveryNoteConsolidationConcurrencyTest extends TestCase
         if (! function_exists('pcntl_fork')) {
             $this->markTestSkipped('pcntl is required for the process-concurrency proof.');
         }
-    }
-
-    private function queryException(string $sqlState): QueryException
-    {
-        $driver = new PDOException("SQLSTATE[{$sqlState}]: forced billing concurrency test fault");
-        $driver->errorInfo = [$sqlState, null, 'forced billing concurrency test fault'];
-
-        return new QueryException('pgsql', 'select 1', [], $driver);
     }
 }

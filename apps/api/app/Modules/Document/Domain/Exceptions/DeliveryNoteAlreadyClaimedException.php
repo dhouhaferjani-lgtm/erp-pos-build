@@ -12,6 +12,7 @@ final class DeliveryNoteAlreadyClaimedException extends DomainException
     public function __construct(
         public readonly string $deliveryNoteId,
         ?Throwable $previous = null,
+        public readonly string $deliveryNoteNumber = '',
     ) {
         parent::__construct('Delivery note '.$deliveryNoteId.' has already been claimed for billing.', 0, $previous);
     }

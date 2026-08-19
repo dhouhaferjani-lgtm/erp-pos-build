@@ -8,7 +8,8 @@ use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
 use Closure;
 use Illuminate\Database\Connection;
 use Illuminate\Database\ConnectionInterface;
-use Illuminate\Database\QueryException;
+use PDOException;
+use Throwable;
 
 /**
  * Finite transaction retry boundary for delivery-note billing claims.
@@ -44,7 +45,7 @@ final class DeliveryNoteBillingConcurrencyRetrier
 
                     return $operation();
                 });
-            } catch (QueryException $exception) {
+            } catch (Throwable $exception) {
                 if (! $this->isRetryable($exception)) {
                     throw $exception;
                 }
@@ -53,14 +54,44 @@ final class DeliveryNoteBillingConcurrencyRetrier
                     throw new DeliveryNoteAlreadyClaimedException($deliveryNoteId, $exception);
                 }
 
+                $this->rollBackFailedCommit();
                 $retry++;
                 usleep(random_int(1_000, 5_000) * $retry);
             }
         }
     }
 
-    private function isRetryable(QueryException $exception): bool
+    private function isRetryable(Throwable $exception): bool
     {
-        return in_array((string) ($exception->errorInfo[0] ?? ''), ['40P01', '40001'], true);
+        for ($cursor = $exception; $cursor !== null; $cursor = $cursor->getPrevious()) {
+            if (! $cursor instanceof PDOException) {
+                continue;
+            }
+
+            $sqlState = $cursor->errorInfo[0] ?? $cursor->getCode();
+            if (in_array((string) $sqlState, ['40P01', '40001'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * A deferred PostgreSQL constraint can fail inside PDO::commit(). Laravel
+     * has already decremented its transaction counter when it rethrows, while
+     * PDO still owns the aborted transaction. Clear that driver transaction so
+     * the next retry can really start a new one.
+     */
+    private function rollBackFailedCommit(): void
+    {
+        if (! $this->db instanceof Connection) {
+            return;
+        }
+
+        $pdo = $this->db->getPdo();
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
     }
 }

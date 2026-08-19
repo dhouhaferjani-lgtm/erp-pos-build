@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingConcurrencyRetrier;
@@ -155,137 +156,175 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         $knownDeliveryNoteIds = is_array($payload['delivery_note_ids'] ?? null)
             ? array_values(array_map('strval', $payload['delivery_note_ids']))
             : [];
+        $usedOrderFallbackAttribution = $knownDeliveryNoteIds === [];
         $attributedId = $knownDeliveryNoteIds[0] ?? $source->id;
+        /** @var array{id: string, document_number: string}|null $attemptedDeliveryNote */
+        $attemptedDeliveryNote = null;
 
-        return $this->billingConcurrencyRetrier->run($attributedId, function () use ($source, $partial, $lineIds, $actorUserId): Document {
-            // Global SO lock order, Layer 0b step 2: immediately after BEGIN,
-            // serialize the same order before scenario detection can take the
-            // delivery-note sequence row or mutate source lines/payload.
-            $order = Document::query()
-                ->where('tenant_id', $source->tenant_id)
-                ->where('company_id', $source->company_id)
-                ->where('id', $source->id)
-                ->where('type', DocumentType::SalesOrder->value)
-                ->lockForUpdate()
-                ->with(['lines', 'partner', 'vehicleContext'])
-                ->first();
+        try {
+            return $this->billingConcurrencyRetrier->run($attributedId, function () use ($source, $partial, $lineIds, $actorUserId, &$attemptedDeliveryNote): Document {
+                // Global SO lock order, Layer 0b step 2: immediately after BEGIN,
+                // serialize the same order before scenario detection can take the
+                // delivery-note sequence row or mutate source lines/payload.
+                $order = Document::query()
+                    ->where('tenant_id', $source->tenant_id)
+                    ->where('company_id', $source->company_id)
+                    ->where('id', $source->id)
+                    ->where('type', DocumentType::SalesOrder->value)
+                    ->lockForUpdate()
+                    ->with(['lines', 'partner', 'vehicleContext'])
+                    ->first();
 
-            if (! $order instanceof Document) {
-                throw new \InvalidArgumentException('Source document must be a sales order');
-            }
-
-            if ($order->status === DocumentStatus::Cancelled) {
-                throw new \RuntimeException('Cannot convert cancelled sales order');
-            }
-
-            if ($order->status === DocumentStatus::Draft) {
-                throw new \DomainException('Sales order must be confirmed before conversion', 422);
-            }
-
-            if (! $partial && $this->isOrderFullyInvoiced($order)) {
-                throw new \RuntimeException('Sales order has already been fully invoiced');
-            }
-
-            $scenario = $this->detectOrderScenario($order, $lineIds);
-            $autoCreatedDeliveryNote = null;
-
-            if (($scenario === 'products_only' || $scenario === 'mixed')
-                && ! $this->hasDeliveryNotesForPhysicalItems($order)) {
-                // The shared factory remains authoritative and unchanged. Its
-                // DN number, rows, source-line stamps and payload linkage now
-                // share this conversion's outer rollback boundary.
-                $autoCreatedDeliveryNote = $this->createDeliveryNoteForOrder($order);
-            }
-
-            $deliveryNoteIds = $this->lockCompleteDeliveryNoteSet($order, $partial, $lineIds);
-            $invoice = null;
-
-            $createInvoice = function (?DeliveryNoteClaimSet $_set = null) use (
-                $order,
-                $partial,
-                $lineIds,
-                $autoCreatedDeliveryNote,
-                $actorUserId,
-                &$invoice,
-            ): string {
-                $invoice = $this->createTargetDocument($order, DocumentType::Invoice, [
-                    'due_date' => now()->addDays(30),
-                ]);
-
-                // Copy lines (all or partial)
-                $this->copyOrderLinesWithProvenance(
-                    $order,
-                    $invoice,
-                    $partial ? $lineIds : null,
-                );
-
-                // Strip sub-tolerance discounts BEFORE recalculateTotals so the
-                // resulting invoice's subtotal/tax/total correctly reflect the
-                // post-strip state. Defense-in-depth at the conversion stage
-                // catches anything the request validator missed (e.g. a sales
-                // order created before Phase 4 was deployed).
-                $this->discountStripper->stripFromConvertedDocument($order, $invoice);
-
-                // Recalculate totals
-                $this->recalculateTotals($invoice);
-
-                // Copy vehicle context if present
-                $this->copyVehicleContext($order, $invoice);
-
-                // Transfer any prepayments from the order to the invoice
-                $this->transferPrepayments($order, $invoice, $actorUserId);
-
-                // Update order payload
-                $additionalPayload = [];
-                if (! $partial) {
-                    $additionalPayload['fully_invoiced'] = true;
-                    $additionalPayload['fully_invoiced_at'] = now()->toDateTimeString();
+                if (! $order instanceof Document) {
+                    throw new \InvalidArgumentException('Source document must be a sales order');
                 }
-                $this->appendToSourcePayload($order, $invoice, 'invoice_ids', $additionalPayload);
 
-                // Store metadata about auto-created delivery note in invoice payload
-                if ($autoCreatedDeliveryNote !== null) {
-                    $invoicePayload = $invoice->payload ?? [];
-                    $invoicePayload['auto_created_delivery_note'] = [
+                if ($order->status === DocumentStatus::Cancelled) {
+                    throw new \RuntimeException('Cannot convert cancelled sales order');
+                }
+
+                if ($order->status === DocumentStatus::Draft) {
+                    throw new \DomainException('Sales order must be confirmed before conversion', 422);
+                }
+
+                if (! $partial && $this->isOrderFullyInvoiced($order)) {
+                    throw new \RuntimeException('Sales order has already been fully invoiced');
+                }
+
+                $scenario = $this->detectOrderScenario($order, $lineIds);
+                $autoCreatedDeliveryNote = null;
+
+                if (($scenario === 'products_only' || $scenario === 'mixed')
+                    && ! $this->hasDeliveryNotesForPhysicalItems($order)) {
+                    // The shared factory remains authoritative and unchanged. Its
+                    // DN number, rows, source-line stamps and payload linkage now
+                    // share this conversion's outer rollback boundary.
+                    $autoCreatedDeliveryNote = $this->createDeliveryNoteForOrder($order);
+                    $attemptedDeliveryNote = [
                         'id' => $autoCreatedDeliveryNote->id,
-                        'number' => $autoCreatedDeliveryNote->document_number,
-                        'created_at' => $autoCreatedDeliveryNote->created_at?->toDateTimeString(),
-                        'status' => 'draft_auto_created', // Draft status - requires confirmation before posting
+                        'document_number' => $autoCreatedDeliveryNote->document_number,
                     ];
-                    $invoice->update(['payload' => $invoicePayload]);
                 }
 
-                return $invoice->id;
-            };
+                $deliveryNoteIds = $this->lockCompleteDeliveryNoteSet($order, $partial, $lineIds);
+                if ($deliveryNoteIds !== []) {
+                    $firstDeliveryNote = $autoCreatedDeliveryNote?->id === $deliveryNoteIds[0]
+                        ? $autoCreatedDeliveryNote
+                        : Document::query()
+                            ->where('tenant_id', $order->tenant_id)
+                            ->where('company_id', $order->company_id)
+                            ->where('type', DocumentType::DeliveryNote->value)
+                            ->find($deliveryNoteIds[0], ['id', 'document_number']);
+                    if ($firstDeliveryNote instanceof Document) {
+                        $attemptedDeliveryNote = [
+                            'id' => $firstDeliveryNote->id,
+                            'document_number' => $firstDeliveryNote->document_number,
+                        ];
+                    }
+                }
+                $invoice = null;
 
-            if ($deliveryNoteIds === []) {
-                $createInvoice();
-            } else {
-                $this->billingClaimService->claim(
-                    new DeliveryNoteClaimRequest(
-                        $deliveryNoteIds,
-                        $order->company_id,
-                        DeliveryNoteBillingLane::OrderConversion,
-                    ),
-                    $createInvoice,
-                );
+                $createInvoice = function (?DeliveryNoteClaimSet $_set = null) use (
+                    $order,
+                    $partial,
+                    $lineIds,
+                    $autoCreatedDeliveryNote,
+                    $actorUserId,
+                    &$invoice,
+                ): string {
+                    $invoice = $this->createTargetDocument($order, DocumentType::Invoice, [
+                        'due_date' => now()->addDays(30),
+                    ]);
+
+                    // Copy lines (all or partial)
+                    $this->copyOrderLinesWithProvenance(
+                        $order,
+                        $invoice,
+                        $partial ? $lineIds : null,
+                    );
+
+                    // Strip sub-tolerance discounts BEFORE recalculateTotals so the
+                    // resulting invoice's subtotal/tax/total correctly reflect the
+                    // post-strip state. Defense-in-depth at the conversion stage
+                    // catches anything the request validator missed (e.g. a sales
+                    // order created before Phase 4 was deployed).
+                    $this->discountStripper->stripFromConvertedDocument($order, $invoice);
+
+                    // Recalculate totals
+                    $this->recalculateTotals($invoice);
+
+                    // Copy vehicle context if present
+                    $this->copyVehicleContext($order, $invoice);
+
+                    // Transfer any prepayments from the order to the invoice
+                    $this->transferPrepayments($order, $invoice, $actorUserId);
+
+                    // Update order payload
+                    $additionalPayload = [];
+                    if (! $partial) {
+                        $additionalPayload['fully_invoiced'] = true;
+                        $additionalPayload['fully_invoiced_at'] = now()->toDateTimeString();
+                    }
+                    $this->appendToSourcePayload($order, $invoice, 'invoice_ids', $additionalPayload);
+
+                    // Store metadata about auto-created delivery note in invoice payload
+                    if ($autoCreatedDeliveryNote !== null) {
+                        $invoicePayload = $invoice->payload ?? [];
+                        $invoicePayload['auto_created_delivery_note'] = [
+                            'id' => $autoCreatedDeliveryNote->id,
+                            'number' => $autoCreatedDeliveryNote->document_number,
+                            'created_at' => $autoCreatedDeliveryNote->created_at?->toDateTimeString(),
+                            'status' => 'draft_auto_created', // Draft status - requires confirmation before posting
+                        ];
+                        $invoice->update(['payload' => $invoicePayload]);
+                    }
+
+                    return $invoice->id;
+                };
+
+                if ($deliveryNoteIds === []) {
+                    $createInvoice();
+                } else {
+                    $this->billingClaimService->claim(
+                        new DeliveryNoteClaimRequest(
+                            $deliveryNoteIds,
+                            $order->company_id,
+                            DeliveryNoteBillingLane::OrderConversion,
+                        ),
+                        $createInvoice,
+                    );
+                }
+
+                if (! $invoice instanceof Document) {
+                    throw new \LogicException('Sales-order conversion did not create an invoice.');
+                }
+
+                // Emit only after claim finalisation. The event remains inside the
+                // outer transaction, so a later failure still rolls it back.
+                $this->dispatchConversionEvent($order, $invoice, $partial);
+
+                $freshInvoice = $invoice->fresh(['lines']);
+                if (! $freshInvoice instanceof Document) {
+                    throw new \LogicException('Created invoice could not be reloaded.');
+                }
+
+                return $freshInvoice;
+            });
+        } catch (DeliveryNoteAlreadyClaimedException $exception) {
+            if (! $usedOrderFallbackAttribution) {
+                throw $exception;
             }
 
-            if (! $invoice instanceof Document) {
-                throw new \LogicException('Sales-order conversion did not create an invoice.');
+            if ($attemptedDeliveryNote === null) {
+                throw $exception->getPrevious() ?? $exception;
             }
 
-            // Emit only after claim finalisation. The event remains inside the
-            // outer transaction, so a later failure still rolls it back.
-            $this->dispatchConversionEvent($order, $invoice, $partial);
-
-            $freshInvoice = $invoice->fresh(['lines']);
-            if (! $freshInvoice instanceof Document) {
-                throw new \LogicException('Created invoice could not be reloaded.');
-            }
-
-            return $freshInvoice;
-        });
+            throw new DeliveryNoteAlreadyClaimedException(
+                $attemptedDeliveryNote['id'],
+                $exception->getPrevious(),
+                $attemptedDeliveryNote['document_number'],
+            );
+        }
     }
 
     /**
