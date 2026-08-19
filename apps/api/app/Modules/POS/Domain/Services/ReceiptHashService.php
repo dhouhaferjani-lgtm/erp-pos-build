@@ -538,6 +538,15 @@ final class ReceiptHashService
      * expected/actual hashes + failure mode. Public bool contract is
      * preserved (3 callers — VerifyPosChainCommand, ReportController,
      * Nf525DataProvider — see no change in shape).
+     *
+     * M2-round2 finding 8 — `failed_chain_context` is part of the
+     * coordinate, not decoration. Once the fiscal arm is partitioned per
+     * `(company_id, chain_context)` each context restarts its
+     * `sequence_number` at 1, so `failed_sequence_number` alone is ambiguous
+     * — exactly the reasoning `fiscalEventBreakPoint()` already records for
+     * the human-facing break point. This is the auditor-facing channel and
+     * owes the same coordinate. All three call sites are fiscal-arm rows
+     * from `inspectFiscalEventStream()`, which selects `chain_context`.
      */
     private function logChainFailure(
         Terminal $terminal,
@@ -549,6 +558,7 @@ final class ReceiptHashService
         Log::error('chain_verification_failed', [
             'terminal_id' => $terminal->id,
             'failed_fiscal_event_id' => (string) $row->id,
+            'failed_chain_context' => (string) $row->chain_context,
             'failed_sequence_number' => (int) $row->sequence_number,
             'expected_hash' => $expectedHash,
             'actual_hash' => $actualHash,

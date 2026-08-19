@@ -521,10 +521,30 @@ is a SQLite-harness test. On the default config: **3 passed (7 assertions)**.
 This is an environment property, not a regression: it fails on PG the same way
 at `9438eecc2`.
 
-The three RED runs recorded before `bc692820a`: 5 failed in
-`ReceiptChainRebuildTest` (the new controls), 1 failed in
+The three RED runs recorded before `bc692820a`, at the control commit
+`26b1371a6`: **8** failed in `ReceiptChainRebuildTest`, 1 failed in
 `VerifyEventChainCommandTest` (the flipped characterization), 1 failed in
 `FiscalStatusFilterTest` (the untouched pending-seal contract).
+
+**Correction (M2-round2 finding 9, swept in M3).** This paragraph originally
+said *"5 failed in `ReceiptChainRebuildTest` (the new controls)"*. The measured
+number at `26b1371a6` is **8**, and the reviewer reproduced it independently in
+a detached scratch worktree at that commit. The breakdown:
+
+| # | Test | Why it was red at `26b1371a6` |
+|---|---|---|
+| 1 | `test_two_context_terminal_verifies_each_context_as_its_own_chain` | context-less coordinate — `Event … (sequence #1, link)` |
+| 2 | `test_two_context_terminal_detects_a_link_tamper_inside_the_z_session_context` | new per-context negative |
+| 3 | `test_two_context_terminal_detects_a_link_tamper_inside_the_operational_context` | new per-context negative |
+| 4 | `test_legacy_arm_excludes_pending_seal_receipts` | pending-seal row reached the walk — `Sequence #0 (hash)` |
+| 5 | `test_command_reports_inspected_rows_so_a_snapshot_tamper_is_not_attributed_to_receipts` | no `Inspected` column yet |
+| 6–8 | the 3 **pre-existing** command-table tests | their expected table header was widened by the control commit |
+
+So 5 of the 8 are the new controls and 3 are pre-existing tests the control
+commit's header widening carried along. The original line understated the red
+surface in the safe direction, but an evidence artifact whose stated counts do
+not reproduce is exactly what this program's honest-verification lane exists to
+prevent — hence the correction in place rather than a silent edit.
 
 ```text
 $ ./vendor/bin/pint --test <5 changed paths + Receipt.php>

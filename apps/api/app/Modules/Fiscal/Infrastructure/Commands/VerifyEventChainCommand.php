@@ -443,13 +443,42 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
                     $parsed->failureReason ?? 'unknown parse failure',
                 );
 
+                // ES-06 (M3). `ParseFailureResolutionService` is the only
+                // post-seal payload-write surface the immutability trigger
+                // permits, and every row it can touch is by definition one
+                // the strict parser ALREADY rejected — so this branch, not
+                // the semantic comparison below, is the branch the ES-06
+                // mutation actually lands in. Emitting one fixed sentence
+                // here made the verifier indiscriminate on exactly that
+                // surface: a faithful correction and a wholesale money
+                // rewrite produced identical output.
+                //
+                // The sealed payload is still recoverable whenever the frozen
+                // envelope is unambiguous JSON carrying a `payload` member —
+                // the strict parser can reject an envelope for a reason that
+                // has nothing to do with the payload (an unknown device
+                // field, a version the server does not know). When it IS
+                // recoverable we say what is true; when it is not we keep the
+                // original fail-closed sentence. The sealed-coordinate
+                // incident above is unconditional either way, so the exit
+                // code never softens.
                 if ($row->payload_parse_status === PayloadParseStatus::Parsed) {
-                    $incidents[] = sprintf(
-                        'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes — canonical payload could not be derived (%s)',
-                        $row->sequence_number,
-                        $row->id,
-                        $parsed->failureReason ?? 'unknown parse failure',
-                    );
+                    $sealedPayload = $this->recoverSealedPayloadFromFrozenBytes($canonicalBytes);
+
+                    if ($sealedPayload === null) {
+                        $incidents[] = sprintf(
+                            'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes — canonical payload could not be derived (%s)',
+                            $row->sequence_number,
+                            $row->id,
+                            $parsed->failureReason ?? 'unknown parse failure',
+                        );
+                    } elseif (! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $sealedPayload)) {
+                        $incidents[] = sprintf(
+                            'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes — the sealed payload was recovered from the frozen envelope and disagrees with the stored payload',
+                            $row->sequence_number,
+                            $row->id,
+                        );
+                    }
                 }
             } else {
                 foreach ($this->sealedCoordinateMismatches($row, $parsed->envelope) as $mismatch) {
@@ -616,6 +645,56 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
             && $row->reference_document_id === null
             && $row->source_event_class === null
             && $row->source_event_id === null;
+    }
+
+    /**
+     * ES-06 detection support — recover the SEALED payload from frozen
+     * canonical bytes the strict parser rejected.
+     *
+     * Recovery is only trusted when the bytes are UNAMBIGUOUS: they must
+     * decode as a JSON object AND re-encode byte-identically. That
+     * round-trip is what rules out the one way a lenient decode could
+     * disagree with the strict parser about what the bytes say — duplicate
+     * keys, where `json_decode` silently keeps the last occurrence while the
+     * strict parser rejects the document outright (`duplicate_key:*`). If the
+     * bytes are ambiguous in any way, or carry no `payload` object, this
+     * returns null and the caller keeps the original fail-closed incident.
+     *
+     * This never widens what the verifier accepts: it only decides WHICH
+     * incident sentence is true. The sealed-coordinate incident is raised
+     * unconditionally before this is consulted.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function recoverSealedPayloadFromFrozenBytes(string $canonicalBytes): ?array
+    {
+        try {
+            $envelope = json_decode($canonicalBytes, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! is_array($envelope) || array_is_list($envelope)) {
+            return null;
+        }
+
+        try {
+            $roundTrip = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if ($roundTrip !== $canonicalBytes) {
+            return null;
+        }
+
+        $payload = $envelope['payload'] ?? null;
+        if (! is_array($payload) || array_is_list($payload)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $payload */
+        return $payload;
     }
 
     /**

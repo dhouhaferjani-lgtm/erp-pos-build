@@ -11,6 +11,7 @@ use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Jobs\ApplyFiscalEventProjectionJob;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use App\Modules\Fiscal\Application\Services\ParseFailureResolutionService;
+use App\Modules\Fiscal\Application\Services\StrictCanonicalParser;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -29,6 +30,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
@@ -207,6 +209,83 @@ final class ParseFailureResumeTest extends TestCase
         ])
             ->expectsOutputToContain('payload does not semantically match canonical_bytes')
             ->assertExitCode(1);
+    }
+
+    // =================================================================
+    // ES-06 (M3) — DETECTION half only. R-9: "divergence is detectable",
+    // NOT "the workflow is fixed". The second-approver / correcting-event
+    // design is owner-gated D-8 and is deliberately absent here.
+    //
+    // The blind spot these three tests close:
+    //
+    //   `ParseFailureResolutionService` is the ONLY post-seal payload-write
+    //   surface the immutability trigger permits (the gated `failed ->
+    //   parsed` resume, `2026_05_14_100002_create_fiscal_events_immutability.php:155-199`).
+    //   Every row it can touch is by definition a `canonical_parse_failure`,
+    //   i.e. a row whose `canonical_bytes` the strict parser ALREADY
+    //   rejected. `VerifyEventChainCommand::parseCanonicalForVerification()`
+    //   re-runs that SAME parser, so on this surface it always fails, and the
+    //   verifier takes the `! $parsed->ok` branch — which emitted one FIXED
+    //   sentence for every such row, whether the operator's correction was
+    //   faithful to the sealed bytes or a wholesale money rewrite.
+    //
+    //   So the verifier had zero discriminating power on exactly the ES-06
+    //   surface: it re-reported the pre-existing parse failure and called
+    //   that "divergence". The sealed payload is still recoverable from the
+    //   frozen bytes at the JSON level whenever the envelope itself is
+    //   well-formed — the fixture below is the realistic shape (a device
+    //   firmware adds one unknown envelope field; the payload inside is
+    //   perfectly valid), and that is what makes real detection possible.
+    // =================================================================
+
+    public function test_recoverable_sealed_payload_parse_failure_fixture_is_self_asserting(): void
+    {
+        $this->seedRecoverableSealedPayloadResolution($this->divergentCorrectedPayload());
+    }
+
+    public function test_event_chain_verifier_names_a_divergent_correction_against_the_sealed_payload(): void
+    {
+        $this->seedRecoverableSealedPayloadResolution($this->divergentCorrectedPayload());
+        $this->resolverUser->givePermissionTo('fiscal.events.verify_chain');
+
+        $this->artisan('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->resolverUser->id,
+        ])
+            ->expectsOutputToContain(
+                'payload does not semantically match canonical_bytes — the sealed payload was recovered from the frozen envelope and disagrees with the stored payload',
+            )
+            ->assertExitCode(1);
+    }
+
+    public function test_event_chain_verifier_does_not_claim_divergence_when_the_correction_matches_the_sealed_payload(): void
+    {
+        // The SAME fixture shape, resolved FAITHFULLY: the operator supplied
+        // exactly the payload the frozen envelope carries. The row is still an
+        // incident — its sealed coordinates cannot be derived, so exit code 1
+        // and the coordinate incident are both preserved — but the verifier
+        // must not assert a payload divergence that provably did not happen.
+        $this->seedRecoverableSealedPayloadResolution($this->correctedPayload());
+        $this->resolverUser->givePermissionTo('fiscal.events.verify_chain');
+
+        $run = $this->runVerifierCapturingOutput();
+
+        $this->assertSame(
+            1,
+            $run['exitCode'],
+            'Suppressing the false payload claim must not soften the verdict — the coordinate incident still fails the run.',
+        );
+        $this->assertStringContainsString(
+            'sealed coordinates could not be derived from canonical_bytes',
+            $run['output'],
+            'The coordinate incident must survive — a faithful correction does not make unparseable bytes parseable.',
+        );
+        $this->assertStringNotContainsString(
+            'payload does not semantically match canonical_bytes',
+            $run['output'],
+            'The sealed payload WAS recovered and it matches the stored payload; claiming divergence here is the false half of the ES-06 blind spot.',
+        );
     }
 
     public function test_crash_between_commit_and_enqueue_is_recoverable_without_rewriting_payload(): void
@@ -741,6 +820,204 @@ final class ParseFailureResumeTest extends TestCase
      * integrity_status is 'quarantined' — the exact preconditions the Task
      * 8 trigger's gated `failed → parsed` resume requires.
      */
+    /**
+     * ES-06 (M3) fixture — the RECOVERABLE-sealed-payload shape, driven end
+     * to end through the production resolution path.
+     *
+     * Difference from `seedPayloadRewriteTamper()` (M0's T-a): there the
+     * frozen bytes are `{"a":1,"a":2}` — not an envelope at all, so nothing
+     * about the sealed payload can ever be recovered and the verifier can
+     * only re-report the parse failure. Here the frozen bytes are a
+     * well-formed canonical envelope carrying the device's real sealed
+     * payload, rejected by the strict parser for exactly ONE reason: an
+     * unknown envelope-level field. That is the realistic
+     * `canonical_parse_failure` (a firmware adds a field the server grammar
+     * does not know) and it is the shape on which divergence is genuinely
+     * decidable.
+     *
+     * The helper asserts its own shape so a later "red" run cannot be red
+     * for the wrong reason (M0 toolkit rule).
+     *
+     * @param  array<string, mixed>  $correctedPayload  what the operator supplies to the resolver
+     * @return array{event: FiscalEvent, sealed: array<string, mixed>}
+     */
+    private function seedRecoverableSealedPayloadResolution(array $correctedPayload): array
+    {
+        $sealedPayload = $this->correctedPayload();
+        $event = $this->storeSealedEnvelopeParseFailure($sealedPayload);
+        $canonicalBytesBefore = $this->stringifyCanonicalBytes($event->canonical_bytes);
+        $currentHashBefore = (string) $event->current_hash;
+
+        // (a) The strict parser rejects these bytes — this really is a
+        //     canonical_parse_failure row, not a clean row in disguise — and
+        //     it rejects them for exactly the one envelope-level reason.
+        $parse = $this->app->make(StrictCanonicalParser::class)
+            ->parse($canonicalBytesBefore, FiscalEventType::SALE_RECEIPT);
+        $this->assertFalse($parse->ok);
+        $this->assertSame('envelope_extra_field:device_firmware_note', $parse->failureReason);
+        $this->assertNull($parse->payload);
+
+        // (b) ... yet the sealed payload IS recoverable from the frozen bytes
+        //     at the JSON level. This is the fact the detection stands on.
+        /** @var array<string, mixed> $envelope */
+        $envelope = json_decode($canonicalBytesBefore, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertArrayHasKey('payload', $envelope);
+        $this->assertEqualsCanonicalizing(array_keys($sealedPayload), array_keys($envelope['payload']));
+        $this->assertEquals($sealedPayload, $envelope['payload']);
+
+        // (c) Drive the REAL production path — no hand-written UPDATE.
+        $this->app->make(ParseFailureResolutionService::class)
+            ->resolve($event->id, $correctedPayload, $this->resolverUser);
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('parsed', $row->payload_parse_status);
+        $this->assertSame('verified', $row->integrity_status);
+        $this->assertNotNull($row->payload);
+
+        // (d) The seal held: bytes and hash are byte-identical afterwards, so
+        //     any divergence is between the payload and the SEALED bytes and
+        //     cannot be blamed on a rewritten chain coordinate.
+        $canonicalBytesAfter = $this->stringifyCanonicalBytes($row->canonical_bytes);
+        $this->assertSame($canonicalBytesBefore, $canonicalBytesAfter);
+        $this->assertSame($currentHashBefore, $row->current_hash);
+        $this->assertSame(hash('sha256', $canonicalBytesAfter), $row->current_hash);
+
+        /** @var array<string, mixed> $storedPayload */
+        $storedPayload = json_decode((string) $row->payload, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertEquals($correctedPayload, $storedPayload);
+
+        return ['event' => $event->refresh(), 'sealed' => $sealedPayload];
+    }
+
+    /**
+     * A quarantined `canonical_parse_failure` row whose frozen bytes are a
+     * WELL-FORMED canonical envelope (all 15 `ENVELOPE_KEYS`, carrying the
+     * sealed payload) plus one unknown device field — the single grammar
+     * violation that quarantined it.
+     *
+     * @param  array<string, mixed>  $sealedPayload
+     */
+    private function storeSealedEnvelopeParseFailure(array $sealedPayload): FiscalEvent
+    {
+        $sequenceNumber = $this->nextSequenceFor($this->terminalId);
+        $eventTimeDevice = '2026-05-20T14:30:00Z';
+        $businessDate = '2026-05-20';
+
+        $fields = [
+            'business_date' => $businessDate,
+            'chain_context' => 'operational',
+            'company_id' => $this->companyId,
+            'event_time_device' => $eventTimeDevice,
+            'event_type' => FiscalEventType::SALE_RECEIPT->value,
+            'event_version' => 1,
+            'operator_id' => $this->operatorId,
+            'payload' => $sealedPayload,
+            'previous_hash' => $this->genesisSeed,
+            'reference_document_id' => null,
+            'reference_event_id' => null,
+            'sequence_number' => $sequenceNumber,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'tenant_id' => $this->tenantId,
+            'terminal_id' => $this->terminalId,
+            // THE single grammar violation. Everything else in the envelope
+            // is exactly what the server grammar expects.
+            'device_firmware_note' => 'fw-2.7.1',
+        ];
+        ksort($fields);
+
+        $canonicalBytes = json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $event = FiscalEvent::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'terminal_id' => $this->terminalId,
+            'operator_id' => $this->operatorId,
+            'event_type' => FiscalEventType::SALE_RECEIPT,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => $sequenceNumber,
+            'event_time_device' => $eventTimeDevice,
+            'business_date' => $businessDate,
+            'last_server_time_seen' => null,
+            'server_received_at' => now()->utc(),
+            'reference_event_id' => null,
+            'reference_document_id' => null,
+            'source_event_class' => null,
+            'source_event_id' => null,
+            'partner_id' => null,
+            'partner_identity_snapshot' => null,
+            'canonical_bytes' => $canonicalBytes,
+            'previous_hash' => $this->genesisSeed,
+            'current_hash' => hash('sha256', $canonicalBytes),
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Quarantined,
+            'integrity_exception_class' => IntegrityExceptionClass::CanonicalParseFailure->value,
+            'integrity_exception_reason' => 'envelope_extra_field:device_firmware_note',
+            'payload' => null,
+            'payload_parse_status' => PayloadParseStatus::Failed,
+        ]);
+
+        return $event->refresh();
+    }
+
+    /**
+     * The sealed payload with every money field rewritten 10.00 -> 25.00,
+     * consistently, so the correction passes the resolver's DTO + per-event
+     * constraint validation and the ONLY thing wrong with it is that it is
+     * not what the device sealed. This is the ES-06 attack in its most
+     * consequential form: the projectors read `payload`, so the receipt the
+     * business sees becomes 25.00 while the frozen bytes say 10.00.
+     *
+     * @return array<string, mixed>
+     */
+    private function divergentCorrectedPayload(): array
+    {
+        $payload = $this->correctedPayload();
+
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['line_subtotal'] = '25.00';
+        $lines[0]['unit_price'] = '25.00';
+        $payload['line_items'] = $lines;
+
+        /** @var list<array<string, mixed>> $payments */
+        $payments = $payload['payments'];
+        $payments[0]['amount'] = '25.00';
+        $payload['payments'] = $payments;
+
+        $payload['subtotal'] = '25.00';
+        $payload['total'] = '25.00';
+        $payload['vat_breakdown'] = [[
+            'gross_amount' => '25.00',
+            'net_amount' => '25.00',
+            'rate' => '0.00',
+            'tax_category_code' => 'Z',
+            'vat_amount' => '0.00',
+        ]];
+
+        return $payload;
+    }
+
+    /**
+     * Run the chain verifier and return its exit code plus rendered output,
+     * so a test can assert on the ABSENCE of a claim
+     * (`expectsOutputToContain` can only assert presence).
+     *
+     * @return array{exitCode: int, output: string}
+     */
+    private function runVerifierCapturingOutput(): array
+    {
+        $exitCode = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->resolverUser->id,
+        ]);
+
+        return ['exitCode' => $exitCode, 'output' => Artisan::output()];
+    }
+
     private function storeParseFailedFiscalEvent(
         ?string $tenantId = null,
         ?string $companyId = null,

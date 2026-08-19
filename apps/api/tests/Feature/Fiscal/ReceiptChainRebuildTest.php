@@ -1004,6 +1004,53 @@ final class ReceiptChainRebuildTest extends TestCase
         $this->assertStringNotContainsString($seeded['z_session_id'], (string) $arm->breakPoint);
     }
 
+    /**
+     * M2-round2 finding 8 — the structured forensic log owes the same
+     * coordinate the human-facing break point already carries. Once the
+     * fiscal arm is partitioned per `(company_id, chain_context)` every
+     * context restarts its `sequence_number` at 1, so
+     * `failed_sequence_number` on its own does not identify a row for an
+     * auditor reading the log channel.
+     *
+     * Runs on PG: this is a link tamper via INSERT, not a canonical-bytes
+     * UPDATE, so the immutability trigger does not block it.
+     */
+    public function test_structured_chain_failure_log_carries_the_chain_context_coordinate(): void
+    {
+        $this->seedTwoContextTerminal();
+
+        $canonicalBytes = '{"event":"z_session_link_tamper","sequence_number":2}';
+        $tamperedId = $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: str_repeat('b', 64),
+            currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::SESSION_CLOSE,
+            chainContext: 'z_session',
+        );
+
+        Log::spy();
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $this->assertFalse($this->app->make(ReceiptHashService::class)->verifyTerminalChainFiscalArm($terminal));
+
+        Log::shouldHaveReceived('error')
+            ->withArgs(function (string $message, array $context) use ($tamperedId): bool {
+                if ($message !== 'chain_verification_failed') {
+                    return false;
+                }
+                if (($context['failed_fiscal_event_id'] ?? null) !== $tamperedId) {
+                    return false;
+                }
+                if (($context['failed_chain_context'] ?? null) !== 'z_session') {
+                    return false;
+                }
+
+                return ($context['failure_mode'] ?? null) === 'linkage_broken';
+            })
+            ->atLeast()->once();
+    }
+
     public function test_legacy_arm_excludes_pending_seal_receipts(): void
     {
         // M2-round1 finding 1. The command used to carry the

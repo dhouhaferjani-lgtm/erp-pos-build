@@ -749,6 +749,46 @@ final class VerifyEventChainCommandTest extends TestCase
         $this->runVerifier()->assertExitCode(0);
     }
 
+    /**
+     * ES-06 (M3) — the ambiguity guard on the sealed-payload recovery.
+     *
+     * `json_decode` keeps the LAST occurrence of a duplicated key; the strict
+     * parser rejects the document outright. On such bytes the two disagree
+     * about what was sealed, so recovery must refuse and the verifier must
+     * fall back to the fail-closed sentence rather than assert a divergence
+     * verdict it cannot justify. Without the round-trip guard in
+     * `recoverSealedPayloadFromFrozenBytes()` this row would be judged
+     * against the SECOND `payload` member.
+     */
+    public function test_sealed_payload_recovery_refuses_ambiguous_duplicate_key_envelopes(): void
+    {
+        $sealed = $this->chainBreakPayload('sealed reason');
+        $shadow = $this->chainBreakPayload('shadow reason');
+
+        // Hand-built bytes: a duplicated `payload` key. Both members are
+        // well-formed; only their order distinguishes them.
+        $canonicalBytes = '{"payload":'.json_encode($sealed, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)
+            .',"payload":'.json_encode($shadow, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES).'}';
+
+        // The stored payload equals the member `json_decode` would win with,
+        // so a guard-less recovery would find them EQUAL and stay silent.
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $shadow,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('canonical payload could not be derived')
+            ->assertExitCode(1);
+    }
+
     public function test_fails_when_an_internally_hash_valid_row_is_not_verified(): void
     {
         $canonicalBytes = $this->canonicalEnvelope(

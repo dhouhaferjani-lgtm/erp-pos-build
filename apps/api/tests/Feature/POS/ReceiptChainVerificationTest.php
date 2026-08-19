@@ -242,12 +242,98 @@ final class ReceiptChainVerificationTest extends TestCase
     }
 
     /**
-     * Insert one admissible `fiscal_events` row anchored at the terminal
-     * genesis seed, so the authoritative arm verifies clean and the ONLY
-     * possible failure is the projection mirror.
+     * M2-round2 finding 10, swept in M3 — the `broken_at_sequence` coordinate
+     * this endpoint returns is UNATTRIBUTABLE for any fiscal-era terminal,
+     * and M2's mirror arm is now the route that reaches it. Pinned, not
+     * fixed: the fix belongs to whichever lane owns the endpoint, and R-1 /
+     * "do not refactor the controller" bound this sweep to recording the
+     * truth with a failing-if-it-changes test.
+     *
+     * **Why it is unattributable.** `ReportController.php:466-490` recomputes
+     * the LEGACY pipe hash (`ReceiptHashService::calculateHash()`) over ALL
+     * receipts — including `fiscal_event_id`-linked ones, whose hash shape is
+     * canonical bytes, not the pipe format — and it threads `$previousHash`
+     * from `null` (`:473`). Every fiscal-era chain's first projected receipt
+     * carries the terminal `genesis_seed` as its `previous_hash`, which is
+     * never `null`, so the very first iteration takes the `:475` branch and
+     * returns the LOWEST `chain_sequence` — before it ever inspects the row
+     * that actually diverged.
+     *
+     * This test proves that concretely: receipt #1 mirrors its event
+     * correctly and receipt #2 does not, so the honest coordinate is 2. The
+     * endpoint answers 1. When someone fixes the controller this assertion
+     * goes red, which is the point.
+     *
+     * NOT a regression from M2: before the mirror arm existed, the
+     * context-flattening defect made `is_valid` false on every clean
+     * two-context terminal, so this same wrong coordinate was returned far
+     * more often.
      */
-    private function insertFiscalEvent(string $canonicalBytes): string
+    public function test_broken_at_sequence_is_unattributable_on_a_fiscal_era_terminal(): void
     {
+        $firstBytes = '{"event":"mirror_ok","sequence_number":1}';
+        $firstEventId = $this->insertFiscalEvent($firstBytes);
+        $secondBytes = '{"event":"mirror_divergence","sequence_number":2}';
+        $secondEventId = $this->insertFiscalEvent(
+            canonicalBytes: $secondBytes,
+            sequenceNumber: 2,
+            previousHash: hash('sha256', $firstBytes),
+        );
+
+        // Receipt #1 — mirrors its event exactly. Nothing is wrong here.
+        Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'chain_sequence' => 1,
+            'receipt_number' => 'REC-ATTRIB-001',
+            'previous_hash' => $this->terminal->genesis_seed,
+            'fiscal_hash' => hash('sha256', $firstBytes),
+            'fiscal_event_id' => $firstEventId,
+            'is_voided' => false,
+            'is_training' => false,
+            'cashier_id' => $this->user->id,
+        ]);
+
+        // Receipt #2 — the ONLY divergence on this terminal.
+        Receipt::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->location->id,
+            'terminal_id' => $this->terminal->id,
+            'chain_sequence' => 2,
+            'receipt_number' => 'REC-ATTRIB-002',
+            'previous_hash' => hash('sha256', $firstBytes),
+            'fiscal_hash' => str_repeat('d', 64),
+            'fiscal_event_id' => $secondEventId,
+            'is_voided' => false,
+            'is_training' => false,
+            'cashier_id' => $this->user->id,
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/reports/receipts/verify-chain', [
+            'terminal_id' => $this->terminal->id,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.is_valid', false)
+            ->assertJsonPath('data.chain_length', 2)
+            // The honest answer is 2. The endpoint says 1, for the reason in
+            // this test's docblock. Pinning the WRONG value on purpose.
+            ->assertJsonPath('data.broken_at_sequence', 1);
+    }
+
+    /**
+     * Insert one admissible `fiscal_events` row, anchored by default at the
+     * terminal genesis seed, so the authoritative arm verifies clean and the
+     * ONLY possible failure is the projection mirror.
+     */
+    private function insertFiscalEvent(
+        string $canonicalBytes,
+        int $sequenceNumber = 1,
+        ?string $previousHash = null,
+    ): string {
         $now = Carbon::now('UTC');
         $eventId = Str::uuid()->toString();
 
@@ -261,7 +347,7 @@ final class ReceiptChainVerificationTest extends TestCase
             'event_type' => FiscalEventType::SALE_RECEIPT->value,
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
-            'sequence_number' => 1,
+            'sequence_number' => $sequenceNumber,
             'event_time_device' => $now,
             'business_date' => $now->copy()->startOfDay(),
             'last_server_time_seen' => null,
@@ -273,7 +359,7 @@ final class ReceiptChainVerificationTest extends TestCase
             'partner_id' => null,
             'partner_identity_snapshot' => null,
             'canonical_bytes' => $canonicalBytes,
-            'previous_hash' => $this->terminal->genesis_seed,
+            'previous_hash' => $previousHash ?? $this->terminal->genesis_seed,
             'current_hash' => hash('sha256', $canonicalBytes),
             'signature_status' => SignatureStatus::NotRequired->value,
             'integrity_status' => IntegrityStatus::Verified->value,

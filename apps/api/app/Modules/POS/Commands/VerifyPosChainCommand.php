@@ -133,7 +133,10 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                     $terminals->count(),
                 ));
 
-                /** @var list<array{terminal_code: string, company: string, chain_type: string, status: string, count: int, inspected: int, break_point: string}> $rows */
+                // `inspected` is int|string: the receipt arms report a measured
+                // row count, the Z row reports the literal 'unmeasured' (see
+                // the M2-round2 finding 7 note below).
+                /** @var list<array{terminal_code: string, company: string, chain_type: string, status: string, count: int, inspected: int|string, break_point: string}> $rows */
                 $rows = [];
                 $tenantFailed = false;
 
@@ -166,9 +169,26 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                             'chain_type' => 'Z-Reports',
                             'status' => $result['is_valid'] ? "\u{2713}" : "\u{2717}",
                             'count' => $result['count'],
-                            // The Z arm's verdict spans exactly the Z reports it
-                            // counts — R-1: no Z-arm behaviour change here.
-                            'inspected' => $result['count'],
+                            // M2-round2 finding 7. The previous comment here
+                            // claimed the Z arm's verdict "spans exactly the Z
+                            // reports it counts", and printed `count` a second
+                            // time under the Inspected header. Both were false.
+                            // `verifyZReportChain()` ORs the legacy ZReport walk
+                            // (ZReportHashService.php:219-249) with
+                            // `verifyFiscalEventsArm()` (:251-292), which walks
+                            // EVERY z_session + training_z_session fiscal_events
+                            // row on the terminal — SESSION_OPEN and
+                            // SESSION_CLOSE included — while `count` is only
+                            // `ZReport::where('terminal_id', …)->count()` (:357).
+                            // Measuring the real span means changing
+                            // ZReportHashService, which R-1 forbids in this wave,
+                            // so the honest report is that the number is not
+                            // measured rather than a fabricated one. (The
+                            // `count === 0` fast path at :359-365 — a v3 terminal
+                            // with z_session events but no ZReport rows returning
+                            // valid over zero — is inherited and out of scope for
+                            // the same reason.)
+                            'inspected' => 'unmeasured',
                             'break_point' => $result['break_point'],
                         ];
 
