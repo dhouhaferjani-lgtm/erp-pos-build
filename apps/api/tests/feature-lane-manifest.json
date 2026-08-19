@@ -5,6 +5,7 @@
     "excluded": "Genuinely cannot run in CI (needs a device, an external service, a manual fixture). Requires `reason`.",
     "deferred": "CAN run, but no lane runs it yet; blocked on the F-2 CI-budget decision. Requires `reason`. Counted loudly on every CI run."
   },
+  "debt_ceiling": 1114,
   "lanes": {
     "security-regression": {
       "job": "security-regression",

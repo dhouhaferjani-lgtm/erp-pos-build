@@ -1100,11 +1100,11 @@ such.
 
 ```
 $ php tools/feature-lane-manifest-check.php
-tests/Feature lane manifest OK — 1329 Feature classes in 74 groups; every group has a disposition;
-every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched
-against 1707 test classes across all suites.
-  ⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es) run in NO CI lane on any event, pending the
-    F-2 CI-budget decision.
+tests/Feature lane manifest OK — 1329 Feature classes in 74 groups; every group has a disposition; every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched against 1708 test classes across all suites.
+  ⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es) sit in groups that NO CI lane runs as a whole,
+    pending the F-2 CI-budget decision. Some are individually named in a --filter allowlist;
+    a NEW class in any of these groups is selected by nothing. Ceilings are enforced above.
+    See docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M2.
 ```
 
 **Negative proof 1 — planted class in a previously-uncovered directory** (the brief's named requirement):
@@ -1511,3 +1511,74 @@ plus the test. Recorded so the next extender knows which way the debt runs.
 
 **Checker liveness suite: 30 cases.** Every bypass across four rounds fails closed, and three positive
 cases pin the false-positive shapes green.
+
+---
+
+## M2 round 5 — response to `docs/handoff/reviews/enforcement-p2/M2-round5.md`
+
+**Tally, counted from the full file before writing** (`grep -c` on the whole register, per the §(59)
+process change): **0 P1, 1 P2 (H-1), 4 P3 (H-2…H-5)**. All five dispositioned. `fix_rounds` 5 of 5 —
+the last this milestone can take.
+
+### (63) H-1 (P2) — the allowlist blessed `-c`, the one flag that is not neutral
+
+Round 4 inverted the rule to "selector plus neutral flags only" — the right shape — but put
+`-c`/`--configuration` in the neutral set. That flag replaces the bootstrap, the env, the group
+filters and the testsuite definitions for the whole invocation. The reviewer proved it end to end:
+
+```
+checker:  ./vendor/bin/phpunit tests/Feature/Security -c phpunit-security.xml   → EXIT=0, lane OK
+runner:   ./vendor/bin/phpunit tests/Feature/Security -c /tmp/evil.xml          → "No tests executed!", EXIT=0
+```
+
+`phpunit.xml` sets no `failOnEmptyTestSuite`, so the 93 module-gating/kill-switch tests run **zero
+times**, the step is green, and the manifest keeps certifying 17 classes on PR→dev. And the repo's own
+convention passes configs on test lanes (`php artisan test -c phpunit-pgsql.xml`), so it reads as a
+normal edit. **This was my error to ship, though round 4's register did name `-c` in its example set.**
+
+Fixed **both** ways the reviewer suggested:
+
+1. `-c`/`--configuration` removed from the neutral allowlist — a lane needing a config is now an
+   explicit, reviewed exception.
+2. **Closed the family empirically**, which is the better fix and is also the brief's own R2-H-7
+   requirement: a new liveness case executes **every declared lane's real run line** with
+   `--list-tests` and asserts a **nonzero** selected-test count. That defeats `-c`, `--group`,
+   `--list-tests`, a narrower path and the whole empty-selection family by observation rather than by
+   maintaining a flag list — the standing weakness behind three rounds of findings.
+
+### (64) H-2 (P3) — the aggregate assertion hung off an optional manifest key
+
+`$mustBeInAggregate` was built from `$lane['job']`, which is optional; deleting that one key erased
+both the H-9 membership check and the job-identity check in the same edit. Now keyed off
+`$owningJob` — the job the checker already resolves **authoritatively from the workflow** — plus
+`backend-architecture`. New case deletes the key and still fails.
+
+### (65) H-3 (P3) — per-group ceilings enforce "no new silent hole", not "no coverage loss"
+
+Confirmed: relabelling `Security` to `deferred` with a fresh ceiling and deleting the lane gave
+`EXIT=0` with the debt moving 1114 → 1131. Added a **global `debt_ceiling`** to the manifest (1114),
+checked alongside the per-group ones, so retiring a lane is a deliberate visible edit to that number
+rather than a side effect. New case proves it.
+
+**Carried to the M3 checklist and the handback, as the reviewer asked:** even with the global ceiling,
+the checker does not machine-enforce the brief's reciprocal 2(b) obligation that *"the landed P3 test
+must never be silently dropped from CI"* — a later restructuring that lowers `debt_ceiling` in the
+same commit is legal. **P3-M2 must not assume machine protection it does not have.**
+
+### (66) H-4 (P3) — the package-manager heuristic, fourth occurrence, now as a false NEGATIVE
+
+`pnpm test:backend --filter=AnalyticsTest` was skipped wholesale, so a PHPUnit filter forwarded through
+a wrapper script reintroduced substring shadowing invisibly. Fixed with the right distinction rather
+than another special case: a package manager's **own** flags precede the script name; anything after
+the script name is **forwarded**. Only the manager-owned prefix is now skipped. New case covers it;
+the `env`/`npx`-prefixed positive cases still pass.
+
+### (67) H-5 (P3) — pasted transcripts had drifted from the shipped output
+
+§(46) still showed `1707 test classes` and the pre-round-3 debt wording that was corrected precisely
+*because it was false*. **Regenerated from the shipped checker** rather than hand-edited, and M4 will
+re-run the acceptance evidence rather than carry these bytes forward.
+
+**Checker liveness suite: 35 cases**, including the empirical nonzero-selection assertion over every
+declared lane. Every bypass across five rounds fails closed; four positive cases pin the
+false-positive shapes green.

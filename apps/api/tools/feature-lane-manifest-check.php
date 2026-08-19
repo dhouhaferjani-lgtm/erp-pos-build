@@ -173,6 +173,8 @@ ksort($byGroup);
 
 $errors = [];
 $notes = [];
+/** @var list<string> jobs resolved from the workflow for each declared lane */
+$resolvedLaneJobs = [];
 $deferredGroups = 0;
 $deferredClasses = 0;
 $excludedGroups = 0;
@@ -313,6 +315,9 @@ foreach ($lanes as $laneId => $lane) {
     }
     $laneRun = $candidates[0] ?? null;
     $owningJob = $laneRun === null ? null : ($wf['stepJob'][$laneRun] ?? null);
+    if ($owningJob !== null) {
+        $resolvedLaneJobs[] = $owningJob;
+    }
     if ($owningJob === null) {
         $errors[] = sprintf(
             'LANE "%s" is a FICTION: its selector %s does not appear in any LIVE `run:` step of '
@@ -336,7 +341,14 @@ foreach ($lanes as $laneId => $lane) {
     // plus tokens from a small neutral set, and nothing else.
     $tail = trim(substr(trim((string) $laneRun), strlen($selector)));
     if ($tail !== '') {
-        $neutralValueFlags = ['-c', '--configuration', '--log-junit', '--cache-result-file'];
+        // `-c` / `--configuration` is deliberately NOT here. It is the one flag that
+        // redefines the entire invocation — bootstrap, env, group filters, testsuite
+        // definitions — so a lane carrying it can run ZERO tests and exit 0 while the
+        // manifest still certifies the directory (proven end-to-end: a config whose
+        // only content is a nonexistent `<group>` include yields "No tests executed!",
+        // EXIT=0, because phpunit.xml sets no failOnEmptyTestSuite). A lane that
+        // genuinely needs a config must be an explicit, reviewed exception.
+        $neutralValueFlags = ['--log-junit', '--cache-result-file'];
         $neutralBareFlags = [
             '--colors', '--colors=always', '--colors=never', '--colors=auto',
             '--no-progress', '--no-coverage', '--no-output', '--testdox',
@@ -486,12 +498,10 @@ foreach ($lanes as $laneId => $lane) {
 // (the job carrying this very checker) and `treasury-spine-pgsql` unpinned.
 $aggregateNeeds = $workflowYaml['jobs']['all-checks-pass']['needs'] ?? [];
 $aggregateNeeds = is_array($aggregateNeeds) ? $aggregateNeeds : [(string) $aggregateNeeds];
-$mustBeInAggregate = ['backend-architecture'];
-foreach ($lanes as $lane) {
-    if (isset($lane['job'])) {
-        $mustBeInAggregate[] = (string) $lane['job'];
-    }
-}
+// Keyed off the job RESOLVED FROM THE WORKFLOW (recorded during lane validation),
+// never the optional manifest `job` field: deleting that one key would otherwise
+// erase both this assertion and the job-identity check in the same edit.
+$mustBeInAggregate = array_merge(['backend-architecture'], $resolvedLaneJobs);
 foreach (array_unique($mustBeInAggregate) as $jobId) {
     if (! in_array($jobId, $aggregateNeeds, true)) {
         $errors[] = sprintf(
@@ -546,10 +556,40 @@ foreach ($wf['runs'] as $run) {
             $probe = ltrim(preg_replace('/^(?:(?:env|sudo|nice|time|command|exec|npx|corepack|xargs)\b|[A-Za-z_][A-Za-z0-9_]*=\S*|-{1,2}\S+)\s*/', '', $probe, 1) ?? '');
         }
         $isPackageManager = preg_match('/^(?:\S*\/)?(pnpm|npm|yarn|turbo)\b/', $probe) === 1;
-        if ($isPackageManager && ! preg_match('/\bphpunit\b|\bartisan\s+test\b/', $segment)) {
-            continue;
+
+        // A package manager's OWN `--filter` comes before the script name; anything
+        // after the script name is FORWARDED to whatever that script runs. Skipping
+        // the whole segment therefore hid a real PHPUnit filter behind a wrapper
+        // script (`pnpm test:backend --filter=AnalyticsTest`), reintroducing
+        // substring shadowing invisibly. Only the manager-owned prefix is skipped.
+        $scanFrom = 0;
+        if ($isPackageManager) {
+            $tokens = preg_split('/\s+/', trim($probe)) ?: [];
+            $consumeValue = false;
+            $scriptToken = null;
+            foreach (array_slice($tokens, 1) as $token) {
+                if ($consumeValue) {
+                    $consumeValue = false;
+
+                    continue;
+                }
+                if (str_starts_with($token, '-')) {
+                    // `--filter <value>` (space form) consumes the next token.
+                    $consumeValue = ! str_contains($token, '=');
+
+                    continue;
+                }
+                $scriptToken = $token;
+                break;
+            }
+            if ($scriptToken === null) {
+                // Nothing forwarded — every flag belongs to the package manager.
+                continue;
+            }
+            $scriptPos = strpos($segment, $scriptToken);
+            $scanFrom = $scriptPos === false ? 0 : $scriptPos + strlen($scriptToken);
         }
-        $offset = 0;
+        $offset = $scanFrom;
         while (($pos = strpos($segment, '--filter', $offset)) !== false) {
             $offset = $pos + 8;
             $rest = substr($segment, $offset);
@@ -631,6 +671,23 @@ foreach ($filterValues as $raw) {
             implode(', ', $paths),
         );
     }
+}
+
+// GLOBAL CEILING. The per-group ceilings enforce "no new SILENT hole"; they do not
+// enforce "no coverage loss" — a whole lane can be retired (group relabelled
+// `deferred` with a fresh ceiling, job deleted) and the total debt GROWS with
+// EXIT=0. This pins the total as well, so retiring a lane is a deliberate, visible
+// edit to this number rather than a side effect.
+$declaredDebtCeiling = $manifest['debt_ceiling'] ?? null;
+if (! is_int($declaredDebtCeiling)) {
+    $errors[] = 'MANIFEST is missing an integer top-level `debt_ceiling` (the global laneless-class ceiling).';
+} elseif (($deferredClasses + $excludedClasses) > $declaredDebtCeiling) {
+    $errors[] = sprintf(
+        'TOTAL COVERAGE DEBT GREW: %d class(es) now sit in groups no lane runs, ceiling is %d. '
+        . 'Retiring a CI lane must be a deliberate edit to `debt_ceiling`, not a side effect.',
+        $deferredClasses + $excludedClasses,
+        $declaredDebtCeiling,
+    );
 }
 
 // ---- report ----------------------------------------------------------------

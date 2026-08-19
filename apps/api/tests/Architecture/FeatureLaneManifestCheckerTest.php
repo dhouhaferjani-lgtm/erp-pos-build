@@ -595,4 +595,111 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         self::assertSame(0, $exit, $out);
         self::assertStringNotContainsString('@autoerp/', $out);
     }
+
+    /**
+     * H-1, closed EMPIRICALLY rather than lexically — the reviewer's own suggestion,
+     * and the brief's R2-H-7 requirement (an asserted NONZERO selected-test count;
+     * `phpunit.xml` sets no `failOnEmptyTestSuite`, so exit code alone proves nothing).
+     *
+     * Every declared lane's run line is executed with `--list-tests` appended and
+     * must select at least one test. This closes `-c`/`--configuration`, `--group`,
+     * `--list-tests`, a narrower path and the whole empty-selection family by
+     * OBSERVATION, not by maintaining a flag list.
+     */
+    public function test_every_lane_actually_selects_tests(): void
+    {
+        $manifest = json_decode(
+            (string) file_get_contents($this->apiRoot . '/tests/feature-lane-manifest.json'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        );
+
+        self::assertNotEmpty($manifest['lanes']);
+
+        foreach ($manifest['lanes'] as $laneId => $lane) {
+            $selector = (string) $lane['selector'];
+            $output = [];
+            $exit = 0;
+            exec(
+                'cd ' . escapeshellarg($this->apiRoot) . ' && ' . $selector . ' --list-tests 2>&1',
+                $output,
+                $exit,
+            );
+            $listed = array_filter($output, static fn (string $l): bool => str_starts_with(trim($l), '- '));
+
+            self::assertSame(0, $exit, "lane {$laneId}: --list-tests failed\n" . implode("\n", $output));
+            self::assertNotEmpty(
+                $listed,
+                "lane {$laneId} selects ZERO tests — it cannot gate anything. Run line: {$selector}",
+            );
+        }
+    }
+
+    /** H-1: `-c` redefines the whole invocation, so it is not a neutral flag. */
+    public function test_it_fires_when_a_lane_carries_a_configuration_flag(): void
+    {
+        [$exit, $out] = $this->withLaneRun(
+            'run: ./vendor/bin/phpunit tests/Feature/Security -c phpunit-security.xml',
+        );
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('whole-directory lane', $out);
+    }
+
+    /** H-2: the aggregate assertion must not be erasable by deleting an optional manifest key. */
+    public function test_aggregate_membership_survives_deleting_the_manifest_job_key(): void
+    {
+        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        unset($manifest['lanes']['security-regression']['job']);
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        $this->writeWorkflow(str_replace(
+            'backend-test-pgsql, security-regression, treasury-spine-pgsql',
+            'backend-test-pgsql, treasury-spine-pgsql',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('security-regression', $out);
+    }
+
+    /** H-3: retiring a whole lane must not quietly grow the TOTAL debt. */
+    public function test_it_fires_when_retiring_a_lane_grows_the_total_debt(): void
+    {
+        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $manifest['groups']['Security'] = [
+            'deferred' => true,
+            'classes' => 17,
+            'reason' => 'retired lane (test)',
+        ];
+        unset($manifest['lanes']['security-regression']);
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('TOTAL COVERAGE DEBT GREW', $out);
+    }
+
+    /** H-4: a PHPUnit filter FORWARDED through a pnpm script must still be scanned. */
+    public function test_it_flags_a_filter_forwarded_through_a_pnpm_script(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '      - name: Check tests/Feature CI-lane manifest',
+            "      - name: Zzz wrapper script\n"
+            . "        run: pnpm test:backend --filter=AnalyticsTest\n\n"
+            . '      - name: Check tests/Feature CI-lane manifest',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('UNANCHORED --filter', $out);
+    }
 }
