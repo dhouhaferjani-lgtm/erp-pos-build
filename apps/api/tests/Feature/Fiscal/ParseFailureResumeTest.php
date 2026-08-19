@@ -288,6 +288,106 @@ final class ParseFailureResumeTest extends TestCase
         );
     }
 
+    // -----------------------------------------------------------------
+    // ES-06 (M3 fix round 1, register finding F-1) — the recovery guard
+    // must agree with the CANONICAL byte form, not with PHP's default.
+    //
+    // `CanonicalJsonEncoder::encodeString()` emits raw UTF-8 for U+0080+
+    // per RFC 8785 §3.2.3 (`CanonicalJsonEncoder.php:106-108`). The guard's
+    // re-encode originally omitted `JSON_UNESCAPED_UNICODE`, so it produced
+    // `\uXXXX` for the same characters and the byte-identity test at
+    // `VerifyEventChainCommand.php:687` could never hold for a receipt
+    // carrying one accented or Arabic character. On France/Tunisia data
+    // that is most receipts, so the discriminating branch was effectively
+    // dead — fail-closed (the coordinate incident and exit 1 both survive)
+    // but indiscriminate, which is precisely what R-9 forbids.
+    //
+    // The three tests below pin both directions of the flag: recovery
+    // FIRES on canonical non-ASCII bytes (faithful and divergent), and
+    // still REFUSES bytes that carry `\uXXXX` escapes — a form the
+    // canonical encoder cannot emit, so refusing it is correct and the
+    // widening is bounded.
+    // -----------------------------------------------------------------
+
+    public function test_event_chain_verifier_does_not_claim_divergence_for_a_faithful_non_ascii_correction(): void
+    {
+        $nonAscii = $this->nonAsciiCorrectedPayload();
+        $this->seedRecoverableSealedPayloadResolution($nonAscii, $nonAscii);
+        $this->resolverUser->givePermissionTo('fiscal.events.verify_chain');
+
+        $run = $this->runVerifierCapturingOutput();
+
+        $this->assertSame(
+            1,
+            $run['exitCode'],
+            'Recovering the sealed payload must never soften the verdict — the coordinate incident still fails the run.',
+        );
+        $this->assertStringContainsString(
+            'sealed coordinates could not be derived from canonical_bytes',
+            $run['output'],
+            'The coordinate incident must survive — non-ASCII free text does not make unparseable bytes parseable.',
+        );
+        $this->assertStringNotContainsString(
+            'canonical payload could not be derived',
+            $run['output'],
+            'Recovery must FIRE on canonical raw-UTF-8 bytes. This is the F-1 regression: a re-encode without JSON_UNESCAPED_UNICODE refuses every non-ASCII envelope.',
+        );
+        $this->assertStringNotContainsString(
+            'payload does not semantically match canonical_bytes',
+            $run['output'],
+            'The sealed payload WAS recovered and it matches the stored payload; claiming divergence here is the false half of the ES-06 blind spot.',
+        );
+    }
+
+    public function test_event_chain_verifier_names_a_divergent_correction_against_a_non_ascii_sealed_payload(): void
+    {
+        $this->seedRecoverableSealedPayloadResolution(
+            $this->divergentNonAsciiCorrectedPayload(),
+            $this->nonAsciiCorrectedPayload(),
+        );
+        $this->resolverUser->givePermissionTo('fiscal.events.verify_chain');
+
+        $run = $this->runVerifierCapturingOutput();
+
+        $this->assertSame(1, $run['exitCode']);
+        $this->assertStringContainsString(
+            'payload does not semantically match canonical_bytes — the sealed payload was recovered from the frozen envelope and disagrees with the stored payload',
+            $run['output'],
+            'A money rewrite on a non-ASCII receipt must be named as a divergence, not hidden behind the generic "could not be derived" sentence.',
+        );
+        $this->assertStringNotContainsString(
+            'canonical payload could not be derived',
+            $run['output'],
+            'Recovery must reach the comparison — refusing here would leave the ES-06 attack indistinguishable from an ordinary parse failure.',
+        );
+    }
+
+    public function test_sealed_payload_recovery_refuses_unicode_escaped_non_canonical_bytes(): void
+    {
+        // The SAME non-ASCII payload, sealed in a byte form the canonical encoder can never
+        // produce: `\uXXXX` escapes instead of raw UTF-8. Recovery must refuse — those bytes
+        // are not canonical JSON, so nothing about them licenses a claim about the sealed
+        // payload. This bounds the F-1 widening: adding JSON_UNESCAPED_UNICODE makes the
+        // guard agree with the canonical encoder, it does not make it lenient.
+        $nonAscii = $this->nonAsciiCorrectedPayload();
+        $this->seedRecoverableSealedPayloadResolution($nonAscii, $nonAscii, escapeUnicodeInCanonicalBytes: true);
+        $this->resolverUser->givePermissionTo('fiscal.events.verify_chain');
+
+        $run = $this->runVerifierCapturingOutput();
+
+        $this->assertSame(1, $run['exitCode']);
+        $this->assertStringContainsString(
+            'payload does not semantically match canonical_bytes — canonical payload could not be derived',
+            $run['output'],
+            'Non-canonical bytes must fall back to the fail-closed sentence; recovering from them would be a claim the bytes do not support.',
+        );
+        $this->assertStringNotContainsString(
+            'the sealed payload was recovered from the frozen envelope',
+            $run['output'],
+            'Recovery must not fire on a byte form CanonicalJsonEncoder cannot emit.',
+        );
+    }
+
     public function test_crash_between_commit_and_enqueue_is_recoverable_without_rewriting_payload(): void
     {
         $event = $this->storeParseFailedFiscalEvent();
@@ -839,12 +939,18 @@ final class ParseFailureResumeTest extends TestCase
      * for the wrong reason (M0 toolkit rule).
      *
      * @param  array<string, mixed>  $correctedPayload  what the operator supplies to the resolver
+     * @param  array<string, mixed>|null  $sealedPayload  what the device sealed; defaults to the faithful ASCII payload
+     * @param  bool  $escapeUnicodeInCanonicalBytes  seal a NON-canonical byte form (`\uXXXX` escapes)
+     *                                               instead of the RFC 8785 raw-UTF-8 form
      * @return array{event: FiscalEvent, sealed: array<string, mixed>}
      */
-    private function seedRecoverableSealedPayloadResolution(array $correctedPayload): array
-    {
-        $sealedPayload = $this->correctedPayload();
-        $event = $this->storeSealedEnvelopeParseFailure($sealedPayload);
+    private function seedRecoverableSealedPayloadResolution(
+        array $correctedPayload,
+        ?array $sealedPayload = null,
+        bool $escapeUnicodeInCanonicalBytes = false,
+    ): array {
+        $sealedPayload ??= $this->correctedPayload();
+        $event = $this->storeSealedEnvelopeParseFailure($sealedPayload, $escapeUnicodeInCanonicalBytes);
         $canonicalBytesBefore = $this->stringifyCanonicalBytes($event->canonical_bytes);
         $currentHashBefore = (string) $event->current_hash;
 
@@ -897,8 +1003,11 @@ final class ParseFailureResumeTest extends TestCase
      * violation that quarantined it.
      *
      * @param  array<string, mixed>  $sealedPayload
+     * @param  bool  $escapeUnicode  when true the frozen bytes carry `\uXXXX` escapes — a byte form
+     *                               `CanonicalJsonEncoder` can never emit (RFC 8785 §3.2.3 is raw
+     *                               UTF-8), used to prove recovery REFUSES non-canonical bytes
      */
-    private function storeSealedEnvelopeParseFailure(array $sealedPayload): FiscalEvent
+    private function storeSealedEnvelopeParseFailure(array $sealedPayload, bool $escapeUnicode = false): FiscalEvent
     {
         $sequenceNumber = $this->nextSequenceFor($this->terminalId);
         $eventTimeDevice = '2026-05-20T14:30:00Z';
@@ -926,7 +1035,17 @@ final class ParseFailureResumeTest extends TestCase
         ];
         ksort($fields);
 
-        $canonicalBytes = json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        // Production canonical bytes are RFC 8785: `CanonicalJsonEncoder::encodeString()`
+        // (`CanonicalJsonEncoder.php:106-108`) emits raw UTF-8 for U+0080+ via
+        // `JSON_UNESCAPED_UNICODE`. The fixture must seal the SAME byte form or it is
+        // not modelling a device envelope at all. `$escapeUnicode` deliberately seals the
+        // wrong form so the recovery guard can be shown to refuse it.
+        $canonicalBytes = json_encode(
+            $fields,
+            $escapeUnicode
+                ? JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES
+                : JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+        );
 
         $event = FiscalEvent::query()->create([
             'id' => Str::uuid()->toString(),
@@ -948,7 +1067,7 @@ final class ParseFailureResumeTest extends TestCase
             'source_event_id' => null,
             'partner_id' => null,
             'partner_identity_snapshot' => null,
-            'canonical_bytes' => $canonicalBytes,
+            'canonical_bytes' => $this->byteaBinding($canonicalBytes),
             'previous_hash' => $this->genesisSeed,
             'current_hash' => hash('sha256', $canonicalBytes),
             'signature_status' => SignatureStatus::NotRequired,
@@ -998,6 +1117,98 @@ final class ParseFailureResumeTest extends TestCase
         ]];
 
         return $payload;
+    }
+
+    /**
+     * The faithful sealed payload with its FREE-TEXT fields carrying non-ASCII characters —
+     * a French product/cashier name and an Arabic product name.
+     *
+     * This is not an exotic case: the wave's target countries are France and Tunisia, and the
+     * canonical SALE_RECEIPT grammar carries operator-typed free text in exactly these fields
+     * (`FiscalPayloadConstraintValidator.php` `line_items[].name`, `cashier_name`,
+     * `seller.name`, `seller.address.*`). RFC 8785 seals them as raw UTF-8
+     * (`CanonicalJsonEncoder.php:106-108`), so a recovery guard whose re-encode escapes
+     * non-ASCII can never match the frozen bytes for any such receipt.
+     *
+     * @return array<string, mixed>
+     */
+    private function nonAsciiCorrectedPayload(): array
+    {
+        $payload = $this->correctedPayload();
+
+        $payload['cashier_name'] = 'Amélie Dupont';
+
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['name'] = 'Café crème — قهوة عربية';
+        $payload['line_items'] = $lines;
+
+        /** @var array<string, mixed> $seller */
+        $seller = $payload['seller'];
+        $seller['name'] = 'Boulangerie Crémerie S.à.r.l.';
+        /** @var array<string, mixed> $address */
+        $address = $seller['address'];
+        $address['street'] = "12 rue de l'Église";
+        $seller['address'] = $address;
+        $payload['seller'] = $seller;
+
+        return $payload;
+    }
+
+    /**
+     * The non-ASCII sealed payload with every money field rewritten 10.00 -> 25.00 — the ES-06
+     * attack carried on a receipt whose free text is non-ASCII. Recovery must still FIRE here
+     * (the bytes are canonical) and the comparison must still name the divergence.
+     *
+     * @return array<string, mixed>
+     */
+    private function divergentNonAsciiCorrectedPayload(): array
+    {
+        $payload = $this->divergentCorrectedPayload();
+        $nonAscii = $this->nonAsciiCorrectedPayload();
+
+        $payload['cashier_name'] = $nonAscii['cashier_name'];
+        $payload['seller'] = $nonAscii['seller'];
+
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        /** @var list<array<string, mixed>> $nonAsciiLines */
+        $nonAsciiLines = $nonAscii['line_items'];
+        $lines[0]['name'] = $nonAsciiLines[0]['name'];
+        $payload['line_items'] = $lines;
+
+        return $payload;
+    }
+
+    /**
+     * Bind a `canonical_bytes` value in a way that survives ANY byte.
+     *
+     * `canonical_bytes` is `bytea` on PostgreSQL (`\d fiscal_events`) and `blob` on SQLite.
+     * `Illuminate\Database\Connection::bindValues()` binds a plain PHP string as
+     * `PDO::PARAM_STR` and only a **resource** as `PDO::PARAM_LOB`. A `PARAM_STR` bind is
+     * transmitted as a text literal, so PostgreSQL parses it with the bytea *escape* input
+     * rules — and every backslash that is not `\\` or `\NNN` dies with
+     * `SQLSTATE[22P02] invalid input syntax for type bytea`. Canonical JSON carrying
+     * `\uXXXX` escapes (or an escaped quote inside free text) is exactly that shape.
+     *
+     * Binding a stream instead routes the value through `PDO::PARAM_LOB`, which is sent as
+     * binary and round-trips byte-identically on both drivers. This is a TEST-harness
+     * concern only — nothing about the production write path changes here.
+     *
+     * @return resource
+     */
+    private function byteaBinding(string $bytes)
+    {
+        $stream = fopen('php://memory', 'r+b');
+
+        if ($stream === false) {
+            self::fail('Unable to open an in-memory stream for the canonical_bytes binding.');
+        }
+
+        fwrite($stream, $bytes);
+        rewind($stream);
+
+        return $stream;
     }
 
     /**

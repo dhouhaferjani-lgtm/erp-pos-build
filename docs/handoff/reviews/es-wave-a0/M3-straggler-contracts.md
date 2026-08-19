@@ -1,6 +1,7 @@
 # M3 — proposed verification contracts for the ES-16 / ES-17 stragglers
 
-**Status: PROPOSAL. Nothing in this document is implemented.** M3's bridge review approves,
+**Status: PROPOSAL (revision 2 — amended in M3 fix round 1). Nothing in this document is
+implemented.** M3's bridge review approves,
 amends or rejects each contract below; **M3b** then implements *only* what was approved, as
 amended there. Implementing a straggler before its contract is approved is a milestone failure
 (brief R-7, `docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md:325-347`).
@@ -21,6 +22,16 @@ Every `file:line` in this document was re-derived against the tree **as this mil
 addresses have to resolve there. M3 changes only `VerifyEventChainCommand.php`,
 `VerifyPosChainCommand.php` and `ReceiptHashService.php`; every citation below in those files was
 re-checked after the edits.
+
+**Revision 2 (M3 fix round 1)** carries exactly three edits, all inside ES-16, all in response to
+the M3 round-1 register (`M3-round1.md`):
+
+| Register finding | Edit |
+|---|---|
+| **F-2** | Clause **16-C** rewritten — the recovery-path clause is dropped (option (i) of the two the register offered) and the amendment reasoning is recorded under the clause table; falsifier **F16-7** added; defect-narrative item **5** corrected in place, because it carried the same false "recovery works" premise 16-C was built on. |
+| **F-3** | Clause **16-F**'s citation corrected `:104` → `:106` (`:104` is `if ($projectorFilter === null) {`; the tenant filter is `:106`). |
+
+ES-17 is **unchanged** — the register approved its contract as written.
 
 ---
 
@@ -76,11 +87,21 @@ The consequences compose into the blind spot:
 4. `ParseFailureResolutionService` refuses it on two independent preconditions: the class is wrong
    (`:263-269`) and its `payload` is not NULL (`:250-255`) — the envelope **parsed fine**; only the
    lifecycle was wrong.
-5. The one path that *would* recover it is
-   `fiscal:enqueue-resolved-event-projections`, whose only event filter is
-   `payload_parse_status = parsed` (`EnqueueResolvedEventProjectionsCommand.php:245`) — which this
-   row satisfies. So recovery works, **but only for an operator who already knows the row exists
-   and already knows to run that command.** Nothing surfaces either fact.
+5. **There is no safe recovery path today.** The one command that *would* act on the row is
+   `fiscal:enqueue-resolved-event-projections`, whose only filters are
+   `payload_parse_status = parsed` (`EnqueueResolvedEventProjectionsCommand.php:244-245`), an
+   optional event id (`:247-250`) and `tenant_id` (`:254`) — which this row satisfies. But there is
+   **no `integrity_status` / `integrity_exception_class` filter**, and
+   `createMissingPendingRows()` (`:340-365`) inserts a pending row for every active projector
+   without re-checking the suppression at `OutboxIngestor.php:922-924`. So running it on a
+   `z_session_lifecycle` row does not recover anything — it **creates and dispatches precisely the
+   projections the ingestor deliberately refused**, i.e. it writes the wrong Z aggregates that
+   clause 16-D calls incorrect and that falsifier F16-2 forbids. It is F16-2 executed by hand.
+
+   *(Amended in M3 fix round 1, register finding F-2. The original text of this item asserted
+   "recovery works", and clause 16-C built an operator affordance on that assertion. Both were
+   wrong in the same way and both are corrected here; the correction is recorded in place rather
+   than by silent edit, per this program's honesty lane.)*
 
 The money-relevant edge: a suppressed `SESSION_CLOSE` or `Z_REPORT` lifecycle event means the Z
 session never projects, so the day's Z aggregates silently do not exist, with no operator-visible
@@ -98,10 +119,38 @@ Clause by clause — what M3b must **demonstrate**:
 |---|---|---|
 | **16-A** | A `z_session_lifecycle` quarantine appears in `DeadLetteredProjectionsController::index()`'s response. | Red-first: a test that seeds the row through the **real ingestion path** (`OutboxIngestor`, one of the seven lifecycle violations) and asserts the row's id appears in the endpoint's payload. That test must be shown RED before the change. A hand-inserted `fiscal_events` row is weaker evidence and must be labelled as such if the production path cannot produce the shape. |
 | **16-B** | The surfaced row names **which** lifecycle violation fired. | The response carries the `z_session_lifecycle:<reason>` discriminator, not just "quarantined". Asserted for at least two *different* violations so the field is proven to vary rather than being a constant. |
-| **16-C** | The surfaced row names its **recovery path**. | The response tells the operator that `fiscal:enqueue-resolved-event-projections` is the action for this row — because that command genuinely works on it (`EnqueueResolvedEventProjectionsCommand.php:245`) and the ONLY thing missing today is that nobody is told. |
+| **16-C** *(amended, M3 fix round 1 — see below)* | The surfaced row **names no recovery command at all.** ES-16 is a pure visibility contract: it reports the row and stops. | The response carries **no** remediation/recovery/next-action field naming `fiscal:enqueue-resolved-event-projections` or any other command, and no UI copy, help text or log line added by M3b does so either. Asserted as an absence, not assumed. |
 | **16-D** | **No ingestion decision changes.** `OutboxIngestor` keeps classifying these as `sequence_gap` and keeps suppressing projections at `:922-924`. | `git diff` over `OutboxIngestor.php` shows **zero** behavioural lines, or every line is justified in the milestone report. Rationale: suppressing projections for a lifecycle-invalid Z session is *correct* — projecting it would write wrong aggregates. ES-16 is a visibility gap, not a suppression bug. |
 | **16-E** | The existing two partitions keep their exact current contents. | The canonical-parse-failure partition and the dead-lettered-projection partition are each pinned with an unchanged-behaviour test, so ES-16's row is proven **additive** and not a re-partitioning that quietly moves other rows. |
-| **16-F** | The new partition is **tenant-scoped** exactly like the existing two. | A second tenant's `z_session_lifecycle` row is absent from the first tenant's response. Both existing partitions filter on `$user->tenant_id` (`:104`, and partition 1's equivalent); the new one owes the same, asserted, not assumed. |
+| **16-F** | The new partition is **tenant-scoped** exactly like the existing two. | A second tenant's `z_session_lifecycle` row is absent from the first tenant's response. Both existing partitions filter on `$user->tenant_id` (`:106`, and partition 1's equivalent); the new one owes the same, asserted, not assumed. |
+
+#### Amendment to 16-C — M3 fix round 1, register finding F-2
+
+**Option (i) of the two the register offered is taken: the recovery-path clause is DROPPED and
+ES-16 is a visibility contract only.** Recording the reasoning so M3b does not re-derive the
+rejected version:
+
+- **The original 16-C was self-contradicting.** It required the surfaced row to advertise
+  `fiscal:enqueue-resolved-event-projections`, on the premise that the command "genuinely works on
+  it". The premise is false in the only sense that matters. The command applies no
+  `integrity_status` filter (`EnqueueResolvedEventProjectionsCommand.php:244-245`, `:247-250`,
+  `:254`) and `createMissingPendingRows()` (`:340-365`) re-checks no suppression, so it re-creates
+  exactly the projections `OutboxIngestor.php:922-924` refused. Clause **16-D** calls that outcome
+  writing "wrong aggregates" and falsifier **F16-2** makes it a rejection trigger. A contract cannot
+  forbid the implementation from producing those projections and simultaneously require it to
+  advertise the command that produces them.
+- **Option (ii) — "correct only after a human has adjudicated the lifecycle violation" — is
+  explicitly NOT taken.** Adjudicating a suppressed fiscal row is a new decision on sealed data and
+  is D-8-adjacent; it would owe its own STOP and its own owner gate, and neither is in this wave.
+- **This is consistent with the contract's own closing sentence**: *"the strongest version of this
+  contract is the one that adds no new decision anywhere."* Visibility alone already closes the
+  register's blind spot — an operator who can see the row can escalate; an operator who is told to
+  run the command will corrupt the Z aggregates.
+- **What M3b must NOT do instead:** do not add the missing `integrity_status` precondition to
+  `fiscal:enqueue-resolved-event-projections` as part of ES-16. That is a change to a recovery
+  command's semantics, it is not asked for by the register, and it belongs to whatever lane
+  eventually owns the lifecycle-adjudication decision. M3b's diff over
+  `EnqueueResolvedEventProjectionsCommand.php` must be **zero lines**.
 
 **What would FALSIFY this contract** (the reviewer should reject the implementation if any holds):
 
@@ -119,6 +168,12 @@ Clause by clause — what M3b must **demonstrate**:
   `integrity_exception_reason`; provable by the two-violation assertion in 16-B.
 - **F16-5** — the response shape changes for rows the two existing partitions already return,
   breaking the consumer contract, without that being called out and re-reviewed.
+- **F16-7** *(added M3 fix round 1, finding F-2)* — the surfaced row, or any copy/doc/log line M3b
+  adds around it, names `fiscal:enqueue-resolved-event-projections` (or any other command) as the
+  action for a `z_session_lifecycle` row. Running that command on such a row is F16-2 performed by
+  the operator instead of by the code, and the contract must not route anyone toward it. Equally
+  falsifying: M3b makes the command safe by adding the missing `integrity_status` precondition —
+  correct-looking, but it is a semantics change to a recovery command that ES-16 does not authorise.
 - **F16-6** — `ParseFailureResolutionService` is extended to accept these rows. It cannot resolve
   them (there is no bad payload to correct — the payload parsed) and doing so would grant an
   operator a payload-rewrite on a sealed row for a reason unrelated to parsing. That is squarely

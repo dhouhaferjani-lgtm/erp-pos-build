@@ -18,6 +18,15 @@ change to what `ParseFailureResolutionService` is *allowed* to do. The resolutio
 byte-identical in this range (`git diff … -- app/Modules/Fiscal/Application/Services/ParseFailureResolutionService.php`
 = 0 lines). Detection only, per R-9.
 
+**Fix round 1 (post `M3-round1.md`, verdict CHANGES-REQUIRED).** This document has been amended in
+place — corrections are labelled where they land, not appended as a changelog nobody reads:
+
+| Register finding | Where it is answered |
+|---|---|
+| **F-1** — the recovery guard omitted `JSON_UNESCAPED_UNICODE`, so the discriminating branch was dead for any non-ASCII envelope, **and this evidence did not disclose it** | new **§1.6** (the limit, the one-flag fix, the bytea-binding root cause, and the red-first trio) + **Verification — fix round 1** |
+| **F-2** — ES-16 clause 16-C routed operators to a command clause 16-D and falsifier F16-2 forbid | new **§2.1**; the amendment itself is in `M3-straggler-contracts.md` revision 2 |
+| **F-3** — citation drift `:104` → `:106` in the same artifact | **§2.1**; corrected in the artifact |
+
 ---
 
 ## 1. ES-06 — the detection half
@@ -44,7 +53,7 @@ re-reported the pre-existing parse failure and that was read as "divergence dete
 ### 1.2 Red-first proof, through the production path
 
 New fixture `ParseFailureResumeTest::seedRecoverableSealedPayloadResolution()`
-(`tests/Feature/Fiscal/ParseFailureResumeTest.php:844-891`). It differs from M0's T-a helper
+(`tests/Feature/Fiscal/ParseFailureResumeTest.php:947-997`). It differs from M0's T-a helper
 (`seedPayloadRewriteTamper()`) in the one way that matters:
 
 | | M0's T-a (`seedPayloadRewriteTamper`) | M3's fixture |
@@ -57,14 +66,14 @@ New fixture `ParseFailureResumeTest::seedRecoverableSealedPayloadResolution()`
 Both fixtures are driven through the **real** `ParseFailureResolutionService::resolve()` — no
 hand-written UPDATE anywhere. The helper self-asserts its own shape before the verifier is ever
 run (per the M0 toolkit rule, so a later red cannot be red for the wrong reason): the strict parser
-really does reject the bytes and for exactly that reason (`:853-858`); the sealed payload really is
-recoverable from the frozen bytes (`:860-866`); the seal really did hold — `canonical_bytes` and
+really does reject the bytes and for exactly that reason (`:962-964`); the sealed payload really is
+recoverable from the frozen bytes (`:969-972`); the seal really did hold — `canonical_bytes` and
 `current_hash` are byte-identical after resolution and `current_hash == sha256(canonical_bytes)`
-(`:880-884`).
+(`:987-990`).
 
 The divergent correction is the ES-06 attack in its most consequential form: every money field
 rewritten **10.00 → 25.00**, consistently, so it passes the resolver's DTO + per-event constraint
-validation (`divergentCorrectedPayload()`, `:975-1001`). Projectors read `payload`, so the
+validation (`divergentCorrectedPayload()`, `:1094-1120`). Projectors read `payload`, so the
 business sees 25.00 while the frozen bytes say 10.00.
 
 **The RED run, before the production change** (PG, `phpunit-pgsql.xml`, by path):
@@ -91,7 +100,7 @@ A 10.00 → 25.00 rewrite and a faithful correction were indistinguishable.
 ### 1.3 The change
 
 `VerifyEventChainCommand.php:446-482` (the `! $parsed->ok` branch) and the new
-`recoverSealedPayloadFromFrozenBytes()` (`:669-698`).
+`recoverSealedPayloadFromFrozenBytes()` (`:673-716` — the method grew in fix round 1, see §1.6).
 
 When the strict parse fails, the verifier now tries to recover the **sealed** payload from the
 frozen bytes at the JSON level:
@@ -111,7 +120,7 @@ the divergence claim.
 ### 1.4 The ambiguity guard, and proof that it bites
 
 Recovery is only trusted when the bytes are **unambiguous**: they must decode as a JSON object
-**and re-encode byte-identically** (`:663-673`). That round-trip rules out the one way a lenient
+**and re-encode byte-identically** (`:685-707`). That round-trip rules out the one way a lenient
 `json_decode` could disagree with the strict parser about what was sealed — duplicate keys, where
 `json_decode` silently keeps the last occurrence while the parser rejects the document outright.
 
@@ -137,6 +146,97 @@ which sentence is true.
 `…_passes_when_parsed_payload_semantically_matches_…` (M1's, on parseable envelopes) are all
 byte-identical and all green. The change is strictly additive on the branch M1 could not reach.
 
+### 1.6 Fix round 1 — F-1: the round-trip guard escaped non-ASCII, so the branch was dead on French and Tunisian data
+
+**Disclosed limit, and the fix.** The round-1 register raised this as finding F-1, and it also
+faulted §1 of this document for **not disclosing it** (`M3-round1.md:96-98`). The non-disclosure
+was the more serious half: as originally written §1.3–§1.5 read as if the detection were general,
+when it fired only on ASCII-only envelopes.
+
+**What was wrong.** The guard re-encoded with `JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES` and
+nothing else. Production canonical bytes are RFC 8785, and `CanonicalJsonEncoder::encodeString()`
+(`CanonicalJsonEncoder.php:106-108`) emits **raw UTF-8** for U+0080+ via `JSON_UNESCAPED_UNICODE`.
+PHP's default escapes those same characters as `\uXXXX`, so the byte-identity test could never hold
+for an envelope carrying one accented or Arabic character — and the canonical SALE_RECEIPT grammar
+carries operator-typed free text in `line_items[].name`, `cashier_name`, `seller.name` and
+`seller.address.*`. On this wave's target countries (France, Tunisia) that is most receipts. The
+milestone's headline deliverable was therefore **dead on the data it exists for**, while the three
+M3 tests passed only because the fixture was ASCII-only.
+
+The failure mode was **fail-closed** — the sealed-coordinate incident, the fallback sentence and
+exit 1 all survived, so nothing hid and no verdict weakened — but the verifier stayed exactly as
+indiscriminate on the ES-06 surface as R-9 says it must not be.
+
+**The fix** is one flag: the re-encode at `VerifyEventChainCommand.php:697-700` now uses
+`JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE`, mirroring the canonical
+encoder exactly. This does **not** widen what the verifier accepts: byte identity is still the whole
+acceptance test, so bytes carrying literal `\uXXXX` escapes now refuse instead — correct, because
+`CanonicalJsonEncoder` cannot emit that form. The refusal direction is pinned by a test, not
+asserted (below).
+
+**The harness limit the register flagged, and what it actually was.** The reviewer could not write a
+non-ASCII fixture because the insert died with `SQLSTATE[22P02] invalid input syntax for type
+bytea`. Root cause, established by probe rather than guessed: `canonical_bytes` is `bytea` on PG,
+and `Illuminate\Database\Connection::bindValues()` binds a plain PHP **string** as
+`PDO::PARAM_STR`, which PostgreSQL parses with the bytea *escape* input rules. **It is a backslash
+problem, not a non-ASCII problem** — raw UTF-8 binds fine; what died was the fixture's own
+`json_encode(..., JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)` — which, missing
+`JSON_UNESCAPED_UNICODE`, produced literal backslash-`u` escape sequences, and `\u` is not a legal
+bytea escape. Probe result, PG 16, same connection parameters as the test run:
+
+```text
+bytes bound                                     PARAM_STR              PARAM_LOB
+escaped-unicode  {"name":"Caf\u00e9 cr\u00e8me"}  FAIL SQLSTATE 22P02    OK (byte-identical)
+raw-utf8         {"name":"Café crème"}            OK (byte-identical)    OK (byte-identical)
+escaped-quote    {"name":"He said \"hi\""}        FAIL SQLSTATE 22P02    OK (byte-identical)
+```
+
+Both halves are fixed in the harness:
+
+1. `storeSealedEnvelopeParseFailure()` now seals with `JSON_UNESCAPED_UNICODE` by default — the
+   fixture was not modelling a device envelope without it, since RFC 8785 is the raw-UTF-8 form. A
+   `$escapeUnicode` parameter deliberately seals the WRONG form for the refusal test.
+2. `byteaBinding()` (`ParseFailureResumeTest.php`) wraps the bytes in an in-memory stream, which
+   `Connection::bindValues()` binds as `PDO::PARAM_LOB` — transmitted as binary, byte-identical on
+   both PG (`bytea`) and SQLite (`blob`). That is what lets the refusal fixture carry backslashes at
+   all. **Test-harness only — no production write path changes.**
+
+**Out-of-scope observation, recorded not fixed (rule 4).** The same `PARAM_STR` binding is what
+production ingestion uses (`OutboxIngestor.php:815`, plain string through Eloquent; no
+`PDO::PARAM_LOB` or `pg_escape_bytea` exists anywhere in `app/`). Canonical bytes produced by
+`CanonicalJsonEncoder` are raw UTF-8 and normally backslash-free, so ordinary accented text is safe
+— but a **double quote or backslash inside free text** (a product named `He said "hi"`) makes RFC
+8785 emit `\"`, and the probe above shows that shape failing to insert on PG. This is outside M3's
+scope and is **not** touched here; it is flagged for whoever owns the ingestion lane.
+
+**Red-first proof, all three new tests** (PG, `phpunit-pgsql.xml`, by path, before the flag change):
+
+```text
+✗ event chain verifier does not claim divergence for a faithful non ascii correction
+    Failed asserting that … does not contain "canonical payload could not be derived"
+    actual: "payload does not semantically match canonical_bytes — canonical payload
+             could not be derived (envelope_extra_field:device_firmware_note)"
+      → recovery REFUSED a canonical non-ASCII envelope. This is F-1 reproduced.
+
+✗ event chain verifier names a divergent correction against a non ascii sealed payload
+    To contain: "the sealed payload was recovered from the frozen envelope and disagrees
+                 with the stored payload"
+    actual:     "canonical payload could not be derived"
+      → a full money rewrite on a French/Arabic receipt was indistinguishable from an
+        ordinary parse failure.
+
+✗ sealed payload recovery refuses unicode escaped non canonical bytes
+    To contain: "canonical payload could not be derived"
+    actual:     1 chain incident only — no payload sentence at all
+      → recovery FIRED on `\uXXXX`-escaped bytes, a form CanonicalJsonEncoder cannot emit.
+
+Tests: 3 failed (49 assertions)
+```
+
+That third failure is the sharpest statement of the defect: the pre-fix guard accepted exactly the
+byte form production never produces and refused exactly the form it always produces. All three go
+green with the one-flag change and nothing else.
+
 ---
 
 ## 2. `M3-straggler-contracts.md` — committed in this range
@@ -161,6 +261,35 @@ reviewer because they sharpen the register's own wording:
 
 **No straggler implementation landed.** `git diff` in this range touches neither
 `DeadLetteredProjectionsController.php` nor `FiscalEventQuarantine.php` nor `OutboxIngestor.php`.
+
+### 2.1 Fix round 1 — findings F-2 and F-3, amendments to the artifact only
+
+The artifact is now at **revision 2**; its own header records the three edits. Restated here so the
+milestone evidence and the artifact do not diverge:
+
+- **F-2 — clause 16-C was self-contradicting, and is DROPPED.** It required the surfaced row to
+  advertise `fiscal:enqueue-resolved-event-projections` as its recovery path. That command applies
+  no `integrity_status` filter (`EnqueueResolvedEventProjectionsCommand.php:244-245`, `:247-250`,
+  `:254`) and `createMissingPendingRows()` (`:340-365`) re-checks no suppression, so on a
+  `z_session_lifecycle` row it creates and dispatches exactly the projections
+  `OutboxIngestor.php:922-924` refused — the outcome clause **16-D** calls "wrong aggregates" and
+  falsifier **F16-2** makes a rejection trigger. Of the two options the register offered, **(i)** is
+  taken: ES-16 is now a pure visibility contract. 16-C is rewritten as an explicit *absence*
+  requirement (the row names no command at all), the reasoning is recorded under the clause table,
+  and falsifier **F16-7** is added so an implementation that re-introduces the affordance — or that
+  "fixes" the command by adding the missing precondition — is rejected on the contract's own terms.
+  Option (ii) is refused explicitly and on the record: adjudicating a suppressed fiscal row is
+  D-8-adjacent and owes its own STOP.
+  The defect narrative's **item 5** carried the same false "recovery works" premise 16-C was built
+  on; it is corrected **in place**, with the correction labelled, rather than silently edited.
+- **F-3 — citation drift.** Clause 16-F's tenant-filter citation `:104` → `:106`. Re-verified:
+  `DeadLetteredProjectionsController.php:104` is `if ($projectorFilter === null) {`, `:106` is
+  `->where('tenant_id', $user->tenant_id)`, `:107` is the class predicate.
+
+**Still no straggler implementation, and no command change.** `EnqueueResolvedEventProjectionsCommand.php`,
+`DeadLetteredProjectionsController.php`, `FiscalEventQuarantine.php` and `OutboxIngestor.php` all
+remain **0-line** diffs across M3 and this fix round — the F-2 amendment is a change to the
+*contract*, per the register's instruction that M3b, not M3, implements.
 
 ---
 
@@ -281,6 +410,56 @@ $ ./vendor/bin/phpstan analyse --memory-limit=4G \
     app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php \
     app/Modules/POS/Commands/VerifyPosChainCommand.php \
     app/Modules/POS/Domain/Services/ReceiptHashService.php
+[OK] No errors                                            # level 8
+```
+
+### Verification — fix round 1
+
+One production file changed in this round (`VerifyEventChainCommand.php`, the one flag + comments)
+and one test file (`ParseFailureResumeTest.php`). Re-run **by path**, never the full suite.
+
+**PostgreSQL** (`phpunit-pgsql.xml`, `DB_DATABASE=autoerp_es_wave_a0_test` on `127.0.0.1:5432`):
+
+```text
+tests/Feature/Fiscal/ParseFailureResumeTest.php                27 passed (209 assertions)
+tests/Feature/Fiscal/VerifyEventChainCommandTest.php           34 passed (138 assertions)
+```
+
+**Default harness** (SQLite), the same two files in one run:
+
+```text
+tests/Feature/Fiscal/ParseFailureResumeTest.php
+tests/Feature/Fiscal/VerifyEventChainCommandTest.php           61 passed (347 assertions)
+```
+
+`61 = 27 + 34` and `347 = 209 + 138`, so both drivers agree test-for-test and assertion-for-
+assertion. Delta on `ParseFailureResumeTest`: **24 → 27** (+3, the F-1 regression trio) and
+157 → 209 assertions. `VerifyEventChainCommandTest` reproduces its M3 headline count **exactly**
+(34 / 138) — the flag change alters no existing behaviour, including the duplicate-key ambiguity
+guard, which is ASCII and unaffected.
+
+**RED run for this round** — all three new tests, before the flag change, transcribed in §1.6. Summary:
+
+| New test | Pre-fix result |
+|---|---|
+| faithful non-ASCII correction | FAILED — recovery refused a canonical non-ASCII envelope (`canonical payload could not be derived`) |
+| divergent non-ASCII correction | FAILED — the money rewrite was not named; same generic sentence |
+| `\uXXXX`-escaped non-canonical bytes | FAILED — recovery **fired** on bytes the canonical encoder cannot emit |
+
+```text
+Tests: 3 failed (49 assertions)   →   after the one-flag change: 27 passed (209 assertions)
+```
+
+**Static analysis, fix round 1:**
+
+```text
+$ ./vendor/bin/pint --test \
+    app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php \
+    tests/Feature/Fiscal/ParseFailureResumeTest.php
+{"result":"pass"}
+
+$ ./vendor/bin/phpstan analyse --memory-limit=4G \
+    app/Modules/Fiscal/Infrastructure/Commands/VerifyEventChainCommand.php
 [OK] No errors                                            # level 8
 ```
 

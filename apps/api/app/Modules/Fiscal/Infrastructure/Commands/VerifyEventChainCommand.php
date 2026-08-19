@@ -660,6 +660,10 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
      * bytes are ambiguous in any way, or carry no `payload` object, this
      * returns null and the caller keeps the original fail-closed incident.
      *
+     * The re-encode uses the CANONICAL flag set (`CanonicalJsonEncoder.php:106-108`,
+     * RFC 8785 §3.2.3 — raw UTF-8 for U+0080+), so any non-canonical byte form —
+     * `\uXXXX` escapes, insignificant whitespace, escaped slashes — also returns null.
+     *
      * This never widens what the verifier accepts: it only decides WHICH
      * incident sentence is true. The sealed-coordinate incident is raised
      * unconditionally before this is consulted.
@@ -679,7 +683,21 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
         }
 
         try {
-            $roundTrip = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+            // The flag set MUST mirror `CanonicalJsonEncoder::encodeString()`
+            // (`CanonicalJsonEncoder.php:106-108`): RFC 8785 §3.2.3 seals U+0080+ as
+            // RAW UTF-8, and PHP's default escapes it as `\uXXXX`. Omitting
+            // `JSON_UNESCAPED_UNICODE` here made the byte-identity test below
+            // unsatisfiable for every envelope carrying one accented or Arabic
+            // character — i.e. most French and Tunisian receipts — so the
+            // discriminating branch was dead on exactly the data it exists for.
+            // Widening to the canonical flag set does not make the guard lenient:
+            // byte identity is still the whole acceptance test, so bytes that carry
+            // literal `\uXXXX` escapes now refuse instead, which is correct — the
+            // canonical encoder cannot emit them.
+            $roundTrip = json_encode(
+                $envelope,
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+            );
         } catch (Throwable) {
             return null;
         }
