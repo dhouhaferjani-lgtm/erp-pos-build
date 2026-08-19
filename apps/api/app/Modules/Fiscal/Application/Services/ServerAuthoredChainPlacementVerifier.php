@@ -24,6 +24,14 @@ use stdClass;
  * (M3b round 1, F-5) applies here in advance: two copies of a chain-admissibility
  * rule drift, and the drift is silent.
  *
+ * **Read `deriveLinkageFailure()`'s docblock before citing this class as a
+ * defense against MIS-SCOPED head resolution — it is not one.** On today's
+ * call graph only the clock arm can fire; the hash and linkage arms compare
+ * values against the row they were derived from. Mis-scoping is closed by the
+ * scoped read in each caller's `resolveChainPlacement()` (ES-09 defect (a)),
+ * not here (defect (b)). Corrected at M5 per M4-round1.md F-1, which disproved
+ * the earlier claim at runtime.
+ *
  * The `payload_parse_status = Parsed` half of the same defect is closed at the
  * call sites, which already run the same per-event payload gate the parse path
  * runs (`validateServerAuthoredPayload()` / `validatePayload()`) and throw
@@ -130,11 +138,36 @@ final class ServerAuthoredChainPlacementVerifier
     }
 
     /**
-     * Mirrors `OutboxIngestor::verifyLinkage()` — including the T19-B3
-     * first-event genesis-seed rule, which is the check that makes a
-     * mis-scoped head resolution visible: a head read from the WRONG
-     * `chain_context` makes this context's genuinely-first event look like a
-     * continuation and vice versa.
+     * Mirrors `OutboxIngestor::verifyLinkage()`, including the T19-B3
+     * first-event genesis-seed rule.
+     *
+     * **What this arm does NOT do — corrected at M5 after the M4 round-1
+     * reviewer disproved the previous claim at runtime (M4-round1.md, F-1).**
+     * An earlier version of this docblock said the linkage rule "is the check
+     * that makes a mis-scoped head resolution visible". It is not, and it
+     * cannot be. Both callers derive `$sequenceNumber` and `$previousHash`
+     * FROM THE SAME `$prior` row they then hand to this verifier
+     * (`TerminalRegistrySnapshotService::resolveChainPlacement()` and
+     * `VirtualAdminFiscalEventService::resolveChainPlacement()` each return the
+     * triple), so this method compares a value against its own source and
+     * agrees by construction. The hash arm in `deriveFailureReason()` is
+     * structurally the same: it re-verifies `$currentHash` against the same
+     * bytes and the same provider that produced it one line earlier. The
+     * reviewer proved it: with this verifier fully wired and ONLY the head read
+     * de-scoped (`company_id` + `chain_context` dropped), a mis-linked row was
+     * still written and still stamped `Verified`, with no exception. Of the
+     * three arms, only the CLOCK arm can fire on today's call graph.
+     *
+     * What is true: the defense against mis-scoped head resolution is the
+     * SCOPED READ itself — `(tenant_id, company_id, terminal_id,
+     * chain_context)` in both `resolveChainPlacement()` implementations, which
+     * is ES-09 defect (a). This class is defect (b) — it stops the services
+     * STAMPING a verdict they never derived. The hash and linkage arms are
+     * kept as structural guards for the day a caller stops deriving its
+     * placement from the row it passes in (a refactor, a cached head, a
+     * caller that composes the link itself); on that day they become
+     * load-bearing, and until then they must not be cited as evidence that
+     * mis-scoping is detectable.
      */
     private function deriveLinkageFailure(
         ?stdClass $prior,

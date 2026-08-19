@@ -50,11 +50,18 @@ use Tests\TestCase;
  *
  * — no column comparisons at all, unlike the `fiscalized → voided` branch
  * immediately below it, which enumerates seven guarded columns, and unlike the
- * two branches below that, which enumerate thirteen and fifteen. The
- * characterization test at the bottom of this file proves the consequence is
- * reachable, not merely readable: an UPDATE that flips
- * `pending_seal → fiscalized` may rewrite `total` in the SAME statement and the
- * trigger returns NEW.
+ * two branches below that, which enumerate thirteen (`:78-95`, the query-only
+ * customer-FK detach) and seventeen (`:120-140`, the one-time
+ * `sealed_hash_algorithm` backfill). The characterization test at the bottom of
+ * this file proves the consequence is reachable, not merely readable: an UPDATE
+ * that flips `pending_seal → fiscalized` may rewrite `total` in the SAME
+ * statement and the trigger returns NEW.
+ *
+ * (The count for the third branch was recorded as "fifteen" at M4 and is
+ * corrected to seventeen here — it guards the detach branch's thirteen plus
+ * `partner_id`, `contact_id`, `fiscal_status` and `is_voided`. Re-derived
+ * column by column at M5. The finding is unchanged: the first branch guards
+ * ZERO.)
  *
  * Why it is NOT fixed here: the sealing write legitimately populates
  * `fiscal_hash`, `chain_sequence` and `posted_at` during exactly this
@@ -63,6 +70,13 @@ use Tests\TestCase;
  * path, which R-5 names as scope creep for this row. It is ticketed, with this
  * test as the executable evidence, so the next lane inherits a demonstration
  * rather than a suspicion.
+ *
+ * **The ticket** — created at M5's opening commit, because M4 claimed it existed
+ * and it did not (M4-round1.md, F-3):
+ * `docs/superpowers/tickets/2026-08-19-fiscal-seal-branch-unguarded-columns.md`,
+ * plus the `findings:` entry in
+ * `docs/handoff/progress/es-wave-a0.progress.yaml`. If you are deleting the
+ * characterization test below because the branch grew guards, close both.
  */
 final class ImmutabilityTriggerPresenceTest extends TestCase
 {
@@ -127,7 +141,8 @@ final class ImmutabilityTriggerPresenceTest extends TestCase
             return;
         }
 
-        // Non-PG: the DOCUMENTED gap, asserted rather than skipped.
+        // Non-PG: the DOCUMENTED gap, asserted rather than skipped — and
+        // asserted in a way that CAN GO RED.
         //
         // `2026_05_14_100002_create_fiscal_events_immutability.php::up()` and
         // `2026_07_31_940000_allow_sealed_hash_algorithm_backfill_transition.php::up()`
@@ -137,15 +152,55 @@ final class ImmutabilityTriggerPresenceTest extends TestCase
         // that passes here has proven nothing about production, and a whole
         // regression class (every "the trigger refuses X" case) is untestable.
         //
-        // This assertion is a CHARACTERIZATION of the confirmed half of ES-41,
-        // not an endorsement. It fails the day someone makes the triggers run
-        // on this driver — at which point the gap is closed and this
-        // expectation should be replaced by the PG branch above.
+        // M4 round 1, F-2 — WHY THIS BRANCH LOOKS THE WAY IT DOES. It used to
+        // assert `[]` against a helper that hard-coded `[]` on this very
+        // driver, and it asserted it for ONE of the two tables. Both halves are
+        // fixed: `triggerNamesOn()` now queries `sqlite_master`, and BOTH
+        // tables are asserted. The catalogue read alone would still be a weak
+        // assertion (absence of a row), so the branch also performs the
+        // MUTATIONS the PG tests below prove are refused and asserts they
+        // SUCCEED here. That is the driver gap stated as a behaviour rather
+        // than as a missing catalogue entry, and it is falsifiable in the
+        // direction that matters: the day enforcement reaches this driver, the
+        // UPDATE and the DELETE start throwing and this test goes RED.
+        //
+        // This is a CHARACTERIZATION of the confirmed half of ES-41, not an
+        // endorsement. When it goes red, the gap is closed: delete this branch
+        // and route the driver through the PG branch above.
         $this->assertSame(
             [],
             $this->triggerNamesOn('pos_receipts'),
             'ES-41 (CONFIRMED half): immutability enforcement is PostgreSQL-only. If this driver has grown triggers, '
             .'the driver gate has been closed and this characterization must be replaced by a real assertion.',
+        );
+        $this->assertSame(
+            [],
+            $this->triggerNamesOn('fiscal_events'),
+            'ES-41 (CONFIRMED half): the three fiscal_events append-only triggers are PostgreSQL-only too. The PG '
+            .'branch above asserts all four triggers; this branch must assert the absence of all four, not just one '
+            .'table (M4 round 1, F-2, second-order finding).',
+        );
+
+        // The behavioural half — the same two statements the [PG] tests below
+        // prove are REFUSED. Here they must succeed.
+        $eventId = $this->insertMinimalFiscalEvent();
+        $forgedHash = str_repeat('f', 64);
+
+        DB::table('fiscal_events')->where('id', $eventId)->update(['current_hash' => $forgedHash]);
+        $this->assertSame(
+            $forgedHash,
+            (string) DB::table('fiscal_events')->where('id', $eventId)->value('current_hash'),
+            'ES-41 (CONFIRMED half): on this driver a sealed fiscal event\'s current_hash is REWRITABLE — there is no '
+            .'immutability trigger to stop it. If this assertion fails, enforcement has reached this driver and this '
+            .'whole non-PG branch must be deleted in favour of the PG branch above.',
+        );
+
+        DB::table('fiscal_events')->where('id', $eventId)->delete();
+        $this->assertSame(
+            0,
+            DB::table('fiscal_events')->where('id', $eventId)->count(),
+            'ES-41 (CONFIRMED half): on this driver a fiscal event is DELETABLE — the append-only ledger is a '
+            .'convention, not a constraint. Same disposition as above if this ever fails.',
         );
     }
 
@@ -160,10 +215,33 @@ final class ImmutabilityTriggerPresenceTest extends TestCase
 
         $eventId = $this->insertMinimalFiscalEvent();
 
-        $this->expectException(QueryException::class);
-        $this->expectExceptionMessageMatches('/append-only ledger/');
+        // M4 round 1, F-4: this test used to assert the exception ONLY, via
+        // expectException, while the milestone claimed "each refusal
+        // two-sided". An exception with the row gone anyway is precisely the
+        // failure a status-only assertion cannot see, so the refused DELETE now
+        // runs inside a NESTED transaction — the savepoint pattern its two
+        // sibling refusal tests already use, which rolls back PG's
+        // aborted-transaction state so the re-read can run at all under
+        // RefreshDatabase's outer transaction — and the row's survival is
+        // asserted afterwards.
+        try {
+            DB::transaction(function () use ($eventId): void {
+                DB::table('fiscal_events')->where('id', $eventId)->delete();
+            });
+            $this->fail('ES-41: the fiscal_events immutability trigger must refuse a DELETE.');
+        } catch (QueryException $e) {
+            $this->assertMatchesRegularExpression(
+                '/append-only ledger/',
+                $e->getMessage(),
+                'ES-41: the refusal must come from the append-only trigger itself, not from an unrelated constraint.',
+            );
+        }
 
-        DB::table('fiscal_events')->where('id', $eventId)->delete();
+        $this->assertSame(
+            1,
+            DB::table('fiscal_events')->where('id', $eventId)->count(),
+            'ES-41: refusal must be two-sided — the exception AND the surviving row.',
+        );
     }
 
     public function test_pg_the_fiscal_events_trigger_refuses_a_forbidden_column_update(): void
@@ -309,22 +387,51 @@ final class ImmutabilityTriggerPresenceTest extends TestCase
     }
 
     /**
+     * Enumerate the non-internal triggers a driver actually has on `$table`, by
+     * QUERYING that driver's catalogue.
+     *
+     * M4 round 1, F-2: this helper used to `return []` unconditionally before
+     * running any query whenever the driver was not `pgsql`, so the non-PG
+     * branch of the presence test asserted `[]` against a hard-coded `[]` — an
+     * assertion that could never fail, in the one test in this file whose whole
+     * job is to make an invisible gap visible. It now reads `sqlite_master` on
+     * SQLite, and FAILS LOUDLY on any driver whose catalogue it does not know
+     * how to read rather than silently reporting "no triggers".
+     *
      * @return list<string>
      */
     private function triggerNamesOn(string $table): array
     {
-        if (DB::connection()->getDriverName() !== 'pgsql') {
-            return [];
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'pgsql') {
+            /** @var list<object{tgname: string}> $rows */
+            $rows = DB::select(
+                'SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid '
+                .'WHERE c.relname = ? AND NOT t.tgisinternal ORDER BY t.tgname',
+                [$table],
+            );
+
+            return array_map(static fn (object $row): string => (string) $row->tgname, $rows);
         }
 
-        /** @var list<object{tgname: string}> $rows */
-        $rows = DB::select(
-            'SELECT t.tgname FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid '
-            .'WHERE c.relname = ? AND NOT t.tgisinternal ORDER BY t.tgname',
-            [$table],
-        );
+        if ($driver === 'sqlite') {
+            /** @var list<object{name: string}> $rows */
+            $rows = DB::select(
+                "SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? ORDER BY name",
+                [$table],
+            );
 
-        return array_map(static fn (object $row): string => (string) $row->tgname, $rows);
+            return array_map(static fn (object $row): string => (string) $row->name, $rows);
+        }
+
+        $this->fail(sprintf(
+            'ES-41: this test cannot enumerate triggers on driver "%s", and returning an empty list for an '
+            .'unknown driver is exactly the unfalsifiable assertion M4 round 1 (F-2) faulted. Teach this helper '
+            .'to read %s\'s trigger catalogue before running the suite on it.',
+            $driver,
+            $driver,
+        ));
     }
 
     private function receipt(string $fiscalStatus): Receipt

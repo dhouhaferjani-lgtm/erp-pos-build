@@ -403,16 +403,61 @@ milestones:
     # in the test itself — 41/41 green on the default driver, and the same 14
     # assertions reached with or without the ES-42 gate),
     # ReceiptReturnRefactorV3Test 2 of 9 (the residual already in `blockers`).
-    status: review
+    #
+    # ROUND 1 = ACCEPT (docs/handoff/reviews/es-wave-a0/M4-round1.md, register
+    # commit 9fdd9bc08), reviewed over f21a5f32653..126fb457b. Eight findings,
+    # none blocking. The reviewer re-ran every control himself: the ES-09
+    # red-first block reproduced character-for-character from the two pre-M4
+    # service files (5 failed / 1 passed / 29 assertions, the disclosed guard
+    # green in both states), the ES-42 false-green story reproduced by deleting
+    # the middleware (200 with the envelope landing), and every headline count
+    # reproduced exactly on PostgreSQL by path.
+    #
+    # FIVE were owed at M5's opening commit and are DISCHARGED there
+    # (see the M5 row): M4-F-1, M4-F-2, M4-F-3 (NON-WAIVABLE), M4-F-4, M4-F-7.
+    # FOUR are recorded as notes under `findings:` below: M4-F-5, M4-F-6,
+    # M4-F-8 and the duplicated CHAIN_CONTEXT literal.
+    status: passed
     fix_rounds: 0
     # Milestone slice for the reviewer: f21a5f32653..59bb6913f
     commit: 59bb6913f
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/es-wave-a0/M4-round1.md
+    last_verdict: ACCEPT
+    updated: 9fdd9bc08
   - id: M5
     title: "Program-wide ratchets + WHOLE-LANE GATE — orphaned-event CI ratchet (baseline the existing 14 dead events BY NAME, fail on the 15th) + projector-emission architecture test as a RATCHET with an enumerated skip-list (A1 has not run; a hard assertion would be a red wall), both demonstrated to bite. Whole-lane review over the integrated branch with full accumulated evidence + both lenses. Report the A0 EXIT STATEMENT."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
+    # OPENING COMMIT discharges the five M4-round-1 sweeps the register marked
+    # owed here, F-3 FIRST and NON-WAIVABLE:
+    #   M4-F-3 (NON-WAIVABLE) — the CONFIRMED pending_seal→fiscalized seal-branch
+    #     gap was claimed "ticketed" at M4 and was NOT. It now has its real
+    #     record: docs/superpowers/tickets/2026-08-19-fiscal-seal-branch-unguarded-columns.md
+    #     plus the `findings:` entry below, both citing
+    #     ImmutabilityTriggerPresenceTest::test_pg_the_pending_seal_to_fiscalized_branch_has_no_column_guards_characterization
+    #     as EXECUTABLE evidence. The M4 claim was false until this commit.
+    #   M4-F-1 — ServerAuthoredChainPlacementVerifier's linkage-arm docblock
+    #     claimed the arm makes a mis-scoped head resolution visible. The
+    #     reviewer DISPROVED it at runtime (head read de-scoped, verifier intact
+    #     → mis-linked row written and stamped Verified, no throw). Both callers
+    #     derive $sequenceNumber/$previousHash from the same $prior they pass in,
+    #     so the linkage and hash arms agree by construction; only the CLOCK arm
+    #     can fire. The docblock now says that, and says the scoped read is the
+    #     actual defense.
+    #   M4-F-2 — triggerNamesOn() returned [] unconditionally BEFORE any query on
+    #     a non-pgsql driver, so the one non-skipping test asserted [] against a
+    #     hard-coded []. It now queries sqlite_master on SQLite, FAILS LOUDLY on
+    #     an unknown driver, asserts BOTH tables (was one), and — the falsifiable
+    #     half — performs the UPDATE and the DELETE that the [PG] tests prove are
+    #     refused and asserts they SUCCEED. The driver gap is now a behaviour.
+    #   M4-F-4 — the DELETE refusal was exception-only. It now uses the same
+    #     nested-transaction savepoint pattern as its two siblings and asserts
+    #     the row SURVIVES.
+    #   M4-F-7 — the standing ES-42 refusal test was status-only. It now asserts
+    #     the membership-shaped fixture IN THE TEST (the non-operator is a full
+    #     member of the terminal's company, so CompanyContextMiddleware cannot be
+    #     what refuses) and asserts error.code === 'FORBIDDEN', so a
+    #     NO_COMPANY_ACCESS 403 can never impersonate the permission gate's.
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -433,6 +478,15 @@ findings:
   - "F-5 (P3, M3b-round1.md:314-319) — ES-16's read partition couples to the ingestor's suppression verdict by a DUPLICATED LITERAL, not a shared constant: OutboxIngestor.php:922 plus seven producer copies at :521-551 vs DeadLetteredProjectionsController.php:78. Ruled WITHIN CONTRACT (no F16-* demands a constant; 16-D forbade M3b from adding one) and the reword-empties-the-partition failure mode is caught loudly by the real-ingestor fixture guard. OWED BY: the next lane that legitimately opens OutboxIngestor — one shared constant referenced by the seven producers, the suppressor and the partition."
   - "F-6 (P3, M3b-round1.md:321-329) — DeadLetteredProjectionsController.php:154's LIKE '%z_session_lifecycle:%' treats `_` as a single-character wildcard in both PG and SQLite, so the partition predicate is a strict SUPERSET of the ingestor's str_contains suppression. No false negative is possible and no verdict string the ingestor emits collides today, so visibility is safe — but the docblock at :74-76 and the evidence claim identity 'by construction'. OWED: escape the underscores with an explicit ESCAPE clause, or narrow the claim to 'a superset that is exact against every verdict the ingestor emits'."
   - "F-8 (residual, ruled — M3b-round1.md:147-168, :339-342) — DeadLetteredProjectionsController::show() still returns 409 NOT_DEAD_LETTERED for a z_session_lifecycle row (:218 tests integrity_exception_class === 'canonical_parse_failure', which a sequence_gap row fails). Ruled WITHIN CONTRACT: 16-A names index() and only index(), and the detail endpoint would carry no information the list row lacks — a deep-link dead end for a UI that does not exist yet. OWED: if a detail view is ever built, show() must reuse formatZSessionLifecycleRow() INCLUDING its deliberate absence of any action affordance (16-C is inherited)."
+  # ===================================================================
+  # From M4 round 1 (M4-round1.md). NOTE the numbering collides with the
+  # M3b entries above — every M4 entry is prefixed `M4-F-n` for that reason.
+  # ===================================================================
+  - "M4-F-3 (P2 → TICKETED, NON-WAIVABLE, opened at M5's opening commit — M4-round1.md:288-298) — the `pending_seal → fiscalized` branch of `prevent_receipt_modification()` is an UNCONDITIONAL `RETURN NEW` with ZERO column guards (`database/migrations/tenant/2026_07_31_940000_allow_sealed_hash_algorithm_backfill_transition.php:60-62`, reproduced in `down()` at `:180-181`), while the three branches below it guard 7, 13 and 17 columns. CONSEQUENCE, CONFIRMED AT RUNTIME on live PostgreSQL: one `UPDATE` that flips the status may rewrite `subtotal` and `total` in the same statement and commits — the `pos_receipts_totals` CHECK is an arithmetic invariant, not an immutability control, and certifies a coherently-forged pair. EXECUTABLE EVIDENCE: `apps/api/tests/Feature/Fiscal/ImmutabilityTriggerPresenceTest::test_pg_the_pending_seal_to_fiscalized_branch_has_no_column_guards_characterization` (passing today; it carries its own delete-me-when-red instruction). TICKET: `docs/superpowers/tickets/2026-08-19-fiscal-seal-branch-unguarded-columns.md`. NOT FIXED BY A0 — guarding the branch is a per-column decision against a LIVE seal path (`ReceiptFinalizationService`, `ReceiptPaymentService.php:395,433`), which brief R-5 names as scope creep for the ES-41 row. OWED BY: the lane that owns receipt sealing / NF525 immutability. M4 described this as already ticketed; it was not, and the record was created here."
+  - "M4-F-5 (P3, treasury lens — M4-round1.md:307-318) — `ServerAuthoredChainPlacementException extends RuntimeException` is thrown from `VirtualAdminFiscalEventService::appendDepositReceipt()`, which `RecordCustomerDepositService` calls INSIDE its sealing transaction, so a `time_anomaly` verdict aborts a CUSTOMER MONEY-IN flow as an unmapped 500. `OutboxIngestor` treats the identical condition as accept-with-`time_anomaly` (`ClockAnomalyDetector`: 'Out-of-tolerance is accepted, not blocked'), so 'derives the verdict in OutboxIngestor's own order' is true of the ORDER and not of the DISPOSITION. Probability is low (that terminal's chain carries only server-authored times) and the throw is defensible for a server-composed event. OWED: state the asymmetry in the exception docblock and map it at the deposit boundary to a structured refusal rather than a 500."
+  - "M4-F-6 (P3 — M4-round1.md:320-328) — the ES-42 blast-radius audit named five PHPUnit suites and missed two NON-PHPUnit callers of the gated route: `apps/web/e2e/smoke/treasury-phase5b-reconciliation.smoke.ts:738` and `apps/web/e2e/money-campaign/statement-support.ts:563` both POST to `/pos/sync/fiscal-events`, authenticating via `/auth/login` as the demo owner. If that account carries the seeded `admin` role it holds every permission and nothing is owed — neither stated nor verified, and unverifiable without standing up the E2E stack. These scripts are launch-program evidence, so a silent 403 there costs an evidence run. OWED: name them in the deploy note, or add `pos.operate_terminal` to the permission `arrayContaining` preamble the smoke already performs at `:372`."
+  - "M4-F-8 (P3, narrowing note — not a defect — M4-round1.md:337-344) — `TerminalRegistrySnapshotService` has ZERO production callers: outside `tests/` and the class itself the grep is empty, and `emitInitialSnapshot()` is referenced only by three test files. This NARROWS the still-SUSPECTED field-occurrence question ES-09 hands forward: in the field only `VirtualAdminFiscalEventService`'s two live callers can have written mis-linked rows, and only onto a `VirtualAdmin` terminal — which carries no `z_session` chain, so the realistic field blast radius may be NIL. OWED: read this before anyone commissions a production probe on the back of ES-09."
+  - "M4-Minor (P3 — M4-round1.md:346-350) — `CHAIN_CONTEXT = 'operational'` is now declared TWICE, once per module (`TerminalRegistrySnapshotService`, `VirtualAdminFiscalEventService`), in the same diff whose stated design principle is 'one verifier, not two copies … a chain-admissibility rule copied into two modules drifts silently'. Same failure mode as M3b F-5, smaller blast radius (the value is also the DB column default and is CHECK-constrained). Within contract. OWED BY: whoever introduces a `ChainContext` enum — rule 9 wants one anyway."
   - "F-9 (residual, ruled — M3b-round1.md:344-352) — ES-16 visibility REGRESSES if anyone runs fiscal:enqueue-resolved-event-projections on a lifecycle row: the partition carries whereNotExists(fiscal_event_projections) (:155-159, mirroring partition 2), that command creates pending rows for exactly these events, and afterwards the row appears in partition 1 only if the projections dead-letter and in NO partition if they apply — i.e. the blind spot returns with wrong Z aggregates written. Not a contract violation (16-A is demonstrated; the contract explicitly forbade M3b from making that command safe). OWED BY: whichever lane owns lifecycle adjudication."
 
 blockers:

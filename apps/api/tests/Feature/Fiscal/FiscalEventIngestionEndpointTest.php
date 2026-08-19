@@ -201,11 +201,48 @@ final class FiscalEventIngestionEndpointTest extends TestCase
 
     public function test_es42_an_authenticated_tenant_user_without_the_permission_is_refused_and_persists_nothing(): void
     {
+        // M4 round 1, F-7 — ATTRIBUTION, asserted in the test rather than left
+        // to a setUp comment and a red-first run nobody re-runs.
+        //
+        // Two different layers on this route return 403 with different
+        // remedies: `CompanyContextMiddleware` returns
+        // `error.code = NO_COMPANY_ACCESS` for a user who belongs to no company
+        // (`CompanyContextMiddleware.php:57-64`), and the `can:` gate's
+        // AuthorizationException is rendered as `error.code = FORBIDDEN`
+        // (`bootstrap/app.php`'s AccessDeniedHttpException render callback).
+        // This file's own history is that this exact test was once green for
+        // the FIRST reason while claiming to prove the second. Both halves of
+        // the guard are therefore asserted here:
+        //
+        //   (1) the fixture's shape — this principal IS a full company member,
+        //       so company context CANNOT be what refuses it;
+        //   (2) the response's own code — FORBIDDEN, and explicitly not
+        //       NO_COMPANY_ACCESS.
+        $this->assertTrue(
+            UserCompanyMembership::where('user_id', $this->nonOperator->id)
+                ->where('company_id', $this->terminal->company_id)
+                ->exists(),
+            'ES-42: the refused principal must be a FULL member of the terminal’s company. Without the membership '
+            .'CompanyContextMiddleware 403s first and this test is green with no permission gate at all.',
+        );
+        $this->assertFalse(
+            $this->nonOperator->can('pos.operate_terminal'),
+            'ES-42: …and it must genuinely lack pos.operate_terminal, or the 403 below proves nothing.',
+        );
+
         Sanctum::actingAs($this->nonOperator);
 
-        $this->postJson('/api/v1/pos/sync/fiscal-events', [
+        $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
             'envelopes' => [$this->validEnvelopeWire()],
-        ])->assertStatus(403);
+        ]);
+
+        $response->assertStatus(403);
+        $this->assertSame(
+            'FORBIDDEN',
+            $response->json('error.code'),
+            'ES-42: the refusal must be the PERMISSION GATE’s (rendered as FORBIDDEN). A NO_COMPANY_ACCESS 403 from '
+            .'CompanyContextMiddleware would satisfy a status-only assertion while the gate was absent.',
+        );
 
         $this->assertSame(
             0,
