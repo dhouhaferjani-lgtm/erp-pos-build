@@ -352,3 +352,14 @@ The decisive post–fifth-fix review produced no register or parseable
 `max_fix_rounds = 5` is exhausted, M3 is `blocked_review` under STOP A. No
 additional code change or reviewer retry was attempted; orchestrator/human
 authorization is required to resume.
+
+## Adversarial round 7 — authorized reviewer retry
+
+The parent orchestrator authorized exactly one reviewer-tool-only retry against
+committed tip `6f8a47c559b8af181d4dfdb08060791d1b721dc9`. No code or workflow change
+preceded the verdict. Round 7 parsed successfully and returned `ACCEPT` after
+independently running 120 PostgreSQL tests across nine touched suites and
+targeted PHPStan. It confirmed every round-5 finding closed. Its sole surviving
+P3 observation is a mutation-invisible negative assertion gap in the otherwise
+correct nullable variant predicate; the reviewer explicitly accepted it as a
+coverage note rather than a defect. M3 is passed.

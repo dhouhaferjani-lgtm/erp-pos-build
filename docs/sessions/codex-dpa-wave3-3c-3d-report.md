@@ -374,3 +374,10 @@ Round 6 was the decisive review after all five fix rounds. It returned only
 the harness `REVIEW TOOL ERROR` marker and no parseable verdict. Per the
 self-review harness this fails closed as `CHANGES-REQUIRED`; M3 and the wave are
 now `blocked_review` at STOP A. No retry or further production change was made.
+
+The parent orchestrator authorized one reviewer-tool-only retry on 2026-08-19,
+fixed to committed tip `6f8a47c55`. Round 7 produced a parseable `ACCEPT`,
+independently re-ran 120 PostgreSQL tests over nine touched suites, and confirmed
+all round-5 findings closed. No code or workflow change preceded the verdict.
+M3 and branch 3C are accepted; the remaining P3 note is a missing negative
+mutation assertion on behavior the reviewer verified as correct.
