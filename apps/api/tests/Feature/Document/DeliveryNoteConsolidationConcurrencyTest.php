@@ -320,6 +320,53 @@ SQL);
         $this->assertSame(0, DB::table('delivery_note_billing_marks')->where('company_id', $this->company->id)->count());
     }
 
+    public function test_delivery_note_commit_exhaustion_preserves_infrastructure_error_without_phantom_422(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Billing-claim concurrency policy requires PostgreSQL.');
+        }
+
+        config()->set('app.debug', false);
+        $deliveryNote = $this->deliveryNote('DN-COMMIT-EXHAUST');
+        DB::unprepared(<<<'SQL'
+        CREATE OR REPLACE FUNCTION pg_temp.dn_retry_raise_on_consolidation_commit()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            RAISE EXCEPTION 'forced consolidation commit serialization failure' USING ERRCODE = '40001';
+        END;
+        $$
+        SQL);
+        DB::statement(<<<'SQL'
+        CREATE CONSTRAINT TRIGGER dn_retry_raise_on_consolidation_commit
+        AFTER INSERT ON documents
+        DEFERRABLE INITIALLY DEFERRED
+        FOR EACH ROW EXECUTE FUNCTION pg_temp.dn_retry_raise_on_consolidation_commit()
+        SQL);
+
+        try {
+            $response = $this->withoutMiddleware()
+                ->postJson('/api/v1/delivery-notes/consolidate-to-invoice', [
+                    'delivery_note_ids' => [$deliveryNote->id],
+                ]);
+        } finally {
+            $pdo = DB::connection()->getPdo();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            DB::statement('DROP TRIGGER IF EXISTS dn_retry_raise_on_consolidation_commit ON documents');
+        }
+
+        $response->assertStatus(500)
+            ->assertJsonPath('error.code', 'INTERNAL_ERROR');
+        $this->assertNotSame('DELIVERY_NOTE_ALREADY_INVOICED', $response->json('error.code'));
+        $this->assertSame(0, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::Invoice)->count());
+        $this->assertSame(0, DB::table('delivery_note_billing_marks')->where('company_id', $this->company->id)->count());
+        $this->assertSame(0, $this->invoiceSequenceAggregate());
+        $this->assertArrayNotHasKey('invoiced_at', $deliveryNote->fresh()->payload ?? []);
+    }
+
     public function test_later_pre_resolution_retries_do_not_reuse_a_rolled_back_delivery_note_identity(): void
     {
         if (DB::getDriverName() !== 'pgsql') {

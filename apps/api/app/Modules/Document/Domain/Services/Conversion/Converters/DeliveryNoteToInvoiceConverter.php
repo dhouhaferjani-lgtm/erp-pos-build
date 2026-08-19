@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingConcurrencyRetrier;
@@ -20,7 +21,10 @@ use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PDOException;
+use Throwable;
 
 /**
  * Converter for Delivery Note(s) to Invoice conversion (Tunisia consolidation model).
@@ -126,13 +130,93 @@ final class DeliveryNoteToInvoiceConverter implements DocumentConverterInterface
             : [$source->id];
         $isConsolidation = $deliveryNoteIds !== null && count($deliveryNoteIds) > 0;
 
-        return $this->billingConcurrencyRetrier->run($ids[0], function () use ($ids, $isConsolidation, $source): Document {
-            $deliveryNotes = $this->loadAndValidateDeliveryNotes($ids, $source->id);
+        try {
+            return $this->billingConcurrencyRetrier->run($ids[0], function () use ($ids, $isConsolidation, $source): Document {
+                $deliveryNotes = $this->loadAndValidateDeliveryNotes($ids, $source->id);
 
-            return $isConsolidation
-                ? $this->consolidateDeliveryNotes($deliveryNotes)
-                : $this->convertSingleDeliveryNote($deliveryNotes[0]);
-        });
+                return $isConsolidation
+                    ? $this->consolidateDeliveryNotes($deliveryNotes)
+                    : $this->convertSingleDeliveryNote($deliveryNotes[0]);
+            });
+        } catch (DeliveryNoteAlreadyClaimedException $exception) {
+            $previous = $exception->getPrevious();
+            if ($previous === null) {
+                throw $exception;
+            }
+            if (! $this->isRetryExhaustion($previous)) {
+                throw $exception;
+            }
+
+            $durableWinner = $this->durableDeliveryNoteWinner($source, $exception->deliveryNoteId);
+            if ($durableWinner === null) {
+                throw $previous;
+            }
+
+            throw new DeliveryNoteAlreadyClaimedException(
+                $durableWinner['id'],
+                $previous,
+                $durableWinner['document_number'],
+            );
+        }
+    }
+
+    private function isRetryExhaustion(Throwable $exception): bool
+    {
+        for ($cursor = $exception; $cursor !== null; $cursor = $cursor->getPrevious()) {
+            if (! $cursor instanceof PDOException) {
+                continue;
+            }
+
+            $sqlState = $cursor->errorInfo[0] ?? $cursor->getCode();
+            if (in_array((string) $sqlState, ['40P01', '40001'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** @return array{id: string, document_number: string}|null */
+    private function durableDeliveryNoteWinner(Document $source, string $deliveryNoteId): ?array
+    {
+        $winner = DB::table('documents as delivery_note')
+            ->join('delivery_note_billing_marks as mark', 'mark.delivery_note_id', '=', 'delivery_note.id')
+            ->join('documents as invoice', 'invoice.id', '=', 'mark.invoice_id')
+            ->where('delivery_note.tenant_id', $source->tenant_id)
+            ->where('delivery_note.company_id', $source->company_id)
+            ->where('delivery_note.type', DocumentType::DeliveryNote->value)
+            ->where('delivery_note.id', $deliveryNoteId)
+            ->whereColumn('mark.company_id', 'delivery_note.company_id')
+            ->where('invoice.tenant_id', $source->tenant_id)
+            ->where('invoice.company_id', $source->company_id)
+            ->where('invoice.type', DocumentType::Invoice->value)
+            ->select([
+                'delivery_note.id',
+                'delivery_note.document_number',
+                'delivery_note.payload',
+                'mark.invoice_id as winner_invoice_id',
+                'mark.invoiced_via as winner_lane',
+            ])
+            ->first();
+
+        if ($winner === null) {
+            return null;
+        }
+
+        $payload = is_string($winner->payload)
+            ? json_decode($winner->payload, true)
+            : $winner->payload;
+        if (! is_array($payload)
+            || (string) ($payload['invoice_id'] ?? '') !== (string) $winner->winner_invoice_id
+            || (string) ($payload['invoiced_via'] ?? '') !== (string) $winner->winner_lane
+            || empty($payload['invoiced_at'])) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $winner->id,
+            'document_number' => (string) $winner->document_number,
+        ];
     }
 
     /**
