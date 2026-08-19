@@ -954,11 +954,18 @@ neutralises the **marker**, and *deliberately leaves the dirty `documents.payloa
 then the projection reads that payload with no guard. Every tenant carrying one such delivery note
 would lose the primary read surface of the feature this wave ships, the moment the FE went live.
 
-The fix mirrors the migration's own semantics: `Str::isUuid()` before the lookup, so an
-unparseable id resolves to **no invoicing document** while `invoiced_at` and the lane are
-**preserved** — the row reads *billed but unresolved*, not broken. The FE already renders the lane
-badge alone when the invoice number is null (`DeliveryNoteBillingStatus.tsx:49`), so no dead link
-was introduced.
+The fix adds `Str::isUuid()` before the lookup, so an unparseable id resolves to **no invoicing
+document** while `invoiced_at` and the lane are **preserved** — the row reads *billed but
+unresolved*, not broken. The FE already renders the lane badge alone when the invoice number is
+null (`DeliveryNoteBillingStatus.tsx:49`), so no dead link was introduced.
+
+> **CORRECTED in fix round 2.** This paragraph originally read *"the fix mirrors the migration's
+> own semantics"*. It did not. The migration guards `is_string()` **first** and only then the
+> format check (`safeInvoiceId():204`, `safeInvoicedAt():176`); round 1 implemented the format
+> clause alone, so a non-scalar `payload.invoice_id` — or `payload.invoiced_at`, which round 1 did
+> not touch at all — still 500ed the whole list in the `(string)` **cast**, one layer before the
+> guard. Parity was claimed, not achieved. See *Terminal fix round 2* below; the same overstatement
+> was corrected in place at `DocumentData.php` and in `progress.yaml`.
 
 ### Findings closed
 
@@ -1021,11 +1028,149 @@ divergences were structurally invisible to it. That is now closed for this wave'
 - **OI-12 now has SEVEN counters, not six.** F-6 adds `unparseable_invoiced_at`. Whoever promotes
   must read it out of the staging `tenants:migrate` log alongside the existing four invoice-id
   counters.
-- **The OI-12 `unparseable_invoice_id` count stops being a survey and becomes a gate** in spirit:
-  it was the proof that F-1's row shape is real. With F-1 fixed, a non-zero count no longer 500s the
-  list — those delivery notes render as legacy/unresolved instead — but it remains the honest
-  signal of how much dirty billing attribution each tenant carries.
+- **The OI-12 `unparseable_invoice_id` count — what a promoter can and cannot conclude from it.**
+  *(Wording rewritten in fix round 2. Round 1 asserted "with F-1 fixed, a non-zero count no longer
+  500s the list"; that was true only of the non-uuid-STRING subset, and the register was right to
+  call the downgrade unsupported while the cast was still unguarded.)*
+
+  The counter is a **union of three rejection reasons**, folded into one number at
+  `safeInvoiceId():217-219` — `! is_string($invoiceId)`, `trim($invoiceId) === ''`, and
+  `! Str::isUuid($invoiceId)`. It does not distinguish them, and nothing else in the log does
+  either. So the count tells a promoter **how many** delivery notes in a tenant carry an
+  unusable invoice attribution; it does **not** tell them which shape, and it never did.
+
+  What is now guaranteed, and the guarantee is about the CODE, not about the count: after
+  `DeliveryNoteBillingState` guards `is_string()` on both keys and `DocumentData` guards
+  `Str::isUuid()` on the lookup, **all three** of those subsets — and the same three on
+  `invoiced_at` — read as legacy/unresolved on the delivery-note list and detail rather than
+  500ing them. That is pinned on PostgreSQL by two tests over eight dirty shapes
+  (`DeliveryNoteBillingProjectionTest`, both the `invoice_id` and the `invoiced_at` ingress, list
+  **and** detail), and those tests now run in CI's PostgreSQL step rather than on SQLite, where
+  they cannot fail.
+
+  **Consequently `unparseable_invoice_id > 0` is a survey signal, not a promotion blocker** — it
+  measures how much dirty billing attribution a tenant carries, which is worth knowing before the
+  FE goes live, but no value of it implies a broken read surface. The round-1 register's
+  escalation to a blocking pre-promotion check was correct **while the cast was unguarded** and is
+  discharged by `R2-1`/`F-R2-1`, not waived.
 - **M5-evidence §2.3's acyclicity claim was false as written** and is true only as of F-5. The
   evidence drew a global "no deadlock is reachable by construction" conclusion from a lock inventory
   that had explicitly set `SalesOrderToDeliveryNoteConverter` aside as "not on this lane's path" —
   and that writer held the back edge. It conforms now.
+
+---
+
+## Terminal fix round 2 (M5)
+
+Both r2 registers returned **CHANGES-REQUIRED** and, as in round 1, the blocking finding is the
+**same defect found independently by both lenses**: treasury `R2-1` == tenancy `F-R2-1`.
+
+| Lens | Register | Verdict |
+|---|---|---|
+| tenancy-authz | `reviews/dn-consolidation-build/M5-terminal-tenancy-authz-r2.md` | CHANGES-REQUIRED |
+| treasury | `reviews/dn-consolidation-build/M5-terminal-treasury-r2.md` | CHANGES-REQUIRED |
+
+Every fix below was written **red-first** and every backend proof executed on PostgreSQL against a
+dedicated scratch database (`autoerp_dn_fix2`) — `autoerp_test` was never touched.
+
+### The Critical: round 1 guarded the lookup, not the cast
+
+`DocumentData.php:198`'s `Str::isUuid()` sits **downstream** of an unguarded `(string)` cast in
+`DeliveryNoteBillingState::fromPayload()`. `documents.payload` is cast `array`, so a nested JSON
+object or list decodes to a PHP array; `(string) $array` raises `E_WARNING`, which
+`HandleExceptions` converts to an `ErrorException` — a 500 **before** the guard is reached. And
+`payload.invoiced_at` was a **second, entirely unguarded ingress** with the identical blast radius
+(`DeliveryNoteController::index` maps every row through `DocumentData::fromModel`, so one dirty
+legacy row takes out the whole delivery-note list for every user in the tenant). The pattern was
+known and applied to one of three fields: `invoiced_via` has been `is_string`-guarded since M1, two
+lines away.
+
+Fixed at `DeliveryNoteBillingState.php:50-56` with `is_string()` on **both** keys, giving full
+parity with the migration's guard ORDER — `is_string` first, then the format check — split
+honestly across the two layers that own each half.
+
+| Item | Register id | File:line | Fix |
+|---|---|---|---|
+| **CRITICAL** — unguarded `(string)` cast on both payload keys | treasury `R2-1` == tenancy `F-R2-1` | `DeliveryNoteBillingState.php:50-56` | `is_string()` on `invoiced_at` AND `invoice_id`; the three overstated "mirrors the migration" claims corrected at `DocumentData.php`, in this handback, and in `progress.yaml`; the OI-12 gate wording rewritten to say what is actually guaranteed |
+| The three r1 regressions ran on SQLite only, where they cannot fail | treasury `R2-2` | `.github/workflows/ci.yml:635-655` | `DeliveryNoteBillingProjectionTest` + `DeliveryNoteBillingClaimServiceTest` added to the branch's PostgreSQL step, with the rationale recorded inline |
+| The wave's test set is order-dependent and red in one process | treasury `R2-3` | `DeliveryNoteConsolidationTest.php:207-226` | the global `stored_events` count scoped to this consolidation's `aggregate_uuid`; `audit_events` scoped to this test's tenant for the same reason |
+| `safeInvoicedAt()` validated with Carbon but inserted the raw string | treasury `R2-4` | migration `:196-200` | inserts `$parsed->toIso8601String()`; fixture extended with `'now'` (silently-wrong class) and `'+1 day'` (abort class) |
+| `lockOrderHeader()` discarded `->first()` | treasury `R2-6` == tenancy `F-R2-3` | `SalesOrderToDeliveryNoteConverter.php:203-210` | throws when the predicate matches nothing, with a dedicated engine-independent test |
+| The `>= 500` assertion could pass for the wrong reason | treasury `R2-6` | `SalesOrderBillingClaimTest.php:674-691` | `assertSame(500, …)` + `assertInstanceOf(DeliveryNoteClaimNotFinalisedException::class, $response->exception)` + the exact message |
+| Hardcoded English on a now user-visible refusal | tenancy `F-R2-2` | `DeliveryNoteController.php:293-306` | `__('documents.to_bill_queue.no_active_location_in_scope')`, en + fr |
+| Stale scope comment | tenancy `F-R2-4` | `ToBillPage.tsx:427-438` | corrected: the every-location fallback holds only for `can_view_all_locations` |
+
+### RED-first evidence
+
+| Item | RED | GREEN |
+|---|---|---|
+| `R2-1` / `F-R2-1` | 2 failed — `Array to string conversion` at `DeliveryNoteBillingProjectionTest.php:351` | 10 passed / 126 assertions |
+| `R2-3` | 1 failed / 137 passed — *"actual size 9 matches expected size 3"* at `DeliveryNoteConsolidationTest.php:214`, 14 files in ONE process | 139 passed / 1045 assertions / 0 failures, same one process |
+| `R2-4` | `SQLSTATE[22007] … invalid input syntax for type timestamp with time zone: "+1 day"` — the migration ABORTED | 5 passed / 54 assertions |
+| `R2-6` (lock) | `Failed asserting that exception of type "RuntimeException" is thrown` (guard reverted in place, then restored) | 17 passed / 127 assertions |
+
+### PostgreSQL counts — and an honest correction to round 1's disclosure
+
+Round 1's handback table reported *"over all 14 test files the wave touches … 137 passed / 1005 /
+0"*. That number came from the executor's **13 + 1 file split** (125/857 across 13 files, plus
+`DeliveryNoteConsolidationConcurrencyTest` 12/148 on its own). The same 14 files run **in one
+process** were **1 failed / 136 passed** — the split hid an order dependency, and the handback
+presented the split total as a whole-set result. The YAML did at least disclose the split; the
+handback did not, and neither said the set was order-dependent. `R2-3` is that defect; this is the
+disclosure it should have had.
+
+| Run (scratch DB `autoerp_dn_fix2`, `autoerp_test` never touched) | Before r2 | After r2 |
+|---|---|---|
+| All 14 wave files, **one process**, `phpunit-pgsql.xml` | **1 failed / 136 passed / 994 assertions** | **139 passed / 1045 assertions / 0 failures** |
+| The two files in the order that reproduced it (`…Concurrency` then `…Consolidation`) | 1 failed / 28 passed | **29 passed / 327 assertions** |
+| The CI PostgreSQL step's exact three files, in **its** order (`…Concurrency`, `…Projection`, `…ClaimService`) | *(only `…Concurrency` was gated)* | **32 passed / 350 assertions** |
+| Default engine, same 14 files | 124 passed / 13 skipped / 0 failures | **126 passed / 13 skipped / 0 failures** |
+
+The one-process and split totals now **agree**, which is the point: 139 = round 1's 137 plus the two
+tests this round adds (`test_a_non_string_payload_invoiced_at_reads_as_absent_…` and
+`test_the_order_header_lock_refuses_to_proceed_when_its_predicate_matches_nothing`). Anyone can now
+run "the wave's tests" in any grouping and get the same answer.
+
+The default-engine `+2` is the same two tests: both are engine-INDEPENDENT. The lock-guard test
+asserts the guard, not a row-lock property, so unlike the `F-5` lock-ORDER assertion it is not
+PostgreSQL-gated. The 13 skips are unchanged (12 concurrency + the 1 `F-5` assertion).
+
+### Recorded, NOT fixed — fix round 2
+
+- **treasury `R2-5`** *(MINOR)* — **`postgresPayloadObjectSql()` is a silent destructive write.**
+  `DeliveryNoteBillingClaimService.php:176-179` normalises any non-object jsonb payload base to
+  `'{}'` via `CASE WHEN jsonb_typeof(payload) = 'object'`, which **discards** an array/scalar/
+  JSON-null payload wholesale — no counter, no log. Round-1 `F-3` asked for the guard **and** a
+  legacy survey count; only the guard landed.
+
+  **The survey counter is deliberately not added this round.** The register itself re-verified
+  latency at tip — `grep -rn "'payload' => \[\]" app/ database/` is empty and no `payload`
+  validation rule exists in the Document request classes — so no production writer creates the
+  shape. Adding the counter means editing the M1C backfill loop, which is the one file whose abort
+  behaviour this same round is already changing (`R2-4`), and it belongs with the OI-12 survey work
+  the promoter owns rather than bolted onto a fix round. **Ticket for the parent.**
+  Register: `M5-terminal-treasury-r2.md` §C, `R2-5`.
+
+- **tenancy, §D residual — INHERITED, ticket for the parent.** `partner_id` and `product_id` on the
+  **same** delivery-note request path are still raw uuid bindings:
+  `Concerns/HandlesDocuments.php:155` (`$query->where('partner_id', $partnerId)`) and `:181`
+  (`$q->where('product_id', $productId)`) take unvalidated query strings, and `index()` calls
+  `applyFilters` at `:117` — **one line before** the `F-T2` guard at `:118`. So
+  `GET /api/v1/delivery-notes?partner_id=not-a-uuid` is still a 500 for any `deliveries.view`
+  holder. **Not a delta defect and deliberately not fixed here:**
+  `git diff --name-only 60df88a01..HEAD` does not contain `HandlesDocuments.php` — the file is
+  untouched by the whole branch and the trait is shared by **every** document controller, so
+  closing it is a repo-wide lane, not a fix-round edit. Recorded so nobody reads `F-T2` as "the uuid
+  class is closed on this endpoint". Register: `M5-terminal-tenancy-authz-r2.md` §D.
+
+- **`apps/api/lang/ar` has no `documents.php`.** The `F-R2-2` translation ships `en` + `fr`; Arabic
+  falls back to `en` for this key exactly as it already does for every other `documents.*` key. That
+  is the pre-existing state of the lang directory (only `treasury.php` exists under `ar/`), not a
+  regression this round introduced — but it does mean an Arabic-locale operator reads this refusal
+  in English, and the same is true of the whole namespace.
+
+### Round-2 quality gates
+
+Pint green on every changed file · PHPStan level 8 `[OK] No errors` over all changed `apps/api/app`
+paths · `tsc --noEmit` clean · ESLint 0 errors on the touched FE file · focused vitest
+`src/features/documents/to-bill` 13/13 · `audit:keys` 0 new · `audit:quantity` 0 new.
