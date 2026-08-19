@@ -730,9 +730,13 @@ POST-FIX (scope-keyed)              kind ar.settings = en-aliased       aliased 
 
 Fixed by replacing `spreadsWithDepth()` with **`spreadsByScope()`** — a scope-id stack that gives each
 individual object literal its own bucket — and comparing order **within a scope**. New
-`sibling-scope` fixture carries two siblings at the same depth (one reversed, one normal) and asserts
-the reversal is still caught; a second assertion pins `prod-shaped` (all English-first) as
-`english-spread` so the fix cannot degenerate into flagging everything.
+`sibling-scope` fixture carries **exactly two** siblings at the same depth — one reversed, one normal
+— and asserts the reversal is still caught; a second assertion pins `prod-shaped` (all English-first)
+as `english-spread` so the fix cannot degenerate into flagging everything. **The fixture holds exactly
+two siblings on purpose:** round 5 briefly added a third (`englishOnly`) which tripped predicate (b)
+instead and silently killed this pin — see §M1(39). Mutation-verified: reverting `spreadsByScope`'s
+`scope: stack[stack.length - 1]` to `scope: stack.length - 1` flips this fixture
+`en-aliased → english-spread` while every other fixture is unchanged.
 
 **Lesson recorded:** rounds 3 and 4 both fixed the *same* invariant through a different door
 (comments, then top-level order, then sibling order). The invariant is "English must not be what the
@@ -897,3 +901,62 @@ and pre-verified. It needs one of:
 - **R6-4** none of the CI wiring has executed on a real runner — the three first-execution surfaces and
   the two owner prerequisites are in §M1(36).
 - **R6-5** `lint:ratchet` swallows the lint chain's tail; accepted, the discrete steps gate first.
+
+---
+
+## M1 round 6 → PARENT RULING → authorized continuation (round 7)
+
+Round 6 was CHANGES-REQUIRED at `fix_rounds: 5 == max_fix_rounds`, which is harness STOP condition A.
+I stopped and did **not** apply the fix. The parent then ruled (recorded verbatim beside the M1 row in
+`docs/handoff/progress/enforcement-p2.progress.yaml`):
+
+> "M1 STOP-A RULED (parent, 2026-08-19): AUTHORIZED CONTINUATION, option (b). The sole surviving
+> finding is a regression introduced by round 5's own fixture edit — the deliverable the rounds were
+> gating has been stable since round 2 — and its remedy is pre-verified, 5 lines,
+> baseline-byte-identical, no seed revision, no re-pin, no new tag. A guard-liveness package must not
+> ship a killable liveness pin, so accept-with-finding is refused. The mid-wave fix-round counter in
+> this YAML is wave mechanics, not a control-manifest constant; it is raised to 6 for M1 ONLY, by this
+> ruling, recorded here. Scope of the continuation: delete the sibling-scope fixture's englishOnly
+> sibling + its comment, drop the stale DECISION §M1(34) sentence — NOTHING else. Then run M1 round 7
+> as a scoped verification of exactly that delta; ACCEPT closes M1."
+
+### (39) The authorized delta, and nothing else
+
+1. Deleted `englishOnly: { ...enBeta },` **and its 4-line comment** from
+   `apps/web/tools/__fixtures__/i18n-completeness/sibling-scope/lib/i18n.ts`.
+2. Replaced the stale §M1(34) sentence with the corrected one (plus a note recording *why* the fixture
+   holds exactly two siblings, so the trap is not re-laid).
+
+No production code, no test-file change, no baseline movement.
+
+**Encoding note on the raise.** The top-level `max_fix_rounds` stays **5**. Both the control manifest
+(`packages.p2.max_fix_rounds`) and the parent dispatch receipt project `5`, and
+`scripts/adversarial-review-final.sh` field-checks *top-level == manifest* at M4 — editing it would
+fail the final gate. The ruling's raise is therefore recorded as an **M1-scoped
+`max_fix_rounds_override: 6`** beside the milestone, which is what "for M1 ONLY … wave mechanics"
+means operationally.
+
+### Verification of the delta — the reviewer's own mutation test, re-run
+
+Liveness restored (reverting `spreadsByScope`'s `scope: stack[stack.length - 1]` →
+`scope: stack.length - 1`, i.e. undoing R4-1):
+
+| fixture | HEAD | depth-keyed mutant | |
+|---|---|---|---|
+| prod-shaped | english-spread | english-spread | |
+| comment-tamper | english-spread | english-spread | |
+| spread-order | en-aliased | en-aliased | |
+| **sibling-scope** | **en-aliased** | **english-spread** | ← **pin alive again** |
+| english-only-subtree | en-aliased | en-aliased | |
+
+Predicate (b) keeps its own independent pin (mutant with predicate (b) deleted):
+
+| fixture | HEAD | no-predicate-(b) mutant | |
+|---|---|---|---|
+| spread-order | en-aliased | en-aliased | |
+| sibling-scope | en-aliased | en-aliased | |
+| **english-only-subtree** | **en-aliased** | **english-spread** | ← **pin alive** |
+
+So both predicates are independently killable-detectable, which is exactly what
+`08-DETECTOR-LIVENESS.md` requires. Baseline regenerated: **byte-identical, 2 917 entries** — no seed
+revision, no re-pin, pin tag unchanged at `ci-pin/enforcement-p2-r1`. 46 i18n tests green.

@@ -33,11 +33,6 @@ const resources = {
       ...arBeta,
       reversed: { ...arBeta, ...enBeta },
       normal: { ...enBeta, ...arBeta },
-      // THIRD sibling, placed AFTER a normal one on purpose: a nested literal
-      // that spreads English and NOTHING of this locale. Placing it first would
-      // also pass under the depth-keyed code, so it would not be a red-first
-      // pin. This is the shape a revert produces ("RTL broken, drop ar X").
-      englishOnly: { ...enBeta },
     },
   },
 }
