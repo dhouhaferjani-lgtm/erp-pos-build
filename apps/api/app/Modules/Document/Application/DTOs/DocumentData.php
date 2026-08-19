@@ -190,10 +190,20 @@ final class DocumentData extends Data
         // (`2026_08_18_000002_create_delivery_note_billing_marks_table.php`) proves the
         // dirty shape exists in the field: its `safeInvoiceId()` counts such rows as
         // `unparseable_invoice_id`, neutralises the MARKER, and deliberately leaves the
-        // payload untouched. Mirror that contract here — an unparseable id resolves to
-        // no invoicing document, while `invoiced_at` and the lane below stay intact so
-        // the row still reads as billed-but-unresolved rather than 500ing the whole
-        // delivery-note list. (M5-terminal treasury F-1 / tenancy-authz F-T1.)
+        // payload untouched.
+        //
+        // This is the FORMAT half of the migration's contract, not the whole of it.
+        // `safeInvoiceId():204` guards `is_string()` FIRST and only then `trim`/`Str::isUuid`;
+        // the `is_string()` half lives one layer up, in
+        // `DeliveryNoteBillingState::fromPayload()`, because a non-string value 500s in
+        // the CAST before it could ever reach this line. Neither layer reproduces the
+        // migration's semantics alone — read them together.
+        //
+        // Effect of the pair: an unparseable id resolves to no invoicing document, while
+        // `invoiced_at` and the lane below stay intact so the row still reads as
+        // billed-but-unresolved rather than 500ing the whole delivery-note list.
+        // (M5-terminal treasury F-1 / tenancy-authz F-T1, completed in r2 by
+        // treasury `R2-1` == tenancy `F-R2-1`.)
         $invoicingDocument = null;
         if ($billingState->invoice_id !== null && Str::isUuid($billingState->invoice_id)) {
             $invoicingDocument = Document::query()

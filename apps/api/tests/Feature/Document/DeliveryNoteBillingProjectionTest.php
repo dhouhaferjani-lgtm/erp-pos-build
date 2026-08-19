@@ -260,6 +260,15 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
             'DN-DIRTY-DOCNUM' => 'INV-2024-001',
             'DN-DIRTY-BLANK' => ' ',
             'DN-DIRTY-NUMERIC' => 123,
+            // M5-terminal r2 (treasury R2-1 == tenancy F-R2-1). The round-1 guard sat on
+            // the LOOKUP (`Str::isUuid()` in DocumentData) but the fatal ingress is one
+            // layer earlier, in the DTO's `(string)` CAST: `documents.payload` is cast
+            // `array`, so a nested JSON object or list decodes to a PHP array and
+            // `(string) $array` raises E_WARNING -> ErrorException -> 500, before the
+            // uuid guard is ever reached. The wave's own M1C backfill enumerates exactly
+            // this shape as field data (`'invoice_id' => ['not' => 'a UUID']`).
+            'DN-DIRTY-OBJECT' => ['nested' => 'object'],
+            'DN-DIRTY-LIST' => ['a', 'b'],
         ];
 
         $dirty = [];
@@ -298,7 +307,77 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
         // stays on the billed side of the filter despite the unresolvable id.
         $invoiced = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?invoiced=1');
         $invoiced->assertOk();
-        $this->assertCount(3, $invoiced->json('data'));
+        $this->assertCount(count($dirtyShapes), $invoiced->json('data'));
+    }
+
+    /**
+     * M5-terminal r2 — treasury `R2-1` == tenancy `F-R2-1`, the `invoiced_at` half.
+     *
+     * `payload.invoiced_at` is a SECOND, independent ingress into the same
+     * `(string)` cast, and round 1's `Str::isUuid()` guard does not touch it at all:
+     * a non-string value 500s `GET /delivery-notes/{id}` AND the whole
+     * `GET /delivery-notes` list, because `index` maps every row through
+     * `DocumentData::fromModel`. The wave's own M1C backfill added
+     * `'invoiced_at' => ['not' => 'a timestamp']` as a fixture in this very fix
+     * round, so the shape is field data by the branch's own admission.
+     *
+     * Contract asserted here, in parity with the migration's `safeInvoicedAt()`
+     * (`is_string` FIRST, then the format check): a non-string `invoiced_at` is
+     * treated as ABSENT by the projection — the row reads as not-yet-billed rather
+     * than 500ing the surface — while a clean `invoice_id` alongside it still
+     * resolves normally.
+     */
+    public function test_a_non_string_payload_invoiced_at_reads_as_absent_instead_of_500ing_the_list_and_detail_surfaces(): void
+    {
+        $invoice = $this->deliveryNote('INV-CLEAN-0001', type: DocumentType::Invoice);
+
+        $dirtyShapes = [
+            'DN-AT-OBJECT' => ['not' => 'a timestamp'],
+            'DN-AT-LIST' => ['2026-08-12T09:10:11+00:00'],
+            'DN-AT-BOOL' => true,
+        ];
+
+        $dirty = [];
+        foreach ($dirtyShapes as $number => $invoicedAt) {
+            $dirty[$number] = $this->deliveryNote($number, [
+                'invoiced_at' => $invoicedAt,
+                'invoice_id' => $invoice->id,
+                'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+            ]);
+        }
+
+        // (a) the LIST surface.
+        $list = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?page=1');
+        $list->assertOk();
+        $this->assertEqualsCanonicalizing(
+            array_map(static fn (Document $document): string => $document->id, array_values($dirty)),
+            array_column($list->json('data'), 'id'),
+        );
+        foreach ($list->json('data') as $row) {
+            $this->assertNull($row['invoiced_at']);
+            // The clean `invoice_id` beside the dirty stamp still resolves: the two
+            // keys are guarded independently, exactly as the migration guards them.
+            $this->assertSame('INV-CLEAN-0001', $row['invoiced_by_document_number']);
+        }
+
+        // (b) the DETAIL surface.
+        foreach ($dirty as $document) {
+            $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/'.$document->id)
+                ->assertOk()
+                ->assertJsonPath('data.invoiced_at', null)
+                ->assertJsonPath('data.invoiced_by_document_number', 'INV-CLEAN-0001');
+        }
+
+        // DISCLOSURE, not a contract we are happy with: the invoiced/uninvoiced
+        // complement is a DATABASE predicate (`whereNotNull('payload->invoiced_at')`,
+        // Document.php:664), so a non-string stamp is still "invoiced" to the filter
+        // while the DTO reads it as absent. The two disagree for exactly this dirty
+        // subset. That divergence is pre-existing and harmless (both refuse to 500);
+        // reconciling it would mean rewriting a shared scope, which is out of this
+        // fix round's scope. Pinned so it cannot drift unnoticed.
+        $invoiced = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?invoiced=1');
+        $invoiced->assertOk();
+        $this->assertCount(count($dirtyShapes), $invoiced->json('data'));
     }
 
     public function test_offset_pagination_returns_the_second_twenty_five_rows_and_cursor_mode_remains_available(): void
