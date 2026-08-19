@@ -61,6 +61,59 @@ final class ProvisioningFlagMatrixTest extends TestCase
         self::assertSame('Template Equity', $this->accountName($company, '1000'));
     }
 
+    public function test_pre_policy_published_template_is_completed_with_inventory_variance_purposes(): void
+    {
+        $actor = $this->m4Actor();
+        $template = $this->m4Published('generic', '*', $actor);
+        $this->m4Assign('*', $template, $actor);
+        // Simulate an assignment certified before shrinkage became REQUIRED. The
+        // resolver intentionally checks publication/capability metadata, not mutable
+        // row hashes, so the company-creation boundary must still make this chart safe.
+        $template->accounts()
+            ->whereIn('system_purpose', [
+                SystemAccountPurpose::InventoryShrinkageExpense->value,
+                SystemAccountPurpose::InventoryGainIncome->value,
+            ])
+            ->delete();
+        config(['country_defaults.provisioning_enabled' => true]);
+        [, $company] = $this->tenantCompanyUser('ZZ', 'pre-policy-template');
+
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $this->assertInventoryVariancePurposes($company);
+    }
+
+    public function test_template_provisioning_rolls_back_the_chart_when_variance_installation_fails(): void
+    {
+        $actor = $this->m4Actor();
+        $template = $this->m4Published('generic', '*', $actor);
+        $this->m4Assign('*', $template, $actor);
+        config(['country_defaults.provisioning_enabled' => true]);
+        [$tenant, $company] = $this->tenantCompanyUser('ZZ', 'template-variance-rollback');
+        $collision = Account::query()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => '6586',
+            'name' => 'Operator-owned collision',
+            'type' => 'expense',
+            'system_purpose' => SystemAccountPurpose::InventoryGainIncome,
+            'is_active' => true,
+            'is_system' => false,
+            'balance' => '0.000',
+        ]);
+
+        try {
+            app(ChartOfAccountsService::class)->seedForCompany($company);
+            self::fail('A purpose collision must abort template provisioning.');
+        } catch (\RuntimeException $exception) {
+            self::assertStringContainsString('refusing to repurpose it', $exception->getMessage());
+        }
+
+        self::assertSame(1, Account::query()->where('company_id', $company->id)->count());
+        self::assertNull($collision->refresh()->parent_id);
+        self::assertFalse(Account::query()->where('company_id', $company->id)->where('code', '1000')->exists());
+    }
+
     public function test_country_parameterized_contract_consumer_uses_template_path(): void
     {
         $this->assignCustomWildcard('Contract Template Equity');
@@ -330,7 +383,7 @@ final class ProvisioningFlagMatrixTest extends TestCase
                     ->where('company_id', $company->id)
                     ->where('system_purpose', $purpose->value)
                     ->exists(),
-                "{$purpose->value} must be installed atomically on the legacy provisioning path.",
+                "{$purpose->value} must be installed atomically on every provisioning path.",
             );
         }
     }

@@ -305,6 +305,21 @@ final class SeedChartsCommandTest extends TestCase
         self::assertSame(0, Account::query()->where('company_id', $company->id)->count());
     }
 
+    public function test_legacy_preview_counts_every_account_the_normal_legacy_write_creates(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+
+        [$previewedCreated] = app(LegacyExistingChartRepairPreviewer::class)->preview($company);
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        self::assertSame(
+            Account::query()->where('company_id', $company->id)->count(),
+            $previewedCreated,
+            'the legacy-only preview must include the post-seeder variance installer',
+        );
+    }
+
     public function test_delegate_throw_fails_loud_and_aborts(): void
     {
         $tenant = Tenant::factory()->create();

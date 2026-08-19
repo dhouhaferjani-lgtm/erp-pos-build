@@ -213,12 +213,27 @@ final class ChartOfAccountsPurposeParityTest extends TestCase
         $this->assertEmpty($result['missing_purposes']);
     }
 
-    public function test_required_purposes_cover_cost_of_goods_sold_and_general_expense(): void
+    public function test_required_purposes_cover_cost_of_goods_sold_general_expense_and_inventory_shrinkage(): void
     {
         $required = SystemAccountPurpose::requiredPurposes();
 
         $this->assertContains(SystemAccountPurpose::CostOfGoodsSold, $required);
         $this->assertContains(SystemAccountPurpose::GeneralExpense, $required);
+        $this->assertContains(SystemAccountPurpose::InventoryShrinkageExpense, $required);
+    }
+
+    public function test_validation_catches_a_chart_missing_inventory_shrinkage(): void
+    {
+        $company = $this->seedChart('TN');
+
+        Account::forCompany($company->id)
+            ->where('system_purpose', SystemAccountPurpose::InventoryShrinkageExpense->value)
+            ->update(['system_purpose' => null]);
+
+        $result = $this->service->validateCompanyAccounts($company->id);
+
+        $this->assertFalse($result['valid']);
+        $this->assertContains(SystemAccountPurpose::InventoryShrinkageExpense->value, $result['missing_purposes']);
     }
 
     public function test_validation_catches_a_chart_missing_cost_of_goods_sold_or_general_expense(): void

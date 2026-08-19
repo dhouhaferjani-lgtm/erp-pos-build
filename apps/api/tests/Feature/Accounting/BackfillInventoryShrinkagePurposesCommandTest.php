@@ -104,7 +104,7 @@ final class BackfillInventoryShrinkagePurposesCommandTest extends TestCase
         $this->account($tenant->id, $company->id, '75', 'revenue');
 
         $this->artisan('accounting:backfill-inventory-shrinkage-purposes')
-            ->expectsOutputToContain('is missing parent account 65')
+            ->expectsOutputToContain('is missing parent account 65; cannot provision inventory variance account 6586')
             ->expectsOutputToContain(BackfillInventoryShrinkagePurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
             ->assertFailed();
 
