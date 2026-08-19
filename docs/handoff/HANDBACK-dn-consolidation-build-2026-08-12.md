@@ -9,8 +9,14 @@
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
 - Current M2 implementation SHA: `3b1af7fbc` (bridge round 2 accepted through `52aae14b7`).
 - Current M3 implementation SHA: `2de9df339` (bridge round 2 accepted through `872e2a8e0`).
-- Current M4 implementation SHA: `4d747ce41` (awaiting bridge review).
-- Milestone being handed back: M4 implementation and amended preflight complete; bridge review is next.
+- Current M4 implementation SHA: `4d747ce41` (bridge round 3 ACCEPTED — verdict `reviews/dn-consolidation-build/M4-round3.md`).
+- M5 whole-branch evidence: `b9418ab73`; VP-1 count-string fix at `8faec0952`.
+- M5 terminal three-lens gate at `8faec0952`: frontend-conventions **ACCEPT**, tenancy-authz
+  **CHANGES-REQUIRED**, treasury **CHANGES-REQUIRED** — registers under
+  `reviews/dn-consolidation-build/M5-terminal-*.md`. Terminal fix round: see
+  "Terminal fix round (M5)" at the end of this document.
+- Milestone being handed back: M5 terminal gate findings closed; the wave is at its terminal
+  fix round, not awaiting an M4 bridge review.
 - No push, merge, or deployment was performed.
 
 M1 commit list:

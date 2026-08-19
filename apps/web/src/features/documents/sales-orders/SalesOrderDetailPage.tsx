@@ -457,7 +457,15 @@ export function SalesOrderDetailPage() {
                           {' · '}
                           {document.invoiced_via === null
                             ? t('orders.billingRefusal.billedBy.unknown')
-                            : t(`orders.billingRefusal.billedBy.${document.invoiced_via}`)}
+                            : t(`orders.billingRefusal.billedBy.${document.invoiced_via}`, {
+                                // The parser types `invoiced_via` as an unconstrained
+                                // `string | null` (deliveryNoteBillingRefusal.ts), not the four
+                                // lane cases, so any lane the server adds without a locale key
+                                // would render the raw key string in en and fr. Matches the two
+                                // sibling surfaces, ToBillPage.tsx:85 and
+                                // PartnerDeliveryNotesTab.tsx:225. (M5-terminal FE E1.)
+                                defaultValue: t('orders.billingRefusal.billedBy.unknown'),
+                              })}
                         </p>
                       </div>
                       {document.invoice_id !== null && document.invoice_number !== null && (
