@@ -145,8 +145,9 @@ milestones:
     # ENVIRONMENT-BLOCKED and reported as blocked, never as green - see findings below.
     # M8 is the FINAL milestone: the parent runs the wave's terminal gate and the visual E2E pass.
     status: review
+    updated: b6012cd34
     fix_rounds: 0
-    commit: null
+    commit: 4706d437d
     verdict: null
     last_verdict: null
 
