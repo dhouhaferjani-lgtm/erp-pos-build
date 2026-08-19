@@ -698,6 +698,14 @@ final class SalesOrderBillingClaimTest extends TestCase
      */
     public function test_delivery_note_conversion_locks_the_order_header_before_the_delivery_note_sequence(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            // SQLite's grammar compiles `lockForUpdate()` to nothing, so there is no
+            // FOR UPDATE statement to order — and no deadlock to prevent. The invariant is
+            // a PostgreSQL row-lock property, matching the engine gate
+            // DeliveryNoteConsolidationConcurrencyTest.php:164 uses for the same reason.
+            $this->markTestSkipped('Lock-order conformance requires PostgreSQL.');
+        }
+
         $order = $this->createOrder();
 
         $queries = [];
