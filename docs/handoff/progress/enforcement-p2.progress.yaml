@@ -225,11 +225,11 @@ milestones:
     title: "2(b) Feature-suite strategy: decision doc + implementation of the chosen option. LOCAL timing measurement only (no push — gate-r1 H-7); if material -> F-2 fires (blocked_owner). Kill the unanchored --filter substring mechanism (anchor survivors ^...Test$ + exactly-one-match lint). MANDATORY (gate-r1 H-6): the mechanically-checked class-to-lane/exclusion manifest covering EVERY tests/Feature class (script/test fails on any unassigned class) + the planted-new-Feature-class negative proof in a previously-UNCOVERED directory (selected automatically or loud failure; revert; both outputs pasted). Pointing at already-covered Treasury/Accounting (ci.yml:833-851) does not satisfy it. RECIPROCAL NOTE (gate-r2 R2-H-6; hardened gate-r3 R3-H-2/R3-H-3): P3 dispatches only after the WHOLE P2 package lands (p2_landed_sha is a P3-M0 dispatch precondition — P3's base contains this milestone's outcome by construction; there is no mid-wave pin); P3-M2 wires its country-chart completeness test into the lane this milestone selects; any later P2 restructuring of the Feature lanes/allowlist must reconcile against that landed P3 wiring — never silently drop the landed P3 test."
     review_lenses: [frontend-conventions, tenancy-authz]
     status: review
-    fix_rounds: 1
-    commit: 4ee7ca1c5597e6feed8089026c166b5fd36e3786
-    verdict: docs/handoff/reviews/enforcement-p2/M2-round1.md
+    fix_rounds: 2
+    commit: ef8db151b5ad0e34e2e01fc709ab730c35e8d5ab
+    verdict: docs/handoff/reviews/enforcement-p2/M2-round2.md
     last_verdict: CHANGES-REQUIRED   # F-1 (P1) closed by the parent F-2 ruling of 2026-08-19
-    updated: 4ee7ca1c5
+    updated: ef8db151b
   - id: M3
     title: "2(a) per the M0 ownership snapshot: verify-only (no `if:` + all-checks-pass `needs` membership, gate-r1 H-9) OR implement per the T3(b) spec (only on recorded relinquish/complete-without-artifact) — never regenerate manifests unless T2's KeyedByRouteId fix is on base. Plus the aggregate PR->dev proposal (owner knob, proposal only) and the MERGE-ANNOUNCEMENT CHECKLIST for the parent: every open lane, one 'what you must rebase for' line each, incl. the OpenAPI merge-order/reconciliation line and the M1 frontend-lint step-addition contract change (r4/R0-3). The checklist is the INPUT to the parent's FINAL announcement, SENT after M3/M4 acceptance and before promotion; merge_announcement_ack records the sent fact in the POST-promotion admin commit (gate-r2 R2-H-1; gate-r3 R3-C-2 — nothing is committed to the accepted candidate between ACCEPT and merge); it is not the M0 preliminary notice and the executor never sends it."
     review_lenses: [frontend-conventions]
