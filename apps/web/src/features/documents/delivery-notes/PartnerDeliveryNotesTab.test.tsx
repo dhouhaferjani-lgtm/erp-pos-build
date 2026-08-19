@@ -267,6 +267,23 @@ describe('PartnerDeliveryNotesTab', () => {
     expect(screen.queryByText('TND 99.875')).not.toBeInTheDocument()
   })
 
+  it('keeps a foreign-currency row visible but outside the company-currency batch', () => {
+    mockUsePartnerDeliveryNotes.mockReturnValue({
+      data: response([
+        deliveryNote('tnd'),
+        deliveryNote('eur', { currency: 'EUR', total: '99.875' }),
+      ], { aggregates: { count: 1, total: '100.000', currency: 'TND' } }),
+      isLoading: false,
+      isError: false,
+    })
+
+    renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
+
+    expect(screen.getByText('DN-eur')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Select DN-eur' })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Select DN-tnd' })).toBeInTheDocument()
+  })
+
   it('discloses that aggregate count and total are company-currency scoped', () => {
     renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
 

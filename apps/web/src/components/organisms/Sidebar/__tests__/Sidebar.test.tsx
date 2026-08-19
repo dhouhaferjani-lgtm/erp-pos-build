@@ -124,6 +124,17 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(bankingButton).toBeInTheDocument()
     })
 
+    it('places the deliveries.view-gated to-bill queue after delivery notes', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      const deliveryNotes = await screen.findByRole('link', { name: /navigation\.deliveryNotes/i })
+      const toBill = screen.getByRole('link', { name: /sales:toBill\.navTitle/i })
+
+      expect(toBill).toHaveAttribute('href', '/sales/to-bill')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('deliveries.view')
+      expect(deliveryNotes.compareDocumentPosition(toBill) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
     it('shows placement management under Inventory', async () => {
       renderSidebar(mechanicFullConfig)
 
