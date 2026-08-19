@@ -6,7 +6,7 @@
 - Branch: `codex/dn-consolidation-2026-08-12`.
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/dn-consolidation`.
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
-- Current M1 implementation SHA: `055b6bd45` (bridge round-1 remediation complete; round 2 pending).
+- Current M1 implementation SHA: `c517635cb` (bridge round-2 remediation complete; round 3 pending).
 - Milestone being handed back: M1.
 - No push, merge, or deployment was performed.
 
@@ -37,6 +37,8 @@ M1 commit list:
 - `34101009f Phase 2.1.22: Preserve foreign-currency delivery note rows`
 - `97484c442 Phase 2.1.23: Preserve DN retry exhaustion failures`
 - `055b6bd45 Phase 2.1.24: Attribute consolidation billing refusals`
+- `37c4b3a00 Phase 2.1.25: Record M1 bridge fix round`
+- `c517635cb Phase 2.1.26: Suppress attributed refusal toast and retry remainder`
 
 ## Owner-amended gate
 
@@ -63,7 +65,7 @@ same commands; inherited failures are recorded below and were not repaired by th
 
 ## M1 — the three P0s
 
-**Status: IN PROGRESS — bridge round 1 remediated; round 2 pending.**
+**Status: IN PROGRESS — bridge round 2 remediated; round 3 pending.**
 
 ### Replay and integration
 
@@ -92,6 +94,12 @@ Bridge round 1 reviewed `60df88a01..e81ac612e` and returned `CHANGES-REQUIRED`. 
 - `97484c442`: DN commit exhaustion becomes an attributed refusal only with a durable winner.
 - `055b6bd45`: consolidation-lane attributed refusal and selective human recovery.
 - This expanded §7 evidence, lock, OI-8, OI-14, decision, finding, deviation, and deploy report.
+
+Bridge round 2 reviewed `60df88a01..37c4b3a00` and confirmed every round-1 blocker closed. It
+returned `CHANGES-REQUIRED` because the consolidation hook still emitted a transient toast before
+the attributed inline refusal. Fix round 2 is `c517635cb`: both the component and hook now use the
+same strict refusal parser, the hook suppresses only the attributed 422 toast, generic failures
+still toast, and the operator's explicit remove-and-retry click resubmits only the remaining IDs.
 
 ### Implementation state
 
@@ -199,8 +207,9 @@ writer reaches invoice creation before all required existing-DN claims succeed.*
 
 1. **Persistent inline refusal — DONE.** The SO refusal is stored/rendered at
    `SalesOrderDetailPage.tsx:152,434-490`; the consolidation refusal is stored/rendered at
-   `DeliveryNoteConsolidation.tsx:108,303-383`. Tests rerender or interact after failure and keep the
-   `role=alert` region visible; no toast is used.
+   `DeliveryNoteConsolidation.tsx:60,260-340`. Tests rerender or interact after failure and keep the
+   `role=alert` region visible. `useDeliveryNotes.ts:155-159` suppresses only a parsed attributed
+   refusal while retaining the generic error toast; the hook regression asserts both branches.
 2. **Per-DN taker attribution — DONE.** Both regions show DN number, taking invoice/date, human lane,
    and invoice link. Evidence: `SalesOrderDetailPage.tenantScope.test.tsx:448-486` and
    `DeliveryNoteConsolidation.billingRefusal.test.tsx:118-146`.
@@ -210,8 +219,9 @@ writer reaches invoice creation before all required existing-DN claims succeed.*
 4. **Human recovery — DONE.** SO offers `Open INV-XXXX` and the explicit `Invoice remaining lines…`
    confirmation only when complete `billed_order_line_ids` provenance exists
    (`SalesOrderDetailPage.tsx:450-490,707-739`). Consolidation offers `Remove these N and retry`,
-   which removes only server-named IDs and retains every other selection
-   (`DeliveryNoteConsolidation.tsx:226-233,371-383`).
+   whose operator click removes only server-named IDs and explicitly resubmits every remaining ID
+   (`DeliveryNoteConsolidation.tsx:174-185,328-340`). The regression proves the second mutation
+   contains only the surviving selection and reaches the success callback.
 
 No browser screenshot is claimed for M1: the local workspace has no authenticated seeded browser
 fixture for these race-only 422 states. The required behavior is covered at the rendered-component
@@ -222,7 +232,8 @@ level; UI E2E and visual evidence remain mandatory before the final UI merge han
 - **5:** only the independently specified C9 invalidation will ship in M2 (spec §3.4); nothing in M1
   is attributed to this proposal.
 - **6:** no durable losing-claim trace was designed or built; its mechanism remains unfrozen.
-- **7:** no client automatic retry exists. Both recovery paths require a human action.
+- **7:** no client automatic retry exists. Both recovery paths require a human action; the
+  consolidation button click itself is the explicit operator resubmission required by condition 4.
 
 ### OI-14 — vanishing artefacts
 
@@ -241,10 +252,10 @@ status. Re-entry through the real factory succeeds and leaves agreeing marker/pa
 - All PHP files changed from the pin: Pint green and PHPStan level 8 green.
 - Changed frontend TypeScript: typecheck and scoped ESLint green.
 - Design-system audit: 734 acknowledged, 0 new, 0 stale; focused consolidation refusal/gate UI:
-  6 tests green; SO recovery UI: 9 tests green.
+  7 tests green; SO recovery UI: 9 tests green.
 - Exact scoped Vitest after fix round: 86 files/683 tests passed; only the two inherited finance
   tests failed.
-- React Doctor against explicit base `60df88a01`: 88/100, 11 changed files scanned, no issues.
+- React Doctor against explicit base `60df88a01`: 89/100, 11 changed files scanned, no issues.
 - `git diff --check`: green.
 
 ### Amended whole-repository comparison
@@ -294,8 +305,8 @@ commit that unrelated regeneration.
 - Retry exhaustion is translated to an already-invoiced domain refusal only after a durable,
   tenant/company-scoped marker + invoice + payload agreement is re-read after unwind. With no such
   winner, the original infrastructure exception is preserved.
-- Consolidation recovery removes exactly the server-attributed DNs and requires the user to submit
-  the remaining set again. It never automatically retries.
+- Consolidation recovery removes exactly the server-attributed DNs. The operator's explicit
+  `Remove these N and retry` click resubmits the remaining set; no retry occurs without that action.
 
 ### Deviations
 
