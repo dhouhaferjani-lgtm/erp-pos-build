@@ -181,7 +181,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
      * DPA V10 — the v4 device-refund projection must produce the SAME two-leg
      * SCRAP outcome as the interactive server return path: restore (+qty,
      * `pos_return`) then a COST-BEARING write-off (−qty, `write_off`) carrying
-     * a movement-keyed Dr COGS / Cr Inventory journal entry. Net sellable
+     * a movement-keyed Dr Shrinkage / Cr Inventory journal entry. Net sellable
      * quantity is unchanged — what changes is that the destruction is now
      * recorded and costed instead of silently skipped.
      */
@@ -252,7 +252,7 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
             $writeOff->occurred_at->toIso8601String(),
         );
 
-        // Movement-keyed Dr COGS / Cr Inventory. EUR scale 2: 2.000 × 3 = 6.00,
+        // Movement-keyed Dr Shrinkage / Cr Inventory. EUR scale 2: 2.000 × 3 = 6.00,
         // persisted at the journal_lines decimal(_,3) storage scale.
         $entry = JournalEntry::query()
             ->where('company_id', $this->companyId)
@@ -684,10 +684,20 @@ final class PosCoreReceiptProjectionRefundDispositionStockTest extends TestCase
         Account::create([
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
-            'code' => '601',
+            'code' => '603',
             'name' => 'Cost of Goods Sold',
             'type' => AccountType::Expense,
             'system_purpose' => SystemAccountPurpose::CostOfGoodsSold,
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => '6586',
+            'name' => 'Inventory Shrinkage Expense',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::InventoryShrinkageExpense,
             'is_active' => true,
         ]);
 

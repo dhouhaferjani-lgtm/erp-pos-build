@@ -208,7 +208,7 @@ final class InventoryGlPostingSeamTest extends TestCase
             'tenant_id' => $tenant->id,
             'inventory_valuation_mode' => 'perpetual',
         ]);
-        $cogs = $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $shrinkage = $this->account($tenant, $company, SystemAccountPurpose::InventoryShrinkageExpense, AccountType::Expense);
         $inventory = $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
         $movementId = '16161616-1616-4616-8616-161616161616';
         $user = User::factory()->create(['tenant_id' => $tenant->id]);
@@ -232,7 +232,7 @@ final class InventoryGlPostingSeamTest extends TestCase
         $this->assertSame($first->id, $second->id);
         $this->assertSame('batch_write_off', $first->source_type);
         $this->assertStringContainsString('LOT-M1-16', $first->description);
-        $this->assertSame($cogs->id, $first->lines[0]->account_id);
+        $this->assertSame($shrinkage->id, $first->lines[0]->account_id);
         $this->assertSame('5.000', (string) $first->lines[0]->debit);
         $this->assertSame($inventory->id, $first->lines[1]->account_id);
         $this->assertSame('5.000', (string) $first->lines[1]->credit);
@@ -251,6 +251,30 @@ final class InventoryGlPostingSeamTest extends TestCase
         $this->assertSame($reversal->id, $replayedReversal->id);
         $this->assertSame(JournalEntryStatus::Posted, $replayedReversal->status);
         $this->assertSame(1, JournalEntry::query()->where('source_type', 'batch_write_off_reversal')->where('source_id', $reversalId)->count());
+    }
+
+    public function test_damage_expiry_and_generic_write_off_route_to_shrinkage_not_cogs(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $cogs = $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        $shrinkage = $this->account($tenant, $company, SystemAccountPurpose::InventoryShrinkageExpense, AccountType::Expense);
+        $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+
+        foreach ([MovementReason::Damage, MovementReason::Expiry, MovementReason::WriteOff] as $index => $reason) {
+            $entry = $this->flush($this->context(
+                $company,
+                movementId: sprintf('27272727-2727-4727-8727-%012d', $index + 1),
+                reason: $reason,
+            ))[0]?->refresh()->load('lines');
+
+            self::assertNotNull($entry);
+            self::assertSame($shrinkage->id, $entry->lines[0]->account_id, $reason->value);
+            self::assertNotSame($cogs->id, $entry->lines[0]->account_id, $reason->value);
+        }
     }
 
     public function test_movement_replay_repairs_an_existing_draft_before_returning(): void
@@ -596,6 +620,31 @@ final class InventoryGlPostingSeamTest extends TestCase
 
         $this->assertSame([null], $posted);
         $this->assertSame(0, JournalEntry::query()->where('source_id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa')->count());
+        Log::shouldHaveReceived('warning')->once()->withArgs(
+            static fn (string $message): bool => str_contains($message, 'accounts are not mapped'),
+        );
+    }
+
+    public function test_frozen_legacy_chart_without_shrinkage_purpose_guards_damage_as_a_warning_no_op(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create([
+            'tenant_id' => $tenant->id,
+            'inventory_valuation_mode' => 'perpetual',
+        ]);
+        $this->account($tenant, $company, SystemAccountPurpose::Inventory, AccountType::Asset);
+        $this->account($tenant, $company, SystemAccountPurpose::CostOfGoodsSold, AccountType::Expense);
+        Log::spy();
+
+        $movementId = 'abababab-abab-4bab-8bab-abababababab';
+        $posted = $this->flush($this->context(
+            $company,
+            movementId: $movementId,
+            reason: MovementReason::Damage,
+        ));
+
+        self::assertSame([null], $posted);
+        self::assertFalse(JournalEntry::query()->where('source_id', $movementId)->exists());
         Log::shouldHaveReceived('warning')->once()->withArgs(
             static fn (string $message): bool => str_contains($message, 'accounts are not mapped'),
         );

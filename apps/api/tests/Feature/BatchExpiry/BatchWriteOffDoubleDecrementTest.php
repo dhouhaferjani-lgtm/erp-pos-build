@@ -156,7 +156,7 @@ final class BatchWriteOffDoubleDecrementTest extends TestCase
             'code' => '601',
             'name' => 'Cost of Goods Sold',
             'type' => AccountType::Expense,
-            'system_purpose' => SystemAccountPurpose::CostOfGoodsSold,
+            'system_purpose' => SystemAccountPurpose::InventoryShrinkageExpense,
             'is_active' => true,
         ]);
 

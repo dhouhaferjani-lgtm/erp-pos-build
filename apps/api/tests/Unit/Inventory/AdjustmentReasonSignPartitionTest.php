@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Inventory;
 
+use App\Modules\Inventory\Domain\Enums\MovementGlCounterFamily;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\StockAdjustmentStatus;
 use PHPUnit\Framework\TestCase;
@@ -101,7 +102,7 @@ final class AdjustmentReasonSignPartitionTest extends TestCase
         // D7b / G1 hand-off item 3: internal consumption is recorded as
         // adjustment_negative precisely because it does NOT affect COGS.
         $this->assertFalse(MovementReason::AdjustmentNegative->affectsCOGS());
-        $this->assertTrue(MovementReason::WriteOff->affectsCOGS());
+        $this->assertSame(MovementGlCounterFamily::Shrinkage, MovementReason::WriteOff->glCounterFamily());
     }
 
     public function test_posted_and_cancelled_are_terminal_and_draft_reaches_both(): void

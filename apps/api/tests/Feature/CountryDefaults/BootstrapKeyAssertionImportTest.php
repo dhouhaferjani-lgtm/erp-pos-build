@@ -29,14 +29,14 @@ final class BootstrapKeyAssertionImportTest extends TestCase
         return DB::getDriverName() === 'pgsql' ? [] : [config('database.default')];
     }
 
-    public function test_import_creates_exactly_three_draft_keyed_templates_and_is_idempotent(): void
+    public function test_import_preserves_the_three_v1_and_three_v2_draft_keyed_templates_and_is_idempotent(): void
     {
-        self::assertSame(3, AdminTemplate::query()->whereNotNull('bootstrap_key')->count());
-        self::assertSame(3, AdminTemplate::query()->where('status', TemplateStatus::Draft->value)->whereNotNull('bootstrap_key')->count());
+        self::assertSame(6, AdminTemplate::query()->whereNotNull('bootstrap_key')->count());
+        self::assertSame(6, AdminTemplate::query()->where('status', TemplateStatus::Draft->value)->whereNotNull('bootstrap_key')->count());
 
         $this->runMigration('up');
 
-        self::assertSame(3, AdminTemplate::query()->whereNotNull('bootstrap_key')->count());
+        self::assertSame(6, AdminTemplate::query()->whereNotNull('bootstrap_key')->count());
     }
 
     public function test_keyed_wrong_domain_missing_rows_altered_content_and_published_state_abort_diagnostically(): void
@@ -151,11 +151,17 @@ final class BootstrapKeyAssertionImportTest extends TestCase
         sort($importCallers);
         sort($keyWriters);
         self::assertSame(
-            ['database/migrations/2026_08_11_100300_import_legacy_coa_templates_as_drafts.php'],
+            [
+                'database/migrations/2026_08_11_100300_import_legacy_coa_templates_as_drafts.php',
+                'database/migrations/2026_08_19_120000_import_inventory_variance_coa_templates_v2.php',
+            ],
             $importCallers,
         );
         self::assertSame(
-            ['app/Modules/CountryDefaults/Infrastructure/Import/LegacyCoaBootstrapImporter.php'],
+            [
+                'app/Modules/CountryDefaults/Infrastructure/Import/InventoryVarianceCoaTemplateV2Importer.php',
+                'app/Modules/CountryDefaults/Infrastructure/Import/LegacyCoaBootstrapImporter.php',
+            ],
             $keyWriters,
         );
         self::assertSame([], $genericEscapeHatches);
@@ -365,7 +371,7 @@ final class BootstrapKeyAssertionImportTest extends TestCase
         } else {
             self::assertContains('verified_existing', $outcomes);
         }
-        self::assertSame(3, AdminTemplate::query()->whereNotNull('bootstrap_key')->count());
+        self::assertSame(6, AdminTemplate::query()->whereNotNull('bootstrap_key')->count());
         foreach (['coa.tn.legacy-v1' => 139, 'coa.fr.legacy-v1' => 144, 'coa.generic.legacy-v1' => 61] as $key => $count) {
             self::assertSame($count, AdminTemplate::query()->where('bootstrap_key', $key)->firstOrFail()->accounts()->count());
         }

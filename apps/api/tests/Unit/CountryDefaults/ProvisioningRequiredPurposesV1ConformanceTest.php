@@ -64,8 +64,6 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
                 'office_expense', 'travel_expense', 'meals_expense', 'utilities_expense',
                 'retained_earnings', 'realized_fx_gain', 'realized_fx_loss',
                 'voucher_breakage_income', 'uninvoiced_revenue',
-                // 3C merge-seam (2026-08-19): count-correction purposes fail-soft when
-                // unmapped and have no producer until T21; codes are T20's deliverable.
                 'inventory_shrinkage_expense', 'inventory_gain_income',
             ],
         ];
