@@ -221,6 +221,7 @@ milestones:
       suite_scoping: "runs the two DPA classes BY PATH, not --testsuite=Architecture: that suite is red at base for 4 pre-existing unrelated failures (AuthLifecycleTest, ConsoleCommandTenantContextTest, ControllerTenantContextTest, QueueJobTenantContextTest)"
       scope_proof: "git diff --name-only base..HEAD -> 15 files, all inside apps/api/tests/Architecture/** | .github/workflows/ci.yml | docs/handoff/**; 0 allowlist violations; no control file touched; no production code; no workflow permissions grant"
       whole_package_rerun: "guard OK (4 tests) - ratchet OK (2 tests, 113 assertions) - phpstan level 8 [OK] No errors - pint pass - unset-variable isolated negative case exits non-zero"
+      registers_location: "the seven executor-run registers are OUTSIDE the repo at ~/.claude/projects/-Users-houssamr-Projects-syneriva-apps-erp/memory/enforcement-p1-registers/ — they cannot be committed into A (registers never land in A) and cannot be left untracked (the handover seal admits exactly one dirty entry, the handback). The parent lands them in closing commit C under docs/handoff/reviews/enforcement-p1/**, which is inside this package's closing set; the verdict: paths above resolve once C exists."
       actionlint: "NOT INSTALLED on this machine (recorded per brief §5 layer 1); strict YAML parse used instead, and that layer is insufficient for the Actions job/event graph by contract"
 
 status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
