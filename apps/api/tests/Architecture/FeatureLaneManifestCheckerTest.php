@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Architecture;
 
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Liveness test for tools/feature-lane-manifest-check.php.
@@ -31,38 +32,38 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         parent::setUp();
 
         $this->apiRoot = dirname(__DIR__, 2);
-        $this->sandbox = sys_get_temp_dir() . '/flm-' . bin2hex(random_bytes(6));
+        $this->sandbox = sys_get_temp_dir().'/flm-'.bin2hex(random_bytes(6));
 
-        mkdir($this->sandbox . '/apps/api/tools', 0o777, true);
-        mkdir($this->sandbox . '/apps/api/tests', 0o777, true);
-        mkdir($this->sandbox . '/.github/workflows', 0o777, true);
+        mkdir($this->sandbox.'/apps/api/tools', 0o777, true);
+        mkdir($this->sandbox.'/apps/api/tests', 0o777, true);
+        mkdir($this->sandbox.'/.github/workflows', 0o777, true);
 
         copy(
-            $this->apiRoot . '/tools/feature-lane-manifest-check.php',
-            $this->sandbox . '/apps/api/tools/feature-lane-manifest-check.php',
+            $this->apiRoot.'/tools/feature-lane-manifest-check.php',
+            $this->sandbox.'/apps/api/tools/feature-lane-manifest-check.php',
         );
         copy(
-            $this->apiRoot . '/tests/feature-lane-manifest.json',
-            $this->sandbox . '/apps/api/tests/feature-lane-manifest.json',
+            $this->apiRoot.'/tests/feature-lane-manifest.json',
+            $this->sandbox.'/apps/api/tests/feature-lane-manifest.json',
         );
         copy(
-            $this->apiRoot . '/../../.github/workflows/ci.yml',
-            $this->sandbox . '/.github/workflows/ci.yml',
+            $this->apiRoot.'/../../.github/workflows/ci.yml',
+            $this->sandbox.'/.github/workflows/ci.yml',
         );
         // The checker resolves vendor/autoload.php relative to its api root.
-        symlink($this->apiRoot . '/vendor', $this->sandbox . '/apps/api/vendor');
+        symlink($this->apiRoot.'/vendor', $this->sandbox.'/apps/api/vendor');
         // Only the tree shape matters, so mirror the real Feature dirs by symlink.
-        symlink($this->apiRoot . '/tests/Feature', $this->sandbox . '/apps/api/tests/Feature');
+        symlink($this->apiRoot.'/tests/Feature', $this->sandbox.'/apps/api/tests/Feature');
         foreach (['Unit', 'Integration', 'Architecture', 'PHPStan'] as $suite) {
-            if (is_dir($this->apiRoot . '/tests/' . $suite)) {
-                symlink($this->apiRoot . '/tests/' . $suite, $this->sandbox . '/apps/api/tests/' . $suite);
+            if (is_dir($this->apiRoot.'/tests/'.$suite)) {
+                symlink($this->apiRoot.'/tests/'.$suite, $this->sandbox.'/apps/api/tests/'.$suite);
             }
         }
     }
 
     protected function tearDown(): void
     {
-        exec('rm -rf ' . escapeshellarg($this->sandbox));
+        exec('rm -rf '.escapeshellarg($this->sandbox));
         parent::tearDown();
     }
 
@@ -72,7 +73,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $output = [];
         $exit = 0;
         exec(
-            'php ' . escapeshellarg($this->sandbox . '/apps/api/tools/feature-lane-manifest-check.php') . ' 2>&1',
+            'php '.escapeshellarg($this->sandbox.'/apps/api/tools/feature-lane-manifest-check.php').' 2>&1',
             $output,
             $exit,
         );
@@ -82,12 +83,12 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
     private function workflow(): string
     {
-        return (string) file_get_contents($this->sandbox . '/.github/workflows/ci.yml');
+        return (string) file_get_contents($this->sandbox.'/.github/workflows/ci.yml');
     }
 
     private function writeWorkflow(string $contents): void
     {
-        file_put_contents($this->sandbox . '/.github/workflows/ci.yml', $contents);
+        file_put_contents($this->sandbox.'/.github/workflows/ci.yml', $contents);
     }
 
     public function test_it_passes_on_the_real_tree(): void
@@ -106,7 +107,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $end = strpos($wf, "::/'", $start);
         $inner = substr($wf, $start + strlen("--filter='/\\\\("), $end - $start - strlen("--filter='/\\\\("));
         $this->writeWorkflow(
-            substr($wf, 0, $start) . '--filter="' . $inner . '"' . substr($wf, $end + strlen("::/'")),
+            substr($wf, 0, $start).'--filter="'.$inner.'"'.substr($wf, $end + strlen("::/'")),
         );
 
         [$exit, $out] = $this->runChecker();
@@ -123,10 +124,10 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         // A COMPLETE extra step — injecting a second `run:` into an existing step
         // would be invalid YAML and would test the parser, not the filter scanner.
         $this->writeWorkflow(str_replace(
-            "      - name: Check tests/Feature CI-lane manifest",
+            '      - name: Check tests/Feature CI-lane manifest',
             "      - name: Zzz planted unquoted filter\n"
-            . "        run: php artisan test --filter=AnalyticsTest|Foo\n\n"
-            . "      - name: Check tests/Feature CI-lane manifest",
+            ."        run: php artisan test --filter=AnalyticsTest|Foo\n\n"
+            .'      - name: Check tests/Feature CI-lane manifest',
             $wf,
         ));
 
@@ -154,7 +155,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
     public function test_it_fires_on_an_unassigned_group(): void
     {
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         unset($manifest['groups']['Admin']);
         file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -169,7 +170,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     {
         // The strict half of the brief's negative proof: a new class in an
         // EXISTING uncovered group must fail loudly, not tick a stdout counter.
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         $manifest['groups']['Admin']['classes'] -= 1;
         file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -182,7 +183,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
     public function test_it_fires_when_a_lane_misreports_its_pr_dev_coverage(): void
     {
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         $manifest['lanes']['security-regression']['runs_on_pr_dev'] = false;
         file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -211,7 +212,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n",
             "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n"
-            . "    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'\n",
+            ."    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'\n",
             $wf,
         ));
 
@@ -226,7 +227,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     {
         // Positive assertion of the ruled state, so the move itself is pinned and
         // not merely the absence of a regression.
-        $wf = \Symfony\Component\Yaml\Yaml::parse($this->workflow());
+        $wf = Yaml::parse($this->workflow());
 
         self::assertArrayHasKey('security-regression', $wf['jobs']);
         self::assertArrayNotHasKey('if', $wf['jobs']['security-regression']);
@@ -251,14 +252,14 @@ final class FeatureLaneManifestCheckerTest extends TestCase
      * round-2 reviewer bypassed the PR->dev guarantee with two words on the step
      * while both existing liveness cases stayed green.
      */
-    public function test_it_fires_when_the_security_STEP_is_gated_off_pr_dev(): void
+    public function test_it_fires_when_a_step_level_if_gates_the_security_lane(): void
     {
         $this->writeWorkflow(str_replace(
             "      - name: Security regression suite (module gating + kill-switches)\n"
-            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            .'        run: ./vendor/bin/phpunit tests/Feature/Security',
             "      - name: Security regression suite (module gating + kill-switches)\n"
-            . "        if: github.base_ref == 'main'\n"
-            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            ."        if: github.base_ref == 'main'\n"
+            .'        run: ./vendor/bin/phpunit tests/Feature/Security',
             $this->workflow(),
         ));
 
@@ -266,7 +267,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
         self::assertSame(1, $exit, $out);
         self::assertStringContainsString('runs_on_pr_dev', $out);
-        self::assertStringContainsString('STEP carries', $out);
+        self::assertStringContainsString('the step carries', $out);
     }
 
     /**
@@ -278,7 +279,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n",
             "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n"
-            . "    needs: [backend-test]\n",
+            ."    needs: [backend-test]\n",
             $this->workflow(),
         ));
 
@@ -299,8 +300,8 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             '      - name: Check tests/Feature CI-lane manifest',
             "      - name: Zzz pnpm workspace build\n"
-            . "        run: pnpm --filter @autoerp/web build\n\n"
-            . '      - name: Check tests/Feature CI-lane manifest',
+            ."        run: pnpm --filter @autoerp/web build\n\n"
+            .'      - name: Check tests/Feature CI-lane manifest',
             $this->workflow(),
         ));
 
@@ -317,7 +318,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
      */
     public function test_it_fires_when_a_group_claims_a_lane_that_does_not_run_it(): void
     {
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         $manifest['groups']['Admin'] = ['lane' => 'treasury-spine-pgsql/feature-treasury'];
         file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -330,7 +331,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
     public function test_the_whole_debt_cannot_be_erased_by_relabelling_groups(): void
     {
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         foreach ($manifest['groups'] as $group => $entry) {
             if (($entry['deferred'] ?? false) === true) {
@@ -350,10 +351,10 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     {
         $this->writeWorkflow(str_replace(
             "      - name: Security regression suite (module gating + kill-switches)\n"
-            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            .'        run: ./vendor/bin/phpunit tests/Feature/Security',
             "      - name: Security regression suite (module gating + kill-switches)\n"
-            . "        continue-on-error: true\n"
-            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            ."        continue-on-error: true\n"
+            .'        run: ./vendor/bin/phpunit tests/Feature/Security',
             $this->workflow(),
         ));
 
@@ -370,9 +371,9 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $wf = str_replace(
             "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n",
             "  zzz-bridge:\n    name: Zzz bridge\n    runs-on: ubuntu-latest\n    needs: [backend-test]\n"
-            . "    steps:\n      - run: echo bridge\n\n"
-            . "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n"
-            . "    needs: [zzz-bridge]\n",
+            ."    steps:\n      - run: echo bridge\n\n"
+            ."  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n"
+            ."    needs: [zzz-bridge]\n",
             $wf,
         );
         $this->writeWorkflow($wf);
@@ -403,12 +404,12 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     {
         $wf = str_replace(
             "      - name: Security regression suite (module gating + kill-switches)\n"
-            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            .'        run: ./vendor/bin/phpunit tests/Feature/Security',
             "      - name: Zzz decoy\n"
-            . "        run: echo 'runs ./vendor/bin/phpunit tests/Feature/Security below'\n\n"
-            . "      - name: Security regression suite (module gating + kill-switches)\n"
-            . "        if: github.base_ref == 'main'\n"
-            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            ."        run: echo 'runs ./vendor/bin/phpunit tests/Feature/Security below'\n\n"
+            ."      - name: Security regression suite (module gating + kill-switches)\n"
+            ."        if: github.base_ref == 'main'\n"
+            .'        run: ./vendor/bin/phpunit tests/Feature/Security',
             $this->workflow(),
         );
         $this->writeWorkflow($wf);
@@ -425,8 +426,8 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             '      - name: Check tests/Feature CI-lane manifest',
             "      - name: Zzz composer test with a bare filter\n"
-            . "        run: composer test -- --filter=AnalyticsTest\n\n"
-            . '      - name: Check tests/Feature CI-lane manifest',
+            ."        run: composer test -- --filter=AnalyticsTest\n\n"
+            .'      - name: Check tests/Feature CI-lane manifest',
             $this->workflow(),
         ));
 
@@ -442,10 +443,10 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             '      - name: Check tests/Feature CI-lane manifest',
             "      - name: Zzz mixed script\n"
-            . "        run: |\n"
-            . "          pnpm --filter @autoerp/web build\n"
-            . "          ./vendor/bin/phpunit --filter=AnalyticsTest\n\n"
-            . '      - name: Check tests/Feature CI-lane manifest',
+            ."        run: |\n"
+            ."          pnpm --filter @autoerp/web build\n"
+            ."          ./vendor/bin/phpunit --filter=AnalyticsTest\n\n"
+            .'      - name: Check tests/Feature CI-lane manifest',
             $this->workflow(),
         ));
 
@@ -494,7 +495,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         [$exit, $out] = $this->withLaneRun('run: ./vendor/bin/phpunit tests/Feature/Security || true');
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('single unconditional command', $out);
+        self::assertStringContainsString('cannot fail the step', $out);
     }
 
     /** G-2: `; exit 0`. */
@@ -503,7 +504,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         [$exit, $out] = $this->withLaneRun('run: ./vendor/bin/phpunit tests/Feature/Security; exit 0');
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('single unconditional command', $out);
+        self::assertStringContainsString('cannot fail the step', $out);
     }
 
     /** G-1: a neutral flag must NOT be rejected — the allowlist has to stay usable. */
@@ -519,7 +520,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     /** G-3: relabelling `deferred` -> `excluded` must not erase the debt. */
     public function test_relabelling_deferred_as_excluded_does_not_erase_the_debt(): void
     {
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         foreach ($manifest['groups'] as $group => $entry) {
             if (($entry['deferred'] ?? false) === true) {
@@ -583,10 +584,10 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             '      - name: Check tests/Feature CI-lane manifest',
             "      - name: Zzz env prefixed pnpm\n"
-            . "        run: env CI=1 pnpm --filter @autoerp/web build\n\n"
-            . "      - name: Zzz npx prefixed pnpm\n"
-            . "        run: npx pnpm --filter @autoerp/pos build\n\n"
-            . '      - name: Check tests/Feature CI-lane manifest',
+            ."        run: env CI=1 pnpm --filter @autoerp/web build\n\n"
+            ."      - name: Zzz npx prefixed pnpm\n"
+            ."        run: npx pnpm --filter @autoerp/pos build\n\n"
+            .'      - name: Check tests/Feature CI-lane manifest',
             $this->workflow(),
         ));
 
@@ -610,13 +611,13 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     public function test_every_lane_actually_selects_tests(): void
     {
         $manifest = json_decode(
-            (string) file_get_contents($this->apiRoot . '/tests/feature-lane-manifest.json'),
+            (string) file_get_contents($this->apiRoot.'/tests/feature-lane-manifest.json'),
             true,
             512,
             JSON_THROW_ON_ERROR,
         );
-        $workflow = \Symfony\Component\Yaml\Yaml::parse(
-            (string) file_get_contents($this->apiRoot . '/../../.github/workflows/ci.yml'),
+        $workflow = Yaml::parse(
+            (string) file_get_contents($this->apiRoot.'/../../.github/workflows/ci.yml'),
         );
 
         // Collect every LIVE `run:` script, exactly as the checker does.
@@ -652,13 +653,13 @@ final class FeatureLaneManifestCheckerTest extends TestCase
             $output = [];
             $exit = 0;
             exec(
-                'cd ' . escapeshellarg($this->apiRoot) . ' && ' . $laneRun . ' --list-tests 2>&1',
+                'cd '.escapeshellarg($this->apiRoot).' && '.$laneRun.' --list-tests 2>&1',
                 $output,
                 $exit,
             );
             $listed = array_filter($output, static fn (string $l): bool => str_starts_with(trim($l), '- '));
 
-            self::assertSame(0, $exit, "lane {$laneId}: --list-tests failed\n" . implode("\n", $output));
+            self::assertSame(0, $exit, "lane {$laneId}: --list-tests failed\n".implode("\n", $output));
             self::assertNotEmpty(
                 $listed,
                 "lane {$laneId} selects ZERO tests — it cannot gate anything. Run line: {$laneRun}",
@@ -680,7 +681,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     /** H-2: the aggregate assertion must not be erasable by deleting an optional manifest key. */
     public function test_aggregate_membership_survives_deleting_the_manifest_job_key(): void
     {
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         unset($manifest['lanes']['security-regression']['job']);
         file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
@@ -700,7 +701,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     /** H-3: retiring a whole lane must not quietly grow the TOTAL debt. */
     public function test_it_fires_when_retiring_a_lane_grows_the_total_debt(): void
     {
-        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         $manifest['groups']['Security'] = [
             'deferred' => true,
@@ -722,8 +723,8 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             '      - name: Check tests/Feature CI-lane manifest',
             "      - name: Zzz wrapper script\n"
-            . "        run: pnpm test:backend --filter=AnalyticsTest\n\n"
-            . '      - name: Check tests/Feature CI-lane manifest',
+            ."        run: pnpm test:backend --filter=AnalyticsTest\n\n"
+            .'      - name: Check tests/Feature CI-lane manifest',
             $this->workflow(),
         ));
 
@@ -754,7 +755,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n",
             "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n"
-            . "    if: github.base_ref == 'main'\n",
+            ."    if: github.base_ref == 'main'\n",
             $this->workflow(),
         ));
 
@@ -770,7 +771,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n",
             "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n"
-            . "    continue-on-error: true\n",
+            ."    continue-on-error: true\n",
             $this->workflow(),
         ));
 
@@ -786,7 +787,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         $this->writeWorkflow(str_replace(
             "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n",
             "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n"
-            . "    needs: [backend-test]\n",
+            ."    needs: [backend-test]\n",
             $this->workflow(),
         ));
 
@@ -800,7 +801,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     public function test_it_fires_when_its_own_step_is_continue_on_error(): void
     {
         $this->writeWorkflow(str_replace(
-            "        run: php tools/feature-lane-manifest-check.php",
+            '        run: php tools/feature-lane-manifest-check.php',
             "        continue-on-error: true\n        run: php tools/feature-lane-manifest-check.php",
             $this->workflow(),
         ));
@@ -841,21 +842,85 @@ final class FeatureLaneManifestCheckerTest extends TestCase
      */
     public function test_the_selection_assertion_resolves_from_the_workflow(): void
     {
-        $src = (string) file_get_contents(__DIR__ . '/FeatureLaneManifestCheckerTest.php');
-        $method = substr(
-            $src,
-            strpos($src, 'public function test_every_lane_actually_selects_tests') ?: 0,
-            2600,
-        );
+        $src = (string) file_get_contents(__DIR__.'/FeatureLaneManifestCheckerTest.php');
+        $start = strpos($src, 'public function test_every_lane_actually_selects_tests');
+        self::assertNotFalse($start);
+        // Bound the window at the NEXT method rather than a fixed character count,
+        // so growing the method cannot silently move code out of view.
+        $next = strpos($src, "\n    public function ", $start + 10);
+        $method = substr($src, $start, ($next === false ? strlen($src) : $next) - $start);
+
+        // Whitespace-insensitive: Pint's concat_space fixer rewrites `' . $x` as
+        // `'.$x`, which a literal-needle check silently stops matching — this guard
+        // was already vacuous once for exactly that reason.
+        $squashed = preg_replace('/\s+/', '', $method) ?? '';
 
         self::assertStringContainsString('ci.yml', $method, 'must read the workflow');
-        self::assertStringContainsString('$laneRun', $method, 'must execute the resolved run line');
-        // Single-quoted on purpose: a double-quoted needle would interpolate
-        // $selector and silently match the wrong thing.
+        self::assertStringContainsString('$laneRun', $squashed, 'must execute the resolved run line');
         self::assertStringNotContainsString(
-            '\' && \' . $selector',
-            $method,
+            ".'&&'.$".'selector',
+            $squashed,
             'must NOT execute the manifest selector string directly',
         );
+    }
+
+    /** Round-7 finding 2: the shell-soft door must apply to the checker's OWN steps too. */
+    public function test_it_fires_when_its_own_step_is_shell_soft_failed(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '        run: php tools/feature-lane-manifest-check.php',
+            '        run: php tools/feature-lane-manifest-check.php || true',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('SELF-CHECK', $out);
+    }
+
+    /** Round-7 finding 2, second form: `; exit 0` on the liveness step. */
+    public function test_it_fires_when_its_own_liveness_step_swallows_its_exit_code(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '        run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php',
+            '        run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php; exit 0',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('SELF-CHECK', $out);
+    }
+
+    /** Round-7 finding 3: paths-ignore of everything stops every PR starting the workflow. */
+    public function test_it_fires_when_paths_ignore_excludes_everything(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '    branches: [main, dev]',
+            "    branches: [main, dev]\n    paths-ignore: ['**']",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('paths-ignore', $out);
+    }
+
+    /** Round-7 finding 3, second form: a `types` list without the ordinary PR events. */
+    public function test_it_fires_when_pr_types_exclude_ordinary_events(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '    branches: [main, dev]',
+            "    branches: [main, dev]\n    types: [labeled]",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('types', $out);
     }
 }

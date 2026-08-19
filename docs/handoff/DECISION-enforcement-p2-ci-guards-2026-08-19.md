@@ -1575,7 +1575,7 @@ the `env`/`npx`-prefixed positive cases still pass.
 
 ### (67) H-5 (P3) — pasted transcripts had drifted from the shipped output
 
-§(46) still showed `1 708 test classes` and the pre-round-3 debt wording that was corrected precisely
+§(46) still showed `1 707 test classes` and the pre-round-3 debt wording that was corrected precisely
 *because it was false*. **Regenerated from the shipped checker** rather than hand-edited, and M4 will
 re-run the acceptance evidence rather than carry these bytes forward.
 
@@ -1644,7 +1644,7 @@ verified (round 2 and round 3 tallies, §(56) and §(59)).
   checklist** so P3-M2 does not wire its country-chart entry into a list outside the lint's view.
 - **N-5** the `-c` ban covers a *substituted* config; the *default* `phpunit.xml` can still gut a
   certified lane by adding one `<groups><exclude>` entry. Partial exclusion is caught by nothing.
-- **N-6** residual drift: one prose line still says "1 708 classes" (shipped output prints 1708), and
+- **N-6** residual drift: one prose line still says "1 707 classes" (shipped output prints 1708), and
   `ci.yml:196` still says "Seven cases" when the suite has 35. Round 5's H-5 was closed in the
   transcript half only — and the second instance is inside a shipped workflow file.
 
@@ -1707,7 +1707,11 @@ My §(63) claim is now true rather than aspirational. A companion test pins the 
 from the workflow and is **explicit that it is a lexical guard**, with the behavioural proof named.
 
 **N-6 — the two drifted lines.** `ci.yml`'s "Seven cases" is now count-free wording ("Every case
-drives…") so it cannot drift again; the decision doc's "1 707" prose is corrected to 1 708.
+drives…") so it cannot drift again; the decision doc's live "1 707" prose line is corrected to
+1 708. **Confined to the LIVE line only** — a first attempt used a blanket replace and rewrote two
+*recorded historical findings* (round 5's H-5 and round 6's N-6), leaving statements whose two
+halves were identical and destroying the audit trail of what the drift actually was. Both are
+restored to their historical values; correcting a record must never mean rewriting history in it.
 
 **Liveness suite: 42 cases** (7 new for N-1/N-2/N-3).
 
@@ -1724,3 +1728,81 @@ named, still-open instances.
 softened into not-gating shows up there as a job that did not run or did not fail correctly. The human
 gate is the backstop; the lexical checks exist to make the common cases loud and cheap, not to prove
 purity.
+
+---
+
+## M2 round 7 — response to `docs/handoff/reviews/enforcement-p2/M2-round7.md`
+
+**Tally, counted from the full register first:** **1 P1**, 3 P2, 3 P3. The terminal condition does not
+fire, because the reviewer classified the P1 correctly: it is a **CI regression**, a different family,
+which the ruling says still blocks normally. `fix_rounds` 6 → 7, inside the parent override.
+
+### (74) ⚠️ P1 — I shipped `backend-lint` red. Six rounds, mine included, missed it.
+
+`ci.yml` runs `./vendor/bin/pint --test` in the **ungated, aggregate-member** `backend-lint` job. The
+reviewer measured both directions with the lock-pinned Pint 1.29.0 and no `pint.json` anywhere:
+
+```
+base tree (c97e0d1ad):  ./vendor/bin/pint --test → {"result":"pass"}, EXIT=0
+HEAD:                   EXIT=1 — and the failures are EXACTLY my two files
+```
+
+`tools/feature-lane-manifest-check.php` (`single_quote`, `fully_qualified_strict_types`,
+`concat_space`, `unary_operator_spaces`, `not_operator_with_successor_space`) and
+`tests/Architecture/FeatureLaneManifestCheckerTest.php` (+ `php_unit_method_casing`). Nothing else in
+`apps/api` fails. Present since the **first** M2 commit.
+
+**This is the worst finding of the wave and it is mine.** A package whose entire thesis is *"guards
+must actually gate"* shipped an ungated aggregate-member CI job **red**, and the obvious remediation
+for a red ungated job is precisely the threat model my own B3 self-application block was written to
+defend against. It also violates CLAUDE.md rule 10 — in a wave that edited `scripts/preflight.sh`
+itself. The cause: I ran the web-side gates and PHPUnit by path every round, and never once ran
+`./vendor/bin/pint --test` for the PHP I was adding.
+
+Fixed: `./vendor/bin/pint` on both files → `{"result":"pass"}`. One method name was mangled by
+`php_unit_method_casing` (`..._security_STEP_...` → `..._security_ste_p_...`) and renamed properly to
+`test_it_fires_when_a_step_level_if_gates_the_security_lane`.
+
+**Interaction the reviewer predicted, and it had already happened:** `concat_space` rewrites
+`' && ' . $selector` as `' && '.$selector`, which silently defeated the literal-needle guard from
+finding 6 — that guard was **already vacuous** by the time round 7 ran. Both are fixed together in
+§(77).
+
+### (75) Finding 2 (P2) — self-application enforced five doors; lanes enforced six
+
+The shell-soft door (`|| true`, `; exit 0`, `set +e`) was implemented on the lane path but not in
+`gatingDefects()`, so `php tools/feature-lane-manifest-check.php || true` and the liveness step with
+`; exit 0` both passed — the same asymmetry N-2 existed to remove, one door along.
+
+**Fixed at the cause, not the symptom (this also closes finding 5):** the shell-soft door moved *into*
+`gatingDefects()`, and **the lane path now calls that same helper** instead of keeping its own inline
+copy. There is now genuinely one implementation of the six doors; the two copies had already diverged,
+which is how this finding existed at all. Two new cases.
+
+### (76) Finding 3 (P2) — `branches` is not the only way to stop a workflow starting
+
+`paths-ignore: ['**']` and `types: [labeled]` each remove PR→dev entirely while every lane still
+certified `runs_on_pr_dev: true`. Both now checked alongside `branches`. Two new cases.
+
+### (77) Finding 4 (P2) — my N-6 fix rewrote history. Restored.
+
+Correcting the drifted "1 707" line, I used a **blanket replace** across the document. It hit the live
+line correctly and also rewrote two **recorded historical findings** — round 5's H-5 and round 6's N-6
+— leaving statements whose two halves were identical ("still says 1 708 … prints 1708") and destroying
+the audit trail of what the drift had been. M4 would have carried those bytes into the handback.
+
+Both restored to their historical values; the correction is confined to the single live line, and the
+§(72) note now says so. **Correcting a record must never mean rewriting history in it** — the same
+principle as §(56)/§(59), applied to content rather than tallies.
+
+Finding 6 fixed in the same pass: the companion guard now bounds its window at the **next method**
+rather than a fixed 2 600 characters, and compares **whitespace-squashed** text, so neither method
+growth nor a formatter rewriting concatenation can silently make it vacuous again.
+
+### (78) Findings 5 and 7 (P3)
+
+- **5** — resolved by §(75): `gatingDefects()` is now called from both sites, so "one place" is true.
+- **7** — N-4 and N-5 carried forward unchanged as named residuals under §(73)'s standing mitigation.
+  **The N-4 line for P3-M2 is owed in the M3 checklist** and is included there.
+
+**Liveness suite: 46 cases.** `./vendor/bin/pint --test` → `{"result":"pass"}`.

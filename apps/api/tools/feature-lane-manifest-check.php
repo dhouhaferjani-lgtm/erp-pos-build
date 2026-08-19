@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+use Symfony\Component\Yaml\Yaml;
 
 /**
  * Feature-lane manifest checker (enforcement Package 2, deliverable 2(b)).
@@ -57,14 +58,14 @@ function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
     // 1. job-level `if:`
     $jobIf = (string) ($wf['ifs'][$jobId] ?? '');
     if ($jobIf !== '' && ! str_contains($jobIf, "base_ref == 'dev'")) {
-        $reasons[] = 'job `if: ' . $jobIf . '` excludes PR->dev';
+        $reasons[] = 'job `if: '.$jobIf.'` excludes PR->dev';
     }
 
     // 2. step-level `if:` (always-true forms excepted — they skip nothing)
     $alwaysTrue = ['always()', 'success()', '!cancelled()', '! cancelled()'];
     $stepIf = trim((string) ($wf['stepIf'][$stepRun] ?? ''));
     if ($stepRun !== null && $stepIf !== '' && ! in_array($stepIf, $alwaysTrue, true)) {
-        $reasons[] = 'the step carries `if: ' . $stepIf . '`, which cannot be proven true on PR->dev';
+        $reasons[] = 'the step carries `if: '.$stepIf.'`, which cannot be proven true on PR->dev';
     }
 
     // 3 + 4. continue-on-error on the job or the step
@@ -75,7 +76,21 @@ function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
         $reasons[] = 'the step sets `continue-on-error`, so failures cannot block the merge';
     }
 
-    // 5. transitive `needs` on a job that is itself gated off PR->dev
+    // 5. shell-level soft-fail in the command itself — `|| true`, `; exit 0`,
+    // `set +e`. The step still runs and still shows green; it just cannot fail the
+    // build. This door was enforced on lanes but not on the checker's own steps,
+    // which is exactly the asymmetry N-2 existed to remove.
+    if ($stepRun !== null) {
+        foreach (['||', ';', '|', 'set +e', '&&'] as $shellSoft) {
+            if (str_contains((string) $stepRun, $shellSoft)) {
+                $reasons[] = 'the command contains `'.$shellSoft
+                    .'`, so a failure of the suite cannot fail the step';
+                break;
+            }
+        }
+    }
+
+    // 6. transitive `needs` on a job that is itself gated off PR->dev
     $queue = $wf['needs'][$jobId] ?? [];
     $seen = [];
     while ($queue !== []) {
@@ -86,7 +101,7 @@ function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
         $seen[$needed] = true;
         $neededIf = (string) ($wf['ifs'][$needed] ?? '');
         if ($neededIf !== '' && ! str_contains($neededIf, "base_ref == 'dev'")) {
-            $reasons[] = 'the job depends (transitively) on `' . $needed . '`, itself gated off PR->dev';
+            $reasons[] = 'the job depends (transitively) on `'.$needed.'`, itself gated off PR->dev';
             break;
         }
         foreach (($wf['needs'][$needed] ?? []) as $next) {
@@ -99,9 +114,9 @@ function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
 
 $apiRoot = dirname(__DIR__);
 $repoRoot = dirname($apiRoot, 2);
-$manifestPath = $apiRoot . '/tests/feature-lane-manifest.json';
-$workflowPath = $repoRoot . '/.github/workflows/ci.yml';
-$featureRoot = $apiRoot . '/tests/Feature';
+$manifestPath = $apiRoot.'/tests/feature-lane-manifest.json';
+$workflowPath = $repoRoot.'/.github/workflows/ci.yml';
+$featureRoot = $apiRoot.'/tests/Feature';
 
 /** @return list<string> relative paths of every `*Test.php` under $root */
 function enumerateTestClasses(string $root): array
@@ -136,17 +151,17 @@ foreach ([$manifestPath => 'manifest', $workflowPath => 'workflow'] as $path => 
     }
 }
 
-require_once $apiRoot . '/vendor/autoload.php';
+require_once $apiRoot.'/vendor/autoload.php';
 
 $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
 $workflowText = (string) file_get_contents($workflowPath);
 try {
-    $workflowYaml = \Symfony\Component\Yaml\Yaml::parse($workflowText);
-} catch (\Throwable $e) {
+    $workflowYaml = Yaml::parse($workflowText);
+} catch (Throwable $e) {
     // FAIL CLOSED, and with a clean exit code: an unparseable workflow means the
     // lane and --filter checks cannot run at all, which must never look like a pass.
     fwrite(STDERR, "tests/Feature lane manifest — FAILED\n");
-    fwrite(STDERR, '  ✗ .github/workflows/ci.yml does not parse as YAML: ' . $e->getMessage() . "\n");
+    fwrite(STDERR, '  ✗ .github/workflows/ci.yml does not parse as YAML: '.$e->getMessage()."\n");
     exit(1);
 }
 
@@ -217,8 +232,8 @@ $classes = enumerateTestClasses($featureRoot);
 // the whole tree.
 $allTestClasses = [];
 foreach (['Unit', 'Feature', 'Integration', 'Architecture', 'PHPStan', 'E2E'] as $suite) {
-    foreach (enumerateTestClasses($apiRoot . '/tests/' . $suite) as $relative) {
-        $allTestClasses[] = $suite . '/' . $relative;
+    foreach (enumerateTestClasses($apiRoot.'/tests/'.$suite) as $relative) {
+        $allTestClasses[] = $suite.'/'.$relative;
     }
 }
 $byGroup = [];
@@ -241,8 +256,8 @@ foreach ($byGroup as $group => $members) {
     if (! array_key_exists($group, $groups)) {
         $errors[] = sprintf(
             'UNASSIGNED GROUP "%s" (%d class(es), e.g. %s). Every tests/Feature group must name a CI '
-            . 'lane, or be excluded/deferred with a reason, in tests/feature-lane-manifest.json. '
-            . 'Silence is exactly the defect this manifest exists to make impossible.',
+            .'lane, or be excluded/deferred with a reason, in tests/feature-lane-manifest.json. '
+            .'Silence is exactly the defect this manifest exists to make impossible.',
             $group,
             count($members),
             $members[0],
@@ -277,14 +292,14 @@ foreach ($byGroup as $group => $members) {
         $laneSelector = (string) ($lanes[$entry['lane']]['selector'] ?? '');
         $coversGroup = $laneSelector !== ''
             && preg_match(
-                '#(^|[\s/])tests/Feature/' . preg_quote($group, '#') . '/?$#',
+                '#(^|[\s/])tests/Feature/'.preg_quote($group, '#').'/?$#',
                 trim($laneSelector),
             ) === 1;
         if (! $coversGroup) {
             $errors[] = sprintf(
                 'GROUP "%s" claims lane "%s", but that lane\'s selector (%s) does not run '
-                . 'tests/Feature/%s. A lane disposition must name a WHOLE-DIRECTORY selector for this '
-                . 'group; anything else must carry a `deferred`/`excluded` reason and a ceiling instead.',
+                .'tests/Feature/%s. A lane disposition must name a WHOLE-DIRECTORY selector for this '
+                .'group; anything else must carry a `deferred`/`excluded` reason and a ceiling instead.',
                 $group,
                 $entry['lane'],
                 var_export($laneSelector, true),
@@ -323,8 +338,8 @@ foreach ($byGroup as $group => $members) {
         } elseif (count($members) > $entry['classes']) {
             $errors[] = sprintf(
                 'COVERAGE DEBT GREW: group "%s" now holds %d class(es), ceiling is %d. A group that no CI '
-                . 'lane runs may shrink, never grow — put the new class in a lane, or get the lane funded '
-                . '(brief §6 F-2). Lowering the ceiling to match a real deletion is fine.',
+                .'lane runs may shrink, never grow — put the new class in a lane, or get the lane funded '
+                .'(brief §6 F-2). Lowering the ceiling to match a real deletion is fine.',
                 $group,
                 count($members),
                 $entry['classes'],
@@ -377,8 +392,8 @@ foreach ($lanes as $laneId => $lane) {
     if ($owningJob === null) {
         $errors[] = sprintf(
             'LANE "%s" is a FICTION: its selector %s does not appear in any LIVE `run:` step of '
-            . '.github/workflows/ci.yml. (Resolved against parsed YAML, not file text — a commented-out '
-            . 'or deleted step must not keep certifying coverage.)',
+            .'.github/workflows/ci.yml. (Resolved against parsed YAML, not file text — a commented-out '
+            .'or deleted step must not keep certifying coverage.)',
             $laneId,
             var_export($selector, true),
         );
@@ -431,9 +446,9 @@ foreach ($lanes as $laneId => $lane) {
             }
             $errors[] = sprintf(
                 'LANE "%s" is a whole-directory lane, but its run line carries %s, which this checker '
-                . 'cannot prove leaves the whole directory gating. Run line: %s. A lane must be the '
-                . 'selector plus neutral flags only — a narrower PATH, `--list-tests`, `--filter`, '
-                . '`|| true` or `; exit 0` all leave the manifest certifying coverage that does not happen.',
+                .'cannot prove leaves the whole directory gating. Run line: %s. A lane must be the '
+                .'selector plus neutral flags only — a narrower PATH, `--list-tests`, `--filter`, '
+                .'`|| true` or `; exit 0` all leave the manifest certifying coverage that does not happen.',
                 $laneId,
                 var_export($token, true),
                 var_export(trim((string) $laneRun), true),
@@ -469,76 +484,18 @@ foreach ($lanes as $laneId => $lane) {
     // A step-level `if:` skips the step on PR->dev exactly as a job guard would.
     // Conservative by design: ANY `if:` on a lane's own step means we do not
     // certify PR->dev coverage.
-    // `always()` / `success()` / `!cancelled()` skip nothing, so treating ANY step
-    // `if:` as gating produced a hard failure — on an ungated job, i.e. blocking
-    // every PR — carrying the false claim "which skips it".
-    $alwaysTrueIf = ['always()', 'success()', '!cancelled()', '! cancelled()'];
-    $selectorStepIf = trim((string) ($wf['stepIf'][$laneRun] ?? ''));
-    if ($selectorStepIf !== '' && ! in_array($selectorStepIf, $alwaysTrueIf, true)) {
-        $runsOnPrDev = false;
-    } else {
-        $selectorStepIf = '';
-    }
-
-    // R-1: `continue-on-error` on the step or the job means failures cannot block
-    // the merge — the lane executes but no longer GATES.
-    $soft = ($wf['stepSoft'][$laneRun] ?? false) || ($wf['jobSoft'][$owningJob] ?? false);
-    // …and the shell-level forms, which are what people actually type: `|| true`,
-    // `; exit 0`, `set +e`. The step still runs and still shows green, but its
-    // failure can no longer block the merge — identical consequence to
-    // `continue-on-error`, through a door YAML does not see.
-    $laneScript = (string) $laneRun;
-    foreach (['||', ';', '|', 'set +e', '&&'] as $shellSoft) {
-        if (str_contains($laneScript, $shellSoft)) {
-            $soft = true;
-            $errors[] = sprintf(
-                'LANE "%s" run line contains %s, so this checker cannot prove a failure of the suite '
-                . 'fails the step. A lane must be a single unconditional command. Run line: %s',
-                $laneId,
-                var_export($shellSoft, true),
-                var_export(trim($laneScript), true),
-            );
-            break;
-        }
-    }
-    if ($soft) {
+    // ONE implementation of the six doors, shared with the B3 self-application
+    // block below — the two used to be separate copies and had already diverged
+    // (the lane path knew the shell-soft door, the self-check did not).
+    $laneDefects = gatingDefects($wf, $owningJob, $laneRun);
+    if ($laneDefects !== []) {
         $runsOnPrDev = false;
     }
 
-    // …and GitHub skips a job whose dependency was skipped, so a `needs:` on a
-    // gated job removes the lane from PR->dev through a second door.
-    // R-5: GitHub skips TRANSITIVELY, so a two-job chain hides the same hole.
-    $skippedNeed = null;
-    $queue = $wf['needs'][$owningJob] ?? [];
-    $seen = [];
-    while ($queue !== []) {
-        $needed = (string) array_shift($queue);
-        if (isset($seen[$needed])) {
-            continue;
-        }
-        $seen[$needed] = true;
-        $neededIf = $wf['ifs'][$needed] ?? '';
-        if ($neededIf !== '' && ! str_contains($neededIf, "base_ref == 'dev'")) {
-            $skippedNeed = $needed;
-            $runsOnPrDev = false;
-            break;
-        }
-        foreach (($wf['needs'][$needed] ?? []) as $next) {
-            $queue[] = $next;
-        }
-    }
     if ($claimsPrDev !== $runsOnPrDev) {
-        $why = $jobIf === '' ? 'no job if: guard (always runs)' : 'job if: ' . $jobIf;
-        if ($selectorStepIf !== '') {
-            $why .= '; the lane STEP carries `if: ' . $selectorStepIf
-                . '`, which this checker cannot prove is true on PR->dev';
-        }
-        if ($soft) {
-            $why .= '; `continue-on-error` is set, so failures cannot block the merge';
-        }
-        if ($skippedNeed !== null) {
-            $why .= '; the job depends (transitively) on `' . $skippedNeed . '`, itself gated off PR->dev';
-        }
+        $why = $laneDefects === []
+            ? ($jobIf === '' ? 'no job if: guard (always runs)' : 'job if: '.$jobIf)
+            : implode('; ', $laneDefects);
         $errors[] = sprintf(
             'LANE "%s" claims runs_on_pr_dev=%s but the workflow says %s. (%s)',
             $laneId,
@@ -564,13 +521,36 @@ foreach ($lanes as $lane) {
 }
 if ($anyLaneClaimsPrDev) {
     // Symfony's parser yields the STRING key "on" here, not the YAML-1.1 boolean.
-    $prBranches = $workflowYaml['on']['pull_request']['branches'] ?? null;
+    $pullRequest = $workflowYaml['on']['pull_request'] ?? null;
+
+    $prBranches = $pullRequest['branches'] ?? null;
     if (! is_array($prBranches) || ! in_array('dev', $prBranches, true)) {
         $errors[] = sprintf(
             'TRIGGER SET: a lane declares runs_on_pr_dev=true, but the workflow does not start on '
-            . 'PR->dev. `on.pull_request.branches` = %s. No job guard can rescue a workflow that never '
-            . 'runs.',
+            .'PR->dev. `on.pull_request.branches` = %s. No job guard can rescue a workflow that never '
+            .'runs.',
             var_export($prBranches, true),
+        );
+    }
+
+    // `branches` is not the only way to stop the workflow starting. A
+    // `paths-ignore` of everything, or a `types` list without the ordinary PR
+    // events, each removes PR->dev just as completely and with one line.
+    $pathsIgnore = $pullRequest['paths-ignore'] ?? null;
+    if (is_array($pathsIgnore) && (in_array('**', $pathsIgnore, true) || in_array('**/*', $pathsIgnore, true))) {
+        $errors[] = sprintf(
+            'TRIGGER SET: `on.pull_request.paths-ignore` = %s excludes every path, so no PR starts the '
+            .'workflow at all, yet a lane declares runs_on_pr_dev=true.',
+            var_export($pathsIgnore, true),
+        );
+    }
+
+    $prTypes = $pullRequest['types'] ?? null;
+    if (is_array($prTypes) && array_intersect(['opened', 'synchronize', 'reopened'], $prTypes) === []) {
+        $errors[] = sprintf(
+            'TRIGGER SET: `on.pull_request.types` = %s contains none of opened/synchronize/reopened, so '
+            .'an ordinary PR->dev never starts the workflow, yet a lane declares runs_on_pr_dev=true.',
+            var_export($prTypes, true),
         );
     }
 }
@@ -588,7 +568,7 @@ foreach (array_unique($mustBeInAggregate) as $jobId) {
     if (! in_array($jobId, $aggregateNeeds, true)) {
         $errors[] = sprintf(
             'JOB "%s" is missing from the `all-checks-pass` `needs` list. Brief H-9 makes aggregate '
-            . 'membership a package-wide obligation: a gate outside the aggregate does not gate.',
+            .'membership a package-wide obligation: a gate outside the aggregate does not gate.',
             $jobId,
         );
     }
@@ -617,7 +597,7 @@ foreach ($selfSteps as $selfStep) {
     if ($selfRun === null) {
         $errors[] = sprintf(
             'SELF-CHECK: the step `%s` is not present in any live `run:` block of ci.yml. The checker '
-            . 'and its liveness suite must both actually run.',
+            .'and its liveness suite must both actually run.',
             $selfStep,
         );
 
@@ -718,7 +698,7 @@ foreach ($wf['runs'] as $run) {
             if (preg_match('/^(?:=|[ \t]+)(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s]+))/s', $rest, $m) !== 1) {
                 $errors[] = sprintf(
                     'UNPARSEABLE --filter in a `run:` step (context: %s). Fail closed: the anchoring and '
-                    . 'uniqueness lint cannot certify an allowlist it cannot read.',
+                    .'uniqueness lint cannot certify an allowlist it cannot read.',
                     trim(substr($segment, max(0, $pos - 20), 60)),
                 );
 
@@ -746,9 +726,9 @@ foreach ($filterValues as $raw) {
     if (! $anchored) {
         $errors[] = sprintf(
             'UNANCHORED --filter in ci.yml (starts: %s…). PHPUnit filters are unanchored regexes over '
-            . '`Namespace\\Class::method`, so a bare alternation lets any class whose name CONTAINS an '
-            . 'entry join the lane silently (AnalyticsTest also selects ExpenseAnalyticsTest). '
-            . 'Use the /\\\\(A|B|C)::/ form.',
+            .'`Namespace\\Class::method`, so a bare alternation lets any class whose name CONTAINS an '
+            .'entry join the lane silently (AnalyticsTest also selects ExpenseAnalyticsTest). '
+            .'Use the /\\\\(A|B|C)::/ form.',
             substr($raw, 0, 48),
         );
     }
@@ -787,7 +767,7 @@ foreach ($filterValues as $raw) {
         ));
         $errors[] = sprintf(
             'AMBIGUOUS --filter entry "%s": %d classes share that basename (%s). The lane composition '
-            . 'is undefined — disambiguate or split the lane.',
+            .'is undefined — disambiguate or split the lane.',
             $entry,
             $exact,
             implode(', ', $paths),
@@ -806,7 +786,7 @@ if (! is_int($declaredDebtCeiling)) {
 } elseif (($deferredClasses + $excludedClasses) > $declaredDebtCeiling) {
     $errors[] = sprintf(
         'TOTAL COVERAGE DEBT GREW: %d class(es) now sit in groups no lane runs, ceiling is %d. '
-        . 'Retiring a CI lane must be a deliberate edit to `debt_ceiling`, not a side effect.',
+        .'Retiring a CI lane must be a deliberate edit to `debt_ceiling`, not a side effect.',
         $deferredClasses + $excludedClasses,
         $declaredDebtCeiling,
     );
@@ -826,9 +806,9 @@ if ($errors !== []) {
 }
 
 fwrite(STDOUT, sprintf(
-    "tests/Feature lane manifest OK — %d Feature classes in %d groups; every group has a disposition; "
-    . "every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched "
-    . "against %d test classes across all suites.\n",
+    'tests/Feature lane manifest OK — %d Feature classes in %d groups; every group has a disposition; '
+    .'every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched '
+    ."against %d test classes across all suites.\n",
     count($classes),
     count($byGroup),
     count($allTestClasses),
@@ -837,7 +817,7 @@ fwrite(STDOUT, sprintf(
 if ($excludedGroups > 0) {
     fwrite(STDOUT, sprintf(
         "  ⚠ EXCLUDED: %d group(s) / %d class(es) are declared unable to run in CI. Each carries a\n"
-        . "    reason; relabelling a `deferred` group as `excluded` does NOT remove it from this report.\n",
+        ."    reason; relabelling a `deferred` group as `excluded` does NOT remove it from this report.\n",
         $excludedGroups,
         $excludedClasses,
     ));
@@ -854,9 +834,9 @@ if ($deferredGroups > 0) {
     // stop. The strictly-unreachable figure is in the decision doc's census.
     fwrite(STDOUT, sprintf(
         "  ⚠ COVERAGE DEBT: %d group(s) / %d class(es) sit in groups that NO CI lane runs as a whole,\n"
-        . "    pending the F-2 CI-budget decision. Some are individually named in a --filter allowlist;\n"
-        . "    a NEW class in any of these groups is selected by nothing. Ceilings are enforced above.\n"
-        . "    See docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M2.\n",
+        ."    pending the F-2 CI-budget decision. Some are individually named in a --filter allowlist;\n"
+        ."    a NEW class in any of these groups is selected by nothing. Ceilings are enforced above.\n"
+        ."    See docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M2.\n",
         $deferredGroups,
         $deferredClasses,
     ));
