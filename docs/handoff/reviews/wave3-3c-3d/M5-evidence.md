@@ -239,7 +239,7 @@ Production was then restored and the same set re-run **GREEN** (§4).
   tests/Feature/Inventory/StockAdjustByDeltaTest.php \
   tests/Feature/Accounting/CheckCogsCoverageCommandTest.php \
   tests/Feature/Inventory/CountCorrectionGlPostingTest.php
-->  OK, Tests: 65, Assertions: 150, Skipped: 7
+->  OK, Tests: 66, Assertions: 155, Skipped: 7   <!-- re-measured post fix-round by the round-2 reviewer and parent close-out; was 65/150 pre-fix-round -->
 ```
 
 The 7 skips are `CountCorrectionGlPostingTest`, which skips **loudly** on non-PostgreSQL drivers.
@@ -252,7 +252,7 @@ DB_PASSWORD= CACHE_STORE=array ./vendor/bin/phpunit -c phpunit-pgsql.xml \
   tests/Feature/Inventory/CountCorrectionGlPostingTest.php \
   tests/Feature/Inventory/StockAdjustByDeltaTest.php \
   tests/Feature/Accounting/CheckCogsCoverageCommandTest.php
-->  OK (54 tests, 156 assertions)
+->  OK (55 tests, 161 assertions)   <!-- re-measured post fix-round; was 54/156 -->
 ```
 
 `CountCorrectionGlPostingTest` alone: **OK (7 tests, 42 assertions)**.
@@ -267,7 +267,7 @@ DB_PASSWORD= CACHE_STORE=array ./vendor/bin/phpunit -c phpunit-pgsql.xml \
 | `tests/Feature/Inventory` | sqlite | 828 tests, 16 errors, 2 failures — **identical set at base**, §5 |
 | `tests/Unit/Inventory` + `tests/Architecture` | sqlite | 188 tests, 667 assertions, 2 errors, 4 failures — **identical at base**, §5 |
 | `tests/Feature/CountryDefaults` | PG | **OK (172 tests, 1142 assertions)** |
-| `tests/Feature/Accounting/CheckCogsCoverageCommandTest` | PG | **OK (26 tests, 54 assertions)** |
+| `tests/Feature/Accounting/CheckCogsCoverageCommandTest` | PG | **OK (27 tests, 59 assertions)** — re-measured post fix-round; was 26/54 |
 
 ### 4.4 Style and static analysis
 
