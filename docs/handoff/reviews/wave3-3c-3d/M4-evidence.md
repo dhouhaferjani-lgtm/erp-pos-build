@@ -269,3 +269,7 @@ GREEN — accounting chart/command/migration set:      56 tests, 343 assertions
 Pint on round-4 production + test paths:             pass
 PHPStan level 8 on round-4 production paths:         [OK] No errors
 ```
+
+Round-4 revert-replay removed `e28562448` while test commit `bbe846284` remained. The cross-plan
+PostgreSQL guard errored on missing parent `7000`; aborting the revert restored the exact committed tip
+and the same test passed, resolving the new gain account beneath `75`.
