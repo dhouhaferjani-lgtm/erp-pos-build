@@ -36,7 +36,10 @@ Route::prefix('api/v1')
             ->middleware('can:fiscal.events.resolve_quarantine');
         // ES-17 — record that an operator has ADJUDICATED a
         // `fiscal_event_quarantine` incident, so `fiscal:verify-event-chain`
-        // stops reporting it (`VerifyEventChainCommand.php:856`). Reuses the
+        // stops reporting it (the `whereNull('resolved_at')` predicate inside
+        // `VerifyEventChainCommand::reportQuarantineIncidents()` — cited by
+        // SYMBOL, not by line: that file has moved this seam three times in
+        // this wave alone). Reuses the
         // EXISTING seeded `fiscal.events.resolve_quarantine` that already gates
         // the two sibling quarantine actions above: no new permission, no role
         // seeder change, no `permission:cache-reset` to deploy.

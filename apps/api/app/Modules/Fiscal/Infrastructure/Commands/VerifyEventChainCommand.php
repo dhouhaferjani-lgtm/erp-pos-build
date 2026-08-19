@@ -714,8 +714,14 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
             // discriminating branch was dead on exactly the data it exists for.
             // Widening to the canonical flag set does not make the guard lenient:
             // byte identity is still the whole acceptance test, so bytes that carry
-            // literal `\uXXXX` escapes now refuse instead, which is correct — the
-            // canonical encoder cannot emit them.
+            // literal `\uXXXX` escapes OF U+0080+ now refuse instead, which is
+            // correct — the canonical encoder does not emit those. The
+            // qualification matters and is not pedantry: PHP escapes U+2028/U+2029
+            // even under JSON_UNESCAPED_UNICODE, so the canonical encoder DOES emit
+            // the six-byte escapes for those two code points, and this guard
+            // RECOVERS envelopes carrying them (see the docblock above). "The
+            // canonical encoder cannot emit `\uXXXX`" is FALSE as an absolute: it
+            // holds for U+0080+ generally, NOT for U+2028/U+2029.
             $roundTrip = json_encode(
                 $envelope,
                 JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,

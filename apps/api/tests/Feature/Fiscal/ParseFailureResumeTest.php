@@ -295,8 +295,11 @@ final class ParseFailureResumeTest extends TestCase
     // `CanonicalJsonEncoder::encodeString()` emits raw UTF-8 for U+0080+
     // per RFC 8785 §3.2.3 (`CanonicalJsonEncoder.php:106-108`). The guard's
     // re-encode originally omitted `JSON_UNESCAPED_UNICODE`, so it produced
-    // `\uXXXX` for the same characters and the byte-identity test at
-    // `VerifyEventChainCommand.php:705` could never hold for a receipt
+    // `\uXXXX` for the same characters and the byte-identity check
+    // (`$roundTrip !== $canonicalBytes` inside
+    // `VerifyEventChainCommand::recoverSealedPayloadFromFrozenBytes()` — cited
+    // by SYMBOL, not by line, because that file's line numbers have drifted
+    // three times in this wave) could never hold for a receipt
     // carrying one accented or Arabic character. On France/Tunisia data
     // that is most receipts, so the discriminating branch was effectively
     // dead — fail-closed (the coordinate incident and exit 1 both survive)
@@ -373,8 +376,12 @@ final class ParseFailureResumeTest extends TestCase
 
     public function test_sealed_payload_recovery_refuses_unicode_escaped_non_canonical_bytes(): void
     {
-        // The SAME non-ASCII payload, sealed in a byte form the canonical encoder can never
-        // produce: `\uXXXX` escapes instead of raw UTF-8. Recovery must refuse — those bytes
+        // The SAME non-ASCII payload, sealed in a byte form the canonical encoder does not
+        // produce for THESE code points: `\uXXXX` escapes of U+0080+ instead of raw UTF-8.
+        // (F-7: written as a universal this would be false — PHP escapes U+2028/U+2029 even
+        // under JSON_UNESCAPED_UNICODE, so the canonical encoder DOES emit those two escaped
+        // and the guard recovers them. The fixture's characters are ordinary accented/Arabic
+        // ones, for which the escape form is genuinely non-canonical.) Recovery must refuse — those bytes
         // are not canonical JSON, so nothing about them licenses a claim about the sealed
         // payload. This bounds the F-1 widening: adding JSON_UNESCAPED_UNICODE makes the
         // guard agree with the canonical encoder, it does not make it lenient.
@@ -393,7 +400,8 @@ final class ParseFailureResumeTest extends TestCase
         $this->assertStringNotContainsString(
             'the sealed payload was recovered from the frozen envelope',
             $run['output'],
-            'Recovery must not fire on a byte form CanonicalJsonEncoder cannot emit.',
+            'Recovery must not fire on a byte form CanonicalJsonEncoder does not emit for these code points '
+            .'(F-7: `\uXXXX` of U+0080+ — NOT a universal claim; U+2028/U+2029 stay escaped and ARE canonical).',
         );
     }
 
@@ -1013,8 +1021,11 @@ final class ParseFailureResumeTest extends TestCase
      *
      * @param  array<string, mixed>  $sealedPayload
      * @param  bool  $escapeUnicode  when true the frozen bytes carry `\uXXXX` escapes — a byte form
-     *                               `CanonicalJsonEncoder` can never emit (RFC 8785 §3.2.3 is raw
-     *                               UTF-8), used to prove recovery REFUSES non-canonical bytes
+     *                               `CanonicalJsonEncoder` does not emit for U+0080+ (RFC 8785
+     *                               §3.2.3 seals those raw), used to prove recovery REFUSES
+     *                               non-canonical bytes. F-7: NOT a universal — PHP escapes
+     *                               U+2028/U+2029 even under JSON_UNESCAPED_UNICODE, so those two
+     *                               escapes ARE canonical and the guard recovers them.
      */
     private function storeSealedEnvelopeParseFailure(array $sealedPayload, bool $escapeUnicode = false): FiscalEvent
     {

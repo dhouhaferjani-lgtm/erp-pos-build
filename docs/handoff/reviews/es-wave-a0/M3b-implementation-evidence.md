@@ -70,12 +70,14 @@ one"). It was checked FIRST and explicitly — see §4, clause 17-E — and it d
 
 ## 2. On the ES-17 seam, stated plainly
 
-The contract's own finding is that `VerifyEventChainCommand.php:856` (`whereNull('resolved_at')`) has
+The contract's own finding is that the `whereNull('resolved_at')` predicate inside
+`VerifyEventChainCommand::reportQuarantineIncidents()` (cited by SYMBOL, not by line — M3b round 1
+F-1: the contract's `:856` was stale before this milestone even shipped) has
 **no writer**. Clause 17-A prescribes the writer ("An authorised operator can stamp `resolved_at` +
 `resolved_by`") and 17-C makes the verifier's exit-1→exit-0 transition the demonstration. So M3b
 builds the writer — the contract does not defer it to an owner-gated workflow.
 
-**The predicate at `:856` is not touched.** F17-4 makes "demonstrate 17-C by teaching the verifier to
+**That predicate is not touched.** F17-4 makes "demonstrate 17-C by teaching the verifier to
 ignore quarantine rows" a rejection trigger, and it would delete a control this wave just finished
 hardening. `VerifyEventChainCommand.php` carries **no ES-17 change** — its only diff in this
 milestone is the N-2 comment correction in the opening commit, which is inside
@@ -150,7 +152,7 @@ Also not built, all explicitly OUT per the contract: any change to the seven lif
 |---|---|---|
 | **17-A** "An authorised operator can stamp `resolved_at` + `resolved_by` on a quarantine row, and both land together … Both columns non-null in the same write, or neither." | `QuarantineIncidentResolutionService::resolve()` `:80-117`; the single `->update([...])` naming exactly two columns at `:110-114` | `test_an_authorised_operator_stamps_both_resolution_columns_together` — **RED before (404), GREEN after** |
 | **17-B** "The stamp is **explicit lifecycle code, never mass assignment.** … An implementation that adds them to `$fillable` violates the model's stated boundary discipline and fails this clause." | the service writes through a targeted `->update()`; `FiscalEventQuarantine::$fillable` (`:93-119`) is **unmodified** | `test_resolution_columns_stay_out_of_fillable_and_resist_mass_assignment` — asserts both columns absent from `getFillable()` AND that a runtime `fill()`+`save()` of them persists nothing |
-| **17-C** "After the stamp, `fiscal:verify-event-chain` stops reporting that row … the command exits **1** … before, and **0** after (all other checks clean), on the same fixture." | the writer alone; `VerifyEventChainCommand.php:856` untouched | `test_verifier_exits_one_before_the_stamp_and_zero_after_on_the_same_fixture` — **RED before, GREEN after**; asserts exit 1 + `QUARANTINE INCIDENT` + `claimed_sequence_number 2` before, exit 0 + `chain verified` + no `QUARANTINE INCIDENT` after |
+| **17-C** "After the stamp, `fiscal:verify-event-chain` stops reporting that row … the command exits **1** … before, and **0** after (all other checks clean), on the same fixture." | the writer alone; `VerifyEventChainCommand::reportQuarantineIncidents()` untouched | `test_verifier_exits_one_before_the_stamp_and_zero_after_on_the_same_fixture` — **RED before, GREEN after**; asserts exit 1 + `QUARANTINE INCIDENT` + `claimed_sequence_number 2` before, exit 0 + `chain verified` + no `QUARANTINE INCIDENT` after |
 | **17-D** "The stamp changes **nothing else** … byte-identical before and after; the conflicting event … is untouched. Asserted column by column." | the `->update()` names two columns and nothing else | `test_the_stamp_changes_nothing_else_on_the_row_or_the_chain` — 14 quarantine columns compared byte-for-byte, `fiscal_events` row count unchanged, and the conflicting event's 5 columns compared |
 | **17-E** "The action is **permission-gated**, reusing an existing seeded permission … `fiscal.events.resolve_quarantine` … An unauthorised principal is refused **and persists nothing**." | `routes.php:43-45`, `->middleware('can:fiscal.events.resolve_quarantine')` | `test_the_reused_permission_exists_in_the_seeded_set_and_the_resolver_principal_holds_it` (the STOP check) + `test_an_unauthorised_principal_is_refused_and_persists_nothing` (403 **and** row still unstamped) |
 | **17-F** "Tenant-scoped. A resolver in tenant A cannot stamp tenant B's quarantine row." | controller `:61-73` scopes the lookup by `tenant_id`; the service re-checks under the row lock at `:84-95` | `test_a_resolver_cannot_stamp_another_tenants_quarantine_row` — with a **positive control** (the resolver's own row stamps OK in the same test) so the 404 is not satisfied by "the endpoint does not exist" |

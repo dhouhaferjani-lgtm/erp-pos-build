@@ -10,6 +10,7 @@ use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 /**
  * ES-17 — the missing writer for `fiscal_event_quarantine.resolved_at` /
@@ -20,8 +21,10 @@ use Illuminate\Support\Carbon;
  * the table as MUTABLE for exactly this ("the resolution flow writes
  * `resolved_at` / `resolved_by` when an admin clears the incident"), and both
  * columns were declared, cast and deliberately non-fillable — but nothing in
- * `app/` ever wrote them. `VerifyEventChainCommand.php:856` filters on
- * `whereNull('resolved_at')`, so a single `sequence_conflict` envelope made
+ * `app/` ever wrote them. `VerifyEventChainCommand::reportQuarantineIncidents()`
+ * filters on `whereNull('resolved_at')` (cited by SYMBOL, never by line — that
+ * file's line numbers have drifted three times in this wave), so a single
+ * `sequence_conflict` envelope made
  * `fiscal:verify-event-chain` return exit 1 for that terminal FOREVER: the only
  * condition that cleared the incident was a column with no writer. This service
  * is that writer, and nothing more.
@@ -50,6 +53,17 @@ use Illuminate\Support\Carbon;
  * columns stay out of `FiscalEventQuarantine::$fillable` (`:84-90`, the Task 9
  * boundary discipline); this service writes them through a targeted UPDATE that
  * names them, so no request-bound array can ever reach them.
+ *
+ * **Observability (M3b round 1, F-4).** The write emits
+ * `fiscal.quarantine.incident_resolved`, mirroring the shape its strictly LESS
+ * consequential read-only sibling already logs
+ * (`QuarantineBestEffortParseController::logParseInvoked()` →
+ * `fiscal.quarantine.best_effort_parse_invoked`). The log also carries the
+ * operator's free-text `reason`, which is the ONLY place a reason is captured:
+ * a structured reason COLUMN is a schema change and is deliberately not taken
+ * here. This matters because, per F-3, the NF525 §8 export publishes
+ * `resolved_at` but NOT `resolved_by` — without this line, "who cleared this
+ * incident, and why" existed nowhere an operator could read it.
  */
 final class QuarantineIncidentResolutionService
 {
@@ -71,15 +85,21 @@ final class QuarantineIncidentResolutionService
      *                                The CALLER is responsible for having resolved this id within the
      *                                acting user's tenant (clause 17-F) — the controller does so before
      *                                calling, and re-checks tenancy here as defence in depth.
+     * @param  string|null  $reason  the operator's free-text justification. Captured in the
+     *                               adjudication LOG only (F-4) — never persisted, because a
+     *                               reason column is a schema change outside 17-A…17-G.
      *
      * @throws QuarantineIncidentNotFoundException when no such row exists in
      *                                             the acting user's tenant (clause 17-F)
      * @throws QuarantineAlreadyResolvedException when the row already carries a
      *                                            resolution stamp (clause 17-G — refuse, never overwrite)
      */
-    public function resolve(string $quarantineId, User $resolverUser): void
+    public function resolve(string $quarantineId, User $resolverUser, ?string $reason = null): void
     {
-        $this->db->transaction(function () use ($quarantineId, $resolverUser): void {
+        /** @var array<string, mixed>|null $logContext */
+        $logContext = null;
+
+        $this->db->transaction(function () use ($quarantineId, $resolverUser, $reason, &$logContext): void {
             /** @var FiscalEventQuarantine|null $incident */
             $incident = FiscalEventQuarantine::query()
                 ->lockForUpdate()
@@ -106,12 +126,37 @@ final class QuarantineIncidentResolutionService
             // UPDATE joins the surrounding transaction rather than the DEFAULT
             // connection — the same round-2 lesson `ParseFailureResolutionService`
             // carries (Task 24 Opus F3).
+            $resolvedAt = Carbon::now('UTC');
+
             $this->db->table('fiscal_event_quarantine')
                 ->where('id', $quarantineId)
                 ->update([
-                    'resolved_at' => Carbon::now('UTC'),
+                    'resolved_at' => $resolvedAt,
                     'resolved_by' => $resolverUser->id,
                 ]);
+
+            // Assembled inside the transaction (the row is read under the lock)
+            // but EMITTED after commit — a log line for a rolled-back write
+            // would assert an adjudication that never happened.
+            $logContext = [
+                'tenant_id' => $resolverUser->tenant_id,
+                'user_id' => $resolverUser->id,
+                'quarantine_id' => $quarantineId,
+                'company_id' => $incident->company_id,
+                'terminal_id' => $incident->terminal_id,
+                'chain_context' => $incident->chain_context,
+                'event_type' => $incident->event_type,
+                'claimed_sequence_number' => $incident->claimed_sequence_number,
+                'integrity_exception_class' => $incident->integrity_exception_class->value,
+                'conflicting_event_id' => $incident->conflicting_event_id,
+                'resolved_at' => $resolvedAt->toIso8601String(),
+                'reason_supplied' => $reason !== null,
+                'reason' => $reason,
+            ];
         });
+
+        if ($logContext !== null) {
+            Log::info('fiscal.quarantine.incident_resolved', $logContext);
+        }
     }
 }

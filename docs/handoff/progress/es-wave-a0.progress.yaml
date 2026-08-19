@@ -45,6 +45,12 @@ owner_gates:
     question: "ES-42: adding a can: gate to POST /pos/sync/fiscal-events is a LIVE DEVICE route. The permission is LOCKED to the EXISTING pos.operate_terminal (seeded; already gates comparable POS write surfaces). This gate fires ONLY if M4's first check finds that the device principal does NOT hold pos.operate_terminal in the fixture — then a grant (new permission + role seeder + permission:cache-reset) becomes a policy/deploy choice: STOP blocked_owner rather than inventing it."
     blocks_milestone: none
     status: conditional
+  # RAISED 2026-08-19 by M3b round 1, F-3. Informational: blocks no milestone,
+  # and A0 does NOT take it — an export-schema change is outside 17-A..17-G.
+  - id: nf525-s8-resolved-by
+    question: "Should the NF525 §8 quarantine export publish `resolved_by` alongside `resolved_at`? Today Nf525DataProvider::buildQuarantineSection() selects and emits `resolved_at` only (Nf525DataProvider.php:1571, :1603-1605) and `resolved_by` appears nowhere in that provider — so the export tells an auditor THAT a fiscal chain incident was adjudicated and WHEN, never BY WHOM. The adjudicator's identity survives only in the raw fiscal_event_quarantine.resolved_by column and (since M4's F-4 sweep) in the fiscal.quarantine.incident_resolved log line. The approved ES-17 contract asserted the opposite as fact (M3-straggler-contracts.md:241) and M3b re-asserted it in production code; both are corrected. Ruling owed against the NF525 lane, not this wave."
+    blocks_milestone: none
+    status: open
 
 milestones:
   - id: M0
@@ -202,8 +208,9 @@ milestones:
     #   + POST /api/v1/fiscal/quarantine/{id}/resolve-incident, gated by the
     #   EXISTING seeded fiscal.events.resolve_quarantine. Single-actor
     #   adjudication record; refuses a re-stamp rather than overwriting the
-    #   original resolved_by. VerifyEventChainCommand.php:856 is UNTOUCHED —
-    #   only the writer was missing (F17-4).
+    #   original resolved_by. VerifyEventChainCommand::reportQuarantineIncidents()
+    #   is UNTOUCHED — only the writer was missing (F17-4). (Citation corrected
+    #   from the stale `:856` and made SYMBOLIC per round-1 F-1.)
     #
     # GATES, measured mechanically over 32671a9f6..HEAD, all 0-line diffs:
     #   ZReportHashService.php (R-1), OutboxIngestor.php (16-D, and so :815's
@@ -240,14 +247,27 @@ milestones:
     # the reviewer reads "the existing dead-letter read surface" in the
     # contract's headline as including show(), that is an amendment to make at
     # review and implement in a fix round.
-    status: review
+    #
+    # ROUND 1 = ACCEPT (docs/handoff/reviews/es-wave-a0/M3b-round1.md, register
+    # commit f21a5f326), reviewed over 32671a9f6..4a2aa3637. Both stragglers
+    # verified clause by clause against the code; the reviewer independently
+    # reproduced the ES-16 red block by reverting the controller (7 tests, 64
+    # assertions, 5 failures, same tests, same messages) and enumerated 16-C's
+    # twelve returned keys himself rather than trusting the test's key list.
+    # Both disclosed residuals RULED WITHIN CONTRACT: show() (F-8) and the
+    # duplicated suppression-string literal (F-5).
+    #
+    # Seven findings, none blocking. FIVE were swept in M4's opening commit
+    # (see the M4 row); FOUR are ticketed as residuals under `findings:` below.
+    status: passed
     fix_rounds: 0
     # Milestone slice for the reviewer: 32671a9f6..dfa58a418
     #   f28306baf — opening ledger + the three swept M3 round-2 P3s
     #   dfa58a418 — ES-16 + ES-17 implementation
     commit: dfa58a418
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/es-wave-a0/M3b-round1.md
+    last_verdict: ACCEPT
+    updated: f21a5f326
   - id: M4
     # SCOPE AMENDED 2026-08-19 by docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md:
     # ES-09 covers TerminalRegistrySnapshotService and VirtualAdminFiscalEventService
@@ -257,7 +277,44 @@ milestones:
     # receipt-verification arm.
     title: "Guard/constraint class — THREE DIFFERENT CONTRACTS, do not conflate. ES-09 = CORRECTNESS: chain-head resolution scoped by (company_id, chain_context) at BOTH TerminalRegistrySnapshotService and VirtualAdminFiscalEventService, matching OutboxIngestor's shape; before-fix RED demonstrates context-blind head resolution on a two-context terminal, after-fix GREEN = the two-context append SUCCEEDS with heads resolved per (company_id, chain_context) and no unconditional Verified/Parsed stamp. ES-41 = TRIGGER-PRESENCE regression scoped to its snapshot row (PG trigger presence asserted; the non-PG driver scope is DOCUMENTED, not 'fixed'; pending_seal->fiscalized branch SUSPECTED — verify before asserting). ES-42 = the two-sided REFUSAL contract, gated with the EXISTING pos.operate_terminal (LOCKED — no new permission, no reseed, no permission migration): FIRST verify the fixture's device principal holds pos.operate_terminal; if it does NOT, set status blocked_owner (gate ES-42-device-permission-grant) and STOP; otherwise proceed — unauthorized principal 403s and persists NOTHING, and the fixture device sync path still SUCCEEDS end-to-end."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
+    # OPENING COMMIT also discharges the five M3b-round-1 sweeps the register
+    # marked "owed at M4's opening commit":
+    #   F-1 — the ES-17 seam was cited as VerifyEventChainCommand.php:856 at six
+    #     sites; :856 is now a BLANK LINE and the predicate is at :896. Every
+    #     site now cites the SYMBOL
+    #     (`VerifyEventChainCommand::reportQuarantineIncidents()`'s
+    #     `whereNull('resolved_at')`) instead of a line number — the register's
+    #     ultimatum is that a FOURTH recurrence of the citation-drift class is a
+    #     BLOCKER, so the failure mode is REMOVED, not re-swept.
+    #   F-2 — ParseFailureResumeTest.php:299 cited the byte-identity test at
+    #     VerifyEventChainCommand.php:705; its own sibling edit in the same
+    #     commit moved it to :727. Now cited by SYMBOL:
+    #     `recoverSealedPayloadFromFrozenBytes()`'s `$roundTrip !== $canonicalBytes`.
+    #   F-3 — four sites claimed `resolved_by` is published by the NF525 §8
+    #     export. It is NOT: Nf525DataProvider::buildQuarantineSection() selects
+    #     and emits `resolved_at` only (:1571, :1603-1605); `resolved_by` appears
+    #     nowhere in that file. All four corrected to what §8 actually publishes
+    #     — THAT an incident was adjudicated and WHEN, never BY WHOM — which
+    #     makes 17-G's refusal rationale STRONGER, not weaker (the raw column is
+    #     the identity's only home). Whether §8 SHOULD carry `resolved_by` is a
+    #     new owner question, filed under owner_gates as nf525-s8-resolved-by.
+    #   F-7 — VerifyEventChainCommand's "the canonical encoder cannot emit
+    #     \uXXXX" survived 30 lines below its own N-2 correction, plus two
+    #     universals in ParseFailureResumeTest. All three qualified to "\uXXXX
+    #     escapes OF U+0080+", naming U+2028/U+2029 as the exception. No raw
+    #     U+2028/U+2029 literal was introduced (byte-level grep = 0).
+    #   F-4 — the adjudication write had NO observability. Added
+    #     Log::info('fiscal.quarantine.incident_resolved', [...]) in
+    #     QuarantineIncidentResolutionService::resolve(), mirroring the read-only
+    #     sibling's shape (QuarantineBestEffortParseController::logParseInvoked()),
+    #     assembled under the row lock but EMITTED AFTER COMMIT so a rolled-back
+    #     write never asserts an adjudication that did not happen. Reason capture
+    #     is LOG-ONLY — an optional `reason` on the request body (max 500,
+    #     backwards-compatible), NEVER persisted: a reason COLUMN is a schema
+    #     change outside 17-A..17-G and stays a ticket. Two new tests; the log
+    #     test is red-first proven (removing the Log call fails it, 1 failed).
+    #     FiscalEventQuarantineResolutionTest is now 12/74 (was 10/69).
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -279,6 +336,14 @@ status: in_progress      # pending | in_progress | blocked_owner | blocked_revie
 # M2-round2.md, register commit 325499fe3) and continues with M3. Same rules:
 # no push, no stash, no full PHPUnit suite, tests by path, PG recipe
 # (apps/api/phpunit-pgsql.xml). Commits continue the Phase 0.1.<seq> series.
+
+# Ticketed residuals — RULED, no work owed inside this wave. Each cites the
+# register that ruled it. Opened 2026-08-19 from M3b round 1 (M3b-round1.md).
+findings:
+  - "F-5 (P3, M3b-round1.md:314-319) — ES-16's read partition couples to the ingestor's suppression verdict by a DUPLICATED LITERAL, not a shared constant: OutboxIngestor.php:922 plus seven producer copies at :521-551 vs DeadLetteredProjectionsController.php:78. Ruled WITHIN CONTRACT (no F16-* demands a constant; 16-D forbade M3b from adding one) and the reword-empties-the-partition failure mode is caught loudly by the real-ingestor fixture guard. OWED BY: the next lane that legitimately opens OutboxIngestor — one shared constant referenced by the seven producers, the suppressor and the partition."
+  - "F-6 (P3, M3b-round1.md:321-329) — DeadLetteredProjectionsController.php:154's LIKE '%z_session_lifecycle:%' treats `_` as a single-character wildcard in both PG and SQLite, so the partition predicate is a strict SUPERSET of the ingestor's str_contains suppression. No false negative is possible and no verdict string the ingestor emits collides today, so visibility is safe — but the docblock at :74-76 and the evidence claim identity 'by construction'. OWED: escape the underscores with an explicit ESCAPE clause, or narrow the claim to 'a superset that is exact against every verdict the ingestor emits'."
+  - "F-8 (residual, ruled — M3b-round1.md:147-168, :339-342) — DeadLetteredProjectionsController::show() still returns 409 NOT_DEAD_LETTERED for a z_session_lifecycle row (:218 tests integrity_exception_class === 'canonical_parse_failure', which a sequence_gap row fails). Ruled WITHIN CONTRACT: 16-A names index() and only index(), and the detail endpoint would carry no information the list row lacks — a deep-link dead end for a UI that does not exist yet. OWED: if a detail view is ever built, show() must reuse formatZSessionLifecycleRow() INCLUDING its deliberate absence of any action affordance (16-C is inherited)."
+  - "F-9 (residual, ruled — M3b-round1.md:344-352) — ES-16 visibility REGRESSES if anyone runs fiscal:enqueue-resolved-event-projections on a lifecycle row: the partition carries whereNotExists(fiscal_event_projections) (:155-159, mirroring partition 2), that command creates pending rows for exactly these events, and afterwards the row appears in partition 1 only if the projections dead-letter and in NO partition if they apply — i.e. the blind spot returns with wrong Z aggregates written. Not a contract violation (16-A is demonstrated; the contract explicitly forbade M3b from making that command safe). OWED BY: whichever lane owns lifecycle adjudication."
 
 blockers:
   # RESOLVED 2026-08-19 — STOP C RULED by the parent orchestrator.

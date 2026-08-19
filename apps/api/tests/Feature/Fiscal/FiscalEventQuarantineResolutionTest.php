@@ -19,6 +19,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Permission;
@@ -37,9 +38,11 @@ use Tests\TestCase;
  * MUTABLE precisely so "the resolution flow writes `resolved_at` / `resolved_by`
  * when an admin clears the incident". Both columns are declared (`:57-58`), cast
  * (`:151`), deliberately non-fillable (`:84-90`) — and, before this milestone,
- * only ever READ: `VerifyEventChainCommand.php:856` reports every
- * `resolved_at IS NULL` row as a chain incident, and `Nf525DataProvider`
- * exports the stamp into the §8 audit section. No writer existed anywhere in
+ * only ever READ: `VerifyEventChainCommand::reportQuarantineIncidents()` (cited
+ * by SYMBOL, not by line — that file's line numbers have drifted three times in
+ * this wave) reports every `resolved_at IS NULL` row as a chain incident, and
+ * `Nf525DataProvider::buildQuarantineSection()` exports `resolved_at` — and only
+ * `resolved_at` — into the §8 audit section. No writer existed anywhere in
  * `app/`. Consequence, and the reason this row is in the A0 lane at all:
  * **one `sequence_conflict` envelope made `fiscal:verify-event-chain` return
  * exit 1 for that terminal forever**, because the only condition that clears
@@ -170,8 +173,75 @@ final class FiscalEventQuarantineResolutionTest extends TestCase
         $this->assertSame(
             $this->resolver->id,
             (string) $after->resolved_by,
-            '17-A: `resolved_by` must carry the adjudicating operator — it is the audit fact the NF525 §8 export publishes.',
+            '17-A: `resolved_by` must carry the adjudicating operator. Note (F-3): the NF525 §8 export publishes '
+            .'`resolved_at` ONLY — `Nf525DataProvider::buildQuarantineSection()` never selects or emits `resolved_by` — '
+            .'so this column is the ONLY place the adjudicator’s identity survives.',
         );
+    }
+
+    // =================================================================
+    // M3b round 1, F-4 — the adjudication write had NO observability: no log
+    // line, and the endpoint captured no reason, while its strictly LESS
+    // consequential read-only sibling logs
+    // `fiscal.quarantine.best_effort_parse_invoked`. Combined with F-3 (the
+    // NF525 §8 export publishes `resolved_at` but NOT `resolved_by`), "who
+    // cleared this incident, and why" existed nowhere an operator could read.
+    // The log line is within contract; a reason COLUMN would be a schema
+    // change and is deliberately NOT taken.
+    // =================================================================
+
+    public function test_the_adjudication_write_emits_a_log_line_carrying_the_actor_the_incident_and_the_reason(): void
+    {
+        $quarantineId = $this->seedQuarantineConflict(claimedSequence: 2);
+
+        Log::spy();
+
+        Sanctum::actingAs($this->resolver);
+        $this->postJson(
+            "/api/v1/fiscal/quarantine/{$quarantineId}/resolve-incident",
+            ['reason' => 'Device clock skew confirmed with the operator; duplicate slot claim is benign.'],
+        )->assertOk();
+
+        Log::shouldHaveReceived('info')
+            ->once()
+            ->withArgs(function (string $message, array $context) use ($quarantineId): bool {
+                return $message === 'fiscal.quarantine.incident_resolved'
+                    && $context['quarantine_id'] === $quarantineId
+                    && $context['tenant_id'] === $this->tenantId
+                    && $context['user_id'] === $this->resolver->id
+                    && $context['terminal_id'] === $this->terminalId
+                    && $context['chain_context'] === 'operational'
+                    && $context['claimed_sequence_number'] === 2
+                    && $context['integrity_exception_class'] === IntegrityExceptionClass::SequenceConflict->value
+                    && $context['reason_supplied'] === true
+                    && is_string($context['reason'])
+                    && str_contains($context['reason'], 'Device clock skew confirmed');
+            });
+    }
+
+    public function test_a_refused_restamp_emits_no_second_adjudication_log_line(): void
+    {
+        $quarantineId = $this->seedQuarantineConflict(claimedSequence: 2);
+
+        Sanctum::actingAs($this->resolver);
+        $this->postJson("/api/v1/fiscal/quarantine/{$quarantineId}/resolve-incident")->assertOk();
+
+        // Only the SECOND attempt is observed, so the assertion cannot be
+        // satisfied by the first (legitimate) adjudication's line.
+        Log::spy();
+
+        $secondResolver = User::factory()->create(['tenant_id' => $this->tenantId, 'name' => 'Second resolver']);
+        UserCompanyMembership::create([
+            'user_id' => $secondResolver->id,
+            'company_id' => $this->companyId,
+            'role' => 'admin',
+        ]);
+        $secondResolver->givePermissionTo('fiscal.events.resolve_quarantine');
+
+        Sanctum::actingAs($secondResolver);
+        $this->postJson("/api/v1/fiscal/quarantine/{$quarantineId}/resolve-incident")->assertStatus(409);
+
+        Log::shouldNotHaveReceived('info', ['fiscal.quarantine.incident_resolved']);
     }
 
     public function test_the_response_does_not_present_the_stamp_as_a_correctness_claim(): void
@@ -232,7 +302,12 @@ final class FiscalEventQuarantineResolutionTest extends TestCase
     // `whereNull('resolved_at')` predicate at
     // `VerifyEventChainCommand.php:856` is the seam."
     //
-    // NOTE on the seam, per the contract's own finding: :856 has no writer.
+    // CITATION CORRECTION (M3b round 1, F-1): the contract's `:856` is stale —
+    // the predicate lives in `VerifyEventChainCommand::reportQuarantineIncidents()`,
+    // and it is cited by SYMBOL from here on because that file's line numbers
+    // have drifted three times in this wave.
+    //
+    // NOTE on the seam, per the contract's own finding: it has no writer.
     // ES-17 supplies the writer and NOTHING ELSE at that seam — the predicate
     // itself is untouched. F17-4 makes "demonstrate 17-C by teaching the
     // verifier to ignore quarantine rows" a rejection trigger, and it would
@@ -396,8 +471,9 @@ final class FiscalEventQuarantineResolutionTest extends TestCase
         $this->assertNotNull($row);
         $this->assertNull(
             $row->resolved_at,
-            '17-F: a cross-tenant stamp would let one tenant clear another tenant’s fiscal chain incident — and would publish that '
-            .'tenant’s operator id into the wrong NF525 §8 export.',
+            '17-F: a cross-tenant stamp would let one tenant clear another tenant’s fiscal chain incident — and would publish a '
+            .'FALSE adjudication timestamp into that tenant’s NF525 §8 export (the export carries `resolved_at`; per F-3 it '
+            .'does NOT carry `resolved_by`, so the wrong operator’s id would be invisible there and survive only in the raw column).',
         );
         $this->assertNull($row->resolved_by);
     }
@@ -407,6 +483,13 @@ final class FiscalEventQuarantineResolutionTest extends TestCase
     // Re-stamping either no-ops or refuses; it must not silently overwrite the
     // original `resolved_by`, which is the audit fact the §8 export publishes
     // (`Nf525DataProvider.php:1603-1605`)."
+    //
+    // CONTRACT ERRATUM (M3b round 1, F-3): the quoted rationale is wrong on its
+    // facts. `Nf525DataProvider::buildQuarantineSection()` selects and emits
+    // `resolved_at` only; `resolved_by` appears nowhere in that provider. The
+    // CLAUSE stands unchanged — refuse, never overwrite — but the reason is
+    // STRONGER than the contract believed: the adjudicator's identity is NOT
+    // recoverable from the §8 export, so the raw column is its only home.
     // =================================================================
 
     public function test_restamping_an_already_resolved_row_refuses_and_preserves_the_original_stamp(): void
@@ -437,8 +520,9 @@ final class FiscalEventQuarantineResolutionTest extends TestCase
         $this->assertSame(
             (string) $first->resolved_by,
             (string) $second->resolved_by,
-            '17-G: the original adjudicator must survive. `resolved_by` is the audit fact the NF525 §8 export publishes — '
-            .'silently overwriting it rewrites who answered for the incident.',
+            '17-G: the original adjudicator must survive. Per F-3 the NF525 §8 export publishes `resolved_at` only, so '
+            .'`resolved_by` is the ONLY record of who answered for the incident — silently overwriting it destroys that fact '
+            .'with no export to recover it from.',
         );
         $this->assertSame($this->stringifyColumn($first->resolved_at), $this->stringifyColumn($second->resolved_at));
     }
