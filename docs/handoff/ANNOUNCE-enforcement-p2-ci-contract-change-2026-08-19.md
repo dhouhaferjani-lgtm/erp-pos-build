@@ -31,9 +31,33 @@ The failure message names the group and both numbers:
   or get the lane funded (brief §6 F-2). Lowering the ceiling to match a real deletion is fine.
 ```
 
+### 1a. ⚠️ The OpenAPI lane adds a NEW group — it hard-fails until dispositioned
+
 **Adding a brand-new `tests/Feature/<Dir>/` fails until it is dispositioned** in the manifest (`lane`,
-`excluded` + reason, or `deferred` + reason). No lane currently does this — verified across all
-worktrees.
+`excluded` + reason, or `deferred` + reason).
+
+**`codex/openapi-contract-a-to-z` does exactly this.** It carries
+`apps/api/tests/Feature/OpenApi/` with **6 classes** (`DocumentResponseContractTest`,
+`FeasibilityInventoryGenerationTest`, `PilotGenerationTest`, `PilotVerificationTest`,
+`RouteCoverageCleanCheckoutTest`, `RouteCoverageVerificationTest`), absent from P2's base. Because that
+lane is also the **last** `ci.yml` writer, it lands after P2 with certainty, and
+`backend-architecture` will fail with:
+
+```
+✗ UNASSIGNED GROUP "OpenApi" (6 class(es), e.g. OpenApi/DocumentResponseContractTest.php).
+  Every tests/Feature group must name a CI lane, or be excluded/deferred with a reason…
+```
+
+**What that lane must do, in the same commit as its rebase:** add an `OpenApi` entry to
+`apps/api/tests/feature-lane-manifest.json` — either `"lane": "<its own lane id>"` if
+`backend-openapi-contract` runs the whole directory (then also add the lane block with `selector`,
+`job`, `runs_on_pr_dev`), or `{"deferred": true, "classes": 6, "reason": "…"}` — **and raise
+`debt_ceiling` by 6 if deferred.**
+
+> **An earlier version of this file said "No lane currently does this — verified across all
+> worktrees."** That was **false**, and the reason it was false is the point: I enumerated
+> `.worktrees/*` and the OpenAPI lane has no worktree. Corrected by enumerating **branches**
+> (`git branch --format='%(refname:short)'`), which is the only complete roster.
 
 ---
 
@@ -47,7 +71,7 @@ their steps run on **every event that starts the workflow** — PR→`main`, PR�
 |---|---|---|---|
 | 1 | `frontend-lint` | Fetch the pinned i18n baseline revision | tag `ci-pin/enforcement-p2-r1` must exist on the remote (owner-created at promotion — nothing for a lane to do) |
 | 2 | `frontend-lint` | i18n completeness gate | a **new** missing `fr` key, a new CLDR plural gap, or any growth of `apps/web/tools/i18n-completeness-baseline.json` |
-| 3 | `frontend-lint` | Detector liveness suites | `pnpm test:eslint-rules` (6 suites, was 3) or `pnpm test:tools` (7 files / 145 tests) going red — **both previously ran in no workflow**, so a rule test your branch broke has been failing silently |
+| 3 | `frontend-lint` | Detector liveness suites | `pnpm test:eslint-rules` (6 suites, was 3) or `pnpm test:tools` (7 files) going red — **both previously ran in no workflow**, so a rule test your branch broke has been failing silently |
 | 4 | `backend-architecture` | Check tests/Feature CI-lane manifest | §1 above, plus: a lane whose selector is missing/narrowed/soft-failed, a job or step gated or softened, the workflow no longer starting on PR→dev, or the checker's own steps disabled |
 | 5 | `backend-architecture` | Feature-lane checker liveness test | the checker's own **46-case** suite |
 | 6 | **`security-regression` (NEW JOB)** | Security regression suite | `tests/Feature/Security` (17 classes) now runs on **PR→dev**; it previously ran only on PR→main |
@@ -87,7 +111,7 @@ kill-switch, you will now find out on the dev PR instead of at the main merge. C
 
 ---
 
-## 4. Merge-order and reconciliation — THREE lanes write `ci.yml`, not two
+## 4. Merge-order and reconciliation — **SIX** lanes write `ci.yml`; **FOUR** rewrite the same `needs:` line
 
 | Lane | `ci.yml` change | Reconciliation |
 |---|---|---|
@@ -151,6 +175,31 @@ Neither has ever executed on a real runner (the executor never pushes), so the p
 
 ## 8. Owed at promotion — for the parent, not the lanes
 
+0. ⚠️ **RE-BASELINE THE CEILINGS IMMEDIATELY AFTER THE MERGE — otherwise P2 breaks `dev` for every
+   lane.** P2's `base_sha` is **47 commits behind `dev`**, and two deferred groups have grown on `dev`
+   since:
+
+   | group | ceiling frozen at P2's base | on `dev` today |
+   |---|---|---|
+   | `Inventory` | 105 | **106** (`CountCorrectionGlPostingTest.php`) |
+   | `CountryDefaults` | 27 | **28** (`ChartOfAccountsParityTest.php`) |
+   | `debt_ceiling` | 1114 | **1116** |
+
+   The promotion protocol merges the accepted SHA **unchanged**, so the moment P2 lands, the next
+   PR→dev from *any* lane fails `backend-architecture` with
+   `✗ COVERAGE DEBT GREW: group "Inventory" now holds 106 class(es), ceiling is 105.` — blaming that
+   lane for debt that predates its branch. **The pre-promotion `workflow_dispatch` will NOT catch
+   this**: it runs on the accepted SHA, where the tree is self-consistent and green.
+
+   **Required post-merge step, in the first commit on `dev` after the merge:** set `Inventory` → 106,
+   `CountryDefaults` → 28, `debt_ceiling` → 1116 — or, better, regenerate the manifest against the
+   merged tree and confirm `php tools/feature-lane-manifest-check.php` exits 0 **on `dev`** before any
+   other lane opens a PR.
+
+   *(Deliberately not pre-raised in the candidate: a ceiling set from another checkout's `dev` would
+   introduce slack the reviewer specifically verified absent, and would be stale again by merge time
+   since `dev` keeps moving. The re-baseline has to happen against the merged tree.)*
+
 1. **Owner prerequisites, BOTH before the merge lands** (§7): the repository variable and the annotated
    tag. Either missing reddens `frontend-lint` on every open lane — correct fail-closed direction, but
    repo-wide.
@@ -185,3 +234,36 @@ N-4, N-5, R8-1, R8-2, R8-3. Two matter to other lanes:
   never be silently dropped from CI"*. Per-group ceilings plus the global `debt_ceiling` stop the debt
   growing silently, but a restructuring that lowers `debt_ceiling` in the same commit is legal.
   **P3-M2 must not assume machine protection it does not have.**
+
+---
+
+## 10. Complete open-lane roster — every lane gets a line, including "nothing to do"
+
+Derived from **branches**, not worktrees (`git branch --format='%(refname:short)'`), after the
+worktree-only enumeration missed the OpenAPI lane entirely. Impact measured per branch with
+`git diff --name-only <p2-base>...<branch>`, so it is that lane's **own** changes.
+
+| lane / branch | web files | locale files | Feature tests | `ci.yml` | rewrites `needs:` | **what you must do** |
+|---|---|---|---|---|---|---|
+| `codex/ui-wave0-2026-08-11` | 78 | 16 | 0 | ✅ | ✅ | §3(a) i18n for the 33 wired ns; §4 three-way `needs:` reconciliation; your `route-manifest-drift` job must survive P2's edits |
+| `codex/dn-consolidation-2026-08-12` | 35 | 4 | 13 (`Document`, `Partner`) | ✅ | — | §1 **raise both ceilings**; §3(a) i18n; §4 rebase `ci.yml` |
+| `codex/es-wave-a0` | 0 | 0 | 16 (`Fiscal`, `POS`) | ✅ | — | §1 **raise both ceilings**; §4 rebase `ci.yml` (adds an Architecture-ratchet step) |
+| `codex/dpa-wave3-3d` | 0 | 0 | 23 (`Accounting`†, `BatchExpiry`, `CountryDefaults`, `Fiscal`, `Inventory`, `POS`) | — | — | §1 **raise five ceilings** (†`Accounting` is laned — no ceiling) |
+| `codex/openapi-contract-a-to-z` | 0 | 0 | 6 (**new group `OpenApi`**) | ✅ | ✅ | §1a **disposition the new group — hard fail otherwise**; §4 you are the last `ci.yml` writer |
+| `codex/enforcement-p1-dpa-guard` | 0 | 0 | 23 (same set as 3D) | ✅ | ✅ | §1 **raise five ceilings**; §4 `needs:` reconciliation. Sibling enforcement package — the brief allows P1 and P2 in parallel, so coordinate the aggregate edit |
+| `codex/dpa-wave3-3c` | 0 | 0 | 0 | — | — | **Nothing to do.** |
+| `codex/country-defaults-phase-a` | 0 | 0 | 0 | — | — | **Nothing to do.** |
+| `codex/sv-stage1` | 0 | 0 | 0 | — | — | **Nothing to do.** |
+| `codex/pos-receipts-2026-08-12` | 0 | 0 | 0 | — | — | **Nothing to do** *today* — but receipts work adds user-facing strings, so §3(a) applies the moment it does. |
+| `codex/accounting-gaps-cghi` | 0 | 0 | 0 | — | — | **Nothing to do.** |
+| `codex/pos-clean-workbench` | 0 | 0 | 0 | — | — | **Nothing to do.** |
+| `codex/tenant-impersonation` | 0 | 0 | 0 | — | — | **Nothing to do.** |
+
+**"Nothing to do" is stated explicitly on purpose.** Silence is indistinguishable from "overlooked",
+and being overlooked is exactly the mechanism that produced the two P1s this checklist was corrected
+for — the OpenAPI lane's new group and its `ci.yml` edit were both missed by a worktree-only sweep.
+
+**`needs:` reconciliation is FOUR-way**, not two: P2, `ui-wave0`, `openapi-contract-a-to-z` and
+`enforcement-p1-dpa-guard` all rewrite `all-checks-pass.needs`. Whoever lands last must confirm every
+earlier lane's job is still in the list — `route-manifest-drift`, `security-regression`,
+`backend-openapi-contract`, and P1's DPA guard job.

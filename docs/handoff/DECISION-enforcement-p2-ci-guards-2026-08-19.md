@@ -1896,19 +1896,28 @@ so on a PR→`dev` it **does not run**. Branch protection on `dev` therefore can
 no single required check for the dev merge gate. Today's PR→dev protection, if any, must name
 individual jobs.
 
-**Why it cannot simply be widened.** The aggregate `needs` twelve jobs; on PR→dev, `backend-test`,
-`frontend-test`, `frontend-build` and `pos-test` are `if:`-gated off. A `needs` entry whose job comes
-back `skipped` fails or skips the aggregate — the workflow's own comment at `:1136-1143` documents
-that exact reasoning for `treasury-spine-pgsql`. Dropping the aggregate's `if:` as-is would make it
-permanently skipped/failed on PR→dev.
+**Why it cannot simply be widened.** The aggregate `needs` **thirteen** jobs; on PR→dev, **three** of
+them are `if:`-gated off — `backend-test`, `frontend-test`, `frontend-build`. A `needs` entry whose job
+comes back `skipped` fails or skips the aggregate — the workflow's own comment at `:1136-1143`
+documents that exact reasoning for `treasury-spine-pgsql`. Dropping the aggregate's `if:` as-is would
+make it permanently skipped/failed on PR→dev.
+
+> **Corrected at M3 round 1.** My first version of this section said *four* gated off (it counted
+> `pos-test`) and *twelve* needs. **`pos-test` runs on PR→dev** — its guard is
+> `… || github.event_name == 'pull_request' || …` (`ci.yml:1099`), and `pull_request` is true there.
+> The recommended `needs` list below omitted it, which would have created a "single required check for
+> dev" that silently excluded POS Vitest — precisely the certified-by-omission class this package
+> exists to end, in the package's own owner-facing proposal. Derived mechanically this time, per job:
+
+| runs on PR→dev (10) | gated off on PR→dev (3) |
+|---|---|
+| `backend-lint`, `backend-analyse`, `backend-architecture`, `backend-test-pgsql`, `security-regression`, `treasury-spine-pgsql`, `frontend-lint`, `frontend-typecheck`, **`pos-test`**, `types-drift` | `backend-test`, `frontend-test`, `frontend-build` |
 
 **Proposal (owner's call, three options, cheapest first):**
 
-1. **A second, PR→dev-shaped aggregate** — `all-checks-pass-dev`, no `if:`, `needs` exactly the jobs
-   that genuinely run on PR→dev (`backend-lint`, `backend-analyse`, `backend-architecture`,
-   `backend-test-pgsql`, `treasury-spine-pgsql`, **`security-regression`**, `frontend-lint`,
-   `frontend-typecheck`, `types-drift`). One required check for `dev`; no existing behaviour changes.
-   **Recommended.**
+1. **A second, PR→dev-shaped aggregate** — `all-checks-pass-dev`, no `if:`, `needs` exactly the **ten**
+   jobs above that genuinely run on PR→dev. One required check for `dev`; no existing behaviour
+   changes. **Recommended.**
 2. **Make the existing aggregate event-aware** — keep one job, compute the required set with
    `if: always()` plus per-need result checks. Fewer moving parts, but `always()` aggregates are easy
    to get subtly wrong and would need their own liveness test.
@@ -1932,3 +1941,80 @@ two behaviour changes (en+fr+ar for the 33 wired namespaces, and Security now ga
 open owner line for F-2 execution scope with the corrected **~2–3 min** figure; the owner prerequisites
 and the exact step/job ids the S-14 dispatch must show — **including `security-regression`**; the
 parent-owned inherited red gates; and the named residuals, with N-4 called out for P3-M2.
+
+---
+
+## M3 round 1 — response to `docs/handoff/reviews/enforcement-p2/M3-round1.md`
+
+**Tally, from the full register:** **2 P1**, 3 P2, 1 P3. Both P1s are failures of *my* checklist, and
+both share one root cause: **I enumerated `.worktrees/*` and called it "all lanes".** Lanes without a
+worktree were invisible to every measurement in the file. All independently re-verified before fixing.
+
+### (83) ⚠️ P1-1 — P2's base is 47 commits behind `dev`, and two frozen ceilings are already breached there
+
+| group | ceiling frozen at P2's base | on `dev` today |
+|---|---|---|
+| `Inventory` | 105 | **106** (`CountCorrectionGlPostingTest.php`) |
+| `CountryDefaults` | 27 | **28** (`ChartOfAccountsParityTest.php`) |
+| `debt_ceiling` | 1114 | **1116** |
+
+Promotion merges the accepted SHA **unchanged**, so the moment P2 lands, the next PR→dev from *any*
+lane fails with `COVERAGE DEBT GREW: group "Inventory" now holds 106, ceiling is 105` — **blaming that
+lane for debt that predates its branch.** And the pre-promotion `workflow_dispatch` **cannot catch
+it**: it runs on the accepted SHA, where the tree is self-consistent and green. A guard that lands
+red-on-arrival for everyone is precisely the "never land cold" prohibition this checklist exists to
+enforce, produced by the checklist's own author.
+
+**Fixed documentarily** — new **§8 item 0**, the first thing in "Owed at promotion": re-baseline
+`Inventory` → 106, `CountryDefaults` → 28, `debt_ceiling` → 1116 in the first commit on `dev` after the
+merge, or regenerate against the merged tree and confirm the checker exits 0 **on `dev`** before any
+other lane opens a PR.
+
+**Why not pre-raise them in the candidate** (considered, rejected, and the reviewer agrees): a ceiling
+copied from another checkout's `dev` introduces exactly the slack round 8 verified absent, and `dev`
+keeps moving — it would be stale again by merge time. The re-baseline has to happen against the merged
+tree, so it belongs in the promotion sequence, not in the candidate.
+
+### (84) ⚠️ P1-2 — "No lane currently does this — verified across all worktrees" was FALSE
+
+`codex/openapi-contract-a-to-z` carries `apps/api/tests/Feature/OpenApi/` with **6 classes**, a group
+absent from base — the single hardest failure the manifest produces (`UNASSIGNED GROUP`). And §4
+designates that same lane the **last** `ci.yml` writer, so it lands after P2 **with certainty**, and
+its row told it only to fix aggregate `needs`. It would have hit an unassigned-group failure nobody
+warned it about, mid-fix-round, in a lane already on its third gate round.
+
+The claim was false because the lane **has no worktree** and my sweep iterated `.worktrees/*`. New
+**§1a** gives it the exact error text and the exact remedy (disposition `OpenApi`; raise
+`debt_ceiling` by 6 if deferred), and states plainly why the original claim was wrong.
+
+### (85) P2-3 — and correcting it found MORE than the reviewer did
+
+The reviewer found four `ci.yml` writers and three `needs:` rewriters. Re-deriving from **branches**:
+**six** lanes write `ci.yml` (P2, `ui-wave0`, `dn-consolidation`, `es-wave-a0`,
+`openapi-contract-a-to-z`, `enforcement-p1-dpa-guard`) and **four** rewrite the `all-checks-pass`
+`needs:` line (P2, `ui-wave0`, `openapi`, `enforcement-p1`). `enforcement-p1` is the sibling
+enforcement package the brief explicitly allows to run in parallel with P2 — it was invisible to the
+worktree sweep for the same reason. §4's heading and body now say six and four.
+
+### (86) P2-4 — the complete lane roster, with "nothing to do" stated explicitly
+
+New **§10**: all 13 open lanes, derived from branches, each with measured web/locale/Feature/`ci.yml`
+impact and a required action — including seven lanes whose action is **"Nothing to do."** Stated
+explicitly because silence is indistinguishable from "overlooked", and being overlooked is exactly what
+produced both P1s.
+
+### (87) P2-5 — my own owner-facing proposal certified-by-omission
+
+Confirmed and corrected in §(81). I wrote that four jobs are gated off PR→dev and the aggregate needs
+twelve. **`pos-test` runs on PR→dev** (`… || github.event_name == 'pull_request' || …`), the aggregate
+needs **thirteen**, and **three** are gated off. My recommended `all-checks-pass-dev` `needs` list
+omitted `pos-test`, so an owner adopting it verbatim would have created a single required check for
+`dev` that **silently excluded POS Vitest** — the certified-by-omission class this package exists to
+end, inside the package's own proposal. Both figures are now derived mechanically per job and shown as
+a table.
+
+### (88) P3-6 — an unverified test count
+
+`ANNOUNCE §2` claimed `pnpm test:tools` = "7 files / 145 tests". The file count is right; the test
+count was carried from an older run. Replaced with "7 files" — a number a lane may quote should either
+be current or absent.
