@@ -115,15 +115,16 @@ milestones:
     title: "3D purposes arm: T20 via versioned country-defaults templates (legacy seeders frozen), T20b, and F-3 rerouting of Damage/Expiry/WriteOff from COGS to shrinkage. Map choice remains owner-only."
     review_lenses: [inventory-costing, treasury]
     owner_gate: V-7-treasury-codes
-    status: in_progress
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: ea1280d21d9e573e4b8f43f8f94ba6ecd6580aa5
     proposal: docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md
     proposal_commit: 3ed96bc7c4c9c565a4606366c42209980f62c320
     verdict: null
     last_verdict: null
     owner_ruling: docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md
-    updated: 5e391d1e1
+    evidence: docs/handoff/reviews/wave3-3c-3d/M4-evidence.md
+    updated: ea1280d21d
   - id: M5
     title: "3D listener: T21, T22. Whole-branch gate: re-run full accumulated evidence + every lens over the integrated branch."
     review_lenses: [inventory-costing, fiscal-pos, treasury]

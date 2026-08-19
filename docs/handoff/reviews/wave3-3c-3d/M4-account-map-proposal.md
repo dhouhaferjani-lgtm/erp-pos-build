@@ -1,6 +1,6 @@
 # M4 T20 inventory variance account-map proposal
 
-**Status:** APPROVED — Option A (`6586` / `7586`)
+**Status:** APPROVED AND IMPLEMENTED — Option A (`6586` / `7586`)
 
 **Authority:** `ORCHESTRATOR-RULING-2026-08-19-m4-stop-b.md`
 
@@ -9,6 +9,10 @@
 **Decision owner:** treasury owner / expert-comptable
 
 **Owner ruling:** `TREASURY-RULING-2026-08-19-t20-option-a.md`
+
+**Implementation evidence:** `M4-evidence.md`
+
+**Implementation commit:** `ea1280d21d9e573e4b8f43f8f94ba6ecd6580aa5`
 
 ## Owner decision — 2026-08-19
 
@@ -86,12 +90,12 @@ Implementation after approval must replace the current `affectsCOGS()` conflatio
 
 The three `*ChartOfAccountsSeeder` classes remain untouched. `FrozenSeederDocblockTest` pins their exact content fingerprints, and the existing `coa.{tn,fr,generic}.legacy-v1` bootstrap rows remain immutable compatibility artifacts.
 
-After owner approval, T20 will:
+Under the owner approval, T20 now:
 
-1. add a distinct v2 country-defaults chart-template payload for TN, FR, and Generic, derived from the current v1 rows plus the approved shrinkage/gain rows;
-2. import each as a new immutable draft version (proposed bootstrap keys: `coa.tn.default-v2`, `coa.fr.default-v2`, `coa.generic.default-v2`), leaving publish, certification, and assignment changes inside the existing Country Defaults lifecycle;
-3. add the approved purpose-first/code-second tenant backfill with fail-closed schema guards, savepoint isolation, stable warning-level summary token, and run-twice idempotency evidence; and
-4. add T20b parity plus the required baseline/mutation/restore proof.
+1. adds a distinct v2 country-defaults chart-template payload for TN, FR, and Generic, derived from the current v1 rows plus the approved shrinkage/gain rows;
+2. imports each as a new immutable draft version (`coa.tn.default-v2`, `coa.fr.default-v2`, `coa.generic.default-v2`), leaving publish, certification, and assignment changes inside the existing Country Defaults lifecycle;
+3. adds the approved purpose-first/code-second tenant backfill with fail-closed schema guards, savepoint isolation, stable warning-level summary token, and run-twice idempotency evidence; and
+4. adds T20b parity plus the required baseline/mutation/restore proof.
 
 **Frozen legacy fallback treatment:** purposes are deliberately absent from direct legacy-seeder output. No fingerprint re-pin is proposed. Companies provisioned through the frozen fallback therefore retain the existing guarded fail-soft behavior: an unmapped shrinkage/gain purpose logs and posts no variance entry. Existing legacy-derived companies receive the purposes only through the explicit backfill; a newly provisioned fallback company must receive that command before count/destructive-loss GL is expected. Tests must pin both the warning/no-entry fallback and the v2-template posting-ready path. This is a transitional compatibility posture, not evidence that the variance was booked.
 
