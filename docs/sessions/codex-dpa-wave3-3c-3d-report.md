@@ -390,3 +390,36 @@ TN/FR/Generic shrinkage/gain account-code map before T20 merges; no code-map
 choice was guessed and M4 was not started. The brief's ancestry rule also
 requires the parent/orchestrator to merge accepted 3C to local `dev`, record
 the resulting `3D_BASE_SHA`, and only then create `codex/dpa-wave3-3d`.
+
+### M4 resumed — amended proposal-only exit
+
+The parent discharged the original, unsatisfiable STOP B after merging accepted
+3C at `1e8c0fa03`, applying the `3a8e4b05b` merge-seam reconciliation, and
+pinning `3D_BASE_SHA` to `48cebf0f2c1b481c592bf35d478302499f9fda5d`.
+The dedicated branch is `codex/dpa-wave3-3d`.
+
+The amended authority is recorded at
+`docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m4-stop-b.md`.
+It authorizes a proposal only. The three legacy chart seeders are fingerprint-
+frozen; T20 must use a new country-defaults chart-template version and must not
+edit or re-pin those seeders. The proposal deliberately leaves the frozen
+fallback without the two purposes behind the existing warning/no-entry guard;
+existing companies are handled only by the explicit backfill.
+
+`docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md` presents both
+owner choices without selecting one: class-65/class-75 variance accounts while
+preserving `InventoryGainIncome => Revenue`, or 6038/6039 symmetric debit/credit
+subaccounts while reopening the gain purpose to `Expense`. It carries the
+OQ-12/H-5 liasse caveat and classifies all 17 `MovementReason` cases. In both
+options, `Damage`, `Expiry`, and `WriteOff` move off COGS to shrinkage.
+
+F-7 is recorded without code at
+`docs/superpowers/tickets/2026-08-19-inventory-movement-entry-idempotency-company-scope.md`.
+S-16 remains the parent-side per-tenant pre-promotion gate at
+`docs/handoff/LEDGER.md`; no local zero-row probe is claimed as evidence.
+
+Pre-gate verification on the pinned tree: `FrozenSeederDocblockTest` plus
+`ProvisioningRequiredPurposesV1ConformanceTest` pass `14 tests / 432 assertions`.
+No production, migration, seeder, or `.github/workflows/**` file changed. Per
+the amended exit, M4 returns to `blocked_owner` before T20/T20b implementation;
+no adversarial review or fix round is consumed.

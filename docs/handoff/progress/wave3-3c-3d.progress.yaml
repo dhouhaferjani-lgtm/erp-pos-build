@@ -35,16 +35,26 @@ review_resume:
 base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
 # 3C branch off base_sha; after 3C merges to local dev, create 3D branch off the new dev (see brief DELIVERABLE).
 branch_3c: codex/dpa-wave3-3c
-branch_3d: null
+branch_3d: codex/dpa-wave3-3d
+base_sha_3d: 48cebf0f2c1b481c592bf35d478302499f9fda5d
+
+# Owner-gate resume authority is separate from review_resume: no review budget is consumed.
+owner_gate_resume:
+  - milestone: M4
+    authorized: 2026-08-19
+    after_blocker: "V-7-treasury-codes"
+    authority: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m4-stop-b.md
+    scope: account_map_proposal_only
+    result: proposal_committed_waiting_owner_choice
 
 owner_gates:
   - id: base-sha-pin
     question: "Confirm base_sha is local dev with 3A/3B+3E merged and both Workshop tickets present (M0 verifies)."
     status: satisfiable_by_M0
   - id: V-7-treasury-codes
-    question: "T20 proposes TN/FR/Generic shrinkage/gain account codes; treasury-reviewer must APPROVE before T20 merges. This is a merge condition, not an opinion."
+    question: "Treasury owner must ratify one complete TN/FR/Generic shrinkage/gain map from M4-account-map-proposal.md: Option A (class-7 gain, current Revenue typing) or Option B (603 symmetric credit, explicitly reopening InventoryGainIncome expectedAccountType), including the OQ-12/H-5 liasse caveat and F-3 MovementReason routing."
     blocks_milestone: M4
-    status: open
+    status: proposal_ready_waiting_owner
   # OQ-13 (device-date), OQ-2 (seed best-known codes), OQ-12 (accept liasse caveat) are ALREADY RULED — not gates.
 
 milestones:
@@ -90,12 +100,14 @@ milestones:
     last_verdict: ACCEPT
     updated: 6f8a47c55
   - id: M4
-    title: "3D France/purposes arm: T20 (propose shrinkage/gain codes — treasury approval a MERGE CONDITION), T20b. requiresGLEntry stays TRUE; thread unitCost, exclude adjustment path from GL buffer, preserve D-b exclusion."
+    title: "3D purposes arm: T20 via versioned country-defaults templates (legacy seeders frozen), T20b, and F-3 rerouting of Damage/Expiry/WriteOff from COGS to shrinkage. Map choice remains owner-only."
     review_lenses: [inventory-costing, treasury]
     owner_gate: V-7-treasury-codes
     status: blocked_owner
     fix_rounds: 0
     commit: null
+    proposal: docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md
+    proposal_commit: pending
     verdict: null
     last_verdict: null
   - id: M5
@@ -112,5 +124,4 @@ status: blocked_owner      # pending | in_progress | blocked_owner | blocked_rev
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
 blockers:
-  - "STOP B — V-7-treasury-codes: the treasury reviewer must approve the proposed TN/FR/Generic shrinkage/gain account-code map before T20 merges; M4 is not started."
-  - "3D ancestry precondition: the parent/orchestrator must merge accepted codex/dpa-wave3-3c to local dev, record the resulting 3D_BASE_SHA, and only then create codex/dpa-wave3-3d."
+  - "STOP B — V-7-treasury-codes: choose and ratify Option A or Option B in docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md (or supply a complete replacement map). No T20/T20b implementation or M4 review is authorized before that owner decision."
