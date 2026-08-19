@@ -1,0 +1,6 @@
+{
+  "one": "Un",
+  "two": "Deux",
+  "items_one": "{{count}} article",
+  "items_other": "{{count}} articles"
+}

@@ -468,6 +468,14 @@ describe('audit-i18n-completeness — spread ORDER decides who wins', () => {
   });
 });
 
+const SIBLING_ROOT = path.join(
+  __dirname,
+  '..',
+  '__fixtures__',
+  'i18n-completeness',
+  'sibling-scope',
+);
+
 describe('audit-i18n-completeness — the orphan backstop cannot be quietly widened', () => {
   it('KNOWN_UNWIRED_LOCALE_FILES holds exactly the one reasoned exception', () => {
     // Adding a namespace to this Set disables the backstop for it permanently.
@@ -476,9 +484,36 @@ describe('audit-i18n-completeness — the orphan backstop cannot be quietly wide
     expect([...KNOWN_UNWIRED_LOCALE_FILES].sort()).toEqual(['users']);
   });
 
-  it('watches every locale directory, not just en', () => {
-    // Deleting the English file along with the wiring would otherwise escape.
-    const src = readFileSync(SCRIPT, 'utf8');
-    expect(src).not.toMatch(/const enLocaleDir/);
+  it('watches every locale directory, not just en (BEHAVIOURAL)', () => {
+    // Deleting the English file along with the wiring would otherwise escape the
+    // backstop. `locales/{ar,fr}/zeta.json` exist in the sibling-scope fixture
+    // with NO `en` counterpart; an en-only readdirSync leaves this green, which
+    // is the vacuous-liveness failure 08-DETECTOR-LIVENESS.md forbids.
+    const { structural } = auditRoot(SIBLING_ROOT);
+    const joined = structural.join('\n');
+    expect(joined).toContain('locales/ar/zeta.json');
+    expect(joined).toContain('locales/fr/zeta.json');
+    expect(joined).toContain('no namespace "zeta"');
+  });
+});
+
+describe('audit-i18n-completeness — spread order is keyed per OBJECT LITERAL, not per depth', () => {
+  // Sibling literals inside one namespace share a brace depth. Depth-keying let a
+  // later English-FIRST sibling overwrite the record of an earlier English-LAST
+  // one, so reversing a nested subtree went silent — and that is the shape
+  // production actually uses (`settings` has sections/company/locations siblings;
+  // `finance.overview` has cash/upcoming/trend).
+  //
+  // Measured on a copy of the real tree, reversing ONLY `settings.sections`:
+  //   PRE-FIX  (007b1a49c, depth-keyed) kind ar.settings = english-spread, no aliased entry
+  //   POST-FIX (scope-keyed)            kind ar.settings = en-aliased, aliased entry present
+  it('flags an English-LAST sibling even when a later sibling is English-first', () => {
+    const { wiring, findings } = auditRoot(SIBLING_ROOT);
+    expect(wiring.assignments.ar.beta.kind).toBe('en-aliased');
+    expect(findings.map(entryKey)).toContain('ar|beta|aliased|*');
+  });
+
+  it('leaves an all-English-first namespace classified as english-spread', () => {
+    expect(auditRoot(FIXTURE_ROOT).wiring.assignments.ar.beta.kind).toBe('english-spread');
   });
 });

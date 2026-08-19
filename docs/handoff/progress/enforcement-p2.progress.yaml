@@ -1,3 +1,11 @@
+# ⚠️ THIS FILE IS A CI INPUT — DO NOT MOVE OR ARCHIVE IT WITHOUT UPDATING THE CHECKER.
+# `apps/web/tools/audit-i18n-completeness.mjs` reads `i18n_baseline_protected_blob`
+# from here as the NON-AUTHORITATIVE mirror and fails closed on drift, so the
+# `frontend-lint` job on every lane depends on this path existing. If this package
+# is archived, move the mirror pin to a permanent home and update the checker's
+# `--mirror` default, `scripts/i18n-baseline-authority.sh`, and the pin-tag
+# consistency test in `apps/web/tools/__tests__/audit-i18n-completeness.test.mjs`
+# in the same commit.
 wave: enforcement-p2
 brief: docs/handoff/CODEX-DISPATCH-enforcement-guards-2026-08-12.md
 harness: docs/handoff/SELF-REVIEW-HARNESS.md

@@ -696,3 +696,67 @@ The `&&` in the CI step propagates the non-zero exit — the new step is not a d
   `pnpm test:eslint-rules` and `pnpm test:tools`, matching the CI step exactly.
 - **R3-9 the deviation record still showed the rejected shape.** §M1(6)'s diff now shows the shipped
   `Pick<>` form with a pointer to §M1(14), so the M3 announcement cannot quote the wrong one.
+
+---
+
+## M1 fix round 4 — response to `docs/handoff/reviews/enforcement-p2/M1-round4.md`
+
+Verdict: **CHANGES-REQUIRED** — 0 P1, 2 P2, 3 P3; **finding 1 only** was required. All other round-3
+findings verified CLOSED by re-execution. **Baseline-neutral again** (byte-identical, 2 917 entries):
+no seed revision, no two-commit re-pin, pin tag unchanged.
+
+### (34) ⚠️ R4-1 (P2) — my round-3 order fix was keyed by DEPTH; siblings collapse
+
+Correct and important. `classifyAssignment` grouped spreads by **brace depth** and kept only the last
+index per prefix, so sibling object literals inside one namespace — which all share a depth — masked
+each other: a later English-**first** sibling overwrote the record of an earlier English-**last** one.
+My own comment ("English-last at ANY brace depth") was false as implemented.
+
+This is the shape production actually uses: `settings` has `sections`/`company`/`locations` siblings,
+`finance.overview` has `cash`/`upcoming`/`trend`. So round 3 closed the top-level case and left the
+realistic one open.
+
+Measured on a copy of the real `apps/web/src`, reversing ONLY the nested `settings.sections` sibling:
+
+```
+PRE-FIX  (007b1a49c, depth-keyed)   kind ar.settings = english-spread   aliased entry? false
+POST-FIX (scope-keyed)              kind ar.settings = en-aliased       aliased entry? true
+```
+
+Fixed by replacing `spreadsWithDepth()` with **`spreadsByScope()`** — a scope-id stack that gives each
+individual object literal its own bucket — and comparing order **within a scope**. New
+`sibling-scope` fixture carries two siblings at the same depth (one reversed, one normal) and asserts
+the reversal is still caught; a second assertion pins `prod-shaped` (all English-first) as
+`english-spread` so the fix cannot degenerate into flagging everything.
+
+**Lesson recorded:** rounds 3 and 4 both fixed the *same* invariant through a different door
+(comments, then top-level order, then sibling order). The invariant is "English must not be what the
+runtime serves for a namespace the gate calls translated", and each round found another wiring shape
+that defeats it. That is the detector-rot class this package exists to close, met inside the package.
+
+### (35) R4-2 (P2) — the orphan-union fix was pinned by a source grep, not by behaviour
+
+Correct, and it violated this package's own checklist (`08-DETECTOR-LIVENESS.md`: *"delete the
+detection branch → the test goes red"*). The only assertion was
+`expect(src).not.toMatch(/const enLocaleDir/)` — renaming the variable would have kept it green.
+
+Replaced with a **behavioural** test: the `sibling-scope` fixture now carries
+`locales/{ar,fr}/zeta.json` with **no `en` counterpart**, and the test asserts both filenames and the
+namespace name appear in `structural`. An `en`-only `readdirSync` fails it under any variable name.
+
+### (36) R4-3, R4-4, R4-5 (P3) — dispositions
+
+- **R4-3 the pin tag is hardcoded in `ci.yml`.** True and by design (CI must fetch a literal ref).
+  Every future re-pin allocates a never-reused name and must edit `ci.yml` and the YAML **in
+  lockstep**; desync fails closed and is caught by the consistency test. **Added to the M3
+  announcement** so the next re-pinner knows both files move together.
+- **R4-4 none of this wiring has ever run on a real runner.** Accurate and unavoidable — the executor
+  never pushes (H-7). The three first-execution surfaces are the pin-tag fetch under a depth-1
+  checkout, the `${{ vars.I18N_BASELINE_PROTECTED_BLOB }}` mapping, and `pnpm test:tools` under
+  `frontend-lint`'s installer. **The handback names all three step ids explicitly** so the owner
+  verifies steps, not just job-level green — and records that BOTH owner prerequisites (repository
+  variable AND the annotated tag at exactly the accepted SHA) must exist **before** the merge lands.
+- **R4-5 the gate anchors CI on a handoff artifact.** True: the mirror path is
+  `docs/handoff/progress/enforcement-p2.progress.yaml`. Added a **"THIS FILE IS A CI INPUT — DO NOT
+  MOVE"** banner at the top of that YAML naming every file that must move with it (checker default,
+  `i18n-baseline-authority.sh`, the consistency test).

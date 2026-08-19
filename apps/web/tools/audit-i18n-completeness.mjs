@@ -243,17 +243,31 @@ function stripComments(raw) {
  * that — and the audit would then trust `locales/<locale>/<ns>.json` wholesale
  * for a namespace rendered 100% in English.
  *
- * @returns {Array<{depth: number, prefix: string}>} in source order
+ * Spreads are keyed by SCOPE — the individual object literal they sit in — and
+ * NOT by brace depth. Sibling literals inside one namespace all share a depth, so
+ * depth-keying lets a later English-FIRST sibling overwrite the record of an
+ * earlier English-LAST one and the reversal goes silent. The production graph is
+ * exactly that shape (`settings` has `sections`/`company`/`locations` siblings;
+ * `finance.overview` has `cash`/`upcoming`/`trend`), so this is the case that
+ * matters, not the top-level one.
+ *
+ * @returns {Array<{scope: number, prefix: string}>} in source order
  */
-function spreadsWithDepth(code) {
+function spreadsByScope(code) {
   const out = [];
-  let depth = 0;
+  const stack = [0];
+  let nextScope = 1;
   const re = /\{|\}|\.\.\.\s*([A-Za-z_$][A-Za-z0-9_$]*)/g;
   let m;
   while ((m = re.exec(code)) !== null) {
-    if (m[0] === '{') depth += 1;
-    else if (m[0] === '}') depth -= 1;
-    else out.push({ depth, prefix: m[1].slice(0, 2) });
+    if (m[0] === '{') {
+      stack.push(nextScope);
+      nextScope += 1;
+    } else if (m[0] === '}') {
+      if (stack.length > 1) stack.pop();
+    } else {
+      out.push({ scope: stack[stack.length - 1], prefix: m[1].slice(0, 2) });
+    }
   }
   return out;
 }
@@ -264,7 +278,7 @@ function spreadsWithDepth(code) {
  *   own            — references only same-locale bundles
  *   en-aliased     — English is what the runtime actually serves: either a bare
  *                    `ns: enX` alias, or a spread where an `...en*` is applied
- *                    AFTER a same-locale spread at the same depth (English wins)
+ *                    AFTER a same-locale spread IN THE SAME OBJECT LITERAL
  *   english-spread — `{ ...enX, ...localeX }`, English first: the locale's own
  *                    keys do override, so the file-based diff is meaningful
  *   unknown        — unrecognised shape; treated as aliased, fail closed
@@ -284,16 +298,17 @@ function classifyAssignment(locale, code) {
   const english = idents.some((id) => id.startsWith('en'));
 
   if (own && english) {
-    // English-last at ANY brace depth means English wins there.
-    const spreads = spreadsWithDepth(code);
-    const byDepth = new Map();
-    spreads.forEach((sp, index) => {
-      if (!byDepth.has(sp.depth)) byDepth.set(sp.depth, { en: -1, own: -1 });
-      const seen = byDepth.get(sp.depth);
+    // English-last in ANY INDIVIDUAL OBJECT LITERAL means English wins there.
+    // Keyed per scope, not per depth: sibling literals share a depth, and
+    // depth-keying let a later English-first sibling mask an English-last one.
+    const byScope = new Map();
+    spreadsByScope(code).forEach((sp, index) => {
+      if (!byScope.has(sp.scope)) byScope.set(sp.scope, { en: -1, own: -1 });
+      const seen = byScope.get(sp.scope);
       if (sp.prefix === 'en') seen.en = index;
       else if (sp.prefix === prefix) seen.own = index;
     });
-    for (const { en, own: ownIndex } of byDepth.values()) {
+    for (const { en, own: ownIndex } of byScope.values()) {
       if (en > -1 && ownIndex > -1 && en > ownIndex) return 'en-aliased';
     }
 
