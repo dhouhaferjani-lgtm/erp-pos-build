@@ -152,6 +152,13 @@ final class ReceiptReturnRefactorV3Test extends TestCase
         $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->cashier->givePermissionTo('pos.process_returns');
         $this->cashier->givePermissionTo('pos.void_receipts');
+        // ES-42 (M4) — `/pos/sync/fiscal-events` is now gated by the EXISTING
+        // seeded `pos.operate_terminal`. This fixture drives the DEVICE sync
+        // path end to end, and a real POS operator holds this permission
+        // through the seeded `manager`/`cashier` roles
+        // (RolesAndPermissionsSeeder.php:590, :657). No new permission, no
+        // seeder change, no permission:cache-reset.
+        $this->cashier->givePermissionTo('pos.operate_terminal');
 
         $this->chainVerifierActor = User::factory()->create([
             'tenant_id' => $this->tenant->id,
