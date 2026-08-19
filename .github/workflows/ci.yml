@@ -293,6 +293,24 @@ jobs:
       - name: Security regression suite (module gating + kill-switches)
         run: ./vendor/bin/phpunit tests/Feature/Security
 
+      # ES wave A0, M5 — the two program-wide EVENT RATCHETS. Named files, not
+      # the whole tests/Architecture directory: that directory carries unrelated
+      # inherited baseline failures (recorded in the A0 wave ledger) and only
+      # runs in the manual-dispatch gate below, so a ratchet placed there alone
+      # would never gate an ordinary push — i.e. it would not be "in CI" in the
+      # sense the handover asks for.
+      #   OrphanedEventRatchetTest  — an event dispatched with zero registered
+      #     listeners fires into nothing; the baseline enumerates the existing
+      #     75 BY NAME and the check fails on the 76th.
+      #   ProjectorEmissionRatchetTest — a registered FiscalEventProjector that
+      #     writes a POS projection and emits no domain event is the T1 cutover
+      #     blackout; the skip-list enumerates the existing 6 BY NAME, each
+      #     annotated with the register row that will delete it.
+      # Both are SQLite-safe: they read source text and the live container, no
+      # PG-specific behaviour, no database rows.
+      - name: Event ratchets (orphaned events + projector emission)
+        run: ./vendor/bin/phpunit tests/Architecture/OrphanedEventRatchetTest.php tests/Architecture/ProjectorEmissionRatchetTest.php
+
       # Consent-gated support access changes the global middleware priority
       # ordering. A manual dispatch must therefore exercise every backend
       # testsuite in one CI environment before that branch can be promoted.
