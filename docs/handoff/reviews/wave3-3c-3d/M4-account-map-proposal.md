@@ -1,12 +1,26 @@
 # M4 T20 inventory variance account-map proposal
 
-**Status:** OWNER DECISION REQUIRED — neither option is approved
+**Status:** APPROVED — Option A (`6586` / `7586`)
 
 **Authority:** `ORCHESTRATOR-RULING-2026-08-19-m4-stop-b.md`
 
 **Pinned tree:** `48cebf0f2c1b481c592bf35d478302499f9fda5d`
 
 **Decision owner:** treasury owner / expert-comptable
+
+**Owner ruling:** `TREASURY-RULING-2026-08-19-t20-option-a.md`
+
+## Owner decision — 2026-08-19
+
+The treasury owner approved **Option A** in full, including the TN/FR/Generic codes, types, parents,
+and all 17 `MovementReason` classifications below. The recorded rationale is distinct-line fraud
+visibility, zero enum churn against the merged 3C type gate, PCG-defensibility, and reversibility by
+template version while the purposes remain dormant.
+
+The approval carries one rider: expert-comptable ratification under OQ-12/H-5 is required before
+count-correction posting goes live. M4 may implement the approved templates, backfill, parity proof,
+and destructive-loss rerouting; M5 must not make count-correction posting live without that
+ratification.
 
 ## Decision requested
 
@@ -89,12 +103,7 @@ After owner approval, T20 will:
 - Current posting sends every `affectsCOGS()` movement to `CostOfGoodsSold`, while `MovementReason::affectsCOGS()` includes `Damage`, `Expiry`, and `WriteOff` (`InventoryGlPostingService::postMovement`; `MovementReason::affectsCOGS`).
 - `S-16` remains open at `docs/handoff/LEDGER.md`; no local zero-row probe discharges it.
 
-## Owner response requested
+## Owner disposition
 
-Record one of:
-
-- `APPROVE OPTION A` — including the six proposed codes/types;
-- `APPROVE OPTION B` — including the six proposed codes/types, the `InventoryGainIncome => Expense` change, and the expanded OQ-12/H-5 liasse caveat; or
-- `REJECT / REPLACE` — with the complete six-cell replacement map and any required type change.
-
-Until that response is on file, M4 remains `blocked_owner`; T20, T20b, the mutation proof, and the M4 adversarial review do not start.
+`APPROVE OPTION A` is on file. Option B is rejected for this wave. The expert-comptable rider remains
+open as a pre-live M5 gate; it does not reopen the M4 map decision.
