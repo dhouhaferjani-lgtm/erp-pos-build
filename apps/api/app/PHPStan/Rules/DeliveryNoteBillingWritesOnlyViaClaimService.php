@@ -30,8 +30,11 @@ use PHPStan\Type\VerbosityLevel;
  * blocked. PHPStan analyses app/ only, so migrations, backfills, seeders, and
  * tests are outside its view. It cannot reliably see non-literal or dynamic
  * table names, payload keys, merged/spread arrays, dynamic method dispatch,
- * generic unresolved builders, or raw PDO. Literal SQL matching is substring
- * based rather than a SQL parser. A green build makes no claim beyond those
+ * generic unresolved builders, or raw PDO. Literal marker-table SQL matching
+ * is substring based rather than a SQL parser. Whole-payload assignments are only matched
+ * when their right-hand side is a literal array containing an enumerated key,
+ * including the supported literal payload nesting; dynamic values remain
+ * outside this rule's boundary. A green build makes no claim beyond those
  * explicitly covered forms. DeliveryNoteClaimSet's private constructor blocks
  * direct `new`; PHP has no friend visibility that would restrict its public
  * issuance factory to one service. This rule therefore reports literal static
@@ -94,7 +97,9 @@ final class DeliveryNoteBillingWritesOnlyViaClaimService implements Rule
     {
         if ($node->var instanceof PropertyFetch) {
             return $this->identifierIs($node->var->name, 'payload')
-                && $this->isExactDocumentType($node->var->var, $scope);
+                && $this->isExactDocumentType($node->var->var, $scope)
+                && $node->expr instanceof Array_
+                && $this->arrayContainsBillingKey($node->expr);
         }
 
         if (! $node->var instanceof ArrayDimFetch
@@ -169,8 +174,7 @@ final class DeliveryNoteBillingWritesOnlyViaClaimService implements Rule
             && $node->args[0]->value instanceof String_) {
             $sql = strtolower($node->args[0]->value->value);
 
-            return str_contains($sql, self::MARKER_TABLE)
-                || $this->stringContainsBillingKey($sql);
+            return str_contains($sql, self::MARKER_TABLE);
         }
 
         return in_array($method, ['create', 'insert'], true)
@@ -240,17 +244,6 @@ final class DeliveryNoteBillingWritesOnlyViaClaimService implements Rule
         $defaults = $classReflection->getNativeReflection()->getDefaultProperties();
 
         return ($defaults['table'] ?? null) === self::MARKER_TABLE;
-    }
-
-    private function stringContainsBillingKey(string $value): bool
-    {
-        foreach (self::BILLING_KEYS as $billingKey) {
-            if (str_contains($value, $billingKey)) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private function identifierIs(Node $node, string $expected): bool

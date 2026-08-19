@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Tenant;
@@ -167,7 +168,7 @@ class DNConsolidationTest extends TestCase
         $this->converterRegistry->convert($dn, DocumentType::Invoice, ['delivery_note_ids' => [$dn->id]]);
 
         // Second attempt should fail
-        $this->expectException(\RuntimeException::class);
+        $this->expectException(DeliveryNoteBatchValidationException::class);
         $this->expectExceptionMessage('Delivery note has already been invoiced');
 
         $freshDn = $dn->fresh();
@@ -256,8 +257,8 @@ class DNConsolidationTest extends TestCase
             'line_total' => '500.00',
         ]);
 
-        $this->expectException(\DomainException::class);
-        $this->expectExceptionMessage('All delivery notes must belong to the same company');
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessage('One or more delivery notes were not found in the active company.');
 
         $deliveryNotes = [$dn1, $dn2];
         $deliveryNoteIds = array_map(fn ($dn) => $dn->id, $deliveryNotes);

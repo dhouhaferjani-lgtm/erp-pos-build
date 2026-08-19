@@ -55,6 +55,8 @@ final class DeliveryNoteBillingWritesOnlyViaClaimServiceTest extends RuleTestCas
             [
                 __DIR__.'/Fixtures/DeliveryNoteBillingAllowedClaimServiceFixture.php',
                 __DIR__.'/Fixtures/DeliveryNoteBillingUnrelatedModelFixture.php',
+                __DIR__.'/Fixtures/DeliveryNoteBillingNonBillingPayloadAssignmentFixture.php',
+                __DIR__.'/Fixtures/DeliveryNoteBillingNonMarkerRawSqlFixture.php',
             ],
             [],
         );
