@@ -49,6 +49,70 @@ export interface PartnerDeliveryNotesResponse {
   }
 }
 
+export type ToBillAgingBucket = '0_30' | '31_60' | '61_90' | '90_plus'
+
+export interface ToBillQueueParams {
+  locationId: string | null
+  partnerSearch: string
+  dateFrom: string
+  dateTo: string
+  periodicOnly: boolean
+  page: number
+  perPage: number
+}
+
+export interface ToBillPartnerGroup {
+  partner_id: string
+  partner_name: string
+  partner_code: string | null
+  delivery_note_count: number
+  total: string
+  currency: string
+  oldest_document_date: string
+  aging_bucket: ToBillAgingBucket
+  is_periodic: boolean
+}
+
+interface OffsetMeta {
+  current_page: number
+  last_page: number
+  total: number
+  per_page: number
+}
+
+export interface ToBillQueueResponse {
+  data: ToBillPartnerGroup[]
+  meta: OffsetMeta
+  summary: {
+    buckets: { bucket: ToBillAgingBucket; count: number; total: string }[]
+    grand_total: string
+    grand_count: number
+    currency: string
+  }
+}
+
+export type ToBillDeliveryNote = Pick<App.Modules.Document.Application.DTOs.DocumentData,
+  | 'id'
+  | 'document_number'
+  | 'document_date'
+  | 'partner_id'
+  | 'partner_name'
+  | 'subtotal'
+  | 'tax_amount'
+  | 'total'
+  | 'currency'
+>
+
+export interface ToBillPartnerRowsResponse {
+  data: ToBillDeliveryNote[]
+  meta: OffsetMeta
+  summary: {
+    count: number
+    total: string
+    currency: string
+  }
+}
+
 /**
  * Response from consolidation endpoint
  */
@@ -130,6 +194,48 @@ export async function getPartnerDeliveryNotes({
   })
 
   return response.data
+}
+
+function toBillApiParams(params: ToBillQueueParams) {
+  return {
+    location_id: params.locationId,
+    partner_search: params.partnerSearch || undefined,
+    date_from: params.dateFrom || undefined,
+    date_to: params.dateTo || undefined,
+    periodic_only: params.periodicOnly ? 1 : 0,
+    page: params.page,
+    per_page: params.perPage,
+  }
+}
+
+export async function getToBillQueue(params: ToBillQueueParams): Promise<ToBillQueueResponse> {
+  return apiGet<ToBillQueueResponse>('/delivery-notes/uninvoiced', toBillApiParams(params))
+}
+
+export async function getToBillPartnerRows(
+  partnerId: string,
+  params: ToBillQueueParams,
+): Promise<ToBillPartnerRowsResponse> {
+  return apiGet<ToBillPartnerRowsResponse>(
+    `/delivery-notes/uninvoiced/${partnerId}`,
+    toBillApiParams(params),
+  )
+}
+
+export async function getAllToBillPartnerRows(
+  partnerId: string,
+  params: ToBillQueueParams,
+): Promise<ToBillDeliveryNote[]> {
+  const perPage = 100
+  const first = await getToBillPartnerRows(partnerId, { ...params, page: 1, perPage })
+  const remainingPages = await Promise.all(
+    Array.from(
+      { length: Math.max(0, first.meta.last_page - 1) },
+      (_, index) => getToBillPartnerRows(partnerId, { ...params, page: index + 2, perPage }),
+    ),
+  )
+
+  return [first, ...remainingPages].flatMap((response) => response.data)
 }
 
 /**

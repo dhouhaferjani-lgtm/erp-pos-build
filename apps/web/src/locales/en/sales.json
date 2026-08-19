@@ -684,6 +684,53 @@
     "confirmTitle": "Confirm Delivery Note",
     "confirmMessage": "Are you sure you want to confirm this delivery note? Stock will be issued from inventory. This action cannot be undone."
   },
+  "toBill": {
+    "navTitle": "To bill",
+    "title": "To bill",
+    "subtitle": "Un-invoiced delivery notes, grouped by customer and ordered by the oldest delivery.",
+    "agingLabel": "Un-invoiced delivery note aging",
+    "aging": {
+      "0_30": "0–30 days",
+      "31_60": "31–60 days",
+      "61_90": "61–90 days",
+      "90_plus": "90+ days"
+    },
+    "grandTotal": "Total left to bill",
+    "groupLabel": "{{partner}} billing group",
+    "groupCount_one": "{{count}} delivery note",
+    "groupCount_other": "{{count}} delivery notes",
+    "oldest": "Oldest: {{date}}",
+    "periodic": "Billed periodically",
+    "noPartnerCode": "No customer code",
+    "expand": "Expand {{partner}}",
+    "collapse": "Collapse {{partner}}",
+    "createInvoice": "Create invoice",
+    "reconciliation_one": "{{count}} delivery note · {{total}}",
+    "reconciliation_other": "{{count}} delivery notes · {{total}}",
+    "rowsLabel": "Un-invoiced delivery notes for {{partner}}",
+    "columns": {
+      "number": "Delivery note",
+      "date": "Date",
+      "total": "Total"
+    },
+    "filters": {
+      "search": "Search partners",
+      "dateFrom": "From date",
+      "dateTo": "To date",
+      "periodicOnly": "Billed periodically only"
+    },
+    "confirm": {
+      "title": "Create invoice for {{partner}}?",
+      "message_one": "Create one invoice from {{count}} delivery note totalling {{total}}.",
+      "message_other": "Create one invoice from {{count}} delivery notes totalling {{total}}."
+    },
+    "empty": {
+      "title": "Nothing left to bill",
+      "description": "No confirmed delivery notes match this location and filter set."
+    },
+    "loadError": "Unable to load the to-bill queue",
+    "rowsLoadError": "Unable to load this customer's delivery notes"
+  },
   "relatedDocuments": {
     "title": "Related Documents",
     "description": "View the document chain showing how this document relates to others",

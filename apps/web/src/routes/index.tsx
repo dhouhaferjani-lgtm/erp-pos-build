@@ -46,6 +46,7 @@ const CustomerForm = lazy(() => import('../features/partners/PartnerForm').then(
 const DocumentListPage = lazy(() => import('../features/documents/DocumentListPage').then((m) => ({ default: m.DocumentListPage })))
 const DocumentForm = lazy(() => import('../features/documents/DocumentForm').then((m) => ({ default: m.DocumentForm })))
 const DeliveryNoteConsolidationPage = lazy(() => import('../features/documents/DeliveryNoteConsolidationPage').then((m) => ({ default: m.DeliveryNoteConsolidationPage })))
+const ToBillPage = lazy(() => import('../features/documents/to-bill/ToBillPage').then((m) => ({ default: m.ToBillPage })))
 const CreateCreditNotePage = lazy(() => import('../features/documents/CreateCreditNotePage').then((m) => ({ default: m.CreateCreditNotePage })))
 const ReturnNoteListPage = lazy(() => import('../features/documents/ReturnNoteListPage').then((m) => ({ default: m.ReturnNoteListPage })))
 const CreateReturnNotePage = lazy(() => import('../features/documents/CreateReturnNotePage').then((m) => ({ default: m.CreateReturnNotePage })))
@@ -579,6 +580,19 @@ export function AppRoutes() {
         {/* Sales Module */}
         <Route path="sales">
           <Route index element={<Navigate to="/sales/customers" replace />} />
+
+          <Route
+            path="to-bill"
+            element={
+              <ModuleGuard module="Sales">
+                <RequirePermission permission="deliveries.view">
+                  <SuspenseWrapper>
+                    <ToBillPage />
+                  </SuspenseWrapper>
+                </RequirePermission>
+              </ModuleGuard>
+            }
+          />
 
           {/* Customers (filtered partners) */}
           <Route

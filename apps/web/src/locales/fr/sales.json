@@ -684,6 +684,53 @@
     "confirmTitle": "Confirmer le bon de livraison",
     "confirmMessage": "Êtes-vous sûr de vouloir confirmer ce bon de livraison ? Le stock sera sorti de l'inventaire. Cette action est irréversible."
   },
+  "toBill": {
+    "navTitle": "À facturer",
+    "title": "À facturer",
+    "subtitle": "Bons de livraison non facturés, regroupés par client et classés par livraison la plus ancienne.",
+    "agingLabel": "Ancienneté des bons de livraison non facturés",
+    "aging": {
+      "0_30": "0–30 jours",
+      "31_60": "31–60 jours",
+      "61_90": "61–90 jours",
+      "90_plus": "90+ jours"
+    },
+    "grandTotal": "Total restant à facturer",
+    "groupLabel": "Groupe de facturation de {{partner}}",
+    "groupCount_one": "{{count}} bon de livraison",
+    "groupCount_other": "{{count}} bons de livraison",
+    "oldest": "Plus ancien : {{date}}",
+    "periodic": "Facturé périodiquement",
+    "noPartnerCode": "Aucun code client",
+    "expand": "Développer {{partner}}",
+    "collapse": "Réduire {{partner}}",
+    "createInvoice": "Créer une facture",
+    "reconciliation_one": "{{count}} bon de livraison · {{total}}",
+    "reconciliation_other": "{{count}} bons de livraison · {{total}}",
+    "rowsLabel": "Bons de livraison non facturés de {{partner}}",
+    "columns": {
+      "number": "Bon de livraison",
+      "date": "Date",
+      "total": "Total"
+    },
+    "filters": {
+      "search": "Rechercher des clients",
+      "dateFrom": "Date de début",
+      "dateTo": "Date de fin",
+      "periodicOnly": "Facturés périodiquement uniquement"
+    },
+    "confirm": {
+      "title": "Créer une facture pour {{partner}} ?",
+      "message_one": "Créer une facture à partir de {{count}} bon de livraison pour un total de {{total}}.",
+      "message_other": "Créer une facture à partir de {{count}} bons de livraison pour un total de {{total}}."
+    },
+    "empty": {
+      "title": "Plus rien à facturer",
+      "description": "Aucun bon de livraison confirmé ne correspond à cet emplacement et à ces filtres."
+    },
+    "loadError": "Impossible de charger la file des éléments à facturer",
+    "rowsLoadError": "Impossible de charger les bons de livraison de ce client"
+  },
   "relatedDocuments": {
     "title": "Documents liés",
     "description": "Afficher la chaîne documentaire montrant les liens entre ce document et les autres",

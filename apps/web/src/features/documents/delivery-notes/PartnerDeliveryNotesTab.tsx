@@ -127,7 +127,10 @@ export function PartnerDeliveryNotesTab({
   }
 
   const selectablePageIds = deliveryNotes
-    .filter((deliveryNote) => deliveryNote.invoiced_at === null)
+    .filter((deliveryNote) => (
+      deliveryNote.invoiced_at === null &&
+      deliveryNote.currency === query.data?.aggregates?.currency
+    ))
     .map((deliveryNote) => deliveryNote.id)
   const toggleAll = () => {
     setSelectedIds((current) => {
@@ -298,7 +301,10 @@ export function PartnerDeliveryNotesTab({
               selectedIds,
               onToggle: toggle,
               onToggleAll: toggleAll,
-              isRowSelectable: (deliveryNote) => deliveryNote.invoiced_at === null,
+              isRowSelectable: (deliveryNote) => (
+                deliveryNote.invoiced_at === null &&
+                deliveryNote.currency === query.data?.aggregates?.currency
+              ),
               getRowLabel: (deliveryNote) => t('deliveryNotes.partnerTab.selectRow', {
                 number: deliveryNote.document_number,
               }),

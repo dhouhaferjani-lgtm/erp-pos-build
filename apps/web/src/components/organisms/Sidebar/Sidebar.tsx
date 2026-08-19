@@ -168,6 +168,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'invoices', href: '/sales/invoices', icon: Receipt },
         { key: 'creditNotes', href: '/sales/credit-notes', icon: MinusCircle },
         { key: 'deliveryNotes', href: '/inventory/delivery-notes', icon: FileBox },
+        { key: 'toBill', labelKey: 'sales:toBill.navTitle', href: '/sales/to-bill', icon: FileCheck, permission: 'deliveries.view' },
       ],
     },
     {

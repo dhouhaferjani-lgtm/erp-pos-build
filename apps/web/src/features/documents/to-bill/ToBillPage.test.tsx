@@ -176,7 +176,8 @@ describe('ToBillPage', () => {
     const user = userEvent.setup()
     renderWithProviders(<ToBillPage />)
 
-    await user.click(screen.getAllByRole('button', { name: 'Create invoice' })[0]!)
+    const group = screen.getByRole('article', { name: /Atlas Periodic/ })
+    await user.click(within(group).getByRole('button', { name: 'Create invoice' }))
 
     const dialog = await screen.findByRole('heading', { name: 'Create invoice for Atlas Periodic?' })
     expect(dialog.parentElement).toHaveTextContent('2 delivery notes')
@@ -201,6 +202,6 @@ describe('ToBillPage', () => {
 
     renderWithProviders(<ToBillPage />)
     await user.click(screen.getByRole('button', { name: 'Next' }))
-    expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, perPage: 2 }))
+    expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, perPage: 25 }))
   })
 })

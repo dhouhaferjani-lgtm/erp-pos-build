@@ -20,7 +20,7 @@ function setPermissions(permissions: string[]) {
 
 describe('to-bill route gates', () => {
   beforeEach(() => {
-    act(() => { seedAuth({ roles: ['admin'] }) })
+    act(() => { seedAuth() })
   })
 
   afterEach(() => {
@@ -28,6 +28,7 @@ describe('to-bill route gates', () => {
   })
 
   it('does not render for an admin when Sales is disabled, independently of permissions', async () => {
+    act(() => { seedAuth({ roles: ['admin'] }) })
     setPermissions(['deliveries.view'])
     renderWithProviders(<AppRoutes />, { route: '/sales/to-bill', companyConfig: defaultCompanyConfig })
 

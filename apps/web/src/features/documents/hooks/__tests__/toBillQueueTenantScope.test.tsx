@@ -3,9 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useAuthStore } from '@/stores/authStore'
-import { useCompanyStore } from '@/stores/companyStore'
 import { useLocationStore, type Location } from '@/stores/locationStore'
+import { resetAuth, seedAuth } from '@/test/seedAuth'
 import { getToBillQueue } from '../../api/deliveryNotes'
 import { useToBillQueue } from '../useDeliveryNotes'
 
@@ -36,8 +35,7 @@ const location = (id: string): Location => ({
 describe('useToBillQueue location and tenant scope', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    useAuthStore.setState({ user: { id: 'user-1', tenant_id: 'tenant-1' } as never })
-    useCompanyStore.setState({ currentCompanyId: 'company-1' })
+    seedAuth({ tenantId: 'tenant-1', companyId: 'company-1' })
     useLocationStore.setState({
       locations: [location('location-1'), location('location-2')],
       currentLocationId: 'location-1',
@@ -51,9 +49,10 @@ describe('useToBillQueue location and tenant scope', () => {
   })
 
   afterEach(() => {
-    useAuthStore.setState({ user: null })
-    useCompanyStore.setState({ currentCompanyId: null })
-    useLocationStore.getState().reset()
+    act(() => {
+      resetAuth()
+      useLocationStore.getState().reset()
+    })
   })
 
   it('keys by tenant, company, and active location and refetches on location change', async () => {
@@ -65,7 +64,9 @@ describe('useToBillQueue location and tenant scope', () => {
 
     renderHook(() => useToBillQueue({ ...params, locationId: useLocationStore((state) => state.currentLocationId) }), { wrapper })
 
-    await waitFor(() => expect(getToBillQueue).toHaveBeenCalledWith(expect.objectContaining({ locationId: 'location-1' })))
+    await waitFor(() => {
+      expect(getToBillQueue).toHaveBeenCalledWith(expect.objectContaining({ locationId: 'location-1' }))
+    })
     expect(client.getQueryCache().getAll().some((query) => (
       query.queryKey.includes('tenant-1') &&
       query.queryKey.includes('company-1') &&
@@ -74,6 +75,8 @@ describe('useToBillQueue location and tenant scope', () => {
 
     act(() => { useLocationStore.getState().setCurrentLocation('location-2') })
 
-    await waitFor(() => expect(getToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({ locationId: 'location-2' })))
+    await waitFor(() => {
+      expect(getToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({ locationId: 'location-2' }))
+    })
   })
 })

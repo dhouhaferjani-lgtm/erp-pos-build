@@ -6,6 +6,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
+import { locationScopedKey } from '@/lib/locationScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
 import {
@@ -13,9 +14,12 @@ import {
   getInvoiceableDeliveryNotes,
   getDeliveryNote,
   getPartnerDeliveryNotes,
+  getToBillPartnerRows,
+  getToBillQueue,
   consolidateDeliveryNotesToInvoice,
   type DeliveryNote,
   type PartnerDeliveryNoteFilter,
+  type ToBillQueueParams,
 } from '../api/deliveryNotes'
 import { getErrorMessage } from '@/lib/api'
 import { parseDeliveryNoteBillingRefusal } from '../deliveryNoteBillingRefusal'
@@ -107,6 +111,37 @@ export function usePartnerDeliveryNotes({
     queryKey: tenantScopedKey(['delivery-notes', 'partner', partnerId, filter, page, perPage]),
     queryFn: () => getPartnerDeliveryNotes({ partnerId, filter, page, perPage }),
     enabled: enabled && tenantId !== null && companyId !== null,
+  })
+}
+
+export function useToBillQueue(params: ToBillQueueParams) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const locationScope = params.locationId === null ? [] : [params.locationId]
+
+  return useQuery({
+    queryKey: locationScopedKey(['delivery-notes-to-bill', 'summary', params], locationScope),
+    queryFn: () => getToBillQueue(params),
+    enabled: tenantId !== null && companyId !== null && params.locationId !== null,
+  })
+}
+
+export function useToBillPartnerRows(
+  partnerId: string,
+  params: ToBillQueueParams,
+  enabled: boolean,
+) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+  const locationScope = params.locationId === null ? [] : [params.locationId]
+
+  return useQuery({
+    queryKey: locationScopedKey(
+      ['delivery-notes-to-bill', 'partner', partnerId, params],
+      locationScope,
+    ),
+    queryFn: () => getToBillPartnerRows(partnerId, params),
+    enabled: enabled && tenantId !== null && companyId !== null && params.locationId !== null,
   })
 }
 
