@@ -244,5 +244,152 @@ transitions.slow   // duration-300
 
 ---
 
-*Last Updated: February 2026*
+## Listing-Page Composition
+
+> **Status: canon PROPOSED, Wave 3 gated on the `CX-4` re-census.**
+> Nothing in this section is enforced by a lint rule or a ratchet today, and no
+> page-migration wave is scheduled. Treat it as the agreed target shape, not as
+> a rule you are already in breach of. Source: the UI presentation audit of
+> record, [`docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md)
+> §D, which is where the finding `UI-44` ("no listing-page composition guidance
+> exists") is recorded. Note that `docs/sessions/` is gitignored, so the audit
+> files are session artefacts: the re-census linked below is tracked (it was
+> force-added), the executive report is not and may be absent from a fresh
+> clone.
+
+Before this section, this document covered colours, typography, spacing and
+composed element tokens only — there was no written guidance for how a list or
+index page should be assembled. That absence is the whole reason list pages
+diverged: every feature invented its own filter row, its own empty state and
+its own pagination, and no reviewer had a canon to point at.
+
+### The components that exist today
+
+These are all real and importable now. The canon below composes **only** these.
+
+| Component | Path | Role |
+|---|---|---|
+| `ListPageLayout` | `components/molecules/ListPageLayout/` | Page shell: `PageHeader` + optional `filters` slot + body + optional `pagination` slot |
+| `DataTable` | `components/molecules/DataTable/` | The canonical list table; owns loading skeletons and the empty state |
+| `EmptyState` | `components/molecules/EmptyState/` | Standalone empty-state block, also rendered internally by `DataTable` |
+| `OffsetPagination` | `components/ui/OffsetPagination.tsx` | Offset/page-number pagination controls |
+| `FilterPanel` | `components/ui/FilterPanel.tsx` | The one purpose-built filter container |
+| `SearchInput` | `components/molecules/SearchInput/` | Debounced search box |
+| `FilterTabs` | `components/molecules/FilterTabs/` | Tab-style segmented filter |
+| `ui/filters/*` | `components/ui/filters/` | Filter primitives: `SearchFilter`, `EnumFilter`, `BooleanFilter`, `RangeFilter`, `DateRangeFilter` |
+
+### The recommended composition
+
+```tsx
+<ListPageLayout
+  title={t('…')}
+  actions={<Button onClick={onCreate}>{t('…add')}</Button>}
+  filters={/* filter bar — see below */}
+  pagination={
+    <OffsetPagination
+      currentPage={meta.current_page}
+      lastPage={meta.last_page}
+      total={meta.total}
+      perPage={meta.per_page}
+      from={meta.from}
+      to={meta.to}
+      onPageChange={setPage}
+      onPerPageChange={setPerPage}
+    />
+  }
+>
+  <DataTable
+    data={rows}
+    columns={columns}
+    keyExtractor={(row) => row.id}
+    isLoading={isLoading}
+    emptyTitle={t('…empty.title')}
+    emptyDescription={t('…empty.description')}
+  />
+</ListPageLayout>
+```
+
+Four rules follow from that shape:
+
+1. **The shell is `ListPageLayout`.** It renders the page's single `<h1>` through
+   `PageHeader`, so a page that uses it must not render its own heading.
+2. **The filter bar goes in the `filters` slot**, not above the layout. The slot
+   is omitted entirely when no filters are passed, so there is no empty gap.
+3. **The empty state is passed into `DataTable`**, not conditionally rendered
+   around it. `DataTable` accepts `emptyTitle`/`emptyDescription` (it builds an
+   `EmptyState` for you) or a fully custom `emptyState` node. A page that
+   branches on `rows.length === 0` and returns its own markup is the pattern
+   this canon replaces.
+4. **Pagination goes in the layout's `pagination` slot**, using
+   `OffsetPagination` for offset-paginated endpoints.
+
+`DataTable` also accepts a legacy children-markup form for pages that already
+own their table semantics. It is explicitly typed as a passthrough for swept
+pages; new call sites use the `columns`/`data`/`keyExtractor` API above.
+
+### Two pieces of the canon are PROPOSED and do not exist yet
+
+Do not import these; they are not built. They are recorded here because the
+canon in `00 §D` names them, and because attempting to follow the canon without
+knowing they are missing wastes a reviewer's time.
+
+- **`FilterBar`** — a thin wrapper over `FilterPanel` + `SearchInput` +
+  `FilterTabs` + the `ui/filters/*` primitives, so a page composes one component
+  instead of hand-assembling four. **Not built.** Until it exists, assemble the
+  filter slot from the existing primitives directly.
+- **`DataTableColumn.sortable`** — sorting absorbed into the column descriptor
+  so pages stop wiring their own sort headers. **Not built**: `DataTableColumn`
+  today exposes `key`, `header`, `align`, `numeric`, `render`, `accessor`,
+  `headerClassName`, `cellClassName` and `width`, and there is no `sortable`
+  anywhere in `components/molecules/DataTable/`.
+
+Nothing beyond these two is invented by the canon. If a proposal needs a third
+new component, it is a change to the canon and belongs in the audit, not here.
+
+### Adoption — be honest about it
+
+**`ListPageLayout` is used by 12 of the 46 listing pages.** That is the one
+adoption figure the audit marks decision-grade
+(`00-EXECUTIVE-REPORT.md` §4), mechanically re-verified, and it is measured at
+the wave's pinned base `d682b38ec9761a917b9716428091a482745795f6`. The other
+34 pages each arrange the header, filters, table and pagination themselves.
+
+Every other distribution — how many pages paginate, how many have a real empty
+state, how the filter patterns split — is **deliberately not restated here**,
+because those numbers move with every merge and a stale number in a canon
+document is worse than no number. The live figures, the per-page table and the
+reproduction command live in the re-census report:
+
+- **[`docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md)**
+  — the component-graph-aware listing re-census (`CX-4`). Regenerate with
+  `cd apps/web && node tools/audit-listing-census.mjs`.
+
+Read that report's **Method** section before quoting any of its numbers: the
+46-page population is discovered by a filename rule inherited from the original
+audit (`*ListPage`, `*ListView`, `*QueuePage`, `*IndexPage` under
+`src/features/`), and the report itself flags a secondary surface of ~33 further
+route-mounted pages that render a `DataTable` under other names. The
+distributions are decision-grade **for the inherited 46-page cohort only**, not
+for the whole product.
+
+### Why this is not a migration order
+
+The audit sets two preconditions before any page is migrated. Both are now met:
+the re-census (`CX-4`) is the report linked above, and writing the canon down
+(`UI-44`) is this section. What is **not** done is the migration itself — it is
+**Wave 3 and unscheduled**, and it must be budgeted against the re-census
+figures, not against the refuted numbers in the original section-02 census.
+Until it is scheduled and budgeted, existing pages are not in violation of
+anything; this section binds new listing pages and voluntary rewrites.
+
+One prerequisite that was *dropped*: extending `StatusTone`. `StatusBadge`
+deliberately maps many domain statuses onto fewer semantic tones, and nothing in
+source showed the 6-tone API forced any bespoke badge. Extend the tone palette
+only if a domain-state→tone mapping exercise surfaces a distinction the existing
+tones genuinely cannot express.
+
+---
+
+*Last Updated: 2026-08-19*
 *Source: `apps/web/src/lib/designTokens.ts`*
+*Listing-page canon: [`00-EXECUTIVE-REPORT.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/00-EXECUTIVE-REPORT.md) §D (audit of record)*
