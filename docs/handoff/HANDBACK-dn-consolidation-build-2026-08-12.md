@@ -6,7 +6,7 @@
 - Branch: `codex/dn-consolidation-2026-08-12`.
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/dn-consolidation`.
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
-- Current M1 implementation SHA: `c517635cb` (bridge round-2 remediation complete; round 3 pending).
+- Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
 - Milestone being handed back: M1.
 - No push, merge, or deployment was performed.
 
@@ -39,6 +39,7 @@ M1 commit list:
 - `055b6bd45 Phase 2.1.24: Attribute consolidation billing refusals`
 - `37c4b3a00 Phase 2.1.25: Record M1 bridge fix round`
 - `c517635cb Phase 2.1.26: Suppress attributed refusal toast and retry remainder`
+- `95ac2f22a Phase 2.1.27: Record M1 bridge round two`
 
 ## Owner-amended gate
 
@@ -65,7 +66,7 @@ same commands; inherited failures are recorded below and were not repaired by th
 
 ## M1 — the three P0s
 
-**Status: IN PROGRESS — bridge round 2 remediated; round 3 pending.**
+**Status: PASSED — bridge round 3 ACCEPT.**
 
 ### Replay and integration
 
@@ -100,6 +101,11 @@ returned `CHANGES-REQUIRED` because the consolidation hook still emitted a trans
 the attributed inline refusal. Fix round 2 is `c517635cb`: both the component and hook now use the
 same strict refusal parser, the hook suppresses only the attributed 422 toast, generic failures
 still toast, and the operator's explicit remove-and-retry click resubmits only the remaining IDs.
+
+Bridge round 3 reviewed `60df88a01..95ac2f22a`, independently reran the focused frontend evidence,
+and returned `ACCEPT`. It confirmed the round-2 P2 and recovery gap closed. The four remaining P3
+notes are recorded below; none weakens the M1 claim-before-invoice, exact-N, gating, migration, or
+ratified OI-8 invariants.
 
 ### Implementation state
 
@@ -253,6 +259,7 @@ status. Re-entry through the real factory succeeds and leaves agreeing marker/pa
 - Changed frontend TypeScript: typecheck and scoped ESLint green.
 - Design-system audit: 734 acknowledged, 0 new, 0 stale; focused consolidation refusal/gate UI:
   7 tests green; SO recovery UI: 9 tests green.
+- Bridge round-3 independent frontend rerun: 5 files/12 tests green; SO recovery UI: 9 tests green.
 - Exact scoped Vitest after fix round: 86 files/683 tests passed; only the two inherited finance
   tests failed.
 - React Doctor against explicit base `60df88a01`: 89/100, 11 changed files scanned, no issues.
@@ -279,10 +286,13 @@ and branch. No branch failure is new or larger:
 - SaleReceipt chokepoint audit: identical inherited `InventoryCountingController.php:135` finding;
   validator passes with six entries on both.
 
-The pinned base also reproduces a generated-types mismatch introduced by the merged 3C lane:
-`typescript:transform` adds two `SystemAccountPurpose` cases and `MovementGlKind` to
-`packages/shared/types/generated.d.ts`. The branch produces the same diff byte-for-byte; M1 did not
-commit that unrelated regeneration.
+The pinned base also reproduces an uncommitted generated-types mismatch introduced by the merged 3C
+lane: `typescript:transform` adds two `SystemAccountPurpose` cases and `MovementGlKind` to
+`packages/shared/types/generated.d.ts`, and the branch reproduces that same residual byte-for-byte.
+Separately, M1's initial generated-artifact commit includes the four billing DTO fields and
+`DeliveryNoteBillingLane` together with three additive current-source enum outputs:
+`DeliveryComplianceCode`, `PostingContext`, and `PreDeliveryInvoicingPolicy`. That shared-file lane
+overlap is disclosed for owner integration; it is additive and typecheck remains green.
 
 ## Standing findings and deploy obligations
 
@@ -319,6 +329,19 @@ commit that unrelated regeneration.
 
 ### Discovered findings not in scope
 
+- `SalesOrderDetailPage.tsx:70-123` retains a second billing-refusal parser with additional SO-only
+  provenance fields. M4 retires the consolidation screen, but until then a server-contract change
+  must be kept in sync across both parsers.
+- `packages/shared/types/generated.d.ts` includes the three additive non-M1 enum outputs named above
+  in the same generated commit as the required DN billing fields. The separately inherited 3C enum
+  drift remains uncommitted and byte-identical to the pin.
+- `DeliveryNoteConsolidation.tsx:180-190` resubmits a subset without re-running
+  `selectionValidation` and the recovery button has no pending guard. Subset partner/currency
+  validity is stable and duplicate submissions lose the atomic claim, so this is ergonomic rather
+  than a fiscal-integrity issue.
+- Non-race consolidation refusals such as `PARTIAL_DELIVERY_NOTE_SELECTION_INCOMPLETE` fall back to
+  the generic untranslated error path. OI-8 condition 1 governs the attributed race refusal, which
+  is correctly inline and translated.
 - `DocumentData.php:187-193`: resolving `invoice_number` performs a `Document::find()` per invoiced
   document and may become an N+1 on M2's invoiced tab.
 - `DeliveryNoteBillingConcurrencyRetrier.php:83-92`: a future nested caller could let the PDO cleanup
@@ -343,7 +366,8 @@ commit that unrelated regeneration.
   an owner decision and must not be silently reconciled.
 - The receipts-wave seeder/map delivery is already present at the pin. Promotion still requires the
   appropriate reseed and `permission:cache-reset`.
-- `packages/shared/types/generated.d.ts` contains M1's billing DTO fields. The separately identified
-  3C enum drift remains owner-lane work and is identical at base and branch.
+- `packages/shared/types/generated.d.ts` contains M1's billing DTO fields plus the disclosed three
+  additive current-source enum outputs. The separately identified uncommitted 3C enum drift remains
+  owner-lane work and is identical at base and branch.
 - D-6 remains binding: M1 migrations, grants/reseed, and permission cache reset must be live before
   dependent frontend milestones promote. No deployment was performed here.

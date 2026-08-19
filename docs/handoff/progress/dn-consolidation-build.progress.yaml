@@ -14,7 +14,7 @@ base_sha: 60df88a01b52828665caf33809486bdf0a699bbc
 base_ancestry_check:
   command: "git merge-base --is-ancestor 60df88a01b52828665caf33809486bdf0a699bbc HEAD"
   status: passed
-  checked_at: c517635cb
+  checked_at: 95ac2f22a
 # Branch codex/dn-consolidation-2026-08-12 in worktree .worktrees/dn-consolidation, from base_sha.
 # NOT merged, NOT pushed: the parent Claude session performs the terminal audit and owns the merge.
 branch: codex/dn-consolidation-2026-08-12
@@ -90,11 +90,11 @@ milestones:
   - id: M1
     title: "M1 - THE THREE P0s (spec §9; hard gate on everything else): P0-1 (invoiced projection + real server-side filter + exhaustible offset pagination + aggregates + index migration with withinTransaction=false) - P0-2 (permission repair + BOTH-LAYER module gating, incl. `module:Sales` on the EXISTING POST; four independent per-layer gating tests, a combined test is not acceptable) - P0-3 (Layer 0 global claim order incl. the SalesOrderToInvoiceConverter refactor, the lock inventory, the ONE injected claim service with claim() as the only public entry point and finalise() count-guarded to exactly N on BOTH the marker table and the payload projection, the marker table, the legacy survey/backfill, per-row attributed 422, the DocumentConverted regression from the production entry point) - the thin GET /delivery-notes/uninvoiced endpoint with its authorization/module contract and route-ordering fix - C5 and C8 - the OI-8 REFUSE behaviour with ratified UI conditions 1-4 (5-7 are proposals per the brief §3) - the §6.2 concurrency test with its four-gate fixture prescriptions honoured exactly. NO view work starts until this milestone reaches status: passed."
     review_lenses: [tenancy-authz, treasury, inventory-costing, general]
-    status: in_progress
+    status: passed
     fix_rounds: 2
-    commit: null
-    verdict: docs/handoff/reviews/dn-consolidation-build/M1-round2.md
-    last_verdict: CHANGES-REQUIRED
+    commit: c517635cb
+    verdict: docs/handoff/reviews/dn-consolidation-build/M1-round3.md
+    last_verdict: ACCEPT
   - id: M2
     title: "M2 - View A + A2 + View C: partner 'Delivery notes' tab, balance-card un-billed line, the /finance/lane-separation nav link (no grant is needed and none may be added), the invoiced_via badge + invoice link incl. on DeliveryNoteDetailPage, the OI-9 legacy_unknown neutral badge (en + fr), C9 invalidation. §6.3 green."
     review_lenses: [frontend-conventions, treasury, general]
@@ -135,7 +135,8 @@ findings:
   - "M1 reviewed commits were replayed from fcfb158cb..af621df25. `git range-diff` reports patch equality for 15/17 commits; M1.9 preserves the 3C InventoryGlPostingBuffer constructor/root-flush seams while adding the reviewed billing claim service, and M1.13 preserves the receipts-expanded CI filter while adding the named DN concurrency class."
   - "3C merge 1e8c0fa03 was read during M1.9 conflict resolution; invoice posting keeps InventoryGlPostingBuffer root ownership and the DN claim integration is additive."
   - "The amended differential preflight passed at be7deae8d: all touched surfaces are green and no whole-repository failure grew versus 60df88a01. The owner-listed CompleteSalesCycleWithReturnTest red did not reproduce; instead the pin and branch both have the same two default-SQLite InventoryGlCompositeRootTest fixture failures from merged 3C, which pass under phpunit-pgsql.xml."
-  - "Both base and branch reproduce the same stale generated-types diff from merged 3C; no unrelated enum regeneration was committed by M1. Route-manifest residual patches are SHA-256-identical after adding only this lane's Sales/invoices.create metadata."
+  - "Both base and branch reproduce the same uncommitted generated-types drift from merged 3C (SystemAccountPurpose inventory_shrinkage_expense/inventory_gain_income plus MovementGlKind). M1 commit b842b577a also contains its four billing DTO fields and DeliveryNoteBillingLane together with three additive current-source enum outputs (DeliveryComplianceCode, PostingContext, PreDeliveryInvoicingPolicy); this shared generated-artifact overlap is disclosed for owner integration. Route-manifest residual patches are SHA-256-identical after adding only this lane's Sales/invoices.create metadata."
   - "M1 bridge round 1 at e81ac612e returned CHANGES-REQUIRED. Fix round 1 closes: consolidation-lane OI-8 attribution/selective recovery (055b6bd45), row-visible but aggregate-only currency scoping (34101009f), durable-winner-only DN retry translation (97484c442), bounded marker backfill (e0eb2a2b8), and the §7 report evidence contract."
   - "M1 bridge round 2 at 37c4b3a00 returned CHANGES-REQUIRED on the consolidation refusal toast. Fix round 2 suppresses only attributed DELIVERY_NOTE_ALREADY_INVOICED toasts, preserves generic failure toasts, and makes the operator's explicit Remove-and-retry action resubmit only the remaining IDs (c517635cb)."
+  - "M1 bridge round 3 at 95ac2f22a returned ACCEPT. Its four non-blocking P3 notes are recorded in the handback: the remaining SO refusal-parser duplication, generated-artifact lane overlap, recovery resubmit pending/stale-selection ergonomics, and untranslated non-race consolidation refusals."
   - "Bridge P3s are recorded in the handback rather than silently fixed: SO source_line_id provenance expansion, invoiced-DN DTO N+1, future nested-retrier rollback risk, 55P03 generic failure, raw date formatting, hand-edited partial billing payload behavior, and malformed legacy invoiced_at cast risk. C8 is undefined outside the spec milestone table and is returned as DEFERRED owner ambiguity."
