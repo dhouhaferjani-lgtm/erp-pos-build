@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -13,13 +16,13 @@ use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\DTOs\OpeningBalanceLine;
+use App\Modules\Inventory\Application\DTOs\OpeningBalancePosting;
+use App\Modules\Inventory\Application\Services\OpeningBalancePostingService;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
-use App\Modules\Accounting\Domain\Account;
-use App\Modules\Accounting\Domain\Enums\AccountType;
-use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Product\Domain\Product;
@@ -306,7 +309,7 @@ final class StockMovementOccurredAtTest extends TestCase
 
         $backdatedEntryDate = CarbonImmutable::parse('2026-05-15 10:30:00');
 
-        $posting = new \App\Modules\Inventory\Application\DTOs\OpeningBalancePosting(
+        $posting = new OpeningBalancePosting(
             tenantId: $this->tenantId,
             companyId: $this->companyId,
             userId: $this->operatorId,
@@ -317,7 +320,7 @@ final class StockMovementOccurredAtTest extends TestCase
             reference: 'TEST-OB-001',
             notes: null,
             lines: [
-                new \App\Modules\Inventory\Application\DTOs\OpeningBalanceLine(
+                new OpeningBalanceLine(
                     productId: $product->id,
                     variantId: null,
                     locationId: $this->locationId,
@@ -327,7 +330,7 @@ final class StockMovementOccurredAtTest extends TestCase
             ],
         );
 
-        $service = $this->app->make(\App\Modules\Inventory\Application\Services\OpeningBalancePostingService::class);
+        $service = $this->app->make(OpeningBalancePostingService::class);
         $result = $service->post($posting);
 
         $movement = DB::table('stock_movements')->whereIn('id', $result->movementIdsInInputOrder)->first();

@@ -336,7 +336,7 @@ class CountTimestampSkewTest extends TestCase
                     ],
                 ],
             ]);
-            $this->assertNotEmpty($response->json('error.errors.counted_at_device'), "Expected validation error for counted_at_device");
+            $this->assertNotEmpty($response->json('error.errors.counted_at_device'), 'Expected validation error for counted_at_device');
         }
     }
 

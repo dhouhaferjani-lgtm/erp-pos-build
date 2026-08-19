@@ -21,9 +21,9 @@ class RecalculateSalePriceActionTest extends TestCase
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create();
         $product = Product::factory()->for($company)->create([
-            'pricing_mode'           => PricingMode::Manual,
-            'cost_price'             => '10.000000',
-            'sale_price'             => '99.000',
+            'pricing_mode' => PricingMode::Manual,
+            'cost_price' => '10.000000',
+            'sale_price' => '99.000',
             'target_margin_override' => '50.00',
         ]);
 

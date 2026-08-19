@@ -347,5 +347,4 @@ class TreasuryEventDispatchTest extends TestCase
         $repository->refresh();
         $this->assertSame(0, bccomp((string) $repository->balance, '250.000', 3));
     }
-
 }

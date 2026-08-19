@@ -19,14 +19,14 @@ class BackfillPricingModeCommandTest extends TestCase
     {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create([
-            'currency'              => 'TND',
+            'currency' => 'TND',
             'default_target_margin' => '50',
         ]);
         // cost 10, margin 50% → price = 10 * 1.5 = 15.000 (3dp TND)
         $product = Product::factory()->for($company)->create([
             'pricing_mode' => PricingMode::Manual,
-            'cost_price'   => '10.000000',
-            'sale_price'   => '15.000',
+            'cost_price' => '10.000000',
+            'sale_price' => '15.000',
         ]);
 
         $this->artisan('products:backfill-pricing-mode')->assertExitCode(0);
@@ -42,8 +42,8 @@ class BackfillPricingModeCommandTest extends TestCase
         ]);
         $product = Product::factory()->for($company)->create([
             'pricing_mode' => PricingMode::Manual,
-            'cost_price'   => '10.000000',
-            'sale_price'   => '99.000',
+            'cost_price' => '10.000000',
+            'sale_price' => '99.000',
         ]);
 
         $this->artisan('products:backfill-pricing-mode');
@@ -56,8 +56,8 @@ class BackfillPricingModeCommandTest extends TestCase
         $tenant = Tenant::factory()->create();
         $product = Product::factory()->for(Company::factory()->for($tenant))->create([
             'pricing_mode' => PricingMode::Manual,
-            'cost_price'   => '0.000000',
-            'sale_price'   => '5.000',
+            'cost_price' => '0.000000',
+            'sale_price' => '5.000',
         ]);
 
         $this->artisan('products:backfill-pricing-mode');
@@ -73,8 +73,8 @@ class BackfillPricingModeCommandTest extends TestCase
         ]);
         $product = Product::factory()->for($company)->create([
             'pricing_mode' => PricingMode::Manual,
-            'cost_price'   => '10.000000',
-            'sale_price'   => '15.000',
+            'cost_price' => '10.000000',
+            'sale_price' => '15.000',
         ]);
 
         $this->artisan('products:backfill-pricing-mode');

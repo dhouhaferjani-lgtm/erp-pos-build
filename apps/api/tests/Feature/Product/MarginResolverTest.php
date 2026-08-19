@@ -94,9 +94,9 @@ class MarginResolverTest extends TestCase
         $fresh = Product::query()->with('company')->findOrFail($product->id);
         $m = $this->resolver()->resolve($fresh);
         $this->assertSame('30.00', $m->target_margin);
-        $this->assertSame(\App\Modules\Product\Domain\Enums\MarginSource::DefaultFallback, $m->target_source);
+        $this->assertSame(MarginSource::DefaultFallback, $m->target_source);
         $this->assertSame('15.00', $m->minimum_margin);
-        $this->assertSame(\App\Modules\Product\Domain\Enums\MarginSource::DefaultFallback, $m->minimum_source);
+        $this->assertSame(MarginSource::DefaultFallback, $m->minimum_source);
     }
 
     public function test_resolve_many_is_bounded_query(): void

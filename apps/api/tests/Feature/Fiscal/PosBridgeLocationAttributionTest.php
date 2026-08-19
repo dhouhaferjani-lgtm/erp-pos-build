@@ -4,31 +4,32 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
-use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
-use App\Modules\Accounting\Domain\Account;
-use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Application\Projections\PosCoreReceiptProjection;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
+use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
+use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentInstrument;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
-use App\Modules\Treasury\Application\Projections\TreasuryAccountPaymentBridge;
-use App\Modules\Treasury\Application\Projections\TreasuryDepositBridge;
-use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -72,7 +73,7 @@ final class PosBridgeLocationAttributionTest extends TestCase
             'role' => 'cashier',
             'status' => 'active',
         ]);
-        $partner = \App\Modules\Partner\Domain\Partner::factory()->customer()->create([
+        $partner = Partner::factory()->customer()->create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
         ]);

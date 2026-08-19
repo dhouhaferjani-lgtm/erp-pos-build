@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Inventory\Application\Services;
 
 use App\Shared\Domain\QuantityScale;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -65,7 +66,7 @@ final class StockThresholdService
         return ['product_id' => $productId, 'variant_id' => $variantId, 'location_id' => $locationId, 'min_quantity' => $min, 'max_quantity' => $max];
     }
 
-    private function rowQuery(string $tenantId, string $companyId, string $productId, ?string $variantId, string $locationId): \Illuminate\Database\Query\Builder
+    private function rowQuery(string $tenantId, string $companyId, string $productId, ?string $variantId, string $locationId): Builder
     {
         $query = DB::table('stock_levels')
             ->where('tenant_id', $tenantId)->where('company_id', $companyId)

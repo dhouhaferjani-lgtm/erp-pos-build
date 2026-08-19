@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Product;
 
-use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Product\Application\Services\MarginService;
 use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Product;
@@ -39,9 +39,9 @@ class MarginServiceDelegationTest extends TestCase
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create();
         $product = Product::factory()->for($company)->create([
-            'pricing_mode'          => PricingMode::Manual,
-            'cost_price'            => '10.000000',
-            'sale_price'            => '99.000',
+            'pricing_mode' => PricingMode::Manual,
+            'cost_price' => '10.000000',
+            'sale_price' => '99.000',
             'target_margin_override' => '50.00',
         ]);
 
@@ -56,9 +56,9 @@ class MarginServiceDelegationTest extends TestCase
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create();
         $product = Product::factory()->for($company)->create([
-            'pricing_mode'          => PricingMode::Auto,
-            'cost_price'            => '10.000000',
-            'sale_price'            => '0.000',
+            'pricing_mode' => PricingMode::Auto,
+            'cost_price' => '10.000000',
+            'sale_price' => '0.000',
             'target_margin_override' => '50.00',
         ]);
 
@@ -76,8 +76,8 @@ class MarginServiceDelegationTest extends TestCase
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create(['currency' => 'TND']);
         $product = Product::factory()->for($company)->create([
-            'pricing_mode'          => PricingMode::Auto,
-            'cost_price'            => '10.000000',
+            'pricing_mode' => PricingMode::Auto,
+            'cost_price' => '10.000000',
             'target_margin_override' => '50.00',
         ]);
 

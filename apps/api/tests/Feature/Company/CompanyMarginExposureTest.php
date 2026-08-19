@@ -16,26 +16,28 @@ use Tests\Traits\AssertsApiValidation;
 
 class CompanyMarginExposureTest extends TestCase
 {
-    use RefreshDatabase;
     use AssertsApiValidation;
+    use RefreshDatabase;
 
     protected Tenant $tenant;
+
     protected Company $company;
+
     protected User $user;
 
     protected function setUp(): void
     {
         parent::setUp();
-        $this->tenant  = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create();
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
         $this->seed(RolesAndPermissionsSeeder::class);
         $this->user = User::factory()->for($this->tenant)->create();
         $this->user->assignRole('admin');
         UserCompanyMembership::create([
-            'user_id'    => $this->user->id,
+            'user_id' => $this->user->id,
             'company_id' => $this->company->id,
-            'role'       => 'admin',
+            'role' => 'admin',
         ]);
         $this->actingAs($this->user);
     }
@@ -43,13 +45,13 @@ class CompanyMarginExposureTest extends TestCase
     public function test_company_payload_exposes_default_margins(): void
     {
         $company = Company::factory()->for($this->tenant)->create([
-            'default_target_margin'  => '30',
+            'default_target_margin' => '30',
             'default_minimum_margin' => '15',
         ]);
         UserCompanyMembership::create([
-            'user_id'    => $this->user->id,
+            'user_id' => $this->user->id,
             'company_id' => $company->id,
-            'role'       => 'admin',
+            'role' => 'admin',
         ]);
 
         $res = $this->getJson("/api/v1/companies/{$company->id}");
@@ -62,7 +64,7 @@ class CompanyMarginExposureTest extends TestCase
     public function test_update_persists_default_margins(): void
     {
         $res = $this->putJson("/api/v1/companies/{$this->company->id}", [
-            'default_target_margin'  => '35.00',
+            'default_target_margin' => '35.00',
             'default_minimum_margin' => '12.00',
         ]);
 
@@ -71,8 +73,8 @@ class CompanyMarginExposureTest extends TestCase
             ->assertJsonPath('data.default_minimum_margin', '12.00');
 
         $this->assertDatabaseHas('companies', [
-            'id'                     => $this->company->id,
-            'default_target_margin'  => '35.00',
+            'id' => $this->company->id,
+            'default_target_margin' => '35.00',
         ]);
     }
 
@@ -87,7 +89,7 @@ class CompanyMarginExposureTest extends TestCase
     public function test_update_rejects_inverted_default_band(): void
     {
         $res = $this->putJson("/api/v1/companies/{$this->company->id}", [
-            'default_target_margin'  => '20.00',
+            'default_target_margin' => '20.00',
             'default_minimum_margin' => '40.00',
         ]);
 

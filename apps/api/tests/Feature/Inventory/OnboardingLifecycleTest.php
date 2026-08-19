@@ -42,8 +42,8 @@ use Tests\Traits\AssertsApiValidation;
  */
 final class OnboardingLifecycleTest extends TestCase
 {
-    use RefreshDatabase;
     use AssertsApiValidation;
+    use RefreshDatabase;
 
     private Tenant $tenant;
 

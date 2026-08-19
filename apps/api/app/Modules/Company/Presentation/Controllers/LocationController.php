@@ -15,8 +15,8 @@ use App\Modules\Identity\Domain\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class LocationController extends Controller
 {
@@ -135,7 +135,6 @@ class LocationController extends Controller
             ])->values()->all(),
         ]);
     }
-
 
     /**
      * Get a single location.

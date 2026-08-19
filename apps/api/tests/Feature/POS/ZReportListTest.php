@@ -150,5 +150,4 @@ final class ZReportListTest extends TestCase
 
         return compact('user', 'membership', 'locationA', 'locationB', 'terminalA', 'terminalB');
     }
-
 }

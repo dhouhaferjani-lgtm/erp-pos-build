@@ -1,6 +1,9 @@
 <?php
+
 declare(strict_types=1);
+
 namespace Tests\Unit\Product;
+
 use App\Modules\Product\Presentation\Requests\Concerns\ValidatesMarginBand;
 use Tests\TestCase;
 

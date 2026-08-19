@@ -29,9 +29,9 @@ class ProductDataMarginSerializationTest extends TestCase
     {
         parent::setUp();
 
-        $this->tenant  = Tenant::factory()->create();
+        $this->tenant = Tenant::factory()->create();
         $this->company = Company::factory()->for($this->tenant)->create([
-            'default_target_margin'  => '30.00',
+            'default_target_margin' => '30.00',
             'default_minimum_margin' => '15.00',
         ]);
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
@@ -39,9 +39,9 @@ class ProductDataMarginSerializationTest extends TestCase
         $this->user = User::factory()->for($this->tenant)->create();
         $this->user->assignRole('admin');
         UserCompanyMembership::create([
-            'user_id'    => $this->user->id,
+            'user_id' => $this->user->id,
             'company_id' => $this->company->id,
-            'role'       => 'admin',
+            'role' => 'admin',
         ]);
         $this->actingAs($this->user, 'sanctum');
         app(CompanyContext::class)->setCompanyId($this->company->id);

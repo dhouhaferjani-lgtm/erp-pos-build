@@ -4,13 +4,16 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Enums;
 
+use App\Modules\Document\Domain\Services\DocumentPostingService;
+use App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\DocumentGenerationAdapter;
+
 /**
  * WHO is asking `DocumentPostingService::post()` to post, stated by the caller.
  *
  * ── WHY THIS EXISTS (Wave 3 fix round 1, fiscal F-1; ORCHESTRATOR RULING S3 (b)) ──
  * T25b put the delivery-compliance refusal on the posting chokepoint, which is
  * correct: every caller must pass it. But the sweep missed the second production
- * caller — {@see \App\Modules\Workshop\WorkOrder\Infrastructure\Adapters\DocumentGenerationAdapter}
+ * caller — {@see DocumentGenerationAdapter}
  * — and the Workshop work-order → invoice flow has **no stock-issuance lane at
  * all**: WO parts move no stock, produce no delivery note and produce no
  * movement, anywhere, today. So `hasEverIssuedGoods()` is false for every
@@ -33,7 +36,7 @@ namespace App\Modules\Document\Domain\Enums;
  * site, so that adding a new exempt path is a deliberate edit to this enum and
  * not an emergent property of a column. The document shape is still checked, as
  * a second condition — see
- * {@see \App\Modules\Document\Domain\Services\DocumentPostingService::isExemptFromDeliveryRequirement()}
+ * {@see DocumentPostingService::isExemptFromDeliveryRequirement()}
  * — so the context alone cannot exempt an unrelated document either.
  */
 enum PostingContext: string

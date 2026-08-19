@@ -26,7 +26,7 @@ class ProductPricingIntentServiceTest extends TestCase
      */
     public function test_explicit_manual_intent_on_price_edit(): void
     {
-        $tenant  = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create();
         $product = Product::factory()->for($company)->create(['pricing_mode' => PricingMode::Auto]);
 
@@ -42,7 +42,7 @@ class ProductPricingIntentServiceTest extends TestCase
      */
     public function test_margin_edit_keeps_auto_and_persists_override_when_different(): void
     {
-        $tenant  = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create(['default_target_margin' => '30']);
         $product = Product::factory()->for($company)->create(['pricing_mode' => PricingMode::Manual]);
 
@@ -59,7 +59,7 @@ class ProductPricingIntentServiceTest extends TestCase
      */
     public function test_margin_equal_to_inherited_stores_null(): void
     {
-        $tenant  = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create(['default_target_margin' => '30']);
         $product = Product::factory()->for($company)->create();
 
@@ -73,7 +73,7 @@ class ProductPricingIntentServiceTest extends TestCase
      */
     public function test_import_path_without_mode_becomes_manual(): void
     {
-        $tenant  = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create();
         $product = Product::factory()->for($company)->create(['pricing_mode' => PricingMode::Auto]);
 
@@ -92,7 +92,7 @@ class ProductPricingIntentServiceTest extends TestCase
      */
     public function test_override_equal_to_inherited_when_product_had_prior_override(): void
     {
-        $tenant  = Tenant::factory()->create();
+        $tenant = Tenant::factory()->create();
         $company = Company::factory()->for($tenant)->create(['default_target_margin' => '30']);
         // Product starts with its own override of 45
         $product = Product::factory()->for($company)->create(['target_margin_override' => '45.00']);
