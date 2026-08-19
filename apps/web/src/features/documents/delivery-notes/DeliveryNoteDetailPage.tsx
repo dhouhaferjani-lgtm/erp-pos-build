@@ -23,10 +23,18 @@ import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
-import { colorClasses } from '@/lib/designTokens'
+import { colorClasses, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { DeliveryNoteBillingStatus } from './PartnerDeliveryNotesTab'
 
 type ConfirmAction = 'confirm' | null
+type DeliveryNoteDetail = Document & Pick<
+  App.Modules.Document.Application.DTOs.DocumentData,
+  | 'invoiced_at'
+  | 'invoiced_by_document_id'
+  | 'invoiced_by_document_number'
+  | 'invoiced_via'
+>
 
 export function DeliveryNoteDetailPage() {
   const { t } = useTranslation(['sales', 'common'])
@@ -47,7 +55,7 @@ export function DeliveryNoteDetailPage() {
     ccEmails: '',
   })
 
-  const { data: deliveryNote, isLoading, error } = useQuery<Document>({
+  const { data: deliveryNote, isLoading, error } = useQuery<DeliveryNoteDetail>({
     queryKey: tenantScopedKey(['document', id]),
     queryFn: async () => {
       const response = await api.get(`/documents/${id}`)
@@ -136,6 +144,12 @@ export function DeliveryNoteDetailPage() {
                 {t(`documents.status.${deliveryNote.status}`)}
               </span>
             </div>
+            {deliveryNote.invoiced_at !== null && (
+              <div className={`mt-3 flex flex-wrap items-center gap-2 text-sm ${colorTokens.text.muted}`}>
+                <span>{t('deliveryNotes.partnerTab.detailBillingLabel')}</span>
+                <DeliveryNoteBillingStatus deliveryNote={deliveryNote} />
+              </div>
+            )}
           </div>
 
           <DocumentActionBar
