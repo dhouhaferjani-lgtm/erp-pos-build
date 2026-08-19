@@ -634,12 +634,16 @@ final class VerifyEventChainCommandTest extends TestCase
         $this->assertSame(['operational', 'z_session'], $contexts);
         $this->assertGreaterThan(0, $projectedReceipts);
         $this->assertSame(0, $mirrorMismatches);
-        // Characterization of the unfixed, unregistered production defect
-        // recorded in M0-preflight-evidence.md; false is not the desired contract.
-        $this->assertFalse(
+        // M2 fix round (STOP C ruling, docs/handoff/reviews/es-wave-a0/
+        // ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md). This assertion was a
+        // characterization of the context-flattening defect recorded in
+        // M0-preflight-evidence.md; the fiscal arm now walks each
+        // (company_id, chain_context) as its own chain from genesis_seed, so
+        // the CLEAN two-context v3 fixture must verify TRUE.
+        $this->assertTrue(
             $this->app->make(ReceiptHashService::class)
                 ->verifyTerminalChain(Terminal::query()->findOrFail($this->terminalId)),
-            'Characterization only: the unfixed receipt fiscal arm currently flattens both contexts and reports a false linkage failure.',
+            'The clean two-context v3 fixture must verify: each chain_context is its own chain from genesis_seed.',
         );
     }
 

@@ -663,11 +663,11 @@ final class ReceiptChainRebuildTest extends TestCase
             '--type' => 'receipts',
         ])
             ->expectsTable(
-                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Break Point'],
+                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Inspected', 'Break Point'],
                 [
-                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2713}", 0, '-'],
-                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2713}", 0, '-'],
-                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 0, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2713}", 0, 1, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2713}", 0, 0, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 0, 0, '-'],
                 ],
             )
             ->expectsOutputToContain('All chains verified successfully.')
@@ -836,11 +836,11 @@ final class ReceiptChainRebuildTest extends TestCase
             '--type' => 'receipts',
         ])
             ->expectsTable(
-                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Break Point'],
+                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Inspected', 'Break Point'],
                 [
-                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2713}", 1, '-'],
-                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2717}", 1, $breakPoint],
-                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 0, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2713}", 1, 1, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2717}", 1, 1, $breakPoint],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 0, 0, '-'],
                 ],
             )
             ->expectsOutputToContain('chain verification FAILED')
@@ -877,11 +877,11 @@ final class ReceiptChainRebuildTest extends TestCase
             '--type' => 'receipts',
         ])
             ->expectsTable(
-                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Break Point'],
+                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Inspected', 'Break Point'],
                 [
-                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2713}", 1, '-'],
-                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2713}", 1, '-'],
-                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 1, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2713}", 1, 1, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2713}", 1, 1, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 1, 1, '-'],
                 ],
             )
             ->expectsOutputToContain('All chains verified successfully.')
@@ -920,6 +920,194 @@ final class ReceiptChainRebuildTest extends TestCase
         $this->assertSame(1, $arms['legacy']->count);
         $this->assertTrue($arms['legacy']->isValid);
         $this->assertTrue($this->app->make(ReceiptHashService::class)->verifyTerminalChain($freshTerminal));
+    }
+
+    // =================================================================
+    // M2 fix round (STOP C ruling, 2026-08-19) — the fiscal arm is
+    // partitioned per (company_id, chain_context).
+    //
+    // Sequence numbers restart per chain_context
+    // (2026_05_24_100000_add_chain_context_to_fiscal_events.php:20-31) and
+    // every context anchors at the terminal genesis_seed, exactly as
+    // OutboxIngestor resolves its head and ZReportHashService walks its
+    // own contexts. A single flattened sequence_number stream therefore
+    // reported a linkage break on the NORMAL v3 terminal shape
+    // (operational + z_session).
+    // =================================================================
+
+    public function test_two_context_terminal_verifies_each_context_as_its_own_chain(): void
+    {
+        $seeded = $this->seedTwoContextTerminal();
+        $this->seedProjectionReceiptLinkedTo([
+            'id' => $seeded['operational_id'],
+            'canonical_bytes' => $seeded['operational_bytes'],
+            'current_hash' => $seeded['operational_hash'],
+        ]);
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $service = $this->app->make(ReceiptHashService::class);
+        $arms = $service->verifyTerminalChainArms($terminal);
+
+        $this->assertTrue(
+            $arms['fiscal_events']->isValid,
+            'Each chain_context is its own chain from genesis_seed: '.(string) $arms['fiscal_events']->breakPoint,
+        );
+        $this->assertSame(1, $arms['fiscal_events']->count);
+        $this->assertSame(2, $arms['fiscal_events']->inspectedCount);
+        $this->assertTrue($arms['projected_mirror']->isValid);
+        $this->assertTrue($service->verifyTerminalChain($terminal));
+        $this->assertTrue($service->verifyTerminalChainFiscalArm($terminal));
+    }
+
+    public function test_two_context_terminal_detects_a_link_tamper_inside_the_z_session_context(): void
+    {
+        $seeded = $this->seedTwoContextTerminal();
+
+        $canonicalBytes = '{"event":"z_session_link_tamper","sequence_number":2}';
+        $tamperedId = $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: str_repeat('b', 64),
+            currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::SESSION_CLOSE,
+            chainContext: 'z_session',
+        );
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $arm = $this->app->make(ReceiptHashService::class)->verifyTerminalChainArms($terminal)['fiscal_events'];
+
+        $this->assertFalse($arm->isValid);
+        $this->assertStringContainsString($tamperedId, (string) $arm->breakPoint);
+        $this->assertStringContainsString('z_session', (string) $arm->breakPoint);
+        $this->assertStringNotContainsString($seeded['operational_id'], (string) $arm->breakPoint);
+    }
+
+    public function test_two_context_terminal_detects_a_link_tamper_inside_the_operational_context(): void
+    {
+        $seeded = $this->seedTwoContextTerminal();
+
+        $canonicalBytes = '{"event":"operational_link_tamper","sequence_number":2}';
+        $tamperedId = $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: str_repeat('b', 64),
+            currentHash: hash('sha256', $canonicalBytes),
+            chainContext: 'operational',
+        );
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $arm = $this->app->make(ReceiptHashService::class)->verifyTerminalChainArms($terminal)['fiscal_events'];
+
+        $this->assertFalse($arm->isValid);
+        $this->assertStringContainsString($tamperedId, (string) $arm->breakPoint);
+        $this->assertStringContainsString('operational', (string) $arm->breakPoint);
+        $this->assertStringNotContainsString($seeded['z_session_id'], (string) $arm->breakPoint);
+    }
+
+    public function test_legacy_arm_excludes_pending_seal_receipts(): void
+    {
+        // M2-round1 finding 1. The command used to carry the
+        // `fiscal_status = fiscalized` predicate; per-arm reporting moved the
+        // partitioning into the service, so the LEGACY arm now owns it. An
+        // in-flight unsealed receipt has no fiscal_hash and must stay
+        // invisible to the verifier — otherwise every terminal holding one
+        // open sale reports a false chain break.
+        Receipt::factory()->pendingSeal()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'location_id' => $this->locationId,
+            'terminal_id' => $this->terminalId,
+            'chain_sequence' => null,
+            'previous_hash' => null,
+            'fiscal_hash' => null,
+            'is_voided' => false,
+            'is_training' => false,
+        ]);
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $arms = $this->app->make(ReceiptHashService::class)->verifyTerminalChainArms($terminal);
+
+        $this->assertTrue($arms['legacy']->isValid, (string) $arms['legacy']->breakPoint);
+        $this->assertSame(0, $arms['legacy']->count);
+        $this->assertTrue($this->app->make(ReceiptHashService::class)->verifyTerminalChain($terminal));
+    }
+
+    public function test_command_reports_inspected_rows_so_a_snapshot_tamper_is_not_attributed_to_receipts(): void
+    {
+        // M2-round1 finding 3. The fiscal arm's VERDICT spans every terminal
+        // event; its COUNT is receipt-linked events only. A tampered
+        // TERMINAL_REGISTRY_SNAPSHOT therefore rendered
+        // "Receipts: Fiscal Events ✗ count 0" — a verdict over a count of 0,
+        // the exact shape this milestone exists to kill. The operator must
+        // see the inspected row count the verdict actually describes.
+        $canonicalBytes = '{"event":"terminal_registry_snapshot","sequence_number":1}';
+        $tamperedId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: str_repeat('f', 64),
+            eventType: FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+        );
+
+        $terminal = Terminal::findOrFail($this->terminalId);
+        $breakPoint = sprintf('Event %s (context operational, sequence #1, hash)', $tamperedId);
+
+        $this->artisanCommand('pos:verify-chains', [
+            '--terminal' => $this->terminalId,
+            '--type' => 'receipts',
+        ])
+            ->expectsTable(
+                ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Inspected', 'Break Point'],
+                [
+                    [$terminal->code, $terminal->company->name, 'Receipts: Fiscal Events', "\u{2717}", 0, 1, $breakPoint],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Projected Mirror', "\u{2713}", 0, 0, '-'],
+                    [$terminal->code, $terminal->company->name, 'Receipts: Legacy', "\u{2713}", 0, 0, '-'],
+                ],
+            )
+            ->expectsOutputToContain('chain verification FAILED')
+            ->assertExitCode(1);
+    }
+
+    /**
+     * One terminal, two chain contexts, each anchored at genesis_seed with
+     * its own sequence 1 — the NORMAL v3 shape
+     * (ES-CONSOLIDATED-REGISTER-2026-08-11-SNAPSHOT.md:132).
+     *
+     * @return array{
+     *     operational_id: string,
+     *     operational_bytes: string,
+     *     operational_hash: string,
+     *     z_session_id: string
+     * }
+     */
+    private function seedTwoContextTerminal(): array
+    {
+        $operationalBytes = '{"event":"operational_seq1","sequence_number":1}';
+        $operationalHash = hash('sha256', $operationalBytes);
+        $operationalId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $operationalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: $operationalHash,
+            chainContext: 'operational',
+        );
+
+        $zSessionBytes = '{"event":"z_session_seq1","sequence_number":1}';
+        $zSessionId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $zSessionBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $zSessionBytes),
+            eventType: FiscalEventType::SESSION_OPEN,
+            chainContext: 'z_session',
+        );
+
+        return [
+            'operational_id' => $operationalId,
+            'operational_bytes' => $operationalBytes,
+            'operational_hash' => $operationalHash,
+            'z_session_id' => $zSessionId,
+        ];
     }
 
     /**
@@ -1037,6 +1225,7 @@ final class ReceiptChainRebuildTest extends TestCase
         string $previousHash,
         string $currentHash,
         FiscalEventType $eventType = FiscalEventType::SALE_RECEIPT,
+        string $chainContext = 'operational',
     ): string {
         $now = Carbon::now('UTC');
         $eventId = Str::uuid()->toString();
@@ -1046,6 +1235,7 @@ final class ReceiptChainRebuildTest extends TestCase
             'company_id' => $this->companyId,
             'terminal_id' => $this->terminalId,
             'operator_id' => $this->operatorId,
+            'chain_context' => $chainContext,
             'event_type' => $eventType->value,
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
