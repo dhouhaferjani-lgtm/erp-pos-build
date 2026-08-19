@@ -217,7 +217,7 @@ final class InventoryVarianceCoaTemplateV2Importer
     /** @return list<array{code: string, name: string, type: string, parent_code: string|null, system_purpose: string|null, is_system: bool, sort_order: int}> */
     private function rows(AdminTemplate $template): array
     {
-        return array_values($template->accounts()->orderBy('sort_order')->lockForUpdate()->get()->map(
+        return array_values($template->accounts()->orderBy('sort_order')->orderBy('code')->lockForUpdate()->get()->map(
             static fn (AdminTemplateAccount $row): array => [
                 'code' => $row->code,
                 'name' => $row->name,
