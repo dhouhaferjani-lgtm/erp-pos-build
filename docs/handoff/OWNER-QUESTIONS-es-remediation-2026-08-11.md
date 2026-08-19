@@ -121,6 +121,7 @@ Give it its own document type, or route it through `StockTransferService` and re
 **Blocks:** Lane E.
 **Options:** own document type · route through `StockTransferService`, retire `BatchStockService::transferBatchStock`.
 *(No recommendation given — present options only, per instruction.)*
+**RULED 2026-08-19 (owner, conditional — both conditions verified by the parent orchestrator): Option B — route through `StockTransferService`, retire `BatchStockService::transferBatchStock`.** Conditions verified: (1) code direction — `StockTransferService` already models lot-level transfers end-to-end (batch allocations, FEFO auto-allocation, document row + idempotency key); the web stock-transfers feature rides it; the document-less route has zero callers in web/POS/mobile (lane-E draft brief citation inventory, 2026-08-19). (2) industry standard — physical relocation as a transfer DOCUMENT with lines is the universal ERP model and matches this project's document-per-action principle; a second relocation document type (Option A) would be the non-standard choice. Lane E's entry criterion is satisfied; the drafted slice brief (`DRAFT-CODEX-DISPATCH-es-lane-e-slice-2026-08-18.md`) is written against Option B.
 
 ### D-13 (= Handover Q9) — RETOUR representation shift expert ratification
 Expert-comptable ratification of the RETOUR representation shift (`01/O-4`) is recorded as still **OWED**. Does it gate anything in this program? (Handover §8 Q9: *"Pre-existing owed item; this session should not silently assume it is closed."*)
