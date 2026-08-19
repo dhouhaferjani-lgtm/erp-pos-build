@@ -661,8 +661,30 @@ final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
      * returns null and the caller keeps the original fail-closed incident.
      *
      * The re-encode uses the CANONICAL flag set (`CanonicalJsonEncoder.php:106-108`,
-     * RFC 8785 §3.2.3 — raw UTF-8 for U+0080+), so any non-canonical byte form —
-     * `\uXXXX` escapes, insignificant whitespace, escaped slashes — also returns null.
+     * RFC 8785 §3.2.3 — raw UTF-8 for U+0080+). The acceptance test is byte
+     * identity against THIS re-encode, nothing more: any byte form this PHP
+     * `json_encode` cannot reproduce returns null. State that precisely, because
+     * the converse ("canonical forms recover") is what a maintainer would read
+     * into a looser sentence, and it is false in both directions (M3 round-2
+     * finding N-2, both counterexamples probed on PHP 8.4):
+     *
+     *   - Refused, and NOT canonical: `\uXXXX` escapes of U+0080+, insignificant
+     *     whitespace, escaped slashes.
+     *   - Refused, but IS canonical: an empty JSON object anywhere in the
+     *     envelope. `CanonicalJsonEncoder::encode([])` deliberately emits `{}`
+     *     (that is why `encode()`/`encodeList()` are split at all,
+     *     `CanonicalJsonEncoder.php:13-16`), but `json_decode('{}', true)` yields
+     *     `[]`, which re-encodes as `[]` — so the round trip cannot reproduce it.
+     *     Fail-closed and narrow (the strict parser requires non-empty
+     *     sub-objects, `StrictCanonicalParser.php:44-49`), but real.
+     *   - Recovered, and IS canonical despite carrying an escape: U+2028 / U+2029.
+     *     PHP escapes those two even under `JSON_UNESCAPED_UNICODE` unless
+     *     `JSON_UNESCAPED_LINE_TERMINATORS` is added, so the real encoder emits
+     *     the six-byte escape sequence for each of them and the guard
+     *     reproduces it byte-for-byte. A `\uXXXX` escape is therefore not
+     *     per se non-canonical. (Described rather than quoted on purpose: a
+     *     literal U+2028 in this source file is itself a line terminator to
+     *     some tooling.)
      *
      * This never widens what the verifier accepts: it only decides WHICH
      * incident sentence is true. The sealed-coordinate incident is raised

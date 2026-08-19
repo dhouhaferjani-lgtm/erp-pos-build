@@ -129,15 +129,60 @@ milestones:
     # fix-round verification block) — the register faulted the non-disclosure
     # explicitly.
     # D-8 still NOT reached; R-1 still holds; still no straggler implementation.
-    status: review
+    #
+    # ROUND 2 = ACCEPT (docs/handoff/reviews/es-wave-a0/M3-round2.md, register
+    # commit 32671a9f6), reviewed over the fix-round delta 4a93f8631..b1d86e641.
+    # All three round-1 findings CLOSED and verified by execution, not by
+    # assertion: the reviewer reverted the F-1 flag itself and reproduced the
+    # red-first trio's exact counts (3 failed, 49 assertions), re-derived F-2's
+    # factual premise from EnqueueResolvedEventProjectionsCommand.php +
+    # OutboxIngestor.php:922, and confirmed F-3's :106 exact. Headline counts
+    # reproduce (ParseFailureResumeTest 27/209, VerifyEventChainCommandTest
+    # 34/138) on BOTH drivers (61/347 combined).
+    #
+    # Round 2 left THREE P3s, all accuracy rather than behaviour, with the
+    # explicit disposition "swept into M3b rather than spending another round":
+    #   N-1 — ParseFailureResumeTest.php:299 cited VerifyEventChainCommand.php:687
+    #     for the byte-identity test; the fix round's own 18-line comment
+    #     insertion moved it to :705.
+    #   N-2 — the :663-665 docblock's boundedness claim was over-broad in BOTH
+    #     directions. Probed on PHP 8.4 in this worktree: U+2028/U+2029 stay
+    #     ESCAPED under JSON_UNESCAPED_UNICODE, so an envelope carrying one is
+    #     a form the canonical encoder DOES emit and the guard RECOVERS it;
+    #     and `{}` IS canonical
+    #     (CanonicalJsonEncoder::encode([]) emits it) but the guard REFUSES it
+    #     because json_decode('{}',true) -> [] re-encodes as []. The comment and
+    #     its echo at ParseFailureResumeTest.php:340-343 now say what is true.
+    #   N-3 — M3-implementation-evidence.md:245 "6 falsifiers" -> 7.
+    # All three are swept in M3b's opening commit. Also swept: N-3's cosmetic
+    # rider (F16-7 reordered after F16-6 in M3-straggler-contracts.md,
+    # presentation only, recorded in the artifact as revision 2a).
+    #
+    # ESCALATED by round 2, NOT a finding against M3 and NOT M3b's work:
+    # OutboxIngestor.php:815 binds canonical_bytes (PG bytea) as PDO::PARAM_STR,
+    # so a canonical envelope carrying a backslash escape fails to INSERT with
+    # 22P02. Separate ingestion-lane ticket, already escalated to the
+    # orchestrator. M3b must NOT touch that binding.
+    status: passed
     fix_rounds: 1
     commit: 7c836cee3
-    verdict: docs/handoff/reviews/es-wave-a0/M3-round1.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/es-wave-a0/M3-round2.md
+    last_verdict: ACCEPT
+    updated: 32671a9f6
   - id: M3b
     title: "ES-16/ES-17 straggler IMPLEMENTATION, strictly to the contracts approved at M3. Implementing beyond or against the approved contract is a milestone failure, not a style problem. Own bridge review."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
+    # Contract of record: docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md
+    # at REVISION 2 (as amended in M3 fix round 1 and ACCEPTed at M3 round 2).
+    # ES-16 = 6 clauses (16-A..16-F) + 7 falsifiers (F16-1..F16-7); 16-C is a
+    # PURE VISIBILITY ABSENCE requirement — the surfaced row names no recovery
+    # command at all. ES-17 = 7 clauses (17-A..17-G) + 7 falsifiers (F17-1..F17-7).
+    # Binding constraints carried in: R-1 (ZReportHashService zero-diff), D-8 (no
+    # second-approver / correcting-event workflow — STOP blocked_owner if the
+    # contract path requires one), zero-line diff on
+    # EnqueueResolvedEventProjectionsCommand.php (F16-7 / contract :147-153), and
+    # no OutboxIngestor.php:815 PARAM_STR change (separate ingestion-lane ticket).
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null

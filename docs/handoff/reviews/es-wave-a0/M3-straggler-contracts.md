@@ -33,6 +33,13 @@ the M3 round-1 register (`M3-round1.md`):
 
 ES-17 is **unchanged** — the register approved its contract as written.
 
+**Revision 2a (M3b opening commit)** carries **one presentation-only edit**, recorded here rather
+than made silently: the M3 round-2 register's finding **N-3** noted that revision 2 inserted
+**F16-7** between F16-5 and F16-6, so the list did not read in sequence, and offered "renumber or
+reorder" as a cosmetic rider. F16-7 is **moved to sit after F16-6**. No falsifier text changed, no
+clause changed, no falsifier added or removed — ES-16 still has 6 clauses and 7 falsifiers, and the
+contract M3b builds to is the one approved at M3 round 2.
+
 ---
 
 ## Shared ground: what an operator can and cannot see today
@@ -168,16 +175,16 @@ rejected version:
   `integrity_exception_reason`; provable by the two-violation assertion in 16-B.
 - **F16-5** — the response shape changes for rows the two existing partitions already return,
   breaking the consumer contract, without that being called out and re-reviewed.
+- **F16-6** — `ParseFailureResolutionService` is extended to accept these rows. It cannot resolve
+  them (there is no bad payload to correct — the payload parsed) and doing so would grant an
+  operator a payload-rewrite on a sealed row for a reason unrelated to parsing. That is squarely
+  the **D-8** surface and is out of this wave entirely.
 - **F16-7** *(added M3 fix round 1, finding F-2)* — the surfaced row, or any copy/doc/log line M3b
   adds around it, names `fiscal:enqueue-resolved-event-projections` (or any other command) as the
   action for a `z_session_lifecycle` row. Running that command on such a row is F16-2 performed by
   the operator instead of by the code, and the contract must not route anyone toward it. Equally
   falsifying: M3b makes the command safe by adding the missing `integrity_status` precondition —
   correct-looking, but it is a semantics change to a recovery command that ES-16 does not authorise.
-- **F16-6** — `ParseFailureResolutionService` is extended to accept these rows. It cannot resolve
-  them (there is no bad payload to correct — the payload parsed) and doing so would grant an
-  operator a payload-rewrite on a sealed row for a reason unrelated to parsing. That is squarely
-  the **D-8** surface and is out of this wave entirely.
 
 **Explicitly OUT of ES-16's contract:** any change to the seven lifecycle rules themselves; any
 new `IntegrityExceptionClass` case (that is an enum + CHECK-constraint + migration change, and the

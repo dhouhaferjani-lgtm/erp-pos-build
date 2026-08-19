@@ -296,7 +296,7 @@ final class ParseFailureResumeTest extends TestCase
     // per RFC 8785 §3.2.3 (`CanonicalJsonEncoder.php:106-108`). The guard's
     // re-encode originally omitted `JSON_UNESCAPED_UNICODE`, so it produced
     // `\uXXXX` for the same characters and the byte-identity test at
-    // `VerifyEventChainCommand.php:687` could never hold for a receipt
+    // `VerifyEventChainCommand.php:705` could never hold for a receipt
     // carrying one accented or Arabic character. On France/Tunisia data
     // that is most receipts, so the discriminating branch was effectively
     // dead — fail-closed (the coordinate incident and exit 1 both survive)
@@ -304,9 +304,18 @@ final class ParseFailureResumeTest extends TestCase
     //
     // The three tests below pin both directions of the flag: recovery
     // FIRES on canonical non-ASCII bytes (faithful and divergent), and
-    // still REFUSES bytes that carry `\uXXXX` escapes — a form the
-    // canonical encoder cannot emit, so refusing it is correct and the
-    // widening is bounded.
+    // still REFUSES bytes that carry `\uXXXX` escapes OF U+0080+ — the
+    // specific escape form the canonical encoder cannot emit (RFC 8785
+    // §3.2.3 seals those raw), so refusing it is correct and the widening
+    // is bounded.
+    //
+    // M3 round-2 finding N-2 — do NOT read that as "every `\uXXXX` escape
+    // is non-canonical", which is what the original wording here implied.
+    // PHP escapes U+2028/U+2029 even under `JSON_UNESCAPED_UNICODE`, so
+    // the real encoder emits those two escaped and the guard RECOVERS
+    // them. The guard's actual rule is narrower and is stated where it
+    // belongs, on `recoverSealedPayloadFromFrozenBytes()` itself: byte
+    // identity against this PHP re-encode, nothing more.
     // -----------------------------------------------------------------
 
     public function test_event_chain_verifier_does_not_claim_divergence_for_a_faithful_non_ascii_correction(): void

@@ -242,8 +242,10 @@ green with the one-flag change and nothing else.
 ## 2. `M3-straggler-contracts.md` — committed in this range
 
 `docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md`. For **ES-16** and **ES-17** it states,
-per R-7, what the fix must demonstrate and what would falsify it: 6 numbered clauses + 6 falsifiers
-for ES-16, 7 clauses + 7 falsifiers for ES-17, plus an explicit out-of-scope list for each.
+per R-7, what the fix must demonstrate and what would falsify it: 6 numbered clauses + 7 falsifiers
+for ES-16 (F16-1…F16-7 — the count was stated as 6 here before M3 round-2 finding N-3; revision 2
+added F16-7 under finding F-2 and this sentence was not updated with it), 7 clauses + 7 falsifiers
+for ES-17, plus an explicit out-of-scope list for each.
 
 Every defect claim in it is restated **from code**, not from the register, with `file:line`
 re-derived against the tree as this milestone leaves it. Two findings worth flagging to the
