@@ -32,6 +32,29 @@ use Tests\TestCase;
  * bootstrap), a malformed hash, an unfetchable blob object, mirror drift, or any
  * added key.
  *
+ * ⚠️ RE-PIN TRIGGER — READ BEFORE REMEDIATING A BASELINED VIOLATOR.
+ * Baseline keys carry a positional ordinal within (file, class, function, table,
+ * mechanism). Direction (c) makes a RENUMBERED key an ADDED key, and an added
+ * key can only be authorised by the OWNER (a new repository-variable value plus
+ * a new pin tag). So a remediation that inserts an earlier same-bucket write —
+ * for example fixing `OpeningBalancePostingService::post` by adding a properly
+ * linked `StockMovement::create` ABOVE the unlinked one, which renumbers the
+ * surviving violation from `create#1` to `create#2` — turns CI red and NO
+ * contributor-side edit can turn it green: removing the stale entry trips
+ * direction (a) instead. That is this ratchet hard-blocking the remediation
+ * program it exists to protect, on a change that strictly improves the tree.
+ * It is an operational consequence, not a defect: the fix is an owner re-pin
+ * (variable + freshly allocated tag together), and it is listed as a named
+ * re-pin trigger in the handback's operational owes.
+ *
+ * ⚠️ THE DETECTOR ITSELF IS CANDIDATE-DELETABLE. Nothing asserts that this file
+ * exists: deleting it (or it plus the baseline) leaves the Architecture suite
+ * green with no ratchet at all. This is the same residual class the brief's §6
+ * F-8 discloses for `ci.yml` (the checker's invocation), covered by the same
+ * mitigations — the scope allowlist, the milestone gates reviewing every diff,
+ * and the owner's pre-promotion dispatch run — and it is disclosed here rather
+ * than left implicit.
+ *
  * LOCAL runs: derive the reviewed seed blob and export it under the same name —
  *   seed_blob=$(git rev-parse <dpa_baseline_seed_commit>:apps/api/tests/Architecture/baselines/document-per-action-baseline.json)
  *   export DPA_BASELINE_PROTECTED_BLOB="$seed_blob"

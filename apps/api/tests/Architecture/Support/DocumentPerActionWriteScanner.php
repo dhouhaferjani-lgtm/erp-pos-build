@@ -187,6 +187,17 @@ use SplFileInfo;
  *    earlier in a file renumbers every later one.
  * D. RAW SQL is matched by table name plus an INSERT/UPDATE/DELETE keyword in a
  *    statically-resolvable string. SQL assembled from variables is not matched.
+ * G. THE SCAN ROOT IS `app/` ONLY, and that is a RULING with live consequences.
+ *    `database/seeders/**`, `database/migrations/**` and `tests/**` are not
+ *    scanned, so real four-table writes there are neither baselined nor
+ *    guarded — e.g. `database/seeders/CoffeeShopSeeder.php` (`StockLevel::create`,
+ *    and a `JournalEntry::create` with no `source_id`),
+ *    `DemoPharmacySeeder.php`, `ParapharmacySeeder.php`,
+ *    `StockLevelSeeder.php`. The justification is that seeders and migrations
+ *    are provisioning surfaces with no justifying document by construction; the
+ *    consequence is that a future DATA-BACKFILL migration writing
+ *    `journal_entries` would be outside this guard by construction. Raised as a
+ *    parent ticket, not decided here.
  * D2. `upsert()` can never classify as LINKED: its argument 0 is a LIST of row
  *    arrays and argument 1 is a positional column list, so payload extraction
  *    always resolves to `false` and the site fails closed to `violation` even
