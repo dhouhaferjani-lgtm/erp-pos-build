@@ -5,7 +5,7 @@
 **Pinned base:** `60df88a01b52828665caf33809486bdf0a699bbc`
 **M4 verdict carried in:** `docs/handoff/reviews/dn-consolidation-build/M4-round3.md` (ACCEPT)
 **M5 opening commit:** `cd62067fd` (Phase 2.5.0 — record-only: R3-a / R3-b / R3-c)
-**Evidence tip:** see §8.
+**M5 evidence commit:** `b9418ab73` (Phase 2.5.1 — record-only)
 
 M5 adds no implementation. Everything below was re-run or re-derived at this tree; nothing is quoted
 from an earlier milestone's handback.
@@ -489,7 +489,7 @@ Run logs (session scratchpad, not committed): `preflight.log` (invocation A), `p
 Working tree left clean (`git status --porcelain` shows only this evidence file before its commit);
 **no `git stash` was used at any point**; **nothing was pushed**; `dev` was not touched.
 
-**Tip at the time of writing this evidence:** see the YAML `milestones[M5].commit`.
+**Branch tip after this milestone:** `b9418ab73`. `git diff --name-only cd62067fd..b9418ab73 -- apps/ packages/ scripts/` is **empty** — M5 changed no code.
 
 ---
 

@@ -133,9 +133,10 @@ milestones:
     # over the whole branch itself as part of the terminal audit, so `verdict` stays null here.
     status: review
     fix_rounds: 0
-    commit: null   # set to the Phase 2.5.1 evidence commit, see `updated`
+    commit: b9418ab73   # Phase 2.5.1 — record-only; `git diff --name-only -- apps/ packages/ scripts/` is empty
     verdict: docs/handoff/reviews/dn-consolidation-build/M5-evidence.md   # executor evidence, NOT a bridge verdict
     last_verdict: null
+    updated: b9418ab73
 
 status: review      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
