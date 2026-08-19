@@ -186,8 +186,10 @@ describe('expenses hook queryKey shapes', () => {
     const key = client.getQueryCache().getAll()
       .map((query) => query.queryKey as unknown[])
       .find((candidate) => candidate[0] === 'expenses' && candidate[1] === 'analytics')
-    expect(key).toEqual(['expenses', 'analytics', filters, 'tenant-A', 'company-1'])
-    expect(mockExpenseAnalytics).toHaveBeenCalledWith(filters)
+    // Promoted L3 locationScopedKey lane: expense analytics carries effective locations and scope.
+    const scopedFilters = { ...filters, location_ids: [] }
+    expect(key).toEqual(['expenses', 'analytics', scopedFilters, { locScope: 'all' }, 'tenant-A', 'company-1'])
+    expect(mockExpenseAnalytics).toHaveBeenCalledWith(scopedFilters)
   })
 
   it('useExpenses queryKey carries tenant + company at the suffix (.261)', async () => {
@@ -427,7 +429,8 @@ describe('cross-tenant isolation', () => {
   it('expensesInvalidationPredicate rejects tenant-B expenses cache entry', async () => {
     setTenant('tenant-A', 'company-1')
     const client = createTestQueryClient()
-    const tenantBKey = ['expenses', 'list', undefined, 'tenant-B', 'company-1']
+    // Promoted L3 locationScopedKey lane: cross-tenant decoys mirror production location-scoped keys.
+    const tenantBKey = ['expenses', 'list', { location_ids: [] }, { locScope: 'all' }, 'tenant-B', 'company-1']
     client.setQueryData(tenantBKey, [{ id: 'e-tenant-b' }])
 
     const pred = expensesInvalidationPredicate('tenant-A', 'company-1')
@@ -445,7 +448,7 @@ describe('cross-tenant isolation', () => {
     // response — NOT the seeded tenant-B payload.
     const client = createTestQueryClient()
 
-    const tenantBKey = ['expenses', 'list', undefined, 'tenant-B', 'company-1']
+    const tenantBKey = ['expenses', 'list', { location_ids: [] }, { locScope: 'all' }, 'tenant-B', 'company-1']
     client.setQueryData(tenantBKey, [{ id: 'leaked-tenant-b-expense' }])
     const tenantBCatKey = ['expense-categories', 'list', undefined, 'tenant-B', 'company-1']
     client.setQueryData(tenantBCatKey, [{ id: 'leaked-tenant-b-category' }])
@@ -460,7 +463,8 @@ describe('cross-tenant isolation', () => {
       expect(cat.current.isSuccess).toBe(true)
     })
 
-    const tenantAExpensesKey = ['expenses', 'list', undefined, 'tenant-A', 'company-1']
+    // Promoted L3 locationScopedKey lane: expense lists isolate location-scoped tenant slots.
+    const tenantAExpensesKey = ['expenses', 'list', { location_ids: [] }, { locScope: 'all' }, 'tenant-A', 'company-1']
     const tAExp = client.getQueryCache().find({ queryKey: tenantAExpensesKey, exact: true })
     expect(tAExp?.state.data).toEqual([])
     const tAExpData = (tAExp?.state.data ?? []) as Array<{ id: string }>

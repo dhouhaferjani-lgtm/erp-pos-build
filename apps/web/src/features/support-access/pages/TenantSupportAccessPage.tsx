@@ -4,6 +4,7 @@ import { Headphones } from 'lucide-react'
 import { QueryError } from '@/components/QueryError'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
+import { useProductConfig } from '@/contexts/ProductConfigContext'
 import { usePermissions } from '@/hooks/usePermissions'
 import { semanticColorTokens as tokens } from '@/lib/designTokens'
 import { IncomingRequests } from '../components/IncomingRequests'
@@ -13,6 +14,9 @@ import { useTenantSupportAccess } from '../hooks/useTenantSupportAccess'
 
 export function TenantSupportAccessPage() {
   const { t } = useTranslation('support-access')
+  // OQ-1 (OWNER-DECISIONS:9): the subtitle names the product, so the name comes
+  // from PRODUCT_INFO via config rather than being baked into the copy.
+  const { productName } = useProductConfig()
   const { hasPermission } = usePermissions()
   const [page, setPage] = useState(1)
   const [perPage, setPerPage] = useState(25)
@@ -26,7 +30,7 @@ export function TenantSupportAccessPage() {
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <PageHeader
         title={t('title')}
-        subtitle={t('subtitle')}
+        subtitle={t('subtitle', { appName: productName })}
         breadcrumb={<div className={`inline-flex h-11 w-11 items-center justify-center rounded-xl ${tokens.intent.primary.bgSoft}`}><Headphones className={`h-5 w-5 ${tokens.intent.primary.textStrong}`} /></div>}
         className="mb-0"
       />

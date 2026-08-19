@@ -1,14 +1,14 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ShieldX } from 'lucide-react'
-import { usePermissions, type Permission } from '../../../hooks/usePermissions'
+import { usePermissions, type ModuleKey, type Permission } from '../../../hooks/usePermissions'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 interface RequirePermissionProps {
   permission?: Permission
   permissions?: Permission[]
   requireAll?: boolean
-  moduleKey?: string
+  moduleKey?: ModuleKey
   children: React.ReactNode
   fallback?: React.ReactNode
 }

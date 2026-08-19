@@ -100,8 +100,6 @@ const OwnerDashboardPage = lazy(() => import('../features/owner-dashboard').then
 // Hub pages
 const InventoryHubPage = lazy(() => import('../features/inventory/pages/InventoryHubPage').then((m) => ({ default: m.InventoryHubPage })))
 const PosHubPage = lazy(() => import('../features/pos/pages/PosHubPage').then((m) => ({ default: m.PosHubPage })))
-const MarketingHubPage = lazy(() => import('../features/marketing').then((m) => ({ default: m.MarketingHubPage })))
-const FinanceHubPage = lazy(() => import('../features/finance/pages/FinanceHubPage').then((m) => ({ default: m.FinanceHubPage })))
 const CashMovementsReportPage = lazy(() => import('../features/finance/pages/CashMovementsReportPage').then((m) => ({ default: m.CashMovementsReportPage })))
 const LaneSeparationReportPage = lazy(() => import('../features/finance/pages/LaneSeparationReportPage').then((m) => ({ default: m.LaneSeparationReportPage })))
 
@@ -286,7 +284,6 @@ const CrmContactDetailPage = lazy(() => import('../features/crm/pages/ContactDet
 // POS module
 const POSTerminalsPage = lazy(() => import('../pages/POS/Terminals').then((m) => ({ default: m.TerminalsPage })))
 const POSTransactionsPage = lazy(() => import('../pages/POS/POSTransactions').then((m) => ({ default: m.POSTransactions })))
-const POSShiftsPage = lazy(() => import('../pages/POS/POSShiftsDashboard').then((m) => ({ default: m.POSShiftsDashboard })))
 const ShiftHistoryPage = lazy(() => import('../features/pos/pages/ShiftHistoryPage/ShiftHistoryPage').then((m) => ({ default: m.ShiftHistoryPage })))
 const ZReportListPage = lazy(() => import('../features/pos/pages/ZReportListPage/ZReportListPage').then((m) => ({ default: m.ZReportListPage })))
 const AnalyticsDashboardPage = lazy(() => import('../features/pos/pages/AnalyticsDashboardPage').then((m) => ({ default: m.AnalyticsDashboardPage })))
@@ -1456,16 +1453,19 @@ export function AppRoutes() {
           />
         </Route>
 
-        {/* Parts Catalog */}
+        {/* Parts Catalog — UI-01/UI-43: the `moduleKey="parts_catalog"`
+            wrappers were dead (no such MODULE_PERMISSIONS key, no such
+            backend permission), so they gated on nothing. ModuleGuard
+            module="PlatformIntegration" is and remains the real gate; under
+            the fail-closed contract the dead key would have locked everyone
+            out instead. */}
         <Route
           path="parts-catalog"
           element={
             <ModuleGuard module="PlatformIntegration">
-              <RequirePermission moduleKey="parts_catalog">
-                <SuspenseWrapper>
-                  <PartsCatalogPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <SuspenseWrapper>
+                <PartsCatalogPage />
+              </SuspenseWrapper>
             </ModuleGuard>
           }
         />
@@ -1473,11 +1473,9 @@ export function AppRoutes() {
           path="parts-catalog/:articleId"
           element={
             <ModuleGuard module="PlatformIntegration">
-              <RequirePermission moduleKey="parts_catalog">
-                <SuspenseWrapper>
-                  <ArticleDetailPageCatalog />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <SuspenseWrapper>
+                <ArticleDetailPageCatalog />
+              </SuspenseWrapper>
             </ModuleGuard>
           }
         />
@@ -2010,25 +2008,8 @@ export function AppRoutes() {
           }
         />
 
-        {/* Marketing Hub */}
-        <Route
-          path="marketing"
-          element={
-            <SuspenseWrapper>
-              <MarketingHubPage />
-            </SuspenseWrapper>
-          }
-        />
-
         {/* Finance Module */}
         <Route path="finance">
-          <Route index element={
-            <RequirePermission moduleKey="finance">
-              <SuspenseWrapper>
-                <FinanceHubPage />
-              </SuspenseWrapper>
-            </RequirePermission>
-          } />
           <Route
             path="overview"
             element={
@@ -2352,16 +2333,6 @@ export function AppRoutes() {
               <RequirePermission moduleKey="settings">
                 <SuspenseWrapper>
                   <TaxSettingsPage />
-                </SuspenseWrapper>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="chart-of-accounts"
-            element={
-              <RequirePermission permission="accounts.view">
-                <SuspenseWrapper>
-                  <ChartOfAccountsPage />
                 </SuspenseWrapper>
               </RequirePermission>
             }
@@ -2811,7 +2782,11 @@ export function AppRoutes() {
           <Route
             path="companies"
             element={
-              <RequirePermission moduleKey="partners">
+              /* UI-02: `partners` was never a MODULE_PERMISSIONS key, so this
+                 gated on nothing; `partners.view` is the real permission. The
+                 page itself is a pure redirect to /sales/customers — route
+                 dedup is UI-35 (Wave 4), not this task. */
+              <RequirePermission permission="partners.view">
                 <SuspenseWrapper>
                   <CrmCompanyListPage />
                 </SuspenseWrapper>
@@ -3239,18 +3214,6 @@ export function AppRoutes() {
             <RequirePermission permission="pos.operate_terminal">
               <SuspenseWrapper>
                 <POSTransactionsPage />
-              </SuspenseWrapper>
-            </RequirePermission>
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/pos/shifts"
-        element={
-          <RequireAuth>
-            <RequirePermission permission="pos.manage_shifts">
-              <SuspenseWrapper>
-                <POSShiftsPage />
               </SuspenseWrapper>
             </RequirePermission>
           </RequireAuth>

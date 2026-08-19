@@ -56,10 +56,27 @@ const BENIGN_BUTTON_TOKEN_FAMILIES = [
 // ESM `from 'react-hook-form'` and CJS `require('react-hook-form')` forms.
 const REACT_HOOK_FORM_IMPORT_RE = /(?:\bfrom|\brequire\(\s*)\s*['"]react-hook-form['"]/
 
+// C6 detects local status vocabularies that should route through the
+// `StatusBadge` atom / `statusTone` helper instead of being re-declared per
+// feature.
+//
+// UI-40 (Wave 0 T7): the `Tone` family was absent from every alternation, so
+// this detector reported **0** while the live `Record<…, StatusTone>` maps went
+// entirely uncounted (`00 §2:128`, `02:22` F-8). Two gaps had to close:
+//   1. the name-suffix rules never admitted `Tone`/`Tones`; and
+//   2. the real population is identified by the map's VALUE TYPE, not its
+//      identifier — `directionTone`, `matchTone`, `invoiceTone` and
+//      `matchPreviewTone` are all live examples carrying no `status`/`state`
+//      token in the name, so a suffix-only fix would still have missed most of
+//      what F-8 counted.
+// The last alternation therefore keys on `Record<…, StatusTone>` directly. C6
+// remains feature/page-scoped via `isFeatureOrPageFile`, so the `StatusBadge`
+// atom that defines the tone vocabulary is not self-reported.
 const STATUS_RE = [
-  /(status|state)\w*(Colors?|Classes?|Maps?|Styles?)\s*:\s*Record</gi,
+  /(status|state)\w*(Colors?|Classes?|Maps?|Styles?|Tones?)\s*:\s*Record</gi,
   /switch\s*\(\s*\w*[Ss]tatus\w*\s*\)/g,
-  /const\s+\w*(status|state)\w*(Colors?|Classes?|Maps?|Styles?|Config|Badge\w*)\s*[:=]/gi,
+  /const\s+\w*(status|state)\w*(Colors?|Classes?|Maps?|Styles?|Config|Badge\w*|Tones?)\s*[:=]/gi,
+  /\bRecord\s*<[^<>]*,\s*StatusTone\s*>/g,
 ]
 
 /**

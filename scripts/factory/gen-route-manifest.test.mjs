@@ -95,6 +95,32 @@ test('extractRoutes resolves the component through a conditional element', () =>
   }])
 })
 
+test('extractRoutes looks through KeyedByRouteId to the routed page', () => {
+  const fixture = `
+    <Routes>
+      <Route path="/invoices/:id" element={
+        <KeyedByRouteId><InvoiceDetailPage /></KeyedByRouteId>
+      } />
+    </Routes>`
+  const routes = extractRoutes(fixture, 'fixture.tsx')
+  assert.deepEqual(routes, [{
+    path: '/invoices/:id', component: 'InvoiceDetailPage', module_gate: null, permission: null,
+  }])
+})
+
+test('extractRoutes keeps an unknown local wrapper as the routed component', () => {
+  const fixture = `
+    <Routes>
+      <Route path="/wrapped" element={
+        <UnknownLocalWrapper><InnerPage /></UnknownLocalWrapper>
+      } />
+    </Routes>`
+  const routes = extractRoutes(fixture, 'fixture.tsx')
+  assert.deepEqual(routes, [{
+    path: '/wrapped', component: 'UnknownLocalWrapper', module_gate: null, permission: null,
+  }])
+})
+
 test('extractRoutes inherits parent element guards into children, nearest wins', () => {
   const fixture = `
     <Routes>

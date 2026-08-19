@@ -34,6 +34,12 @@ vi.mock('../../lib/api', () => ({
   getErrorMessage: () => 'request failed',
 }))
 
+// Promoted repository bank-validation lane (Phase 2.0.0): modal tests supply company config.
+vi.mock('../../contexts/CompanyConfigContext', () => ({
+  useCompanyConfig: () => ({ config: { country_code: 'TN' } }),
+  useCompanyConfigOptional: () => ({ config: { country_code: 'TN' } }),
+}))
+
 const createTestQueryClient = () =>
   new QueryClient({
     defaultOptions: {

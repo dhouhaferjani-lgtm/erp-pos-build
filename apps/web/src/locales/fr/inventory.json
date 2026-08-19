@@ -211,7 +211,6 @@
     "messages": {
       "deleteProduct": "Supprimer le produit",
       "confirmDeleteProduct": "Êtes-vous sûr de vouloir supprimer \"{{name}}\" ? Cette action est irréversible.",
-      "stockComingSoon": "Informations sur le stock bientôt disponibles",
       "viewAllStock": "Voir tous les niveaux de stock"
     },
     "productInformation": "Informations produit",
@@ -609,7 +608,6 @@
     "new": "Nouveau comptage",
     "newCount": "Nouveau comptage",
     "count": "Comptage",
-    "detailsComingSoon": "Cartes de comptage détaillées et suivi de progression bientôt disponibles",
     "fullImplementationInProgress": "Réconciliation complète, rapports et flux de travail complet en cours de développement",
     "viewAll": "Voir tout",
     "overdue": "EN RETARD",
@@ -706,8 +704,6 @@
       "selectionDescriptionZone": "Choisissez un emplacement, puis les nœuds de sa hiérarchie de rangement",
       "productSelectionHelper": "Recherchez et sélectionnez des produits par nom, référence ou code-barres",
       "locationSelectionHelper": "Recherchez et sélectionnez les emplacements à inclure dans le comptage",
-      "categorySelectionComingSoon": "Sélection de catégories bientôt disponible",
-      "categorySelectionComingSoonHint": "Les catégories de produits ne sont pas encore implémentées. Utilisez l'inventaire complet ou le périmètre produit à la place.",
       "zoneLocationLabel": "Emplacement",
       "zoneLocationHelper": "Les nœuds de rangement appartiennent à un seul emplacement — choisissez d'abord l'emplacement à compter",
       "zoneSelectLabel": "Nœuds / Zones",

@@ -43,6 +43,12 @@ vi.mock('@/hooks/useCurrency', () => ({
   getLocale: () => 'en-US',
 }))
 
+// Promoted repository bank-validation lane (Phase 2.0.0): modal tests supply company config.
+vi.mock('@/contexts/CompanyConfigContext', () => ({
+  useCompanyConfig: () => ({ config: { country_code: 'TN' } }),
+  useCompanyConfigOptional: () => ({ config: { country_code: 'TN' } }),
+}))
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: unknown) => typeof fallback === 'string' ? fallback : key,

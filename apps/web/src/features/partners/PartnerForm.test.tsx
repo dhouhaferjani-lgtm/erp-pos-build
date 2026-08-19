@@ -326,8 +326,9 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
       ['/purchases/suppliers/partner-1/edit'],
       '/purchases/suppliers/:id/edit',
     )
+    // Promoted partner-bank-accounts lane (Phase 3.0.0): wait for edit hydration before appending rows.
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /add bank account/i })).toBeInTheDocument()
+      expect(screen.getByLabelText(/^Name/)).toHaveValue('Existing Partner')
     })
     fireEvent.click(screen.getByRole('button', { name: /add bank account/i }))
 

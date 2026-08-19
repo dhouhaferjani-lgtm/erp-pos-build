@@ -221,73 +221,9 @@
     }
   },
   "hub": {
-    "title": "Finance",
-    "description": "Gérer les paiements, la comptabilité et les rapports financiers",
-    "sections": {
-      "bankingAndPayments": "Banque & Paiements",
-      "accounting": "Comptabilité",
-      "reports": "Rapports"
-    },
     "cards": {
-      "payments": {
-        "title": "Paiements",
-        "description": "Suivre les paiements entrants et sortants"
-      },
-      "repositories": {
-        "title": "Dépôts",
-        "description": "Gérer les caisses et comptes bancaires"
-      },
-      "instruments": {
-        "title": "Effets de paiement",
-        "description": "Suivre les chèques, traites et effets de paiement"
-      },
-      "bankReconciliation": {
-        "title": "Rapprochement bancaire",
-        "description": "Rapprocher les relevés bancaires avec la comptabilité"
-      },
-      "expenses": {
-        "title": "Dépenses",
-        "description": "Enregistrer et catégoriser les dépenses professionnelles"
-      },
-      "withholdingCertificates": {
-        "title": "Certificats de retenue",
-        "description": "Gérer les certificats de retenue à la source"
-      },
       "treasuryOverview": {
-        "title": "Trésorerie",
-        "description": "Suivre la position de trésorerie et les mouvements à venir"
-      },
-      "chartOfAccounts": {
-        "title": "Plan comptable",
-        "description": "Voir et gérer la structure des comptes"
-      },
-      "generalLedger": {
-        "title": "Grand livre",
-        "description": "Parcourir toutes les transactions comptables"
-      },
-      "journalEntries": {
-        "title": "Écritures comptables",
-        "description": "Créer et vérifier les écritures manuelles"
-      },
-      "trialBalance": {
-        "title": "Balance de vérification",
-        "description": "Vérifier l'équilibre des débits et crédits"
-      },
-      "profitLoss": {
-        "title": "Compte de résultat",
-        "description": "Revenus et dépenses sur une période"
-      },
-      "balanceSheet": {
-        "title": "Bilan",
-        "description": "Actifs, passifs et capitaux propres"
-      },
-      "agedReceivables": {
-        "title": "Balance âgée clients",
-        "description": "Factures clients impayées par ancienneté"
-      },
-      "agedPayables": {
-        "title": "Balance âgée fournisseurs",
-        "description": "Factures fournisseurs impayées par ancienneté"
+        "title": "Trésorerie"
       }
     }
   },

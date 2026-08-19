@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { screen } from '@testing-library/react'
 import { renderWithProviders } from '@/test/renderWithProviders'
+import { seedAuth, resetAuth } from '@/test/seedAuth'
 import {
   defaultCompanyConfig,
   mechanicCompanyConfig,
@@ -14,13 +15,30 @@ vi.mock('../../../../lib/api', () => ({
   apiGet: vi.fn(),
 }))
 
-// Mock usePermissions hook
+// Mock usePermissions hook.
+//
+// T4/T15 added role-level gating tests that must exercise the REAL
+// `canAccessModule` (fail-closed contract + the MODULE_PERMISSIONS lookup)
+// driven by the seeded auth store. `useRealModuleAccess` flips the mocked hook
+// over to the actual implementation for those blocks only; every pre-existing
+// test keeps the stubbed `mockCanAccessModule` and is untouched.
+let useRealModuleAccess = false
 const mockCanAccessModule = vi.fn()
-vi.mock('../../../../hooks/usePermissions', () => ({
-  usePermissions: () => ({
-    canAccessModule: mockCanAccessModule,
-  }),
-}))
+vi.mock('../../../../hooks/usePermissions', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../../hooks/usePermissions')>()
+
+  return {
+    ...actual,
+    usePermissions: () => {
+      const real = actual.usePermissions()
+
+      return {
+        ...real,
+        canAccessModule: useRealModuleAccess ? real.canAccessModule : mockCanAccessModule,
+      }
+    },
+  }
+})
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -732,6 +750,81 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       renderSidebar(mechanicFullConfig)
 
       expect(screen.queryByRole('button', { name: /navigation\.automotive/i })).not.toBeInTheDocument()
+
+  /**
+   * T4 (UI-01): role-level gating through the REAL `canAccessModule`.
+   *
+   * `goods-receipt.create-standalone` was never a MODULE_PERMISSIONS key, so
+   * the old fail-open lookup showed the "newGoodsReceipt" entry to every role
+   * that could see the Purchases group. It is now a real, self-mapped key
+   * granted to admin/manager only — a user-visible narrowing (brief F-3).
+   */
+  describe('Role gating via the real canAccessModule (T4)', () => {
+    beforeEach(() => {
+      useRealModuleAccess = true
+    })
+
+    afterEach(() => {
+      useRealModuleAccess = false
+      resetAuth()
+    })
+
+    it('hides newGoodsReceipt from a purchases role that lacks goods-receipt.create-standalone', async () => {
+      seedAuth({ roles: ['purchases'] })
+      renderSidebar(mechanicFullConfig)
+
+      // Positive control: the sibling with no permission of its own proves the
+      // Purchases group itself rendered and is expanded.
+      expect(await screen.findByRole('link', { name: /navigation\.goodsReceipts/i })).toHaveAttribute(
+        'href',
+        '/purchases/receipts',
+      )
+      expect(
+        screen.queryByRole('link', { name: /navigation\.newGoodsReceipt/i }),
+      ).not.toBeInTheDocument()
+    })
+
+    it('shows newGoodsReceipt to a manager who holds the permission', async () => {
+      seedAuth({ roles: ['manager'] })
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.newGoodsReceipt/i })).toHaveAttribute(
+        'href',
+        '/purchases/receipts/new',
+      )
+    })
+
+    /**
+     * T15 (UI-07): the /expenses nav item was gated on the `treasury` module
+     * key (treasury.view = accountant/admin/manager) while the route itself
+     * admits everyone holding `expenses.view` — cashier, operator and viewer
+     * could reach /expenses only by typing the URL. The gate is now
+     * `expenses`, matching its `expenseAnalytics` sibling.
+     *
+     * Ordering note: T4 (fail-closed union) landed first on this branch, so
+     * these assertions run under the strict contract. Both orders leave them
+     * true — `treasury` and `expenses` are both long-standing valid keys, so
+     * neither reading of the gate depends on the fail-open behaviour.
+     */
+    it('shows the expenses nav item to a cashier who holds expenses.view but not treasury.view', async () => {
+      seedAuth({ roles: ['cashier'] })
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.expenses$/i })).toHaveAttribute(
+        'href',
+        '/expenses',
+      )
+    })
+
+    it('still hides the expenses nav item from a role holding neither expenses.view nor treasury.view', async () => {
+      seedAuth({ roles: ['purchases'] })
+      renderSidebar(mechanicFullConfig)
+
+      // Positive control: this role does render navigation (its Purchases
+      // entries are visible), so the absence below is the item's own gate and
+      // not an empty sidebar.
+      expect(await screen.findByRole('link', { name: /navigation\.goodsReceipts/i })).toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.expenses$/i })).not.toBeInTheDocument()
     })
   })
 })

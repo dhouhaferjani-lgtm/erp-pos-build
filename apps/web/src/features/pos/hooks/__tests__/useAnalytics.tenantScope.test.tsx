@@ -117,15 +117,16 @@ describe('POS analytics tenant-scoped query keys', () => {
 
     renderWithProviders(<AnalyticsProbe />, { queryClient })
 
+    // Promoted L3 locationScopedKey lane: analytics keys carry the selected location scope.
     expect(posAnalyticsKeysFromCache(queryClient)).toEqual(expect.arrayContaining([
-      ['pos', 'analytics', 'summary', filters, 'tenant-A', 'company-1'],
-      ['pos', 'analytics', 'sales-by-category', filters, 'tenant-A', 'company-1'],
-      ['pos', 'analytics', 'sales-by-product', filters, 'tenant-A', 'company-1'],
-      ['pos', 'analytics', 'sales-by-period', filters, 'week', 'tenant-A', 'company-1'],
-      ['pos', 'analytics', 'cashiers', filters, 'tenant-A', 'company-1'],
-      ['pos', 'analytics', 'discounts', filters, 'tenant-A', 'company-1'],
-      ['pos', 'analytics', 'customers', filters, 'tenant-A', 'company-1'],
-      ['pos', 'analytics', 'fnb', filters, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'summary', filters, { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'sales-by-category', filters, { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'sales-by-product', filters, { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'sales-by-period', filters, 'week', { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'cashiers', filters, { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'discounts', filters, { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'customers', filters, { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'analytics', 'fnb', filters, { locScope: 'all' }, 'tenant-A', 'company-1'],
     ]))
   })
 

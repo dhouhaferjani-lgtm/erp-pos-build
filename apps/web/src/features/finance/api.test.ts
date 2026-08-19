@@ -28,6 +28,7 @@ describe('finance api', () => {
 
     await expect(getUpcomingPayments(45)).resolves.toBe(response)
 
-    expect(mockApiGet).toHaveBeenCalledWith('/reports/upcoming-payments?days=45')
+    // Promoted L3 locationScopedKey lane: location-aware reports request server grouping.
+    expect(mockApiGet).toHaveBeenCalledWith('/reports/upcoming-payments?days=45&group_by=location')
   })
 })

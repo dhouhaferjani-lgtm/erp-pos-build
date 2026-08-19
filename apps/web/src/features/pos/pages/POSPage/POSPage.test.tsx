@@ -109,8 +109,8 @@ describe('POSPage', () => {
     const incrementButtons = getAllByRole('button', { name: /increment/i })
     fireEvent.click(incrementButtons[0])
 
-    // Should show quantity 2
-    expect(getByText('2')).toBeInTheDocument()
+    // Promoted UoM unit-precision lane (Phase 1.2.18): missing metadata uses four-decimal storage precision.
+    expect(getByText('2.0000')).toBeInTheDocument()
   })
 
   it('removes item from cart when remove button clicked', async () => {

@@ -11,7 +11,7 @@
  * - Atoms: POSButton, MoneyInput, StockBadge
  * - Molecules: ProductCard, CartLineItem
  * - Organisms: ProductGrid, TransactionCart, Calculator
- * - Pages: POSPage, ShiftDashboardPage
+ * - Pages: POSPage
  */
 
 // Atoms
@@ -38,7 +38,6 @@ export {
 
 // Pages
 export { POSPage, type POSPageProps } from './pages/POSPage'
-export { ShiftDashboardPage, type ShiftDashboardPageProps, type Shift, type Terminal } from './pages/ShiftDashboardPage'
 
 // Re-export common types used across components
 export type { CartItem as POSCartItem } from './molecules/CartLineItem'

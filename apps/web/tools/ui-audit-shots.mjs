@@ -37,7 +37,6 @@ const ROUTES = [
   ['21-settings', '/settings'],
   ['22-treasury', '/treasury'],
   ['23-expenses', '/expenses'],
-  ['24-finance', '/finance'],
   ['25-vat-reporting', '/vat-reporting'],
   ['26-loyalty', '/loyalty'],
   ['27-promotions', '/promotions'],

@@ -17,6 +17,11 @@ vi.mock('@/stores/companyStore', () => ({
     selector({ currentCompanyId: 'company-1' }),
 }))
 
+// Promoted L3 locationScopedKey lane: report-hook tests pin the all-locations view scope.
+vi.mock('@/features/locations/hooks/useViewScope', () => ({
+  useViewScope: () => ({ scope: 'all', effectiveLocationIds: [], isAll: true, setScope: vi.fn() }),
+}))
+
 vi.mock('@/lib/tenantScopedKey', () => ({
   tenantScopedKey: (key: readonly unknown[]) => ['tenant-1', ...key],
 }))

@@ -204,8 +204,9 @@ describe('finance hooks tenant scope', () => {
       expect(result.current.trialBalance.isSuccess).toBe(true)
     })
 
-    expect(queryClient.getQueryData(['aged-payables', agedFilters, 'tenant-A', 'company-1'])).toBeDefined()
-    expect(queryClient.getQueryData(['aged-receivables', agedFilters, 'tenant-A', 'company-1'])).toBeDefined()
+    // Promoted L3 locationScopedKey lane: aged reports key the effective location filter and scope.
+    expect(queryClient.getQueryData(['aged-payables', { ...agedFilters, location_ids: [] }, { locScope: 'all' }, 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData(['aged-receivables', { ...agedFilters, location_ids: [] }, { locScope: 'all' }, 'tenant-A', 'company-1'])).toBeDefined()
     expect(queryClient.getQueryData(['balance-sheet', { as_of_date: '2026-05-11' }, 'tenant-A', 'company-1'])).toBeDefined()
     expect(queryClient.getQueryData(['finance-summary', 'tenant-A', 'company-1'])).toBeDefined()
     expect(queryClient.getQueryData(['profit-loss', dateFilters, 'tenant-A', 'company-1'])).toBeDefined()

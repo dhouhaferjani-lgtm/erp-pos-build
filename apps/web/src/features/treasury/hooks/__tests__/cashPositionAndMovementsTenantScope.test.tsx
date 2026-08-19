@@ -94,16 +94,22 @@ describe('useCashPosition tenant scope', () => {
 
     await waitFor(() => { expect(result.current.isSuccess).toBe(true) })
 
-    expect(queryClient.getQueryData(['treasury-cash-position', 'tenant-A', 'company-1'])).toEqual(
+    // Promoted L3 locationScopedKey lane: cash position keys and requests carry location scope.
+    expect(queryClient.getQueryData(['treasury-cash-position', { locScope: 'all' }, 'tenant-A', 'company-1'])).toEqual(
       cashPositionFixture.data,
     )
-    expect(mockApiGet).toHaveBeenCalledWith('/treasury/cash-position')
+    expect(mockApiGet).toHaveBeenCalledWith('/treasury/cash-position', {
+      location_ids: [],
+      group_by: 'location',
+    })
 
     unmount()
+    // Promoted L3 locationScopedKey lane: compare against all scope-hydration calls before the tenant gate.
+    const callsBeforeGatedRender = mockApiGet.mock.calls.length
     resetTenant()
     const gatedClient = createClient()
     renderHook(() => useCashPosition(), { wrapper: wrapper(gatedClient) })
-    expect(mockApiGet).toHaveBeenCalledTimes(1)
+    expect(mockApiGet).toHaveBeenCalledTimes(callsBeforeGatedRender)
   })
 
   it('adds the flows window to the query key and request without changing the legacy key', async () => {
@@ -117,10 +123,15 @@ describe('useCashPosition tenant scope', () => {
     expect(queryClient.getQueryData([
       'treasury-cash-position',
       7,
+      { locScope: 'all' },
       'tenant-A',
       'company-1',
     ])).toEqual(cashPositionFixture.data)
-    expect(mockApiGet).toHaveBeenCalledWith('/treasury/cash-position', { flows_window: 7 })
+    expect(mockApiGet).toHaveBeenCalledWith('/treasury/cash-position', {
+      flows_window: 7,
+      location_ids: [],
+      group_by: 'location',
+    })
     unmount()
 
     const legacyClient = createClient()
@@ -133,6 +144,7 @@ describe('useCashPosition tenant scope', () => {
 
     expect(legacyClient.getQueryState([
       'treasury-cash-position',
+      { locScope: 'all' },
       'tenant-A',
       'company-1',
     ])).toBeDefined()

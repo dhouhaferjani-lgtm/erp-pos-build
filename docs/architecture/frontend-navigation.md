@@ -1,631 +1,429 @@
-# Frontend Dynamic Navigation - Multi-App Vertical System
+# Frontend Navigation — Sidebar Gating and Route Reconciliation
 
-**Document Version:** 1.0
-**Last Updated:** 2026-01-02
-**Milestone:** 8 (Dynamic Navigation)
+**Document Version:** 2.0
+**Last Updated:** 2026-08-19
+**Scope:** how `Sidebar.tsx` decides what a user sees, and how that set reconciles with the generated route manifest.
+
+> **What changed in 2.0 — read this before trusting anything you remember from 1.0.**
+> Version 1.0 (2026-01-02) described the sidebar as filtering through a
+> `MODULE_NAME_MAP` lookup table that mapped lowercase sidebar keys onto
+> PascalCase backend module names, with everything absent from the map treated
+> as an always-visible "core module". **That mechanism no longer exists** —
+> `MODULE_NAME_MAP` is not present anywhere in `apps/web/src`. Gating is now
+> declared per nav item and is **fail-closed on both axes**. Every 1.0 section
+> that rested on the map (the module-mapping how-to, the troubleshooting
+> recipes, the worked scenarios) has been rewritten against the code.
+> Claims from 1.0 that could not be verified against source were **deleted
+> rather than carried forward**: the microbenchmark "Performance Metrics", the
+> 2026-01-02 "Quality Metrics" scorecard, the fabricated 16-test expected
+> output, and the per-vertical "Visible Sidebar Items" checklists (which listed
+> a `Finance` group and `Vehicles`/`Services` top-level entries that do not
+> match the current navigation tree).
 
 ---
 
 ## Overview
 
-The frontend navigation system dynamically filters sidebar menu items based on the company's business vertical configuration. This ensures users only see modules relevant to their business type, providing a clean, focused user experience.
+The sidebar shows a user only the nav items their tenant's enabled modules
+**and** their role both allow. Two independent gates are applied to every item.
 
-**Key Features:**
-- **Vertical-Based Filtering** - Shows/hides modules based on business vertical (mechanic, pharmacy, restaurant, etc.)
-- **Permission-Based Filtering** - Respects user permissions in addition to vertical configuration
-- **Combined Filtering** - Both vertical AND permissions must allow access for a module to be visible
-- **Automatic Updates** - Navigation updates when vertical configuration changes
+**The sidebar is not a security boundary.** It decides *visibility*. Access is
+*supposed* to be enforced on the route (`ModuleGuard` + `RequirePermission`) and
+again on the API (`module:<Name>` middleware + permission checks).
+
+**That is the rule, and it is not yet universal — read it as a target, not as a
+description of the current tree.** Measured against the generated manifest this
+document reconciles below (`scripts/factory/manifests/routes-web.yaml`,
+265 records): **34 of 265 web routes carry neither a `module_gate` nor a
+`permission`**, and **138 of 265 carry no `module_gate` at all**. A nav item
+that is correctly hidden but whose route is unguarded is still a bug — see
+[vertical-module-gating.md](vertical-module-gating.md) for the both-layers rule.
 
 ---
 
 ## Architecture
 
-### Filtering Flow
-
-```
-┌──────────────────────────────────────────────────────────────┐
-│                    Navigation Array                          │
-│  [dashboard, sales, vehicles, services, treasury, ...]       │
-└──────────────────────┬───────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────┐
-│              FILTER #1: Vertical Configuration               │
-│  Is this module enabled for the current vertical?           │
-│  - Check MODULE_NAME_MAP for vertical-specific modules      │
-│  - Core modules (not in map) → always pass                  │
-└──────────────────────┬───────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────┐
-│              FILTER #2: User Permissions                     │
-│  Does the user have permission to access this module?        │
-│  - Uses canAccessModule() from usePermissions hook          │
-└──────────────────────┬───────────────────────────────────────┘
-                       │
-                       ▼
-┌──────────────────────────────────────────────────────────────┐
-│                  Filtered Navigation                         │
-│  Only modules passing BOTH filters are shown                │
-└──────────────────────────────────────────────────────────────┘
-```
-
-### Module Categories
-
-**1. Vertical-Specific Modules** (filtered by vertical):
-- `vehicles` → Backend: `Vehicle` module
-  - Visible for: mechanic, body_shop, parts_retailer, car_glass, tire_shop
-  - Hidden for: pharmacy, restaurant, coffee_shop, retail, fashion, service_station, parapharmacy
-
-- `services` → Backend: `Workshop` module
-  - Visible for: mechanic, body_shop, car_glass
-  - Hidden for: tire_shop, parts_retailer, pharmacy, restaurant, etc.
-
-**2. Core Modules** (always visible):
-- `dashboard` - Always visible
-- `sales` - Always visible
-- `purchases` - Always visible
-- `inventory` - Always visible
-- `treasury` - Always visible
-- `finance` - Always visible
-- `pricing` - Always visible
-- `reports` - Always visible
-- `settings` - Always visible
-
-**Future vertical-specific modules** (not yet in sidebar):
-- `menu` → Backend: `Menu` module (restaurant, coffee_shop)
-- `tables` → Backend: `Tables` module (restaurant)
-- `batch_expiry` → Backend: `BatchExpiry` module (pharmacy, parapharmacy)
-
----
-
-## Implementation Details
-
-### Module Name Mapping
+### The two-axis gate
 
 **File:** `apps/web/src/components/organisms/Sidebar/Sidebar.tsx`
 
 ```typescript
-const MODULE_NAME_MAP: Record<string, string> = {
-  vehicles: 'Vehicle',    // Sidebar key → Backend module name
-  services: 'Workshop',   // Sidebar key → Backend module name
-  // Core modules (dashboard, sales, etc.) not in map = always visible
-}
-```
-
-**Why the mapping?**
-- **Sidebar uses lowercase, user-friendly keys:** `vehicles`, `services`
-- **Backend uses PascalCase module names:** `Vehicle`, `Workshop`
-- **Unmapped modules are core modules** that should always be visible
-
-### Filtering Logic
-
-```typescript
-const isModuleEnabledForVertical = useCallback(
-  (moduleKey: string): boolean => {
-    const backendModuleName = MODULE_NAME_MAP[moduleKey]
-
-    // If not in the map, it's a core module - always visible
-    if (!backendModuleName) {
-      return true
-    }
-
-    // If in the map, check if the vertical has this module
-    return hasModule(backendModuleName)
-  },
-  [hasModule]
-)
-
-const filteredNavigation = useMemo(() => {
-  return navigation
-    .filter((module) => {
-      const moduleKey = module.module ?? module.key
-
-      // First check: Is this module enabled for the current vertical?
-      if (!isModuleEnabledForVertical(moduleKey)) {
+const isNavItemVisible = useCallback(
+  (module?: BackendModule | BackendModule[], permission?: ModuleKey): boolean => {
+    if (module !== undefined) {
+      const names = Array.isArray(module) ? module : [module]
+      if (!names.some((name) => hasModule(name))) {
         return false
       }
-
-      // Second check: Does the user have permission to access this module?
-      return canAccessModule(moduleKey)
-    })
-    .map((module) => {
-      // Filter children based on permissions...
-    })
-    .filter((module) => {
-      // Remove modules with no visible children...
-    })
-}, [canAccessModule, isModuleEnabledForVertical])
-```
-
-**Filter Order is Critical:**
-1. **Vertical first** - Fast map lookup, eliminates non-applicable modules
-2. **Permissions second** - More expensive check, only runs on remaining modules
-
----
-
-## Vertical-Specific Behavior
-
-### Mechanic Vertical (Automotive)
-
-**Configuration:**
-```json
-{
-  "vertical": "mechanic",
-  "all_enabled_modules": [
-    "Identity",
-    "Tenant",
-    "Catalog",
-    "Vehicle",
-    "Partner",
-    "Workshop",
-    "Sales",
-    "Inventory",
-    "Treasury",
-    "Accounting"
-  ]
-}
-```
-
-**Visible Sidebar Items:**
-- ✅ Dashboard
-- ✅ Sales (Customers, Quotes, Orders, Invoices, Credit Notes)
-- ✅ Purchases (Suppliers, Purchase Orders, Goods Receipts)
-- ✅ Inventory (Products, Categories, Stock, Movements, Delivery Notes, Return Notes)
-- ✅ **Vehicles** ← Vertical-specific
-- ✅ **Services** ← Vertical-specific (Workshop module)
-- ✅ Treasury (Payments, Expenses, Instruments, Methods, Repositories)
-- ✅ Finance (Chart of Accounts, Ledger, Reports)
-- ✅ Pricing (Price Lists)
-- ✅ Reports
-- ✅ Settings
-
----
-
-### Pharmacy Vertical
-
-**Configuration:**
-```json
-{
-  "vertical": "pharmacy",
-  "all_enabled_modules": [
-    "Identity",
-    "Tenant",
-    "Catalog",
-    "Partner",
-    "Sales",
-    "Inventory",
-    "Treasury",
-    "Accounting",
-    "BatchExpiry"
-  ]
-}
-```
-
-**Visible Sidebar Items:**
-- ✅ Dashboard
-- ✅ Sales
-- ✅ Purchases
-- ✅ Inventory
-- ❌ **Vehicles** ← Hidden (not in pharmacy vertical)
-- ❌ **Services** ← Hidden (not in pharmacy vertical)
-- ✅ Treasury
-- ✅ Finance
-- ✅ Pricing
-- ✅ Reports
-- ✅ Settings
-
-**Future:** When `BatchExpiry` sidebar item is added, it will show only for pharmacy/parapharmacy.
-
----
-
-### Restaurant Vertical
-
-**Configuration:**
-```json
-{
-  "vertical": "restaurant",
-  "all_enabled_modules": [
-    "Identity",
-    "Tenant",
-    "Catalog",
-    "Menu",
-    "Partner",
-    "Sales",
-    "Inventory",
-    "Treasury",
-    "Accounting",
-    "Tables",
-    "Appointments"
-  ]
-}
-```
-
-**Visible Sidebar Items:**
-- ✅ Dashboard
-- ✅ Sales
-- ✅ Purchases
-- ✅ Inventory
-- ❌ **Vehicles** ← Hidden (not in restaurant vertical)
-- ❌ **Services** ← Hidden (not in restaurant vertical)
-- ✅ Treasury
-- ✅ Finance
-- ✅ Pricing
-- ✅ Reports
-- ✅ Settings
-
-**Future:** When `Menu` and `Tables` sidebar items are added, they will show only for restaurant/coffee_shop.
-
----
-
-## Combined Filtering: Vertical + Permissions
-
-### Example Scenarios
-
-#### Scenario 1: Module Allowed by Vertical, Permission Granted
-**Vertical:** Mechanic
-**Module:** Vehicle
-**Permission:** `vehicles.view` granted
-**Result:** ✅ **Visible**
-
-```typescript
-isModuleEnabledForVertical('vehicles') // → true (Vehicle module in mechanic vertical)
-canAccessModule('vehicles')            // → true (permission granted)
-// Final: VISIBLE
-```
-
-#### Scenario 2: Module Allowed by Vertical, Permission Denied
-**Vertical:** Mechanic
-**Module:** Vehicle
-**Permission:** `vehicles.view` denied
-**Result:** ❌ **Hidden**
-
-```typescript
-isModuleEnabledForVertical('vehicles') // → true (Vehicle module in mechanic vertical)
-canAccessModule('vehicles')            // → false (permission denied)
-// Final: HIDDEN (permission denial overrides vertical allowance)
-```
-
-#### Scenario 3: Module Denied by Vertical, Permission Granted
-**Vertical:** Pharmacy
-**Module:** Vehicle
-**Permission:** `vehicles.view` granted
-**Result:** ❌ **Hidden**
-
-```typescript
-isModuleEnabledForVertical('vehicles') // → false (NO Vehicle module in pharmacy vertical)
-canAccessModule('vehicles')            // → true (permission granted but doesn't matter)
-// Final: HIDDEN (vertical denial blocks access)
-```
-
-#### Scenario 4: Core Module, Permission Granted
-**Vertical:** Any
-**Module:** Sales
-**Permission:** `sales.view` granted
-**Result:** ✅ **Visible**
-
-```typescript
-isModuleEnabledForVertical('sales')  // → true (core module, not in MODULE_NAME_MAP)
-canAccessModule('sales')             // → true (permission granted)
-// Final: VISIBLE
-```
-
----
-
-## Adding New Vertical-Specific Modules
-
-### Step 1: Add Backend Module to Vertical Config
-
-**File:** `apps/api/config/verticals.php`
-
-```php
-'pharmacy' => [
-    // ...
-    'default_modules' => [
-        'Identity',
-        'Catalog',
-        'Sales',
-        'Inventory',
-        'BatchExpiry',  // ← New vertical-specific module
-    ],
-],
-```
-
-### Step 2: Add Sidebar Navigation Item
-
-**File:** `apps/web/src/components/organisms/Sidebar/Sidebar.tsx`
-
-```typescript
-const navigation: NavModule[] = [
-  // ... existing items
-  {
-    key: 'batch_expiry',      // Lowercase sidebar key
-    href: '/inventory/batch-expiry',
-    icon: Calendar,
+    }
+    if (permission !== undefined && !canAccessModule(permission)) {
+      return false
+    }
+    return true
   },
-]
+  [hasModule, canAccessModule]
+)
 ```
 
-### Step 3: Add Module Mapping
+- **Module axis.** If the item declares `module`, at least ONE of the listed
+  backend modules must be in the tenant's `all_enabled_modules`. There is no
+  fallback to "visible".
+- **Permission axis.** If the item declares `permission`, the user's role must
+  grant that `MODULE_PERMISSIONS` key. `canAccessModule` returns `false` for an
+  unrecognised key — it fails closed, and `ModuleKey` is a typed union so an
+  unknown key is a compile error, not a silent open gate.
+- **Omitting an axis skips only that axis.** An item with no `module` is not
+  vertical-gated; an item with no `permission` is not role-gated at the nav
+  level. Neither omission is a claim about the route, which guards separately.
+
+### Filtering flow
+
+```
+buildNavigation(isAutomotiveVertical)   →  the nav tree for this vertical
+        │
+        ▼
+filter top-level groups     isNavItemVisible(group.module, group.permission)
+        │
+        ▼
+filter each group's children  isNavItemVisible(child.module, child.permission)
+        │
+        ▼
+drop groups whose children all filtered away  (children?.length === 0)
+        │
+        ▼
+split by section            main  |  bottom
+```
+
+The last step matters: a group that survives its own gate but has every child
+gated away is removed, so the sidebar never renders an expandable group that
+opens onto nothing.
+
+### How an item declares its gates
+
+```typescript
+interface NavChild {
+  key: string
+  href: string
+  icon: React.ComponentType<{ className?: string }>
+  labelKey?: string
+  module?: BackendModule | BackendModule[]
+  permission?: ModuleKey
+}
+
+interface NavModule {
+  key: string
+  icon: React.ComponentType<{ className?: string }>
+  href?: string
+  labelKey?: string
+  children?: NavChild[]
+  module?: BackendModule | BackendModule[]
+  permission?: ModuleKey
+  section?: 'main' | 'bottom'
+}
+```
+
+`BackendModule` and `ModuleKey` are both typed unions, so a typo in either a
+module name or a permission key fails `pnpm typecheck` rather than silently
+disabling (or opening) the gate.
+
+---
+
+## Current top-level navigation
+
+Fifteen top-level groups, in render order. `module` = the vertical axis;
+`permission` = the role axis; blank = that axis is not applied at this level
+(children may still declare their own).
+
+| Key | `module` | `permission` | Notes |
+|---|---|---|---|
+| `dashboard` | — | `dashboard` | leaf |
+| `sales` | `Sales` | `sales` | |
+| `purchases` | — | `purchases` | |
+| `catalog` | `Catalog` | `inventory` | |
+| `inventory` | `Inventory` | `inventory` | |
+| `pointOfSale` | — | `pos` | |
+| `ecommerce` | `Ecommerce` | `inventory` | |
+| `customersAndMarketing` | — | — | group gated only by its children |
+| `bankingAndPayments` | `Treasury` | — | children carry the role gates |
+| `accountingAndReports` | `Accounting` | `accounts` | |
+| `automotive` | `Vehicle` \| `Workshop` \| `PlatformIntegration` | — | any-of; the array form |
+| `parapharmacy` | `Parapharmacy` | — | |
+| `reports` | — | `ownerReports` | leaf |
+| `supportAccess` | — | `support-access` | `section: 'bottom'` |
+| `settings` | — | `settings` | `section: 'bottom'` |
+
+Vertical-specific children are declared at child level, not by a lookup table.
+Examples that exist today: `batches` and `expiryWriteOff` under `BatchExpiry`;
+`tables` under `Tables`; `kitchen` under `Menu`; `compositeItems`, `menus` and
+`modifierGroups` under `['Menu', 'CompositeItems']`; `loyaltyPrograms` and
+`loyaltyMembers` under `Loyalty`.
+
+*(Version 1.0 listed `menu`, `tables` and `batch_expiry` as "future
+vertical-specific modules not yet in sidebar". All three are in the sidebar
+now; that claim is deleted.)*
+
+---
+
+## Vertical-adaptive structure and labels
+
+Two things adapt to the company vertical, and neither is the module gate.
+
+**1. Where the Services children are mounted.** `buildNavigation` takes an
+`isAutomotiveVertical` flag, derived from `AUTOMOTIVE_VERTICALS.has(config?.vertical ?? '')`.
+For automotive verticals the Services children (`allServices`,
+`serviceCategories`) sit under the `automotive` group; for every other vertical
+they sit under the catalog/inventory group. The `automotive` group itself is
+then hidden downstream by its own module gate, because none of `Vehicle`,
+`Workshop` or `PlatformIntegration` will be enabled.
+
+**2. The label some items render.** `VERTICAL_NAV_KEYS` maps a nav key to a
+vertical-flavoured label key; when the catalog vertical is not `generic`, that
+item's label resolves through
+`catalog:vertical.<vertical>.<VERTICAL_NAV_KEYS[key]>` instead of the default
+`navigation.<key>`. `getNavLabel` interpolates the map's **value**, not the nav
+key — so `modifierGroups` resolves to `catalog:vertical.<vertical>.modifierGroup`
+(singular), while `compositeItems` maps to itself. It currently covers
+`compositeItems` and `modifierGroups` only. The top-level `catalog` group deliberately does **not**
+adapt — it is the whole what-you-sell group, not the composite-items entry.
+
+Label resolution order, from `getNavLabel`:
+
+1. an explicit `labelKey` on the item, if present;
+2. the vertical-flavoured `catalog:vertical.*` key, if the item is in
+   `VERTICAL_NAV_KEYS` and the catalog vertical is not `generic`;
+3. `navigation.<key>` in the `common` namespace.
+
+---
+
+## Loading and error states
+
+`hasModule` is derived from the company-config query. Before that query
+resolves, and if it errors, the module list is empty, so:
+
+- every item that declares `module` is **hidden** (fail-closed, by design);
+- every item that declares no `module` is unaffected by this axis.
+
+This produces a brief window where module-gated groups are absent and then
+appear. That is the deliberate trade: a fail-closed gate cannot also be
+flicker-free. Do not "fix" it by defaulting `hasModule` to `true`.
+
+`hasModule` also defensively normalises its input: the API returns
+`all_enabled_modules` as an array, but a PHP associative array with
+non-sequential keys can serialize as an object, so the context coerces
+object-shaped payloads via `Object.values` before the membership test. Without
+that, a shape change would throw inside a `useMemo` and white-screen the app.
+
+---
+
+## Adding a vertical-gated nav item
+
+### 1. Enable the module for the vertical (backend)
+
+**File:** `apps/api/config/verticals.php` — the source of truth for which
+modules a vertical gets. See [vertical-module-gating.md](vertical-module-gating.md).
+
+### 2. Declare the nav item with its gates
 
 **File:** `apps/web/src/components/organisms/Sidebar/Sidebar.tsx`
 
 ```typescript
-const MODULE_NAME_MAP: Record<string, string> = {
-  vehicles: 'Vehicle',
-  services: 'Workshop',
-  batch_expiry: 'BatchExpiry',  // ← Add mapping
-}
-```
-
-### Step 4: Add Translation
-
-**File:** `apps/web/src/locales/en/common.json`
-
-```json
 {
-  "navigation": {
-    "batch_expiry": "Batch & Expiry"
-  }
+  key: 'batches',
+  href: '/inventory/batches',
+  icon: Pill,
+  module: 'BatchExpiry',        // vertical axis — any-of if you pass an array
+  permission: 'inventory',      // role axis — omit if the nav level is ungated
 }
 ```
 
-### Step 5: Add Tests
+There is **no third "add it to the map" step**. The gate is the declaration.
+
+### 3. Guard the route as well
+
+**File:** `apps/web/src/routes/index.tsx`
+
+```tsx
+<ModuleGuard module="BatchExpiry">
+  <RequirePermission moduleKey="inventory">
+    <BatchListPage />
+  </RequirePermission>
+</ModuleGuard>
+```
+
+Hiding the sidebar entry is not access control. `ModuleGuard` redirects to
+`/dashboard` (override with `fallback`) when the module is absent.
+
+### 4. Add the label
+
+**File:** `apps/web/src/locales/{en,fr,ar}/common.json`, under
+`navigation.<key>` — unless the item carries an explicit `labelKey`.
+
+### 5. Add tests
 
 **File:** `apps/web/src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx`
 
-```typescript
-describe('Pharmacy Vertical', () => {
-  it('shows Batch Expiry module for pharmacy vertical', async () => {
-    renderSidebar()
-    const batchExpiryLink = await screen.findByRole('link', {
-      name: /batch_expiry/i
-    })
-    expect(batchExpiryLink).toBeInTheDocument()
-  })
-})
+Cover both axes and both directions: visible when the module is enabled and the
+role grants the permission; hidden when the module is absent; hidden when the
+role lacks the permission. A test that only proves the positive case cannot
+detect a fail-open regression.
 
-describe('Mechanic Vertical', () => {
-  it('hides Batch Expiry module for mechanic vertical', async () => {
-    renderSidebar()
-    await screen.findByRole('button', { name: /sales/i })
-    const batchExpiryLink = screen.queryByRole('link', {
-      name: /batch_expiry/i
-    })
-    expect(batchExpiryLink).not.toBeInTheDocument()
-  })
-})
-```
+Note the harness: most of this suite stubs `usePermissions` wholesale, which
+cannot express role-level gating. Tests that need real role behaviour delegate
+to the actual hook behind the suite's `useRealModuleAccess` flag. If you are
+asserting role gating, use that path — the stub will pass regardless.
 
 ---
 
-## Loading States
-
-### During Config Load
-
-When `CompanyConfigContext` is loading:
-- `hasModule()` returns `false` for ALL modules
-- **Vertical-specific modules** (vehicles, services) → hidden
-- **Core modules** (sales, inventory, etc.) → visible (not in MODULE_NAME_MAP)
-
-**User Experience:**
-- Brief flash where vertical-specific modules are hidden
-- Core modules remain visible throughout
-- Acceptable UX since load time is minimal (<100ms typically)
-
-**Alternative (optional improvement):**
-- Cache last-known config in localStorage
-- Show skeleton sidebar during initial load
-
-### During Config Error
-
-When `CompanyConfigContext` fails to load:
-- Same behavior as loading state
-- Vertical-specific modules remain hidden
-- Core modules remain visible
-- User can still access core functionality
-
----
-
-## Testing Strategy
-
-### Test Coverage (16 tests)
-
-**1. Vertical-Specific Visibility (9 tests)**
-- Mechanic: shows Vehicle, shows Services, shows core
-- Pharmacy: hides Vehicle, hides Services, shows core
-- Restaurant: hides Vehicle, shows core
-
-**2. Combined Filtering (2 tests)**
-- Permission denial overrides vertical allowance
-- Both vertical AND permission required for visibility
-
-**3. Module Mapping (2 tests)**
-- "vehicles" → "Vehicle" mapping verified
-- "services" → "Workshop" mapping verified
-
-**4. Always Visible (3 tests)**
-- Dashboard always visible
-- Settings always visible
-- Reports always visible
-
-**5. Loading State (1 test)**
-- Sidebar renders during config loading
-
-### Running Tests
+## Testing
 
 ```bash
-npm test -- src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx
+cd apps/web && pnpm vitest run src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx
 ```
 
-**Expected Output:**
-```
-✓ Sidebar - Vertical-Based Navigation Filtering (16 tests)
-  ✓ Mechanic Vertical > shows Vehicle module
-  ✓ Mechanic Vertical > shows Workshop (Services) module
-  ✓ Mechanic Vertical > shows core modules
-  ✓ Pharmacy Vertical > hides Vehicle module
-  ✓ Pharmacy Vertical > hides Workshop (Services) module
-  ✓ Pharmacy Vertical > shows core modules
-  ✓ Restaurant Vertical > hides Vehicle module
-  ✓ Restaurant Vertical > shows core modules
-  ✓ Permission and Vertical Filtering Combined > hides when permission denied
-  ✓ Permission and Vertical Filtering Combined > shows when both allow
-  ✓ Loading State > renders sidebar while config is loading
-  ✓ Module Key Mapping > maps "vehicles" to "Vehicle"
-  ✓ Module Key Mapping > maps "services" to "Workshop"
-  ✓ Always Visible Modules > always shows Dashboard
-  ✓ Always Visible Modules > always shows Settings
-  ✓ Always Visible Modules > always shows Reports
+The suite currently holds **45** tests across 15 `describe` blocks, including
+`Fail-Closed Module Gating (production hardening)` and
+`Role gating via the real canAccessModule (T4)`.
 
-Test Files  1 passed (1)
-Tests  16 passed (16)
-```
+*(1.0 quoted "16 tests" and pasted a verbatim expected-output block naming
+individual test titles. Both were stale and the pasted block is deleted —
+a hardcoded list of test names in prose is a maintenance trap. Run the command
+for the current list.)*
 
 ---
 
 ## Troubleshooting
 
-### Issue: Vertical-specific module not showing for correct vertical
+### A module-gated item is not showing for a tenant that should have it
 
-**Symptoms:** Vehicle module not showing for mechanic vertical
+1. Confirm the module is actually enabled — inspect `all_enabled_modules` on the
+   company-config response. The name must match **exactly**; the gate is
+   `modules.includes(name)`, case-sensitive.
+2. Confirm the item's `module` value spells the backend module name. It is
+   typed, so a wrong-but-valid module name compiles; a nonexistent one does not.
+3. If the item declares `permission`, confirm the role grants it — the module
+   axis passing is not enough.
+4. If it is a **child**, confirm its parent group also passes. A hidden parent
+   hides the child regardless of the child's own gates.
 
-**Diagnosis Steps:**
-1. Check if module is in tenant's `all_enabled_modules`:
-   ```bash
-   # In browser console
-   const { config } = useCompanyConfig()
-   console.log(config.all_enabled_modules)
-   // Should include 'Vehicle' for mechanic
-   ```
+### An ungated item disappeared
 
-2. Check MODULE_NAME_MAP:
-   ```typescript
-   // Verify mapping exists
-   MODULE_NAME_MAP['vehicles'] // Should be 'Vehicle'
-   ```
+Check whether it is the only surviving child of its group: a group whose
+children are all filtered away is dropped entirely.
 
-3. Check sidebar navigation array:
-   ```typescript
-   // Verify navigation item exists
-   navigation.find(item => item.key === 'vehicles')
-   ```
+### The item shows but the API returns 403
 
-**Common Fixes:**
-- Add module to vertical's `default_modules` in `config/verticals.php`
-- Add mapping to MODULE_NAME_MAP
-- Verify case sensitivity (sidebar: lowercase, backend: PascalCase)
+The frontend gates passed and the backend rejected. That is the layers
+disagreeing, and the backend is right. Check that the route's `module:<Name>`
+middleware and the sidebar's `module` value name the same module, and that the
+role's permissions match the nav item's `permission` key.
 
 ---
 
-### Issue: Core module is hidden
+## Route reconciliation (Wave 0)
 
-**Symptoms:** Sales or Inventory not showing
+The generated route manifest is the mechanical inventory of what routes exist;
+the sidebar is the inventory of what is *reachable by clicking*. Divergence
+between them is how orphaned pages happen.
 
-**Diagnosis:**
-1. Check if module is in MODULE_NAME_MAP:
-   ```typescript
-   MODULE_NAME_MAP['sales'] // Should be undefined (not in map)
-   ```
-
-2. If module IS in MODULE_NAME_MAP, it's being treated as vertical-specific
-
-**Fix:**
-- Remove core modules from MODULE_NAME_MAP
-- Only vertical-specific modules should be mapped
-
----
-
-### Issue: Module shows but API returns 403 Forbidden
-
-**Symptoms:** Navigation shows module, but clicking gives 403 error
-
-**Diagnosis:**
-- **Frontend filtering passed** (vertical + permissions)
-- **Backend middleware rejecting** (RequireModule or permission check failing)
-
-**Fix:**
-1. Check backend vertical configuration matches frontend
-2. Verify RequireModule middleware is checking correct module name
-3. Check user has proper permissions assigned
-
----
-
-## Performance Considerations
-
-### Memoization Strategy
-
-**1. `isModuleEnabledForVertical`** - `useCallback`
-```typescript
-const isModuleEnabledForVertical = useCallback(
-  (moduleKey: string): boolean => { /* ... */ },
-  [hasModule]  // Only recreate if hasModule changes
-)
+```bash
+node scripts/factory/gen-route-manifest.mjs   # regenerate
+bash scripts/factory/check-manifest-drift.sh  # CI guard — must exit 0
 ```
 
-**2. `filteredNavigation`** - `useMemo`
-```typescript
-const filteredNavigation = useMemo(() => {
-  return navigation.filter(/* ... */)
-}, [canAccessModule, isModuleEnabledForVertical])
-```
+**Manifests:** `scripts/factory/manifests/routes-web.yaml` (265 route records)
+and `routes-pos.yaml` (9). The manifest records each route's `component`,
+`module_gate` (the `ModuleGuard` module, which wins over a `RequirePermission`
+`moduleKey`) and `permission`.
 
-### Re-Render Triggers
+**Deleted in Wave 0** on owner rulings, and absent from the regenerated
+manifest — do not re-add them, and do not treat any of them as a missing entry:
 
-Navigation will re-filter when:
-- ✅ **Company config changes** (vertical updated)
-- ✅ **User permissions change** (role changed)
-- ❌ **Route changes** (does NOT re-filter, only updates active state)
+| Route | Disposition |
+|---|---|
+| `/pos/shifts` | deleted; `/pos/shift-history` is canonical |
+| `/marketing` | deleted as a pure duplicate of the `customersAndMarketing` sidebar group |
+| `/finance` (index only) | deleted **outright, no redirect** — the `finance` parent and every `/finance/*` child remain |
+| `/settings/chart-of-accounts` | duplicate mount removed; `/finance/chart-of-accounts` is canonical |
 
-### Performance Metrics
+A typed or bookmarked `/finance` or `/marketing` now falls through the `path="*"`
+catch-all to `/dashboard`. That consequence was accepted by the ruling.
 
-- **Initial render:** ~2-5ms (16 navigation items)
-- **Re-render after config change:** ~1-3ms (memoized)
-- **Memory footprint:** Negligible (<1KB)
+### Orphan candidates that remain
+
+The component-graph-aware re-census
+([`17-listing-census-recensus.md`](../sessions/UI-PRESENTATION-AUDIT-2026-08-10/17-listing-census-recensus.md),
+finding `CX-4`) derives reachability from the route tree plus navigation
+references in production source. At the wave's pinned base
+`d682b38ec9761a917b9716428091a482745795f6` it left 22 candidates after manual
+call-flow review, split by the report into **15 views, four parameterized views
+and three action/forms**. Four of the 15 views are the Wave 0 deletions above,
+so **18 remain**, and all 18 are listed here — 11 views, four parameterized
+views, three action/forms:
+
+**Views (11)** — still present in the manifest and still without an inbound UI
+reference:
+
+- `/growth`, `/growth/modules`
+- `/scheduling/capacity`
+- `/treasury/payment-methods`, `/treasury/sales-withholding-tracking`
+- `/inventory/delivery-notes/consolidate` (`CX-1`)
+- `/finance/lane-separation` (claimed by the DN-consolidation lane)
+- the four `/settings/compliance/*` pages (`UI-09` cluster)
+
+**Parameterized views (4)** — the report records these as reproducing with zero
+inbound UI references, on the same footing as the views above:
+
+- `/channels/:id/orders`, `/channels/:id/products`, `/channels/:id/sync`
+  (the `CX-2` cluster)
+- `/inventory/return-notes/:id`
+
+**Action/forms (3)** — weaker evidence: no inbound reference was *found*, but
+the scanner's expression model cannot resolve every call flow, so these are
+unresolved rather than confirmed orphaned:
+
+- `/expenses/:id/edit`, `/inventory/replenishment/new`, `/sales/credit-notes/new`
+
+These are **candidates, not rulings**. Regenerate before acting on the list —
+the report's method section documents its own limits (it does not resolve
+object-map element access or paths returned from local pure functions, which is
+why the three action/form routes stay unresolved).
+
+There is still **no automated route↔nav coverage check** (`UI-39`). Nothing in
+CI would catch the next orphan, so this reconciliation is manual and must be
+redone when routes change.
 
 ---
 
-## Related Documentation
+## Related documentation
 
-- **Backend:** `docs/api/company-config.md` - Company Config API
-- **Backend:** `docs/architecture/security.md` - RequireModule middleware
-- **Backend:** `docs/architecture/verticals.md` - All 12 business verticals
-- **Frontend:** `docs/architecture/frontend-contexts.md` - CompanyConfigContext & ProductConfigContext
-- **Frontend:** `docs/architecture/frontend-security.md` - Route guards (next milestone)
-- **Backend:** `apps/api/config/verticals.php` - Vertical module configuration
+- [`vertical-module-gating.md`](vertical-module-gating.md) — the vertical/module model and the both-layers gating rule; `config/verticals.php` is the source of truth
+- [`frontend-contexts.md`](frontend-contexts.md) — `CompanyConfigContext` and `ProductConfigContext`
+- [`frontend-security.md`](frontend-security.md) — route guards
+- [`security.md`](security.md) — backend `RequireModule` middleware
+- [`../api/company-config.md`](../api/company-config.md) — the company-config API
+- [`../conventions/02-NAVIGATION-ROUTING.md`](../conventions/02-NAVIGATION-ROUTING.md) — adding a page to the dashboard
+- [`../conventions/03-AUTHORIZATION.md`](../conventions/03-AUTHORIZATION.md) — the permission system
+- **Audit of record:** `00-EXECUTIVE-REPORT.md`, a session artefact under `docs/sessions/UI-PRESENTATION-AUDIT-2026-08-10/`. It is **not tracked in this repository** (`docs/sessions/` is gitignored, `.gitignore:58`), so it is named rather than linked — a link would dangle in every clone. The re-census linked above *is* tracked (force-added)
 
 ---
 
 ## Files
 
-### Implementation
-- `apps/web/src/components/organisms/Sidebar/Sidebar.tsx` (400+ lines)
-- `apps/web/src/contexts/CompanyConfigContext.tsx` (provides `hasModule()`)
-- `apps/api/config/verticals.php` (defines module-to-vertical mapping)
+**Implementation**
+- `apps/web/src/components/organisms/Sidebar/Sidebar.tsx` — the nav tree, `isNavItemVisible`, `buildNavigation`, `AUTOMOTIVE_VERTICALS`, `VERTICAL_NAV_KEYS`, `getNavLabel`
+- `apps/web/src/contexts/CompanyConfigContext.tsx` — provides `hasModule()`
+- `apps/web/src/components/guards/ModuleGuard.tsx` — route-level vertical guard
+- `apps/web/src/features/auth/components/RequirePermission.tsx` — route-level permission guard (re-exported from `components/auth/RequirePermission.tsx`)
+- `apps/api/config/verticals.php` — module-to-vertical configuration
 
-### Tests
-- `apps/web/src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx` (16 tests)
+**Tests**
+- `apps/web/src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx`
 
----
-
-## Quality Metrics
-
-**Opus 4.5 Audit Results (2026-01-02):**
-- **Overall:** PASS - Production Ready
-- **TypeScript Quality:** 9/10
-- **React Patterns:** 9/10
-- **Test Coverage:** 8/10
-- **Logic Correctness:** 10/10
-- **Overall Score:** 9/10
-
-**Test Results:**
-- 16 tests passing
-- Covers all major verticals (mechanic, pharmacy, restaurant)
-- Covers combined filtering (vertical + permissions)
-- Covers edge cases (loading, mapping, always-visible)
+**Tooling**
+- `scripts/factory/gen-route-manifest.mjs` + `scripts/factory/manifests/`
+- `scripts/factory/check-manifest-drift.sh`
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2026-01-02*
-*Milestone: 8 (Dynamic Navigation - Day 13-14)*
+*Document Version: 2.0*
+*Last Updated: 2026-08-19*

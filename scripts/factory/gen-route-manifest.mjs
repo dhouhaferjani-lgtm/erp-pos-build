@@ -31,6 +31,7 @@ const HEADER =
 const WRAPPERS = new Set([
   'SuspenseWrapper', 'Suspense', 'RequireAuth', 'RequireAdminAuth',
   'ModuleGuard', 'RequirePermission', 'ThemeProvider', 'ErrorBoundary',
+  'KeyedByRouteId', // Keying-only wrapper with no visual output; see apps/web/src/routes/index.tsx:325.
 ])
 
 const SOURCES = {

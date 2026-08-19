@@ -227,9 +227,10 @@ describe('POS report pages tenant scope', () => {
       expect(screen.getByRole('combobox')).toBeInTheDocument()
     })
 
+    // Promoted L3 locationScopedKey lane: Z-report lists key effective location scope.
     expect(cacheKeys(queryClient)).toEqual(expect.arrayContaining([
-      ['pos', 'terminals', 'tenant-A', 'company-1'],
-      ['pos', 'z-reports', { page: 1, per_page: 20 }, 'tenant-A', 'company-1'],
+      ['pos', 'terminals', { locScope: 'all' }, 'tenant-A', 'company-1'],
+      ['pos', 'z-reports', { page: 1, per_page: 20, location_ids: [] }, { locScope: 'all' }, 'tenant-A', 'company-1'],
     ]))
   })
 

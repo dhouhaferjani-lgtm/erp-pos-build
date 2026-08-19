@@ -221,73 +221,9 @@
     }
   },
   "hub": {
-    "title": "Finance",
-    "description": "Manage payments, accounting, and financial reports",
-    "sections": {
-      "bankingAndPayments": "Banking & Payments",
-      "accounting": "Accounting",
-      "reports": "Reports"
-    },
     "cards": {
-      "payments": {
-        "title": "Payments",
-        "description": "Track incoming and outgoing payments"
-      },
-      "repositories": {
-        "title": "Repositories",
-        "description": "Manage cash registers and bank accounts"
-      },
-      "instruments": {
-        "title": "Instruments",
-        "description": "Track checks, drafts, and payment instruments"
-      },
-      "bankReconciliation": {
-        "title": "Bank Reconciliation",
-        "description": "Match bank statements with accounting records"
-      },
-      "expenses": {
-        "title": "Expenses",
-        "description": "Record and categorize business expenses"
-      },
-      "withholdingCertificates": {
-        "title": "Withholding Certificates",
-        "description": "Manage tax withholding certificates"
-      },
       "treasuryOverview": {
-        "title": "Treasury",
-        "description": "Review cash position and upcoming cash movements"
-      },
-      "chartOfAccounts": {
-        "title": "Chart of Accounts",
-        "description": "View and manage your account structure"
-      },
-      "generalLedger": {
-        "title": "General Ledger",
-        "description": "Browse all accounting transactions"
-      },
-      "journalEntries": {
-        "title": "Journal Entries",
-        "description": "Create and review manual journal entries"
-      },
-      "trialBalance": {
-        "title": "Trial Balance",
-        "description": "Verify debits and credits are balanced"
-      },
-      "profitLoss": {
-        "title": "Profit & Loss",
-        "description": "Income and expenses over a period"
-      },
-      "balanceSheet": {
-        "title": "Balance Sheet",
-        "description": "Assets, liabilities, and equity snapshot"
-      },
-      "agedReceivables": {
-        "title": "Aged Receivables",
-        "description": "Outstanding customer invoices by age"
-      },
-      "agedPayables": {
-        "title": "Aged Payables",
-        "description": "Outstanding vendor bills by age"
+        "title": "Treasury"
       }
     }
   },

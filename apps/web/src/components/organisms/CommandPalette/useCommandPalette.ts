@@ -29,7 +29,7 @@ import {
   FileDown,
 } from 'lucide-react'
 import { usePermissions } from '../../../hooks/usePermissions'
-import type { Permission } from '../../../hooks/usePermissions'
+import type { ModuleKey, Permission } from '../../../hooks/usePermissions'
 
 interface CommandItem {
   id: string
@@ -39,7 +39,7 @@ interface CommandItem {
   icon: React.ComponentType<{ className?: string }>
   section: 'navigation' | 'actions'
   keywords?: string[]
-  moduleKey?: string
+  moduleKey?: ModuleKey
   permission?: Permission
 }
 

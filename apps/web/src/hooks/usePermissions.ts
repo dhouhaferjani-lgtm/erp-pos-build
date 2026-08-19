@@ -17,8 +17,16 @@ const SERVER_AUTHORITATIVE_PERMISSIONS = new Set<Permission>([
   'support-access.manage',
 ])
 
-// Module-level permission mapping for navigation
-export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
+/**
+ * Module-level permission mapping for navigation.
+ *
+ * UI-01: declared `as const satisfies` so `keyof typeof` is a LITERAL union
+ * (see {@link ModuleKey}) instead of `string`. The previous
+ * `Partial<Record<string, Permission[]>>` erased the key space, which let any
+ * typo — or a key that never existed, like `parts_catalog` — reach
+ * {@link usePermissions.canAccessModule} unchecked.
+ */
+export const MODULE_PERMISSIONS = {
   dashboard: ['dashboard.view'],
   sales: ['sales.view'],
   purchases: ['purchases.view'],
@@ -76,7 +84,21 @@ export const MODULE_PERMISSIONS: Partial<Record<string, Permission[]>> = {
   scheduling: ['scheduling.appointments.view'],
   'batches.write-off': ['batches.write-off'],
   'support-access': ['support-access.view'],
-}
+  // UI-01 row 1: a real backend permission (admin/manager) that the
+  // "newGoodsReceipt" nav item already referenced as a module key. Self-mapped
+  // like 'inventory.transfers.view' / 'replenishment.view' above.
+  'goods-receipt.create-standalone': ['goods-receipt.create-standalone'],
+  // UI-01 row 2: same shape, for the "stockByLocation" nav item.
+  'inventory.view': ['inventory.view'],
+} as const satisfies Record<string, readonly Permission[]>
+
+/**
+ * The closed set of module keys accepted by `canAccessModule` and by every
+ * `moduleKey` / `permissionModule` / nav `permission` prop that feeds it.
+ * An unlisted key is a compile error at the call site and, if one is forced
+ * through at runtime, a denial (fail-closed).
+ */
+export type ModuleKey = keyof typeof MODULE_PERMISSIONS
 
 function isGeneratedPermission(permission: Permission): permission is GeneratedPermission {
   return permission in PERMISSIONS
@@ -120,23 +142,27 @@ export function usePermissions() {
   /**
    * Check if user has any of the given permissions
    */
-  const hasAnyPermission = (permissions: Permission[]): boolean => {
+  const hasAnyPermission = (permissions: readonly Permission[]): boolean => {
     return permissions.some((permission) => hasPermission(permission))
   }
 
   /**
    * Check if user has all of the given permissions
    */
-  const hasAllPermissions = (permissions: Permission[]): boolean => {
+  const hasAllPermissions = (permissions: readonly Permission[]): boolean => {
     return permissions.every((permission) => hasPermission(permission))
   }
 
   /**
    * Check if user can access a specific module
    */
-  const canAccessModule = (moduleKey: string): boolean => {
-    const requiredPermissions = MODULE_PERMISSIONS[moduleKey]
-    if (!requiredPermissions) return true // No restrictions
+  const canAccessModule = (moduleKey: ModuleKey): boolean => {
+    // UI-01 fail-closed contract: a key outside MODULE_PERMISSIONS is a bug,
+    // not an "unrestricted" module. The union makes it a compile error at the
+    // call site; if one is still forced through (a cast, or JS callers), the
+    // gate DENIES rather than opening for every role.
+    const requiredPermissions: readonly Permission[] | undefined = MODULE_PERMISSIONS[moduleKey]
+    if (!requiredPermissions) return false
     return hasAnyPermission(requiredPermissions)
   }
 

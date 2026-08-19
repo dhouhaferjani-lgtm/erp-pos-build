@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const routesSource = readFileSync(`${process.cwd()}/src/routes/index.tsx`, 'utf8')
+const sidebarSource = readFileSync(`${process.cwd()}/src/components/organisms/Sidebar/Sidebar.tsx`, 'utf8')
+const commandPaletteSource = readFileSync(`${process.cwd()}/src/components/organisms/CommandPalette/useCommandPalette.ts`, 'utf8')
+const posHubSource = readFileSync(`${process.cwd()}/src/features/pos/pages/PosHubPage.tsx`, 'utf8')
 
 function routeBranch(path: string): string {
   const start = routesSource.indexOf(`<Route path="${path}">`)
@@ -62,6 +65,72 @@ describe('route module guards', () => {
     expect(idx).toBeGreaterThanOrEqual(0)
     const fragment = routesSource.slice(Math.max(0, idx - 10), idx + 400)
     expect(fragment).toContain('<ModuleGuard module="Menu">')
+  })
+
+  it('keeps shift history reachable while the retired web shift console is absent', () => {
+    const retiredShiftPath = ['/pos', '/shifts'].join('')
+    const retiredShiftPage = ['POS', 'Shifts', 'Page'].join('')
+    expect(routesSource).not.toContain(`path="${retiredShiftPath}"`)
+    expect(routesSource).not.toContain(retiredShiftPage)
+    expect(routesSource).toContain('path="shift-history"')
+    expect(routesSource).toContain('<ShiftHistoryPage />')
+    expect(routesSource).toContain('<Route path="*" element={<Navigate to="/dashboard" replace />} />')
+    expect(sidebarSource).toContain("href: '/pos/shift-history'")
+    expect(posHubSource).toContain("href: '/pos/shift-history'")
+  })
+
+  it('removes the duplicate marketing hub while retaining its six sidebar destinations', () => {
+    const retiredMarketingPath = ['mark', 'eting'].join('')
+    const retiredMarketingPage = ['Marketing', 'HubPage'].join('')
+    expect(routesSource).not.toContain(`path="${retiredMarketingPath}"`)
+    expect(routesSource).not.toContain(retiredMarketingPage)
+    for (const destination of [
+      '/crm/companies',
+      '/crm/contacts',
+      '/pos/loyalty/programs',
+      '/pos/loyalty/members',
+      '/pos/promotions',
+      '/pos/coupons',
+    ]) {
+      expect(sidebarSource).toContain(`href: '${destination}'`)
+    }
+  })
+
+  it('removes the finance index hub while retaining every finance child route', () => {
+    const financeBranch = routeBranch('finance')
+    const retiredFinancePage = ['Finance', 'HubPage'].join('')
+    expect(financeBranch).not.toContain('<Route index')
+    expect(financeBranch).not.toContain(retiredFinancePage)
+    for (const childPath of [
+      'overview',
+      'lane-separation',
+      'cash-movements',
+      'chart-of-accounts',
+      'ledger',
+      'trial-balance',
+      'profit-loss',
+      'balance-sheet',
+      'aged-receivables',
+      'aged-payables',
+      'journal-entries',
+    ]) {
+      expect(financeBranch).toContain(`path="${childPath}"`)
+    }
+  })
+
+  it('keeps chart of accounts only under finance with its guard and inbound links', () => {
+    const childPath = ['chart', 'of', 'accounts'].join('-')
+    const canonicalHref = ['/finance', childPath].join('/')
+    const settingsBranch = routeBranch('settings')
+    const financeBranch = routeBranch('finance')
+    expect(settingsBranch).not.toContain(`path="${childPath}"`)
+    const canonicalIndex = financeBranch.indexOf(`path="${childPath}"`)
+    expect(canonicalIndex).toBeGreaterThanOrEqual(0)
+    expect(financeBranch.slice(canonicalIndex, canonicalIndex + 350)).toContain(
+      'permission="accounts.view"',
+    )
+    expect(sidebarSource).toContain(`href: '${canonicalHref}'`)
+    expect(commandPaletteSource).toContain(`href: '${canonicalHref}'`)
   })
 
   it('does not register the legacy bank reconciliation route', () => {

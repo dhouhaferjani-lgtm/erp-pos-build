@@ -1,5 +1,4 @@
 {
-  "appName": "AutoERP",
   "by": "par",
   "select": "Sélectionner…",
   "selectCountry": "Sélectionner un pays",
@@ -1318,7 +1317,7 @@
       "lastUpdated": "Dernière mise à jour",
       "section1": {
         "title": "Introduction",
-        "body": "AutoERP (« nous », « notre ») s'engage à protéger vos données personnelles. Cette politique de confidentialité explique comment nous collectons, utilisons et protégeons les informations lorsque vous utilisez notre plateforme de gestion d'entreprise."
+        "body": "{{appName}} (« nous », « notre ») s'engage à protéger vos données personnelles. Cette politique de confidentialité explique comment nous collectons, utilisons et protégeons les informations lorsque vous utilisez notre plateforme de gestion d'entreprise."
       },
       "section2": {
         "title": "Informations collectées",
@@ -1342,7 +1341,7 @@
       },
       "section3": {
         "title": "Utilisation de vos informations",
-        "purpose1": "Fournir, maintenir et améliorer la plateforme AutoERP",
+        "purpose1": "Fournir, maintenir et améliorer la plateforme {{appName}}",
         "purpose2": "Traiter les transactions et envoyer les informations associées",
         "purpose3": "Envoyer des avis techniques, des mises à jour et des messages d'assistance",
         "purpose4": "Respecter les obligations légales et protéger les droits",
