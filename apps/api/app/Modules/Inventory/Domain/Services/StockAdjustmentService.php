@@ -935,6 +935,18 @@ final class StockAdjustmentService
             userId: $userId,
             variantId: $variantId,
             reason: $reasonCode,
+            // T21 / D-20 half-fix. BOTH callers get the row cost:
+            //  - adjust() is the LEGACY counting path, and its count_correction
+            //    must share the replay path's one basis (see postCountCorrection);
+            //  - adjustByDelta() is the stock_adjustments DOCUMENT path, which
+            //    gets the cost so a Damage/WriteOff line stops being
+            //    indistinguishable from D-b's zero-cost population — WITHOUT a GL
+            //    leg, which D-20 still forbids. That refusal is STRUCTURAL here:
+            //    this body has no GL sink at all, so no adjustment document can
+            //    reach the inventory posting buffer. D-a/D-b's
+            //    `reference_type = 'stock_adjustment'` exclusion keeps the
+            //    now-costed document lines out of the detector.
+            unitCost: $this->resolveRowUnitCost($productId, $stockLevel->company_id),
             occurredAt: $occurredAt,
             referenceType: $referenceType,
             referenceId: $referenceId,
@@ -1237,6 +1249,14 @@ final class StockAdjustmentService
      * @param  StockMovementReferenceType|null  $referenceType  Counting-document morph type;
      *                                                          pass together with $referenceId
      * @param  string|null  $referenceId  Counting-document UUID; pass together with $referenceType
+     * @param  \Closure(StockMovement): void|null  $onCountCorrection  GL sink for the
+     *                                                                 count_correction movement (T21). Invoked, still inside the lock, ONLY for the
+     *                                                                 `postCountCorrection()` branch — `postCountOpening()` writes
+     *                                                                 MovementType::Opening / MovementReason::OpeningBalance, which is outside the GL
+     *                                                                 seam (inv N-2). Deliberately a closure rather than the Application-layer buffer:
+     *                                                                 this is a Domain service, and the hexagonal direction forbids it naming
+     *                                                                 InventoryGlPostingBuffer / MovementGlContext. The Application-layer listener owns
+     *                                                                 the context construction and the enqueue.
      */
     public function applyCountResult(
         string $productId,
@@ -1249,19 +1269,20 @@ final class StockAdjustmentService
         ?string $openingUnitCost,
         ?StockMovementReferenceType $referenceType = null,
         ?string $referenceId = null,
+        ?\Closure $onCountCorrection = null,
     ): ?ReplayAuditDto {
         $this->assertVariantConsistency($productId, $variantId);
         $this->assertReferenceLinkagePaired($referenceType, $referenceId);
         $scale = InventoryScale::QUANTITY_SCALE;
 
-        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale, $referenceType, $referenceId): ?ReplayAuditDto {
+        return DB::transaction(function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $scale, $referenceType, $referenceId, $onCountCorrection): ?ReplayAuditDto {
             $companyId = $this->resolveCompanyId($locationId);
             $tenantId = $this->resolveTenantId($productId, $companyId);
 
             // ProductCostLock FIRST (advisory, product-grain), then the
             // stock_level row FOR UPDATE inside the closure. Never invert this —
             // adjust()/recordPurchase/recordSale rely on advisory -> row order.
-            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale, $referenceType, $referenceId): ?ReplayAuditDto {
+            return $this->costLock->acquire($tenantId, $companyId, [$productId], function () use ($productId, $locationId, $variantId, $finalQty, $finalQtyAsOf, $onboarding, $openingUnitCost, $companyId, $tenantId, $scale, $referenceType, $referenceId, $onCountCorrection): ?ReplayAuditDto {
                 $now = now();
                 $stockLevel = $this->lockStockLevel($productId, $locationId, $companyId, $variantId);
 
@@ -1298,7 +1319,7 @@ final class StockAdjustmentService
                 if ($postOpening) {
                     $this->postCountOpening($stockLevel, $productId, $locationId, $variantId, $tenantId, $companyId, $onHandNow, $expectedNow, $adjustment, $openingUnitCost, $now, $referenceType, $referenceId);
                 } else {
-                    $this->postCountCorrection($stockLevel, $productId, $locationId, $variantId, $onHandNow, $expectedNow, $adjustment, $now, $referenceType, $referenceId);
+                    $this->postCountCorrection($stockLevel, $productId, $locationId, $variantId, $onHandNow, $expectedNow, $adjustment, $now, $referenceType, $referenceId, $onCountCorrection);
                 }
 
                 return new ReplayAuditDto(
@@ -1315,9 +1336,18 @@ final class StockAdjustmentService
     /**
      * Post the replay-computed adjustment as a normal count_correction.
      *
+     * T21 — the cost basis. `Product::resolveMovementUnitCost()` (D-3) is
+     * resolved ONCE here, BEFORE the movement is created, and written ON it.
+     * Both counting paths were NULL-cost before this change (§0t.6), so a GL
+     * leg valued at post time would have posted `amount = 0` — a silent
+     * zero-value shrinkage. The GL amount is derived from this persisted row
+     * (`unit_cost x |quantity_after − quantity_before|`), never from a WAC that
+     * may have moved since.
+     *
      * @param  numeric-string  $onHandNow
      * @param  numeric-string  $expectedNow
      * @param  numeric-string  $adjustment
+     * @param  \Closure(StockMovement): void|null  $onCountCorrection  See applyCountResult().
      */
     private function postCountCorrection(
         StockLevel $stockLevel,
@@ -1334,6 +1364,7 @@ final class StockAdjustmentService
         // fully omitted one.
         ?StockMovementReferenceType $referenceType,
         ?string $referenceId,
+        ?\Closure $onCountCorrection = null,
     ): void {
         $stockLevel->update(['quantity' => $expectedNow]);
 
@@ -1350,10 +1381,19 @@ final class StockAdjustmentService
             userId: null,
             variantId: $variantId,
             reason: MovementReason::CountCorrection,
+            unitCost: $this->resolveRowUnitCost($productId, $stockLevel->company_id),
             occurredAt: $now,
             referenceType: $referenceType,
             referenceId: $referenceId,
         );
+
+        // Hand the persisted row to the GL sink INSIDE the lock and inside the
+        // caller's transaction. Enqueueing is pure (no database work happens
+        // until the listener's root flush), so this cannot invert the lock order
+        // — see InventoryGlPostingBuffer.
+        if ($onCountCorrection !== null) {
+            $onCountCorrection($movement);
+        }
 
         if (bccomp($adjustment, '0', self::SCALE) > 0) {
             $this->ensureDefaultBatchForImplicitPositiveStock($stockLevel, $productId);
@@ -1653,6 +1693,35 @@ final class StockAdjustmentService
             ->where('company_id', $companyId)
             ->findOrFail($productId)
             ->tenant_id;
+    }
+
+    /**
+     * THE per-unit cost an adjustment/count movement is valued at (D-3, T21).
+     *
+     * One definition — `Product::resolveMovementUnitCost()` — shared by the
+     * legacy counting path, the replay counting path and the adjustment
+     * document, because a divergence between the persisted `unit_cost` and the
+     * GL debit would post an unbalanced correction (gate V10-I5 caught exactly
+     * that drift). Resolver-INDEPENDENT: it reads `products.cost_price`, stored
+     * at the constant COST_SCALE = 6, and never consults CurrencyScaleResolver,
+     * so it is safe in the queued counting listener, which runs with no
+     * CompanyContext (house rule 20).
+     *
+     * The Product lookup is scoped to the company already validated by the
+     * locked StockLevel, so a forged productId cannot value a movement off
+     * another company's cost.
+     *
+     * @return numeric-string
+     */
+    private function resolveRowUnitCost(string $productId, string $companyId): string
+    {
+        /** @var numeric-string $unitCost */
+        $unitCost = Product::query()
+            ->where('company_id', $companyId)
+            ->findOrFail($productId)
+            ->resolveMovementUnitCost();
+
+        return $unitCost;
     }
 
     private function ensureDefaultBatchForImplicitPositiveStock(StockLevel $stockLevel, string $productId): void

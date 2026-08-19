@@ -54,7 +54,9 @@ use Illuminate\Support\Facades\Log;
  *    movement it would have keyed on was never written.
  *
  *  - **D-e** non-COGS `requiresGLEntry()` movements with no movement-keyed GL
- *    entry, with the same stock-adjustment exclusion as D-b.
+ *    entry, with the same stock-adjustment exclusion as D-b, plus an
+ *    inventory-counting exclusion that lifts the moment T21's posting flag is
+ *    enabled (see the check body).
  *  - **D-g** return-note lines whose recorded basis fell back to current cost.
  *
  * Tenant-isolation: cat-(a-per-tenant-iter) — iterates via
@@ -241,12 +243,22 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where(function ($query): void {
                 $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
-            // T21 is an M5 writer. Until it lands, inventory-counting
-            // corrections are intentionally movement-only; reporting them in
-            // 3C would make every completed count a permanent false alarm.
-            ->where(function ($query): void {
-                $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::InventoryCounting->value);
-            })
+            // T21 landed as an M5 writer, but its posting is held behind
+            // `inventory.count_correction_gl_posting_enabled` until the
+            // expert-comptable ratifies the Option A presentation (OQ-12/H-5).
+            // The exclusion is therefore tied to the FLAG, not to the wave: while
+            // the flag is off, count corrections are movement-only BY DESIGN and
+            // reporting them would make every completed count a permanent false
+            // alarm; the moment posting goes live the exclusion lifts and D-e
+            // reports exactly the failed or declined count-correction postings it
+            // exists to surface. Closes
+            // docs/superpowers/tickets/2026-08-18-remove-counting-detector-exclusion-with-t21.md.
+            ->when(
+                ! (bool) config('inventory.count_correction_gl_posting_enabled', false),
+                fn ($query) => $query->where(function ($inner): void {
+                    $inner->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::InventoryCounting->value);
+                }),
+            )
             ->whereNotExists($missingEntry)
             ->orderBy('created_at')
             ->orderBy('id')

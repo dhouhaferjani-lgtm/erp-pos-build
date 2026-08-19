@@ -489,4 +489,47 @@ final class ReplayFinalizeTest extends TestCase
         $itemB->refresh();
         $this->assertNotNull($itemB->replay_audit);
     }
+
+    /**
+     * DPA Wave 3D — T21's cost basis, on BOTH counting paths.
+     *
+     * Before T21 both paths wrote a NULL `unit_cost` (§0t.6), so a GL leg valued
+     * at post time would have posted `amount = 0` — a silent zero-value
+     * shrinkage. The cost is now resolved once from
+     * `Product::resolveMovementUnitCost()` BEFORE the movement is created and
+     * written ON it, which is what lets the GL amount be derived from the row
+     * rather than from a since-changed WAC.
+     *
+     * Driver-agnostic on purpose: this pins the persisted row, not the posting.
+     * The posting itself needs a real root commit and lives in the `[PG]`
+     * CountCorrectionGlPostingTest.
+     */
+    public function test_both_counting_paths_persist_the_row_unit_cost(): void
+    {
+        $this->product->update(['cost_price' => '7.500000']);
+
+        // REPLAY path — the movement postCountCorrection() writes.
+        $t = CarbonImmutable::now()->subHours(3);
+        $this->setOnHand('10.0000');
+        $replayCounting = $this->counting();
+        $this->item($replayCounting, '6.0000', $t);
+        $this->fire($replayCounting);
+
+        $replayMovement = StockMovement::where('product_id', $this->product->id)
+            ->where('reason', MovementReason::CountCorrection->value)
+            ->sole();
+        $this->assertSame(MovementType::Adjustment, $replayMovement->movement_type);
+        $this->assertSame('7.500000', (string) $replayMovement->unit_cost);
+
+        // LEGACY path — final_qty_as_of IS NULL, same one basis.
+        $legacyCounting = $this->counting();
+        $this->item($legacyCounting, '3.0000', null, theoretical: '6.0000');
+        $this->fire($legacyCounting);
+
+        $legacyMovement = StockMovement::where('product_id', $this->product->id)
+            ->where('reason', MovementReason::CountCorrection->value)
+            ->where('reference', 'COUNTING:'.$legacyCounting->counting_number)
+            ->sole();
+        $this->assertSame('7.500000', (string) $legacyMovement->unit_cost);
+    }
 }

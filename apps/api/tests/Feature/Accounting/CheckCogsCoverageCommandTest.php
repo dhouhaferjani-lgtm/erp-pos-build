@@ -339,6 +339,53 @@ class CheckCogsCoverageCommandTest extends TestCase
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
     }
 
+    /**
+     * T21 / ticket 2026-08-18-remove-counting-detector-exclusion-with-t21.
+     *
+     * The counting exclusion is tied to the POSTING FLAG, not to the wave. While
+     * count-correction posting is dormant (OQ-12/H-5), a count movement with no
+     * entry is by design and stays silent. The moment the flag is enabled the
+     * exclusion lifts: the same movement becomes a D-e finding, and it goes
+     * silent again once its movement-keyed `inventory_shrinkage` entry exists.
+     */
+    public function test_de_reports_count_corrections_once_their_posting_flag_is_live(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        $count = $this->movement(
+            MovementReason::CountCorrection,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: 'inventory_counting',
+        );
+
+        // Dormant (the shipped default): silent.
+        Log::spy();
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+
+        // Live: the same movement is now a missing-entry finding.
+        config(['inventory.count_correction_gl_posting_enabled' => true]);
+        Log::spy();
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '[D-e]')
+                && ($context['movement_id'] ?? null) === $count->id,
+        );
+
+        // The covered negative: with its movement-keyed entry, silent again.
+        JournalEntry::create([
+            'tenant_id' => $this->dpTenant->id,
+            'company_id' => $this->dpCompany->id,
+            'entry_number' => 'JE-DE-COUNT',
+            'entry_date' => now(),
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'inventory_shrinkage',
+            'source_id' => $count->id,
+            'journal_code' => JournalCode::Misc,
+        ]);
+        Log::spy();
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+    }
+
     public function test_dg_fires_only_for_return_lines_using_current_cost(): void
     {
         $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);

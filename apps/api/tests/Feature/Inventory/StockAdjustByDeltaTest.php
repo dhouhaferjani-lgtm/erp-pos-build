@@ -13,6 +13,7 @@ use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\Events\StockMovementRecorded;
@@ -179,8 +180,22 @@ final class StockAdjustByDeltaTest extends TestCase
         );
     }
 
-    public function test_costs_stay_null_because_v1_posts_no_gl(): void
+    /**
+     * SUPERSEDED BY T21 (was `test_costs_stay_null_because_v1_posts_no_gl`).
+     *
+     * V1's "no GL leg" was expressed as "no cost on the row", which conflated
+     * two independent things and left the whole adjustment-document population
+     * indistinguishable from D-b's genuinely un-costed movements. T21's D-20
+     * half-fix separates them: the row IS costed, and "no GL leg" is enforced
+     * structurally instead — `adjustByDelta()` has no GL sink.
+     *
+     * The invariant this test still guards is the one that matters: the
+     * document lane produces no journal entry. Its costing counterpart is
+     * `test_an_adjustment_document_line_is_costed_but_never_reaches_the_gl_buffer`.
+     */
+    public function test_the_document_lane_costs_the_row_but_still_posts_no_gl(): void
     {
+        $this->product->update(['cost_price' => '1.250000']);
         $this->seedStock('10.0000');
 
         $movement = $this->service->adjustByDelta(
@@ -192,8 +207,9 @@ final class StockAdjustByDeltaTest extends TestCase
             reasonCode: MovementReason::AdjustmentPositive,
         );
 
-        $this->assertNull($movement->fresh()?->unit_cost);
-        $this->assertNull($movement->fresh()?->total_cost);
+        $this->assertSame('1.250000', (string) $movement->fresh()?->unit_cost);
+        $this->assertSame(0, bccomp('1.250000', (string) $movement->fresh()?->total_cost, 6)); // precision-ok: stock_movements.total_cost is fixed COST_SCALE=6
+        $this->assertTrue(app(InventoryGlPostingBuffer::class)->isEmpty());
     }
 
     // ------------------------------------------------------------- staleness
@@ -652,6 +668,43 @@ final class StockAdjustByDeltaTest extends TestCase
         $fresh = $movement->fresh();
         $this->assertSame('stock_adjustment', $fresh?->reference_type);
         $this->assertSame($adjustmentId, $fresh?->reference_id);
+    }
+
+    /**
+     * DPA Wave 3D — T21's D-20 half-fix.
+     *
+     * An adjustment-document line now carries a non-null `unit_cost`, resolved
+     * from the ONE shared definition (`Product::resolveMovementUnitCost()`), so
+     * a Damage/WriteOff line stops being indistinguishable from D-b's zero-cost
+     * population. It still gets NO GL leg — D-20 forbids one — and the refusal
+     * is structural: `adjustByDelta()` has no GL sink, so nothing it writes can
+     * reach the inventory posting buffer.
+     */
+    public function test_an_adjustment_document_line_is_costed_but_never_reaches_the_gl_buffer(): void
+    {
+        $this->product->update(['cost_price' => '3.500000']);
+        $this->seedStock('10.0000');
+
+        $movement = $this->service->adjustByDelta(
+            productId: $this->product->id,
+            locationId: $this->warehouse->id,
+            deltaQuantity: '-2.0000',
+            reference: 'ADJ-2026-0008',
+            userId: $this->user->id,
+            reasonCode: MovementReason::Damage,
+            referenceType: StockMovementReferenceType::StockAdjustment,
+            referenceId: (string) Str::uuid(),
+        );
+
+        $fresh = $movement->fresh();
+        $this->assertNotNull($fresh?->unit_cost, 'D-20 half-fix: the document line must carry its cost.');
+        $this->assertSame('3.500000', (string) $fresh?->unit_cost);
+        $this->assertSame(0, bccomp('-7.000000', (string) $fresh?->total_cost, 6)); // precision-ok: stock_movements.total_cost is fixed COST_SCALE=6
+
+        $this->assertTrue(
+            app(InventoryGlPostingBuffer::class)->isEmpty(),
+            'The stock-adjustment document lane must never enqueue an inventory GL context (D-20).',
+        );
     }
 
     // ------------------------------------------------------------- fixtures
