@@ -212,4 +212,53 @@ describe('design-system audit scanner', () => {
 
     expect(violations.some((violation) => violation.category === 'C6')).toBe(true)
   })
+
+  // ── UI-40 / Wave 0 T7: the C6 detector was blind to the `Tone` family ──────
+  // Before the fix, `Tone`/`Tones` appeared in no STATUS_RE alternation, so C6
+  // reported 0 while the live `Record<…, StatusTone>` maps went uncounted
+  // (00 §2:128, 02:22 F-8).
+
+  it('flags a Tone-suffixed status map constant as C6', () => {
+    const violations = scanCode(`
+      const orderStatusTones: Record<OrderStatus, StatusTone> = {
+        draft: 'neutral',
+        posted: 'success',
+      }
+
+      export function ExamplePage() {
+        return <StatusBadge tone={orderStatusTones.draft}>Draft</StatusBadge>
+      }
+    `, 'src/features/example/ExamplePage.tsx')
+
+    expect(violations.some((violation) => violation.category === 'C6')).toBe(true)
+  })
+
+  it('flags a StatusTone-valued Record whose name carries no status/state token', () => {
+    // This is the shape F-8 actually counted: the map's VALUE type is the
+    // signal, not its identifier. `directionTone` / `matchTone` / `invoiceTone`
+    // are real examples in src/features that a name-suffix-only rule misses.
+    const violations = scanCode(`
+      const directionTone: Record<WithholdingDirection, StatusTone> = {
+        inbound: 'info',
+        outbound: 'neutral',
+      }
+
+      export function ExamplePage() {
+        return <StatusBadge tone={directionTone.inbound}>In</StatusBadge>
+      }
+    `, 'src/features/example/ExamplePage.tsx')
+
+    expect(violations.some((violation) => violation.category === 'C6')).toBe(true)
+  })
+
+  it('does not report C6 for a StatusTone map outside features/pages source', () => {
+    // C6 stays feature-scoped (scanCode's isFeatureOrPageFile guard); the
+    // StatusBadge atom itself defines the tone vocabulary and is not a hit.
+    const violations = scanCode(`
+      const toneClasses: Record<string, StatusTone> = { draft: 'neutral' }
+      export const StatusBadge = () => <span>{toneClasses.draft}</span>
+    `, 'src/components/atoms/StatusBadge/StatusBadge.tsx')
+
+    expect(violations.some((violation) => violation.category === 'C6')).toBe(false)
+  })
 })
