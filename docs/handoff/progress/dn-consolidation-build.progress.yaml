@@ -36,7 +36,7 @@ preflight_policy:
     - "packages/shared/types/generated.d.ts is stale at the pinned base: typescript:transform adds SystemAccountPurpose inventory_shrinkage_expense/inventory_gain_income and MovementGlKind from the merged 3C lane; branch drift is byte-identical and remains owner-lane work"
   last_comparison:
     base_sha: 60df88a01b52828665caf33809486bdf0a699bbc
-    branch_sha: 3b1af7fbc
+    branch_sha: 52aae14b7
     status: passed
     touched_files: "M2 focused Vitest 72/72, typecheck, scoped ESLint, TanStack-key audit, design-system audit, quantity audit, React Doctor, precision/type source guards, and diff-check green"
     whole_repo: "Exact §6.3 path sweep 707/709 with only the same two finance reds (one PartnerForm async miss passed immediately in isolation and did not reproduce on the second sweep); backend path sweep 1064 passed/32 skipped with only the same two default-SQLite InventoryGlCompositeRootTest fixture reds; PHPStan same two locked C-3 findings; whole-web ESLint/key/design/quantity/POS and fiscal gates green; normalized route-manifest and SaleReceipt chokepoint residuals unchanged from the M1/base capture"
@@ -98,11 +98,11 @@ milestones:
   - id: M2
     title: "M2 - View A + A2 + View C: partner 'Delivery notes' tab, balance-card un-billed line, the /finance/lane-separation nav link (no grant is needed and none may be added), the invoiced_via badge + invoice link incl. on DeliveryNoteDetailPage, the OI-9 legacy_unknown neutral badge (en + fr), C9 invalidation. §6.3 green."
     review_lenses: [frontend-conventions, treasury, general]
-    status: in_progress
+    status: passed
     fix_rounds: 1
     commit: 3b1af7fbc
-    verdict: docs/handoff/reviews/dn-consolidation-build/M2-round1.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/dn-consolidation-build/M2-round2.md
+    last_verdict: ACCEPT
   - id: M3
     title: "M3 - View B: roll-up shape + GET /delivery-notes/uninvoiced/{partner} lazy expansion (M1 owns the endpoint's existence, authorization and module gate; M3 owns its roll-up shape, lazy expansion and UI), location scoping and filters, /sales/to-bill, sidebar entry, the 30/60/90/90+ aging strip, periodic-billing chip, coexistence helper text. §6.3 green AND the /finance/lane-separation regression green."
     review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
@@ -140,7 +140,8 @@ findings:
   - "M1 bridge round 2 at 37c4b3a00 returned CHANGES-REQUIRED on the consolidation refusal toast. Fix round 2 suppresses only attributed DELIVERY_NOTE_ALREADY_INVOICED toasts, preserves generic failure toasts, and makes the operator's explicit Remove-and-retry action resubmit only the remaining IDs (c517635cb)."
   - "M1 bridge round 3 at 95ac2f22a returned ACCEPT. Its four non-blocking P3 notes are recorded in the handback: the remaining SO refusal-parser duplication, generated-artifact lane overlap, recovery resubmit pending/stale-selection ergonomics, and untranslated non-race consolidation refusals."
   - "Bridge P3s are recorded in the handback rather than silently fixed: SO source_line_id provenance expansion, invoiced-DN DTO N+1, future nested-retrier rollback risk, 55P03 generic failure, raw date formatting, hand-edited partial billing payload behavior, and malformed legacy invoiced_at cast risk. C8 is undefined outside the spec milestone table and is returned as DEFERRED owner ambiguity."
-  - "M2 at 483457a41 delivers the customer-only Sales-module/permission-gated partner DN tab and action, generated-DTO typing, exact-row 422 recovery, currency-formatted shared aggregates, billing attribution, C9 invalidation, and the reports.financial lane-separation sidebar link. Seeder and generated permissions map remain untouched."
-  - "M2 amended differential preflight passed: focused M2 66/66 and all touched/static gates green; exact §6.3 has only the same two finance reds; exact backend paths have only the same two default-SQLite composite-root reds; PHPStan, route-manifest, SaleReceipt, and generated-type residuals are unchanged from the pin/M1 capture. UI E2E is blocked by an unavailable API proxy plus unrelated baseline locator failures; Playwright produced the documented screenshot."
+  - "M2 at 3b1af7fbc delivers the customer-only Sales-module/permission-gated partner DN tab and action, generated-DTO typing, exact-row 422 recovery, currency-formatted shared aggregates, billing attribution, C9 invalidation, and the reports.financial lane-separation sidebar link. Seeder and generated permissions map remain untouched."
+  - "M2 amended differential preflight passed: focused M2 72/72 and all touched/static gates green; exact §6.3 has only the same two finance reds; exact backend paths have only the same two default-SQLite composite-root reds; PHPStan, route-manifest, SaleReceipt, and generated-type residuals are unchanged from the pin/M1 capture. UI E2E is blocked by an unavailable API proxy plus unrelated baseline locator failures; Playwright produced the documented screenshot."
   - "M2 bridge round 1 at 668a4bc47 returned CHANGES-REQUIRED. Blocking fixes: force confirmed status on the partner query, render complete persistent per-DN refusal attribution even for off-page selections, format row money in the DN currency, and record explicit RED-first/deviation evidence. P3 cleanup is included where bounded; the ungated base GET /delivery-notes route remains an owner-scoped residual rather than an unauthorized backend revocation."
   - "M2 bridge fix round 1 is split into RED ed282949a (7 reproduced failures) and GREEN 3b1af7fbc. It forces confirmed status, renders complete off-page attribution, preserves all-refused guarantees, formats row money by document currency, discloses aggregate currency scope, restores four-line coexistence guidance, localizes dates, repairs dl semantics, removes the fake date sentinel, extracts billing status, and adds the negative detail guard."
+  - "M2 bridge round 2 at 52aae14b7 returned ACCEPT. The close-before-merge P2 is assigned to M3/M5: View A must prevent mixed-currency invalid batches or widen inline attribution for CONSOLIDATION_VALIDATION_FAILED. P3 tickets recorded in the handback cover confirmed-only All semantics, silent A2 errors, raw refusal dates, the currency-bearing count string, shared FilterTabs ARIA, missing invoiced/all request-shape tests, and inert viewer-only selection."

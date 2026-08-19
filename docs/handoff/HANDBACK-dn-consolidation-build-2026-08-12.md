@@ -7,8 +7,8 @@
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/dn-consolidation`.
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
-- Current M2 implementation SHA: `3b1af7fbc` (bridge fix round 1; awaiting round 2).
-- Milestone being handed back: M2.
+- Current M2 implementation SHA: `3b1af7fbc` (bridge round 2 accepted through `52aae14b7`).
+- Milestone being handed back: M2 passed; M3 is next.
 - No push, merge, or deployment was performed.
 
 M1 commit list:
@@ -53,6 +53,7 @@ M2 commit list:
 - `79f53e02d Phase 2.2.6: Record M2 bridge round one`
 - `ed282949a Phase 2.2.7: Reproduce M2 bridge findings`
 - `3b1af7fbc Phase 2.2.8: Close M2 bridge findings`
+- `52aae14b7 Phase 2.2.9: Record M2 bridge fix round`
 
 ## Owner-amended gate
 
@@ -309,7 +310,7 @@ overlap is disclosed for owner integration; it is additive and typecheck remains
 
 ## M2 — View A, A2, and View C
 
-**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — fix round 1 complete; awaiting round 2.**
+**Status: PASSED — bridge round 2 ACCEPT.**
 
 Bridge round 1 reviewed `60df88a01..668a4bc47` through frontend-conventions, treasury, and general
 lenses. It confirmed the module/permission riders, generated DTO flow, C9 tenant scoping, sidebar
@@ -337,6 +338,12 @@ own currency, identify the aggregate currency beside the count, restore all four
 localize row dates, use valid definition-list markup, remove the fake `invoiced_at='attributed'`
 sentinel, and move the reusable billing-status component out of the partner-tab file. A negative
 detail-page regression also proves an un-invoiced DN renders no billing line.
+
+Bridge round 2 reviewed `60df88a01..52aae14b7` with the required frontend-conventions, treasury,
+and general lenses. It reran the 72 focused tests, the exact 709-test §6.3 scope, typecheck, and
+scoped lint; all M2 tests and touched-file checks passed, while the two declared finance residuals
+were the only §6.3 failures. The register returned `VERDICT: ACCEPT`. Its close-before-merge P2 and
+non-blocking P3 notes are recorded below and carried into M3/M5 where assigned.
 
 ### M2 failing-test-first register
 
@@ -477,6 +484,11 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 - `FilterTabs` gained `aria-pressed` in M2 although it is a shared molecule. This is a bounded,
   backward-compatible accessibility correction needed for the independently asserted tab state;
   it changes no selection behavior.
+- The tab sends `status=confirmed` for every filter. This is required to keep every billing action
+  and aggregate billable, but means the user-facing **All** tab is all confirmed DNs rather than all
+  statuses, a deliberate narrowing from the request shape shown in spec §3.1.
+- The A2 count now includes the aggregate currency (`3 TND delivery notes`) so its company-currency
+  scope is explicit. This intentionally extends the exact example string in spec §3.1.
 
 ### Discovered findings not in scope
 
@@ -493,6 +505,18 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 - Non-race consolidation refusals such as `PARTIAL_DELIVERY_NOTE_SELECTION_INCOMPLETE` fall back to
   the generic untranslated error path. OI-8 condition 1 governs the attributed race refusal, which
   is correctly inline and translated.
+- **M3 close-before-merge:** View A currently renders foreign-currency DNs as selectable, while
+  `CONSOLIDATION_VALIDATION_FAILED` responses (wrong currency/partner/status or no lines) bypass the
+  inline document-attribution parser and fall through to a transient backend-English toast. M3's
+  same-partner/same-currency guard must cover View A; otherwise M5 must widen the parser before the
+  branch can merge.
+- The A2 balance line returns `null` for loading, error, and absent-data states alike, so an aggregate
+  transport failure is visually indistinguishable from zero un-billed exposure.
+- Refusal-alert dates remain raw `Y-m-d` even though table dates now use the active locale.
+- API contract coverage asserts the default un-invoiced filter only; explicit invoiced/all parameter
+  branches do not yet have direct request-shape regressions.
+- A `deliveries.view` user without `invoices.create` sees selection checkboxes but no action. The
+  list is correctly visible and the action correctly hidden, but the selection UI is inert.
 - `DocumentData.php:187-193`: resolving `invoice_number` performs a `Document::find()` per invoiced
   document and may become an N+1 on M2's invoiced tab.
 - `DeliveryNoteBillingConcurrencyRetrier.php:83-92`: a future nested caller could let the PDO cleanup
