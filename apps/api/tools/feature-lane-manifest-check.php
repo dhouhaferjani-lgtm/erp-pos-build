@@ -175,6 +175,8 @@ $errors = [];
 $notes = [];
 $deferredGroups = 0;
 $deferredClasses = 0;
+$excludedGroups = 0;
+$excludedClasses = 0;
 
 // ---- A. every group carries an explicit disposition ------------------------
 foreach ($byGroup as $group => $members) {
@@ -238,6 +240,14 @@ foreach ($byGroup as $group => $members) {
     if ($isDeferred) {
         $deferredGroups++;
         $deferredClasses += count($members);
+    }
+    // `excluded` is counted too, separately labelled. Reporting only `deferred`
+    // let all 71 groups be relabelled `excluded` — same two required fields — and
+    // the whole COVERAGE DEBT block vanished while 71 reason strings still said
+    // "no CI lane runs this directory". Relabelling must not erase the number.
+    if ($isExcluded) {
+        $excludedGroups++;
+        $excludedClasses += count($members);
     }
 
     // NON-GROWTH CEILING. Without this, planting a class in an EXISTING uncovered
@@ -319,15 +329,48 @@ foreach ($lanes as $laneId => $lane) {
     // `--filter=OneTest` to the step narrows it to one class while the manifest
     // still certifies the directory — N-3's failure ("the lane was real, it just
     // did not run the group") one level down, worth up to 215 classes.
-    foreach (['--filter', '--group', '--exclude-group', '--testsuite'] as $narrowing) {
-        if (str_contains((string) $laneRun, $narrowing)) {
+    // ALLOWLIST, not a denylist. Naming four narrowing flags left every other way
+    // of cutting the lane open — appending a single test PATH, `--list-tests`
+    // (exits 0 having run nothing), `|| true`, `; exit 0`. The rule is therefore
+    // inverted: a whole-directory lane's run line must be EXACTLY the selector
+    // plus tokens from a small neutral set, and nothing else.
+    $tail = trim(substr(trim((string) $laneRun), strlen($selector)));
+    if ($tail !== '') {
+        $neutralValueFlags = ['-c', '--configuration', '--log-junit', '--cache-result-file'];
+        $neutralBareFlags = [
+            '--colors', '--colors=always', '--colors=never', '--colors=auto',
+            '--no-progress', '--no-coverage', '--no-output', '--testdox',
+            '--do-not-cache-result', '--fail-on-warning', '--fail-on-risky',
+        ];
+        $tokens = preg_split('/\s+/', $tail) ?: [];
+        $expectValue = false;
+        foreach ($tokens as $token) {
+            if ($token === '') {
+                continue;
+            }
+            if ($expectValue) {
+                $expectValue = false;
+
+                continue;
+            }
+            if (in_array($token, $neutralValueFlags, true)) {
+                $expectValue = true;
+
+                continue;
+            }
+            if (in_array($token, $neutralBareFlags, true)) {
+                continue;
+            }
             $errors[] = sprintf(
-                'LANE "%s" is a whole-directory lane but its run line carries %s, which narrows what '
-                . 'actually executes: %s',
+                'LANE "%s" is a whole-directory lane, but its run line carries %s, which this checker '
+                . 'cannot prove leaves the whole directory gating. Run line: %s. A lane must be the '
+                . 'selector plus neutral flags only — a narrower PATH, `--list-tests`, `--filter`, '
+                . '`|| true` or `; exit 0` all leave the manifest certifying coverage that does not happen.',
                 $laneId,
-                $narrowing,
+                var_export($token, true),
                 var_export(trim((string) $laneRun), true),
             );
+            break;
         }
     }
 
@@ -358,14 +401,38 @@ foreach ($lanes as $laneId => $lane) {
     // A step-level `if:` skips the step on PR->dev exactly as a job guard would.
     // Conservative by design: ANY `if:` on a lane's own step means we do not
     // certify PR->dev coverage.
-    $selectorStepIf = (string) ($wf['stepIf'][$laneRun] ?? '');
-    if ($selectorStepIf !== '') {
+    // `always()` / `success()` / `!cancelled()` skip nothing, so treating ANY step
+    // `if:` as gating produced a hard failure — on an ungated job, i.e. blocking
+    // every PR — carrying the false claim "which skips it".
+    $alwaysTrueIf = ['always()', 'success()', '!cancelled()', '! cancelled()'];
+    $selectorStepIf = trim((string) ($wf['stepIf'][$laneRun] ?? ''));
+    if ($selectorStepIf !== '' && ! in_array($selectorStepIf, $alwaysTrueIf, true)) {
         $runsOnPrDev = false;
+    } else {
+        $selectorStepIf = '';
     }
 
     // R-1: `continue-on-error` on the step or the job means failures cannot block
     // the merge — the lane executes but no longer GATES.
     $soft = ($wf['stepSoft'][$laneRun] ?? false) || ($wf['jobSoft'][$owningJob] ?? false);
+    // …and the shell-level forms, which are what people actually type: `|| true`,
+    // `; exit 0`, `set +e`. The step still runs and still shows green, but its
+    // failure can no longer block the merge — identical consequence to
+    // `continue-on-error`, through a door YAML does not see.
+    $laneScript = (string) $laneRun;
+    foreach (['||', ';', '|', 'set +e', '&&'] as $shellSoft) {
+        if (str_contains($laneScript, $shellSoft)) {
+            $soft = true;
+            $errors[] = sprintf(
+                'LANE "%s" run line contains %s, so this checker cannot prove a failure of the suite '
+                . 'fails the step. A lane must be a single unconditional command. Run line: %s',
+                $laneId,
+                var_export($shellSoft, true),
+                var_export(trim($laneScript), true),
+            );
+            break;
+        }
+    }
     if ($soft) {
         $runsOnPrDev = false;
     }
@@ -395,7 +462,8 @@ foreach ($lanes as $laneId => $lane) {
     if ($claimsPrDev !== $runsOnPrDev) {
         $why = $jobIf === '' ? 'no job if: guard (always runs)' : 'job if: ' . $jobIf;
         if ($selectorStepIf !== '') {
-            $why .= '; the lane STEP carries `if: ' . $selectorStepIf . '`, which skips it';
+            $why .= '; the lane STEP carries `if: ' . $selectorStepIf
+                . '`, which this checker cannot prove is true on PR->dev';
         }
         if ($soft) {
             $why .= '; `continue-on-error` is set, so failures cannot block the merge';
@@ -409,6 +477,27 @@ foreach ($lanes as $laneId => $lane) {
             $claimsPrDev ? 'true' : 'false',
             $runsOnPrDev ? 'true' : 'false',
             $why,
+        );
+    }
+}
+
+// ---- B2. aggregate membership (brief H-9), for EVERY lane's job -------------
+// Asserting this from one PHPUnit case, for one lane, left `backend-architecture`
+// (the job carrying this very checker) and `treasury-spine-pgsql` unpinned.
+$aggregateNeeds = $workflowYaml['jobs']['all-checks-pass']['needs'] ?? [];
+$aggregateNeeds = is_array($aggregateNeeds) ? $aggregateNeeds : [(string) $aggregateNeeds];
+$mustBeInAggregate = ['backend-architecture'];
+foreach ($lanes as $lane) {
+    if (isset($lane['job'])) {
+        $mustBeInAggregate[] = (string) $lane['job'];
+    }
+}
+foreach (array_unique($mustBeInAggregate) as $jobId) {
+    if (! in_array($jobId, $aggregateNeeds, true)) {
+        $errors[] = sprintf(
+            'JOB "%s" is missing from the `all-checks-pass` `needs` list. Brief H-9 makes aggregate '
+            . 'membership a package-wide obligation: a gate outside the aggregate does not gate.',
+            $jobId,
         );
     }
 }
@@ -445,7 +534,18 @@ foreach ($wf['runs'] as $run) {
     // pipe is also the alternation separator INSIDE an anchored filter value
     // (`/\\(A|B|C)::/`), so splitting on it shreds the very value being checked.
     foreach (preg_split('/(?:&&|\|\||;|\n)/', $run) as $segment) {
-        $isPackageManager = preg_match('/^\s*(?:\S*\/)?(pnpm|npm|yarn|turbo)\b/', $segment) === 1;
+        // Skip env/wrapper prefixes before deciding which binary owns the flags:
+        // `env CI=1 pnpm …`, `npx pnpm …`, `corepack pnpm …`, `sudo -E pnpm …` all
+        // otherwise fell through and produced a false positive on an ungated job.
+        $probe = ltrim($segment);
+        while (
+            preg_match('/^(?:env|sudo|nice|time|command|exec|npx|corepack|xargs)\b\s*/', $probe) === 1
+            || preg_match('/^[A-Za-z_][A-Za-z0-9_]*=\S*\s+/', $probe) === 1
+            || preg_match('/^-{1,2}\S+\s+/', $probe) === 1
+        ) {
+            $probe = ltrim(preg_replace('/^(?:(?:env|sudo|nice|time|command|exec|npx|corepack|xargs)\b|[A-Za-z_][A-Za-z0-9_]*=\S*|-{1,2}\S+)\s*/', '', $probe, 1) ?? '');
+        }
+        $isPackageManager = preg_match('/^(?:\S*\/)?(pnpm|npm|yarn|turbo)\b/', $probe) === 1;
         if ($isPackageManager && ! preg_match('/\bphpunit\b|\bartisan\s+test\b/', $segment)) {
             continue;
         }
@@ -554,6 +654,15 @@ fwrite(STDOUT, sprintf(
     count($byGroup),
     count($allTestClasses),
 ));
+
+if ($excludedGroups > 0) {
+    fwrite(STDOUT, sprintf(
+        "  ⚠ EXCLUDED: %d group(s) / %d class(es) are declared unable to run in CI. Each carries a\n"
+        . "    reason; relabelling a `deferred` group as `excluded` does NOT remove it from this report.\n",
+        $excludedGroups,
+        $excludedClasses,
+    ));
+}
 
 if ($deferredGroups > 0) {
     // Loud on EVERY run, on purpose. These classes run in no CI lane; the manifest makes

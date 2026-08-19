@@ -395,7 +395,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         [$exit, $out] = $this->runChecker();
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('narrows what', $out);
+        self::assertStringContainsString('whole-directory lane', $out);
     }
 
     /** R-7: a same-job decoy step that merely MENTIONS the selector must not shadow the real one. */
@@ -454,5 +454,145 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         self::assertSame(1, $exit, $out);
         self::assertStringContainsString('UNANCHORED --filter', $out);
         self::assertStringNotContainsString('@autoerp/web', $out);
+    }
+
+    /** @return array{0:int,1:string} */
+    private function withLaneRun(string $replacement): array
+    {
+        $this->writeWorkflow(str_replace(
+            'run: ./vendor/bin/phpunit tests/Feature/Security',
+            $replacement,
+            $this->workflow(),
+        ));
+
+        return $this->runChecker();
+    }
+
+    /** G-1: a narrower PATH cuts a 17-class lane to 1, and no flag denylist sees it. */
+    public function test_it_fires_when_a_lane_is_narrowed_to_a_single_file(): void
+    {
+        [$exit, $out] = $this->withLaneRun(
+            'run: ./vendor/bin/phpunit tests/Feature/Security/ModuleAccessControlTest.php',
+        );
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('whole-directory lane', $out);
+    }
+
+    /** G-1: `--list-tests` exits 0 having run nothing. */
+    public function test_it_fires_when_a_lane_only_lists_tests(): void
+    {
+        [$exit, $out] = $this->withLaneRun('run: ./vendor/bin/phpunit tests/Feature/Security --list-tests');
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('whole-directory lane', $out);
+    }
+
+    /** G-2: `|| true` — the soft-fail people actually type. */
+    public function test_it_fires_on_a_shell_soft_failed_lane(): void
+    {
+        [$exit, $out] = $this->withLaneRun('run: ./vendor/bin/phpunit tests/Feature/Security || true');
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('single unconditional command', $out);
+    }
+
+    /** G-2: `; exit 0`. */
+    public function test_it_fires_on_a_lane_that_swallows_its_exit_code(): void
+    {
+        [$exit, $out] = $this->withLaneRun('run: ./vendor/bin/phpunit tests/Feature/Security; exit 0');
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('single unconditional command', $out);
+    }
+
+    /** G-1: a neutral flag must NOT be rejected — the allowlist has to stay usable. */
+    public function test_it_accepts_a_lane_carrying_only_neutral_flags(): void
+    {
+        [$exit, $out] = $this->withLaneRun(
+            'run: ./vendor/bin/phpunit tests/Feature/Security --no-progress --colors=never',
+        );
+
+        self::assertSame(0, $exit, $out);
+    }
+
+    /** G-3: relabelling `deferred` -> `excluded` must not erase the debt. */
+    public function test_relabelling_deferred_as_excluded_does_not_erase_the_debt(): void
+    {
+        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($manifest['groups'] as $group => $entry) {
+            if (($entry['deferred'] ?? false) === true) {
+                unset($manifest['groups'][$group]['deferred']);
+                $manifest['groups'][$group]['excluded'] = true;
+            }
+        }
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(0, $exit, $out);
+        self::assertStringContainsString('EXCLUDED:', $out);
+        self::assertStringContainsString('1114 class(es)', $out);
+    }
+
+    /** G-5 / R-8: `always()` skips nothing — it must NOT hard-fail every PR. */
+    public function test_it_accepts_an_always_true_step_if(): void
+    {
+        [$exit, $out] = $this->withLaneRun(
+            "if: always()\n        run: ./vendor/bin/phpunit tests/Feature/Security",
+        );
+
+        self::assertSame(0, $exit, $out);
+    }
+
+    /** G-6 / R-9: aggregate membership is now the checker's job, for every lane. */
+    public function test_it_fires_when_a_lane_job_leaves_the_aggregate(): void
+    {
+        $this->writeWorkflow(str_replace(
+            'backend-test-pgsql, security-regression, treasury-spine-pgsql',
+            'backend-test-pgsql, treasury-spine-pgsql',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('all-checks-pass', $out);
+        self::assertStringContainsString('security-regression', $out);
+    }
+
+    /** G-6: the job carrying the checker itself is pinned too. */
+    public function test_it_fires_when_backend_architecture_leaves_the_aggregate(): void
+    {
+        $this->writeWorkflow(str_replace(
+            'backend-lint, backend-analyse, backend-architecture,',
+            'backend-lint, backend-analyse,',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('backend-architecture', $out);
+    }
+
+    /** G-7: env/wrapper-prefixed package-manager calls must not false-positive. */
+    public function test_it_does_not_flag_env_prefixed_pnpm_filters(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '      - name: Check tests/Feature CI-lane manifest',
+            "      - name: Zzz env prefixed pnpm\n"
+            . "        run: env CI=1 pnpm --filter @autoerp/web build\n\n"
+            . "      - name: Zzz npx prefixed pnpm\n"
+            . "        run: npx pnpm --filter @autoerp/pos build\n\n"
+            . '      - name: Check tests/Feature CI-lane manifest',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(0, $exit, $out);
+        self::assertStringNotContainsString('@autoerp/', $out);
     }
 }

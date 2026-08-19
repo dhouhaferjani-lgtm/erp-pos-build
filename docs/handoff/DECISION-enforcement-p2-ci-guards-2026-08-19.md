@@ -1435,3 +1435,79 @@ very values being checked (caught locally before commit).
 
 **Checker liveness suite: 20 cases.** Every bypass the reviewer has run across three rounds now fails
 closed, and R-2/R-6 have positive cases proving the two false-positive shapes stay green.
+
+---
+
+## M2 round 4 — response to `docs/handoff/reviews/enforcement-p2/M2-round4.md`
+
+Verdict: **CHANGES-REQUIRED** — 0 P1, 4 P2, 3 P3. `fix_rounds` 4 of 5.
+
+**Tally check, performed before writing anything else** (`grep -c '— P2 —'` = 4, `grep -c '— P3 —'` = 3
+against the full file, not a slice): round 4 = **4 P2 (G-1…G-4), 3 P3 (G-5…G-7)**. All seven are
+dispositioned below.
+
+### (59) ⚠️ G-4 — I under-reported my register a SECOND time, inside the section correcting the first
+
+Round 3 carried **4 P2 and 5 P3**; I wrote "4 P2, 3 P3" and never mentioned **R-8** and **R-9** — in
+§(56), the section whose entire subject is that a record must not make false statements about its own
+completeness. Same off-by-two shape as round 2 (reported 3 P3, actual 7).
+
+**Corrected: round 3 = 4 P2, 5 P3.** The root cause both times was mine and mechanical: I read the
+register through `grep`/`sed` slices and responded from the slice. **Process changed** — every register
+is now read in full and its severities counted with `grep -c` before a word of response is written,
+which is how the round-4 tally above was produced. The two dropped items:
+
+- **R-8 (now G-5) — `if: always()` hard-failed every PR with a false message.** Confirmed live. My
+  N-1 rule was "ANY step `if:` means not certified", so `always()` — which skips nothing — produced
+  `EXIT=1` in `backend-architecture`, an **ungated** job, with the output *"which skips it"*. That is
+  the N-2 defect class (over-general fix → false positive blocking everyone) reintroduced by the N-1
+  fix, plus a false statement in a guard's own output. **Fixed:** `always()`, `success()`,
+  `!cancelled()` are allowlisted, and the message for genuine guards now says *"which this checker
+  cannot prove is true on PR→dev"* — which is the truth.
+- **R-9 (now G-6) — aggregate membership was asserted for one lane, only from a test.** Confirmed.
+  **Fixed structurally:** the check moved **into the checker**, keyed off every lane's declared `job`
+  plus `backend-architecture` (the job carrying the checker itself). Two new cases.
+
+### (60) G-1 + G-2 (P2) — the denylist was the wrong shape; replaced with an allowlist
+
+The reviewer bypassed the R-3 narrowing check five ways, and the fix it proposed — *close the family
+instead of the door* — is correct:
+
+- `run: … tests/Feature/Security/ModuleAccessControlTest.php` → the rule-12 lane runs **1 of 17**.
+- `run: … tests/Feature/Treasury/AcquirerFeeServiceTest.php` → **1 of 119**.
+- `run: … tests/Feature/Security --list-tests` → exits 0 having run **zero** tests.
+- `run: … tests/Feature/Security || true` and `; exit 0` → still green, no longer gating.
+
+Denylisting four flags could never cover this. A lane's run line must now be **exactly the selector
+plus tokens from a small neutral allowlist** (`-c`/`--configuration`, `--colors*`, `--no-progress`,
+`--no-coverage`, `--testdox`, …); anything else — a path, an unknown flag — fails. Separately, a run
+line containing `||`, `;`, `|`, `&&` or `set +e` is not a single unconditional command and cannot be
+proven to gate. Six new cases, including a **positive** one asserting neutral flags stay green so the
+allowlist does not become unusable.
+
+### (61) G-3 (P2) — the debt was still erasable, now through `excluded`
+
+N-3 closed the `lane` door; `excluded` was open. The reviewer rewrote all 71 `deferred` groups to
+`excluded` — same two required fields — and the whole `⚠ COVERAGE DEBT` block disappeared while the 71
+reason strings still said *"no CI lane runs this directory"*. That is a false "genuinely cannot run in
+CI" claim about 1 114 classes that demonstrably can.
+
+**Fixed:** the report now counts `excluded` too, in its own labelled block, so relabelling moves the
+number between lines instead of erasing it. New case asserts the mass relabel keeps `1114 class(es)`
+visible.
+
+### (62) G-7 (P3) — the package-manager heuristic, third occurrence of the same root cause
+
+`env CI=1 pnpm --filter @autoerp/web build`, `npx pnpm …`, `corepack pnpm …`, `sudo -E pnpm …` all
+fell through the "segment starts with pnpm" test and hard-failed the ungated job. Fixed by stripping
+env assignments and wrapper commands (`env`, `sudo`, `nice`, `time`, `command`, `exec`, `npx`,
+`corepack`, `xargs`) before deciding which binary owns the flags. New case covers the `env` and `npx`
+forms.
+
+**Honest note on the pattern:** this is the third round in which a textual heuristic standing in for
+"which binary owns this flag" produced a false positive on a job that blocks every PR. The structural
+answer is to parse the command properly; the proportionate answer here is the prefix-stripping above
+plus the test. Recorded so the next extender knows which way the debt runs.
+
+**Checker liveness suite: 30 cases.** Every bypass across four rounds fails closed, and three positive
+cases pin the false-positive shapes green.
