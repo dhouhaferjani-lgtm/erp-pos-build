@@ -191,7 +191,7 @@ vi.mock('@/components/pos/EndOfDayPreviewModal', () => ({
   EndOfDayPreviewModal: (props: {
     isOpen: boolean;
     onClose: () => void;
-    cashCountPolicyResolved?: boolean;
+    cashCountPolicyResolved: boolean;
     fraudSettings?: { require_blind_cash_count: boolean } | null;
   }) =>
     props.isOpen ? (

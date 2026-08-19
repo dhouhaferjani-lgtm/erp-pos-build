@@ -38,7 +38,7 @@ export interface EndOfDayPreviewModalProps {
   /** When provided, the cash-reconciliation section is rendered. */
   fraudSettings?: CompanyFraudSettings | null;
   /** Set by the production caller once the online-or-cache policy lookup finishes. */
-  cashCountPolicyResolved?: boolean;
+  cashCountPolicyResolved: boolean;
   authorizedManagers?: AuthorizedManager[];
   cashierUserId?: string;
   onVerifyManagerPin?: (userId: string, pin: string) => Promise<{ valid: boolean }>;
@@ -110,8 +110,7 @@ export function EndOfDayPreviewModal({
     onVerifyManagerPin !== undefined &&
     managerPinThrottle !== undefined &&
     onManagerPinThrottleUpdate !== undefined;
-  const cashCountPolicyPending =
-    cashCountPolicyResolved !== undefined && !cashCountPolicyResolved;
+  const cashCountPolicyPending = cashCountPolicyResolved !== true;
   const cashCountPolicyUnavailable =
     cashCountPolicyResolved === true && fraudSettings == null;
 

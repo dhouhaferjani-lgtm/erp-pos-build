@@ -28,7 +28,7 @@ interface RawRow extends Omit<
   CompanyFraudSettingsCacheRow,
   'require_blind_cash_count' | 'require_manager_pin_above_hard'
 > {
-  require_blind_cash_count: number;
+  require_blind_cash_count: number | string | boolean;
   require_manager_pin_above_hard: number;
 }
 
@@ -96,7 +96,10 @@ export async function getCompanyFraudSettings(
   const r = rows[0]!;
   return {
     ...r,
-    require_blind_cash_count: r.require_blind_cash_count === 1,
+    require_blind_cash_count:
+      r.require_blind_cash_count === 1 ||
+      r.require_blind_cash_count === '1' ||
+      r.require_blind_cash_count === true,
     require_manager_pin_above_hard: r.require_manager_pin_above_hard === 1,
   };
 }

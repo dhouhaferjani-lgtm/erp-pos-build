@@ -152,6 +152,8 @@ function renderModal(
         terminalId="term-1"
         onConfirmAndClose={onConfirmAndClose}
         onPrintReceipt={onPrintReceipt}
+        fraudSettings={baseFraudSettings}
+        cashCountPolicyResolved
       />
     </MemoryRouter>,
   );
@@ -172,6 +174,13 @@ function renderModalWithCashCount(opts: CashCountRenderOpts = {}) {
   const onVerifyManagerPin =
     opts.onVerifyManagerPin ?? vi.fn().mockResolvedValue({ valid: true });
   const onManagerPinThrottleUpdate = vi.fn();
+  // Preserve an explicitly supplied undefined to exercise the JavaScript boundary.
+  const cashCountPolicyResolved = Object.prototype.hasOwnProperty.call(
+    opts,
+    'cashCountPolicyResolved',
+  )
+    ? opts.cashCountPolicyResolved
+    : true;
   const result = render(
     <MemoryRouter>
       <EndOfDayPreviewModal
@@ -185,7 +194,7 @@ function renderModalWithCashCount(opts: CashCountRenderOpts = {}) {
             ? opts.fraudSettings
             : baseFraudSettings
         }
-        cashCountPolicyResolved={opts.cashCountPolicyResolved}
+        cashCountPolicyResolved={cashCountPolicyResolved as boolean}
         authorizedManagers={[
           { id: 'mgr-1', name: 'Mgr One' },
           { id: 'mgr-2', name: 'Mgr Two' },
@@ -347,7 +356,7 @@ describe('EndOfDayPreviewModal', () => {
   // ── New tests for cash-count integration ──────────────────────────────────
 
   describe('cash-count mode', () => {
-    it('hides cash reconciliation section in legacy mode (no fraudSettings)', async () => {
+    it('hides cash reconciliation section in legacy mode without supporting props', async () => {
       renderModal();
       expect(await screen.findByText('Confirm and Close Day')).toBeInTheDocument();
       expect(
@@ -537,6 +546,20 @@ describe('EndOfDayPreviewModal', () => {
       );
 
       expect(screen.getByText(/Cannot close this shift/)).toBeInTheDocument();
+      expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
+      expect(screen.queryByText('130.00')).not.toBeInTheDocument();
+    });
+
+    it('SECURITY: treats an undefined runtime policy-resolution signal as pending', async () => {
+      renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: undefined,
+      });
+      await waitFor(() => {
+        expect(mockBuildEndOfDayPreview).toHaveBeenCalledOnce();
+      });
+
+      expect(screen.getByText('Generating report...')).toBeInTheDocument();
       expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
       expect(screen.queryByText('130.00')).not.toBeInTheDocument();
     });

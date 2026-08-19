@@ -16,6 +16,7 @@ return new class extends Migration
             $table->decimal('cash_variance_over_hard', 12, 4)->default(20.0000);
             $table->decimal('cash_variance_under_soft', 12, 4)->default(1.0000);
             $table->decimal('cash_variance_under_hard', 12, 4)->default(20.0000);
+            // SV-9 retroactively flipped this default to true; the 2026_08_12_100000 migration converges existing false rows.
             $table->boolean('require_blind_cash_count')->default(true);
             $table->boolean('require_manager_pin_above_hard')->default(true);
             $table->string('cash_variance_email_severity', 12)->default('none');

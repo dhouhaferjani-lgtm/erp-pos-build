@@ -183,4 +183,26 @@ describe('companyFraudSettingsCacheRepository', () => {
     expect(out?.require_manager_pin_above_hard).toBe(false);
     expect(out?.cash_variance_email_severity).toBe('warning');
   });
+
+  it.each([1, '1', true] as const)(
+    'maps the driver true shape %j to a blind-count requirement',
+    async (requireBlindCashCount) => {
+      vi.mocked(queryAll).mockResolvedValue([
+        {
+          company_id: 'co-driver-shape',
+          cash_variance_over_soft: '5.0000',
+          cash_variance_over_hard: '50.0000',
+          cash_variance_under_soft: '5.0000',
+          cash_variance_under_hard: '50.0000',
+          require_blind_cash_count: requireBlindCashCount,
+          require_manager_pin_above_hard: 0,
+          cash_variance_email_severity: 'warning',
+        },
+      ]);
+
+      const out = await getCompanyFraudSettings(db, 'co-driver-shape');
+
+      expect(out?.require_blind_cash_count).toBe(true);
+    },
+  );
 });

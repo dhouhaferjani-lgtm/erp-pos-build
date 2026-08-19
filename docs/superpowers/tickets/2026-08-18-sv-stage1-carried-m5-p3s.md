@@ -46,6 +46,24 @@ Acceptance:
   and
 - keep the red-by-design vertical-default tests explicit.
 
+## 4. Schema-gate server-authored Z cash counts
+
+`GenerateZReportRequest` accepts and validates `cash_counts` without considering the target terminal's
+`fiscal_schema_version`. The controller then constructs the retired server-authoring DTOs before
+`ReportGenerationService` rejects all schema-v3 Z authoring through the device-authority guard. This
+does not bypass the existing schema-v3 block, but the HTTP contract still advertises and accepts a
+payload shape that the target terminal cannot use.
+
+Acceptance for a future lane:
+
+- resolve the company-scoped terminal before accepting the cross-field payload;
+- return a hard HTTP 422 when `cash_counts` is present for a terminal whose fiscal schema does not
+  permit the legacy server cash-count path;
+- preserve the existing device-authority response for terminal-only attempts and the schema-v2
+  compatibility behavior while it remains supported; and
+- add request/controller tests proving the 422 occurs before cash-count DTO construction or service
+  dispatch.
+
 ## Related carried UX ticket
 
 The two policy-refresh display P3s from M4 round 5 remain in
