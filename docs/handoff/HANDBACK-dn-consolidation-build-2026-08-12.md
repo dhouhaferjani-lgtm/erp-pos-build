@@ -7,7 +7,7 @@
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/dn-consolidation`.
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
-- Current M2 implementation SHA: `483457a41` (awaiting the M2 bridge gate).
+- Current M2 implementation SHA: `3b1af7fbc` (bridge fix round 1; awaiting round 2).
 - Milestone being handed back: M2.
 - No push, merge, or deployment was performed.
 
@@ -49,6 +49,10 @@ M2 commit list:
 - `f74282ddd Phase 2.2.2: Show delivery-note billing attribution`
 - `ff4648ef6 Phase 2.2.3: Link lane-separation report`
 - `483457a41 Phase 2.2.4: Centralize delivery-note billing links`
+- `668a4bc47 Phase 2.2.5: Record M2 differential preflight`
+- `79f53e02d Phase 2.2.6: Record M2 bridge round one`
+- `ed282949a Phase 2.2.7: Reproduce M2 bridge findings`
+- `3b1af7fbc Phase 2.2.8: Close M2 bridge findings`
 
 ## Owner-amended gate
 
@@ -305,7 +309,7 @@ overlap is disclosed for owner integration; it is additive and typecheck remains
 
 ## M2 — View A, A2, and View C
 
-**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — fix round 1 in progress.**
+**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — fix round 1 complete; awaiting round 2.**
 
 Bridge round 1 reviewed `60df88a01..668a4bc47` through frontend-conventions, treasury, and general
 lenses. It confirmed the module/permission riders, generated DTO flow, C9 tenant scoping, sidebar
@@ -314,6 +318,53 @@ blocking gaps: the shipped list request omitted `status=confirmed`; off-page ref
 were absent from the persistent attribution region; row totals used company rather than document
 currency; and the handback lacked explicit RED-first/deviation evidence. Fix round 1 addresses
 those blockers and the bounded P3 presentation issues in the same surface.
+
+Fix round 1 has an auditable RED/GREEN split. Commit `ed282949a` contains tests only and fails seven
+assertions. Commit `3b1af7fbc` supplies the implementation and makes all 17 targeted tests green:
+
+- `deliveryNotes.test.ts` expected `status: confirmed`; before the fix the request omitted it.
+- `PartnerDeliveryNotesTab.test.tsx` could not find off-page `DN-001`, its taking date/lane, or the
+  `Open INV-001` link inside the persistent alert.
+- The all-refused test lost `role=alert` after the operator removed the only refused selection.
+- The EUR-row test received `TND 99.875` and could not find a EUR-formatted amount.
+- Aggregate-scope tests received `(3 delivery notes)` rather than `(3 TND delivery notes)`.
+- The coexistence test could not find either lane-guidance line.
+- The balance-line test could find neither a `dt` nor a `dd` in the rendered definition list.
+
+The fixes force confirmed status on every tab filter, render every refused document in the alert
+regardless of pagination, preserve the guarantee when no remainder exists, format each row in its
+own currency, identify the aggregate currency beside the count, restore all four coexistence lines,
+localize row dates, use valid definition-list markup, remove the fake `invoiced_at='attributed'`
+sentinel, and move the reusable billing-status component out of the partner-tab file. A negative
+detail-page regression also proves an un-invoiced DN renders no billing line.
+
+### M2 failing-test-first register
+
+The initial feature commits co-located their tests and implementations, so their transient terminal
+RED output is not a separate commit. The test files and pre-implementation failures observed during
+that TDD pass were:
+
+- **View A and module/permission riders:**
+  `PartnerDetailPage.deliveryNotes.gates.test.tsx` could not find the sixth tab or action under the
+  allowed cases; `PartnerDeliveryNotesTab.test.tsx` could not find its filters, selectable rows,
+  invoice attribution, or row-level refusal markers.
+- **Generated DTO contract:** `deliveryNotes.test.ts`/TypeScript compilation failed when the new
+  billing fields were read before the generated-DTO `Pick` was widened; the source guard prevents a
+  hand-written object mirror.
+- **A2:** `PartnerDeliveryNotesTab.test.tsx` could not find `Delivered, not yet invoiced`, the shared
+  `300.750` aggregate, or a call to the currency formatter before the balance line existed.
+- **422 mutation surface:** the exact-two-row test could not find the two refused row test IDs and
+  observed no remainder-only second mutation before the persistent refusal state was implemented.
+- **Detail attribution:** `DeliveryNoteDetailPage.billingStatus.test.tsx` could not find `Invoiced
+  on`, `INV-001`, or the lane badge before the detail surface was added.
+- **C9:** `deliveryNotesTenantScope.test.tsx` observed no partner aggregate key and no invalidation
+  of the balance/to-bill/detail namespaces before the new hook behavior.
+- **View C:** `Sidebar.test.tsx` could not find the lane-separation entry under
+  `reports.financial`; the inverse permission assertion initially had no entry to hide.
+
+The missing durable initial-RED artifact is recorded as a process deviation below. Fix round 1 does
+not repeat it: `ed282949a` is the preserved failing checkpoint with the concrete output summarized
+above.
 
 ### Delivered surfaces and binding riders
 
@@ -330,9 +381,9 @@ those blockers and the bounded P3 presentation issues in the same surface.
 - The tab type is a `Pick` of generated `App.Modules.Document.Application.DTOs.DocumentData`;
   `deliveryNotes.ts` contains no hand-written `DeliveryNote` object mirror.
 - The partner balance card renders one bounded un-billed line directly below total receivable.
-  Both it and the tab consume the same aggregate query. `aggregates.count` and decimal-string
-  `aggregates.total` are rendered through `useCurrency().format`; neither surface uses
-  `parseFloat` or `Number`.
+  Both it and the tab consume the same aggregate query. Each surface reads `aggregates.count`
+  directly and renders decimal-string `aggregates.total` through `useCurrency().format`; neither
+  surface uses `parseFloat` or `Number`.
 - Delivery-note detail and partner rows show `invoiced_via` plus a centralized entity link to the
   taking invoice. The partner table's delivery-note and post-success invoice navigation also use
   `entityRoutes.document`.
@@ -344,10 +395,10 @@ those blockers and the bounded P3 presentation issues in the same surface.
 
 ### M2 verification evidence
 
-- Focused M2 Vitest: 6 files, 66 tests passed. This includes five independent partner tab/action
+- Focused M2 Vitest after fix round 1: 6 files, 72 tests passed. This includes five independent partner tab/action
   gate tests, the exact-two-row 422 test, aggregate-format parity, generated-type source guard,
   C9 tenant scoping, detail attribution, and the 45-test sidebar suite.
-- Exact §6.3 path sweep: 89 files / 701 tests passed. Only the two owner-ledgered finance tests
+- Exact §6.3 path sweep after fix round 1: 89 files / 707 tests passed. Only the two owner-ledgered finance tests
   failed (`src/features/finance/api.test.ts` and
   `src/features/finance/hooks/__tests__/tenantScope.test.tsx`); no M2 test failed.
 - Exact backend path sweep at M2 HEAD: 1,064 tests passed, 32 skipped. Only the same two
@@ -362,7 +413,7 @@ those blockers and the bounded P3 presentation issues in the same surface.
   differential capture: normalized route patch SHA-256
   `92a1554a51c2090f0550bb41b08ee723d3d9a1981eba3fd837338f650dc78f70`, and the single inherited
   `InventoryCountingController.php:135` chokepoint finding with its six-entry validator passing.
-- React Doctor against explicit base `60df88a01`: 88/100, 21 changed files scanned, no issues.
+- React Doctor against explicit base `60df88a01`: 88/100, 22 changed files scanned, no issues.
   Scoped ESLint on the M2 files has zero errors, and the two initially exposed hardcoded entity
   route warnings were closed in `483457a41`.
 - Precision/type guards: no `parseFloat`/`Number` in the new aggregate surface; no hand-written
@@ -375,7 +426,7 @@ those blockers and the bounded P3 presentation issues in the same surface.
 
 ### M2 amended differential verdict
 
-**PASSED at `483457a41`.** All M2-touched files are green. Across the exact repository scopes, the
+**PASSED at `3b1af7fbc`.** All M2-touched files are green. Across the exact repository scopes, the
 failure set is byte-identical to the already captured `60df88a01` baseline: two locked PHPStan
 precision findings, two default-SQLite composite-root fixture failures, two finance Vitest reds,
 the normalized route-manifest patch, the SaleReceipt chokepoint, and the generated-types residual.
@@ -386,6 +437,10 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 - **F-1 resolved:** all three accountant grants and the merged frontend map are present at the pin.
 - **F-3:** the existing DN list/detail route retains the owner-ruled `moduleKey="inventory"`
   residual. This lane did not change it.
+- **M2 route residual:** the base `GET /delivery-notes` route used by the tab has
+  `can:deliveries.view` but no backend `module:Sales`. The tab and action are independently gated as
+  approved. Adding a backend revocation to that existing route was not authorized by M2 and is
+  returned to the owner rather than silently widened.
 - **OI-9:** `legacy_unknown` is a migration-only historical value. M2 owns its neutral en/fr badge.
 - **OI-12:** staging legacy-survey counts remain parent-owned; promotion must capture the migration
   log and must not silently reconcile dirty fiscal-adjacent data.
@@ -413,6 +468,15 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 - `copyOrderLinesWithProvenance()` now persists `source_line_id` on SO→Invoice lines so the server can
   safely produce `billed_order_line_ids` for OI-8 condition 4. This is an intentional, disclosed NG-2
   data-shape expansion; downstream discount-strip event provenance improves rather than breaks.
+- M2's original feature commits preserve tests and implementation together rather than a durable
+  failing-test commit. The per-item observed failures are recorded in the M2 register above; bridge
+  fix round 1 corrects the process with the explicit RED `ed282949a` / GREEN `3b1af7fbc` split.
+- The four-line coexistence helper is listed under M3 in the milestone table but is necessary to
+  explain M2's two billing lanes and was already present in the approved M2 design. Fix round 1
+  restores the spec's exact four-line substance in en/fr instead of deleting it.
+- `FilterTabs` gained `aria-pressed` in M2 although it is a shared molecule. This is a bounded,
+  backward-compatible accessibility correction needed for the independently asserted tab state;
+  it changes no selection behavior.
 
 ### Discovered findings not in scope
 
