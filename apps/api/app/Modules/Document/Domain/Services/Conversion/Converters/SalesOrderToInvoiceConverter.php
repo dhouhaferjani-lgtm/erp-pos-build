@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -204,11 +205,11 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 ]);
 
                 // Copy lines (all or partial)
-                if ($partial && $lineIds !== null) {
-                    $this->copyPartialLines($order, $invoice, $lineIds);
-                } else {
-                    $this->copyLines($order, $invoice);
-                }
+                $this->copyOrderLinesWithProvenance(
+                    $order,
+                    $invoice,
+                    $partial ? $lineIds : null,
+                );
 
                 // Strip sub-tolerance discounts BEFORE recalculateTotals so the
                 // resulting invoice's subtotal/tax/total correctly reflect the
@@ -287,6 +288,25 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         $payload = $order->payload ?? [];
 
         return $payload['fully_invoiced'] ?? false;
+    }
+
+    /**
+     * Copy the same full or selected line set while retaining exact SO origin.
+     *
+     * @param  list<string>|null  $lineIds
+     */
+    private function copyOrderLinesWithProvenance(
+        Document $order,
+        Document $invoice,
+        ?array $lineIds,
+    ): void {
+        $lines = $lineIds === null
+            ? $order->lines
+            : $order->lines()->whereIn('id', $lineIds)->get();
+
+        foreach ($lines as $line) {
+            $this->copyLine($line, $invoice, linkSource: true);
+        }
     }
 
     /**
@@ -517,7 +537,7 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         if ($partial && $lineIds !== null) {
             $query->whereHas('lines', static function (Builder $lineQuery) use ($lineIds): void {
                 $lineQuery->whereNotNull('source_line_id')->whereIn('source_line_id', $lineIds);
-            });
+            })->with('lines');
         }
 
         $lockedDeliveryNotes = $query
@@ -553,6 +573,32 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
         if ($alreadyInvoiced !== []) {
             throw new DeliveryNoteBatchValidationException($alreadyInvoiced);
+        }
+
+        if ($partial && $lineIds !== null) {
+            $selectedLineIds = collect($lineIds)->flip();
+            $orderLineIds = $order->lines
+                ->pluck('id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->flip();
+            $incompleteSelections = array_values($lockedDeliveryNotes
+                ->filter(static fn (Document $deliveryNote): bool => $deliveryNote->lines->isEmpty()
+                    || ! $deliveryNote->lines->every(
+                        static fn (DocumentLine $line): bool => $line->source_line_id !== null
+                            && $orderLineIds->has((string) $line->source_line_id)
+                            && $selectedLineIds->has((string) $line->source_line_id),
+                    ))
+                ->map(static fn (Document $deliveryNote): array => [
+                    'id' => $deliveryNote->id,
+                    'document_number' => $deliveryNote->document_number,
+                    'reason' => 'partial_selection_incomplete',
+                ])
+                ->values()
+                ->all());
+
+            if ($incompleteSelections !== []) {
+                throw new DeliveryNoteBatchValidationException($incompleteSelections);
+            }
         }
 
         return $lockedIds;

@@ -80,13 +80,18 @@ class DocumentConversionController extends Controller
                 'message' => 'Sales order converted to invoice successfully',
             ], 201);
         } catch (DeliveryNoteBatchValidationException $e) {
+            $containsAlreadyInvoiced = $e->containsAlreadyInvoiced();
+
             return response()->json([
                 'error' => [
-                    'code' => 'DELIVERY_NOTE_ALREADY_INVOICED',
+                    'code' => $containsAlreadyInvoiced
+                        ? 'DELIVERY_NOTE_ALREADY_INVOICED'
+                        : 'PARTIAL_DELIVERY_NOTE_SELECTION_INCOMPLETE',
                     'message' => $e->getMessage(),
-                    'details' => [
-                        'documents' => $this->deliveryNoteFailureDetails($e->documents, $id),
-                    ],
+                    'details' => $this->deliveryNoteFailureDetails(
+                        $e->documents,
+                        $containsAlreadyInvoiced ? $id : null,
+                    ),
                 ],
             ], 422);
         } catch (DeliveryNoteAlreadyClaimedException $e) {
@@ -94,13 +99,11 @@ class DocumentConversionController extends Controller
                 'error' => [
                     'code' => 'DELIVERY_NOTE_ALREADY_INVOICED',
                     'message' => $e->getMessage(),
-                    'details' => [
-                        'documents' => $this->deliveryNoteFailureDetails([[
-                            'id' => $e->deliveryNoteId,
-                            'document_number' => '',
-                            'reason' => 'claim_lost',
-                        ]], $id),
-                    ],
+                    'details' => $this->deliveryNoteFailureDetails([[
+                        'id' => $e->deliveryNoteId,
+                        'document_number' => '',
+                        'reason' => 'claim_lost',
+                    ]], $id),
                 ],
             ], 422);
         } catch (\DomainException $e) {
@@ -314,9 +317,7 @@ class DocumentConversionController extends Controller
                         ? 'DELIVERY_NOTE_ALREADY_INVOICED'
                         : 'CONSOLIDATION_VALIDATION_FAILED',
                     'message' => $e->getMessage(),
-                    'details' => [
-                        'documents' => $this->deliveryNoteFailureDetails($e->documents),
-                    ],
+                    'details' => $this->deliveryNoteFailureDetails($e->documents),
                 ],
             ], 422);
         } catch (DeliveryNoteAlreadyClaimedException $e) {
@@ -324,13 +325,11 @@ class DocumentConversionController extends Controller
                 'error' => [
                     'code' => 'DELIVERY_NOTE_ALREADY_INVOICED',
                     'message' => $e->getMessage(),
-                    'details' => [
-                        'documents' => $this->deliveryNoteFailureDetails([[
-                            'id' => $e->deliveryNoteId,
-                            'document_number' => '',
-                            'reason' => 'claim_lost',
-                        ]]),
-                    ],
+                    'details' => $this->deliveryNoteFailureDetails([[
+                        'id' => $e->deliveryNoteId,
+                        'document_number' => '',
+                        'reason' => 'claim_lost',
+                    ]]),
                 ],
             ], 422);
         } catch (\InvalidArgumentException $e) {
@@ -443,18 +442,20 @@ class DocumentConversionController extends Controller
      * @param list<array{
      *     id: string,
      *     document_number: string,
-     *     reason: 'already_invoiced'|'wrong_partner'|'wrong_currency'|'not_confirmed'|'cancelled'|'no_lines'|'claim_lost'
+     *     reason: 'already_invoiced'|'wrong_partner'|'wrong_currency'|'not_confirmed'|'cancelled'|'no_lines'|'claim_lost'|'partial_selection_incomplete'
      * }> $failures
-     * @return list<array{
-     *     id: string,
-     *     document_number: string,
-     *     reason: string,
-     *     invoice_id: string|null,
-     *     invoice_number: string|null,
-     *     invoice_date: string|null,
-     *     invoiced_via: string|null,
-     *     source_line_ids?: list<string>
-     * }>
+     * @return array{
+     *     documents: list<array{
+     *         id: string,
+     *         document_number: string,
+     *         reason: string,
+     *         invoice_id: string|null,
+     *         invoice_number: string|null,
+     *         invoice_date: string|null,
+     *         invoiced_via: string|null
+     *     }>,
+     *     billed_order_line_ids?: list<string>
+     * }
      */
     private function deliveryNoteFailureDetails(array $failures, ?string $sourceOrderId = null): array
     {
@@ -462,23 +463,13 @@ class DocumentConversionController extends Controller
         // read context so attribution can only describe committed winners, never
         // transaction-local reservation state from the losing attempt.
         return DB::transaction(function () use ($failures, $sourceOrderId): array {
-            $ids = array_column($failures, 'id');
+            $ids = array_values(array_unique(array_column($failures, 'id')));
+            sort($ids, SORT_STRING);
             $documents = $this->scopedQuery()
                 ->where('type', DocumentType::DeliveryNote->value)
                 ->whereIn('id', $ids)
                 ->get(['id', 'document_number'])
                 ->keyBy('id');
-            $deliveryNoteLines = DocumentLine::query()
-                ->whereIn('document_id', $ids)
-                ->get(['document_id', 'source_line_id'])
-                ->groupBy('document_id');
-            $orderLineIds = $sourceOrderId === null
-                ? collect()
-                : DocumentLine::query()
-                    ->where('document_id', $sourceOrderId)
-                    ->pluck('id')
-                    ->map(static fn (mixed $id): string => (string) $id)
-                    ->flip();
             $markers = DB::table('delivery_note_billing_marks')
                 ->where('company_id', $this->companyContext->requireCompanyId())
                 ->whereIn('delivery_note_id', $ids)
@@ -491,31 +482,15 @@ class DocumentConversionController extends Controller
                 ->get(['id', 'document_number', 'document_date'])
                 ->keyBy('id');
 
-            return array_map(static function (array $failure) use (
+            $documentDetails = array_map(static function (array $failure) use (
                 $documents,
-                $deliveryNoteLines,
-                $orderLineIds,
                 $markers,
                 $invoices,
-                $sourceOrderId,
             ): array {
                 $marker = $markers->get($failure['id']);
                 $invoiceId = $marker?->invoice_id !== null ? (string) $marker->invoice_id : null;
-                $lines = $deliveryNoteLines->get($failure['id'], collect());
-                $sourceLineIds = array_values($lines
-                    ->pluck('source_line_id')
-                    ->filter(static fn (mixed $id): bool => $id !== null)
-                    ->map(static fn (mixed $id): string => (string) $id)
-                    ->unique()
-                    ->sort()
-                    ->values()
-                    ->all());
-                $hasCompleteOrderAttribution = $sourceOrderId !== null
-                    && $lines->isNotEmpty()
-                    && $lines->every(static fn (DocumentLine $line): bool => $line->source_line_id !== null
-                        && $orderLineIds->has((string) $line->source_line_id));
 
-                $details = [
+                return [
                     'id' => $failure['id'],
                     'document_number' => $documents->get($failure['id'])->document_number
                         ?? $failure['document_number'],
@@ -531,13 +506,70 @@ class DocumentConversionController extends Controller
                         ? (string) $marker->invoiced_via
                         : null,
                 ];
+            }, $failures);
 
-                if ($hasCompleteOrderAttribution) {
-                    $details['source_line_ids'] = $sourceLineIds;
+            $details = ['documents' => $documentDetails];
+            if ($sourceOrderId === null) {
+                return $details;
+            }
+
+            $sourceOrder = $this->scopedQuery()
+                ->where('type', DocumentType::SalesOrder->value)
+                ->find($sourceOrderId, ['id', 'payload']);
+            if (! $sourceOrder instanceof Document || $documents->count() !== count($ids)) {
+                return $details;
+            }
+
+            $orderLineIds = DocumentLine::query()
+                ->where('document_id', $sourceOrderId)
+                ->pluck('id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->flip();
+            $sourcePayload = $sourceOrder->payload ?? [];
+            $rawPriorInvoiceIds = $sourcePayload['invoice_ids'] ?? [];
+            if (! is_array($rawPriorInvoiceIds)) {
+                return $details;
+            }
+
+            $priorInvoiceIds = array_values(array_unique(array_map('strval', $rawPriorInvoiceIds)));
+            sort($priorInvoiceIds, SORT_STRING);
+            $priorInvoices = $this->scopedQuery()
+                ->where('type', DocumentType::Invoice->value)
+                ->whereIn('id', $priorInvoiceIds)
+                ->get(['id', 'source_document_id'])
+                ->keyBy('id');
+            if ($priorInvoices->count() !== count($priorInvoiceIds)
+                || $priorInvoices->contains(static fn (Document $invoice): bool => $invoice->source_document_id !== $sourceOrderId)) {
+                return $details;
+            }
+
+            $referencedDocumentIds = array_values(array_unique([...$ids, ...$priorInvoiceIds]));
+            $referencedLines = DocumentLine::query()
+                ->whereIn('document_id', $referencedDocumentIds)
+                ->get(['document_id', 'source_line_id'])
+                ->groupBy('document_id');
+            $billedOrderLineIds = [];
+
+            foreach ($referencedDocumentIds as $documentId) {
+                $lines = $referencedLines->get($documentId, collect());
+                if ($lines->isEmpty()) {
+                    return $details;
                 }
 
-                return $details;
-            }, $failures);
+                foreach ($lines as $line) {
+                    if ($line->source_line_id === null || ! $orderLineIds->has((string) $line->source_line_id)) {
+                        return $details;
+                    }
+
+                    $billedOrderLineIds[] = (string) $line->source_line_id;
+                }
+            }
+
+            $billedOrderLineIds = array_values(array_unique($billedOrderLineIds));
+            sort($billedOrderLineIds, SORT_STRING);
+            $details['billed_order_line_ids'] = $billedOrderLineIds;
+
+            return $details;
         });
     }
 }

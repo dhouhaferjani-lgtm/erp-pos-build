@@ -408,7 +408,7 @@ describe('SalesOrderDetailPage atomic billing refusal', () => {
     )
   }
 
-  function claimLossError(sourceLineIds?: string[]) {
+  function claimLossError(billedOrderLineIds?: string[]) {
     return {
       response: {
         status: 422,
@@ -417,6 +417,7 @@ describe('SalesOrderDetailPage atomic billing refusal', () => {
             code: 'DELIVERY_NOTE_ALREADY_INVOICED',
             message: 'Delivery notes were already invoiced',
             details: {
+              ...(billedOrderLineIds === undefined ? {} : { billed_order_line_ids: billedOrderLineIds }),
               documents: [
                 {
                   id: 'dn-1',
@@ -426,7 +427,6 @@ describe('SalesOrderDetailPage atomic billing refusal', () => {
                   invoice_number: 'INV-1001',
                   invoice_date: '2026-08-17',
                   invoiced_via: 'consolidation',
-                  ...(sourceLineIds === undefined ? {} : { source_line_ids: sourceLineIds }),
                 },
                 {
                   id: 'dn-2',
@@ -436,7 +436,6 @@ describe('SalesOrderDetailPage atomic billing refusal', () => {
                   invoice_number: 'INV-1002',
                   invoice_date: '2026-08-18',
                   invoiced_via: 'order_conversion',
-                  ...(sourceLineIds === undefined ? {} : { source_line_ids: sourceLineIds }),
                 },
               ],
             },
@@ -500,7 +499,7 @@ describe('SalesOrderDetailPage atomic billing refusal', () => {
     expect(within(refusal).queryByRole('button', { name: 'Invoice remaining lines…' })).not.toBeInTheDocument()
   })
 
-  it('does not offer remaining-line billing when a lost delivery note has unlinked lines', async () => {
+  it('does not offer remaining-line billing when complete order-level provenance is unavailable', async () => {
     mockTranslate.mockImplementation(translate)
     mockApiPost.mockRejectedValueOnce(claimLossError())
     render(<SalesOrderDetailPage />, { wrapper: wrapper(createClient()) })

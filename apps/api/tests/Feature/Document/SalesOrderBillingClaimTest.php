@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
@@ -38,6 +39,7 @@ use Illuminate\Database\ConnectionInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -134,6 +136,11 @@ final class SalesOrderBillingClaimTest extends TestCase
             ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice")
             ->assertStatus(201);
         $invoice = Document::query()->findOrFail((string) $response->json('data.id'));
+        $this->assertSame(
+            $order->lines()->sole()->id,
+            $invoice->lines()->sole()->source_line_id,
+            'A full SO invoice line must retain its exact order-line provenance.',
+        );
 
         $deliveryNote->refresh();
         $this->assertSame($invoice->id, $deliveryNote->payload['invoice_id'] ?? null);
@@ -268,12 +275,75 @@ final class SalesOrderBillingClaimTest extends TestCase
             ->assertJsonPath('error.details.documents.0.invoice_number', $winner->document_number)
             ->assertJsonPath('error.details.documents.0.invoice_date', $winner->document_date?->toDateString())
             ->assertJsonPath('error.details.documents.0.invoiced_via', DeliveryNoteBillingLane::Consolidation->value)
-            ->assertJsonPath('error.details.documents.0.source_line_ids.0', $order->lines()->firstOrFail()->id);
+            ->assertJsonPath('error.details.billed_order_line_ids.0', $order->lines()->firstOrFail()->id)
+            ->assertJsonMissingPath('error.details.documents.0.source_line_ids');
         $this->assertSame(1, Document::query()->where('type', DocumentType::Invoice)->count());
         $this->assertSame($invoiceLinesBefore, DocumentLine::query()
             ->whereIn('document_id', Document::query()->where('type', DocumentType::Invoice)->pluck('id'))
             ->count());
         $this->assertSame($invoiceSequenceBefore, $this->sequenceNumber(DocumentType::Invoice));
+    }
+
+    public function test_refusal_reports_complete_order_level_billed_lines_from_lost_dns_and_prior_partial_invoices(): void
+    {
+        $order = $this->createOrderWithPhysicalAndServiceLines();
+        $physicalLine = $order->lines->firstWhere('product_id', $this->product->id);
+        $priorServiceLine = $order->lines->firstWhere('product_id', null);
+        $this->assertInstanceOf(DocumentLine::class, $physicalLine);
+        $this->assertInstanceOf(DocumentLine::class, $priorServiceLine);
+        $remainingServiceLine = DocumentLine::create([
+            'document_id' => $order->id,
+            'line_number' => 3,
+            'product_id' => null,
+            'description' => 'Still billable service line',
+            'quantity' => '1.0000',
+            'quantity_delivered' => '0.0000',
+            'unit_price' => '15.000',
+            'tax_rate' => '19.00',
+            'line_total' => '15.000',
+        ]);
+        $priorInvoice = $this->registry()->convert($order->fresh(), DocumentType::Invoice, [
+            'partial' => true,
+            'line_ids' => [$priorServiceLine->id],
+        ]);
+        $deliveryNote = $this->createLinkedDeliveryNote($order->fresh(), $physicalLine);
+        $winner = $this->registry()->convert($deliveryNote, DocumentType::Invoice, [
+            'delivery_note_ids' => [$deliveryNote->id],
+        ]);
+        $expectedBilledLineIds = collect([$physicalLine->id, $priorServiceLine->id])->sort()->values()->all();
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
+
+        $response->assertStatus(422)
+            ->assertJsonPath('error.details.billed_order_line_ids', $expectedBilledLineIds)
+            ->assertJsonMissingPath('error.details.documents.0.source_line_ids')
+            ->assertJsonPath('error.details.documents.0.invoice_id', $winner->id);
+        $this->assertSame($priorServiceLine->id, $priorInvoice->lines()->sole()->source_line_id);
+        $this->assertNotContains($remainingServiceLine->id, $response->json('error.details.billed_order_line_ids'));
+    }
+
+    public function test_legacy_prior_invoice_without_order_line_provenance_disables_recovery_metadata(): void
+    {
+        $order = $this->createOrderWithPhysicalAndServiceLines();
+        $physicalLine = $order->lines->firstWhere('product_id', $this->product->id);
+        $serviceLine = $order->lines->firstWhere('product_id', null);
+        $this->assertInstanceOf(DocumentLine::class, $physicalLine);
+        $this->assertInstanceOf(DocumentLine::class, $serviceLine);
+        $legacyInvoice = $this->registry()->convert($order->fresh(), DocumentType::Invoice, [
+            'partial' => true,
+            'line_ids' => [$serviceLine->id],
+        ]);
+        $legacyInvoice->lines()->update(['source_line_id' => null]);
+        $deliveryNote = $this->createLinkedDeliveryNote($order->fresh(), $physicalLine);
+        $this->registry()->convert($deliveryNote, DocumentType::Invoice, [
+            'delivery_note_ids' => [$deliveryNote->id],
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
+
+        $response->assertStatus(422)
+            ->assertJsonMissingPath('error.details.billed_order_line_ids')
+            ->assertJsonMissingPath('error.details.documents.0.source_line_ids');
     }
 
     public function test_order_refusal_reports_every_consumed_delivery_note_and_taker_without_numbering(): void
@@ -311,7 +381,11 @@ final class SalesOrderBillingClaimTest extends TestCase
             ->assertJsonPath('error.details.documents.1.id', $deliveryNoteIds[1])
             ->assertJsonPath('error.details.documents.1.reason', 'already_invoiced')
             ->assertJsonPath('error.details.documents.1.invoice_id', $winner->id)
-            ->assertJsonPath('error.details.documents.1.invoiced_via', DeliveryNoteBillingLane::Consolidation->value);
+            ->assertJsonPath('error.details.documents.1.invoiced_via', DeliveryNoteBillingLane::Consolidation->value)
+            ->assertJsonPath(
+                'error.details.billed_order_line_ids',
+                collect([$firstLine->id, $secondLine->id])->sort()->values()->all(),
+            );
         $this->assertSame(1, Document::query()->where('type', DocumentType::Invoice)->count());
         $this->assertSame($invoiceSequenceBefore, $this->sequenceNumber(DocumentType::Invoice));
     }
@@ -331,7 +405,8 @@ final class SalesOrderBillingClaimTest extends TestCase
             ->assertJsonPath('error.code', 'DELIVERY_NOTE_ALREADY_INVOICED')
             ->assertJsonPath('error.details.documents.0.id', $deliveryNote->id)
             ->assertJsonPath('error.details.documents.0.invoice_id', $winner->id)
-            ->assertJsonMissingPath('error.details.documents.0.source_line_ids');
+            ->assertJsonMissingPath('error.details.documents.0.source_line_ids')
+            ->assertJsonMissingPath('error.details.billed_order_line_ids');
     }
 
     public function test_order_winner_causes_attributed_batch_atomic_consolidation_refusal(): void
@@ -374,6 +449,11 @@ final class SalesOrderBillingClaimTest extends TestCase
 
         $this->assertCount(1, $invoice->lines);
         $this->assertSame($serviceLine->description, $invoice->lines->firstOrFail()->description);
+        $this->assertSame(
+            $serviceLine->id,
+            $invoice->lines->firstOrFail()->source_line_id,
+            'A partial SO invoice line must retain its selected order-line provenance.',
+        );
         $this->assertSame(2, Document::query()->where('type', DocumentType::Invoice)->count());
         $this->assertDatabaseHas('delivery_note_billing_marks', [
             'delivery_note_id' => $deliveryNote->id,
@@ -413,6 +493,123 @@ final class SalesOrderBillingClaimTest extends TestCase
             'invoice_id' => $invoice->id,
             'invoiced_via' => DeliveryNoteBillingLane::OrderConversion->value,
         ]);
+    }
+
+    public function test_partial_physical_conversion_refuses_a_subset_of_one_multi_line_delivery_note_before_claiming(): void
+    {
+        $order = $this->createOrder();
+        $selectedLine = $order->lines()->firstOrFail();
+        $unselectedLine = DocumentLine::create([
+            'document_id' => $order->id,
+            'line_number' => 2,
+            'product_id' => $this->product->id,
+            'description' => 'Unselected line on the same delivery note',
+            'quantity' => '2.0000',
+            'quantity_delivered' => '0.0000',
+            'unit_price' => '12.000',
+            'tax_rate' => '19.00',
+            'line_total' => '24.000',
+        ]);
+        $deliveryNote = $this->createLinkedDeliveryNote($order->fresh(), $selectedLine);
+        DocumentLine::create([
+            'document_id' => $deliveryNote->id,
+            'line_number' => 2,
+            'product_id' => $unselectedLine->product_id,
+            'description' => $unselectedLine->description,
+            'quantity' => $unselectedLine->quantity,
+            'unit_price' => $unselectedLine->unit_price,
+            'tax_rate' => $unselectedLine->tax_rate,
+            'line_total' => $unselectedLine->line_total,
+            'source_line_id' => $unselectedLine->id,
+        ]);
+        $unselectedLine->update(['quantity_delivered' => $unselectedLine->quantity]);
+        $invoiceSequenceBefore = $this->sequenceNumber(DocumentType::Invoice);
+
+        try {
+            $this->registry()->convert($order->fresh(), DocumentType::Invoice, [
+                'partial' => true,
+                'line_ids' => [$selectedLine->id],
+            ]);
+            $this->fail('A partial selection must not claim a DN that also carries an unselected SO line.');
+        } catch (DeliveryNoteBatchValidationException $exception) {
+            $this->assertSame($deliveryNote->id, $exception->documents[0]['id']);
+            $this->assertSame('partial_selection_incomplete', $exception->documents[0]['reason']);
+        }
+
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice", [
+                'partial' => true,
+                'line_ids' => [$selectedLine->id],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'PARTIAL_DELIVERY_NOTE_SELECTION_INCOMPLETE')
+            ->assertJsonMissingPath('error.details.billed_order_line_ids');
+
+        $this->assertSame(0, Document::query()->where('type', DocumentType::Invoice)->count());
+        $this->assertSame($invoiceSequenceBefore, $this->sequenceNumber(DocumentType::Invoice));
+        $this->assertDatabaseMissing('delivery_note_billing_marks', ['delivery_note_id' => $deliveryNote->id]);
+        $this->assertArrayNotHasKey('invoiced_at', $deliveryNote->fresh()->payload ?? []);
+
+        $winner = $this->registry()->convert($deliveryNote->fresh(), DocumentType::Invoice, [
+            'delivery_note_ids' => [$deliveryNote->id],
+        ]);
+        $this->actingAs($this->user)
+            ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice", [
+                'partial' => true,
+                'line_ids' => [$selectedLine->id],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('error.code', 'DELIVERY_NOTE_ALREADY_INVOICED')
+            ->assertJsonPath('error.details.documents.0.invoice_id', $winner->id);
+    }
+
+    #[DataProvider('unverifiableDeliveryNoteSourceProvider')]
+    public function test_partial_physical_conversion_refuses_unverifiable_lines_on_an_intersected_delivery_note(
+        string $sourceKind,
+    ): void {
+        $order = $this->createOrder();
+        $selectedLine = $order->lines()->sole();
+        $deliveryNote = $this->createLinkedDeliveryNote($order, $selectedLine);
+        $foreignSourceLineId = $sourceKind === 'foreign'
+            ? $this->createOrder()->lines()->sole()->id
+            : null;
+        DocumentLine::create([
+            'document_id' => $deliveryNote->id,
+            'line_number' => 2,
+            'product_id' => $this->product->id,
+            'description' => "{$sourceKind} delivery-note line",
+            'quantity' => '1.0000',
+            'unit_price' => '8.000',
+            'tax_rate' => '19.00',
+            'line_total' => '8.000',
+            'source_line_id' => $foreignSourceLineId,
+        ]);
+        $invoiceSequenceBefore = $this->sequenceNumber(DocumentType::Invoice);
+
+        try {
+            $this->registry()->convert($order->fresh(), DocumentType::Invoice, [
+                'partial' => true,
+                'line_ids' => [$selectedLine->id],
+            ]);
+            $this->fail("A {$sourceKind} line must make the intersected DN unsafe to claim.");
+        } catch (DeliveryNoteBatchValidationException $exception) {
+            $this->assertSame('partial_selection_incomplete', $exception->documents[0]['reason']);
+        }
+
+        $this->assertSame(0, Document::query()->where('type', DocumentType::Invoice)->count());
+        $this->assertSame($invoiceSequenceBefore, $this->sequenceNumber(DocumentType::Invoice));
+        $this->assertDatabaseMissing('delivery_note_billing_marks', ['delivery_note_id' => $deliveryNote->id]);
+    }
+
+    /**
+     * @return array<string, array{string}>
+     */
+    public static function unverifiableDeliveryNoteSourceProvider(): array
+    {
+        return [
+            'unlinked source' => ['unlinked'],
+            'foreign order source' => ['foreign'],
+        ];
     }
 
     public function test_quote_conversion_keeps_its_existing_domain_error_envelope(): void

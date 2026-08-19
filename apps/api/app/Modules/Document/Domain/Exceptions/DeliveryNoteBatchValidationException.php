@@ -12,7 +12,7 @@ final class DeliveryNoteBatchValidationException extends DomainException
      * @param list<array{
      *     id: string,
      *     document_number: string,
-     *     reason: 'already_invoiced'|'wrong_partner'|'wrong_currency'|'not_confirmed'|'cancelled'|'no_lines'
+     *     reason: 'already_invoiced'|'wrong_partner'|'wrong_currency'|'not_confirmed'|'cancelled'|'no_lines'|'partial_selection_incomplete'
      * }> $documents
      */
     public function __construct(public readonly array $documents)
@@ -26,6 +26,7 @@ final class DeliveryNoteBatchValidationException extends DomainException
                 'not_confirmed' => 'Delivery note must be confirmed before invoicing',
                 'cancelled' => 'Cannot invoice cancelled delivery note',
                 'no_lines' => 'Delivery note must have at least one line item',
+                'partial_selection_incomplete' => 'Selected order lines must cover every line on the delivery note',
             }
         : 'One or more delivery notes cannot be consolidated.';
 

@@ -48,11 +48,11 @@ interface BillingRefusalDocument {
   invoice_number: string | null
   invoice_date: string | null
   invoiced_via: string | null
-  source_line_ids?: string[]
 }
 
 interface BillingRefusal {
   documents: BillingRefusalDocument[]
+  billed_order_line_ids?: string[]
 }
 
 interface InvoiceConversionOptions {
@@ -95,10 +95,6 @@ function parseBillingRefusal(error: unknown): BillingRefusal | null {
       continue
     }
 
-    const rawSourceLineIds = candidate['source_line_ids']
-    const sourceLineIds = Array.isArray(rawSourceLineIds)
-      ? rawSourceLineIds.filter((lineId): lineId is string => typeof lineId === 'string' && lineId.length > 0)
-      : undefined
     documents.push({
       id,
       document_number: documentNumber,
@@ -107,11 +103,20 @@ function parseBillingRefusal(error: unknown): BillingRefusal | null {
       invoice_number: nullableString(candidate['invoice_number']),
       invoice_date: nullableString(candidate['invoice_date']),
       invoiced_via: nullableString(candidate['invoiced_via']),
-      ...(sourceLineIds === undefined ? {} : { source_line_ids: sourceLineIds }),
     })
   }
 
-  return documents.length > 0 ? { documents } : null
+  const rawBilledOrderLineIds = details['billed_order_line_ids']
+  const billedOrderLineIds = Array.isArray(rawBilledOrderLineIds)
+    ? rawBilledOrderLineIds.filter((lineId): lineId is string => typeof lineId === 'string' && lineId.length > 0)
+    : undefined
+
+  return documents.length > 0
+    ? {
+        documents,
+        ...(billedOrderLineIds === undefined ? {} : { billed_order_line_ids: billedOrderLineIds }),
+      }
+    : null
 }
 
 function scopedNamespacePredicate(
@@ -313,10 +318,9 @@ export function SalesOrderDetailPage() {
   }
 
   const billedSourceLineIds = new Set(
-    billingRefusal?.documents.flatMap((document) => document.source_line_ids ?? []) ?? [],
+    billingRefusal?.billed_order_line_ids ?? [],
   )
-  const canDetermineRemainingLines = billingRefusal !== null
-    && billingRefusal.documents.every((document) => document.source_line_ids !== undefined)
+  const canDetermineRemainingLines = billingRefusal?.billed_order_line_ids !== undefined
   const remainingLines = (order?.lines ?? []).filter((line) => !billedSourceLineIds.has(line.id))
 
   const openRemainingLinePicker = () => {
