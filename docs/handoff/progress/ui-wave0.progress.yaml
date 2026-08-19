@@ -75,9 +75,10 @@ milestones:
   - id: M4
     title: "T3 (UI-10) - two authorised commits: T3(a) regenerate scripts/factory/manifests/ (manifests and nothing else) so the manifest reflects T2 plus the four deletions, then T3(b) the standalone manifest drift CI job. check-manifest-drift.sh must exit 0 at this point."
     review_lenses: [frontend-conventions, general]
-    status: in_progress
+    status: review
     fix_rounds: 0
-    commit: null
+    updated: 6747d9042
+    commit: 6747d9042c252883426f1ebc0f44c2d5c5e54d13
     verdict: null
     last_verdict: null
   - id: M5
@@ -162,3 +163,6 @@ findings:
   - "M3 bridge round 4 found 15 en/fr POS locale leaves whose sole consumers were the deleted shift console. Commit eb4ea4fe0 removes those leaves, preserves the seven live Z-report detail leaves, and the handback now pastes zero-consumer/null-locale proof for every removed key plus the captured T12/T13 red output."
   - "M3 round-4 post-fix verification: focused route/i18n/sidebar/POS tests 69/69; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with only the three reviewed M0b exception files; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale; React Doctor skipped because the locale-only fix changed no React source files."
   - "M3 bridge round 5 ACCEPTED: the reviewer independently re-derived all 57 deleted-component translation keys, confirmed every removed key has zero consumers and every retained key has a live consumer, reproduced the focused gates, and found no remaining P1. The /finance blank-pane contradiction remains a correctly disclosed parent/owner pre-merge gate; the remaining P3 notes are ticketable."
+  - "M4 T3(a) commit 00366d151 regenerates routes-web.yaml and nothing else after T2 and T10-T13; routes-pos.yaml is unchanged. Drift exits 0, /sales/invoices/:id resolves to InvoiceDetailPage, and /pos/shifts, /marketing, the /finance index, and /settings/chart-of-accounts are absent."
+  - "M4 T3(b) commit 6747d9042 adds an always-run Route Manifest Drift Guard with only checkout, pnpm/Node setup, workspace install, and the drift command; all-checks-pass depends on it with a comment explaining it cannot be skipped. A throwaway route made the check exit 1 and print the fix command; after reversal it exits 0."
+  - "M4 pre-review verification: generator tests 10/10; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with only the three reviewed M0b exception files; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale; CI YAML parses and confirms the job has no if guard and is in aggregate needs."

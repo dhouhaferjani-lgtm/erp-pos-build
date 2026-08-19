@@ -419,3 +419,48 @@ M3 bridge round 3 (`docs/handoff/reviews/ui-wave0/M3-round3.md`) ended in anothe
 M3 bridge round 4 (`docs/handoff/reviews/ui-wave0/M3-round4.md`) returned `CHANGES-REQUIRED`. Its P1 identified the 15 orphan locale leaves now removed by `eb4ea4fe0`; the complete per-key proof is pasted above. Its T12/T13 P3 evidence gap is also closed above with the captured red output. The retained POS documents remain brief-compliant historical records with dated supersession notices, and the empty deletion directories contain no files and cannot enter Git. Post-fix verification: focused route/i18n/sidebar/POS tests 69/69; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with failures only in the three M0b exceptions; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale. React Doctor found no changed React source files in this locale-only fix.
 
 M3 bridge round 5 (`docs/handoff/reviews/ui-wave0/M3-round5.md`) returned `ACCEPT`. It independently re-derived all 57 translation keys used by the two deleted POS components, confirmed zero consumers for every removed key and live consumers for every retained key, and reproduced the focused static/test gates. No P1 remains. The accepted register carries the `/finance` blank-pane owner decision as a hard pre-merge gate plus ticketable P3 notes for orphan-key tooling, route-guard string-form robustness, historical-doc discoverability, and an untracked empty directory.
+
+## M4 — T3 route-manifest regeneration and CI drift guard
+
+The two authorized commits are strictly separated:
+
+```text
+00366d1510aba3543f1836b16a4dedf20762a96c Phase 0.3.1: Regenerate route manifests
+6747d9042c252883426f1ebc0f44c2d5c5e54d13 Phase 0.3.2: Gate route manifest drift in CI
+```
+
+T3(a) ran `node scripts/factory/gen-route-manifest.mjs` once after T2 and all four deletion tasks. Its commit changes only `scripts/factory/manifests/routes-web.yaml`; `routes-pos.yaml` is byte-unchanged. The regenerated web manifest contains the six previously unrecorded live routes, the eight finance permission corrections, the settings setup module-gate correction, and the four owner-ruled removals. The invoice-detail component is preserved correctly:
+
+```text
+$ bash scripts/factory/check-manifest-drift.sh
+$ echo $?
+0
+$ rg -n -A3 '^  - path: /sales/invoices/:id$' scripts/factory/manifests/routes-web.yaml
+762:  - path: /sales/invoices/:id
+763-    component: InvoiceDetailPage
+764-    module_gate: sales
+765-    permission: null
+$ rg -n -F 'path: /pos/shifts' scripts/factory/manifests/routes-web.yaml
+[no output]
+$ rg -n -F 'path: /marketing' scripts/factory/manifests/routes-web.yaml
+[no output]
+$ rg -n '^  - path: /finance$' scripts/factory/manifests/routes-web.yaml
+[no output]
+$ rg -n -F 'path: /settings/chart-of-accounts' scripts/factory/manifests/routes-web.yaml
+[no output]
+```
+
+T3(b) adds `route-manifest-drift` / “Route Manifest Drift Guard” to `.github/workflows/ci.yml`. It has no `if:` guard, installs the workspace dependencies required for root `js-yaml` and `apps/web` TypeScript, uses no database/Redis/environment setup, runs the existing shell check, and is included in `all-checks-pass.needs`. The adjacent comment records why this dependency cannot arrive skipped.
+
+The required deliberate negative check used a temporary, uncommitted `__manifest-drift-probe` route and then reversed that edit:
+
+```text
+$ bash scripts/factory/check-manifest-drift.sh
+negative drift check exit=1
+8:+  - path: /__manifest-drift-probe
+16:Route manifest drift — run: node scripts/factory/gen-route-manifest.mjs && commit the manifests
+$ bash scripts/factory/check-manifest-drift.sh  # after reversing the probe
+post-negative-revert drift check exit=0
+```
+
+The workflow YAML parses successfully and confirms the new job has five lean steps, no `if:` field, and membership in the aggregate gate. `actionlint` is not installed locally. Generator tests pass 10/10. Typecheck and lint pass with zero errors; the design-system audit remains 736 acknowledged / 0 new / 0 stale, query-key Gate C remains 0/0/0, and quantity audit remains zero. The deterministic full suite reports 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo, with failures only in the three M0b-reviewed exception files.
