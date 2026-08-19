@@ -108,6 +108,18 @@ Learn about:
 
 **Key Takeaway:** NEVER use `app()` helper - always inject dependencies via constructor
 
+### 8. [Detector Liveness](./08-DETECTOR-LIVENESS.md)
+**When to read:** Adding or changing any detector, ratchet, audit script, ESLint rule, or CI drift check
+
+Learn about:
+- Why a guard that cannot fail is not a guard (the C6 detector that reported 0 for months)
+- The tamper-test requirement per guard kind
+- The "same CI lane" half everyone forgets (a preflight-only test does not gate merges)
+- Ratchet-specific cases: new violation, stale entry, matched growth
+- Checklist for shipping a new guard
+
+**Key Takeaway:** Every detector ships with at least one test proving it FIRES on a planted violation, running in the same CI lane as the detector
+
 ---
 
 ## Common Workflows

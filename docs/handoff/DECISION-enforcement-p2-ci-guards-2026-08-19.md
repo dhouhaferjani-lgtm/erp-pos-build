@@ -157,3 +157,173 @@ the brief's `Executor:` line — it changes who types, not any rule.
 | `claude` CLI (bridge) | present, `2.1.235` |
 | PyYAML | present |
 | **`actionlint`** | **ABSENT on this machine** — recorded explicitly as the brief requires. Workflow YAML validity is proven by a Python `yaml.safe_load` parse instead; this layer is INSUFFICIENT for the Actions job/event graph either way. |
+
+---
+
+## M1 — 2(c) i18n completeness + 2(d) guard liveness
+
+### (1) Detector design — why the merged `resources` object is never read
+
+`apps/web/tools/audit-i18n-completeness.mjs` computes coverage from **authored-locale provenance**:
+the per-locale source files `apps/web/src/locales/<locale>/<ns>.json`. It reads `src/lib/i18n.ts`
+only for (a) the namespace list (the `ns:` array), (b) the locale list (the `resources` top-level
+keys) and (c) a *provenance classification* of each `(locale, namespace)` assignment, used for
+reporting and structural checks — never as a source of key coverage.
+
+Measured at `base_sha`, the classification is the whole argument for gate-r1 H-5:
+
+| locale | `own` | `en-aliased` | `english-spread` |
+|---|---|---|---|
+| en | 56 | 0 | 0 |
+| fr | 56 | 0 | 0 |
+| **ar** | **21** | **23** | **12** |
+
+The 23 English-aliased Arabic namespaces are `auth, pricing, uom, parapharmacy, batches, catalog,
+promotions, coupons, categories, crm, loyalty, withholding, marketing, countries, progression,
+smart-prompts, enrichment, refund-policies, deposits, customer-history-audit, stock-transfers,
+stock-adjustments, adminCountryDefaults`; the 12 spread-merged ones are `sales, inventory, treasury,
+finance, expenses, import, settings, products, pos, compliance, notifications, locations`.
+
+**A scanner importing `resources` would report ZERO Arabic gaps across all 35 of those namespaces.**
+The authored-provenance scanner reports **4 594**.
+
+### (2) Baseline statistics at the seed
+
+| Metric | Value |
+|---|---|
+| Namespaces in the `ns` array | **56** |
+| Authored leaf keys — **en** | **9 242** |
+| Authored leaf keys — **fr** | **9 258** |
+| Authored leaf keys — **ar** | **4 702** |
+| Locale source files present | en 57, fr 57, **ar 34** |
+| **Total baseline entries** | **4 631** |
+| — `ar` `missing` | 4 585 |
+| — `ar` `plural` | 9 |
+| — `fr` `plural` | 29 |
+| — `en` `plural` | 8 |
+| Structural failures | **0** |
+
+Largest Arabic gaps by namespace: `pos` 683, `sales` 569, `inventory` 418, `settings` 274,
+`finance` 268, `adminCountryDefaults` 192, `withholding` 181, `loyalty` 178.
+
+`fr` authors 16 more leaf keys than `en` (9 258 vs 9 242) — French-only orphans. **Not flagged and
+not baselined:** the brief's contract is "missing key = failure"; orphan detection is not in scope and
+adding it would be scope creep. Recorded here so the asymmetry is not mistaken for a scanner bug.
+
+### (3) ⚠️ DECISION — the `ar` policy: **RATCHETED TOWARD PARITY**, not a full-parity gate
+
+The brief requires this to be decided explicitly and forbids silently exempting `ar`. Ruling:
+**Arabic is enumerated key-by-key in the checked-in baseline and is removal-only** — the same
+treatment `fr` and `en` gaps get. It is NOT exempted, and it is NOT held to immediate full parity.
+
+Reasons, in order of weight:
+
+1. **A full-parity gate would land cold and red.** 4 594 Arabic findings would fail `frontend-lint`
+   on every event that starts the workflow, on every open lane, from the merge onward. The brief's own
+   sequencing rule is explicit: *"New gates land observe-first or baselined, never cold."* A gate
+   nobody can pass gets disabled, which is how detectors die.
+2. **The gaps are a translation-programme state, not a code defect.** 23 namespaces have no Arabic
+   bundle at all; `i18n.ts:288-290` says so in a comment ("Non-AutoSpecs namespaces still fall back to
+   EN until IziPOS localization closes those gaps (tracked separately)"). This package's remit is
+   enforcement, not translation.
+3. **Ratcheted ≠ exempt, and the ratchet is real.** The baseline is removal-only against an
+   OWNER-PINNED protected blob, so (a) no existing Arabic gap can regrow once burned down, and (b)
+   **any new English key added to a namespace Arabic already partially covers fails CI immediately**
+   unless it is translated — which is the actual enforcement goal. The matched-growth tamper (plant a
+   gap, add its baseline entry) fails by construction because the comparison is against the pinned
+   blob, not the editable file.
+4. **The alternative was considered and rejected:** gating `ar` at full parity while baselining `en`
+   and `fr` would be the same gate with a different, unenforceable threshold.
+
+**Consequence the owner should see:** burning the Arabic baseline down is a translation deliverable
+that nothing in this package schedules. It is visible, counted, and shrink-only — that is all this
+gate claims.
+
+### (4) i18next JSON v4 plural convention — the 8 English findings are real
+
+`i18next@25` with no `compatibilityJSON` option uses **JSON v4** plural resolution: the singular form
+is `key_one`, not the bare `key`. Eight English families author `key` + `key_other` (the pre-v4
+shape), e.g. `batches:batchCount` + `batchCount_other`. The bare key still renders through the
+generic missing-key fallback, so nothing is visibly broken — which is exactly why it went unnoticed.
+These are baselined, not fixed here (fixing them is a translation-file change outside this package).
+
+Full list: `batches:batchCount_one`, `batches:expiryWriteOff.confirm.message_one`,
+`batches:expiryWriteOff.selectedCount_one`, `documentIngestions:review.pages_one`,
+`finance:overview.upcoming.daysUntilDue_one`, `pos:receiptReporting.refunds.alertCount_one`,
+`stock-transfers:create.batch.allocated_one`, `treasury:repositories.movements.subtitle_one`.
+
+Categories are derived at runtime from `new Intl.PluralRules(locale).resolvedOptions()`, never
+hardcoded (verified on this machine: `en → [one, other]`, `fr → [one, many, other]`,
+`ar → [zero, one, two, few, many, other]`).
+
+### (5) ⚠️ DECISION — 2(d) deliverable 4 lands as a **discrete step**, not a new job
+
+The brief leaves step-vs-job to the executor, "justified in the decision doc". Chosen: a discrete
+step inside `frontend-lint` running `pnpm test:eslint-rules && pnpm test:tools`.
+
+- It satisfies deliverable 3's own convention — *"in the same CI lane as the detector"* — literally:
+  the detectors (`audit:keys`, `audit:design-system`, `audit:quantity`, `audit:i18n`) and their
+  liveness tests are steps of one job.
+- It **inherits `frontend-lint`'s `all-checks-pass` membership** (`ci.yml:1108`), so the H-9
+  aggregate-membership obligation is met with no `needs` edit — one less line of the aggregate for
+  the UI Wave 0 lane to conflict with on rebase.
+- A separate job would re-pay checkout + pnpm install + node setup (~4 steps) for two fast suites.
+
+### (6) ⚠️ DEVIATION — one production type change, required to make the wiring land green
+
+`pnpm test:tools` was **red at `base_sha`**: `tools/__tests__/offset-pagination-meta-consolidation.test.mjs`
+fails on `features/treasury/statements/api.ts:112`, which redeclares the offset-pagination meta shape
+inline instead of reusing `OffsetPaginationMeta`.
+
+This is the package's own thesis proving itself: that guard has run in **no workflow**, so it rotted
+in silence (the offending file was last touched 2026-07-20).
+
+Wiring a knowingly-red suite into `frontend-lint` would turn every open lane red at merge — the exact
+harm the quiet window exists to prevent — so the violation is closed here:
+
+```diff
++import type { OffsetPaginationMeta } from '@/types/pagination'
+ export interface StatementListResponse {
+   data: BankStatementSummary[]
+-  meta: { current_page: number; last_page: number; per_page: number; total: number }
++  meta: OffsetPaginationMeta
+ }
+```
+
+Scope justification and containment: type-only; one interface; the type is a **response** type
+(`api.get<StatementListResponse>`, `api.ts:178`) with **no construction sites** (`grep -rn
+'StatementListResponse' src/` → 3 hits, all declaration/return/type-argument); `pnpm typecheck`
+green; the test itself is the authority on what "correct" means here. **Recorded as a deviation
+from the brief's guard-only posture.** No behaviour changes.
+
+### (7) 2(d) deliverable 2 — ownership check before authoring
+
+The brief's instruction is "check what exists in `tools/__tests__/` first; extend, don't duplicate".
+All three named audit scripts **already** carry planted-violation tamper tests at `base_sha`:
+
+| Script | Test file | Planted-violation coverage present at base |
+|---|---|---|
+| `audit-tanstack-keys.mjs` | `tools/__tests__/audit-tanstack-keys.test.mjs` (524 lines) | e.g. "flags bare array queryKey with no scope", "flags an unscoped queryKey inside useQueries.queries[]" |
+| `audit-design-system.mjs` | `tools/__tests__/audit-design-system.test.mjs` (215 lines) | e.g. "flags bespoke page h1 headers", "flags raw form controls…", "separates baselined and new design-system violations" |
+| `audit-quantity-display.mjs` | `tools/__tests__/audit-quantity-display.test.mjs` (200 lines) | e.g. "flags a raw member-rendered requested_qty", "fails on a NEW violation not present in the baseline" |
+| `audit-pos-local-cache.mjs` | `tools/__tests__/audit-pos-local-cache.test.mjs` | present |
+
+Nothing was duplicated. The genuinely missing case — **the C6 `Record<X, StatusTone>` detection** — is
+**UI Wave 0 task T7's deliverable**, sitting in that wave's **M6 (`status: pending`)**. Under the same
+ownership rule as 2(a) (F-3: never both lanes authoring the same artifact) it is **NOT authored here**;
+the dependency is recorded and carried into the M3 announcement checklist. `STATUS_RE` is byte-identical
+on the UI branch and at this base, confirming T7 has not landed.
+
+### (8) Observation recorded, not fixed — `no-untranslated-literal` colon-form keys
+
+Writing the RuleTester surfaced that the rule's "looks like a code token" heuristic excludes `.`, `_`
+and `/` forms but **not** the `ns:key` colon form: a raw `<span>common:save</span>` is flagged as
+untranslated copy. This package ships liveness tests and does not change rule behaviour, so the case
+is pinned as documented-current-behaviour in `no-untranslated-literal.test.mjs` with an inline note.
+
+### (9) Accepted coupling
+
+The i18n checker reads the non-authoritative mirror pin from
+`docs/handoff/progress/enforcement-p2.progress.yaml`. If that file is later moved or deleted, the gate
+fails closed. That is the mirror-drift check the brief mandates (gate-r3 R3-C-1); the coupling is
+recorded so a future mover knows the checker's `--mirror` default must move with it.

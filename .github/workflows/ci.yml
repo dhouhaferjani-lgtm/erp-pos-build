@@ -1031,6 +1031,47 @@ jobs:
       - name: Run quantity-display audit
         run: pnpm audit:quantity
 
+      - name: Fetch the pinned i18n baseline revision
+        # The i18n ratchet's anti-growth authority is the OWNER-SET repository
+        # variable I18N_BASELINE_PROTECTED_BLOB, holding the git BLOB hash of
+        # the gate-reviewed seed baseline — never the working file (which any
+        # candidate can edit) and never a branch name (which moves).
+        # actions/checkout fetches a single commit, so that blob is not in the
+        # object store until we fetch the durable pin tag that reaches it. The
+        # owner creates the tag at promotion, before dispatching CI, and pin
+        # tags are NEVER deleted. A missing tag fails this step — fail-closed
+        # by design. See CODEX-DISPATCH-enforcement-guards-2026-08-12.md §6 F-8.
+        run: git fetch origin tag ci-pin/enforcement-p2-r1
+        working-directory: .
+
+      - name: Run i18n completeness gate (tools/audit-i18n-completeness.mjs)
+        # Shrink-only per-locale key + CLDR-plural completeness, computed on
+        # AUTHORED-LOCALE PROVENANCE (the per-locale source translation files).
+        # The merged i18next `resources` object cannot be trusted: it aliases
+        # 23 whole namespaces to English for `ar` and spread-merges English
+        # keys underneath partial Arabic objects, so a scanner reading it
+        # reports vacuous full parity.
+        # DISCRETE STEP ON PURPOSE: this job does NOT run `pnpm lint` (the
+        # ratchet step below supersedes it), so a lint-chain-only wiring would
+        # ship a guard that never executes in CI — the exact
+        # guard-exists-but-never-runs defect this package closes.
+        # Fails closed on: unset variable · unfetchable blob · drift between
+        # the variable and the non-authoritative progress-YAML mirror pin.
+        env:
+          I18N_BASELINE_PROTECTED_BLOB: ${{ vars.I18N_BASELINE_PROTECTED_BLOB }}
+        run: pnpm audit:i18n
+
+      - name: Run detector liveness suites (ESLint RuleTester + tools tamper tests)
+        # docs/conventions/08-DETECTOR-LIVENESS.md: every detector ships with a
+        # test proving it FIRES on a planted violation, in the SAME CI lane as
+        # the detector. Both suites previously ran in NO workflow at all, so
+        # every RuleTester and every tamper test in this repo was CI-dead —
+        # including the ones guarding the precision contract (CLAUDE.md rule 19).
+        # A discrete step in this job (rather than a new job) keeps them in the
+        # detectors' own lane and inherits frontend-lint's all-checks-pass
+        # membership, so no new `needs` entry is required.
+        run: pnpm test:eslint-rules && pnpm test:tools
+
       - name: Run ESLint warning ratchet
         # Supersedes a raw `pnpm lint`: errors still hard-fail immediately,
         # and the per-app warning count is ratcheted against
