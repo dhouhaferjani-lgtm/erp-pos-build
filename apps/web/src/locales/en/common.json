@@ -1,5 +1,4 @@
 {
-  "appName": "AutoERP",
   "by": "by",
   "select": "Select…",
   "selectCountry": "Select country",
@@ -1298,7 +1297,7 @@
       "lastUpdated": "Last updated",
       "section1": {
         "title": "Introduction",
-        "body": "AutoERP (\"we\", \"our\", \"us\") is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our business management platform."
+        "body": "{{appName}} (\"we\", \"our\", \"us\") is committed to protecting your personal data. This Privacy Policy explains how we collect, use, and safeguard information when you use our business management platform."
       },
       "section2": {
         "title": "Information We Collect",
@@ -1322,7 +1321,7 @@
       },
       "section3": {
         "title": "How We Use Your Information",
-        "purpose1": "Provide, maintain, and improve the AutoERP platform",
+        "purpose1": "Provide, maintain, and improve the {{appName}} platform",
         "purpose2": "Process transactions and send related information",
         "purpose3": "Send technical notices, updates, and support messages",
         "purpose4": "Comply with legal obligations and protect rights",

@@ -1,7 +1,7 @@
 {
   "navigation": { "tenant": "Accès assistance" },
   "title": "Accès assistance",
-  "subtitle": "Contrôlez quand l'assistance AutoERP peut accéder à votre espace et consultez le journal d'activité assaini.",
+  "subtitle": "Contrôlez quand l'assistance {{appName}} peut accéder à votre espace et consultez le journal d'activité assaini.",
   "loading": "Chargement de l'accès assistance…",
   "loadError": "Impossible de charger l'accès assistance",
   "fields": {

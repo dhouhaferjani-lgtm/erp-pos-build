@@ -1,10 +1,15 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import { useProductConfig } from '@/contexts/ProductConfigContext'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 
 export function PrivacyPolicyPage() {
   const { t } = useTranslation('common')
+  // OQ-1 (OWNER-DECISIONS:9): product names are not final, so the app name is a
+  // config value interpolated into the copy, never a literal. `PRODUCT_INFO`
+  // stays the single source — no new mechanism, no new env var.
+  const { productName } = useProductConfig()
 
   return (
     <div className={`min-h-screen ${colorTokens.surface.page} ${colorTokens.variants.darkBgGray900}`}>
@@ -32,7 +37,7 @@ export function PrivacyPolicyPage() {
               {t('legal.privacy.section1.title')}
             </h2>
             <p className={`mt-2 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
-              {t('legal.privacy.section1.body')}
+              {t('legal.privacy.section1.body', { appName: productName })}
             </p>
           </section>
 
@@ -70,7 +75,7 @@ export function PrivacyPolicyPage() {
               {t('legal.privacy.section3.title')}
             </h2>
             <ul className={`mt-2 list-disc space-y-1 pl-6 ${colorTokens.text.muted} ${colorTokens.variants.darkTextGray300}`}>
-              <li>{t('legal.privacy.section3.purpose1')}</li>
+              <li>{t('legal.privacy.section3.purpose1', { appName: productName })}</li>
               <li>{t('legal.privacy.section3.purpose2')}</li>
               <li>{t('legal.privacy.section3.purpose3')}</li>
               <li>{t('legal.privacy.section3.purpose4')}</li>

@@ -1,7 +1,7 @@
 {
   "navigation": { "tenant": "Support access" },
   "title": "Support access",
-  "subtitle": "Control when AutoERP support may enter your workspace and review the sanitized activity trail.",
+  "subtitle": "Control when {{appName}} support may enter your workspace and review the sanitized activity trail.",
   "loading": "Loading support access…",
   "loadError": "Support access could not be loaded",
   "fields": {
