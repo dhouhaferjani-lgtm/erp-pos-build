@@ -571,6 +571,39 @@ repository failure set is byte-identical to or smaller than the pinned-base/M2 r
 PHPStan findings, two SQLite-only composite-root fixtures, two finance Vitest reds, and the known
 route-manifest/generated-types/SaleReceipt residuals. No new failure is present.
 
+### M3 round-1 P3s, recorded not fixed
+
+Its initial M3 serial-page-fetch finding was fixed by making the page fetches parallel before
+commit. The word "bounded" in the pre-review text was inaccurate and is withdrawn: `perPage = 100`
+bounds the SIZE of each page, not the FAN-OUT — `getAllToBillPartnerRows` issues `last_page - 1`
+requests through a single `Promise.all` with no concurrency cap (M3 bridge round 1, finding 8).
+
+The five round-1 P3s below were verified against code and are recorded rather than fixed. None is a
+fiscal-integrity or tenancy defect; each is a bounded follow-on for M5/parent triage.
+
+- **Finding 8 — uncapped page fan-out (`apps/web/src/features/documents/api/deliveryNotes.ts:216-230`).**
+  A concurrency cap was written and then deliberately reverted as out-of-scope for the M3 row. A
+  partner with many row pages still emits `last_page - 1` simultaneous requests from one browser.
+- **Finding 9 — hardcoded English validation message
+  (`apps/api/app/Modules/Document/Presentation/Controllers/DeliveryNoteController.php:274`).**
+  `'The selected location is invalid or outside your allowed scope.'` is thrown as a literal rather
+  than a translation key, so a fr/ar operator sees English on an otherwise localized surface.
+- **Finding 10 — single-partner-group reconciliation fixture
+  (`apps/api/tests/Feature/Document/DeliveryNoteToBillQueueTest.php:176-208`).**
+  The roll-up/expansion cross-check reads `data.0` from the summary while only one partner group is
+  in scope, so `data.0` is trivially the right group. A group-ordering or partner-attribution
+  mismatch across multiple partners would not be caught.
+- **Finding 11 — UTC-midnight date rendering
+  (`apps/web/src/features/documents/to-bill/ToBillPage.tsx:182` and `:231`).**
+  `new Date('YYYY-MM-DD')` parses as UTC midnight, so `toLocaleDateString` renders the previous
+  calendar day for any viewer behind UTC. Delivery and aging dates are the affected fields.
+- **Finding 12 — unresolvable-partner `LogicException`
+  (`apps/api/app/Modules/Compliance/Services/UninvoicedDeliveryNoteService.php:151`).**
+  A group whose partner row cannot be resolved throws and surfaces as a 500 rather than a handled
+  response. The controller's own `findOrFail` covers the expanded-rows path
+  (`DeliveryNoteController.php:199-203`), so this is reachable only through data whose group and
+  partner scoping disagree.
+
 ## M4 — Retirement and periodic-billing classification
 
 **Status: REVIEW — implementation and amended preflight complete.**
@@ -580,6 +613,8 @@ M4 commit sequence:
 - `b796c9b4f Phase 2.4.1: Specify consolidation retirement and periodic billing`
 - `38fdd18f9 Phase 2.4.2: Retire legacy consolidation controls`
 - `4d747ce41 Phase 2.4.3: Tighten retirement verification`
+- `2bbc28b69 Phase 2.4.6: Reproduce M4 round-one findings` (fix round 1, RED)
+- `cdec3a5a2 Phase 2.4.7: Close M4 round-one findings` (fix round 1, GREEN)
 
 ### Failing-test-first evidence
 
@@ -587,9 +622,17 @@ The RED commit `b796c9b4f` made the create request, periodic-billing copy, and r
 fail against the inherited implementation: a periodically classified customer without a frequency
 received 422, the form still described and exposed consolidation frequency, and the explicit
 legacy route still rendered. The GREEN commits remove the explicit route and its owned UI,
-relax create validation, remove the selector, and tighten the new terminology assertion. The
-generic UUID detail route is intentionally left to handle an arbitrary literal path; no redirect or
-compatibility alias was added.
+relax create validation, remove the selector, and tighten the new terminology assertion. No redirect
+or compatibility alias was added.
+
+**Correction (fix round 1).** The pre-review text here claimed *"the generic UUID detail route is
+intentionally left to handle an arbitrary literal path"*. That claim is withdrawn on two counts.
+First, the RED route test written in `b796c9b4f` asserted the retired path *"falls through to the
+dashboard"*, which is false, and it was deleted in the GREEN commit `38fdd18f9` rather than
+corrected — leaving retirement as the one thing in this wave with no executable proof. Second,
+"handle" overstated what the code did: the path resolves to `delivery-notes/:id` with
+`id = 'consolidate'` and issues `GET /documents/consolidate`, which was a PostgreSQL 500, not a
+handled miss. Both are closed in fix round 1 below.
 
 ### Delivered contract
 
@@ -628,13 +671,110 @@ compatibility alias was added.
   the prior milestone remains green.
 - Whole PHPStan is green after explicitly clearing its result cache. The owner-expected two C-3
   findings no longer reproduce, so the failure set is smaller; `CopiesDocumentData.php` was not
-  touched and NG-4 remains respected.
+  touched and NG-4 remains respected. **See the P3-7 record below: this is a stale pin, not an M4
+  effect.**
 
 ### M4 amended differential verdict
 
 **PASSED at `4d747ce41` for bridge round 1.** Every M4-touched surface is green. The exact frontend
 and backend failure sets are byte-identical to the pinned baseline, and whole PHPStan is smaller
 after a cache-cleared run. No new failure is present.
+
+### M4 bridge round 1 — CHANGES-REQUIRED, and fix round 1
+
+Bridge round 1 (`docs/handoff/reviews/dn-consolidation-build/M4-round1.md`, range
+`864657dd9..2143af2e7`, lenses frontend-conventions + general) returned **CHANGES-REQUIRED**. It
+confirmed the substance of the M4 row — route/page/component/barrel deleted in one commit, zero code
+references, the relaxation confined to `CreatePartnerRequest` with the §6.1 update contract intact,
+no partner migration, no schema change, neutral en/fr copy — and independently disproved both
+evasion mechanisms it looked for (no design-system baseline absorption; no detector-defeating
+indirection). Three findings blocked or were required to be recorded; five were P3.
+
+Fix round 1 is RED `2bbc28b69` + GREEN `cdec3a5a2`.
+
+- **Finding 1 (P2) — CLOSED.** `apps/web/src/routes/DeliveryNoteConsolidationRoute.retired.test.tsx`
+  restores route-level retirement coverage. Rather than restating the deleted (false) assertion, the
+  route was rendered first to learn the truth: `/inventory/delivery-notes/consolidate` matches
+  `delivery-notes/:id` (`routes/index.tsx:1259`) and renders the delivery-note **detail** page. That
+  is what the test asserts, together with the negative that no consolidation surface renders. The
+  test's regression power was proven, not assumed: with a `delivery-notes/consolidate` route
+  temporarily re-introduced ahead of `delivery-notes/:id`, it fails on the missing detail surface (a
+  literal segment outranks a dynamic one in React Router's ranking). The probe route was reverted and
+  is not committed.
+- **Finding 2 (P2) — CLOSED.** `->whereUuid('document')` added at
+  `apps/api/app/Modules/Document/Presentation/routes.php:49`, matching this wave's own
+  `whereUuid('deliveryNote')` (`:284`) / `whereUuid('partner')` (`:279`) and the sibling
+  `documents/{document}/revert` (`:44`). `DocumentShowRouteUuidConstraintTest` asserts route
+  resolution rather than the status code alone, because the default SQLite test path returns a clean
+  404 for a non-UUID and structurally cannot show the PostgreSQL `SQLSTATE[22P02]` 500; the
+  controller's own miss is distinguishable by its `error.code = NOT_FOUND` body.
+  **Survey of the same file, recorded not fixed** (the wave did not touch these params, so
+  constraining them was left out of scope): `POST /delivery-notes/{deliveryNote}/confirm` (`:292`)
+  and the `documents/{document}/*` sub-resources — additional-costs (`:327`, `:331`, `:335`, `:339`),
+  landed-cost-breakdown (`:343`), related (`:348`), tax-breakdown (`:353`), payments (`:358`),
+  credit-allocations (`:363`), pdf (`:368`, `:372`) and email (`:377`, `:381`) — all bind a raw
+  segment with no UUID constraint. None is reachable from a retired path, but each carries the same
+  PostgreSQL 22P02 shape if a non-UUID ever reaches it.
+- **Finding 3 (P2) — CLOSED.** The 10 orphaned leaves per locale are deleted from
+  `locales/{en,fr}/sales.json`: `deliveryNotes.consolidation.title`, `.description`,
+  `.noDeliveryNotes`, `.noDeliveryNotesDescription`, `.selected`, `.invoiceTotal`, `.createInvoice`
+  and the three `.errors.*`. Each was verified per key at zero references before deletion.
+  `billingRefusal.*` is kept in full, including the nested `billingRefusal.title` consumed at
+  `ToBillPage.tsx:75` and `PartnerDeliveryNotesTab.tsx:213` — it must not be confused with the
+  retired sibling `consolidation.title`.
+- **Finding 4 (P3) — CLOSED (deleted, not merely recorded).** The sole production consumer of all
+  four symbols was the component deleted in `38fdd18f9`, verified against `38fdd18f9^`
+  (`DeliveryNoteConsolidation.tsx:13-16,67,75,87`). `useInvoiceableDeliveryNotes`,
+  `getInvoiceableDeliveryNotes`, `groupDeliveryNotesByPartner` and `calculateConsolidationTotals` are
+  removed; the latter two had zero references anywhere, tests included.
+  `calculateConsolidationTotals` also carried four `parseFloat` calls over money, so deleting it
+  removes a dormant rule-19 violation that a green test was certifying. The orphaned assertions were
+  adjusted rather than dropped wholesale: the `getInvoiceableDeliveryNotes` describe block leaves
+  `api/deliveryNotes.test.ts` with its now-unused `apiGet` mock, and the invoiceable probe leaves the
+  three `deliveryNotesTenantScope` cases, whose tenant-scope and C9 subject matter survives through
+  the remaining detail/list/partner-page probes. **Note for M5:** the transport this removes was
+  `GET /delivery-notes?status=confirmed&uninvoiced=1` — a query-param shape on the base index route
+  (`DeliveryNoteController.php:298`), not a distinct endpoint. That server-side branch is now
+  unused by the web client and is a candidate for the same triage.
+- **Finding 5 (P3) — CLOSED.** `PartnerDeliveryNotesTab.test.tsx` gains a French case asserting
+  `billingRefusal.guarantee` and `.removeAndRetry`, restoring the fr coverage of the OI-8 refusal
+  surface that was deleted with the consolidation component while the copy stayed live on two
+  surfaces.
+- **Finding 6 (P3) — CLOSED.** `docs/architecture/frontend.md` no longer lists the deleted
+  `DeliveryNoteConsolidationPage`; it names `DeliveryNoteDetailPage` and `ToBillPage` and records the
+  retirement.
+- **Finding 7 (P3) — RECORDED, NOT FIXED. The differential pin is stale and M5/parent must
+  re-derive it.** The preflight policy pins two `expected_inherited_residuals` at
+  `CopiesDocumentData.php:309` and `:310`
+  (`docs/handoff/progress/dn-consolidation-build.progress.yaml:30-31`). Re-verified independently in
+  this fix round: after `phpstan clear-result-cache`, `phpstan analyse
+  app/Modules/Document/Domain/Services/Conversion/Concerns/CopiesDocumentData.php --level=8` reports
+  `[OK] No errors`, and `git diff --stat 60df88a01..HEAD` on that path is empty. The improvement is
+  therefore not an M4 effect and not an evasion — the pinned entries never reproduced. The
+  differential gate is being compared against an inaccurate baseline, and the pin must be re-derived
+  at M5 rather than inherited.
+- **Finding 8 (P3) — RECORDED, NOT FIXED.** `B2BFieldsSection.tsx:211-213` help text restates its
+  label verbatim ("Billed periodically" / "This customer is billed periodically.") and is not linked
+  to the checkbox via `aria-describedby`. Two improvements are available for a later pass: say what
+  the classification *does* (it drives the To-bill billed-periodically filter and nothing else — the
+  one fact that stops it reading as automation), and wire `aria-describedby` so a screen reader
+  announces the help with the control. Literal compliance with spec §5, so not a deviation.
+
+### M4 fix round 1 verification evidence
+
+- `php artisan test tests/Feature/Document`: 665 passed / 22 skipped / 2 failed (2,906 assertions).
+  Both failures are the pinned inherited default-SQLite `InventoryGlCompositeRootTest` fixtures. No
+  new backend failure versus the pin.
+- `DocumentShowRouteUuidConstraintTest` 2/2 green; the sibling `DocumentRevertEndpointTest` stays
+  4/4. Changed-file `pint --test` passes and `phpstan --level=8` on both changed PHP files reports
+  no errors.
+- `vitest run src/routes src/features/documents src/features/partners --maxWorkers=1`: 65 files /
+  533 tests passed. `PartnerDeliveryNotesTab.test.tsx` is 14/14 (was 13, +1 French case).
+- Typecheck clean. Lint reports **0 errors** and 6,459 warnings — four fewer than round 1's 6,463,
+  accounted for by the deleted `parseFloat` helper. `audit:keys` 0 new / 0 stale;
+  `audit:design-system` 728 acknowledged / 0 new / 0 stale; `audit:quantity` 0; all three
+  eslint-rule RuleTesters pass.
+- No newly introduced failure exists anywhere in the amended differential gate.
 
 ## Standing findings and deploy obligations
 
