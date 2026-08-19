@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Tests\PHPStan;
 
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\PHPStan\Rules\DeliveryNoteBillingWritesOnlyViaClaimService;
 use PHPStan\Rules\Rule;
 use PHPStan\Testing\RuleTestCase;
+use ReflectionClass;
 
 /** @extends RuleTestCase<DeliveryNoteBillingWritesOnlyViaClaimService> */
 final class DeliveryNoteBillingWritesOnlyViaClaimServiceTest extends RuleTestCase
@@ -27,6 +29,17 @@ final class DeliveryNoteBillingWritesOnlyViaClaimServiceTest extends RuleTestCas
             '- '.DeliveryNoteBillingWritesOnlyViaClaimService::class,
             (string) file_get_contents(dirname(__DIR__, 2).'/phpstan.neon'),
         );
+    }
+
+    public function test_composer_resolves_the_runtime_claim_service_from_app(): void
+    {
+        $runtimePath = realpath(
+            dirname(__DIR__, 2).'/app/Modules/Document/Domain/Services/Billing/DeliveryNoteBillingClaimService.php',
+        );
+        $resolvedPath = realpath((string) (new ReflectionClass(DeliveryNoteBillingClaimService::class))->getFileName());
+
+        $this->assertNotFalse($runtimePath);
+        $this->assertSame($runtimePath, $resolvedPath);
     }
 
     public function test_reports_each_enumerated_literal_write_form(): void
@@ -53,7 +66,7 @@ final class DeliveryNoteBillingWritesOnlyViaClaimServiceTest extends RuleTestCas
     {
         $this->analyse(
             [
-                __DIR__.'/Fixtures/DeliveryNoteBillingAllowedClaimServiceFixture.php',
+                dirname(__DIR__, 2).'/app/Modules/Document/Domain/Services/Billing/DeliveryNoteBillingClaimService.php',
                 __DIR__.'/Fixtures/DeliveryNoteBillingUnrelatedModelFixture.php',
                 __DIR__.'/Fixtures/DeliveryNoteBillingNonBillingPayloadAssignmentFixture.php',
                 __DIR__.'/Fixtures/DeliveryNoteBillingNonMarkerRawSqlFixture.php',
