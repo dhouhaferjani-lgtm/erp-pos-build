@@ -1009,6 +1009,30 @@ jobs:
           path: apps/web/dist
           retention-days: 7
 
+  route-manifest-drift:
+    name: Route Manifest Drift Guard
+    runs-on: ubuntu-latest
+    # Intentionally lean: the generator needs the workspace's js-yaml and
+    # apps/web TypeScript installs, but no .env, database, Redis, or build.
+    # No job-level `if:` means this guard runs on every workflow event.
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v5
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check route manifest drift
+        run: bash scripts/factory/check-manifest-drift.sh
+
   types-drift:
     name: Generated Types Drift Guard
     runs-on: ubuntu-latest
@@ -1101,7 +1125,9 @@ jobs:
     # job comes back `skipped` would otherwise fail/skip this aggregate gate
     # spuriously — confirmed that can't happen here before wiring it in.
     if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    needs: [backend-lint, backend-analyse, backend-architecture, backend-test, backend-test-pgsql, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, types-drift]
+    # route-manifest-drift has no `if:` guard, so it always runs and can never
+    # enter this aggregate gate as a skipped dependency.
+    needs: [backend-lint, backend-analyse, backend-architecture, backend-test, backend-test-pgsql, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
     steps:
       - name: All checks passed
         run: echo "All CI checks have passed!"
