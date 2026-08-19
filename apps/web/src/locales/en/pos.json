@@ -188,15 +188,11 @@
     "trainingModeDisabled": "Training mode disabled"
   },
   "transactions": {
-    "noLocation": "No Location Selected",
-    "noLocationDescription": "Please select a location from the top bar to start using the POS.",
     "loading": {
-      "terminal": "Setting up terminal...",
       "shift": "Checking shift status...",
       "products": "Loading products..."
     },
     "errors": {
-      "terminalCreation": "Failed to set up POS terminal",
       "unknown": "An unexpected error occurred",
       "loadingShift": "Error loading shift",
       "loadingProducts": "Error loading products",
@@ -369,24 +365,13 @@
     "couponMinimumNotMet": "Minimum order amount not met for this coupon"
   },
   "xReport": {
-    "title": "X Report",
-    "generatedAt": "Generated At",
-    "salesSummary": "Sales Summary",
-    "salesCount": "Sales Count",
-    "grossSales": "Gross Sales",
-    "netSales": "Net Sales",
-    "taxAmount": "Tax Amount",
-    "refundsCount": "Refunds Count",
-    "vatBreakdown": "VAT Breakdown",
     "rate": "Rate",
     "net": "Net",
     "vat": "VAT",
     "gross": "Gross",
-    "paymentMethods": "Payment Methods",
     "method": "Method",
     "count": "Count",
-    "amount": "Amount",
-    "print": "Print"
+    "amount": "Amount"
   },
   "cashTendered": {
     "title": "Cash Payment",

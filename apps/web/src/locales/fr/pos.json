@@ -208,15 +208,11 @@
     "trainingModeDisabled": "Mode formation désactivé"
   },
   "transactions": {
-    "noLocation": "Aucun emplacement sélectionné",
-    "noLocationDescription": "Veuillez sélectionner un emplacement dans la barre supérieure pour utiliser la caisse.",
     "loading": {
-      "terminal": "Configuration du terminal...",
       "shift": "Vérification du poste en cours...",
       "products": "Chargement des produits..."
     },
     "errors": {
-      "terminalCreation": "Échec de la configuration du terminal de caisse",
       "unknown": "Une erreur inattendue s'est produite",
       "loadingShift": "Erreur lors du chargement du poste",
       "loadingProducts": "Erreur lors du chargement des produits",
@@ -369,24 +365,13 @@
     "couponMinimumNotMet": "Le montant minimum de commande n'est pas atteint pour ce coupon"
   },
   "xReport": {
-    "title": "Rapport X",
-    "generatedAt": "Généré le",
-    "salesSummary": "Résumé des Ventes",
-    "salesCount": "Nombre de Ventes",
-    "grossSales": "Ventes Brutes",
-    "netSales": "Ventes Nettes",
-    "taxAmount": "Montant des Taxes",
-    "refundsCount": "Nombre de Remboursements",
-    "vatBreakdown": "Ventilation TVA",
     "rate": "Taux",
     "net": "HT",
     "vat": "TVA",
     "gross": "TTC",
-    "paymentMethods": "Moyens de Paiement",
     "method": "Méthode",
     "count": "Nombre",
-    "amount": "Montant",
-    "print": "Imprimer"
+    "amount": "Montant"
   },
   "cashTendered": {
     "title": "Paiement Espèces",
