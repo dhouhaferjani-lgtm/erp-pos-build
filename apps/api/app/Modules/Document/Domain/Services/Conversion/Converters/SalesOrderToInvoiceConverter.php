@@ -163,6 +163,8 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 
         try {
             return $this->billingConcurrencyRetrier->run($attributedId, function () use ($source, $partial, $lineIds, $actorUserId, &$attemptedDeliveryNote): Document {
+                $attemptedDeliveryNote = null;
+
                 // Global SO lock order, Layer 0b step 2: immediately after BEGIN,
                 // serialize the same order before scenario detection can take the
                 // delivery-note sequence row or mutate source lines/payload.
@@ -311,20 +313,72 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                 return $freshInvoice;
             });
         } catch (DeliveryNoteAlreadyClaimedException $exception) {
-            if (! $usedOrderFallbackAttribution) {
+            $previous = $exception->getPrevious();
+            if ($previous === null) {
                 throw $exception;
             }
 
-            if ($attemptedDeliveryNote === null) {
-                throw $exception->getPrevious() ?? $exception;
+            $candidateId = $usedOrderFallbackAttribution
+                ? ($attemptedDeliveryNote['id'] ?? null)
+                : $exception->deliveryNoteId;
+            if ($candidateId === null) {
+                throw $previous;
+            }
+
+            $durableWinner = $this->durableDeliveryNoteWinner($source, $candidateId);
+            if ($durableWinner === null) {
+                throw $previous;
             }
 
             throw new DeliveryNoteAlreadyClaimedException(
-                $attemptedDeliveryNote['id'],
-                $exception->getPrevious(),
-                $attemptedDeliveryNote['document_number'],
+                $durableWinner['id'],
+                $previous,
+                $durableWinner['document_number'],
             );
         }
+    }
+
+    /** @return array{id: string, document_number: string}|null */
+    private function durableDeliveryNoteWinner(Document $source, string $deliveryNoteId): ?array
+    {
+        $winner = DB::table('documents as delivery_note')
+            ->join('delivery_note_billing_marks as mark', 'mark.delivery_note_id', '=', 'delivery_note.id')
+            ->join('documents as invoice', 'invoice.id', '=', 'mark.invoice_id')
+            ->where('delivery_note.tenant_id', $source->tenant_id)
+            ->where('delivery_note.company_id', $source->company_id)
+            ->where('delivery_note.type', DocumentType::DeliveryNote->value)
+            ->where('delivery_note.id', $deliveryNoteId)
+            ->whereColumn('mark.company_id', 'delivery_note.company_id')
+            ->where('invoice.tenant_id', $source->tenant_id)
+            ->where('invoice.company_id', $source->company_id)
+            ->where('invoice.type', DocumentType::Invoice->value)
+            ->select([
+                'delivery_note.id',
+                'delivery_note.document_number',
+                'delivery_note.payload',
+                'mark.invoice_id as winner_invoice_id',
+                'mark.invoiced_via as winner_lane',
+            ])
+            ->first();
+
+        if ($winner === null) {
+            return null;
+        }
+
+        $payload = is_string($winner->payload)
+            ? json_decode($winner->payload, true)
+            : $winner->payload;
+        if (! is_array($payload)
+            || (string) ($payload['invoice_id'] ?? '') !== (string) $winner->winner_invoice_id
+            || (string) ($payload['invoiced_via'] ?? '') !== (string) $winner->winner_lane
+            || empty($payload['invoiced_at'])) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $winner->id,
+            'document_number' => (string) $winner->document_number,
+        ];
     }
 
     /**

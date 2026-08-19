@@ -275,7 +275,7 @@ SQL);
         $this->assertSame(1, $attempts);
     }
 
-    public function test_sales_order_commit_exhaustion_returns_exact_attributed_http_422(): void
+    public function test_sales_order_commit_exhaustion_preserves_infrastructure_error_without_phantom_422(): void
     {
         if (DB::getDriverName() !== 'pgsql') {
             $this->markTestSkipped('Billing-claim concurrency policy requires PostgreSQL.');
@@ -312,23 +312,92 @@ SQL);
 
         $payload = $response->json();
         $response->assertStatus(422);
-        $this->assertSame('DELIVERY_NOTE_ALREADY_INVOICED', $payload['error']['code']);
-        $this->assertCount(1, $payload['error']['details']['documents']);
-        $details = $payload['error']['details']['documents'][0];
-        $this->assertTrue(Str::isUuid($details['id']));
-        $this->assertNotSame($order->id, $details['id'], 'A sales-order UUID must never be reported as a delivery-note UUID.');
-        $this->assertNotSame('', $details['document_number'], 'Rolled-back auto-created DN attribution must retain its attempted number.');
-        $this->assertSame('claim_lost', $details['reason']);
-        $this->assertNull($details['invoice_id']);
-        $this->assertNull($details['invoice_number']);
-        $this->assertNull($details['invoice_date']);
-        $this->assertNull($details['invoiced_via']);
-        $this->assertSame(
-            'Delivery note '.$details['id'].' has already been claimed for billing.',
-            $payload['error']['message'],
-        );
+        $this->assertIsString($payload['error']);
+        $this->assertStringContainsString('SQLSTATE[40001]', $payload['error']);
+        $this->assertStringNotContainsString('Delivery note ', $payload['error']);
         $this->assertSame(0, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::DeliveryNote)->count());
         $this->assertSame(0, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::Invoice)->count());
+        $this->assertSame(0, DB::table('delivery_note_billing_marks')->where('company_id', $this->company->id)->count());
+    }
+
+    public function test_later_pre_resolution_retries_do_not_reuse_a_rolled_back_delivery_note_identity(): void
+    {
+        if (DB::getDriverName() !== 'pgsql') {
+            $this->markTestSkipped('Billing-claim concurrency policy requires PostgreSQL.');
+        }
+
+        $order = $this->salesOrder();
+        DB::statement('CREATE TEMP SEQUENCE dn_retry_attempt_local_sequence');
+        DB::unprepared(<<<'SQL'
+        CREATE OR REPLACE FUNCTION pg_temp.dn_retry_fail_first_document_commit()
+        RETURNS trigger
+        LANGUAGE plpgsql
+        AS $$
+        BEGIN
+            IF nextval('pg_temp.dn_retry_attempt_local_sequence') = 1 THEN
+                RAISE EXCEPTION 'forced first-attempt commit failure' USING ERRCODE = '40001';
+            END IF;
+            RETURN NEW;
+        END;
+        $$
+        SQL);
+        DB::statement(<<<'SQL'
+        CREATE CONSTRAINT TRIGGER dn_retry_fail_first_document_commit
+        AFTER INSERT ON documents
+        DEFERRABLE INITIALLY DEFERRED
+        FOR EACH ROW EXECUTE FUNCTION pg_temp.dn_retry_fail_first_document_commit()
+        SQL);
+
+        $preResolutionFaults = 0;
+        DB::connection()->beforeExecuting(static function (
+            string $query,
+            array $bindings,
+            Connection $connection,
+        ) use (&$preResolutionFaults): void {
+            $isSalesOrderLock = str_contains(strtolower($query), 'from "documents"')
+                && str_contains(strtolower($query), 'for update')
+                && in_array(DocumentType::SalesOrder->value, array_map('strval', $bindings), true);
+            if (! $isSalesOrderLock) {
+                return;
+            }
+
+            $sequenceWasCalled = (bool) $connection->getPdo()
+                ->query('SELECT is_called FROM pg_temp.dn_retry_attempt_local_sequence')
+                ->fetchColumn();
+            if (! $sequenceWasCalled) {
+                return;
+            }
+
+            $preResolutionFaults++;
+            $connection->getPdo()->exec(
+                "DO \$\$ BEGIN RAISE EXCEPTION 'forced pre-resolution retry fault' USING ERRCODE = '40001'; END \$\$",
+            );
+        });
+
+        try {
+            $response = $this->withoutMiddleware()
+                ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
+        } finally {
+            $pdo = DB::connection()->getPdo();
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            DB::statement('DROP TRIGGER IF EXISTS dn_retry_fail_first_document_commit ON documents');
+            DB::purge();
+            DB::reconnect();
+            DB::statement("SET lock_timeout = '10s'");
+            DB::statement("SET statement_timeout = '30s'");
+        }
+
+        $payload = $response->json();
+        $response->assertStatus(422);
+        $this->assertSame(2, $preResolutionFaults, 'Attempts two and three must fail before resolving any delivery note.');
+        $this->assertIsString($payload['error']);
+        $this->assertStringContainsString('forced pre-resolution retry fault', $payload['error']);
+        $this->assertStringNotContainsString('Delivery note ', $payload['error']);
+        $this->assertSame(0, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::DeliveryNote)->count());
+        $this->assertSame(0, Document::query()->where('company_id', $this->company->id)->where('type', DocumentType::Invoice)->count());
+        $this->assertSame(0, DB::table('delivery_note_billing_marks')->where('company_id', $this->company->id)->count());
     }
 
     public function test_overlapping_consolidations_serialize_at_the_seeded_sequence_barrier(): void
