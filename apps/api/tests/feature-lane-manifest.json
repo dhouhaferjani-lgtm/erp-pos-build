@@ -10,21 +10,24 @@
       "job": "backend-test",
       "step": "Security regression suite (module gating + kill-switches)",
       "selector": "./vendor/bin/phpunit tests/Feature/Security",
-      "events": "PR->main, push->main, workflow_dispatch (job is `if:`-gated; skipped on PR->dev)",
+      "runs_on_pr_dev": false,
+      "events_note": "PR->main, push->main, workflow_dispatch. The job is `if:`-gated, so these 17 classes do NOT run on the day-to-day PR->dev merge gate.",
       "note": "Whole directory, not a filter list, so new classes are gated the moment they land."
     },
     "treasury-spine-pgsql/feature-treasury": {
       "job": "treasury-spine-pgsql",
       "step": "PG-only invariants - Treasury Feature suite",
       "selector": "./vendor/bin/phpunit tests/Feature/Treasury",
-      "events": "PR->dev, PR->main, push->main, workflow_dispatch",
+      "runs_on_pr_dev": true,
+      "events_note": "PR->dev, PR->main, push->main, workflow_dispatch.",
       "note": "Real Postgres: the forbid-balance-write trigger, repository_movements immutability, GL advisory locks and savepoints all markTestSkipped on sqlite."
     },
     "treasury-spine-pgsql/feature-accounting": {
       "job": "treasury-spine-pgsql",
       "step": "PG-only invariants - Accounting Feature suite",
       "selector": "./vendor/bin/phpunit tests/Feature/Accounting",
-      "events": "PR->dev, PR->main, push->main, workflow_dispatch",
+      "runs_on_pr_dev": true,
+      "events_note": "PR->dev, PR->main, push->main, workflow_dispatch.",
       "note": "Same PG rationale as the Treasury directory."
     }
   },

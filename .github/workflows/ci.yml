@@ -190,6 +190,17 @@ jobs:
         # the all-checks-pass `needs` list, so no aggregate wiring is needed.
         run: php tools/feature-lane-manifest-check.php
 
+      - name: Feature-lane checker liveness test
+        # docs/conventions/08-DETECTOR-LIVENESS.md: every detector ships with a
+        # test proving it FIRES on a planted violation, IN THE SAME CI LANE as the
+        # detector. Seven cases drive COPIES of the tree in a temp dir — unanchored
+        # filter, unquoted filter, commented-out lane selector, unassigned group,
+        # coverage-debt growth, a lane misreporting its PR->dev coverage, and the
+        # happy path. Deliberately a single FILE and not `tests/Architecture`: that
+        # directory carries pre-existing failures this package does not own.
+        # No database, no application boot (~1 s).
+        run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php
+
       - name: Run Deptrac architecture ratchet
         # Static-analysis-only gate (~3-4 s). Hard-fails on hexagonal domain
         # leakage above baseline or any brand-new violation category; every

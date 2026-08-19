@@ -80,8 +80,49 @@ foreach ([$manifestPath => 'manifest', $workflowPath => 'workflow'] as $path => 
     }
 }
 
+require_once $apiRoot . '/vendor/autoload.php';
+
 $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
-$workflow = (string) file_get_contents($workflowPath);
+$workflowText = (string) file_get_contents($workflowPath);
+try {
+    $workflowYaml = \Symfony\Component\Yaml\Yaml::parse($workflowText);
+} catch (\Throwable $e) {
+    // FAIL CLOSED, and with a clean exit code: an unparseable workflow means the
+    // lane and --filter checks cannot run at all, which must never look like a pass.
+    fwrite(STDERR, "tests/Feature lane manifest — FAILED\n");
+    fwrite(STDERR, '  ✗ .github/workflows/ci.yml does not parse as YAML: ' . $e->getMessage() . "\n");
+    exit(1);
+}
+
+/**
+ * Every LIVE `run:` script in the workflow, plus each job's `if:` expression.
+ *
+ * Parsed from YAML, never grepped from the file text: a commented-out or deleted
+ * step still matches a raw `str_contains`, so a lane could be "verified" against
+ * a step that no longer executes.
+ *
+ * @return array{runs: list<string>, ifs: array<string,string>, stepJob: array<string,string>}
+ */
+function collectWorkflowRuns(array $workflowYaml): array
+{
+    $runs = [];
+    $ifs = [];
+    $stepJob = [];
+    foreach (($workflowYaml['jobs'] ?? []) as $jobId => $job) {
+        $ifs[$jobId] = (string) ($job['if'] ?? '');
+        foreach (($job['steps'] ?? []) as $step) {
+            if (! isset($step['run'])) {
+                continue;
+            }
+            $runs[] = (string) $step['run'];
+            $stepJob[(string) $step['run']] = (string) $jobId;
+        }
+    }
+
+    return ['runs' => $runs, 'ifs' => $ifs, 'stepJob' => $stepJob];
+}
+
+$wf = collectWorkflowRuns($workflowYaml);
 
 $lanes = $manifest['lanes'] ?? [];
 $groups = $manifest['groups'] ?? [];
@@ -150,6 +191,30 @@ foreach ($byGroup as $group => $members) {
         $deferredGroups++;
         $deferredClasses += count($members);
     }
+
+    // NON-GROWTH CEILING. Without this, planting a class in an EXISTING uncovered
+    // group (e.g. tests/Feature/Admin) is silent — the debt just ticks 1114 -> 1115
+    // in a stdout line nobody reads. That is the same silence one level down from
+    // the one this manifest exists to end, so `classes` is a contract, not a
+    // comment: a laneless group may SHRINK freely and may never grow.
+    if ($isDeferred || $isExcluded) {
+        if (! isset($entry['classes']) || ! is_int($entry['classes'])) {
+            $errors[] = sprintf(
+                'GROUP "%s" is %s and must carry an integer `classes` ceiling.',
+                $group,
+                $isExcluded ? 'excluded' : 'deferred',
+            );
+        } elseif (count($members) > $entry['classes']) {
+            $errors[] = sprintf(
+                'COVERAGE DEBT GREW: group "%s" now holds %d class(es), ceiling is %d. A group that no CI '
+                . 'lane runs may shrink, never grow — put the new class in a lane, or get the lane funded '
+                . '(brief §6 F-2). Lowering the ceiling to match a real deletion is fine.',
+                $group,
+                count($members),
+                $entry['classes'],
+            );
+        }
+    }
 }
 
 // A manifest entry for a group that no longer exists is stale bookkeeping, not a
@@ -168,11 +233,56 @@ foreach ($lanes as $laneId => $lane) {
 
         continue;
     }
-    if (! str_contains($workflow, $selector)) {
+    $owningJob = null;
+    foreach ($wf['runs'] as $run) {
+        if (str_contains($run, $selector)) {
+            $owningJob = $wf['stepJob'][$run] ?? null;
+            break;
+        }
+    }
+    if ($owningJob === null) {
         $errors[] = sprintf(
-            'LANE "%s" is a FICTION: its selector %s does not appear in .github/workflows/ci.yml.',
+            'LANE "%s" is a FICTION: its selector %s does not appear in any LIVE `run:` step of '
+            . '.github/workflows/ci.yml. (Resolved against parsed YAML, not file text — a commented-out '
+            . 'or deleted step must not keep certifying coverage.)',
             $laneId,
             var_export($selector, true),
+        );
+
+        continue;
+    }
+
+    // The manifest also claims which EVENTS the lane runs on. Verify that claim
+    // against the owning job's `if:` rather than trusting the prose: narrowing a
+    // job to `main` would otherwise leave the manifest asserting PR->dev coverage.
+    $declaredJob = $lane['job'] ?? null;
+    if (is_string($declaredJob) && $declaredJob !== $owningJob) {
+        $errors[] = sprintf(
+            'LANE "%s" claims job "%s" but its selector lives in job "%s".',
+            $laneId,
+            $declaredJob,
+            $owningJob,
+        );
+    }
+    // STRUCTURED, not prose: an `events` sentence containing "skipped on PR->dev"
+    // reads as a PR->dev claim to any substring test. The boolean is the contract;
+    // `events_note` is documentation the checker never interprets.
+    if (! array_key_exists('runs_on_pr_dev', $lane)) {
+        $errors[] = sprintf('LANE "%s" has no boolean `runs_on_pr_dev` to verify against the job `if:`.', $laneId);
+
+        continue;
+    }
+    $claimsPrDev = $lane['runs_on_pr_dev'] === true;
+    $jobIf = $wf['ifs'][$owningJob] ?? '';
+    $runsOnPrDev = $jobIf === '' || str_contains($jobIf, "base_ref == 'dev'");
+    if ($claimsPrDev !== $runsOnPrDev) {
+        $errors[] = sprintf(
+            'LANE "%s" claims runs_on_pr_dev=%s but job "%s" `if:` says %s. (`if:` = %s)',
+            $laneId,
+            $claimsPrDev ? 'true' : 'false',
+            $owningJob,
+            $runsOnPrDev ? 'true' : 'false',
+            $jobIf === '' ? 'no if: guard (always runs)' : $jobIf,
         );
     }
 }
@@ -184,9 +294,38 @@ foreach ($allTestClasses as $relative) {
 }
 $basenameCounts = array_count_values($basenames);
 
-preg_match_all('/--filter=(["\'])(.*?)\1/s', $workflow, $matches, PREG_SET_ORDER);
-foreach ($matches as $match) {
-    $raw = $match[2];
+// Every `--filter` argument form PHPUnit and `php artisan test` accept:
+//   --filter="A|B"   --filter='A|B'   --filter=A|B   --filter "A|B"   --filter A|B
+// Matching only the quoted forms let an unquoted or space-form allowlist bring the
+// substring-shadowing mechanism back with the guard reporting OK. Scanned over the
+// LIVE `run:` scripts, and any `--filter` the parser cannot resolve is a hard
+// failure rather than a silent skip.
+$filterValues = [];
+foreach ($wf['runs'] as $run) {
+    $offset = 0;
+    while (($pos = strpos($run, '--filter', $offset)) !== false) {
+        $offset = $pos + 8;
+        $rest = substr($run, $offset);
+        if (preg_match('/^(?:=|[ \t]+)(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s]+))/s', $rest, $m) !== 1) {
+            $errors[] = sprintf(
+                'UNPARSEABLE --filter in a `run:` step (context: %s). Fail closed: the anchoring and '
+                . 'uniqueness lint cannot certify an allowlist it cannot read.',
+                trim(substr($run, max(0, $pos - 20), 60)),
+            );
+
+            continue;
+        }
+        if (($m[1] ?? '') !== '') {
+            $filterValues[] = $m[1];
+        } elseif (($m[2] ?? '') !== '') {
+            $filterValues[] = $m[2];
+        } else {
+            $filterValues[] = $m[3] ?? '';
+        }
+    }
+}
+
+foreach ($filterValues as $raw) {
 
     // The anchored form is  /\\( A | B )::/  — a literal backslash pair before the
     // alternation forces the match to start at a namespace separator. String checks,
@@ -272,9 +411,16 @@ if ($deferredGroups > 0) {
     // Loud on EVERY run, on purpose. These classes run in no CI lane; the manifest makes
     // that fact explicit and un-growable, but it does not make it acceptable. Flipping
     // them on is an owner CI-budget decision (dispatch brief §6 F-2).
+    // Precise wording on purpose: these classes live in groups NO WHOLE-DIRECTORY
+    // lane runs. A minority of them are still named individually in an anchored
+    // --filter allowlist, so "run in no CI lane on any event" would be a false
+    // statement in a guard's own output — the exact sin this package exists to
+    // stop. The strictly-unreachable figure is in the decision doc's census.
     fwrite(STDOUT, sprintf(
-        "  ⚠ COVERAGE DEBT: %d group(s) / %d class(es) run in NO CI lane on any event, pending the\n"
-        . "    F-2 CI-budget decision. See docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M2.\n",
+        "  ⚠ COVERAGE DEBT: %d group(s) / %d class(es) sit in groups that NO CI lane runs as a whole,\n"
+        . "    pending the F-2 CI-budget decision. Some are individually named in a --filter allowlist;\n"
+        . "    a NEW class in any of these groups is selected by nothing. Ceilings are enforced above.\n"
+        . "    See docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M2.\n",
         $deferredGroups,
         $deferredClasses,
     ));

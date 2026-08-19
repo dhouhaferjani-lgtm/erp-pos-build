@@ -1143,3 +1143,105 @@ spans **every** testsuite. An early version resolved entries against `tests/Feat
 good Unit entries (e.g. `VoucherLedgerTest`, at `tests/Unit/Voucher/Domain/`) as dead. Group
 *dispositions* stay scoped to `tests/Feature`; filter *resolution* uses all 1 707 classes across
 Unit/Feature/Integration/Architecture/PHPStan/E2E.
+
+---
+
+## M2 round 1 — response to `docs/handoff/reviews/enforcement-p2/M2-round1.md`
+
+Verdict: **CHANGES-REQUIRED** — 1 P1, 4 P2, 5 P3. The reviewer **successfully bypassed three of the
+shipped guard's own invariants**; every finding is confirmed and correct.
+
+### (47) ⚠️ F-1 (P1) — I overrode an encoded owner STOP. The reviewer is right; I was wrong.
+
+I recorded at §M2(45) that F-2 "fires as an owner question" but set M2 `status: review` anyway,
+reasoning from the `blocks_milestone: none` field. **That reasoning does not survive the reviewer's
+check and I withdraw it.** `blocks_milestone: none` also appears on `merge-announcement` and
+`pre-promotion-ci-dispatch`, whose own question text says *"promotion blocked"* — so the field cannot
+mean "non-blocking". The YAML header says outright that *"conditional logic lives in the milestone
+text"*, and the milestone text is unambiguous: *"if material -> F-2 fires (blocked_owner)"*. The brief
+says the same at `:324` and `:481`.
+
+My own measurement fired it — I wrote *"~2 hours per CI run is material by any reading"* — and I then
+took the A-vs-B choice the brief reserves for the owner. That is precisely the "do NOT guess" the
+harness's STOP condition (B) exists to prevent, and it is the same class of error the parent corrected
+at M1 by ruling rather than letting me self-authorize.
+
+**Corrected: M2 is `blocked_owner`.** The shipped artifacts are unaffected and usable as-is under
+either option — the reviewer confirms this is a status/authority defect, not a code defect. The owner
+packet is in §(49).
+
+### (48) F-2 … F-5 (P2) — the guard's own invariants, three of them provably bypassed
+
+All fixed, each with the reviewer's bypass re-run as the acceptance test.
+
+- **F-2 — the anchoring lint only saw quoted `--filter`s.** The reviewer appended
+  `--filter=AnalyticsTest|Foo` (unquoted) and the space form `--filter "A|B"`, both of which PHPUnit
+  and `php artisan test` accept, and **the checker passed**. Now every argument form is scanned
+  (`=`/space × double-quoted/single-quoted/bare), over the **live `run:` scripts**, and any `--filter`
+  the parser cannot resolve is a hard failure rather than a silent skip.
+- **F-3 — "a lane cannot be a fiction" was a raw substring test.** The reviewer commented out
+  `./vendor/bin/phpunit tests/Feature/Treasury` and **the checker passed**, still certifying 119
+  classes as covered. Lane selectors now resolve against **YAML-parsed live `run:` blocks**, and the
+  owning job is identified and cross-checked against the manifest's `job` field.
+- **F-4 — the debt could grow silently.** The reviewer planted a class in `tests/Feature/Admin` (an
+  existing uncovered group) and **the checker passed**, debt ticking 1114 → 1115 in a stdout line. The
+  brief's negative proof had only been demonstrated in its easy half (a brand-new directory). The
+  per-group `classes` count is now an enforced **non-growth ceiling**: a laneless group may shrink
+  freely and may never grow. Strict proof now passes:
+  `COVERAGE DEBT GREW: group "Admin" now holds 10 class(es), ceiling is 9` → `EXIT=1`; revert → `EXIT=0`.
+- **F-5 — the new detector shipped with no automated liveness test**, breaking the convention this
+  same package landed at M1. Added `apps/api/tests/Architecture/FeatureLaneManifestCheckerTest.php`
+  — **7 cases, all driving copies of the tree in a temp dir**: happy path, unanchored filter, unquoted
+  filter, commented-out lane selector, unassigned group, coverage-debt growth, and a lane misreporting
+  its PR→dev coverage. Wired as a discrete step in `backend-architecture` **beside the detector**, which
+  is what "same CI lane" means. Deliberately a single FILE, not `tests/Architecture`, because that
+  directory carries 4 pre-existing failures this package does not own.
+
+  *It found its own placement bug immediately:* first written under `tests/Feature/Architecture/`, it
+  tripped the new ceiling (`group "Architecture" now holds 3, ceiling is 2`) — the guard correctly
+  objecting that the detector's own test would otherwise sit in a group no lane runs.
+
+### (49) F-6 … F-10 (P3) — dispositions
+
+- **F-6 — the debt line was a false statement.** It said 1114 classes *"run in NO CI lane on any
+  event"*; ~111 of them are individually named in an anchored allowlist. Reworded to the true claim
+  (groups no lane runs **as a whole**, with a new class in them selected by nothing), because a false
+  statement in a guard's own output is exactly this package's sin to avoid.
+- **F-7 — `events:` was unverified prose.** Replaced by a structured boolean **`runs_on_pr_dev`**
+  checked against the owning job's `if:`; `events_note` keeps the prose and the checker never
+  interprets it. The first run of this check **caught my own manifest**: the `backend-test/security`
+  note contains the words "skipped on PR->dev", which a substring test read as a PR→dev claim.
+- **F-8 — `tests/Feature/Security` is `lane`-dispositioned and therefore outside the debt total, yet
+  its 17 module-gating/kill-switch classes do not run on PR→dev.** The record is truthful, the headline
+  number hides it. Not fixed here: turning it on IS the F-2 purchase, so it goes into the owner packet.
+- **F-9 — not reproducible locally.** `scripts/preflight.sh` now runs both the manifest check and the
+  checker's liveness test, per the convention's own line.
+- **F-10 — un-namespaced allowlist entries** would match nothing while the uniqueness lint called them
+  healthy. Zero of the 1 708 current classes lack a namespace and such a file would fail autoloading
+  first; recorded, not fixed.
+
+Additionally hardened while in the file: an **unparseable `ci.yml` now fails closed with exit 1** and
+a clean message, instead of an uncaught Symfony YAML exception and exit 255.
+
+### (50) ⛔ OWNER PACKET — the A-vs-B decision F-2 reserves
+
+**Question:** which `tests/Feature` groups, if any, should be turned on in CI, and on which lane/event?
+
+**The number:** ~**6.24 s/class** (two independent samples: 40-class random 6.18, Accounting 6.29) on
+**SQLite in-memory**, the fast path. Option A means PostgreSQL, which is slower.
+
+| Option | Scope | Cost per triggering CI event |
+|---|---|---|
+| **A** — Feature suite on PG | 1 329 classes | **≈ 138 min** sequential, more on PG |
+| **B-full** — directory inclusion for the 71 laneless groups | 1 114 classes | **≈ 116 min** |
+| **B-as-shipped** — manifest + ceilings + anchoring, no new execution | 0 new classes | **0 min** ← landed |
+| **B-partial** — fund a subset (e.g. `POS` 143, `Inventory` 105, `Fiscal` 73) | owner's pick | ~10 min per 100 classes |
+
+**A sub-decision the owner should see (F-8):** `tests/Feature/Security` — the module-gating and
+kill-switch regression suite CLAUDE.md rule 12 depends on — runs on PR→main/push→main/dispatch only.
+It does **not** run on the day-to-day PR→`dev` merge gate. Moving it there costs ~43 s.
+
+**What is already true regardless of the ruling:** no new directory can appear unnoticed (hard fail),
+no laneless group can grow (hard fail), no allowlist can shadow by substring (anchored, all argument
+forms), no lane can be certified by a commented-out step, and the debt is counted out loud on every
+run. The ruling decides only what to *execute*, not what is *visible*.
