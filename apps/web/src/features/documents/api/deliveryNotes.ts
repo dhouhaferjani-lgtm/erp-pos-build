@@ -230,37 +230,17 @@ export async function getToBillPartnerRows(
   return response.data
 }
 
-async function getRemainingToBillPartnerPages(
-  partnerId: string,
-  params: ToBillQueueParams,
-  pages: number[],
-): Promise<ToBillPartnerRowsResponse[]> {
-  if (pages.length === 0) return []
-
-  const responses = Array<ToBillPartnerRowsResponse>(pages.length)
-  let nextIndex = 0
-  const fetchNext = async (): Promise<void> => {
-    while (nextIndex < pages.length) {
-      const index = nextIndex
-      nextIndex += 1
-      responses[index] = await getToBillPartnerRows(partnerId, { ...params, page: pages[index] })
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(4, pages.length) }, fetchNext))
-  return responses
-}
-
 export async function getAllToBillPartnerRows(
   partnerId: string,
   params: ToBillQueueParams,
 ): Promise<ToBillDeliveryNote[]> {
   const perPage = 100
   const first = await getToBillPartnerRows(partnerId, { ...params, page: 1, perPage })
-  const remainingPages = await getRemainingToBillPartnerPages(
-    partnerId,
-    { ...params, perPage },
-    Array.from({ length: Math.max(0, first.meta.last_page - 1) }, (_, index) => index + 2),
+  const remainingPages = await Promise.all(
+    Array.from(
+      { length: Math.max(0, first.meta.last_page - 1) },
+      (_, index) => getToBillPartnerRows(partnerId, { ...params, page: index + 2, perPage }),
+    ),
   )
 
   return [first, ...remainingPages].flatMap((response) => response.data)

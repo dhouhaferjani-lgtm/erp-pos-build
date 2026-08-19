@@ -135,38 +135,4 @@ describe('to-bill queue API', () => {
       { params: expect.objectContaining({ page: 2, per_page: 100 }) },
     )
   })
-
-  it('caps partner-row page fan-out at four requests while preserving page order', async () => {
-    let activeRequests = 0
-    let maximumActiveRequests = 0
-    mockApi.get
-      .mockResolvedValueOnce({ data: {
-        data: [{ id: 'dn-1' }],
-        meta: { current_page: 1, last_page: 6, total: 6, per_page: 100 },
-      } })
-      .mockImplementation(async (_url: string, config: { params: { page: number } }) => {
-        activeRequests += 1
-        maximumActiveRequests = Math.max(maximumActiveRequests, activeRequests)
-        await new Promise((resolve) => setTimeout(resolve, 0))
-        activeRequests -= 1
-
-        return {
-          data: {
-            data: [{ id: `dn-${config.params.page}` }],
-            meta: {
-              current_page: config.params.page,
-              last_page: 6,
-              total: 6,
-              per_page: 100,
-            },
-          },
-        }
-      })
-
-    const { getAllToBillPartnerRows } = await import('./deliveryNotes')
-    await expect(getAllToBillPartnerRows('partner-42', params)).resolves.toEqual(
-      Array.from({ length: 6 }, (_, index) => ({ id: `dn-${index + 1}` })),
-    )
-    expect(maximumActiveRequests).toBe(4)
-  })
 })

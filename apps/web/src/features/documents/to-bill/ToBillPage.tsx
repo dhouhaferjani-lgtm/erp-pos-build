@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, FileCheck2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, FileCheck2, MapPinOff } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -18,6 +18,7 @@ import { useLocation } from '@/hooks/useLocation'
 import { usePermissions } from '@/hooks/usePermissions'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { getErrorMessage } from '@/lib/api'
+import { useDebouncedValue } from '@/lib/hooks'
 import { entityRoutes } from '@/lib/entityRoutes'
 import { cn } from '@/lib/utils'
 import {
@@ -38,6 +39,10 @@ import {
 } from '../deliveryNoteBillingRefusal'
 
 const bucketOrder: ToBillAgingBucket[] = ['0_30', '31_60', '61_90', '90_plus']
+
+/** Mirrors the backend's `partner_search` `min:2` rule — below it, send nothing. */
+const PARTNER_SEARCH_MIN_LENGTH = 2
+const PARTNER_SEARCH_DEBOUNCE_MS = 300
 
 interface ToBillAttemptRefusal {
   details: DeliveryNoteBillingRefusal
@@ -292,7 +297,7 @@ function ToBillPartnerGroupCard({
 export function ToBillPage() {
   const { t } = useTranslation('sales')
   const { format: formatMoney } = useCurrency()
-  const { currentLocation, currentLocationId, isLoading: locationLoading } = useLocation()
+  const { currentLocationId, locations, isLoading: locationLoading } = useLocation()
   const { hasPermission } = usePermissions()
   const navigate = useNavigate()
   const [partnerSearch, setPartnerSearch] = useState('')
@@ -307,10 +312,12 @@ export function ToBillPage() {
   const [isPreparingInvoice, setIsPreparingInvoice] = useState(false)
   const consolidation = useConsolidateDeliveryNotes()
   const canCreateInvoice = hasPermission('invoices.create')
-  const trimmedPartnerSearch = partnerSearch.trim()
+  // The backend validates `partner_search` as min:2 and 422s below it, so a raw
+  // per-keystroke value would flash a load error on the first letter typed.
+  const trimmedPartnerSearch = useDebouncedValue(partnerSearch, PARTNER_SEARCH_DEBOUNCE_MS).trim()
   const params: ToBillQueueParams = {
     locationId: allLocations ? 'all' : currentLocationId,
-    partnerSearch: trimmedPartnerSearch.length >= 2 ? trimmedPartnerSearch : '',
+    partnerSearch: trimmedPartnerSearch.length >= PARTNER_SEARCH_MIN_LENGTH ? trimmedPartnerSearch : '',
     dateFrom,
     dateTo,
     periodicOnly,
@@ -318,6 +325,11 @@ export function ToBillPage() {
     perPage,
   }
   const query = useToBillQueue(params)
+  const servedLocationId = query.data?.scope.location_id ?? null
+  const servedLocationName = servedLocationId === null
+    ? null
+    : locations.find((location) => location.id === servedLocationId)?.name
+      ?? t('toBill.scope.unnamedLocation')
 
   const changeFilter = (setter: (value: string) => void, value: string) => {
     setter(value)
@@ -412,24 +424,31 @@ export function ToBillPage() {
 
       {query.data ? (
         <div className={cn('flex flex-wrap items-center justify-between gap-3 text-sm', colorTokens.text.muted)}>
+          {/*
+            Driven by the scope the SERVER actually served, never by the local
+            toggle: with no active location the backend falls back to the
+            company default (or to every location when none exists), so a
+            client-side guess would describe a scope the rows do not come from.
+          */}
           <p>
-            {allLocations || currentLocationId === null
+            {servedLocationId === null
               ? t('toBill.scope.allDisclosure', { currency: query.data.summary.currency })
               : t('toBill.scope.currentDisclosure', {
                   currency: query.data.summary.currency,
-                  location: currentLocation?.name ?? t('toBill.scope.currentLocation'),
+                  location: servedLocationName,
                 })}
           </p>
-          {query.data.scope.can_view_all_locations && currentLocationId !== null ? (
+          {query.data.scope.can_view_all_locations ? (
             <Button
-              variant="secondary"
+              variant={allLocations ? 'primary' : 'secondary'}
               size="sm"
+              aria-pressed={allLocations}
               onClick={() => {
                 setAllLocations((current) => !current)
                 setPage(1)
               }}
             >
-              {allLocations ? t('toBill.scope.currentLocation') : t('toBill.scope.allLocations')}
+              {t('toBill.scope.allLocations')}
             </Button>
           ) : null}
         </div>
@@ -493,7 +512,15 @@ export function ToBillPage() {
         <QueryError error={query.error} onRetry={() => { void query.refetch() }} title={t('toBill.loadError')} />
       ) : query.isLoading || locationLoading ? (
         <div className={cn('h-40 animate-pulse rounded-xl', colorTokens.surface.subdued)} />
-      ) : query.data?.data.length === 0 ? (
+      ) : query.data === undefined ? (
+        // The query is idle rather than loading (no tenant/company scope yet).
+        // Never render nothing here: an empty region reads as "nothing to bill".
+        <EmptyState
+          title={t('toBill.noScope.title')}
+          description={t('toBill.noScope.description')}
+          icon={<MapPinOff className={cn('h-16 w-16', colorTokens.text.muted)} />}
+        />
+      ) : query.data.data.length === 0 ? (
         <EmptyState
           title={t('toBill.empty.title')}
           description={t('toBill.empty.description')}
@@ -501,7 +528,7 @@ export function ToBillPage() {
         />
       ) : (
         <div className="space-y-3">
-          {query.data?.data.map((group) => (
+          {query.data.data.map((group) => (
             <ToBillPartnerGroupCard
               key={group.partner_id}
               group={group}

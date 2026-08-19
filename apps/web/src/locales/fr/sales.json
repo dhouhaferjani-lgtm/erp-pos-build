@@ -723,9 +723,13 @@
     },
     "scope": {
       "allLocations": "Tous les emplacements",
-      "currentLocation": "Emplacement actuel",
-      "currentDisclosure": "Affichage des bons de livraison en {{currency}} pour {{location}}. Les bons sans emplacement ou dans une autre devise sont exclus.",
-      "allDisclosure": "Affichage de tous les emplacements en {{currency}}. Les bons dans une autre devise sont exclus."
+      "unnamedLocation": "l'emplacement actif",
+      "currentDisclosure": "Affichage de {{location}} uniquement. Les bons de livraison sans emplacement sont exclus, et seuls les bons en {{currency}} sont comptés.",
+      "allDisclosure": "Affichage de tous les emplacements, y compris les bons de livraison sans emplacement. Seuls les bons en {{currency}} sont comptés ; les bons dans une autre devise sont exclus."
+    },
+    "noScope": {
+      "title": "Aucune société active",
+      "description": "La file à facturer nécessite une société active. Choisissez une société pour voir ce qu'il reste à facturer."
     },
     "confirm": {
       "title": "Créer une facture pour {{partner}} ?",

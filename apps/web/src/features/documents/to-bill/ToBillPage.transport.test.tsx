@@ -15,9 +15,9 @@
  * through the real interceptors, the real api module, the real query hooks and
  * into the real page.
  */
-import type { AxiosAdapter, AxiosRequestConfig } from 'axios'
+import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios'
 import { screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { api } from '@/lib/api'
 import { useLocationStore, type Location } from '@/stores/locationStore'
@@ -86,22 +86,26 @@ beforeEach(() => {
     isLoading: false,
   })
 
-  const adapter: AxiosAdapter = vi.fn(async (config: AxiosRequestConfig) => {
+  const adapter: AxiosAdapter = (config: InternalAxiosRequestConfig) => {
     requestedUrls.push(config.url ?? '')
 
-    return {
+    return Promise.resolve({
       data: serverBody,
       status: 200,
       statusText: 'OK',
       headers: {},
       config,
-    }
-  }) as unknown as AxiosAdapter
+    })
+  }
   api.defaults.adapter = adapter
 })
 
 afterEach(() => {
-  api.defaults.adapter = originalAdapter
+  if (originalAdapter === undefined) {
+    delete api.defaults.adapter
+  } else {
+    api.defaults.adapter = originalAdapter
+  }
   resetAuth()
   useLocationStore.getState().reset()
 })

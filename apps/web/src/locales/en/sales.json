@@ -723,9 +723,13 @@
     },
     "scope": {
       "allLocations": "All locations",
-      "currentLocation": "Current location",
-      "currentDisclosure": "Showing {{currency}} delivery notes for {{location}}. Unassigned-location and other-currency notes are excluded.",
-      "allDisclosure": "Showing all locations in {{currency}}. Other-currency notes are excluded."
+      "unnamedLocation": "the active location",
+      "currentDisclosure": "Showing {{location}} only. Delivery notes with no location are excluded, and only {{currency}} delivery notes are counted.",
+      "allDisclosure": "Showing every location, including delivery notes with no location. Only {{currency}} delivery notes are counted; notes in another currency are excluded."
+    },
+    "noScope": {
+      "title": "No active company scope",
+      "description": "The to-bill queue needs an active company. Pick a company to see what is left to bill."
     },
     "confirm": {
       "title": "Create invoice for {{partner}}?",
