@@ -29,9 +29,17 @@ preflight_policy:
   expected_inherited_residuals:
     - "apps/api/app/Modules/Document/Domain/Services/Conversion/Concerns/CopiesDocumentData.php:309 precision.hardcodedBcmathScale (C-3; NG-4; do not edit)"
     - "apps/api/app/Modules/Document/Domain/Services/Conversion/Concerns/CopiesDocumentData.php:310 precision.hardcodedBcmathScale (C-3; NG-4; do not edit)"
-    - "apps/api/tests/Feature/Document/CompleteSalesCycleWithReturnTest.php fixture red (other-lane owned)"
+    - "Owner-listed apps/api/tests/Feature/Document/CompleteSalesCycleWithReturnTest.php fixture red did not reproduce at 60df88a01 or branch HEAD under the exact default-config path sweep"
+    - "apps/api/tests/Feature/Document/InventoryGlCompositeRootTest.php has two default-SQLite fixture reds at the pinned base and branch (no tenants table; merged 3C lane); both pass under phpunit-pgsql.xml and are not modified here"
     - "apps/web/src/features/finance/api.test.ts red (ui-wave0 M0b owned)"
     - "apps/web/src/features/finance/hooks/__tests__/tenantScope.test.tsx red (ui-wave0 M0b owned)"
+    - "packages/shared/types/generated.d.ts is stale at the pinned base: typescript:transform adds SystemAccountPurpose inventory_shrinkage_expense/inventory_gain_income and MovementGlKind from the merged 3C lane; branch drift is byte-identical and remains owner-lane work"
+  last_comparison:
+    base_sha: 60df88a01b52828665caf33809486bdf0a699bbc
+    branch_sha: be7deae8d
+    status: passed
+    touched_files: "Pint, PHPStan, focused backend/frontend tests, typecheck, ESLint, design-system audit, React Doctor, and diff-check green"
+    whole_repo: "Pint/typecheck/ESLint/key/quantity/POS gates green on both; PHPStan same two C-3 findings; backend same two default-SQLite InventoryGlCompositeRootTest fixture reds; scoped Vitest branch has the same two finance reds and is smaller than the base capture; route-manifest drift patches SHA-256-identical after recording this lane's route metadata; SaleReceipt chokepoint failure identical"
 
 # Commit series assigned by the parent (brief §5): Phase 2.<milestone>.<seq>. Do not invent another.
 commit_series: "Phase 2.<milestone>.<seq>"
@@ -126,4 +134,5 @@ findings:
   - "F-1 resolved at base 60df88a01: accountant has deliveries.view + pos.view_receipts + pos.view_reports; the generated map contains all merged grants. No seeder/map replay conflict occurred."
   - "M1 reviewed commits were replayed from fcfb158cb..af621df25. `git range-diff` reports patch equality for 15/17 commits; M1.9 preserves the 3C InventoryGlPostingBuffer constructor/root-flush seams while adding the reviewed billing claim service, and M1.13 preserves the receipts-expanded CI filter while adding the named DN concurrency class."
   - "3C merge 1e8c0fa03 was read during M1.9 conflict resolution; invoice posting keeps InventoryGlPostingBuffer root ownership and the DN claim integration is additive."
-  - "Expected inherited preflight residuals are recorded under preflight_policy and must not be fixed by this lane. The differential base-versus-branch evidence is pending."
+  - "The amended differential preflight passed at be7deae8d: all touched surfaces are green and no whole-repository failure grew versus 60df88a01. The owner-listed CompleteSalesCycleWithReturnTest red did not reproduce; instead the pin and branch both have the same two default-SQLite InventoryGlCompositeRootTest fixture failures from merged 3C, which pass under phpunit-pgsql.xml."
+  - "Both base and branch reproduce the same stale generated-types diff from merged 3C; no unrelated enum regeneration was committed by M1. Route-manifest residual patches are SHA-256-identical after adding only this lane's Sales/invoices.create metadata."
