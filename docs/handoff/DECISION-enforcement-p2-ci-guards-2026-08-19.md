@@ -2152,3 +2152,50 @@ missed once.
 - **P3-7** *"OpenAPI is the last `ci.yml` writer … lands after P2 with certainty"* was a scheduling
   assumption in a document whose stated standard is "measured, not guessed". Removed; the §1a remedy
   is order-independent regardless.
+
+---
+
+## M3 round 4 — response to `docs/handoff/reviews/enforcement-p2/M3-round4.md`
+
+**Tally, from the full register:** 0 P1, 2 P2, 2 P3. `fix_rounds` 3 → 4. All four fixed.
+
+### (96) P2-1 and P2-2 — the same pattern, twice more: headline sentences left behind by their own tables
+
+Both are round-3 finding 2's family — *"I fixed the sections it pointed into and left the summary that
+names them"* — and both survived all three fix rounds because they date to the original M3 commit and
+no finding had quoted them directly.
+
+- **§1's heading said "three in-flight lanes will go RED"** while its own table lists **eleven** rows,
+  **ten** needing an edit. "Three" was the round-0 count (`dn`, `es-wave-a0`, `dpa-wave3-3d`) — and
+  `dpa-wave3-3d` has since been retracted entirely as already merged into `dev`. The single line
+  labelled **"READ THIS FIRST"** therefore under-scoped the red-on-arrival warning by seven lanes and
+  named an eighth that no longer exists. Now reads **ten**.
+- **§3 said "Lanes touching locales: ui-wave0 and dn-consolidation"** — two of **seven**. The other
+  five counts were *already in this file*, printed in §10's locale column with a `§3(a) i18n` action
+  each; the sentence was simply never updated to the measurement that produced §10. §3 is the section
+  a lane reads to learn whether the i18n gate concerns it, so five lanes editing `apps/web/src/locales`
+  would have read that it affects two other lanes and skipped the reproduce-locally block — landing a
+  red `frontend-lint` on a gate whose design goal is "never land cold". Now lists all seven with their
+  counts and an explicit *"if your lane is in that list, this block is for you"*.
+
+### (97) P3-3 — and the fix-round evidence overstated closure
+
+§4's reconciliation table still said *"6 steps + 1 job"* fifty lines after §2 was corrected to five.
+My round-3 commit said *"All seven fixed"* and §(95) recorded the corrected count — while the duplicate
+in the same file was left. Corrected; and the overstatement is recorded here because "all fixed" is
+exactly the kind of claim this package exists to stop being taken on trust.
+
+### (98) P3-4 — two debt numbers, now reconciled in the artifact
+
+The announcement motivated the ceilings with the **990-class** figure while the gate prints **1114**.
+Both are correct and they measure different things: 1114 = every class in a group no lane runs *as a
+whole* (what `debt_ceiling` enforces); 990 = classes reachable by *no CI job at all*, i.e. 1114 minus
+those individually named in the two `--filter` allowlists. Nothing connected them, so a lane comparing
+the two had no way to tell whether the guard under-counted or the prose did. §1 now states both, says
+what each measures, and names **1114 as the number to act on**.
+
+**Standing note on this milestone's failure mode.** Every M3 round has found the same shape: a summary,
+heading or motivating sentence left behind by a table that was re-measured under it. Four instances
+across four rounds (§(89) roster filter, §(94) §(82), §(96) ×2, §(97)). The tables have been correct
+since round 2; what keeps failing is the prose *about* them. Recorded so the parent reads the tables as
+authoritative and treats any remaining prose count as suspect.

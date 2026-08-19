@@ -16,11 +16,11 @@
 
 ---
 
-## 1. ⚠️ READ THIS FIRST — three in-flight lanes will go RED without a one-line edit
+## 1. ⚠️ READ THIS FIRST — **ten** in-flight lanes will go RED without a one-line edit
 
 P2 adds a **non-growth ceiling** per `tests/Feature` group that no CI lane runs. Adding a Feature test
 to such a group now **hard-fails** `backend-architecture`. This is the intended behaviour — the
-990-class hole must not grow silently — and the remedy is one number, in the same commit.
+laneless hole must not grow silently — and the remedy is one number, in the same commit.
 
 | Lane | groups it **adds classes to** | ceiling now | what you must do |
 |---|---|---|---|
@@ -36,6 +36,13 @@ to such a group now **hard-fails** `backend-architecture`. This is the intended 
 | `fix/r2f2-cancel-flow-prompt` | `Document` **+1** | 65 | raise `Document` **and** `debt_ceiling` by 1 |
 | `feat/owner-dashboard-demo` | `Seeders` **+1** | 26 | raise `Seeders` **and** `debt_ceiling` by 1 |
 
+> **Two different debt numbers appear in this package — they measure different things.** The gate
+> prints `⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es)` = every class in a group **no lane runs as a
+> whole** (and `debt_ceiling: 1114` matches it). The `ci.yml` census comment says **990** = classes
+> reachable by **no CI job at all**, which subtracts the ~124 individually named in the two `--filter`
+> allowlists. Neither is wrong; 1114 is the one the ceilings enforce, so **1114 is the number to act
+> on**.
+>
 > **The "ceiling now" column shows P2-base values.** §8 item 0 re-baselines `Inventory` → 106,
 > `CountryDefaults` → 28 and `debt_ceiling` → 1116 in the first commit on `dev` after the merge, so
 > **raise the value you find, not the value printed here** — the actions are relative for that reason.
@@ -114,8 +121,13 @@ one new job, `security-regression`, was **added** to that list — the aggregate
 | `en-aliased` (wired to the English bundle) | 23 | **passes** — one whole-namespace `aliased` baseline entry, not per-key |
 
 `pos`, `sales`, `inventory`, `settings`, `finance`, `treasury`, `compliance`, `notifications`,
-`locations`, `products`, `expenses`, `import` are all in the **33**. Lanes touching locales:
-**ui-wave0 (16 files)** and **dn-consolidation (4 files)**.
+`locations`, `products`, `expenses`, `import` are all in the **33**.
+
+**Lanes touching `apps/web/src/locales` — SEVEN, not two** (counts from §10, same measurement):
+`codex/ui-wave0-2026-08-11` (16), `codex/dn-consolidation-2026-08-12` (4),
+`fix/r2f2-cancel-flow-prompt` (3), `feat/scan-vat-configuration` (3), `feat/rafiq-skin-experiment` (3),
+`l6-integration-verify` (2), `feat/dpa-v8-supplier-goods-return` (2). **If your lane is in that list,
+the block below is for you.**
 
 Reproduce locally before you push — no repository variable needed:
 
@@ -137,7 +149,7 @@ kill-switch, you will now find out on the dev PR instead of at the main merge. C
 
 | Lane (branch) | `ci.yml` change | rewrites `needs:` | Reconciliation |
 |---|---|---|---|
-| **P2** (this package) | 6 steps + 1 job (`security-regression`) | ✅ | — |
+| **P2** (this package) | 5 steps + 1 job (`security-regression`) | ✅ | — |
 | **`codex/ui-wave0-2026-08-11`** | the `route-manifest-drift` job | ✅ | Both P2 and UI edit the same `needs:` line. Whoever lands last re-verifies **both** entries survive. P2 deliberately did not author the drift job (F-3 ownership); UI's T7 C6 regex fix is likewise still UI's. |
 | **`codex/openapi-contract-a-to-z`** | adds `backend-openapi-contract` | ✅ | Measured from the **branch**: the "no OpenAPI CI wiring" reading came from grepping P2's *base*, and this lane has no worktree. It is one of the four `needs:` rewriters. (An earlier draft called it "the last `ci.yml` writer … lands after P2 with certainty" — that was a scheduling assumption, not a measurement, and nothing in the repo establishes the order. The §1a remedy is order-independent either way.) **See §1a — it also adds a brand-new `tests/Feature/OpenApi/` group, which hard-fails until dispositioned.** |
 | **`codex/enforcement-p1-dpa-guard`** | adds the DPA guard job | ✅ | Sibling enforcement package; the brief allows P1 and P2 to run in parallel. **Coordinate the aggregate edit directly with P2.** Adds **no** Feature classes of its own (§10). |
