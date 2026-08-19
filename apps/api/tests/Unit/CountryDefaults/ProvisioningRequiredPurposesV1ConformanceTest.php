@@ -40,7 +40,7 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_manifest_is_the_complete_exact_41_case_partition(): void
+    public function test_manifest_is_the_complete_exact_43_case_partition(): void
     {
         // Production break caught: a purpose disappears, appears twice, or changes operational classification.
         $expected = [

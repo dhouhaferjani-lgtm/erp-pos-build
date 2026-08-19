@@ -114,6 +114,48 @@ final class ProvisioningFlagMatrixTest extends TestCase
         self::assertFalse(Account::query()->where('company_id', $company->id)->where('code', '1000')->exists());
     }
 
+    public function test_template_variance_overlay_uses_the_assigned_chart_plan_for_a_non_native_country(): void
+    {
+        $actor = $this->m4Actor();
+        $draft = $this->m4Draft('fr');
+        $draft->accounts()
+            ->where('system_purpose', SystemAccountPurpose::InventoryGainIncome->value)
+            ->delete();
+        $nextOrder = (int) $draft->accounts()->max('sort_order') + 1;
+        foreach (['6130', '6170', '6250', '6256'] as $offset => $protectedCode) {
+            $draft->accounts()->create([
+                'code' => $protectedCode,
+                'name' => "Morocco protected expense {$protectedCode}",
+                'type' => 'expense',
+                'parent_code' => null,
+                'system_purpose' => null,
+                'is_system' => false,
+                'sort_order' => $nextOrder + $offset,
+            ]);
+        }
+        $template = app(TemplatePublishingService::class)->publish(
+            $draft->id,
+            'French plan assigned to Morocco without optional gain',
+            ['MA'],
+            $actor,
+        );
+        $this->m4Assign('MA', $template, $actor);
+        config(['country_defaults.provisioning_enabled' => true]);
+        [, $company] = $this->tenantCompanyUser('MA', 'template-plan-mismatch');
+
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $gain = Account::query()
+            ->where('company_id', $company->id)
+            ->where('system_purpose', SystemAccountPurpose::InventoryGainIncome->value)
+            ->firstOrFail();
+        self::assertSame(
+            '75',
+            Account::query()->whereKey($gain->parent_id)->value('code'),
+            'the overlay must use the French-plan parent present in the assigned chart',
+        );
+    }
+
     public function test_country_parameterized_contract_consumer_uses_template_path(): void
     {
         $this->assignCustomWildcard('Contract Template Equity');
