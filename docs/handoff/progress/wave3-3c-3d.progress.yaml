@@ -75,8 +75,16 @@ owner_gates:
     authority: docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md
   - id: OQ-12-H-5-count-correction-live
     question: "Expert-comptable must ratify the approved Option A presentation before count-correction posting goes live."
-    blocks_milestone: M5
-    status: queued_for_expert_comptable
+    # AMENDED 2026-08-19 by the parent orchestrator —
+    # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+    # "Goes live" is the production flag flip at deploy time, NOT the dormant implementation. The
+    # treasury ruling of record explicitly instructed "record that in the map document and proceed".
+    # M5's T21/T22 therefore PROCEEDED with the feature flag OFF and both count-correction purposes
+    # dormant, exactly as 3C shipped them. The obligation is retained as a DEPLOY-TIME blocker below.
+    blocks_milestone: null
+    blocks_deploy: "inventory.count_correction_gl_posting_enabled"
+    authority: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+    status: queued_for_expert_comptable_pre_flag_flip
   # OQ-13 (device-date) and OQ-2 (seed best-known codes) are already ruled. OQ-12/H-5 remains the M5 pre-live rider above.
 
 milestones:
@@ -139,18 +147,40 @@ milestones:
   - id: M5
     title: "3D listener: T21, T22. Whole-branch gate: re-run full accumulated evidence + every lens over the integrated branch."
     review_lenses: [inventory-costing, fiscal-pos, treasury]
-    owner_gate: OQ-12-H-5-count-correction-live
-    status: blocked_owner
+    # OQ-12/H-5 no longer blocks this milestone — the parent AMENDED it to a deploy-time flag-flip
+    # blocker (see owner_gates above and the ruling). T21 shipped fully built and tested with
+    # `inventory.count_correction_gl_posting_enabled` FALSE.
+    owner_gate: null
+    owner_gate_amended_by: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+    status: review
     fix_rounds: 0
-    commit: null
+    ruling_commit: cf9994b11
+    # The three M4-round6 commits preserved on codex/reviewer-round6-unauthorized-mutations, adopted
+    # as M5's opening work per the ruling. They close M4-round6's recorded finding 1 and are
+    # UNREVIEWED — they fall under M5's own bridge review like any other M5 work.
+    adopted_commits: [3c2791724, cdbefd40f, 75a06d987]
+    commit: dfeb7bea8
+    evidence: docs/handoff/reviews/wave3-3c-3d/M5-evidence.md
     verdict: null
     last_verdict: null
+    updated: dfeb7bea8
 
-status: blocked_owner    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: review    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
+#
+# 2026-08-19 M5 blocked_owner RESOLVED by parent orchestrator ruling (OQ-12/H-5 amended from a
+# milestone blocker to a deploy-time flag-flip blocker) — see
+# docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+#
+# TAKEOVER 2026-08-19: M5 was implemented by the PARENT ORCHESTRATOR'S IMPLEMENTATION AGENT, not by
+# the wave's Codex executor. That Codex session went terminal at `blocked_owner` on
+# OQ-12-H-5-count-correction-live and is inactive; it produced no M5 work. The takeover adopted the
+# three preserved M4-round6 commits (see M5.adopted_commits) and delivered T21 + T22 at `dfeb7bea8`.
+# The M5 bridge review was NOT run by the executor — the parent runs the whole-branch gate itself.
 blockers:
-  - "OQ-12-H-5-count-correction-live: expert-comptable ratification of Option A presentation is required before M5 count-correction posting can go live."
-  - "S-16: parent must run the per-tenant duplicate-count query as a hard pre-promotion gate; no local vacuous probe is accepted."
-  - "Inherited deptrac ratchet: pinned 3D base and M4 tip both report 174 violations and RESULT: FAIL against checked-in baseline 99 while the dispatch states 111; parent must reconcile before promotion."
+  # DEPLOY-TIME, not milestone. M5 is implemented and dormant; this binds the FLAG FLIP.
+  - "OQ-12-H-5-count-correction-live (DEPLOY-TIME): `inventory.count_correction_gl_posting_enabled` must NOT be enabled for any tenant before the expert-comptable ratification of the approved Option A (6586/7586) presentation is recorded. The T21 listener ships fully built and tested with the flag FALSE; both count-correction purposes stay dormant exactly as 3C shipped them. Parent carries this on the LEDGER at merge."
+  - "S-16 (PARENT-OWNED): parent must run the per-tenant duplicate-count query as a hard pre-promotion gate; no local vacuous probe is accepted."
+  - "Inherited deptrac ratchet (PARENT-OWNED): pinned 3D base and M4 tip both report 174 violations and RESULT: FAIL against checked-in baseline 99 while the dispatch states 111; parent must reconcile before promotion. M5 adds ZERO new ModuleDomain->ModuleApplication edges by construction (the count-correction GL sink is a \\Closure, and the Application-layer listener owns the buffer enqueue) — see M5-evidence.md §1.3."
