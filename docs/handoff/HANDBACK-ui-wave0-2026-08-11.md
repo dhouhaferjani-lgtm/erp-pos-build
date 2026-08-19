@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M3 accepted, M4 in progress
+# UI Wave 0 implementer report — M4 accepted, M5 blocked on manifest ownership
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b through M3 passed; M4 is in progress.
+- Wave status: M0b through M4 passed; M5 is blocked on an owner/parent architecture ruling before implementation starts.
 
 ## M0 repin
 
@@ -464,3 +464,25 @@ post-negative-revert drift check exit=0
 ```
 
 The workflow YAML parses successfully and confirms the new job has five lean steps, no `if:` field, and membership in the aggregate gate. `actionlint` is not installed locally. Generator tests pass 10/10. Typecheck and lint pass with zero errors; the design-system audit remains 736 acknowledged / 0 new / 0 stale, query-key Gate C remains 0/0/0, and quantity audit remains zero. The deterministic full suite reports 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo, with failures only in the three M0b-reviewed exception files.
+
+M4 bridge round 1 (`docs/handoff/reviews/ui-wave0/M4-round1.md`) returned `ACCEPT`. It independently confirmed the one-manifest-commit invariant, drift exit 0, manifest fidelity, correct invoice-detail resolution, lean unguarded CI job, aggregate dependency, dependency resolution, and 10/10 generator tests.
+
+### M5 architecture blocker discovered by M4 review
+
+M5/T4 is required to replace `/crm/companies`'s invalid `moduleKey="partners"` with `permission="partners.view"`. The generator will necessarily change that row from:
+
+```yaml
+module_gate: partners
+permission: null
+```
+
+to:
+
+```yaml
+module_gate: null
+permission: partners.view
+```
+
+Therefore M5 will make `check-manifest-drift.sh` fail, while M8 requires exit 0 and the brief declares T3(a) the only manifest commit. There is no compliant executor-side resolution. The recommended owner amendment is one additional manifests-only synchronization immediately after T4 and before M5 review, preserving T4's source-only commit and explicitly superseding the one-manifest-commit rule. Execution stops before M5 until that ruling is recorded.
+
+The M4 reviewer also recorded three non-blocking P3 notes: the workflow trigger does not cover direct pushes to `dev`; the root workspace install may be broader than the generator needs; and the progress YAML's scalar `commit` field can hold only T3(b), though both T3 SHAs are recorded in this handback and the findings list.

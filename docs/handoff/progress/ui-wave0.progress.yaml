@@ -75,16 +75,16 @@ milestones:
   - id: M4
     title: "T3 (UI-10) - two authorised commits: T3(a) regenerate scripts/factory/manifests/ (manifests and nothing else) so the manifest reflects T2 plus the four deletions, then T3(b) the standalone manifest drift CI job. check-manifest-drift.sh must exit 0 at this point."
     review_lenses: [frontend-conventions, general]
-    status: review
-    fix_rounds: 0
-    updated: 6747d9042
+    status: passed
+    fix_rounds: 1
+    updated: 3fc0c52bc
     commit: 6747d9042c252883426f1ebc0f44c2d5c5e54d13
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/ui-wave0/M4-round1.md
+    last_verdict: ACCEPT
   - id: M5
     title: "T4 (UI-01/UI-02) + T15 (UI-07) - the gating pair. T4: canAccessModule fails CLOSED, the ModuleKey union typed, the mandatory pre-step widening hasAnyPermission AND hasAllPermissions to readonly Permission[], the four invalid keys across five literal occurrences fixed, the six call surfaces (incl. CashPositionWidget.tsx:124-127) covered, and EXACTLY the five enumerated diagnostics - a sixth is a STOP-and-report. T15: the one-line /expenses nav parity fix at Sidebar.tsx:280 with role-level tests, the treasury siblings untouched, and the bankingAndPayments module-gate constraint recorded report-only. Both are USER-VISIBLE navigation changes in opposite directions (F-3, F-5) - state them plainly."
     review_lenses: [tenancy-authz, frontend-conventions, general]
-    status: pending
+    status: blocked_architecture
     fix_rounds: 0
     commit: null
     verdict: null
@@ -139,8 +139,9 @@ owner_gates:
     blocks_milestone: none
     status: standing_constraint
 
-status: in_progress    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
-blockers: []
+status: blocked_architecture    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers:
+  - "Owner ruling required before M5: T4 must replace /crm/companies moduleKey=partners with permission=partners.view, which necessarily changes the generated manifest row from module_gate: partners / permission: null to module_gate: null / permission: partners.view. M8 requires final drift exit 0, but the brief declares T3(a) the only manifest commit. Recommended amendment: authorize one additional manifests-only sync immediately after T4 and before M5 review; do not fold the manifest into T4's source commit."
 findings:
   - "Pinned-base inventory run 1: 20 failed files / 45 failed tests / 4,179 passed. Structured repeat: 19 failed files / 44 failed tests / 4,180 passed; the extra first-run failure was a CreateStockTransferPage.availability timeout absent from the repeat."
   - "Deterministic isolated evidence: pnpm exec vitest run src/__tests__/i18n/arLocaleCoverage.test.ts => 3 failed / 7 passed; current runtime falls back to English for the missing Arabic keys despite src/lib/i18n.ts claiming the enforced namespaces are fully translated."
@@ -166,3 +167,6 @@ findings:
   - "M4 T3(a) commit 00366d151 regenerates routes-web.yaml and nothing else after T2 and T10-T13; routes-pos.yaml is unchanged. Drift exits 0, /sales/invoices/:id resolves to InvoiceDetailPage, and /pos/shifts, /marketing, the /finance index, and /settings/chart-of-accounts are absent."
   - "M4 T3(b) commit 6747d9042 adds an always-run Route Manifest Drift Guard with only checkout, pnpm/Node setup, workspace install, and the drift command; all-checks-pass depends on it with a comment explaining it cannot be skipped. A throwaway route made the check exit 1 and print the fix command; after reversal it exits 0."
   - "M4 pre-review verification: generator tests 10/10; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with only the three reviewed M0b exception files; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale; CI YAML parses and confirms the job has no if guard and is in aggregate needs."
+  - "M4 bridge round 1 ACCEPTED all M4 criteria and independently reproduced drift exit 0, the one-manifest-commit invariant, correct InvoiceDetailPage resolution, lean always-run CI job structure, aggregate dependency, and 10/10 generator tests."
+  - "M4 review forward blocker: T4's mandated /crm/companies moduleKey=partners -> permission=partners.view repair will necessarily drift routes-web.yaml, while M8 requires drift 0 and the brief forbids a second manifest commit. Owner/parent must amend manifest ownership before M5 closes; execution stops before touching M5."
+  - "M4 review P3 carryovers: the CI workflow itself does not trigger on direct pushes to dev; the workspace install may be broader than the generator needs; and the scalar YAML commit field records T3(b) while T3(a)'s SHA is retained in the handback/findings."
