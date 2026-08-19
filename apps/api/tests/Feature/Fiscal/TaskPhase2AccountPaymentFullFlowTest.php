@@ -38,6 +38,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -103,6 +104,15 @@ final class TaskPhase2AccountPaymentFullFlowTest extends TestCase
             'is_primary' => true,
             'status' => MembershipStatus::Active,
         ]);
+
+        // ES-42 (M4) — `/pos/sync/fiscal-events` is now gated by the EXISTING
+        // seeded `pos.operate_terminal`. This fixture drives the DEVICE sync
+        // path, so its principal must be a realistic device principal: a POS
+        // operator holds this permission through the seeded `manager`/`cashier`
+        // roles (RolesAndPermissionsSeeder.php:590, :657). No new permission,
+        // no seeder change, no permission:cache-reset.
+        $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+        $this->cashier->givePermissionTo('pos.operate_terminal');
 
         $this->customer = Partner::factory()->customer()->create([
             'tenant_id' => $this->tenant->id,

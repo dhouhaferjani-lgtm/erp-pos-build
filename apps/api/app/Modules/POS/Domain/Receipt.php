@@ -42,7 +42,7 @@ use Illuminate\Support\Carbon;
  * @property ReceiptType $receipt_type Sale or Return
  * @property string|null $original_receipt_id FK to original receipt (for returns)
  * @property ReturnReason|null $return_reason Reason for return
- * @property int $chain_sequence Sequential number in terminal's chain
+ * @property int|null $chain_sequence Sequential number in terminal's chain; NULL until the receipt is sealed (pending_seal — 2026_05_01_000001_prepare_pos_receipts_for_pending_seal.php:18 made the column nullable)
  * @property int $receipt_year Year for filtering/reset logic
  * @property string $fiscal_hash SHA-256 hash of this receipt
  * @property string|null $previous_hash Previous receipt hash (NULL for first)

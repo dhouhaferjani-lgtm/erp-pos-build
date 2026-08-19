@@ -82,6 +82,26 @@ final class VerifyPosChainCommandTest extends TestCase
             ->expectsOutputToContain('Z-Reports');
     }
 
+    /**
+     * M2-round2 finding 7 — the Z row's Inspected cell used to reprint
+     * `count`, which reads as a measurement of what the Z verdict spans. It
+     * is not one: `ZReportHashService::verifyZReportChain()` ORs the legacy
+     * `ZReport` walk with a walk over EVERY `z_session` /
+     * `training_z_session` `fiscal_events` row on the terminal, while `count`
+     * is only `ZReport::where('terminal_id', …)->count()`. Measuring the real
+     * span would mean changing `ZReportHashService`, which R-1 forbids in
+     * this wave, so the cell must say the number is not measured.
+     */
+    public function test_z_report_row_does_not_fabricate_an_inspected_count(): void
+    {
+        $this->artisan('pos:verify-chains', [
+            '--terminal' => $this->terminal->id,
+            '--type' => 'z-reports',
+        ])
+            ->assertExitCode(0)
+            ->expectsOutputToContain('unmeasured');
+    }
+
     public function test_command_rejects_invalid_type(): void
     {
         $this->artisan('pos:verify-chains', [

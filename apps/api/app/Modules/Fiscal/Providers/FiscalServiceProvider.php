@@ -15,6 +15,7 @@ use App\Modules\Fiscal\Infrastructure\Commands\EnqueueResolvedEventProjectionsCo
 use App\Modules\Fiscal\Infrastructure\Commands\PreflightFiscalGateCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\RetryFiscalProjectionsCommand;
 use App\Modules\Fiscal\Infrastructure\Commands\VerifyEventChainCommand;
+use App\Modules\Fiscal\Infrastructure\Commands\VerifyEventChainFleetCommand;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
 use Illuminate\Contracts\Foundation\Application;
@@ -58,6 +59,7 @@ final class FiscalServiceProvider extends ServiceProvider
                 // against an --actor-id supplied at invocation, mirroring
                 // the Task 24 convention.
                 VerifyEventChainCommand::class,
+                VerifyEventChainFleetCommand::class,
                 RetryFiscalProjectionsCommand::class,
                 // v3-refund-chain-integration spec §6 — one-time
                 // sealed_hash_algorithm backfill + per-terminal

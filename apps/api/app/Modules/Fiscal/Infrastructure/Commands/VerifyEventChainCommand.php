@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace App\Modules\Fiscal\Infrastructure\Commands;
 
-use App\Console\TenantScopedCommand;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Fiscal\Application\DTOs\FiscalEventEnvelope;
+use App\Modules\Fiscal\Application\DTOs\ParseResult;
+use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
+use App\Modules\Fiscal\Application\Services\StrictCanonicalParser;
+use App\Modules\Fiscal\Domain\DTOs\DepositReceiptPayload;
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
+use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
+use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
-use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
 use Illuminate\Database\ConnectionInterface;
@@ -80,14 +86,39 @@ use Throwable;
  * binding — `users` is a tenant table, so the gate itself was unreadable from
  * central.
  *
- * There is deliberately no fleet-wide mode: the gate is anchored on an actor
- * who exists in exactly one tenant, so "verify every tenant with this actor"
- * has no coherent meaning.
- *
- * The chain-walking LOGIC is untouched.
+ * This command deliberately remains single-chain: the gate is anchored on an
+ * actor who exists in exactly one tenant, so "verify every tenant with this
+ * actor" has no coherent meaning. Fleet coverage is provided separately by
+ * `fiscal:verify-event-chain-fleet`, whose explicit tenant-to-actor manifest
+ * delegates every enumerated chain back to this command without weakening the
+ * actor gate or tenant binding.
  */
-final class VerifyEventChainCommand extends TenantScopedCommand
+final class VerifyEventChainCommand extends AuthorizedFiscalChainCommand
 {
+    /**
+     * Exact legacy server-authored envelope shape. These services shipped
+     * canonical bytes before `chain_context` became a sealed envelope field.
+     * No device-authored type and no other omission is compatible.
+     *
+     * @var list<string>
+     */
+    private const LEGACY_SERVER_ENVELOPE_KEYS = [
+        'business_date',
+        'company_id',
+        'event_time_device',
+        'event_type',
+        'event_version',
+        'operator_id',
+        'payload',
+        'previous_hash',
+        'reference_document_id',
+        'reference_event_id',
+        'sequence_number',
+        'signature_version',
+        'tenant_id',
+        'terminal_id',
+    ];
+
     /** @var string */
     protected $signature = 'fiscal:verify-event-chain '.
         '{--tenant= : tenant_id of the chain to verify (required)} '.
@@ -103,9 +134,11 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         CompanyContext $companyContext,
         private readonly DatabaseManager $databaseManager,
         private readonly FiscalIntegrityProvider $integrityProvider,
-        private readonly PermissionRegistrar $permissionRegistrar,
+        PermissionRegistrar $permissionRegistrar,
+        private readonly StrictCanonicalParser $canonicalParser,
+        private readonly FiscalPayloadConstraintValidator $payloadValidator,
     ) {
-        parent::__construct($companyContext);
+        parent::__construct($companyContext, $permissionRegistrar);
     }
 
     /**
@@ -202,62 +235,9 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         string $chainContext,
         int $fromSequence,
     ): int {
-        // ---- Permission gate (Task 24 standing pattern) ----
-        // `users` is a TENANT table: this lookup only resolves once tenancy is
-        // bound, which is why it now lives here rather than at the top of the
-        // command.
-        //
-        // The `tenant_id` predicate is redundant under database-per-tenant and
-        // load-bearing in single-schema compatibility mode, exactly like every
-        // other query in this closure (2026-08-05 wave-2 review, tenancy R3).
-        // Without it an actor belonging to tenant B resolved for a `--tenant=A`
-        // run, and `setPermissionsTeamId($actor->tenant_id)` below then
-        // evaluated `can()` against B's team — B's roles authorising chain
-        // verification over A's rows.
-        //
-        // M3 (2026-08-05 fiscal review): the lookup is a DB query, and a query
-        // fault here escapes into `forEachTenant()`'s continue-on-throw handler,
-        // which scores it FAILURE (1) — "validation error" in this command's
-        // contract. A DB outage is not a validation error; it is the transient
-        // condition exit 2 exists for and an operator should retry.
-        try {
-            $actor = User::query()->where('tenant_id', $tenantId)->find($actorId);
-        } catch (Throwable $e) {
-            Log::critical('VerifyEventChainCommand: actor lookup failed; cannot evaluate the permission gate.', [
-                'actor_id' => $actorId,
-                'tenant_id' => $tenantId,
-                'exception' => $e::class,
-                'message' => $e->getMessage(),
-            ]);
-            $this->error('Could not read the actor for the permission gate (transient failure); re-run to retry.');
-
-            return 2;
-        }
-
-        if ($actor === null) {
-            $this->error(sprintf('Unknown actor user id %s.', $actorId));
-
-            return self::FAILURE;
-        }
-
-        // Re-scope the Spatie registrar to the actor's tenant before
-        // checking `can()`. Mirrors EnqueueResolvedEventProjectionsCommand
-        // (Task 24 R2 — T24-P1). Always restored in finally per the
-        // Task 18 F1 / Task 23 R3-F2 try/finally discipline.
-        $previousTeamId = $this->permissionRegistrar->getPermissionsTeamId();
-        try {
-            $this->permissionRegistrar->setPermissionsTeamId($actor->tenant_id);
-
-            if (! $actor->can('fiscal.events.verify_chain')) {
-                $this->error(sprintf(
-                    'Actor %s lacks the fiscal.events.verify_chain permission.',
-                    $actorId,
-                ));
-
-                return self::FAILURE;
-            }
-        } finally {
-            $this->permissionRegistrar->setPermissionsTeamId($previousTeamId);
+        $authorizationExit = $this->authorizeBoundTenantActor($actorId, $tenantId);
+        if ($authorizationExit !== self::SUCCESS) {
+            return $authorizationExit;
         }
 
         // ---- Walk the chain ----
@@ -372,10 +352,28 @@ final class VerifyEventChainCommand extends TenantScopedCommand
             ->orderBy('sequence_number')
             ->get([
                 'id',
+                'tenant_id',
+                'company_id',
+                'terminal_id',
+                'operator_id',
+                'event_type',
+                'event_version',
+                'signature_version',
                 'sequence_number',
+                'event_time_device',
+                'business_date',
+                'chain_context',
+                'reference_event_id',
+                'reference_document_id',
+                'source_event_class',
+                'source_event_id',
                 'canonical_bytes',
                 'previous_hash',
                 'current_hash',
+                'signature_status',
+                'integrity_status',
+                'payload',
+                'payload_parse_status',
             ]);
 
         $this->lastWalkedCount = $rows->count();
@@ -389,9 +387,24 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         // terminal's `genesis_seed`. Otherwise it must equal the
         // `current_hash` of the row at (fromSequence - 1).
         $expectedPrevious = $this->resolveExpectedPreviousHash($tenantId, $terminalId, $chainContext, $fromSequence);
+        $expectedSequence = $fromSequence;
 
         foreach ($rows as $row) {
-            // (1) Re-hash check.
+            // (1) Sequence coordinates are independently contiguous. Hash
+            // linkage alone cannot prove this: rows 1 and 3 can link cleanly
+            // while sequence 2 is absent.
+            if ($row->sequence_number !== $expectedSequence) {
+                $incidents[] = sprintf(
+                    'CHAIN BREAK at sequence_number %d (id %s): sequence_number gap — expected %d, stored %d',
+                    $row->sequence_number,
+                    $row->id,
+                    $expectedSequence,
+                    $row->sequence_number,
+                );
+            }
+            $expectedSequence = $row->sequence_number + 1;
+
+            // (2) Re-hash check.
             $canonicalBytes = $this->stringifyCanonicalBytes($row->canonical_bytes);
             $rehashed = $this->integrityProvider->computeHash($canonicalBytes);
             if (! hash_equals(strtolower($rehashed), strtolower($row->current_hash))) {
@@ -404,7 +417,91 @@ final class VerifyEventChainCommand extends TenantScopedCommand
                 );
             }
 
-            // (2) Link check — previous_hash must equal the expected
+            // (3) A row that was quarantined or otherwise not verified is an
+            // incident even when its byte hash and linkage remain intact.
+            if ($row->integrity_status !== IntegrityStatus::Verified) {
+                $incidents[] = sprintf(
+                    'CHAIN BREAK at sequence_number %d (id %s): integrity_status is %s, expected verified',
+                    $row->sequence_number,
+                    $row->id,
+                    $row->integrity_status->value,
+                );
+            }
+
+            // (4) Independently derive the envelope from frozen canonical
+            // bytes for every row, including rows whose projection payload is
+            // still pending. Projection status controls only the semantic
+            // comparison against the mutable `payload` column; it cannot
+            // weaken verification of the sealed coordinates.
+            $parsed = $this->parseCanonicalForVerification($canonicalBytes, $row);
+
+            if (! $parsed->ok || $parsed->envelope === null) {
+                $incidents[] = sprintf(
+                    'CHAIN BREAK at sequence_number %d (id %s): sealed coordinates could not be derived from canonical_bytes (%s)',
+                    $row->sequence_number,
+                    $row->id,
+                    $parsed->failureReason ?? 'unknown parse failure',
+                );
+
+                // ES-06 (M3). `ParseFailureResolutionService` is the only
+                // post-seal payload-write surface the immutability trigger
+                // permits, and every row it can touch is by definition one
+                // the strict parser ALREADY rejected — so this branch, not
+                // the semantic comparison below, is the branch the ES-06
+                // mutation actually lands in. Emitting one fixed sentence
+                // here made the verifier indiscriminate on exactly that
+                // surface: a faithful correction and a wholesale money
+                // rewrite produced identical output.
+                //
+                // The sealed payload is still recoverable whenever the frozen
+                // envelope is unambiguous JSON carrying a `payload` member —
+                // the strict parser can reject an envelope for a reason that
+                // has nothing to do with the payload (an unknown device
+                // field, a version the server does not know). When it IS
+                // recoverable we say what is true; when it is not we keep the
+                // original fail-closed sentence. The sealed-coordinate
+                // incident above is unconditional either way, so the exit
+                // code never softens.
+                if ($row->payload_parse_status === PayloadParseStatus::Parsed) {
+                    $sealedPayload = $this->recoverSealedPayloadFromFrozenBytes($canonicalBytes);
+
+                    if ($sealedPayload === null) {
+                        $incidents[] = sprintf(
+                            'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes — canonical payload could not be derived (%s)',
+                            $row->sequence_number,
+                            $row->id,
+                            $parsed->failureReason ?? 'unknown parse failure',
+                        );
+                    } elseif (! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $sealedPayload)) {
+                        $incidents[] = sprintf(
+                            'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes — the sealed payload was recovered from the frozen envelope and disagrees with the stored payload',
+                            $row->sequence_number,
+                            $row->id,
+                        );
+                    }
+                }
+            } else {
+                foreach ($this->sealedCoordinateMismatches($row, $parsed->envelope) as $mismatch) {
+                    $incidents[] = sprintf(
+                        'CHAIN BREAK at sequence_number %d (id %s): sealed coordinate %s',
+                        $row->sequence_number,
+                        $row->id,
+                        $mismatch,
+                    );
+                }
+
+                if ($row->payload_parse_status === PayloadParseStatus::Parsed) {
+                    if ($parsed->payload === null || ! is_array($row->payload) || ! $this->semanticallyEqual($row->payload, $parsed->payload)) {
+                        $incidents[] = sprintf(
+                            'CHAIN BREAK at sequence_number %d (id %s): payload does not semantically match canonical_bytes',
+                            $row->sequence_number,
+                            $row->id,
+                        );
+                    }
+                }
+            }
+
+            // (5) Link check — previous_hash must equal the expected
             // chain head. The expected head is either the terminal's
             // genesis seed (first event) or the prior row's
             // `current_hash`.
@@ -433,6 +530,312 @@ final class VerifyEventChainCommand extends TenantScopedCommand
         }
 
         return $incidents;
+    }
+
+    /**
+     * Preserve strict parser semantics while recognizing the one historical
+     * production shape authored by three server-side services. The original
+     * envelope is returned so the coordinate comparison checks only values
+     * that were actually sealed; the synthetic context exists solely to run
+     * the current DTO/key-set/constraint parser over the legacy bytes.
+     */
+    private function parseCanonicalForVerification(string $canonicalBytes, FiscalEvent $row): ParseResult
+    {
+        $strict = $this->canonicalParser->parse($canonicalBytes, $row->event_type);
+        if ($strict->failureReason !== 'envelope_field_missing:chain_context'
+            || ! $this->isSanctionedLegacyServerRow($row)) {
+            return $strict;
+        }
+
+        try {
+            $legacyEnvelope = json_decode($canonicalBytes, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return $strict;
+        }
+
+        if (! is_array($legacyEnvelope) || array_is_list($legacyEnvelope)) {
+            return $strict;
+        }
+
+        $actualKeys = array_keys($legacyEnvelope);
+        sort($actualKeys);
+        if ($actualKeys !== self::LEGACY_SERVER_ENVELOPE_KEYS) {
+            return $strict;
+        }
+
+        $syntheticEnvelope = $legacyEnvelope;
+        $syntheticEnvelope['chain_context'] = $row->chain_context;
+        ksort($syntheticEnvelope);
+        $syntheticBytes = json_encode($syntheticEnvelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+        $validated = $this->canonicalParser->parse($syntheticBytes, $row->event_type);
+
+        if (! $validated->ok || $validated->payload === null) {
+            if (! $this->validateLegacyDepositReceipt($row, $syntheticEnvelope, $validated)) {
+                return $strict;
+            }
+
+            /** @var array<string, mixed> $payload */
+            $payload = $syntheticEnvelope['payload'];
+
+            return ParseResult::ok($payload, $legacyEnvelope);
+        }
+
+        return ParseResult::ok($validated->payload, $legacyEnvelope);
+    }
+
+    /**
+     * `DEPOSIT_RECEIPT` is server-only and is intentionally absent from the
+     * device parser's operational event allowlist. Apply its current DTO and
+     * constraint validators directly rather than weakening that device gate.
+     *
+     * @param  array<string, mixed>  $syntheticEnvelope
+     */
+    private function validateLegacyDepositReceipt(
+        FiscalEvent $row,
+        array $syntheticEnvelope,
+        ParseResult $validated,
+    ): bool {
+        if ($row->event_type !== FiscalEventType::DEPOSIT_RECEIPT
+            || $validated->failureReason !== 'envelope_chain_context_event_type_mismatch:event_type=DEPOSIT_RECEIPT,chain_context=operational') {
+            return false;
+        }
+
+        $payload = $syntheticEnvelope['payload'] ?? null;
+        if (! is_array($payload) || array_is_list($payload)) {
+            return false;
+        }
+
+        try {
+            DepositReceiptPayload::fromArray($payload);
+            $keySetError = $this->payloadValidator->validatePayloadKeySet(
+                FiscalEventType::DEPOSIT_RECEIPT,
+                $payload,
+                'operational',
+                1,
+            );
+            if ($keySetError !== null) {
+                return false;
+            }
+            $this->payloadValidator->validatePerEventConstraints(
+                FiscalEventType::DEPOSIT_RECEIPT,
+                $payload,
+                'operational',
+                1,
+            );
+        } catch (Throwable) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function isSanctionedLegacyServerRow(FiscalEvent $row): bool
+    {
+        return in_array($row->event_type, [
+            FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+            FiscalEventType::ACCOUNT_STATUS_CHANGED,
+            FiscalEventType::DEPOSIT_RECEIPT,
+        ], true)
+            && $row->event_version === 1
+            && $row->chain_context === 'operational'
+            && $row->signature_status === SignatureStatus::NotRequired
+            && $row->integrity_status === IntegrityStatus::Verified
+            && $row->payload_parse_status === PayloadParseStatus::Parsed
+            && $row->reference_event_id === null
+            && $row->reference_document_id === null
+            && $row->source_event_class === null
+            && $row->source_event_id === null;
+    }
+
+    /**
+     * ES-06 detection support — recover the SEALED payload from frozen
+     * canonical bytes the strict parser rejected.
+     *
+     * Recovery is only trusted when the bytes are UNAMBIGUOUS: they must
+     * decode as a JSON object AND re-encode byte-identically. That
+     * round-trip is what rules out the one way a lenient decode could
+     * disagree with the strict parser about what the bytes say — duplicate
+     * keys, where `json_decode` silently keeps the last occurrence while the
+     * strict parser rejects the document outright (`duplicate_key:*`). If the
+     * bytes are ambiguous in any way, or carry no `payload` object, this
+     * returns null and the caller keeps the original fail-closed incident.
+     *
+     * The re-encode uses the CANONICAL flag set (`CanonicalJsonEncoder.php:106-108`,
+     * RFC 8785 §3.2.3 — raw UTF-8 for U+0080+). The acceptance test is byte
+     * identity against THIS re-encode, nothing more: any byte form this PHP
+     * `json_encode` cannot reproduce returns null. State that precisely, because
+     * the converse ("canonical forms recover") is what a maintainer would read
+     * into a looser sentence, and it is false in both directions (M3 round-2
+     * finding N-2, both counterexamples probed on PHP 8.4):
+     *
+     *   - Refused, and NOT canonical: `\uXXXX` escapes of U+0080+, insignificant
+     *     whitespace, escaped slashes.
+     *   - Refused, but IS canonical: an empty JSON object anywhere in the
+     *     envelope. `CanonicalJsonEncoder::encode([])` deliberately emits `{}`
+     *     (that is why `encode()`/`encodeList()` are split at all,
+     *     `CanonicalJsonEncoder.php:13-16`), but `json_decode('{}', true)` yields
+     *     `[]`, which re-encodes as `[]` — so the round trip cannot reproduce it.
+     *     Fail-closed and narrow (the strict parser requires non-empty
+     *     sub-objects, `StrictCanonicalParser.php:44-49`), but real.
+     *   - Recovered, and IS canonical despite carrying an escape: U+2028 / U+2029.
+     *     PHP escapes those two even under `JSON_UNESCAPED_UNICODE` unless
+     *     `JSON_UNESCAPED_LINE_TERMINATORS` is added, so the real encoder emits
+     *     the six-byte escape sequence for each of them and the guard
+     *     reproduces it byte-for-byte. A `\uXXXX` escape is therefore not
+     *     per se non-canonical. (Described rather than quoted on purpose: a
+     *     literal U+2028 in this source file is itself a line terminator to
+     *     some tooling.)
+     *
+     * This never widens what the verifier accepts: it only decides WHICH
+     * incident sentence is true. The sealed-coordinate incident is raised
+     * unconditionally before this is consulted.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function recoverSealedPayloadFromFrozenBytes(string $canonicalBytes): ?array
+    {
+        try {
+            $envelope = json_decode($canonicalBytes, true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return null;
+        }
+
+        if (! is_array($envelope) || array_is_list($envelope)) {
+            return null;
+        }
+
+        try {
+            // The flag set MUST mirror `CanonicalJsonEncoder::encodeString()`
+            // (`CanonicalJsonEncoder.php:106-108`): RFC 8785 §3.2.3 seals U+0080+ as
+            // RAW UTF-8, and PHP's default escapes it as `\uXXXX`. Omitting
+            // `JSON_UNESCAPED_UNICODE` here made the byte-identity test below
+            // unsatisfiable for every envelope carrying one accented or Arabic
+            // character — i.e. most French and Tunisian receipts — so the
+            // discriminating branch was dead on exactly the data it exists for.
+            // Widening to the canonical flag set does not make the guard lenient:
+            // byte identity is still the whole acceptance test, so bytes that carry
+            // literal `\uXXXX` escapes OF U+0080+ now refuse instead, which is
+            // correct — the canonical encoder does not emit those. The
+            // qualification matters and is not pedantry: PHP escapes U+2028/U+2029
+            // even under JSON_UNESCAPED_UNICODE, so the canonical encoder DOES emit
+            // the six-byte escapes for those two code points, and this guard
+            // RECOVERS envelopes carrying them (see the docblock above). "The
+            // canonical encoder cannot emit `\uXXXX`" is FALSE as an absolute: it
+            // holds for U+0080+ generally, NOT for U+2028/U+2029.
+            $roundTrip = json_encode(
+                $envelope,
+                JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
+            );
+        } catch (Throwable) {
+            return null;
+        }
+
+        if ($roundTrip !== $canonicalBytes) {
+            return null;
+        }
+
+        $payload = $envelope['payload'] ?? null;
+        if (! is_array($payload) || array_is_list($payload)) {
+            return null;
+        }
+
+        /** @var array<string, mixed> $payload */
+        return $payload;
+    }
+
+    /**
+     * Compare JSON-object semantics without treating object key order as data.
+     *
+     * @param  array<string, mixed>  $stored
+     * @param  array<string, mixed>  $sealed
+     */
+    private function semanticallyEqual(array $stored, array $sealed): bool
+    {
+        return $this->normalizeJsonObject($stored) === $this->normalizeJsonObject($sealed);
+    }
+
+    /**
+     * @param  array<int|string, mixed>  $value
+     * @return array<int|string, mixed>
+     */
+    private function normalizeJsonObject(array $value): array
+    {
+        if (! array_is_list($value)) {
+            ksort($value);
+        }
+
+        foreach ($value as $key => $item) {
+            if (is_array($item)) {
+                $value[$key] = $this->normalizeJsonObject($item);
+            }
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $sealedEnvelope
+     * @return list<string>
+     */
+    private function sealedCoordinateMismatches(FiscalEvent $row, array $sealedEnvelope): array
+    {
+        $isLegacyServerEnvelope = ! array_key_exists('chain_context', $sealedEnvelope);
+        $storedCoordinates = [
+            'business_date' => $row->business_date->format('Y-m-d'),
+            'chain_context' => $row->chain_context,
+            'company_id' => $row->company_id,
+            // The legacy server services passed a UTC Carbon to a timestampTz
+            // connection whose session timezone may be non-UTC. Eloquent
+            // serialized the wall clock without an offset, so the historical
+            // row retains the sealed wall time with the connection offset.
+            // Compare that exact authored representation only on the narrowly
+            // identified legacy path; current/device envelopes compare instants.
+            'event_time_device' => $isLegacyServerEnvelope
+                ? $row->event_time_device->format('Y-m-d\\TH:i:s\\Z')
+                : $row->event_time_device->utc()->format('Y-m-d\\TH:i:s\\Z'),
+            'event_type' => $row->event_type->value,
+            'event_version' => $row->event_version,
+            'operator_id' => $row->operator_id,
+            'previous_hash' => $row->previous_hash,
+            'reference_document_id' => $row->reference_document_id,
+            'reference_event_id' => $row->reference_event_id,
+            'sequence_number' => $row->sequence_number,
+            'signature_version' => $row->signature_version,
+            'tenant_id' => $row->tenant_id,
+            'terminal_id' => $row->terminal_id,
+        ];
+
+        $mismatches = [];
+        foreach ($storedCoordinates as $field => $storedValue) {
+            if (! array_key_exists($field, $sealedEnvelope)) {
+                continue;
+            }
+
+            $sealedValue = $sealedEnvelope[$field] ?? null;
+            if ($storedValue !== $sealedValue) {
+                $mismatches[] = sprintf(
+                    '%s mismatch — sealed %s, stored %s',
+                    $field,
+                    $this->formatCoordinateValue($sealedValue),
+                    $this->formatCoordinateValue($storedValue),
+                );
+            }
+        }
+
+        return $mismatches;
+    }
+
+    private function formatCoordinateValue(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_string($value) || is_int($value)) {
+            return (string) $value;
+        }
+
+        return get_debug_type($value);
     }
 
     /**

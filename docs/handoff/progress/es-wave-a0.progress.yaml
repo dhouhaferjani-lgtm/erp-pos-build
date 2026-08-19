@@ -19,9 +19,11 @@ max_fix_rounds: 5
 #   If any OTHER path appears in that diff, or check 1/2 fails: the base is contaminated — STOP, set
 #   status: blocked_precondition, request an orchestrator re-pin. Do NOT edit base_sha.
 base_sha: df85d43f404a9e55fd29b0e3c7533852966652df
-# Branch codex/es-wave-a0 in worktree .worktrees/es-wave-a0, created from base_sha off LOCAL dev.
+# Branch codex/es-wave-a0 in worktree .worktrees/es-wave-a0. On 2026-08-12 its existing unpushed
+# commits were replayed onto CURRENT local dev tip a5520f23ca39209f5b517723037e9516808f2bca;
+# base_sha remains the reviewed CONTENT baseline verified by the three-part M0 check.
 # Handback only: NOT merged, NOT pushed — the orchestrator merges after the wave completes.
-branch: null
+branch: codex/es-wave-a0
 
 owner_gates:
   - id: base-sha-pin
@@ -43,64 +45,786 @@ owner_gates:
     question: "ES-42: adding a can: gate to POST /pos/sync/fiscal-events is a LIVE DEVICE route. The permission is LOCKED to the EXISTING pos.operate_terminal (seeded; already gates comparable POS write surfaces). This gate fires ONLY if M4's first check finds that the device principal does NOT hold pos.operate_terminal in the fixture — then a grant (new permission + role seeder + permission:cache-reset) becomes a policy/deploy choice: STOP blocked_owner rather than inventing it."
     blocks_milestone: none
     status: conditional
+  # RAISED 2026-08-19 by M3b round 1, F-3. Informational: blocks no milestone,
+  # and A0 does NOT take it — an export-schema change is outside 17-A..17-G.
+  - id: nf525-s8-resolved-by
+    question: "Should the NF525 §8 quarantine export publish `resolved_by` alongside `resolved_at`? Today Nf525DataProvider::buildQuarantineSection() selects and emits `resolved_at` only (Nf525DataProvider.php:1571, :1603-1605) and `resolved_by` appears nowhere in that provider — so the export tells an auditor THAT a fiscal chain incident was adjudicated and WHEN, never BY WHOM. The adjudicator's identity survives only in the raw fiscal_event_quarantine.resolved_by column and (since M4's F-4 sweep) in the fiscal.quarantine.incident_resolved log line. The approved ES-17 contract asserted the opposite as fact (M3-straggler-contracts.md:241) and M3b re-asserted it in production code; both are corrected. Ruling owed against the NF525 lane, not this wave."
+    blocks_milestone: none
+    status: open
 
 milestones:
   - id: M0
-    title: "Preflight — contract digest verify (abort on mismatch), HEAD==BASE_SHA, seeded two-context v3 tenant fixture, TAMPERED-FIXTURE toolkit (T-a payload-vs-canonical_bytes, T-b previous_hash from wrong chain_context, T-c fiscal_hash mirror) built on VerifyEventChainCommandTest/ParseFailureResumeTest, narrowed ES-07 claim + do-NOT-rewrite-the-Z-arm record, citation sweep (unresolved=0)"
+    title: "Preflight — contract digest verify (abort on mismatch), base ancestor + digest + administrative-only dispatch delta, seeded two-context v3 tenant fixture, TAMPERED-FIXTURE toolkit (T-a payload-vs-canonical_bytes, T-b previous_hash from wrong chain_context, T-c fiscal_hash mirror) built on VerifyEventChainCommandTest/ParseFailureResumeTest, narrowed ES-07 claim + do-NOT-rewrite-the-Z-arm record, citation sweep (unresolved=0)"
     review_lenses: [fiscal-pos, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 2
+    commit: a7b4ad43da7d295176622395dae17c2b93e25d1c
+    verdict: docs/handoff/reviews/es-wave-a0/M0-round3.md
+    last_verdict: ACCEPT
+    updated: 56d83003b2f50c7aed8379ce564c0b051fbb0d91
   - id: M1
     title: "ES-08 — extend fiscal:verify-event-chain: payload<->canonical_bytes, integrity_status (quarantined-but-intact must stop reporting verified), sealed coordinates, sequence_number contiguity, + the MANIFEST-DRIVEN fleet driver (operator-supplied tenant->actor-id manifest; per listed tenant run the existing single-tenant verification with the actor gate and tenant binding preserved EXACTLY; missing/unauthorised tenants REPORTED LOUDLY with a non-zero aggregate exit, never silently skipped; NO service account or new identity model; terminal/context enumeration from the distinct (terminal_id, chain_context) pairs in fiscal_events within the bound tenant; unworkable manifest shape -> STOP condition C). Verifier-class contract: RED on T-a and T-b, green on clean, EACH new check individually demonstrated red."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 4
+    commit: 065cab23008e060ed7620ca02d9742fe2c43fe37
+    verdict: docs/handoff/reviews/es-wave-a0/M1-round5.md
+    last_verdict: ACCEPT
+    updated: d8122d10676ed8e30a5f5a1b2c3916f153902b36
   - id: M2
     title: "ES-07 (NARROWED) — pos:verify-chains COVERAGE/REPORTING + the MIRROR. Defect (a): fiscal-era receipts are not counted, so a terminal whose receipts are all projected returns is_valid:true over a count of 0 and the fiscal arm's result is never surfaced per-arm. Defect (b): NO pos_receipts.fiscal_hash <-> fiscal_events.current_hash cross-check exists anywhere — add it as a new arm. ReceiptHashService::verifyTerminalChain() ALREADY self-partitions (fiscal arm canonical-hashes; legacy arm re-applies whereNull and pipe-hashes only fiscal_event_id IS NULL rows), so a canonical-bytes row can never reach a pipe recomputation — the implementer CHOOSES the mechanism (safe filter removal + per-arm reporting, or an explicit fiscal-era pass). The Z arm is NOT blind — out of scope beyond what the mirror requires. RED on T-c + tampered projected chain; per-arm counts must prove nonzero fiscal-era coverage; negative control on an all-legacy tenant."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    # Fix round 1 delivered 2026-08-19 under the STOP C ruling
+    # (docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md,
+    # commit bd4139ec3). Round-1 findings 1, 2, 3, 4 closed; 5 recorded; 6 is an
+    # inherited residual with an open owning-lane question for the parent.
+    # M2 round 2 (2026-08-19) = ACCEPT over the fix-round slice 4fea617e0..b8b3c52f6.
+    # Four P3 residuals (round-2 findings 7, 8, 9, 10) were SWEPT INTO M3's diff,
+    # exactly as the round-2 disposition asked.
+    status: passed
+    fix_rounds: 1
+    commit: b8b3c52f6
+    verdict: docs/handoff/reviews/es-wave-a0/M2-round2.md
+    last_verdict: ACCEPT
+    updated: 325499fe3
   - id: M3
     title: "ES-06 DETECTION half only (divergence on sealed rows detectable + demonstrated red; second-approver/correcting-event workflow is owner-gated D-8 -> blocked_owner if reached) + the ES-16/ES-17 straggler contract PROPOSALS as a COMMITTED artifact at docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md (the harness reviews a committed range, so the proposal must be IN the diff the reviewer inspects). This milestone's bridge review approves/rejects THAT artifact. NO straggler implementation here."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    # M3 also SWEEPS the four P3 residuals the M2 round-2 register left open
+    # (M2-round2.md findings 7, 8, 9, 10) — its disposition assigned them to
+    # "M3's diff or the wave's close-out". They are reporting-honesty items;
+    # none of them changes a verdict.
+    #
+    # Delivered 2026-08-19 in ONE commit, 1edbf2633. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M3-implementation-evidence.md.
+    # Proposal artifact (what this milestone's review must approve/amend/reject):
+    # docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md — COMMITTED in
+    # this range, per R-7.
+    #
+    # D-8 was NOT reached. ParseFailureResolutionService.php diff = 0 lines; no
+    # second approver, no correcting event, no change to what the resolver may
+    # do. Detection only, per R-9.
+    # R-1 HOLDS: ZReportHashService.php diff = 0 lines (finding 7 was closed via
+    # the comment/rendering path exactly so the Z service stays untouched).
+    # NO straggler implementation landed — DeadLetteredProjectionsController,
+    # FiscalEventQuarantine and OutboxIngestor are all untouched in this range.
+    #
+    # ROUND 1 = CHANGES-REQUIRED (docs/handoff/reviews/es-wave-a0/M3-round1.md,
+    # register commit 4a93f8631). Fix round 1 delivered 2026-08-19 in ONE commit,
+    # 7c836cee3, over the slice 4a93f8631..7c836cee3:
+    #   F-1 (Important) — the recovery round-trip omitted JSON_UNESCAPED_UNICODE
+    #     while production canonical bytes are RFC 8785 raw UTF-8
+    #     (CanonicalJsonEncoder.php:106-108), so the ES-06 discriminating branch
+    #     was unreachable for any envelope carrying non-ASCII free text — i.e.
+    #     most French/Tunisian receipts. Fixed with the one flag
+    #     (VerifyEventChainCommand.php:697-700) plus THREE red-first tests: the
+    #     faithful and the divergent non-ASCII corrections (recovery must fire)
+    #     and a \uXXXX-escaped non-canonical envelope (recovery must still
+    #     refuse — the widening is bounded). The register's "harness cannot
+    #     express a non-ASCII fixture on PG (22P02)" sub-note resolved: it is a
+    #     BACKSLASH problem, not a non-ASCII one — Connection::bindValues() binds
+    #     a plain string as PDO::PARAM_STR (bytea escape rules); the fixture now
+    #     seals the canonical raw-UTF-8 form and binds via a stream
+    #     (PDO::PARAM_LOB). Test harness only.
+    #   F-2 (Important) — ES-16 clause 16-C DROPPED (option (i)); ES-16 is now a
+    #     pure visibility contract, F16-7 added, defect item 5 corrected in place.
+    #     M3-straggler-contracts.md is at revision 2. NO command change:
+    #     EnqueueResolvedEventProjectionsCommand.php diff = 0 lines.
+    #   F-3 (Minor) — clause 16-F citation :104 -> :106.
+    # The evidence artifact now DISCLOSES the F-1 limit (new §1.6 + §2.1 + a
+    # fix-round verification block) — the register faulted the non-disclosure
+    # explicitly.
+    # D-8 still NOT reached; R-1 still holds; still no straggler implementation.
+    #
+    # ROUND 2 = ACCEPT (docs/handoff/reviews/es-wave-a0/M3-round2.md, register
+    # commit 32671a9f6), reviewed over the fix-round delta 4a93f8631..b1d86e641.
+    # All three round-1 findings CLOSED and verified by execution, not by
+    # assertion: the reviewer reverted the F-1 flag itself and reproduced the
+    # red-first trio's exact counts (3 failed, 49 assertions), re-derived F-2's
+    # factual premise from EnqueueResolvedEventProjectionsCommand.php +
+    # OutboxIngestor.php:922, and confirmed F-3's :106 exact. Headline counts
+    # reproduce (ParseFailureResumeTest 27/209, VerifyEventChainCommandTest
+    # 34/138) on BOTH drivers (61/347 combined).
+    #
+    # Round 2 left THREE P3s, all accuracy rather than behaviour, with the
+    # explicit disposition "swept into M3b rather than spending another round":
+    #   N-1 — ParseFailureResumeTest.php:299 cited VerifyEventChainCommand.php:687
+    #     for the byte-identity test; the fix round's own 18-line comment
+    #     insertion moved it to :705.
+    #   N-2 — the :663-665 docblock's boundedness claim was over-broad in BOTH
+    #     directions. Probed on PHP 8.4 in this worktree: U+2028/U+2029 stay
+    #     ESCAPED under JSON_UNESCAPED_UNICODE, so an envelope carrying one is
+    #     a form the canonical encoder DOES emit and the guard RECOVERS it;
+    #     and `{}` IS canonical
+    #     (CanonicalJsonEncoder::encode([]) emits it) but the guard REFUSES it
+    #     because json_decode('{}',true) -> [] re-encodes as []. The comment and
+    #     its echo at ParseFailureResumeTest.php:340-343 now say what is true.
+    #   N-3 — M3-implementation-evidence.md:245 "6 falsifiers" -> 7.
+    # All three are swept in M3b's opening commit. Also swept: N-3's cosmetic
+    # rider (F16-7 reordered after F16-6 in M3-straggler-contracts.md,
+    # presentation only, recorded in the artifact as revision 2a).
+    #
+    # ESCALATED by round 2, NOT a finding against M3 and NOT M3b's work:
+    # OutboxIngestor.php:815 binds canonical_bytes (PG bytea) as PDO::PARAM_STR,
+    # so a canonical envelope carrying a backslash escape fails to INSERT with
+    # 22P02. Separate ingestion-lane ticket, already escalated to the
+    # orchestrator. M3b must NOT touch that binding.
+    status: passed
+    fix_rounds: 1
+    commit: 7c836cee3
+    verdict: docs/handoff/reviews/es-wave-a0/M3-round2.md
+    last_verdict: ACCEPT
+    updated: 32671a9f6
   - id: M3b
     title: "ES-16/ES-17 straggler IMPLEMENTATION, strictly to the contracts approved at M3. Implementing beyond or against the approved contract is a milestone failure, not a style problem. Own bridge review."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
+    # Contract of record: docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md
+    # at REVISION 2 (as amended in M3 fix round 1 and ACCEPTed at M3 round 2).
+    # ES-16 = 6 clauses (16-A..16-F) + 7 falsifiers (F16-1..F16-7); 16-C is a
+    # PURE VISIBILITY ABSENCE requirement — the surfaced row names no recovery
+    # command at all. ES-17 = 7 clauses (17-A..17-G) + 7 falsifiers (F17-1..F17-7).
+    # Binding constraints carried in: R-1 (ZReportHashService zero-diff), D-8 (no
+    # second-approver / correcting-event workflow — STOP blocked_owner if the
+    # contract path requires one), zero-line diff on
+    # EnqueueResolvedEventProjectionsCommand.php (F16-7 / contract :147-153), and
+    # no OutboxIngestor.php:815 PARAM_STR change (separate ingestion-lane ticket).
+    #
+    # DELIVERED 2026-08-19 over two commits, f28306baf (opening ledger + the
+    # three swept M3 round-2 P3s) and the implementation commit recorded in
+    # `commit:` below. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M3b-implementation-evidence.md — §3 and §4
+    # are the clause-by-clause mapping brief line 594 requires, each clause
+    # quoted verbatim.
+    #
+    # ES-16: a THIRD read partition on DeadLetteredProjectionsController::index()
+    #   (source `z_session_lifecycle_quarantine`), matching on the SAME string
+    #   OutboxIngestor's own suppression uses, so the rows surfaced are by
+    #   construction the rows it hid. Carries the `lifecycle_violation`
+    #   discriminator read out of integrity_exception_reason, and DELIBERATELY
+    #   no action affordance at all (16-C as amended, F16-7) — not even the
+    #   write_off_action_url the other two partitions carry.
+    # ES-17: the missing resolved_at/resolved_by writer —
+    #   QuarantineIncidentResolutionService + QuarantineIncidentResolutionController
+    #   + POST /api/v1/fiscal/quarantine/{id}/resolve-incident, gated by the
+    #   EXISTING seeded fiscal.events.resolve_quarantine. Single-actor
+    #   adjudication record; refuses a re-stamp rather than overwriting the
+    #   original resolved_by. VerifyEventChainCommand::reportQuarantineIncidents()
+    #   is UNTOUCHED — only the writer was missing (F17-4). (Citation corrected
+    #   from the stale `:856` and made SYMBOLIC per round-1 F-1.)
+    #
+    # GATES, measured mechanically over 32671a9f6..HEAD, all 0-line diffs:
+    #   ZReportHashService.php (R-1), OutboxIngestor.php (16-D, and so :815's
+    #   PARAM_STR binding stays untouched), EnqueueResolvedEventProjectionsCommand.php
+    #   (F16-7), ParseFailureResolutionService.php (F16-6 / D-8).
+    # NO migration, NO onQueue (so no horizon.php entry owed), NO config, NO
+    # front-end, NO new permission / role seeder / permission:cache-reset.
+    # D-8 NOT reached. NO STOP triggered: 17-E's conditional STOP was checked
+    # FIRST and does not fire (the permission is seeded and the principal holds
+    # it, asserted as the first test in the ES-17 file).
+    #
+    # VERIFICATION: red-first on both rows (ES-16 5 of 7 red, each because the
+    # row is ABSENT; ES-17 8 of 10 red, all HTTP 404 = no path exists today —
+    # two ES-17 tests were vacuously green on the first red run and were
+    # STRENGTHENED before implementing, disclosed in the evidence §5). Green on
+    # PG 7/91 + 10/69; default driver agrees at 17/160. M3 headline counts
+    # reproduce unchanged (ParseFailureResumeTest 27/209,
+    # VerifyEventChainCommandTest 34/138). Regression 50/240; the pre-existing
+    # DeadLetteredProjectionsControllerTest reproduces 12/33 unchanged (16-E).
+    # pint --test pass on all 9 changed files; phpstan level 8 [OK] on all 7
+    # production files.
+    #
+    # INHERITED REDS, proven by removing every line of M3b production code and
+    # re-running (identical baselines, evidence §6): OutboxIngestorTest clock
+    # test (local TZ artifact), QuarantineBestEffortParseControllerTest x3 (the
+    # tests' OWN fixtures trip the fiscal_events immutability trigger), and
+    # tests/Architecture x4 (46/231 identical across the swap — which also
+    # proves the new controller IS tenant-classified).
+    #
+    # DISCLOSED RESIDUAL for M3b's reviewer to rule on: DeadLetteredProjectionsController::show()
+    # was NOT extended. Clause 16-A names index() and only index(), so a
+    # lifecycle row still returns 409 NOT_DEAD_LETTERED on the detail endpoint —
+    # the behaviour it has today, unchanged. Not taken silently either way: if
+    # the reviewer reads "the existing dead-letter read surface" in the
+    # contract's headline as including show(), that is an amendment to make at
+    # review and implement in a fix round.
+    #
+    # ROUND 1 = ACCEPT (docs/handoff/reviews/es-wave-a0/M3b-round1.md, register
+    # commit f21a5f326), reviewed over 32671a9f6..4a2aa3637. Both stragglers
+    # verified clause by clause against the code; the reviewer independently
+    # reproduced the ES-16 red block by reverting the controller (7 tests, 64
+    # assertions, 5 failures, same tests, same messages) and enumerated 16-C's
+    # twelve returned keys himself rather than trusting the test's key list.
+    # Both disclosed residuals RULED WITHIN CONTRACT: show() (F-8) and the
+    # duplicated suppression-string literal (F-5).
+    #
+    # Seven findings, none blocking. FIVE were swept in M4's opening commit
+    # (see the M4 row); FOUR are ticketed as residuals under `findings:` below.
+    status: passed
     fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    # Milestone slice for the reviewer: 32671a9f6..dfa58a418
+    #   f28306baf — opening ledger + the three swept M3 round-2 P3s
+    #   dfa58a418 — ES-16 + ES-17 implementation
+    commit: dfa58a418
+    verdict: docs/handoff/reviews/es-wave-a0/M3b-round1.md
+    last_verdict: ACCEPT
+    updated: f21a5f326
   - id: M4
+    # SCOPE AMENDED 2026-08-19 by docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md:
+    # ES-09 covers TerminalRegistrySnapshotService and VirtualAdminFiscalEventService
+    # ONLY. ReceiptHashService's (company_id, chain_context) partition was pulled
+    # forward into M2 (commit bc692820a) — M4 must NOT re-fix it. M4's two-context
+    # append test still asserts the full end-to-end shape INCLUDING the
+    # receipt-verification arm.
     title: "Guard/constraint class — THREE DIFFERENT CONTRACTS, do not conflate. ES-09 = CORRECTNESS: chain-head resolution scoped by (company_id, chain_context) at BOTH TerminalRegistrySnapshotService and VirtualAdminFiscalEventService, matching OutboxIngestor's shape; before-fix RED demonstrates context-blind head resolution on a two-context terminal, after-fix GREEN = the two-context append SUCCEEDS with heads resolved per (company_id, chain_context) and no unconditional Verified/Parsed stamp. ES-41 = TRIGGER-PRESENCE regression scoped to its snapshot row (PG trigger presence asserted; the non-PG driver scope is DOCUMENTED, not 'fixed'; pending_seal->fiscalized branch SUSPECTED — verify before asserting). ES-42 = the two-sided REFUSAL contract, gated with the EXISTING pos.operate_terminal (LOCKED — no new permission, no reseed, no permission migration): FIRST verify the fixture's device principal holds pos.operate_terminal; if it does NOT, set status blocked_owner (gate ES-42-device-permission-grant) and STOP; otherwise proceed — unauthorized principal 403s and persists NOTHING, and the fixture device sync path still SUCCEEDS end-to-end."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
+    # OPENING COMMIT also discharges the five M3b-round-1 sweeps the register
+    # marked "owed at M4's opening commit":
+    #   F-1 — the ES-17 seam was cited as VerifyEventChainCommand.php:856 at six
+    #     sites; :856 is now a BLANK LINE and the predicate is at :896. Every
+    #     site now cites the SYMBOL
+    #     (`VerifyEventChainCommand::reportQuarantineIncidents()`'s
+    #     `whereNull('resolved_at')`) instead of a line number — the register's
+    #     ultimatum is that a FOURTH recurrence of the citation-drift class is a
+    #     BLOCKER, so the failure mode is REMOVED, not re-swept.
+    #   F-2 — ParseFailureResumeTest.php:299 cited the byte-identity test at
+    #     VerifyEventChainCommand.php:705; its own sibling edit in the same
+    #     commit moved it to :727. Now cited by SYMBOL:
+    #     `recoverSealedPayloadFromFrozenBytes()`'s `$roundTrip !== $canonicalBytes`.
+    #   F-3 — four sites claimed `resolved_by` is published by the NF525 §8
+    #     export. It is NOT: Nf525DataProvider::buildQuarantineSection() selects
+    #     and emits `resolved_at` only (:1571, :1603-1605); `resolved_by` appears
+    #     nowhere in that file. All four corrected to what §8 actually publishes
+    #     — THAT an incident was adjudicated and WHEN, never BY WHOM — which
+    #     makes 17-G's refusal rationale STRONGER, not weaker (the raw column is
+    #     the identity's only home). Whether §8 SHOULD carry `resolved_by` is a
+    #     new owner question, filed under owner_gates as nf525-s8-resolved-by.
+    #   F-7 — VerifyEventChainCommand's "the canonical encoder cannot emit
+    #     \uXXXX" survived 30 lines below its own N-2 correction, plus two
+    #     universals in ParseFailureResumeTest. All three qualified to "\uXXXX
+    #     escapes OF U+0080+", naming U+2028/U+2029 as the exception. No raw
+    #     U+2028/U+2029 literal was introduced (byte-level grep = 0).
+    #   F-4 — the adjudication write had NO observability. Added
+    #     Log::info('fiscal.quarantine.incident_resolved', [...]) in
+    #     QuarantineIncidentResolutionService::resolve(), mirroring the read-only
+    #     sibling's shape (QuarantineBestEffortParseController::logParseInvoked()),
+    #     assembled under the row lock but EMITTED AFTER COMMIT so a rolled-back
+    #     write never asserts an adjudication that did not happen. Reason capture
+    #     is LOG-ONLY — an optional `reason` on the request body (max 500,
+    #     backwards-compatible), NEVER persisted: a reason COLUMN is a schema
+    #     change outside 17-A..17-G and stays a ticket. Two new tests; the log
+    #     test is red-first proven (removing the Log call fails it, 1 failed).
+    #     FiscalEventQuarantineResolutionTest is now 12/74 (was 10/69).
+    #
+    # DELIVERED 2026-08-19 over three commits. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M4-implementation-evidence.md.
+    #   c0b850f2c — open M4, close M3b, the five sweeps, the four tickets
+    #   8cee85f70 — ES-09
+    #   59bb6913f — ES-41 + ES-42
+    #
+    # ES-09 (CORRECTNESS). Head resolution at BOTH named services now keys on
+    #   (tenant_id, company_id, terminal_id, chain_context), matching
+    #   OutboxIngestor's prior-row read verbatim; both write chain_context
+    #   EXPLICITLY rather than leaning on the column default. ReceiptHashService
+    #   is NOT re-fixed (STOP-C ruling; M2 bc692820a) but the end-to-end test
+    #   still asserts the receipt-verification arm. Defect (b) closed by a new
+    #   ServerAuthoredChainPlacementVerifier that derives the verdict in
+    #   OutboxIngestor's own hash->linkage->clock order; an inadmissible
+    #   placement throws and the transaction rolls back, so no row claims a
+    #   verdict it did not earn. ONE shared verifier, not two copies (M3b F-5's
+    #   lesson applied in advance).
+    #   RED-FIRST re-run with the FINAL tests against the two pre-M4 service
+    #   files: 5 of 6 failed (29 assertions), every failure "expected 3, stored
+    #   6" — the deeper z_session head winning — with the M1 verifier itself
+    #   reporting "CHAIN BREAK at sequence_number 6 ... sequence_number gap".
+    #   The 6th test is DISCLOSED as a guard, green before and after. After:
+    #   6 passed (38 assertions). Fixtures seed BOTH contexts with z_session
+    #   DELIBERATELY DEEPER (5 vs 2) so the pre-fix winner is deterministic;
+    #   a single-context fixture would pass vacuously.
+    #   Field occurrence stays SUSPECTED — no production probe was run, none
+    #   is claimed.
+    # ES-41 (TRIGGER PRESENCE). No production change. New
+    #   ImmutabilityTriggerPresenceTest asserts on PG that all three
+    #   fiscal_events triggers and the pos_receipts trigger EXIST (read from
+    #   pg_trigger by name) and REFUSE — each refusal two-sided, the exception
+    #   AND the unchanged row, with the refused statement in a NESTED
+    #   transaction so PG's aborted-transaction state does not swallow the
+    #   re-read. The non-PG driver scope is DOCUMENTED not "fixed": the one
+    #   non-skipping test asserts the ABSENCE of enforcement on other drivers,
+    #   so the gap is visible on the driver that lacks it instead of hiding
+    #   behind a skip. [PG] tests skip LOUDLY.
+    #   SUSPECTED half VERIFIED IN CODE FIRST -> CONFIRMED, and NOT fixed: the
+    #   pending_seal->fiscalized branch is an unconditional RETURN NEW with no
+    #   column comparisons (vs 7, 13 and 15 guarded columns in the three
+    #   branches below it). A characterization test proves it is REACHABLE: one
+    #   UPDATE flips the status and rewrites subtotal+total and commits (moved
+    #   coherently so pos_receipts_totals is satisfied — that CHECK is an
+    #   arithmetic invariant, not an immutability control). Guarding the branch
+    #   is a per-column decision against a LIVE seal path = R-5 scope creep, so
+    #   it is ticketed WITH executable evidence for an owning lane.
+    # ES-42 (two-sided REFUSAL). FIRST CHECK RUN FIRST AND PASSED — NO STOP.
+    #   pos.operate_terminal is seeded (RolesAndPermissionsSeeder.php:336) and
+    #   the device principal holds it via the seeded cashier/manager roles
+    #   (:657, :590). Gate ES-42-device-permission-grant does NOT fire.
+    #   Route now carries ->middleware('can:pos.operate_terminal'), matching the
+    #   sibling device surface ZReportSyncController::sync()'s Gate::authorize.
+    #   RED-FIRST: with a COMPANY-MEMBER tenant user lacking the permission the
+    #   pre-gate endpoint returned 200 and the envelope landed. The membership is
+    #   deliberate — without it CompanyContextMiddleware 403s first and the test
+    #   is green with no gate at all; that false green was found and removed
+    #   before the gate was written. After: 403 + zero fiscal_events + zero
+    #   quarantine rows.
+    #   DEVICE-SUCCESS half in the SAME diff: a named end-to-end test, plus the
+    #   endpoint suite's fixture principal is now a REAL device principal
+    #   (cashier role) instead of a bare permissionless user — so all 14 tests
+    #   in that file are device-success assertions — plus the four other suites
+    #   that drive the route (Task33, TaskPhase2/3, ReceiptReturnRefactorV3).
+    #   DEPLOY: NOTHING OWED. No permission migration, no seeder change, no
+    #   permission:cache-reset.
+    #
+    # VERIFICATION. New/changed tests PG by path: 25 passed (114 assertions)
+    # across the three files; default driver 21 passed + 4 LOUD [PG] skips.
+    # Headline counts unchanged at 92/545 combined (ParseFailureResumeTest
+    # 27/209, VerifyEventChainCommandTest 34/138, ZSessionLifecycle 7/91,
+    # DeadLetteredProjectionsController 12/33; FiscalEventQuarantineResolution
+    # 12/74 by the two F-4 additions). R-1 HOLDS: ZReportHashService 0-line over
+    # f21a5f32653..59bb6913f, as is OutboxIngestor (so :815's PARAM_STR binding
+    # stays untouched). NO migration, NO onQueue (no horizon.php entry owed), NO
+    # config, NO front-end, NO new permission / role seeder / cache-reset.
+    # pint --test pass and phpstan level 8 [OK] on every changed/new file; the
+    # one PHPStan finding (bccomp given a plain string) was fixed at the cause
+    # via an is_numeric-narrowing helper, not a cast, @var or baseline entry.
+    #
+    # INHERITED REDS, each proven by swapping the pre-M4 file back in and
+    # re-running: TreasuryDepositBridgeTest 9 (its own
+    # TreasuryDepositBridge::__construct arity mismatch),
+    # AccountStatusChangedServerOnlyTest 1 + DepositReceiptAppendTest 1 (array
+    # key ORDER in assertSame + a one-hour local-TZ artifact),
+    # Task33FiscalFullFlowVerificationTest 1 (PG bytea stream-handle assertion
+    # in the test itself — 41/41 green on the default driver, and the same 14
+    # assertions reached with or without the ES-42 gate),
+    # ReceiptReturnRefactorV3Test 2 of 9 (the residual already in `blockers`).
+    #
+    # ROUND 1 = ACCEPT (docs/handoff/reviews/es-wave-a0/M4-round1.md, register
+    # commit 9fdd9bc08), reviewed over f21a5f32653..126fb457b. Eight findings,
+    # none blocking. The reviewer re-ran every control himself: the ES-09
+    # red-first block reproduced character-for-character from the two pre-M4
+    # service files (5 failed / 1 passed / 29 assertions, the disclosed guard
+    # green in both states), the ES-42 false-green story reproduced by deleting
+    # the middleware (200 with the envelope landing), and every headline count
+    # reproduced exactly on PostgreSQL by path.
+    #
+    # FIVE were owed at M5's opening commit and are DISCHARGED there
+    # (see the M5 row): M4-F-1, M4-F-2, M4-F-3 (NON-WAIVABLE), M4-F-4, M4-F-7.
+    # FOUR are recorded as notes under `findings:` below: M4-F-5, M4-F-6,
+    # M4-F-8 and the duplicated CHAIN_CONTEXT literal.
+    status: passed
     fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    # Milestone slice for the reviewer: f21a5f32653..59bb6913f
+    commit: 59bb6913f
+    verdict: docs/handoff/reviews/es-wave-a0/M4-round1.md
+    last_verdict: ACCEPT
+    updated: 9fdd9bc08
   - id: M5
     title: "Program-wide ratchets + WHOLE-LANE GATE — orphaned-event CI ratchet (baseline the existing 14 dead events BY NAME, fail on the 15th) + projector-emission architecture test as a RATCHET with an enumerated skip-list (A1 has not run; a hard assertion would be a red wall), both demonstrated to bite. Whole-lane review over the integrated branch with full accumulated evidence + both lenses. Report the A0 EXIT STATEMENT."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    # OPENING COMMIT discharges the five M4-round-1 sweeps the register marked
+    # owed here, F-3 FIRST and NON-WAIVABLE:
+    #   M4-F-3 (NON-WAIVABLE) — the CONFIRMED pending_seal→fiscalized seal-branch
+    #     gap was claimed "ticketed" at M4 and was NOT. It now has its real
+    #     record: docs/superpowers/tickets/2026-08-19-fiscal-seal-branch-unguarded-columns.md
+    #     plus the `findings:` entry below, both citing
+    #     ImmutabilityTriggerPresenceTest::test_pg_the_pending_seal_to_fiscalized_branch_has_no_column_guards_characterization
+    #     as EXECUTABLE evidence. The M4 claim was false until this commit.
+    #   M4-F-1 — ServerAuthoredChainPlacementVerifier's linkage-arm docblock
+    #     claimed the arm makes a mis-scoped head resolution visible. The
+    #     reviewer DISPROVED it at runtime (head read de-scoped, verifier intact
+    #     → mis-linked row written and stamped Verified, no throw). Both callers
+    #     derive $sequenceNumber/$previousHash from the same $prior they pass in,
+    #     so the linkage and hash arms agree by construction; only the CLOCK arm
+    #     can fire. The docblock now says that, and says the scoped read is the
+    #     actual defense.
+    #   M4-F-2 — triggerNamesOn() returned [] unconditionally BEFORE any query on
+    #     a non-pgsql driver, so the one non-skipping test asserted [] against a
+    #     hard-coded []. It now queries sqlite_master on SQLite, FAILS LOUDLY on
+    #     an unknown driver, asserts BOTH tables (was one), and — the falsifiable
+    #     half — performs the UPDATE and the DELETE that the [PG] tests prove are
+    #     refused and asserts they SUCCEED. The driver gap is now a behaviour.
+    #   M4-F-4 — the DELETE refusal was exception-only. It now uses the same
+    #     nested-transaction savepoint pattern as its two siblings and asserts
+    #     the row SURVIVES.
+    #   M4-F-7 — the standing ES-42 refusal test was status-only. It now asserts
+    #     the membership-shaped fixture IN THE TEST (the non-operator is a full
+    #     member of the terminal's company, so CompanyContextMiddleware cannot be
+    #     what refuses) and asserts error.code === 'FORBIDDEN', so a
+    #     NO_COMPANY_ACCESS 403 can never impersonate the permission gate's.
+    #
+    # DELIVERED 2026-08-19. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M5-implementation-evidence.md.
+    #   75f978674 — open M5, close M4, the five M4 round-1 sweeps
+    #   c533f005a — the two program-wide event ratchets (LAST CODE COMMIT of the lane)
+    #   (this commit) — whole-lane evidence, the A0 exit statement, ledger to review
+    #
+    # RATCHET 1 — apps/api/tests/Architecture/OrphanedEventRatchetTest.php.
+    #   THE NUMBER IS 75, NOT 14. The brief's "14" traces to the handover's V2
+    #   requirement ("this register already contains 14 of those") and is a count
+    #   of ES REGISTER ROWS carrying the DEAD-EVENT class — 16 of them today,
+    #   several naming many classes each (ES-75 names ten, ES-86 names six). The
+    #   code-measured population under the handover's own definition ("emitted
+    #   with zero registered listeners") is 75, enumerated BY NAME, each entry
+    #   with a register row or an explicit "no register row" marker. About forty
+    #   were never registered as findings at all: the entire Scheduling emission
+    #   surface (6/6), six Taxation events, seven WorkOrder lifecycle events
+    #   sitting beside seven siblings that DO have listeners, the Catalog
+    #   attribute/variant surface, Product created/updated/deleted, four Voucher
+    #   lifecycle events, the Technician module's own emissions.
+    #   Event::hasListeners() CANNOT be used: spatie/laravel-event-sourcing
+    #   registers a global `*` subscriber, so it returns true for every string
+    #   including a class that does not exist. The check reads the dispatcher's
+    #   explicit listener map by reflection and ASSERTS both assumptions that
+    #   holds up (the wildcard set is exactly Spatie's; the Projectionist is
+    #   empty).
+    #   Blind spots named in the test: the OPPOSITE orphan (a listener with no
+    #   emitter — ES-21's ReceiptVoided, which this ratchet would NOT have
+    #   caught), the never-emitted class, indirect consumption, dispatch outside
+    #   app/.
+    #   CORRECTION TO A CORRECTION: ES-REGISTER-CORRECTIONS-2026-08-11.md:61 says
+    #   the sampled ES-88 events "exist and are emitted", citing
+    #   PointsExpired.php:9-45 — the class's OWN definition file. Grepped across
+    #   the whole backend including tests, PointsExpired has two references, both
+    #   inside its own file. It is never emitted.
+    #   TAMPER PROOF: throwaway 76th orphan -> RED naming it (1 failed) ->
+    #   deleted -> 4 passed. Tree clean.
+    #
+    # RATCHET 2 — apps/api/tests/Architecture/ProjectorEmissionRatchetTest.php.
+    #   ZERO of six registered POS-projection projectors emit a domain event, so
+    #   it ships as an enumerated SKIP-LIST, not a hard assertion (R-10): a red
+    #   wall is how a check gets group-excluded. Each entry names the register row
+    #   that will delete it — PosCoreReceiptProjection (ES-01), ZReportProjection
+    #   (ES-04), ZSessionLifecycleProjection (ES-03 + ES-02 + ES-05, three rows
+    #   one class) — and the three that have NO register row
+    #   (AccountCharge/AccountPayment/DepositReceipt) are marked an OPEN QUESTION
+    #   for A1 with an explicit instruction not to invent an event for them.
+    #   "Writes a POS projection" is decided by module OWNERSHIP, stated as a
+    #   criterion: a table grep cannot separate TreasuryReceiptBridge READING
+    #   pos_receipts from PosCoreReceiptProjection writing it. The full registered
+    #   set is pinned on BOTH sides of the partition.
+    #   TAMPER PROOF, both directions: registering a silent POS projector -> RED
+    #   (2 failed, both the skip-list and the registered-set assertions);
+    #   making a baselined projector EMIT -> also RED (1 failed), forcing the
+    #   baseline line and its register row to be closed by hand. Reverted, green.
+    #
+    # CI. tests/Architecture only ran under `workflow_dispatch`, so a ratchet
+    # placed there alone would never gate an ordinary push. .github/workflows/ci.yml
+    # gains ONE backend-test step running exactly the two ratchet files by path —
+    # not the directory, which carries unrelated inherited baseline failures.
+    # Both files are SQLite-safe and verified green on the default driver.
+    #
+    # WHOLE-LANE EVIDENCE (merge-base a5520f23ca39209f5b517723037e9516808f2bca).
+    # 18 production files, 19 test files, 1 CI workflow. ZERO migrations, config,
+    # seeders, front-end, onQueue. All five zero-line gates hold over the FULL
+    # lane, not merely within the milestone that promised each: ZReportHashService
+    # (R-1), OutboxIngestor (:815 PARAM_STR untouched), ParseFailureResolutionService
+    # (R-9/D-8), EnqueueResolvedEventProjectionsCommand (F16-7),
+    # RolesAndPermissionsSeeder (ES-42 no reseed).
+    # Every touched test file re-run on PG by path; every count a milestone
+    # register recorded reproduces exactly, the one change being
+    # FiscalEventIngestionEndpointTest 66 -> 69 assertions from the F-7 sweep.
+    # pint --test pass on all 37 changed PHP files; phpstan level 8 [OK] on all 18
+    # changed production files. Default-driver cross-check green.
+    # INHERITED REDS PROVEN INHERITED, not asserted: `git checkout <merge-base> --
+    # apps/api/app apps/api/tests`, re-ran the five red suites, got an IDENTICAL
+    # 14-failure result test for test and assertion for assertion
+    # (TreasuryDepositBridgeTest 9, AccountStatusChangedServerOnlyTest 1,
+    # DepositReceiptAppendTest 1, Task33FiscalFullFlowVerificationTest 1,
+    # ReceiptReturnRefactorV3Test 2). Restored; tree clean.
+    # Harness note worth carrying: VerifyEventChainFleetCommandDbPerTenantTest
+    # needs DB_CENTRAL_DATABASE set to the scratch DB (.env pins `iziposcentral`,
+    # which does not exist there); with it, 1 passed (8 assertions).
+    #
+    # A0 EXIT STATEMENT: in the report and in §5 of the M5 evidence. Seven tamper
+    # shapes demonstrated red with green controls, as of
+    # c533f005ae2c9a80302089f9d92b1f6542fc2f21 — the last commit touching
+    # VERIFIER code. No production file has changed since (every later M5 commit
+    # is comments/tests/docs/ledger, measured by numstat), so the seven shapes
+    # reproduce at that SHA and at every later one.
+    # ANCHOR WARNING (M5 round 2, N-7): that SHA anchors the VERIFIERS, NOT the
+    # ratchets — they are on different clocks. ProjectorEmissionRatchetTest's
+    # DETECTOR changed at 413166120 (fix round 1, F-4: comments stripped before
+    # matching); at c533f005a the detector still has the hole, and the round-2
+    # reviewer confirmed it by running the pre-fix detector against the comment
+    # probe and watching ZReportProjection drop out. RE-RUN EITHER RATCHET AT THE
+    # BRANCH TIP, never at a milestone SHA. The `commit:` field below stays at
+    # c533f005a because it names the milestone's implementation slice; it is not
+    # a re-run anchor.
+    #
+    # ROUND 1 = CHANGES-REQUIRED
+    # (docs/handoff/reviews/es-wave-a0/M5-round1.md, register commit 9ce7b2090).
+    # No code defect and no fiscal fact moved: the reviewer independently
+    # re-derived the 75-name census, reproduced BOTH ratchets' tamper proofs, and
+    # confirmed F-3's discharge and the 7/13/17 recount branch by branch. All
+    # three Important findings landed on the ARTIFACT this milestone exists to
+    # produce — the exit statement and the whole-lane evidence, which is what A1
+    # trusts and nobody re-reads after an ACCEPT. Fix round 1 delivered in ONE
+    # commit:
+    #   F-1 (Important) — the CI reach was OVER-CLAIMED. The step is real and
+    #     carries no `if:` of its own, but `backend-test` has a JOB-level `if:`
+    #     one line above the steps (ci.yml:185) limiting it to workflow_dispatch
+    #     / base_ref == main / push to refs/heads/main, and the workflow's `on:`
+    #     triggers `push` for main only. So the ratchets gate PR->main,
+    #     push->main and manual dispatch — and NOTHING on dev: a PR->dev skips
+    #     backend-test, and a push to origin/dev (the rule-21 promotion path)
+    #     fires no workflow at all. "wired into an ordinary-push CI step" was
+    #     false for the flow this program actually uses. Corrected in evidence §3
+    #     (with the full trigger matrix as a table), §5.3 (what A1 inherits — now
+    #     says run the ratchets locally before promoting) and the ci.yml step
+    #     comment. Wiring a lane that runs on PR->dev means editing the CI job
+    #     matrix from inside a fiscal-verifier wave (rule 4), so it is DEFERRED
+    #     to the enforcement-P2 ci.yml reconciliation, where the parent has
+    #     ticketed it.
+    #   F-2 (Important) — ReceiptReturnRefactorV3Test is NOT an inherited red.
+    #     Root-caused rather than just re-run: PG session timezone. See the
+    #     `blockers:` note below for the full diagnosis. GREEN at HEAD under a
+    #     UTC session (9 passed / 345 assertions); the four remaining reds do NOT
+    #     clear under PGTZ=UTC. Inventory corrected to 12-across-4 in §4.1, §4.2,
+    #     §4.3 and exit item 11 (which is now marked RETRACTED); the
+    #     post-Z-close causal claim is WITHDRAWN; the parent-ownership blocker is
+    #     REMOVED.
+    #   F-3 (Important) — §4.0 published the R-1 zero-line gate against
+    #     .../POS/Domain/Services/Fiscal/V3/ZReportHashService.php, a path that
+    #     DOES NOT EXIST (real path has no Fiscal/V3/ segment). An empty numstat
+    #     against a non-existent path is a green obtained without touching the
+    #     thing measured — the same class M4-F-2 faulted — published as the proof
+    #     of the wave's most repeated constraint. Path corrected and the gate
+    #     re-measured against the real file: still zero, R-1 genuinely holds.
+    #     INHERITED — disclosed at round 2 (N-2). The bogus path did not
+    #     originate at M5; it is still published as proof of R-1 in THREE FROZEN
+    #     registers: M3b-implementation-evidence.md:43, M3b-round1.md:45,
+    #     M4-round1.md:31. Two of those are REVIEW registers, so the
+    #     unfalsifiable green was independently re-published, not merely copied.
+    #     Those files are deliberately LEFT UNEDITED — a review register is the
+    #     record of what a reviewer actually wrote, and rewriting one to be
+    #     correct destroys the evidence it exists to preserve. Anyone relying on
+    #     that line should re-measure against
+    #     apps/api/app/Modules/POS/Domain/Services/ZReportHashService.php. (The
+    #     directory .../Domain/Services/Fiscal/V3/ does exist — it holds
+    #     CanonicalJsonEncoder/CanonicalPayloadBuilder — which is why the wrong
+    #     path looked plausible for three milestones.)
+    #   F-4 (Minor) — CODE FIX. emitsADomainEvent() matched RAW source, so the
+    #     single line `// PROBE: event(new Something());` appended to
+    #     ZReportProjection.php dropped it from the discovered list and fired the
+    #     "delete its line AND close the register row" message — a docblock edit
+    #     away from closing ES-04. It now strips T_COMMENT/T_DOC_COMMENT via
+    #     token_get_all() (tokenising, not regex: a comment-skipping regex must
+    #     understand strings/heredocs/escaping, and getting that subtly wrong is
+    #     the same silent-miss class). Pinned by a new test
+    #     (test_a_commented_out_emission_does_not_count_as_emitting) with two
+    #     fixtures under tests/Architecture/ProjectorEmissionFixtures/ — a
+    #     commented-emission negative and a real-emission positive control, so
+    #     the stripping cannot blind the detector wholesale. Controls run and
+    #     reverted: comment probe -> 4 passed (no longer bites); a REAL
+    #     event(new \stdClass()) on the same file -> 1 failed, 3 passed (still
+    #     bites). BOTH error directions are now named in the docblock and in
+    #     evidence §2/§5.2, including the under-report the first version denied:
+    #     pattern 2 matches any Symbol::dispatch(, so a projector dispatching a
+    #     QUEUED JOB reads as emitting. Not live today (all six POS projectors
+    #     contain no ::dispatch, ->dispatch or event( at all).
+    #   F-5 (Minor) — the never-registered cluster table summed to 38 and omitted
+    #     the Vehicle pair while §5.3 said forty. §5.3 was right: 40, re-derived
+    #     mechanically (75 entries, exactly 40 carrying a "no register row"
+    #     marker). Table now enumerates all ELEVEN clusters and sums.
+    #   F-6 (Minor) — the inherited-red control's caveat is now stated:
+    #     `git checkout <base> -- <paths>` restores base content but does NOT
+    #     delete files the lane CREATED, so the control is "base plus this lane's
+    #     new, unreferenced classes", not a clean base checkout. Adequate (the
+    #     provider and routes are reverted, so nothing is wired) but described
+    #     loosely; a clean worktree at the merge-base is the stronger control.
+    #   F-7 (Minor) — the ES-88 baseline comment generalised past the census.
+    #     Narrowed name by name: FOUR of the row's five names have a V2 sibling in
+    #     the baseline; PointsRedeemedV2 DOES NOT EXIST (the only reference is a
+    #     docblock in PointsRedeemed.php); PointsEarnedV2 is in the baseline but
+    #     is NOT one of the row's names; and all six V1 classes have ZERO dispatch
+    #     sites, so they are never-emitted classes, not orphans by this test's
+    #     definition.
+    #
+    # ROUND 2 = CHANGES-REQUIRED
+    # (docs/handoff/reviews/es-wave-a0/M5-round2.md, register commit 4029656fc),
+    # scoped verification of fix round 1. ALL SEVEN round-1 findings CLOSED, each
+    # verified by execution: the reviewer ran a control the fix round did not —
+    # the PRE-fix detector against the same comment probe, which went red and
+    # dropped ZReportProjection, proving the F-4 hole was real and the
+    # token-stripping load-bearing. "Zero production files" confirmed by numstat;
+    # the 75 baseline entries are byte-identical before and after; the 40
+    # never-registered entries re-derived mechanically; PointsRedeemedV2 confirmed
+    # non-existent and all six V1s confirmed at zero dispatch sites.
+    # Eight notes, all documentation, none a code defect. Fix round 2 delivered in
+    # ONE commit, documentation-only (no behaviour change anywhere):
+    #   N-1 (Important) — §4.1's per-file table still published
+    #     ProjectorEmissionRatchetTest at its PRE-fix 3/3 when it is 4/5,
+    #     contradicting §2 of the same document AND the fix commit's own message,
+    #     on the ONE file that round changed. A stale count on a RATCHET
+    #     manufactures exactly the tamper alarm the ratchet exists to make
+    #     meaningful. Corrected, with the second deliberate exception now named
+    #     alongside the FiscalEventIngestionEndpointTest 66->69 one.
+    #   N-2 (Minor) — the F-3 disclosure stopped at M5. Recorded: three FROZEN
+    #     registers still publish the bogus path (see the F-3 entry above).
+    #   N-3 (Minor) — fix round 1 ADDED an un-measured causal claim inside the
+    #     section it rewrote to stop doing that: DepositReceiptAppendTest was
+    #     called "a one-hour local-timezone artifact ... with a second cause".
+    #     Measured, it is an assertSame on the payload KEY LIST — the 16-key lean
+    #     server contract expects lexicographic order, the payload arrives in
+    #     insertion order — failing at DepositReceiptAppendTest.php:74 with NO
+    #     timezone component. Same shape as AccountStatusChangedServerOnlyTest.
+    #     Count (1) and the 12-across-4 inventory unaffected; only the stated
+    #     cause was wrong. Replaced with the run output.
+    #   N-4 (Minor) — the F-6 caveat's file list read as exhaustive and understated
+    #     the residue by ~2/3 (it said "two new exceptions"; there are three). Now
+    #     gives the measured figure — git diff --diff-filter=A --name-only
+    #     a5520f23c..HEAD -- apps/api = 20 files (9 production, 11 test) — marked
+    #     "including", with the command to run instead of trusting a list.
+    #   N-5 (Minor) — the evidence described a `#` comment control in the negative
+    #     fixture; there is none (grep -c '#' -> 0). A `#` line WAS written and
+    #     pint's single_line_comment_style rewrote it to `//`, so a `#` control
+    #     cannot survive in this codebase. The SENTENCE is corrected rather than
+    #     the fixture, and why is recorded. Behaviour unaffected: `#` lexes as
+    #     T_COMMENT, which is what the detector strips.
+    #   N-6 (Minor) — NOT ADOPTED AS PROPOSED; re-measured instead. See the
+    #     blockers: note below for the full finding. Round 2 proposed stating the
+    #     non-UTC session came from the client's PGTZ with the server GUC at UTC.
+    #     With PGTZ unset, 127.0.0.1:5432 reports TimeZone=Africa/Tunis,
+    #     reset_val=Africa/Tunis, source=configuration file — a SERVER GUC — while
+    #     127.0.0.1:5433 reports UTC, and BOTH host a database named
+    #     autoerp_es_wave_a0_test. The discriminating variable is the INSTANCE,
+    #     not the client. Writing round 2's clause would have put a statement into
+    #     the terminal exit evidence that this machine contradicts. Round 2's real
+    #     point is adopted and strengthened: "the scratch server" was never a
+    #     sufficient identifier — pin the instance AND verify pg_settings.
+    #   N-7 (Minor) — the exit-statement SHA anchors the VERIFIERS, not the
+    #     ratchets; the two are on different clocks. Stated in both places, with
+    #     "re-run either ratchet at the BRANCH TIP, never at a milestone SHA".
+    #     `commit:` stays c533f005a because it names the implementation slice, not
+    #     a re-run anchor.
+    #   N-8 (Minor, optional) — string literals are NOT stripped, and there is a
+    #     near-miss already in a baselined file: ZReportProjection.php:326 carries
+    #     the text `event(s)` inside a missingDependency message, harmless only
+    #     because pattern 1 requires `new`. RECORDED as a known detector
+    #     limitation (in the test docblock and evidence §2) rather than fixed,
+    #     per the round-2 disposition and the parent's instruction: a second
+    #     token-class change in a terminal documentation round would re-open the
+    #     exit statement's code anchor for a vector that is not live. Fix shape
+    #     written down for whoever next opens the file.
+    status: passed
+    fix_rounds: 2
+    # Milestone slice for the reviewer: 9fdd9bc08..HEAD
+    # Fix-round-1 slice: 9ce7b2090..413166120
+    # Fix-round-2 slice: 4029656fc..HEAD  (documentation only; numstat over
+    #   apps/api/app is empty, and the only test-file change is a docblock)
+    commit: c533f005a
+    verdict: docs/handoff/reviews/es-wave-a0/M5-round2.md
+    last_verdict: ACCEPT
 
-status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
-blockers: []
+status: complete    # pending | in_progress | review | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+
+# TAKEOVER, 2026-08-19. The Codex executor's quota was exhausted mid-STOP-C.
+# The parent orchestrator's implementation agent took over in this same
+# worktree/branch, delivered M2 fix round 1 (ACCEPTed at round 2,
+# M2-round2.md, register commit 325499fe3) and continues with M3. Same rules:
+# no push, no stash, no full PHPUnit suite, tests by path, PG recipe
+# (apps/api/phpunit-pgsql.xml). Commits continue the Phase 0.1.<seq> series.
+
+# Ticketed residuals — RULED, no work owed inside this wave. Each cites the
+# register that ruled it. Opened 2026-08-19 from M3b round 1 (M3b-round1.md).
+findings:
+  - "F-5 (P3, M3b-round1.md:314-319) — ES-16's read partition couples to the ingestor's suppression verdict by a DUPLICATED LITERAL, not a shared constant: OutboxIngestor.php:922 plus seven producer copies at :521-551 vs DeadLetteredProjectionsController.php:78. Ruled WITHIN CONTRACT (no F16-* demands a constant; 16-D forbade M3b from adding one) and the reword-empties-the-partition failure mode is caught loudly by the real-ingestor fixture guard. OWED BY: the next lane that legitimately opens OutboxIngestor — one shared constant referenced by the seven producers, the suppressor and the partition."
+  - "F-6 (P3, M3b-round1.md:321-329) — DeadLetteredProjectionsController.php:154's LIKE '%z_session_lifecycle:%' treats `_` as a single-character wildcard in both PG and SQLite, so the partition predicate is a strict SUPERSET of the ingestor's str_contains suppression. No false negative is possible and no verdict string the ingestor emits collides today, so visibility is safe — but the docblock at :74-76 and the evidence claim identity 'by construction'. OWED: escape the underscores with an explicit ESCAPE clause, or narrow the claim to 'a superset that is exact against every verdict the ingestor emits'."
+  - "F-8 (residual, ruled — M3b-round1.md:147-168, :339-342) — DeadLetteredProjectionsController::show() still returns 409 NOT_DEAD_LETTERED for a z_session_lifecycle row (:218 tests integrity_exception_class === 'canonical_parse_failure', which a sequence_gap row fails). Ruled WITHIN CONTRACT: 16-A names index() and only index(), and the detail endpoint would carry no information the list row lacks — a deep-link dead end for a UI that does not exist yet. OWED: if a detail view is ever built, show() must reuse formatZSessionLifecycleRow() INCLUDING its deliberate absence of any action affordance (16-C is inherited)."
+  # ===================================================================
+  # From M4 round 1 (M4-round1.md). NOTE the numbering collides with the
+  # M3b entries above — every M4 entry is prefixed `M4-F-n` for that reason.
+  # ===================================================================
+  - "M4-F-3 (P2 → TICKETED, NON-WAIVABLE, opened at M5's opening commit — M4-round1.md:288-298) — the `pending_seal → fiscalized` branch of `prevent_receipt_modification()` is an UNCONDITIONAL `RETURN NEW` with ZERO column guards (`database/migrations/tenant/2026_07_31_940000_allow_sealed_hash_algorithm_backfill_transition.php:60-62`, reproduced in `down()` at `:180-181`), while the three branches below it guard 7, 13 and 17 columns. CONSEQUENCE, CONFIRMED AT RUNTIME on live PostgreSQL: one `UPDATE` that flips the status may rewrite `subtotal` and `total` in the same statement and commits — the `pos_receipts_totals` CHECK is an arithmetic invariant, not an immutability control, and certifies a coherently-forged pair. EXECUTABLE EVIDENCE: `apps/api/tests/Feature/Fiscal/ImmutabilityTriggerPresenceTest::test_pg_the_pending_seal_to_fiscalized_branch_has_no_column_guards_characterization` (passing today; it carries its own delete-me-when-red instruction). TICKET: `docs/superpowers/tickets/2026-08-19-fiscal-seal-branch-unguarded-columns.md`. NOT FIXED BY A0 — guarding the branch is a per-column decision against a LIVE seal path (`ReceiptFinalizationService`, `ReceiptPaymentService.php:395,433`), which brief R-5 names as scope creep for the ES-41 row. OWED BY: the lane that owns receipt sealing / NF525 immutability. M4 described this as already ticketed; it was not, and the record was created here."
+  - "M4-F-5 (P3, treasury lens — M4-round1.md:307-318) — `ServerAuthoredChainPlacementException extends RuntimeException` is thrown from `VirtualAdminFiscalEventService::appendDepositReceipt()`, which `RecordCustomerDepositService` calls INSIDE its sealing transaction, so a `time_anomaly` verdict aborts a CUSTOMER MONEY-IN flow as an unmapped 500. `OutboxIngestor` treats the identical condition as accept-with-`time_anomaly` (`ClockAnomalyDetector`: 'Out-of-tolerance is accepted, not blocked'), so 'derives the verdict in OutboxIngestor's own order' is true of the ORDER and not of the DISPOSITION. Probability is low (that terminal's chain carries only server-authored times) and the throw is defensible for a server-composed event. OWED: state the asymmetry in the exception docblock and map it at the deposit boundary to a structured refusal rather than a 500."
+  - "M4-F-6 (P3 — M4-round1.md:320-328) — the ES-42 blast-radius audit named five PHPUnit suites and missed two NON-PHPUnit callers of the gated route: `apps/web/e2e/smoke/treasury-phase5b-reconciliation.smoke.ts:738` and `apps/web/e2e/money-campaign/statement-support.ts:563` both POST to `/pos/sync/fiscal-events`, authenticating via `/auth/login` as the demo owner. If that account carries the seeded `admin` role it holds every permission and nothing is owed — neither stated nor verified, and unverifiable without standing up the E2E stack. These scripts are launch-program evidence, so a silent 403 there costs an evidence run. OWED: name them in the deploy note, or add `pos.operate_terminal` to the permission `arrayContaining` preamble the smoke already performs at `:372`."
+  - "M4-F-8 (P3, narrowing note — not a defect — M4-round1.md:337-344) — `TerminalRegistrySnapshotService` has ZERO production callers: outside `tests/` and the class itself the grep is empty, and `emitInitialSnapshot()` is referenced only by three test files. This NARROWS the still-SUSPECTED field-occurrence question ES-09 hands forward: in the field only `VirtualAdminFiscalEventService`'s two live callers can have written mis-linked rows, and only onto a `VirtualAdmin` terminal — which carries no `z_session` chain, so the realistic field blast radius may be NIL. OWED: read this before anyone commissions a production probe on the back of ES-09."
+  - "M4-Minor (P3 — M4-round1.md:346-350) — `CHAIN_CONTEXT = 'operational'` is now declared TWICE, once per module (`TerminalRegistrySnapshotService`, `VirtualAdminFiscalEventService`), in the same diff whose stated design principle is 'one verifier, not two copies … a chain-admissibility rule copied into two modules drifts silently'. Same failure mode as M3b F-5, smaller blast radius (the value is also the DB column default and is CHECK-constrained). Within contract. OWED BY: whoever introduces a `ChainContext` enum — rule 9 wants one anyway."
+  - "F-9 (residual, ruled — M3b-round1.md:344-352) — ES-16 visibility REGRESSES if anyone runs fiscal:enqueue-resolved-event-projections on a lifecycle row: the partition carries whereNotExists(fiscal_event_projections) (:155-159, mirroring partition 2), that command creates pending rows for exactly these events, and afterwards the row appears in partition 1 only if the projections dead-letter and in NO partition if they apply — i.e. the blind spot returns with wrong Z aggregates written. Not a contract violation (16-A is demonstrated; the contract explicitly forbade M3b from making that command safe). OWED BY: whichever lane owns lifecycle adjudication."
+
+blockers:
+  # RESOLVED 2026-08-19 — STOP C RULED by the parent orchestrator.
+  # Ruling of record: docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md
+  # (commit bd4139ec3, committed before any code).
+  #   - The (company_id, chain_context) partition of the ReceiptHashService
+  #     fiscal arm is PULLED FORWARD into M2 as a prerequisite of M2's own
+  #     mandated contract (green on the clean two-context v3 fixture).
+  #     Delivered in bc692820a; VerifyEventChainCommandTest.php:637-647 flipped
+  #     from the M0 characterization assertFalse to assertTrue.
+  #   - M4's ES-09 scope is AMENDED by the same ruling: TerminalRegistrySnapshotService
+  #     and VirtualAdminFiscalEventService ONLY. It must NOT re-fix
+  #     ReceiptHashService, but its two-context append test still asserts the
+  #     full end-to-end shape including the receipt-verification arm.
+  #   - M2-round1 findings 1, 3 and 4 were fixed in the same round; finding 5
+  #     is recorded.
+  # WITHDRAWN 2026-08-19 at M5 round 1 (F-2). The entry read:
+  #   "OPEN QUESTION FOR THE PARENT (not a wave blocker) — M2-round1 finding 6:
+  #    ReceiptReturnRefactorV3Test is 2/9 red on this branch and on its base …
+  #    the failure aborts before the post-Z-close pos:verify-chains assertion …
+  #    Which lane owns it?"
+  # It asked the parent to assign ownership of a red that does not exist. The
+  # suite is GREEN at HEAD — 9 passed (345 assertions) — and the recorded red is
+  # a PostgreSQL SESSION-TIMEZONE artifact, not an inherited code red:
+  #   - the test builds its Z window from Carbon::now('UTC')
+  #     (ReceiptReturnRefactorV3Test.php:580-581) and compares it as
+  #     'Y-m-d H:i:s' TEXT against pos_receipts.posted_at (:755-757);
+  #   - the scratch server on 127.0.0.1:5432 reports `show timezone` ->
+  #     Africa/Tunis (UTC+1), so every row renders exactly one hour outside the
+  #     window, all three drop out, $independentNet becomes 0.000 and
+  #     bccomp('0.000','10.000') is -1;
+  #   - instrumented and dumped to prove it, then reverted:
+  #       default session : window 22:38:54..22:44:54 vs rows at 23:39/23:41/23:43 -> net 0.000
+  #       PGTZ=UTC        : window 22:39:26..22:45:26 vs rows at 22:40/22:42/22:44 -> net 10.000
+  #   - PGTZ=UTC          -> 9 passed (345 assertions), matching the reviewer's
+  #     independent measurement exactly. Deterministic in both directions (3 runs
+  #     each).
+  # M2-round1 finding 6's "red on this branch AND on its base" was right about
+  # the observation and wrong about the attribution — both runs used the same
+  # non-UTC server. The causal claim (that the failure hides the post-Z-close
+  # pos:verify-chains assertion) is WITHDRAWN: the test reaches it.
+  # The four remaining inherited reds do NOT clear under PGTZ=UTC, so the
+  # inherited-red inventory for this lane is 12 tests across 4 files, not 14
+  # across 5: TreasuryDepositBridgeTest 9 (5 errors + 4 failures),
+  # AccountStatusChangedServerOnlyTest 1, DepositReceiptAppendTest 1,
+  # Task33FiscalFullFlowVerificationTest 1.
+  #
+  # WHICH scratch server — settled at M5 round 2 (N-6). Round 2 could not
+  # reproduce "the default session is red" and proposed that the non-UTC session
+  # came from the CLIENT's PGTZ while the server GUC was UTC. Re-measured with
+  # PGTZ explicitly unset (env -u PGTZ), that is not what this machine reports:
+  # there are TWO local PostgreSQL instances and BOTH host a database named
+  # autoerp_es_wave_a0_test.
+  #   port 5432 (Homebrew postgresql@15, /opt/homebrew/var/postgresql@15):
+  #     pg_settings TimeZone = Africa/Tunis, reset_val = Africa/Tunis,
+  #     source = configuration file; psql and PDO both report Africa/Tunis with
+  #     PGTZ unset; pg_db_role_setting is empty (no per-db/per-role override).
+  #   port 5433 (containerised): UTC / UTC / configuration file.
+  # source=configuration file + reset_val=Africa/Tunis are the marks of a SERVER
+  # GUC; a client PGTZ would show source=client and leave reset_val alone. So on
+  # 5432 the non-UTC session IS the server's and PGTZ=UTC is the client
+  # overriding it. Both measurements reconcile without either being wrong: this
+  # lane ran against 5432, the round-2 reviewer against an instance reporting
+  # UTC. Round 2's proposed clause ("the server's timezone GUC is UTC") is NOT
+  # adopted — it would put a statement into the terminal exit evidence that this
+  # machine contradicts. Round 2's real point IS adopted and is stronger: "the
+  # scratch server" was never a sufficient identifier.
+  # CARRY-FORWARD, strengthened: pin the INSTANCE (DB_PORT=5433) or set
+  # PGTZ=UTC, and VERIFY with
+  #   select setting, reset_val, source from pg_settings where name='TimeZone'
+  # before trusting a red. A non-UTC session manufactures red in every
+  # window-based aggregate test in this suite.
+  # NOTE (round 2, N-3): the M4 register's "one-hour local-TZ artifact" note on
+  # DepositReceiptAppendTest is a DIFFERENT defect and does not belong to this
+  # class — measured, that failure is a payload key-order assertSame at
+  # DepositReceiptAppendTest.php:74 with no timezone component. Round 1 grouped
+  # the two together; they are unrelated.
+  # CARRY-FORWARD (a harness rule, not a defect): run this lane's PG suites with
+  # a UTC session (PGTZ=UTC, or a server whose timezone GUC is UTC). A non-UTC
+  # session manufactures red in every window-based aggregate test.
+  []

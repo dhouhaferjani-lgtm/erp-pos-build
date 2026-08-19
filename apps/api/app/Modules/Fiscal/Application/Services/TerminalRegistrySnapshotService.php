@@ -12,6 +12,7 @@ use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Exceptions\InvalidServerAuthoredPayloadException;
 use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Shared\Contracts\Fiscal\FiscalIntegrityProvider;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\ConnectionInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
@@ -97,10 +98,18 @@ final class TerminalRegistrySnapshotService
     /** `not_required` is the Phase 1 default — no signature provider until later phases. */
     private const SERVER_AUTHORED_SIGNATURE_VERSION = 'hash-chain-integrity-v1';
 
+    /**
+     * ES-09 — the chain context this service authors into. Every event type it
+     * emits (`TERMINAL_REGISTRY_SNAPSHOT`) is an operational-chain fact; the
+     * `z_session` chain is device-authored session lifecycle only.
+     */
+    private const CHAIN_CONTEXT = 'operational';
+
     public function __construct(
         private readonly ConnectionInterface $db,
         private readonly FiscalIntegrityProvider $integrity,
         private readonly FiscalPayloadConstraintValidator $payloadValidator,
+        private readonly ServerAuthoredChainPlacementVerifier $placementVerifier,
     ) {}
 
     /**
@@ -223,9 +232,11 @@ final class TerminalRegistrySnapshotService
 
             // Resolve chain placement INSIDE the lock — the prior-event
             // query observes the committed state at lock-acquisition time.
-            [$sequenceNumber, $previousHash] = $this->resolveChainPlacement(
+            [$sequenceNumber, $previousHash, $priorHead] = $this->resolveChainPlacement(
                 tenantId: $tenantId,
+                companyId: $companyId,
                 terminalId: $terminalId,
+                chainContext: self::CHAIN_CONTEXT,
                 genesisSeed: $genesisSeed,
             );
 
@@ -250,6 +261,26 @@ final class TerminalRegistrySnapshotService
             $canonicalBytes = $this->canonicalEncode($envelope);
             $currentHash = $this->integrity->computeHash($canonicalBytes);
 
+            // ES-09 defect (b) — DERIVE the integrity verdict instead of
+            // stamping it. Runs the same hash → linkage → clock checks
+            // `OutboxIngestor` runs on every device envelope, against the head
+            // read under this terminal's row lock. On a legitimate append the
+            // verdict is `Verified` and the write proceeds; anything else
+            // throws and the surrounding transaction rolls back, so no row
+            // ever claims a verdict it did not earn.
+            $this->placementVerifier->assertAdmissible(
+                prior: $priorHead,
+                genesisSeed: $genesisSeed,
+                sequenceNumber: $sequenceNumber,
+                previousHash: $previousHash,
+                canonicalBytes: $canonicalBytes,
+                currentHash: $currentHash,
+                eventTimeDevice: $envelope['event_time_device'],
+                serverReceivedAt: CarbonImmutable::instance($now),
+                eventType: FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT->value,
+                chainContext: self::CHAIN_CONTEXT,
+            );
+
             // Persist the row. The Eloquent `create()` is fine here because
             // the row-lock on `pos_terminals` already serializes concurrent
             // emissions on this terminal — no UNIQUE-violation race window
@@ -264,6 +295,12 @@ final class TerminalRegistrySnapshotService
                 'terminal_id' => $terminalId,
                 'operator_id' => $operatorId,
                 'event_type' => FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+                // ES-09: written EXPLICITLY rather than left to the column
+                // default. The head read above is scoped by chain_context, so
+                // the row must state the context it was scoped against —
+                // relying on a DB default while scoping the read explicitly is
+                // the implicit coupling that produced this defect.
+                'chain_context' => self::CHAIN_CONTEXT,
                 'event_version' => 1,
                 'signature_version' => self::SERVER_AUTHORED_SIGNATURE_VERSION,
                 'sequence_number' => $sequenceNumber,
@@ -438,19 +475,43 @@ final class TerminalRegistrySnapshotService
      * the authoring terminal chain — server-authored events follow the
      * same Task 19 T19-B3 invariants as device-authored events.
      *
-     * @return array{0: int, 1: string} [sequenceNumber, previousHash]
+     * **ES-09 (M4).** The head read is scoped by
+     * `(tenant_id, company_id, terminal_id, chain_context)`, matching
+     * `OutboxIngestor`'s prior-row read verbatim and the UNIQUE the schema has
+     * enforced since `2026_05_24_100000_add_chain_context_to_fiscal_events.php`
+     * (`(tenant_id, company_id, terminal_id, chain_context, sequence_number)`).
+     * It previously keyed on `(tenant_id, terminal_id)` alone, so on any
+     * two-context terminal — which is EVERY v3 terminal, carrying both
+     * `operational` and `z_session` — `orderByDesc('sequence_number')` returned
+     * the deepest chain's head regardless of context. The resulting row hashed
+     * correctly, did not collide with the per-context UNIQUE, and was therefore
+     * INSERTed silently: a numeric gap in this context plus a `previous_hash`
+     * pointing into the other chain, permanently unverifiable and invisible
+     * until someone ran the verifier.
+     *
+     * The prior row is RETURNED, not just consumed, because the caller needs it
+     * to derive the integrity verdict (ES-09 defect (b)) rather than assert one.
+     *
+     * @return array{0: int, 1: string, 2: stdClass|null} [sequenceNumber, previousHash, priorHead]
      */
-    private function resolveChainPlacement(string $tenantId, string $terminalId, string $genesisSeed): array
-    {
+    private function resolveChainPlacement(
+        string $tenantId,
+        string $companyId,
+        string $terminalId,
+        string $chainContext,
+        string $genesisSeed,
+    ): array {
         /** @var stdClass|null $prior */
         $prior = $this->db->table('fiscal_events')
             ->where('tenant_id', $tenantId)
+            ->where('company_id', $companyId)
             ->where('terminal_id', $terminalId)
+            ->where('chain_context', $chainContext)
             ->orderByDesc('sequence_number')
-            ->first(['sequence_number', 'current_hash']);
+            ->first(['sequence_number', 'current_hash', 'event_time_device']);
 
         if ($prior === null) {
-            return [1, $genesisSeed];
+            return [1, $genesisSeed, null];
         }
 
         $sequenceNumber = is_int($prior->sequence_number)
@@ -460,7 +521,7 @@ final class TerminalRegistrySnapshotService
             ? $prior->current_hash
             : (string) $prior->current_hash;
 
-        return [$sequenceNumber, $previousHash];
+        return [$sequenceNumber, $previousHash, $prior];
     }
 
     /**

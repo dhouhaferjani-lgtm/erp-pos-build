@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
 use RuntimeException;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
 /**
@@ -63,6 +65,9 @@ final class FiscalEventIngestionEndpointTest extends TestCase
 
     private User $user;
 
+    /** ES-42 — an authenticated tenant user WITHOUT `pos.operate_terminal`. */
+    private User $nonOperator;
+
     private string $operatorId;
 
     private string $genesisSeed;
@@ -88,8 +93,36 @@ final class FiscalEventIngestionEndpointTest extends TestCase
             'genesis_seed' => $this->genesisSeed,
         ]);
 
+        $this->app->make(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
+
+        // ES-42 (M4). This fixture's principal is now a REAL device principal:
+        // an ordinary tenant User carrying the seeded `cashier` role, which is
+        // what a POS operator actually holds in production
+        // (`RolesAndPermissionsSeeder.php:639-657`; `manager` carries it too at
+        // `:590`). Before the ingestion route carried a `can:` gate, a bare
+        // permissionless `User::factory()` was sufficient here — and that was
+        // precisely the register row: any authenticated tenant user could post
+        // envelopes into the chain. Making the fixture principal realistic is
+        // what turns every existing test in this file into the "device still
+        // works" half of R-4's two-sided contract.
         $this->user = User::factory()->create([
             'tenant_id' => $this->tenant->id,
+        ]);
+        $this->user->assignRole('cashier');
+
+        // An authenticated tenant user who is NOT a POS operator — the
+        // principal the gate exists to refuse. It is deliberately a FULL
+        // company member: without the membership `CompanyContextMiddleware`
+        // 403s it with NO_COMPANY_ACCESS before the permission gate is ever
+        // consulted, and the refusal test would be green for the wrong reason
+        // — green even with no gate at all.
+        $this->nonOperator = User::factory()->create([
+            'tenant_id' => $this->tenant->id,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $this->nonOperator->id,
+            'company_id' => $this->company->id,
+            'role' => 'admin',
         ]);
 
         // CompanyContextMiddleware (in the `api` middleware group) returns
@@ -115,6 +148,142 @@ final class FiscalEventIngestionEndpointTest extends TestCase
      * Plan §1494 Step 1 case — a valid envelope lands in the ledger and the
      * endpoint returns a 200 with per-envelope `stored=true`.
      */
+    // =================================================================
+    // ES-42 (M4) — the fiscal-event ingestion route carried NO `can:` gate,
+    // unlike every other route in `Fiscal/routes.php`
+    // (`best-effort-parse`, `resolve-parse-failure`, `refund-compensations`,
+    // `dead-lettered-projections` all carry one). Any authenticated tenant
+    // user could post envelopes into the chain.
+    //
+    // The permission is LOCKED to the EXISTING seeded `pos.operate_terminal`
+    // (brief R-4). It already gates the sibling DEVICE sync surface —
+    // `ZReportSyncController::sync()` opens with
+    // `Gate::authorize('pos.operate_terminal')` — so this is mechanical reuse,
+    // not a policy choice.
+    //
+    // THE FIRST CHECK, run first and asserted rather than assumed. If the
+    // device principal did NOT hold this permission, adding the gate would
+    // take the fleet offline on the next deploy, and the milestone's
+    // instruction is to STOP `blocked_owner` on gate
+    // `ES-42-device-permission-grant` rather than invent a grant. The result
+    // of this check is recorded in the milestone report.
+    // =================================================================
+
+    public function test_es42_first_check_the_device_principal_holds_the_locked_permission(): void
+    {
+        $this->assertTrue(
+            Permission::query()->where('name', 'pos.operate_terminal')->exists(),
+            'ES-42 STOP CONDITION: `pos.operate_terminal` must already be SEEDED '
+            .'(RolesAndPermissionsSeeder.php:336). If it were absent, gating the live device ingestion route would '
+            .'owe an owner ruling on a new permission + role seeder + permission:cache-reset, not an invented gate.',
+        );
+
+        $this->assertTrue(
+            $this->user->can('pos.operate_terminal'),
+            'ES-42 STOP CONDITION: the DEVICE principal — an ordinary tenant User holding the seeded `cashier` role, '
+            .'which is what apps/pos authenticates as — must already hold `pos.operate_terminal`. If it does NOT, '
+            .'STOP `blocked_owner` on gate ES-42-device-permission-grant: adding the gate would 403 every terminal '
+            .'in the fleet on the next deploy.',
+        );
+
+        $this->assertFalse(
+            $this->nonOperator->can('pos.operate_terminal'),
+            'ES-42: the refusal half needs a principal that genuinely lacks the permission, or the 403 test below '
+            .'passes for the wrong reason.',
+        );
+    }
+
+    // =================================================================
+    // ES-42 — the REFUSAL half. Two-sided: the status AND the absence of
+    // any write. "403 but the row landed anyway" is the failure mode a
+    // status-only assertion cannot see.
+    // =================================================================
+
+    public function test_es42_an_authenticated_tenant_user_without_the_permission_is_refused_and_persists_nothing(): void
+    {
+        // M4 round 1, F-7 — ATTRIBUTION, asserted in the test rather than left
+        // to a setUp comment and a red-first run nobody re-runs.
+        //
+        // Two different layers on this route return 403 with different
+        // remedies: `CompanyContextMiddleware` returns
+        // `error.code = NO_COMPANY_ACCESS` for a user who belongs to no company
+        // (`CompanyContextMiddleware.php:57-64`), and the `can:` gate's
+        // AuthorizationException is rendered as `error.code = FORBIDDEN`
+        // (`bootstrap/app.php`'s AccessDeniedHttpException render callback).
+        // This file's own history is that this exact test was once green for
+        // the FIRST reason while claiming to prove the second. Both halves of
+        // the guard are therefore asserted here:
+        //
+        //   (1) the fixture's shape — this principal IS a full company member,
+        //       so company context CANNOT be what refuses it;
+        //   (2) the response's own code — FORBIDDEN, and explicitly not
+        //       NO_COMPANY_ACCESS.
+        $this->assertTrue(
+            UserCompanyMembership::where('user_id', $this->nonOperator->id)
+                ->where('company_id', $this->terminal->company_id)
+                ->exists(),
+            'ES-42: the refused principal must be a FULL member of the terminal’s company. Without the membership '
+            .'CompanyContextMiddleware 403s first and this test is green with no permission gate at all.',
+        );
+        $this->assertFalse(
+            $this->nonOperator->can('pos.operate_terminal'),
+            'ES-42: …and it must genuinely lack pos.operate_terminal, or the 403 below proves nothing.',
+        );
+
+        Sanctum::actingAs($this->nonOperator);
+
+        $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
+            'envelopes' => [$this->validEnvelopeWire()],
+        ]);
+
+        $response->assertStatus(403);
+        $this->assertSame(
+            'FORBIDDEN',
+            $response->json('error.code'),
+            'ES-42: the refusal must be the PERMISSION GATE’s (rendered as FORBIDDEN). A NO_COMPANY_ACCESS 403 from '
+            .'CompanyContextMiddleware would satisfy a status-only assertion while the gate was absent.',
+        );
+
+        $this->assertSame(
+            0,
+            DB::table('fiscal_events')->count(),
+            'ES-42: a refused ingestion must persist NOTHING — no fiscal_events row.',
+        );
+        $this->assertSame(
+            0,
+            DB::table('fiscal_event_quarantine')->count(),
+            'ES-42: nor a quarantine row. Quarantining an unauthorised caller’s envelope would let anyone with a '
+            .'tenant token fill the operator’s incident queue — the register row’s blast radius, restated.',
+        );
+    }
+
+    // =================================================================
+    // ES-42 — the DEVICE-SUCCESS half, in the SAME diff (R-4 item 3).
+    // A diff that ships only the 403 is a production outage waiting for
+    // the next deploy.
+    // =================================================================
+
+    public function test_es42_the_device_sync_path_still_succeeds_end_to_end_with_the_gate_in_place(): void
+    {
+        // Exercised exactly as `apps/pos/src/lib/sync/syncService.ts:406-440`
+        // does it: an authenticated device principal POSTing a batch of
+        // envelopes to /pos/sync/fiscal-events.
+        Sanctum::actingAs($this->user);
+
+        $response = $this->postJson('/api/v1/pos/sync/fiscal-events', [
+            'envelopes' => [$this->validEnvelopeWire()],
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('results.0.stored', true);
+        $this->assertSame(
+            1,
+            DB::table('fiscal_events')->count(),
+            'ES-42: the legitimate device caller must still reach the chain. If this ever goes red, every terminal '
+            .'in the fleet is offline.',
+        );
+    }
+
     public function test_endpoint_ingests_a_valid_fiscal_event_envelope(): void
     {
         Sanctum::actingAs($this->user);

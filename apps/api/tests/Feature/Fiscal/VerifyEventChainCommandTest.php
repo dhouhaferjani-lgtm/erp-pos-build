@@ -6,6 +6,7 @@ namespace Tests\Feature\Fiscal;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Fiscal\Application\Services\TerminalRegistrySnapshotService;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityExceptionClass;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
@@ -13,15 +14,24 @@ use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
 use App\Modules\Fiscal\Domain\Models\FiscalEventQuarantine;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Partner\Domain\Enums\CustomerAccountStatus;
+use App\Modules\Partner\Domain\Enums\CustomerCategory;
+use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Application\Services\VirtualAdminFiscalEventService;
+use App\Modules\POS\Domain\Services\ReceiptHashService;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Testing\PendingCommand;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Helpers\Fiscal\GoldenFixtureBuilder;
 use Tests\TestCase;
+use Tests\Traits\ReadsCanonicalBytes;
 
 /**
  * Task 31 — `fiscal:verify-event-chain` command (plan §2397–2458, spec §12).
@@ -65,6 +75,7 @@ use Tests\TestCase;
  */
 final class VerifyEventChainCommandTest extends TestCase
 {
+    use ReadsCanonicalBytes;
     use RefreshDatabase;
 
     private string $tenantId;
@@ -143,6 +154,167 @@ final class VerifyEventChainCommandTest extends TestCase
             ->assertExitCode(0);
     }
 
+    public function test_verifies_the_existing_server_authored_snapshot_envelope(): void
+    {
+        $event = $this->app->make(TerminalRegistrySnapshotService::class)->emitInitialSnapshot(
+            tenantId: $this->tenantId,
+            companyId: $this->companyId,
+            terminalId: $this->terminalId,
+            operatorId: $this->verifierUser->id,
+        );
+
+        $this->assertStringNotContainsString('"chain_context"', $this->stringifyCanonicalBytes($event->canonical_bytes));
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
+    public function test_verifies_the_existing_virtual_admin_server_authored_envelopes(): void
+    {
+        $partner = Partner::factory()->customer()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'customer_category' => CustomerCategory::Business,
+            'account_status' => CustomerAccountStatus::Active,
+            'account_status_version' => 1,
+        ]);
+        $service = $this->app->make(VirtualAdminFiscalEventService::class);
+        $first = $service->appendAccountStatusChanged(
+            partner: $partner,
+            oldStatus: CustomerAccountStatus::Active,
+            newStatus: CustomerAccountStatus::Suspended,
+            actorUserId: $this->verifierUser->id,
+            reason: 'Verifier compatibility fixture',
+        );
+        $second = $service->appendDepositReceipt(
+            partner: $partner,
+            actorUserId: $this->verifierUser->id,
+            actorName: $this->verifierUser->name,
+            currencyCode: 'TND',
+            amount: '10.000',
+            methodCode: 'cash',
+            repositoryId: null,
+            notes: null,
+        );
+
+        $this->assertStringNotContainsString('"chain_context"', $this->stringifyCanonicalBytes($first->canonical_bytes));
+        $this->assertStringNotContainsString('"chain_context"', $this->stringifyCanonicalBytes($second->canonical_bytes));
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $first->terminal_id,
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
+    public function test_missing_chain_context_remains_a_failure_for_device_authored_events(): void
+    {
+        $payload = $this->chainBreakPayload('device-authored omission');
+        $envelope = json_decode($this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+        ), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($envelope);
+        unset($envelope['chain_context']);
+        $canonicalBytes = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $payload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('envelope_field_missing:chain_context')
+            ->assertExitCode(1);
+    }
+
+    public function test_legacy_server_compatibility_rejects_an_extra_envelope_field(): void
+    {
+        $first = $this->app->make(TerminalRegistrySnapshotService::class)->emitInitialSnapshot(
+            tenantId: $this->tenantId,
+            companyId: $this->companyId,
+            terminalId: $this->terminalId,
+            operatorId: $this->verifierUser->id,
+        );
+        $envelope = json_decode($this->stringifyCanonicalBytes($first->canonical_bytes), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($envelope);
+        $envelope['sequence_number'] = 2;
+        $envelope['previous_hash'] = $first->current_hash;
+        $envelope['unexpected'] = 'must fail closed';
+        ksort($envelope);
+        $canonicalBytes = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $first->current_hash,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $envelope['payload'],
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+            eventTimeDevice: str_replace(['T', 'Z'], [' ', ''], (string) $envelope['event_time_device']),
+            businessDate: (string) $envelope['business_date'],
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('envelope_field_missing:chain_context')
+            ->assertExitCode(1);
+    }
+
+    public function test_legacy_server_compatibility_still_checks_every_sealed_coordinate(): void
+    {
+        $first = $this->app->make(TerminalRegistrySnapshotService::class)->emitInitialSnapshot(
+            tenantId: $this->tenantId,
+            companyId: $this->companyId,
+            terminalId: $this->terminalId,
+            operatorId: $this->verifierUser->id,
+        );
+        $envelope = json_decode($this->stringifyCanonicalBytes($first->canonical_bytes), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertIsArray($envelope);
+        $envelope['company_id'] = Str::uuid()->toString();
+        $envelope['sequence_number'] = 2;
+        $envelope['previous_hash'] = $first->current_hash;
+        ksort($envelope);
+        $canonicalBytes = json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+
+        $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $first->current_hash,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $envelope['payload'],
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::TERMINAL_REGISTRY_SNAPSHOT,
+            eventTimeDevice: str_replace(['T', 'Z'], [' ', ''], (string) $envelope['event_time_device']),
+            businessDate: (string) $envelope['business_date'],
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('sealed coordinate company_id mismatch')
+            ->assertExitCode(1);
+    }
+
     public function test_fails_with_break_point_on_a_tampered_fixture(): void
     {
         $this->seedTamperedChain(atSequence: 3);
@@ -198,13 +370,20 @@ final class VerifyEventChainCommandTest extends TestCase
     public function test_fails_when_first_event_previous_hash_does_not_match_genesis_seed(): void
     {
         // Seed one event whose previous_hash is NOT the genesis seed.
-        $canonicalBytes = '{"event":"seq1"}';
         $bogusGenesis = str_repeat('b', 64);
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $bogusGenesis,
+            payload: $this->chainBreakPayload('bogus genesis link'),
+        );
         $this->insertEvent(
             sequenceNumber: 1,
             canonicalBytes: $canonicalBytes,
             previousHash: $bogusGenesis,
             currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
         );
 
         $this->artisan('fiscal:verify-event-chain', [
@@ -212,15 +391,7 @@ final class VerifyEventChainCommandTest extends TestCase
             '--terminal' => $this->terminalId,
             '--actor-id' => $this->verifierUser->id,
         ])
-            ->expectsOutputToContain('sequence_number 1')
-            // Symfony wraps long single lines across multiple
-            // OutputStyle writeln calls when a TTY width is detected,
-            // so substring assertions across the wrap boundary can be
-            // flaky. The sequence_number 1 check above pins the
-            // structural contract (the break is reported at the right
-            // sequence); the wrapped tail of the message names the
-            // genesis-seed mismatch as documented in the command
-            // docblock.
+            ->expectsOutputToContain('previous_hash linkage mismatch')
             ->assertExitCode(1);
     }
 
@@ -437,9 +608,635 @@ final class VerifyEventChainCommandTest extends TestCase
             ->assertExitCode(1);
     }
 
+    public function test_seeded_v3_fixture_has_two_contexts_and_a_hash_mirrored_projected_receipt(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $schemaVersion = DB::table('pos_terminals')
+            ->where('id', $this->terminalId)
+            ->value('fiscal_schema_version');
+        $contexts = DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->orderBy('chain_context')
+            ->pluck('chain_context')
+            ->all();
+        $projectedReceipts = DB::table('pos_receipts')
+            ->where('terminal_id', $this->terminalId)
+            ->whereNotNull('fiscal_event_id')
+            ->count();
+        $mirrorMismatches = DB::table('pos_receipts as receipts')
+            ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+            ->where('receipts.terminal_id', $this->terminalId)
+            ->whereColumn('receipts.fiscal_hash', '!=', 'events.current_hash')
+            ->count();
+
+        $this->assertGreaterThanOrEqual(3, (int) $schemaVersion);
+        $this->assertSame(['operational', 'z_session'], $contexts);
+        $this->assertGreaterThan(0, $projectedReceipts);
+        $this->assertSame(0, $mirrorMismatches);
+        // M2 fix round (STOP C ruling, docs/handoff/reviews/es-wave-a0/
+        // ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md). This assertion was a
+        // characterization of the context-flattening defect recorded in
+        // M0-preflight-evidence.md; the fiscal arm now walks each
+        // (company_id, chain_context) as its own chain from genesis_seed, so
+        // the CLEAN two-context v3 fixture must verify TRUE.
+        $this->assertTrue(
+            $this->app->make(ReceiptHashService::class)
+                ->verifyTerminalChain(Terminal::query()->findOrFail($this->terminalId)),
+            'The clean two-context v3 fixture must verify: each chain_context is its own chain from genesis_seed.',
+        );
+    }
+
+    public function test_seeded_v3_operational_context_is_a_clean_verifier_control(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--chain-context' => 'operational',
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
+    public function test_seeded_v3_z_session_context_is_a_clean_verifier_control(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--chain-context' => 'z_session',
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(0, $exit, $output);
+        $this->assertStringContainsString('chain verified', $output);
+    }
+
+    public function test_wrong_context_previous_hash_tamper_is_self_asserting(): void
+    {
+        $this->seedWrongContextPreviousHashTamper();
+    }
+
+    public function test_receipt_mirror_tamper_is_self_asserting(): void
+    {
+        $this->seedReceiptMirrorTamper();
+    }
+
+    // =================================================================
+    // ES-08 — honest verifier checks (M1, red-first)
+    //
+    // Each fixture below changes exactly one verifier input. The production
+    // mutation named by each test is the omission of the corresponding
+    // check from VerifyEventChainCommand::walkChain().
+    // =================================================================
+
+    public function test_fails_when_parsed_payload_diverges_from_canonical_bytes(): void
+    {
+        $payload = $this->chainBreakPayload('sealed reason');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+        );
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: array_merge($payload, ['reason' => 'rewritten reason']),
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('payload does not semantically match canonical_bytes')
+            ->assertExitCode(1);
+    }
+
+    public function test_passes_when_parsed_payload_semantically_matches_canonical_bytes(): void
+    {
+        $payload = $this->chainBreakPayload('matching reason');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+        );
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $payload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()->assertExitCode(0);
+    }
+
+    /**
+     * ES-06 (M3) — the ambiguity guard on the sealed-payload recovery.
+     *
+     * `json_decode` keeps the LAST occurrence of a duplicated key; the strict
+     * parser rejects the document outright. On such bytes the two disagree
+     * about what was sealed, so recovery must refuse and the verifier must
+     * fall back to the fail-closed sentence rather than assert a divergence
+     * verdict it cannot justify. Without the round-trip guard in
+     * `recoverSealedPayloadFromFrozenBytes()` this row would be judged
+     * against the SECOND `payload` member.
+     */
+    public function test_sealed_payload_recovery_refuses_ambiguous_duplicate_key_envelopes(): void
+    {
+        $sealed = $this->chainBreakPayload('sealed reason');
+        $shadow = $this->chainBreakPayload('shadow reason');
+
+        // Hand-built bytes: a duplicated `payload` key. Both members are
+        // well-formed; only their order distinguishes them.
+        $canonicalBytes = '{"payload":'.json_encode($sealed, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES)
+            .',"payload":'.json_encode($shadow, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES).'}';
+
+        // The stored payload equals the member `json_decode` would win with,
+        // so a guard-less recovery would find them EQUAL and stay silent.
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $shadow,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('canonical payload could not be derived')
+            ->assertExitCode(1);
+    }
+
+    public function test_fails_when_an_internally_hash_valid_row_is_not_verified(): void
+    {
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $this->chainBreakPayload('quarantined but hash valid'),
+        );
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            integrityStatus: IntegrityStatus::Quarantined,
+            integrityExceptionClass: IntegrityExceptionClass::TimeAnomaly,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('integrity_status is quarantined, expected verified')
+            ->assertExitCode(1);
+    }
+
+    public function test_fails_when_a_stored_coordinate_disagrees_with_its_sealed_value(): void
+    {
+        $payload = $this->chainBreakPayload('coordinate control');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+            overrides: ['company_id' => Str::uuid()->toString()],
+        );
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            payload: $payload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('sealed coordinate company_id mismatch')
+            ->assertExitCode(1);
+    }
+
+    public function test_fails_when_pending_row_stored_coordinate_disagrees_with_its_sealed_value(): void
+    {
+        $payload = $this->chainBreakPayload('pending coordinate mismatch');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+            overrides: ['company_id' => Str::uuid()->toString()],
+        );
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('sealed coordinate company_id mismatch')
+            ->assertExitCode(1);
+    }
+
+    public function test_passes_when_pending_row_sealed_coordinates_match(): void
+    {
+        $payload = $this->chainBreakPayload('pending coordinate control');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $payload,
+        );
+
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $canonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()->assertExitCode(0);
+    }
+
+    public function test_fails_when_sequence_numbers_are_not_contiguous_even_if_hash_linkage_is_valid(): void
+    {
+        $firstCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $this->chainBreakPayload('sequence 1'),
+        );
+        $firstHash = hash('sha256', $firstCanonicalBytes);
+        $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $firstCanonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: $firstHash,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $thirdCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 3,
+            previousHash: $firstHash,
+            payload: $this->chainBreakPayload('sequence 3'),
+        );
+        $this->insertEvent(
+            sequenceNumber: 3,
+            canonicalBytes: $thirdCanonicalBytes,
+            previousHash: $firstHash,
+            currentHash: hash('sha256', $thirdCanonicalBytes),
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $this->runVerifier()
+            ->expectsOutputToContain('sequence_number gap — expected 2, stored 3')
+            ->assertExitCode(1);
+    }
+
+    public function test_wrong_context_previous_hash_tamper_is_reported_by_the_existing_context_scoped_link_check(): void
+    {
+        $this->seedWrongContextPreviousHashTamper();
+
+        $this->withoutMockingConsoleOutput();
+        $exit = Artisan::call('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--chain-context' => 'operational',
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+        $output = Artisan::output();
+
+        $this->assertSame(1, $exit);
+        $this->assertSame(1, substr_count($output, 'CHAIN BREAK at sequence_number'));
+        $this->assertStringContainsString('previous_hash linkage mismatch', $output);
+        $this->assertStringContainsString('1 chain incidents, 0 quarantine incidents', $output);
+        $this->assertStringNotContainsString('sealed coordinates could not be derived', $output);
+        $this->assertStringNotContainsString('payload does not semantically match', $output);
+        $this->assertStringNotContainsString('current_hash mismatch', $output);
+    }
+
     // =================================================================
     // Fixture helpers — CI-shaped seeders matching plan §2401 contract.
     // =================================================================
+
+    private function seedV3FiscalFixture(): void
+    {
+        DB::table('pos_terminals')
+            ->where('id', $this->terminalId)
+            ->update(['fiscal_schema_version' => 3]);
+
+        $operationalPayload = GoldenFixtureBuilder::all()['F-01-baseline-eur'];
+        $operationalCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $operationalPayload,
+            eventType: FiscalEventType::SALE_RECEIPT,
+            chainContext: 'operational',
+        );
+        $operationalHash = hash('sha256', $operationalCanonicalBytes);
+        $operationalEventId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $operationalCanonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: $operationalHash,
+            chainContext: 'operational',
+            payload: $operationalPayload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::SALE_RECEIPT,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $zSessionPayload = [
+            'business_date' => '2026-08-12',
+            'currency_code' => 'TND',
+            'currency_scale' => 3,
+            'opened_at_device' => '2026-08-12T07:00:00.000Z',
+            'opening_float_amount' => '100.000',
+            'operator_id' => $this->operatorId,
+            'operator_name' => 'M1 Fixture Operator',
+            'session_id' => '00000000-0000-4000-8000-000000000101',
+            'shift_id' => '00000000-0000-4000-8000-000000000102',
+            'shift_number' => 1,
+            'terminal_id' => $this->terminalId,
+            'terminal_label' => 'M1 Fixture Terminal',
+            'training_flag' => false,
+        ];
+        $zSessionCanonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 1,
+            previousHash: $this->genesisSeed,
+            payload: $zSessionPayload,
+            eventType: FiscalEventType::SESSION_OPEN,
+            chainContext: 'z_session',
+        );
+        $zSessionEventId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $zSessionCanonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: hash('sha256', $zSessionCanonicalBytes),
+            chainContext: 'z_session',
+            payload: $zSessionPayload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::SESSION_OPEN,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $receiptId = $this->insertProjectedReceipt(
+            fiscalEventId: $operationalEventId,
+            fiscalHash: $operationalHash,
+            previousHash: $this->genesisSeed,
+            canonicalBytes: $operationalCanonicalBytes,
+            chainSequence: 1,
+        );
+
+        $this->assertTrue(Str::isUuid($operationalEventId));
+        $this->assertTrue(Str::isUuid($zSessionEventId));
+        $this->assertTrue(Str::isUuid($receiptId));
+        $this->assertGreaterThanOrEqual(
+            3,
+            (int) DB::table('pos_terminals')->where('id', $this->terminalId)->value('fiscal_schema_version'),
+        );
+        $this->assertSame(
+            ['operational', 'z_session'],
+            DB::table('fiscal_events')
+                ->where('terminal_id', $this->terminalId)
+                ->orderBy('chain_context')
+                ->pluck('chain_context')
+                ->all(),
+        );
+        $this->assertSame(
+            1,
+            DB::table('pos_receipts')
+                ->where('id', $receiptId)
+                ->whereNotNull('fiscal_event_id')
+                ->count(),
+        );
+        $this->assertSame(
+            0,
+            DB::table('pos_receipts as receipts')
+                ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+                ->where('receipts.id', $receiptId)
+                ->whereColumn('receipts.fiscal_hash', '!=', 'events.current_hash')
+                ->count(),
+        );
+    }
+
+    /**
+     * Seed T-b: an operational row whose hash is internally correct but whose
+     * previous_hash comes from the z_session head on the same terminal.
+     */
+    private function seedWrongContextPreviousHashTamper(): void
+    {
+        $this->seedV3FiscalFixture();
+
+        $operationalHead = (string) DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->where('chain_context', 'operational')
+            ->value('current_hash');
+        $zSessionHead = (string) DB::table('fiscal_events')
+            ->where('terminal_id', $this->terminalId)
+            ->where('chain_context', 'z_session')
+            ->value('current_hash');
+        $payload = $this->chainBreakPayload('wrong context link');
+        $canonicalBytes = $this->canonicalEnvelope(
+            sequenceNumber: 2,
+            previousHash: $zSessionHead,
+            payload: $payload,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            chainContext: 'operational',
+        );
+        $eventId = $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $zSessionHead,
+            currentHash: hash('sha256', $canonicalBytes),
+            chainContext: 'operational',
+            payload: $payload,
+            payloadParseStatus: PayloadParseStatus::Parsed,
+            eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+            eventTimeDevice: '2026-08-12T07:00:00Z',
+            businessDate: '2026-08-12',
+        );
+
+        $row = DB::table('fiscal_events')->where('id', $eventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('operational', $row->chain_context);
+        $this->assertSame($zSessionHead, $row->previous_hash);
+        $this->assertNotSame($operationalHead, $row->previous_hash);
+        $canonicalBytes = $this->stringifyCanonicalBytes($row->canonical_bytes);
+        $this->assertSame(hash('sha256', $canonicalBytes), $row->current_hash);
+    }
+
+    /**
+     * Seed T-c: a projected receipt whose immutable fiscal_hash differs from
+     * the referenced, internally valid fiscal event's current_hash.
+     */
+    private function seedReceiptMirrorTamper(): void
+    {
+        DB::table('pos_terminals')
+            ->where('id', $this->terminalId)
+            ->update(['fiscal_schema_version' => 3]);
+
+        $firstCanonicalBytes = '{"event":"receipt_mirror_control","sequence_number":1}';
+        $firstHash = hash('sha256', $firstCanonicalBytes);
+        $firstEventId = $this->insertEvent(
+            sequenceNumber: 1,
+            canonicalBytes: $firstCanonicalBytes,
+            previousHash: $this->genesisSeed,
+            currentHash: $firstHash,
+            chainContext: 'operational',
+        );
+        $this->insertProjectedReceipt(
+            fiscalEventId: $firstEventId,
+            fiscalHash: $firstHash,
+            previousHash: $this->genesisSeed,
+            canonicalBytes: $firstCanonicalBytes,
+            chainSequence: 1,
+        );
+
+        $canonicalBytes = '{"event":"receipt_mirror_tamper","sequence_number":2}';
+        $eventHash = hash('sha256', $canonicalBytes);
+        $eventId = $this->insertEvent(
+            sequenceNumber: 2,
+            canonicalBytes: $canonicalBytes,
+            previousHash: $firstHash,
+            currentHash: $eventHash,
+            chainContext: 'operational',
+        );
+
+        $terminal = Terminal::query()->findOrFail($this->terminalId);
+        $receiptHashService = $this->app->make(ReceiptHashService::class);
+        $this->assertTrue(
+            $receiptHashService->verifyTerminalChain($terminal),
+            'T-c clean control must pass the current receipt verifier before the mirror mismatch is introduced.',
+        );
+
+        $receiptId = $this->insertProjectedReceipt(
+            fiscalEventId: $eventId,
+            fiscalHash: str_repeat('d', 64),
+            previousHash: $firstHash,
+            canonicalBytes: $canonicalBytes,
+            chainSequence: 2,
+        );
+
+        $this->assertFalse(
+            $receiptHashService->verifyTerminalChain($terminal),
+            'The receipt verifier must fail when T-c adds the projected receipt/event mirror divergence.',
+        );
+
+        $mirror = DB::table('pos_receipts as receipts')
+            ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+            ->where('receipts.id', $receiptId)
+            ->select([
+                'receipts.fiscal_event_id',
+                'receipts.fiscal_hash as receipt_hash',
+                'receipts.previous_hash as receipt_previous_hash',
+                'receipts.canonical_bytes as receipt_canonical_bytes',
+                'events.current_hash as event_hash',
+                'events.canonical_bytes as event_canonical_bytes',
+            ])
+            ->first();
+
+        $this->assertNotNull($mirror);
+        $previousReceiptHash = (string) DB::table('pos_receipts')
+            ->where('terminal_id', $this->terminalId)
+            ->where('chain_sequence', 1)
+            ->value('fiscal_hash');
+        $eventCanonicalBytes = $this->stringifyCanonicalBytes($mirror->event_canonical_bytes);
+        $receiptCanonicalBytes = $this->stringifyCanonicalBytes($mirror->receipt_canonical_bytes);
+        $this->assertSame($eventId, $mirror->fiscal_event_id);
+        $this->assertSame(hash('sha256', $eventCanonicalBytes), $mirror->event_hash);
+        $this->assertSame($eventCanonicalBytes, $receiptCanonicalBytes);
+        $this->assertSame($previousReceiptHash, $mirror->receipt_previous_hash);
+        $this->assertNotSame($mirror->event_hash, $mirror->receipt_hash);
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', (string) $mirror->receipt_hash);
+        $this->assertSame(
+            1,
+            DB::table('pos_receipts as receipts')
+                ->join('fiscal_events as events', 'events.id', '=', 'receipts.fiscal_event_id')
+                ->where('receipts.terminal_id', $this->terminalId)
+                ->whereColumn('receipts.fiscal_hash', '!=', 'events.current_hash')
+                ->count(),
+        );
+    }
+
+    private function insertProjectedReceipt(
+        string $fiscalEventId,
+        string $fiscalHash,
+        string $previousHash,
+        string $canonicalBytes,
+        int $chainSequence,
+    ): string {
+        $receiptId = Str::uuid()->toString();
+        $now = Carbon::now('UTC');
+        DB::table('pos_receipts')->insert([
+            'id' => $receiptId,
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'location_id' => $this->locationId,
+            'terminal_id' => $this->terminalId,
+            'receipt_number' => 'M0-V3-'.Str::upper(Str::random(12)),
+            'receipt_type' => 'sale',
+            'chain_sequence' => $chainSequence,
+            'receipt_year' => (int) $now->format('Y'),
+            'fiscal_hash' => $fiscalHash,
+            'previous_hash' => $previousHash,
+            'vat_breakdown_hash' => hash('sha256', 'm0-vat-'.$chainSequence),
+            'payment_methods_hash' => hash('sha256', 'm0-payment-'.$chainSequence),
+            'posted_at' => $now,
+            'cashier_id' => $this->verifierUser->id,
+            'cashier_name' => 'M0 Fixture Cashier',
+            'subtotal' => '10.000',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+            'total' => '10.000',
+            'currency' => 'TND',
+            'fiscal_status' => 'fiscalized',
+            'invoice_type_code' => 'SALE',
+            'training_flag' => false,
+            'is_voided' => false,
+            'is_training' => false,
+            'canonical_bytes' => $canonicalBytes,
+            'fiscal_event_id' => $fiscalEventId,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        return $receiptId;
+    }
 
     /**
      * Seed `$length` consecutive `fiscal_events` rows for the test terminal.
@@ -452,9 +1249,10 @@ final class VerifyEventChainCommandTest extends TestCase
     {
         $previousHash = $this->genesisSeed;
         for ($seq = 1; $seq <= $length; $seq++) {
-            $canonicalBytes = json_encode(
-                ['event' => 'seq'.$seq, 'sequence_number' => $seq],
-                JSON_THROW_ON_ERROR,
+            $canonicalBytes = $this->canonicalEnvelope(
+                sequenceNumber: $seq,
+                previousHash: $previousHash,
+                payload: $this->chainBreakPayload('valid chain fixture '.$seq),
             );
             $currentHash = hash('sha256', $canonicalBytes);
 
@@ -463,6 +1261,9 @@ final class VerifyEventChainCommandTest extends TestCase
                 canonicalBytes: $canonicalBytes,
                 previousHash: $previousHash,
                 currentHash: $currentHash,
+                eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+                eventTimeDevice: '2026-08-12T07:00:00Z',
+                businessDate: '2026-08-12',
             );
 
             $previousHash = $currentHash;
@@ -485,9 +1286,10 @@ final class VerifyEventChainCommandTest extends TestCase
     {
         $previousHash = $this->genesisSeed;
         for ($seq = 1; $seq <= $totalLength; $seq++) {
-            $canonicalBytes = json_encode(
-                ['event' => 'seq'.$seq, 'sequence_number' => $seq],
-                JSON_THROW_ON_ERROR,
+            $canonicalBytes = $this->canonicalEnvelope(
+                sequenceNumber: $seq,
+                previousHash: $previousHash,
+                payload: $this->chainBreakPayload('tampered chain fixture '.$seq),
             );
 
             if ($seq === $atSequence) {
@@ -504,6 +1306,9 @@ final class VerifyEventChainCommandTest extends TestCase
                 canonicalBytes: $canonicalBytes,
                 previousHash: $previousHash,
                 currentHash: $currentHash,
+                eventType: FiscalEventType::CHAIN_BREAK_DETECTED,
+                eventTimeDevice: '2026-08-12T07:00:00Z',
+                businessDate: '2026-08-12',
             );
 
             // The next row chains off whatever current_hash was stored
@@ -579,20 +1384,30 @@ final class VerifyEventChainCommandTest extends TestCase
         string $canonicalBytes,
         string $previousHash,
         string $currentHash,
-    ): void {
+        string $chainContext = 'operational',
+        ?array $payload = null,
+        PayloadParseStatus $payloadParseStatus = PayloadParseStatus::Pending,
+        IntegrityStatus $integrityStatus = IntegrityStatus::Verified,
+        ?IntegrityExceptionClass $integrityExceptionClass = null,
+        FiscalEventType $eventType = FiscalEventType::SALE_RECEIPT,
+        ?string $eventTimeDevice = null,
+        ?string $businessDate = null,
+    ): string {
         $now = Carbon::now('UTC');
+        $eventId = Str::uuid()->toString();
         $row = [
-            'id' => Str::uuid()->toString(),
+            'id' => $eventId,
             'tenant_id' => $this->tenantId,
             'company_id' => $this->companyId,
             'terminal_id' => $this->terminalId,
             'operator_id' => $this->operatorId,
-            'event_type' => FiscalEventType::SALE_RECEIPT->value,
+            'event_type' => $eventType->value,
             'event_version' => 1,
             'signature_version' => 'hash-chain-integrity-v1',
             'sequence_number' => $sequenceNumber,
-            'event_time_device' => $now,
-            'business_date' => $now->copy()->startOfDay(),
+            'event_time_device' => $eventTimeDevice ?? $now,
+            'business_date' => $businessDate ?? $now->copy()->startOfDay(),
+            'chain_context' => $chainContext,
             'last_server_time_seen' => null,
             'server_received_at' => $now,
             'reference_event_id' => null,
@@ -605,14 +1420,76 @@ final class VerifyEventChainCommandTest extends TestCase
             'previous_hash' => $previousHash,
             'current_hash' => $currentHash,
             'signature_status' => SignatureStatus::NotRequired->value,
-            'integrity_status' => IntegrityStatus::Verified->value,
-            'integrity_exception_class' => null,
-            'integrity_exception_reason' => null,
-            'payload' => null,
-            'payload_parse_status' => PayloadParseStatus::Pending->value,
+            'integrity_status' => $integrityStatus->value,
+            'integrity_exception_class' => $integrityExceptionClass?->value,
+            'integrity_exception_reason' => $integrityExceptionClass === null ? null : 'm1_isolated_fixture',
+            'payload' => $payload === null ? null : json_encode($payload, JSON_THROW_ON_ERROR),
+            'payload_parse_status' => $payloadParseStatus->value,
             'created_at' => $now,
         ];
 
         DB::table('fiscal_events')->insert($row);
+
+        return $eventId;
+    }
+
+    private function runVerifier(): PendingCommand
+    {
+        return $this->artisan('fiscal:verify-event-chain', [
+            '--tenant' => $this->tenantId,
+            '--terminal' => $this->terminalId,
+            '--actor-id' => $this->verifierUser->id,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function chainBreakPayload(string $reason): array
+    {
+        return [
+            'last_good_hash' => str_repeat('b', 64),
+            'last_good_sequence' => 0,
+            'offending_record_reference' => [
+                'observed_previous_hash' => $this->genesisSeed,
+                'sequence_number' => 1,
+                'terminal_id' => $this->terminalId,
+            ],
+            'reason' => $reason,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $overrides
+     */
+    private function canonicalEnvelope(
+        int $sequenceNumber,
+        string $previousHash,
+        array $payload,
+        array $overrides = [],
+        FiscalEventType $eventType = FiscalEventType::CHAIN_BREAK_DETECTED,
+        string $chainContext = 'operational',
+    ): string {
+        $fields = array_merge([
+            'business_date' => '2026-08-12',
+            'chain_context' => $chainContext,
+            'company_id' => $this->companyId,
+            'event_time_device' => '2026-08-12T07:00:00Z',
+            'event_type' => $eventType->value,
+            'event_version' => 1,
+            'operator_id' => $this->operatorId,
+            'payload' => $payload,
+            'previous_hash' => $previousHash,
+            'reference_document_id' => null,
+            'reference_event_id' => null,
+            'sequence_number' => $sequenceNumber,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'tenant_id' => $this->tenantId,
+            'terminal_id' => $this->terminalId,
+        ], $overrides);
+        ksort($fields);
+
+        return json_encode($fields, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     }
 }
