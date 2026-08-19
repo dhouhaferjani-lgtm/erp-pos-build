@@ -1853,3 +1853,82 @@ residuals, so the ACCEPT stands on that ruling. Both are now in the §(73) resid
   executor cannot push. **The M4 handback's event-graph acceptance list must name `security-regression`
   as a job id the S-14 pre-promotion `workflow_dispatch` has to show executed and green**, alongside
   the `frontend-lint` step ids.
+
+---
+
+## M3 — 2(a) disposition, the aggregate proposal, and the announcement checklist
+
+### (80) 2(a) — VERIFY-ONLY, executed per the M0 ownership snapshot
+
+The brief is explicit that the branch decision is derived from the **M0** snapshot, not from a later
+grep. That snapshot (§M0) recorded: UI Wave 0's authoritative YAML at M4 `passed` (`6747d9042`,
+ACCEPT) with the wave `blocked_architecture` at M5, and `route-manifest-drift` **absent from
+`base_sha`** because it lives only on the unmerged UI branch. Ruling taken there and unchanged:
+**verify-only + record the dependency; do not author the job.**
+
+Re-confirmed at this tip, as facts rather than as a re-decision: `grep -c 'route-manifest-drift\|check-manifest-drift'`
+over `.github/workflows/ci.yml` → **0**. P2 never authored it, never regenerated
+`scripts/factory/manifests/`, and never touched `gen-route-manifest.mjs`. The UI wave's T7 C6 regex
+fix is likewise untouched — P2 authored no C6 test, exactly as §M1(7) recorded.
+
+**Lane state has MOVED since the M0 snapshot — recorded, not acted on.** UI Wave 0's authoritative
+YAML now reads wave `status: review` (it was `blocked_architecture` at M0); M4 is still `passed`. The
+brief binds the 2(a) decision to the M0 snapshot precisely so a live lane's motion cannot flip an
+ownership call mid-wave, and the outcome is unchanged either way: the job is still absent from my base,
+UI Wave 0 still owns it, and authoring it here would still be the duplicate F-3 forbids. What the
+motion does change is **urgency of the merge-order line** — UI Wave 0 is closer to landing than it was,
+so the reconciliation in §4 of the announcement is more likely to be exercised soon, not less.
+
+**The dependency, carried into the announcement (§4):** P2, UI Wave 0 **and dn-consolidation** all
+edit `.github/workflows/ci.yml`, and P2 and UI Wave 0 both edit the `all-checks-pass` `needs` list.
+Whichever lands second rebases and re-verifies that **both** entries survive. The OpenAPI lane has
+zero CI wiring at base and is the last writer; it rebases onto P2 and adds its own jobs to the
+aggregate itself.
+
+### (81) The `all-checks-pass` PR→dev question — a PROPOSAL, not a change
+
+The brief asks for this to be investigated and proposed, never unilaterally changed (it is a branch-
+protection knob, an owner decision). **P2 changed nothing about the aggregate's `if:`.**
+
+**Finding.** `all-checks-pass` carries
+`if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (push && ref == main)`,
+so on a PR→`dev` it **does not run**. Branch protection on `dev` therefore cannot key off it — there is
+no single required check for the dev merge gate. Today's PR→dev protection, if any, must name
+individual jobs.
+
+**Why it cannot simply be widened.** The aggregate `needs` twelve jobs; on PR→dev, `backend-test`,
+`frontend-test`, `frontend-build` and `pos-test` are `if:`-gated off. A `needs` entry whose job comes
+back `skipped` fails or skips the aggregate — the workflow's own comment at `:1136-1143` documents
+that exact reasoning for `treasury-spine-pgsql`. Dropping the aggregate's `if:` as-is would make it
+permanently skipped/failed on PR→dev.
+
+**Proposal (owner's call, three options, cheapest first):**
+
+1. **A second, PR→dev-shaped aggregate** — `all-checks-pass-dev`, no `if:`, `needs` exactly the jobs
+   that genuinely run on PR→dev (`backend-lint`, `backend-analyse`, `backend-architecture`,
+   `backend-test-pgsql`, `treasury-spine-pgsql`, **`security-regression`**, `frontend-lint`,
+   `frontend-typecheck`, `types-drift`). One required check for `dev`; no existing behaviour changes.
+   **Recommended.**
+2. **Make the existing aggregate event-aware** — keep one job, compute the required set with
+   `if: always()` plus per-need result checks. Fewer moving parts, but `always()` aggregates are easy
+   to get subtly wrong and would need their own liveness test.
+3. **Do nothing** — keep naming individual jobs in branch protection. Zero risk, but the list must be
+   maintained by hand, which is the failure mode this whole package exists to end.
+
+Whichever is chosen, the ruling belongs with the F-2 execution-scope decision on the owner sheet:
+both are branch-protection/CI-budget policy, and neither is the executor's to take.
+
+### (82) The merge-announcement checklist
+
+Landed at `docs/handoff/ANNOUNCE-enforcement-p2-ci-contract-change-2026-08-19.md`. It is the **input**
+to the parent's final announcement — sent after M3/M4 acceptance and before promotion, with
+`merge_announcement_ack` recording the sent fact in the post-promotion admin commit. The executor
+never sends it.
+
+Contents, all measured rather than assumed (`git diff --name-only <p2-base>...<lane-tip>` per
+worktree): the ceiling-hit remediation for **dn-consolidation, es-wave-a0 and dpa-wave3-3d**; the
+**three-lane** `ci.yml` reconciliation order (P2, UI Wave 0, dn-consolidation, then OpenAPI last); the
+two behaviour changes (en+fr+ar for the 33 wired namespaces, and Security now gating PR→dev); the
+open owner line for F-2 execution scope with the corrected **~2–3 min** figure; the owner prerequisites
+and the exact step/job ids the S-14 dispatch must show — **including `security-regression`**; the
+parent-owned inherited red gates; and the named residuals, with N-4 called out for P3-M2.
