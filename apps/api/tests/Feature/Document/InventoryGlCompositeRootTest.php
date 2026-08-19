@@ -33,10 +33,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
+use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
 use Tests\Traits\BuildsDeliveryPolicyFixtures;
 
 /** D-28 production-root coverage for C-1 and C-3. [PG] */
+#[UsesFrozenSeederFixture]
 final class InventoryGlCompositeRootTest extends TestCase
 {
     use BuildsDeliveryPolicyFixtures;
