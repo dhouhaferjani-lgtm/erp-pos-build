@@ -146,8 +146,11 @@ describe('DeliveryNoteConsolidation billing refusal', () => {
   })
 
   it('removes only the response-named delivery notes and retains the remaining selection', async () => {
-    mockMutateAsync.mockRejectedValue(attributedRefusal())
-    renderWithProviders(<DeliveryNoteConsolidation />, {
+    const onSuccess = vi.fn()
+    mockMutateAsync
+      .mockRejectedValueOnce(attributedRefusal())
+      .mockResolvedValueOnce({ data: { id: 'invoice-remaining' } })
+    renderWithProviders(<DeliveryNoteConsolidation onSuccess={onSuccess} />, {
       companyConfig: mechanicCompanyConfig,
     })
 
@@ -161,7 +164,10 @@ describe('DeliveryNoteConsolidation billing refusal', () => {
       expect(checkboxes[2]).not.toBeChecked()
       expect(checkboxes[3]).toBeChecked()
     })
-    expect(screen.getByText(/1 delivery note selected/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenLastCalledWith(['delivery-note-3'])
+      expect(onSuccess).toHaveBeenCalledWith('invoice-remaining')
+    })
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 

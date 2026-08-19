@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-quer
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { toast } from 'sonner'
 
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
@@ -241,5 +242,32 @@ describe('delivery note hooks tenant scope', () => {
     expect(queryClient.getQueryData(['delivery-notes', 'invoiceable', 'partner-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-invoiceable' })
     expect(queryClient.getQueryData(['documents', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-documents' })
     expect(queryClient.getQueryData(['invoices', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-invoices' })
+  })
+
+  it('suppresses only the attributed billing-refusal toast', async () => {
+    const queryClient = createPersistentQueryClient()
+    const wrapper = makeWrapper(queryClient)
+    const attributedRefusal = {
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'DELIVERY_NOTE_ALREADY_INVOICED',
+            details: {
+              documents: [{ id: 'delivery-note-1', document_number: 'DN-001' }],
+            },
+          },
+        },
+      },
+    }
+    mockConsolidateDeliveryNotesToInvoice.mockRejectedValueOnce(attributedRefusal)
+    const { result } = renderHook(() => useConsolidateDeliveryNotes(), { wrapper })
+
+    await expect(result.current.mutateAsync(['delivery-note-1'])).rejects.toBe(attributedRefusal)
+    expect(toast.error).not.toHaveBeenCalled()
+
+    mockConsolidateDeliveryNotesToInvoice.mockRejectedValueOnce(new Error('network failed'))
+    await expect(result.current.mutateAsync(['delivery-note-1'])).rejects.toThrow('network failed')
+    expect(toast.error).toHaveBeenCalledWith('network failed')
   })
 })

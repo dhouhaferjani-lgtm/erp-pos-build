@@ -23,58 +23,10 @@ import { useCompanyConfig } from '@/contexts'
 import { colorClasses, semanticColorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { Button } from '@/components/atoms/Button/Button'
-
-interface BillingRefusalDocument {
-  id: string
-  document_number: string
-  invoice_id: string | null
-  invoice_number: string | null
-  invoice_date: string | null
-  invoiced_via: string | null
-}
-
-interface BillingRefusal {
-  documents: BillingRefusalDocument[]
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function nullableString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
-}
-
-function parseBillingRefusal(error: unknown): BillingRefusal | null {
-  if (!isRecord(error)) return null
-  const response = error['response']
-  if (!isRecord(response) || response['status'] !== 422) return null
-  const data = response['data']
-  if (!isRecord(data)) return null
-  const envelope = data['error']
-  if (!isRecord(envelope) || envelope['code'] !== 'DELIVERY_NOTE_ALREADY_INVOICED') return null
-  const details = envelope['details']
-  if (!isRecord(details) || !Array.isArray(details['documents'])) return null
-
-  const documents = new Map<string, BillingRefusalDocument>()
-  for (const candidate of details['documents']) {
-    if (!isRecord(candidate)) continue
-    const id = nullableString(candidate['id'])
-    const documentNumber = nullableString(candidate['document_number'])
-    if (id === null || documentNumber === null) continue
-
-    documents.set(id, {
-      id,
-      document_number: documentNumber,
-      invoice_id: nullableString(candidate['invoice_id']),
-      invoice_number: nullableString(candidate['invoice_number']),
-      invoice_date: nullableString(candidate['invoice_date']),
-      invoiced_via: nullableString(candidate['invoiced_via']),
-    })
-  }
-
-  return documents.size > 0 ? { documents: Array.from(documents.values()) } : null
-}
+import {
+  parseDeliveryNoteBillingRefusal,
+  type DeliveryNoteBillingRefusal,
+} from '../deliveryNoteBillingRefusal'
 
 interface DeliveryNoteConsolidationProps {
   /**
@@ -105,7 +57,7 @@ export function DeliveryNoteConsolidation({
   const { hasPermission } = usePermissions()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
-  const [billingRefusal, setBillingRefusal] = useState<BillingRefusal | null>(null)
+  const [billingRefusal, setBillingRefusal] = useState<DeliveryNoteBillingRefusal | null>(null)
 
   // Fetch invoiceable delivery notes
   const {
@@ -192,19 +144,11 @@ export function DeliveryNoteConsolidation({
     setError(null)
   }
 
-  // Handle consolidation
-  const handleConsolidate = async () => {
-    if (!selectionValidation.valid) {
-      setError(selectionValidation.error ?? t('sales:deliveryNotes.consolidation.errors.invalidSelection'))
-      return
-    }
-
+  const submitConsolidation = async (deliveryNoteIds: string[]) => {
     setError(null)
 
     try {
-      const response = await consolidateMutation.mutateAsync(
-        Array.from(selectedIds)
-      )
+      const response = await consolidateMutation.mutateAsync(deliveryNoteIds)
       setBillingRefusal(null)
       if (onSuccess) {
         onSuccess(response.data.id)
@@ -212,7 +156,7 @@ export function DeliveryNoteConsolidation({
         navigate(`/sales/invoices/${response.data.id}`)
       }
     } catch (err) {
-      const refusal = parseBillingRefusal(err)
+      const refusal = parseDeliveryNoteBillingRefusal(err)
       if (refusal === null) {
         setBillingRefusal(null)
         setError(getErrorMessage(err))
@@ -223,12 +167,26 @@ export function DeliveryNoteConsolidation({
     }
   }
 
-  const removeRefusedDeliveryNotes = () => {
+  // Handle consolidation
+  const handleConsolidate = async () => {
+    if (!selectionValidation.valid) {
+      setError(selectionValidation.error ?? t('sales:deliveryNotes.consolidation.errors.invalidSelection'))
+      return
+    }
+
+    await submitConsolidation(Array.from(selectedIds))
+  }
+
+  const removeRefusedDeliveryNotes = async () => {
     if (billingRefusal === null) return
     const refusedIds = new Set(billingRefusal.documents.map((document) => document.id))
-    setSelectedIds((current) => new Set(Array.from(current).filter((id) => !refusedIds.has(id))))
+    const remainingIds = Array.from(selectedIds).filter((id) => !refusedIds.has(id))
+    setSelectedIds(new Set(remainingIds))
     setBillingRefusal(null)
     setError(null)
+    if (remainingIds.length > 0) {
+      await submitConsolidation(remainingIds)
+    }
   }
 
   // Format currency

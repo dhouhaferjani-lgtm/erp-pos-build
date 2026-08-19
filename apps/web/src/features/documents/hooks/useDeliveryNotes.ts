@@ -16,6 +16,7 @@ import {
   type DeliveryNote,
 } from '../api/deliveryNotes'
 import { getErrorMessage } from '@/lib/api'
+import { parseDeliveryNoteBillingRefusal } from '../deliveryNoteBillingRefusal'
 
 function scopedNamespacePredicate(
   namespace: string,
@@ -151,7 +152,9 @@ export function useConsolidateDeliveryNotes() {
       toast.success('Invoice created from delivery notes')
     },
     onError: (error) => {
-      toast.error(getErrorMessage(error))
+      if (parseDeliveryNoteBillingRefusal(error) === null) {
+        toast.error(getErrorMessage(error))
+      }
     },
   })
 }
