@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M2 accepted, M3 review fixes verified
+# UI Wave 0 implementer report — M2 accepted, M3 final review pending
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b, M1, and M2 passed; M3 round-2 findings are repaired and verified, with round 3 pending.
+- Wave status: M0b, M1, and M2 passed; M3 round-4 findings are repaired and verified, with round 5 pending.
 
 ## M0 repin
 
@@ -198,6 +198,7 @@ cdce8ab3874ab8fad75827f4466a680e93d283d8 Phase 0.11.1: Delete duplicate marketin
 1184a83ac3b74ea74ba3b17c026de6bd4ab22e8b Phase 0.12.1: Delete retired finance hub
 85bf6b02d9c1a8bb5ed42113a3fdb194562f999f Phase 0.13.1: Delete duplicate settings account route
 9ac83f0eb6804d817fe00daffac62515e5003809 Phase 0.13.4: Resolve M3 review findings
+eb4ea4fe0c6e6f3668e8343fa5401c1ee9f11c11 Phase 0.10.2: Remove orphaned shift locale keys
 ```
 
 ### T10 — retired web shift console
@@ -248,6 +249,30 @@ $ git show d7f3ea21d^:apps/web/src/routes/index.tsx | grep -nE 'path="/pos/shift
 
 The new test was red before deletion and passed after it. The task-close full suite reported 4,209 passed / 5 failed / 1 skipped / 3 todo; failures were confined to the three M0b-reviewed exception files. Typecheck passed; lint exited 0 with 6,516 warnings and design audit 736 acknowledged / 0 new / 0 stale. React Doctor reported 98/100 with no issues.
 
+Round 4 found 15 additional leaf keys whose sole consumers were the deleted console components. Commit `eb4ea4fe0` removes them from en/fr (Arabic did not contain them) while preserving the seven `xReport` leaves used by `ZReportDetailPage`. The required per-key proof is:
+
+```text
+xReport.generatedAt refs=[no output] locales=null,null,null
+xReport.grossSales refs=[no output] locales=null,null,null
+xReport.netSales refs=[no output] locales=null,null,null
+xReport.paymentMethods refs=[no output] locales=null,null,null
+xReport.print refs=[no output] locales=null,null,null
+xReport.refundsCount refs=[no output] locales=null,null,null
+xReport.salesCount refs=[no output] locales=null,null,null
+xReport.salesSummary refs=[no output] locales=null,null,null
+xReport.taxAmount refs=[no output] locales=null,null,null
+xReport.title refs=[no output] locales=null,null,null
+xReport.vatBreakdown refs=[no output] locales=null,null,null
+transactions.errors.terminalCreation refs=[no output] locales=null,null,null
+transactions.loading.terminal refs=[no output] locales=null,null,null
+transactions.noLocation refs=[no output] locales=null,null,null
+transactions.noLocationDescription refs=[no output] locales=null,null,null
+$ jq -c '.xReport' apps/web/src/locales/{en,fr,ar}/pos.json
+{"rate":"Rate","net":"Net","vat":"VAT","gross":"Gross","method":"Method","count":"Count","amount":"Amount"}
+{"rate":"Taux","net":"HT","vat":"TVA","gross":"TTC","method":"Méthode","count":"Nombre","amount":"Montant"}
+null
+```
+
 ### T11 — duplicate marketing hub
 
 The `/marketing` route/import, complete `features/marketing` subtree, en/fr marketing locale files, and the en/fr/ar i18n namespace registrations were deleted. The six Sidebar destinations represented by the hub remain at `Sidebar.tsx:262-267`.
@@ -278,6 +303,9 @@ $ git show 1184a83ac^:apps/web/src/routes/index.tsx | sed -n '1977,1987p'
     <RequirePermission moduleKey="finance">
       <SuspenseWrapper>
         <FinanceHubPage />
+$ pnpm exec vitest run src/routes/routes.test.tsx  # captured before 1184a83ac
+src/routes/routes.test.tsx (17 tests | 1 failed)
+expected finance branch not to contain "<Route index"
 $ pnpm exec vitest run src/routes/routes.test.tsx src/lib/i18nRawKeyCoverage.test.tsx src/components/organisms/Sidebar/__tests__/Sidebar.test.tsx
 Test Files 3 passed (3); Tests 63 passed (63)
 $ jq -r '.hub' src/locales/{en,fr,ar}/finance.json
@@ -348,6 +376,9 @@ $ git show 85bf6b02d^:apps/web/src/routes/index.tsx | sed -n '2302,2315p'
               <RequirePermission permission="accounts.view">
                 <SuspenseWrapper>
                   <ChartOfAccountsPage />
+$ pnpm exec vitest run src/routes/routes.test.tsx  # captured before 85bf6b02d
+src/routes/routes.test.tsx (18 tests | 1 failed)
+expected settings branch not to contain 'path="chart-of-accounts"'
 $ grep -rn "settings/chart-of-accounts" apps/web/src
 [no output]
 $ rg -n 'path="chart-of-accounts"|permission="accounts.view"' apps/web/src/routes/index.tsx
@@ -384,3 +415,5 @@ Round 2 also found four newly zero-consumer API exports after T10: `getOrCreateW
 Owner/terminal ruling remains required before merge for `/finance`: the delivered parent route has no index and no element, so React Router matches `/finance` and renders an empty outlet rather than reaching the catch-all redirect. This contradicts the accepted rationale in `OWNER-DECISIONS:58`, but the source implements the brief exactly (keep the parent, delete the index, add no redirect). No unruled production behavior was added. The next substantive bridge review must verify that this contradiction is explicitly disclosed; the parent must choose leave-as-ruled, add a redirect, or supply another route element before merge.
 
 M3 bridge round 3 (`docs/handoff/reviews/ui-wave0/M3-round3.md`) ended in another blank review-tool error with no findings or parseable verdict. It is preserved and treated as `CHANGES-REQUIRED` fail-closed; no source change is indicated, and round 4 retries the read-only gate.
+
+M3 bridge round 4 (`docs/handoff/reviews/ui-wave0/M3-round4.md`) returned `CHANGES-REQUIRED`. Its P1 identified the 15 orphan locale leaves now removed by `eb4ea4fe0`; the complete per-key proof is pasted above. Its T12/T13 P3 evidence gap is also closed above with the captured red output. The retained POS documents remain brief-compliant historical records with dated supersession notices, and the empty deletion directories contain no files and cannot enter Git. Post-fix verification: focused route/i18n/sidebar/POS tests 69/69; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with failures only in the three M0b exceptions; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale. React Doctor found no changed React source files in this locale-only fix.

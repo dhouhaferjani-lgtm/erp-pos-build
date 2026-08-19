@@ -67,10 +67,10 @@ milestones:
     title: "T10, T11, T12, T13 - the four owner-ruled deletions (/pos/shifts + POSShiftsDashboard; /marketing + MarketingHubPage; /finance + FinanceHubPage OUTRIGHT with no redirect, preserving finance:hub.cards.treasuryOverview.title and applying the three-row disposition table; the duplicate /settings/chart-of-accounts mount), each against the six-point deletion checklist in §3, one commit per task, source only. EXPECTED AND PERMITTED: these commits leave scripts/factory/manifests/ drifted and check-manifest-drift.sh exiting 1 in the intermediate state (§2 exception 2) - the reviewer must not treat that as a defect at this milestone. T10 hand-removes exactly the two baseline lines (baseline.json:202, :717); --write-baseline is forbidden. Each commit still green on typecheck/lint/test."
     review_lenses: [frontend-conventions, general]
     status: review
-    fix_rounds: 3
-    updated: 1da344919
-    commit: 9ac83f0eb6804d817fe00daffac62515e5003809
-    verdict: docs/handoff/reviews/ui-wave0/M3-round3.md
+    fix_rounds: 4
+    updated: eb4ea4fe0
+    commit: eb4ea4fe0c6e6f3668e8343fa5401c1ee9f11c11
+    verdict: docs/handoff/reviews/ui-wave0/M3-round4.md
     last_verdict: CHANGES-REQUIRED
   - id: M4
     title: "T3 (UI-10) - two authorised commits: T3(a) regenerate scripts/factory/manifests/ (manifests and nothing else) so the manifest reflects T2 plus the four deletions, then T3(b) the standalone manifest drift CI job. check-manifest-drift.sh must exit 0 at this point."
@@ -159,3 +159,5 @@ findings:
   - "M3 round-2 owner escalation: keeping the finance parent while deleting its index and adding no redirect makes /finance match the element-less parent and render a blank outlet; it does not fall through to the catch-all /dashboard redirect stated in OWNER-DECISIONS:58. The implementation follows the brief exactly, so no unruled behavior change was made; parent/owner must rule before merge."
   - "M3 round-2 post-fix verification: focused route/POS tests 26/26; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with only the three reviewed M0b exception files; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale; React Doctor 100/100."
   - "M3 bridge round 3 produced a blank review-tool error and no verdict/findings; the harness treats it as CHANGES-REQUIRED. The round-2 repairs remain verified, no source change is indicated, and round 4 retries the read-only gate."
+  - "M3 bridge round 4 found 15 en/fr POS locale leaves whose sole consumers were the deleted shift console. Commit eb4ea4fe0 removes those leaves, preserves the seven live Z-report detail leaves, and the handback now pastes zero-consumer/null-locale proof for every removed key plus the captured T12/T13 red output."
+  - "M3 round-4 post-fix verification: focused route/i18n/sidebar/POS tests 69/69; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with only the three reviewed M0b exception files; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale; React Doctor skipped because the locale-only fix changed no React source files."
