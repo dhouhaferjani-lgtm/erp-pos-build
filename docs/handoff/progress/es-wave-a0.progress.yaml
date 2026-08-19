@@ -88,9 +88,23 @@ milestones:
     # (M2-round2.md findings 7, 8, 9, 10) — its disposition assigned them to
     # "M3's diff or the wave's close-out". They are reporting-honesty items;
     # none of them changes a verdict.
-    status: in_progress
+    #
+    # Delivered 2026-08-19 in ONE commit, 1edbf2633. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M3-implementation-evidence.md.
+    # Proposal artifact (what this milestone's review must approve/amend/reject):
+    # docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md — COMMITTED in
+    # this range, per R-7.
+    #
+    # D-8 was NOT reached. ParseFailureResolutionService.php diff = 0 lines; no
+    # second approver, no correcting event, no change to what the resolver may
+    # do. Detection only, per R-9.
+    # R-1 HOLDS: ZReportHashService.php diff = 0 lines (finding 7 was closed via
+    # the comment/rendering path exactly so the Z service stays untouched).
+    # NO straggler implementation landed — DeadLetteredProjectionsController,
+    # FiscalEventQuarantine and OutboxIngestor are all untouched in this range.
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 1edbf2633
     verdict: null
     last_verdict: null
   - id: M3b
