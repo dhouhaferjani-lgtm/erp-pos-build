@@ -167,12 +167,12 @@ milestones:
   - id: M1
     title: "2(c) i18n completeness + 2(d) guard-liveness — CLASSIFIED AS A CI-CONTRACT CHANGE (gate-r1 H-3; mechanism corrected r4/R0-3): the i18n audit lands as an EXPLICIT DISCRETE STEP in the frontend-lint job in ci.yml — NEVER via the package.json lint chain (frontend-lint runs discrete steps + lint:ratchet, never pnpm lint; ci.yml:885 comment says the ratchet supersedes it; the chain is local-only) — and that workflow edit changes frontend-lint's pass/fail on every open lane, so M1 carries the same quiet-window/announcement/observe-first-or-baselined treatment as M2/M3 (the old 'pure additions, safe first' label was false). Acceptance greps ci.yml for the step; H-9: verify frontend-lint in all-checks-pass needs (:1104 at brief base), wire if absent. 2(c) audits AUTHORED-LOCALE PROVENANCE — source translation files/imports, never the merged resources object (gate-r1 H-5): English-aliased namespaces (i18n.ts:392-405,416-424) and spread-supplied keys (:429-430) count as UNTRANSLATED and enter the ratchet baseline; production-shaped alias/spread tamper fixture required. The i18n ratchet carries the anti-growth check in its TWO-PHASE PINNED form (gate-r2 R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4): commit 1 = dedicated SEED COMMIT, commit 2 = mirror pins (i18n_baseline_seed_commit + i18n_baseline_protected_blob + the PRE-ALLOCATED i18n_baseline_pin_tag NAME, gate-r5 R5-C-2) + checker metadata, ONLY THEN this milestone's bridge review (verdict covers both commits; a seed-changing fix round RECREATES the same two-step topology then re-reviews both — gate-r4 R4-H-3, single self-identifying fix commit forbidden); the CI checker compares PARSED KEY SETS against the blob named by the OWNER-SET repository variable I18N_BASELINE_PROTECTED_BLOB (git cat-file blob; never the YAML, never a branch name; FAIL CLOSED on unset variable / unfetchable blob / YAML-mirror drift; keys removal-only; bootstrap + re-pins are owner variable writes at promotion, brief §6 F-8; the before-state IS the variable-held blob) — any added key FAILS + its planted violation+matching-key tamper case must fail against the variable-held comparison (plus mirror-drift -> FAIL, unset variable -> FAIL via isolated env -u subshell). LOCAL green runs use the authority setup export (derive seed blob, assert == mirror, export I18N_BASELINE_PROTECTED_BLOB — gate-r4 R4-H-4); the CI step maps ${{ vars.I18N_BASELINE_PROTECTED_BLOB }} into the checker env and fetches the pin tag explicitly (gate-r4 R4-H-2). CLDR plural-category check per locale. 2(d): RuleTester for each untested ESLint rule; tamper test per audit script (C6 Record<X, StatusTone> case coordinated with UI Wave 0 T7 under the ownership rule); the convention written into docs/conventions/; PLUS named deliverable 4 (r4/R0-3; runner corrected gate-r2 R2-H-3): the tools tests STAY ON VITEST — add the script \"test:tools\": \"vitest run tools/__tests__\" to apps/web/package.json and wire pnpm test:eslint-rules AND pnpm test:tools (that exact command string, also in M4 + package acceptance; node --test removed everywhere) into CI (both run in NO workflow today) as a discrete step or job (executor's choice, justified in the decision doc), with a planted-failing-rule-test tamper proof."
     review_lenses: [frontend-conventions]
-    status: review
+    status: blocked_review
     fix_rounds: 5
     commit: null
-    verdict: docs/handoff/reviews/enforcement-p2/M1-round5.md
-    last_verdict: CHANGES-REQUIRED
-    updated: 545dd5453
+    verdict: docs/handoff/reviews/enforcement-p2/M1-round6.md
+    last_verdict: CHANGES-REQUIRED   # 6 rounds run; fix_rounds 5 == max_fix_rounds
+    updated: a7489cf4f
   - id: M2
     title: "2(b) Feature-suite strategy: decision doc + implementation of the chosen option. LOCAL timing measurement only (no push — gate-r1 H-7); if material -> F-2 fires (blocked_owner). Kill the unanchored --filter substring mechanism (anchor survivors ^...Test$ + exactly-one-match lint). MANDATORY (gate-r1 H-6): the mechanically-checked class-to-lane/exclusion manifest covering EVERY tests/Feature class (script/test fails on any unassigned class) + the planted-new-Feature-class negative proof in a previously-UNCOVERED directory (selected automatically or loud failure; revert; both outputs pasted). Pointing at already-covered Treasury/Accounting (ci.yml:833-851) does not satisfy it. RECIPROCAL NOTE (gate-r2 R2-H-6; hardened gate-r3 R3-H-2/R3-H-3): P3 dispatches only after the WHOLE P2 package lands (p2_landed_sha is a P3-M0 dispatch precondition — P3's base contains this milestone's outcome by construction; there is no mid-wave pin); P3-M2 wires its country-chart completeness test into the lane this milestone selects; any later P2 restructuring of the Feature lanes/allowlist must reconcile against that landed P3 wiring — never silently drop the landed P3 test."
     review_lenses: [frontend-conventions, tenancy-authz]
@@ -198,5 +198,46 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
-blockers: []
+status: blocked_review   # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+blockers:
+  - milestone: M1
+    condition: "STOP condition A — fix rounds exhausted (fix_rounds 5 == max_fix_rounds 5, six review rounds run)."
+    register: docs/handoff/reviews/enforcement-p2/M1-round6.md
+    surviving_finding: >-
+      R6-1 (P2, the only required one): the round-5 addition of a third sibling
+      `englishOnly: { ...enBeta }` to the sibling-scope fixture destroyed the round-4 liveness pin.
+      That sibling trips the NEW predicate (b), so the fixture returns en-aliased for reasons
+      unrelated to scope-keying. Mutation-tested by the reviewer: reverting spreadsByScope's
+      `scope: stack[stack.length - 1]` to `scope: stack.length - 1` leaves EVERY asserted kind in the
+      suite identical (nothing goes red) while the production regression goes silent again. Violates
+      this package's own docs/conventions/08-DETECTOR-LIVENESS.md checklist.
+    remedy: >-
+      5-line deletion, pre-verified by the reviewer — remove `englishOnly: { ...enBeta },` and its
+      comment from apps/web/tools/__fixtures__/i18n-completeness/sibling-scope/lib/i18n.ts, and drop
+      the stale sentence in DECISION §M1(34). Predicate (b) keeps its own pin in the dedicated
+      english-only-subtree fixture; predicate (a) keeps its pin in spread-order. Fixtures are outside
+      the audited root: baseline byte-identical, NO seed revision, NO re-pin, NO new pin tag.
+    parent_decision_required: >-
+      Raise max_fix_rounds to 6 and let the executor apply it + run round 7; OR apply the deletion as
+      a parent-authorized scoped continuation and re-run the M1 bridge; OR accept with the finding
+      recorded (not recommended — a knowingly dead liveness pin is the exact defect class this package
+      closes).
+    carry_forward_notes: >-
+      R6-2 bare-property subtree assignment still silent (open scope call, DECISION §M1(37));
+      R6-3 predicate (b) is prefix-only, no live match, fails loud not silent;
+      R6-4 no CI wiring has executed on a real runner — two owner prerequisites before merge;
+      R6-5 lint:ratchet swallows the lint chain tail (accepted; discrete steps gate first).
+  - milestone: "(wave-level, NOT owned by P2)"
+    condition: "THREE inherited CI gates are RED at base_sha, which blocks the mandatory pre-promotion workflow_dispatch (brief §5 item 4 / LEDGER S-14)."
+    detail: >-
+      P2 changed ZERO PHP files, so all three pre-date this branch. backend-analyse (phpstan
+      --level=8) exits 1 with 2 errors at CopiesDocumentData.php:309-310 — already LEDGER row C-3,
+      OPEN. backend-architecture (deptrac ratchet) exits 1: violations rose 99 -> 174 including a
+      BLOCKER category (ModuleDomain on ModuleApplication +17) — UNRECORDED anywhere, reproduced
+      identically from an independent worktree. frontend-lint's `pnpm lint:ratchet` step exits 1:
+      @autoerp/pos warnings rose 40 -> 84 — UNRECORDED; apps/pos at this base is byte-identical to
+      dev (tree dde81dde7). All three jobs have no `if:` guard, so all three run on the dispatch.
+    parent_decision_required: >-
+      Remediate, re-baseline with owner approval, or record explicit inherited-red waivers — and open
+      LEDGER rows for the deptrac and pos-ratchet regressions, which have none. Until then P2 cannot
+      be promoted regardless of its own gate outcome.

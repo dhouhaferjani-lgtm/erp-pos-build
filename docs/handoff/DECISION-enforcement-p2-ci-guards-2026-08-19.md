@@ -826,3 +826,74 @@ no closure property; each shape must be enumerated. §M1(10)'s residual is resta
 - **R5-5 carry-forward.** None of the CI wiring has executed on a real runner; the three
   first-execution surfaces and the two owner prerequisites are named in §M1(36) and go into the
   handback's event-graph list.
+
+---
+
+## M1 round 6 — STOP condition A (`blocked_review`). Fix rounds exhausted.
+
+Verdict: **CHANGES-REQUIRED** — 0 P1, 1 P2 (required), 4 P3 (all carry-forward/documentation).
+`fix_rounds` is **5 of `max_fix_rounds: 5`**. Another fix round would take it to 6, which the harness
+defines as STOP condition A: *"A milestone is still CHANGES-REQUIRED after `max_fix_rounds`. Set
+milestone `status: blocked_review`, summarize the surviving findings in `blockers:`, STOP."*
+
+**I have NOT applied the round-6 fix.** Doing so would put an unreviewed change into the tree past the
+cap and would misrepresent the round-6 register as covering it. The tree at handover is exactly the
+state round 6 reviewed.
+
+### The single surviving required finding, in full
+
+**My round-5 fixture edit destroyed the round-4 liveness pin.** Round 5 added a third sibling
+`englishOnly: { ...enBeta }` to the **`sibling-scope`** fixture — the fixture whose only job is to pin
+the round-4 scope-keying fix. That sibling trips the *new* predicate (b), so the fixture now returns
+`en-aliased` for reasons unrelated to scope-keying. The reviewer mutation-tested it: reverting
+`spreadsByScope`'s `scope: stack[stack.length - 1]` to `scope: stack.length - 1` (i.e. undoing the
+round-4 fix) leaves **every asserted `kind` in the whole suite identical** — nothing goes red — while
+the production regression goes silent again:
+
+```
+fixture                 HEAD             depth-keyed mutant
+prod-shaped             english-spread   english-spread
+comment-tamper          english-spread   english-spread
+spread-order            en-aliased       en-aliased
+sibling-scope           en-aliased       en-aliased      <-- pin is DEAD
+english-only-subtree    en-aliased       en-aliased
+```
+
+This violates this milestone's own deliverable, `docs/conventions/08-DETECTOR-LIVENESS.md`:
+*"The guard has at least one test that FAILS if the guard is neutered."*
+
+### The remedy, pre-verified by the reviewer — a 5-line deletion
+
+1. Delete `englishOnly: { ...enBeta },` **and its comment** from
+   `apps/web/tools/__fixtures__/i18n-completeness/sibling-scope/lib/i18n.ts` (the round-5 addition).
+   The reviewer verified the restored fixture discriminates again
+   (`HEAD = en-aliased` / `depth-keyed mutant = english-spread`).
+2. Drop the now-stale sentence in §M1(34) claiming `sibling-scope` "asserts the reversal is still
+   caught" — after (1) it does, but the sentence currently describes the broken state.
+
+Predicate (b) keeps its own red-first pin in the dedicated `english-only-subtree` fixture, and
+predicate (a) keeps its pin in `spread-order`, so nothing is left unpinned. Fixtures live outside the
+audited root: **no reclassification, baseline byte-identical, no seed revision, no two-commit re-pin,
+no new pin tag.**
+
+### What the parent must decide
+
+The remedy is smaller than any change already accepted in this milestone, and it is fully specified
+and pre-verified. It needs one of:
+
+- **raise `max_fix_rounds` to 6** (a parent/owner edit to the progress YAML) and let the executor apply
+  the deletion and run round 7; or
+- **apply the deletion as a parent-authorized scoped continuation** and re-run the M1 bridge; or
+- **accept the milestone with the finding recorded** as a known-dead liveness pin (not recommended —
+  it is precisely the detector-rot class this package exists to close).
+
+### Carry-forward notes (not blockers)
+
+- **R6-2** the bare-property subtree assignment (`sections: enSettings.sections`, no spread) is still
+  silent — named as the open scope call in §M1(37); `spreadsByScope` only sees `...ident`.
+- **R6-3** predicate (b) is prefix-only: any spread identifier starting with `en` counts as English. No
+  live match (all 26 spread identifiers in `i18n.ts` are locale bundles) and the failure direction is a
+  loud red finding, never a silent pass. Recorded for the next extender.
+- **R6-4** none of the CI wiring has executed on a real runner — the three first-execution surfaces and
+  the two owner prerequisites are in §M1(36).
+- **R6-5** `lint:ratchet` swallows the lint chain's tail; accepted, the discrete steps gate first.
