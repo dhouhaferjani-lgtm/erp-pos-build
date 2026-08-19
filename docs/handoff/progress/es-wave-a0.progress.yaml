@@ -314,9 +314,99 @@ milestones:
     #     change outside 17-A..17-G and stays a ticket. Two new tests; the log
     #     test is red-first proven (removing the Log call fails it, 1 failed).
     #     FiscalEventQuarantineResolutionTest is now 12/74 (was 10/69).
-    status: in_progress
+    #
+    # DELIVERED 2026-08-19 over three commits. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M4-implementation-evidence.md.
+    #   c0b850f2c — open M4, close M3b, the five sweeps, the four tickets
+    #   8cee85f70 — ES-09
+    #   59bb6913f — ES-41 + ES-42
+    #
+    # ES-09 (CORRECTNESS). Head resolution at BOTH named services now keys on
+    #   (tenant_id, company_id, terminal_id, chain_context), matching
+    #   OutboxIngestor's prior-row read verbatim; both write chain_context
+    #   EXPLICITLY rather than leaning on the column default. ReceiptHashService
+    #   is NOT re-fixed (STOP-C ruling; M2 bc692820a) but the end-to-end test
+    #   still asserts the receipt-verification arm. Defect (b) closed by a new
+    #   ServerAuthoredChainPlacementVerifier that derives the verdict in
+    #   OutboxIngestor's own hash->linkage->clock order; an inadmissible
+    #   placement throws and the transaction rolls back, so no row claims a
+    #   verdict it did not earn. ONE shared verifier, not two copies (M3b F-5's
+    #   lesson applied in advance).
+    #   RED-FIRST re-run with the FINAL tests against the two pre-M4 service
+    #   files: 5 of 6 failed (29 assertions), every failure "expected 3, stored
+    #   6" — the deeper z_session head winning — with the M1 verifier itself
+    #   reporting "CHAIN BREAK at sequence_number 6 ... sequence_number gap".
+    #   The 6th test is DISCLOSED as a guard, green before and after. After:
+    #   6 passed (38 assertions). Fixtures seed BOTH contexts with z_session
+    #   DELIBERATELY DEEPER (5 vs 2) so the pre-fix winner is deterministic;
+    #   a single-context fixture would pass vacuously.
+    #   Field occurrence stays SUSPECTED — no production probe was run, none
+    #   is claimed.
+    # ES-41 (TRIGGER PRESENCE). No production change. New
+    #   ImmutabilityTriggerPresenceTest asserts on PG that all three
+    #   fiscal_events triggers and the pos_receipts trigger EXIST (read from
+    #   pg_trigger by name) and REFUSE — each refusal two-sided, the exception
+    #   AND the unchanged row, with the refused statement in a NESTED
+    #   transaction so PG's aborted-transaction state does not swallow the
+    #   re-read. The non-PG driver scope is DOCUMENTED not "fixed": the one
+    #   non-skipping test asserts the ABSENCE of enforcement on other drivers,
+    #   so the gap is visible on the driver that lacks it instead of hiding
+    #   behind a skip. [PG] tests skip LOUDLY.
+    #   SUSPECTED half VERIFIED IN CODE FIRST -> CONFIRMED, and NOT fixed: the
+    #   pending_seal->fiscalized branch is an unconditional RETURN NEW with no
+    #   column comparisons (vs 7, 13 and 15 guarded columns in the three
+    #   branches below it). A characterization test proves it is REACHABLE: one
+    #   UPDATE flips the status and rewrites subtotal+total and commits (moved
+    #   coherently so pos_receipts_totals is satisfied — that CHECK is an
+    #   arithmetic invariant, not an immutability control). Guarding the branch
+    #   is a per-column decision against a LIVE seal path = R-5 scope creep, so
+    #   it is ticketed WITH executable evidence for an owning lane.
+    # ES-42 (two-sided REFUSAL). FIRST CHECK RUN FIRST AND PASSED — NO STOP.
+    #   pos.operate_terminal is seeded (RolesAndPermissionsSeeder.php:336) and
+    #   the device principal holds it via the seeded cashier/manager roles
+    #   (:657, :590). Gate ES-42-device-permission-grant does NOT fire.
+    #   Route now carries ->middleware('can:pos.operate_terminal'), matching the
+    #   sibling device surface ZReportSyncController::sync()'s Gate::authorize.
+    #   RED-FIRST: with a COMPANY-MEMBER tenant user lacking the permission the
+    #   pre-gate endpoint returned 200 and the envelope landed. The membership is
+    #   deliberate — without it CompanyContextMiddleware 403s first and the test
+    #   is green with no gate at all; that false green was found and removed
+    #   before the gate was written. After: 403 + zero fiscal_events + zero
+    #   quarantine rows.
+    #   DEVICE-SUCCESS half in the SAME diff: a named end-to-end test, plus the
+    #   endpoint suite's fixture principal is now a REAL device principal
+    #   (cashier role) instead of a bare permissionless user — so all 14 tests
+    #   in that file are device-success assertions — plus the four other suites
+    #   that drive the route (Task33, TaskPhase2/3, ReceiptReturnRefactorV3).
+    #   DEPLOY: NOTHING OWED. No permission migration, no seeder change, no
+    #   permission:cache-reset.
+    #
+    # VERIFICATION. New/changed tests PG by path: 25 passed (114 assertions)
+    # across the three files; default driver 21 passed + 4 LOUD [PG] skips.
+    # Headline counts unchanged at 92/545 combined (ParseFailureResumeTest
+    # 27/209, VerifyEventChainCommandTest 34/138, ZSessionLifecycle 7/91,
+    # DeadLetteredProjectionsController 12/33; FiscalEventQuarantineResolution
+    # 12/74 by the two F-4 additions). R-1 HOLDS: ZReportHashService 0-line over
+    # f21a5f32653..59bb6913f, as is OutboxIngestor (so :815's PARAM_STR binding
+    # stays untouched). NO migration, NO onQueue (no horizon.php entry owed), NO
+    # config, NO front-end, NO new permission / role seeder / cache-reset.
+    # pint --test pass and phpstan level 8 [OK] on every changed/new file; the
+    # one PHPStan finding (bccomp given a plain string) was fixed at the cause
+    # via an is_numeric-narrowing helper, not a cast, @var or baseline entry.
+    #
+    # INHERITED REDS, each proven by swapping the pre-M4 file back in and
+    # re-running: TreasuryDepositBridgeTest 9 (its own
+    # TreasuryDepositBridge::__construct arity mismatch),
+    # AccountStatusChangedServerOnlyTest 1 + DepositReceiptAppendTest 1 (array
+    # key ORDER in assertSame + a one-hour local-TZ artifact),
+    # Task33FiscalFullFlowVerificationTest 1 (PG bytea stream-handle assertion
+    # in the test itself — 41/41 green on the default driver, and the same 14
+    # assertions reached with or without the ES-42 gate),
+    # ReceiptReturnRefactorV3Test 2 of 9 (the residual already in `blockers`).
+    status: review
     fix_rounds: 0
-    commit: null
+    # Milestone slice for the reviewer: f21a5f32653..59bb6913f
+    commit: 59bb6913f
     verdict: null
     last_verdict: null
   - id: M5
