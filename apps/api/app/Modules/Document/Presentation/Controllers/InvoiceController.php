@@ -28,6 +28,7 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Document\Presentation\Requests\UpdateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
@@ -80,6 +81,7 @@ class InvoiceController extends Controller
         private readonly DocumentLineTaxResolver $lineTaxResolver,
         private readonly DeliveryComplianceGate $deliveryComplianceGate,
         private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     private function scale(): int
@@ -805,7 +807,7 @@ class InvoiceController extends Controller
 
                 // Confirm each draft DN (issues stock, adds to fiscal chain)
                 foreach ($draftDns as $dn) {
-                    $confirmed = $this->deliveryNoteService->confirm($dn);
+                    $confirmed = $this->deliveryNoteService->confirm($dn, $this->glBuffer);
                     $confirmedDns[] = [
                         'id' => $confirmed->id,
                         'number' => $confirmed->document_number,
@@ -817,7 +819,7 @@ class InvoiceController extends Controller
                 // Post the invoice (adds to fiscal chain)
                 $postedInvoice = $this->postingService->post($documentModel);
 
-                return response()->json([
+                $response = response()->json([
                     'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),
                     'meta' => [
                         'timestamp' => now()->toIso8601String(),
@@ -826,6 +828,11 @@ class InvoiceController extends Controller
                         'confirmed_delivery_notes' => $confirmedDns,
                     ],
                 ]);
+
+                // C-1 root tail: every nested DN deferred its contexts here.
+                $this->glBuffer->flushIfOutermost();
+
+                return $response;
             });
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('OPERATION_FAILED', $e->getMessage());
@@ -974,6 +981,7 @@ class InvoiceController extends Controller
                     partner: $partner,
                     location: $location,
                     notes: 'Created from invoice '.$documentModel->document_number.' before posting',
+                    requireCompleteFefoAllocation: true,
                 );
 
                 // 2 — 🚨 LINKAGE. Without this the invoice re-post is refused
@@ -1014,6 +1022,11 @@ class InvoiceController extends Controller
                 $notePayload['invoiced_via'] = 'pre_post_delivery';
                 $confirmed->update(['payload' => $notePayload]);
 
+                // C-5 owns this root transaction. DeliveryNoteService's nested
+                // frame only enqueues, so the guided endpoint must flush after
+                // its last inventory lock and before the root commits.
+                $this->glBuffer->flushIfOutermost();
+
                 return response()->json([
                     'data' => DocumentData::fromModel($postedInvoice, true, $this->scale()),
                     'meta' => [
@@ -1030,9 +1043,17 @@ class InvoiceController extends Controller
                 ]);
             });
         } catch (GuidedDeliveryCannotBeGeneratedException $e) {
-            // Same code and same machine reason the pre-lock checks used to
-            // return, so moving the lookups under the lock changed no contract.
-            return $this->validationErrorResponse('DELIVERY_CANNOT_BE_GENERATED', $e->reason);
+            $message = $e->reason === 'FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH'
+                ? __('documents.guided_delivery.fefo_allocation_failed')
+                : $e->reason;
+
+            return response()->json([
+                'error' => [
+                    'code' => 'DELIVERY_CANNOT_BE_GENERATED',
+                    'message' => $message,
+                    'reason' => $e->reason,
+                ],
+            ], 422);
         } catch (GuidedDeliveryNoLongerApplicableException $e) {
             // Same machine code as the pre-transaction check: the client sees ONE
             // refusal for "this invoice does not need a delivery note created for

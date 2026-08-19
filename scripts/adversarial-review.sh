@@ -10,6 +10,7 @@
 #     --lenses "inventory-costing,fiscal-pos" \
 #     --range <git-diff-range e.g. BASE_SHA..HEAD | --staged | --worktree> \
 #     --out <path-to-write-verdict.md> \
+#     [--authority <path-to-amending-ruling>] \
 #     [--round <n>]
 #
 # Exit codes: 0 = ACCEPT · 2 = CHANGES-REQUIRED · 3 = tool/parse error (treat as CHANGES-REQUIRED, fail-closed)
@@ -18,7 +19,7 @@
 # Requires: claude CLI on PATH (verified 2026-08-11 @ 2.1.227) supporting --print/--model/--permission-mode.
 set -euo pipefail
 
-BRIEF="" ; MILESTONE="" ; LENSES="" ; RANGE="" ; OUT="" ; ROUND="1"
+BRIEF="" ; MILESTONE="" ; LENSES="" ; RANGE="" ; OUT="" ; AUTHORITY="" ; ROUND="1"
 while [ $# -gt 0 ]; do
   case "$1" in
     --brief) BRIEF="$2"; shift 2 ;;
@@ -26,6 +27,7 @@ while [ $# -gt 0 ]; do
     --lenses) LENSES="$2"; shift 2 ;;
     --range) RANGE="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
+    --authority) AUTHORITY="$2"; shift 2 ;;
     --round) ROUND="$2"; shift 2 ;;
     *) echo "unknown arg: $1" >&2; exit 3 ;;
   esac
@@ -42,6 +44,7 @@ for req in BRIEF MILESTONE RANGE OUT; do
 done
 if ! command -v claude >/dev/null 2>&1; then echo "claude CLI not on PATH" >&2; exit 3; fi
 if [ ! -f "$BRIEF" ]; then echo "brief not found: $BRIEF" >&2; exit 3; fi
+if [ -n "$AUTHORITY" ] && [ ! -f "$AUTHORITY" ]; then echo "authority not found: $AUTHORITY" >&2; exit 3; fi
 
 # Resolve the diff instruction the reviewer will run itself (large diffs: reviewer runs git, not embedded).
 case "$RANGE" in
@@ -59,6 +62,10 @@ You are reviewing milestone ${MILESTONE} of an implementation wave, round ${ROUN
 SCOPE — read the milestone's own section in the dispatch brief and hold the implementation to it:
   Brief: ${BRIEF}  (open it; find the "${MILESTONE}" milestone section; its scope, invariants, and
   required tests are your acceptance criteria — do not invent scope beyond it, do not relitigate the design.)
+
+AMENDING AUTHORITY — when present, this ruling changes the milestone gate and takes precedence over
+conflicting acceptance wording in the brief. Open it and apply it exactly:
+  ${AUTHORITY:-none}
 
 DOMAIN LENSES for this milestone: ${LENSES:-general}
   Apply each named lens (e.g. inventory-costing = WAC/stock-movement/cost-path integrity;

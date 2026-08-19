@@ -33,6 +33,7 @@ use Illuminate\Support\Carbon;
  * @property bool|null $physical_receipt Whether the physical goods were actually returned
  * @property bool|null $resalable Whether the returned item is in resalable condition
  * @property ReturnLineDisposition|null $disposition Disposition decision for returned item
+ * @property bool $stock_movement_expected Immutable projection decision used by detector D-f
  * @property string $unit
  * @property numeric-string $unit_price
  * @property numeric-string|null $unit_cost
@@ -101,6 +102,7 @@ class ReceiptLine extends Model
         'physical_receipt',
         'resalable',
         'disposition',
+        'stock_movement_expected',
     ];
 
     /**
@@ -127,6 +129,7 @@ class ReceiptLine extends Model
             'physical_receipt' => 'boolean',
             'resalable' => 'boolean',
             'disposition' => ReturnLineDisposition::class,
+            'stock_movement_expected' => 'boolean',
         ];
     }
 

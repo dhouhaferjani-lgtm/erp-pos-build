@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Compliance\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
@@ -12,34 +13,11 @@ use App\Modules\Product\Domain\Product;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Detector **D-f (PARTIAL)** — a goods line that moved NO stock.
+ * Detector **D-f delivery-note arm** — a goods line that moved NO stock.
  *
- * ── 🚩 SCOPE AS SHIPPED: **CONFIRMED DELIVERY NOTES ONLY** (fix round 1, fiscal
- * F-2 / inv P2-4) ──
- * This class scans ONE arm. The plan requires three; the other two are ROUTED TO
- * 3C, with the same reasoning that already defers D-a/D-b/D-e/D-g, and are NOT
- * implemented here:
- *
- *   - **POS receipts.** `PosCoreReceiptProjection` writes its movements with
- *     `reference_type = 'pos_receipt'`, while {@see scan()} pins
- *     `reference_type = 'Document'`. Adding the arm is not a widened `whereIn`:
- *     a POS receipt is not a `documents` row, so the candidate query, the
- *     line-level product set and the finding shape are all different, and the
- *     device/queue lane (rule 20) has its own cutover questions about which
- *     historical receipts may legitimately have no movement.
- *   - **Goods receipts (inbound).** Same shape problem in the other direction,
- *     and the inbound side has no cutover watermark on this branch — exactly the
- *     artefact whose absence defers D-a/D-b/D-e: without it the check's honest
- *     answer for every historical receipt is "no movement recorded", so it would
- *     fire across the whole ledger on its first scheduled run. A detector that
- *     always fires is not a detector.
- *
- * An earlier version of this docblock claimed "confirmed delivery notes /
- * **posted goods receipts**", which the code never did: the type filter is a
- * single-arm `where`, wrapped in a vestigial `orWhere` closure that adds no
- * second arm. Corrected here rather than papered over, because a detector that
- * over-states its coverage is worse than a missing one — it retires the
- * suspicion that would otherwise find the gap.
+ * POS and goods-receipt arms live in `CheckCogsCoverageCommand` because their
+ * source tables and identity grains differ from documents. This scanner owns
+ * only the confirmed-DN query and accepts the company cutover watermark.
  *
  * ── WHY THIS CHECK EXISTS AND NO MOVEMENT-KEYED CHECK CAN REPLACE IT ──
  * Every other detector in the lane keys on a `stock_movements` row: "this
@@ -78,16 +56,28 @@ class UndeliveredGoodsLineScanner
      * class docblock.
      *
      * @return list<array{
+     *     line_id: string,
      *     document_id: string,
      *     document_number: string,
      *     document_type: string,
+     *     document_date: string,
+     *     age_days: int,
      *     product_id: string,
      *     quantity: string
      * }>
      */
-    public function scan(string $companyId): array
+    public function scan(string $companyId, ?\DateTimeInterface $cutoverAt = null): array
     {
+        $tenantId = Company::query()->whereKey($companyId)->value('tenant_id');
+        if (! is_string($tenantId) || $tenantId === '') {
+            return [];
+        }
+
+        // Documented SQL counterpart of PhysicalLinePredicate's scoped row
+        // form; parity is pinned by
+        // test_scanner_sql_physical_predicates_match_the_scoped_row_predicate.
         $physicalProductIds = Product::query()
+            ->where('tenant_id', $tenantId)
             ->where('company_id', $companyId)
             ->where('is_physical', true)
             ->select('id');
@@ -101,6 +91,7 @@ class UndeliveredGoodsLineScanner
             // query look like the docblock's claim rather than like the code.
             ->where('type', DocumentType::DeliveryNote)
             ->where('status', DocumentStatus::Confirmed)
+            ->when($cutoverAt !== null, static fn (Builder $query): Builder => $query->where('created_at', '>=', $cutoverAt))
             ->whereHas('lines', function (Builder $lineQuery) use ($physicalProductIds): void {
                 $lineQuery->whereNotNull('product_id')->whereIn('product_id', $physicalProductIds);
             })
@@ -140,9 +131,14 @@ class UndeliveredGoodsLineScanner
                         }
 
                         $findings[] = [
+                            'line_id' => (string) $line->id,
                             'document_id' => (string) $document->id,
                             'document_number' => (string) $document->document_number,
                             'document_type' => $document->type->value,
+                            'document_date' => $document->document_date->toDateString(),
+                            'age_days' => $document->created_at !== null
+                                ? (int) floor($document->created_at->diffInDays(now(), true))
+                                : 0,
                             'product_id' => $productId,
                             'quantity' => (string) $line->quantity,
                         ];

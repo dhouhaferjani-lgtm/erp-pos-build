@@ -27,11 +27,13 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Expense\Application\Services\ExpenseService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -377,13 +379,13 @@ class GLIntegrationTest extends TestCase
         $this->assertTrue(app(GeneralLedgerHashService::class)->verifyChain($this->company->id));
     }
 
-    public function test_cogs_posting_without_company_context_assigns_verifiable_chain_sequence(): void
+    public function test_inventory_movement_posting_without_company_context_assigns_verifiable_chain_sequence(): void
     {
         app(CompanyContext::class)->clear();
 
-        $entry = app(GeneralLedgerService::class)->createCOGSEntry(
+        $entry = $this->createInventoryMovementEntryForLines(
             companyId: $this->company->id,
-            invoiceId: (string) Str::uuid(),
+            movementId: (string) Str::uuid(),
             documentNumber: 'INV-R2-COGS-001',
             lineItems: [
                 [
@@ -1023,5 +1025,43 @@ class GLIntegrationTest extends TestCase
             'total' => '50.00',
             'currency' => 'TND',
         ], $attributes));
+    }
+
+    /**
+     * Re-point the no-CompanyContext hash-chain regression from the retired
+     * invoice COGS helper to the movement-keyed inventory entry API.
+     *
+     * @param  array<int, array{product_id: string, quantity: string, unit_cost: string}>  $lineItems
+     */
+    private function createInventoryMovementEntryForLines(
+        string $companyId,
+        string $movementId,
+        string $documentNumber,
+        array $lineItems,
+        \DateTimeInterface $date,
+        ?string $description = null,
+        ?string $currencyCode = null,
+    ): ?JournalEntry {
+        $currency = $currencyCode ?? $this->company->currency;
+        $scale = CurrencyScale::for($currency);
+        $working = $scale + 6;
+        $precise = '0';
+        foreach ($lineItems as $item) {
+            $precise = bcadd($precise, bcmul($item['quantity'], $item['unit_cost'], $working), $working);
+        }
+
+        return DB::transaction(fn (): ?JournalEntry => app(GeneralLedgerService::class)->createInventoryMovementEntry(
+            companyId: $companyId,
+            movementId: $movementId,
+            sourceType: 'inventory_exit',
+            amount: CurrencyScale::bcround($precise, $scale),
+            reason: MovementReason::Delivery,
+            counterPurpose: SystemAccountPurpose::CostOfGoodsSold,
+            debitInventory: false,
+            entryDate: $date,
+            description: $description ?? "Inventory exit for {$documentNumber}",
+            currencyCode: $currency,
+            postSynchronously: true,
+        ));
     }
 }

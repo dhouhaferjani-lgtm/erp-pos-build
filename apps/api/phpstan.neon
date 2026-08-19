@@ -35,6 +35,8 @@ rules:
     - App\PHPStan\Rules\ForbidHardcodedBcmathScale
     - App\PHPStan\Rules\ForbidFixedScaleQuantityLiteralRule
     - App\PHPStan\Rules\ForbidQuantityScaleConstantInPresentationRule
+    - App\PHPStan\Rules\InventoryGlPostingViaBufferOnly
+    - App\PHPStan\Rules\InventoryPaymentRepositoryLockDisjointness
 
 services:
     -

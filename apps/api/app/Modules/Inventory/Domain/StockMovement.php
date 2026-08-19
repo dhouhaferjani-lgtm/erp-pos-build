@@ -11,6 +11,7 @@ use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\QuantityScale;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -181,13 +182,34 @@ class StockMovement extends Model
      */
     public function directionForRow(): string
     {
-        $cmp = bccomp((string) $this->quantity_after, (string) $this->quantity_before, 4);
+        $cmp = bccomp((string) $this->quantity_after, (string) $this->quantity_before, QuantityScale::SCALE);
 
         return match (true) {
             $cmp > 0 => 'in',
             $cmp < 0 => 'out',
             default => 'flat',
         };
+    }
+
+    /**
+     * Absolute row delta at the canonical stock-quantity scale.
+     *
+     * Writers disagree on the sign of `quantity`; quantity_before/after is the
+     * row-level authority used by the GL seam for both direction and magnitude.
+     *
+     * @return numeric-string
+     */
+    public function absoluteDeltaForRow(): string
+    {
+        $delta = bcsub(
+            (string) $this->quantity_after,
+            (string) $this->quantity_before,
+            QuantityScale::SCALE,
+        );
+
+        return bccomp($delta, '0', QuantityScale::SCALE) < 0
+            ? bcsub('0', $delta, QuantityScale::SCALE)
+            : $delta;
     }
 
     /**

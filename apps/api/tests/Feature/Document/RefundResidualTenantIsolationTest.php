@@ -582,8 +582,9 @@ final class RefundResidualTenantIsolationTest extends TestCase
      * null for cross-tenant product_ids, but the previous fix still wrote
      * the raw foreign UUID into document_lines.product_id. That made the
      * line dereference a foreign-tenant Product via DocumentLine::product()
-     * (unscoped belongsTo) — concretely surfaced in PostCOGSOnInvoice and
-     * other downstream consumers that read $line->product->is_physical etc.
+     * (unscoped belongsTo) — concretely surfaced in the retired invoice COGS
+     * listener and remains relevant to downstream consumers that read
+     * $line->product->is_physical etc.
      */
     public function test_auto_save_batch_lines_does_not_persist_cross_tenant_product_id(): void
     {

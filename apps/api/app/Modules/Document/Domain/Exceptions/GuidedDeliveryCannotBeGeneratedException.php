@@ -38,4 +38,9 @@ final class GuidedDeliveryCannotBeGeneratedException extends \DomainException
     {
         return new self('NO_RESOLVABLE_LOCATION');
     }
+
+    public static function fefoAllocationFailed(): self
+    {
+        return new self('FEFO_ALLOCATION_FAILED_CONFIRM_MANUALLY_WITH_BATCH');
+    }
 }

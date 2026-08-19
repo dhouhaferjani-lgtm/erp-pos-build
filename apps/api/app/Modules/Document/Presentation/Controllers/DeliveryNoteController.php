@@ -19,6 +19,7 @@ use App\Modules\Document\Domain\Services\DocumentNumberingService;
 use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Identity\Domain\User;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
@@ -59,6 +60,7 @@ class DeliveryNoteController extends Controller
         private readonly DeliveryNoteService $deliveryNoteService,
         private readonly VehicleContextBuilder $vehicleContextBuilder,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     private function scale(): int
@@ -326,8 +328,12 @@ class DeliveryNoteController extends Controller
                     throw new \DomainException('Only draft delivery notes can be confirmed');
                 }
 
-                // Use the DeliveryNoteService for proper lifecycle management with hash chain
-                return $this->deliveryNoteService->confirm($lockedDocument);
+                // Use the DeliveryNoteService for proper lifecycle management with hash chain.
+                // Its nested flush defers at depth two; C-3 owns the root tail.
+                $confirmed = $this->deliveryNoteService->confirm($lockedDocument, $this->glBuffer);
+                $this->glBuffer->flushIfOutermost();
+
+                return $confirmed;
             });
         } catch (\DomainException $e) {
             return $this->validationErrorResponse('INVALID_STATUS_TRANSITION', $e->getMessage());

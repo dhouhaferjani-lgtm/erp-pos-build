@@ -17,15 +17,20 @@ use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Events\ReturnNoteConfirmed;
 use App\Modules\Document\Domain\Exceptions\ReturnQuantityExceededException;
+use App\Modules\Inventory\Application\DTOs\MovementGlContext;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Application\Services\WeightedAverageCostService;
+use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
+use App\Modules\Inventory\Domain\Services\ReturnCostBasisResolver;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\Taxation\PeriodBackdatingGuardInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use App\Shared\Domain\QuantityScale;
 use App\Shared\Exceptions\ReturnPeriodLockedException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
@@ -61,8 +66,6 @@ final class ReturnNoteService
      * Resolver-independent by construction: the cost columns never depend on a
      * bound company's currency scale.
      */
-    private const COST_SCALE = 6;
-
     public function __construct(
         private readonly WeightedAverageCostService $wacService,
         private readonly FiscalHashService $hashService,
@@ -72,6 +75,8 @@ final class ReturnNoteService
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly PeriodBackdatingGuardInterface $periodBackdatingGuard,
         private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
+        private readonly ReturnCostBasisResolver $returnCostBasisResolver,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     /**
@@ -528,8 +533,11 @@ final class ReturnNoteService
      * @throws \DomainException If return note cannot be confirmed
      * @throws ReturnPeriodLockedException If `document_date` falls in a locked period
      */
-    public function confirmWithin(Document $returnNote, ?string $actorId = null): Document
-    {
+    public function confirmWithin(
+        Document $returnNote,
+        ?string $actorId = null,
+        ?InventoryGlPostingBuffer $rootBuffer = null,
+    ): Document {
         if ($returnNote->type !== DocumentType::ReturnNote) {
             throw new \DomainException(
                 'Only return notes can be confirmed with this service.'
@@ -557,19 +565,28 @@ final class ReturnNoteService
             (string) $returnNote->document_number,
         );
 
-        $this->confirmWithFiscalChain($returnNote, $actorId);
+        $buffer = $rootBuffer ?? $this->glBuffer;
+        $this->confirmWithFiscalChain($returnNote, $actorId, $buffer);
 
         $returnNote->refresh();
+        /** @var Document $confirmed */
+        $confirmed = $returnNote->load(['lines']);
 
-        /** @var Document */
-        return $returnNote->load(['lines']);
+        // Writer tail: at depth one this posts in the same transaction; at a
+        // composite savepoint it deliberately defers to the registered root.
+        $buffer->flushIfOutermost();
+
+        return $confirmed;
     }
 
     /**
      * Confirm a return note with full fiscal hash chain compliance.
      */
-    private function confirmWithFiscalChain(Document $returnNote, ?string $actorId = null): void
-    {
+    private function confirmWithFiscalChain(
+        Document $returnNote,
+        ?string $actorId,
+        InventoryGlPostingBuffer $buffer,
+    ): void {
         // Acquire lock and get previous return note in chain
         $previousDoc = Document::where('company_id', $returnNote->company_id)
             ->where('type', DocumentType::ReturnNote)
@@ -587,7 +604,7 @@ final class ReturnNoteService
         $confirmedAt = now();
 
         // Receive stock back for each line
-        $this->receiveStockBack($returnNote);
+        $this->receiveStockBack($returnNote, $actorId, $buffer);
 
         // Calculate and snapshot taxes BEFORE sealing. The sealed fiscal hash
         // must cover the final, tax-adjusted total — and PostgreSQL's
@@ -652,8 +669,22 @@ final class ReturnNoteService
      * When a return note is confirmed, we need to record stock receipt
      * for all lines with physical products.
      */
-    private function receiveStockBack(Document $returnNote): void
-    {
+    private function receiveStockBack(
+        Document $returnNote,
+        ?string $actorId,
+        InventoryGlPostingBuffer $buffer,
+    ): void {
+        $payload = $returnNote->payload ?? [];
+        $existingRecords = is_array($payload['return_cost_basis'] ?? null)
+            ? $payload['return_cost_basis']
+            : [];
+        $recordsByLineId = [];
+        foreach ($existingRecords as $record) {
+            if (is_array($record) && is_string($record['line_id'] ?? null)) {
+                $recordsByLineId[$record['line_id']] = $record;
+            }
+        }
+
         foreach ($returnNote->lines as $line) {
             // D-19 / T4: ONE physical predicate (was the phantom `is_service`).
             $product = PhysicalLinePredicate::physicalProductFor($line);
@@ -686,51 +717,53 @@ final class ReturnNoteService
                 ->where('company_id', $returnNote->company_id)
                 ->findOrFail($locationId);
 
-            // Get original cost (from source document if available, otherwise use current cost)
-            $originalCost = $this->getOriginalCost($line);
+            $basis = $this->returnCostBasisResolver->resolveForReturnLine($line, (string) $line->quantity);
 
             // Receive stock back using WAC service with audit trail
-            $this->wacService->recordReturn(
+            $movement = $this->wacService->recordReturn(
                 product: $product,
                 location: $location,
                 quantity: CurrencyScale::bcformatStrict((string) $line->quantity, self::QUANTITY_SCALE),
-                originalCost: $originalCost,
+                originalCost: $basis->unitCost,
                 reference: $returnNote->document_number,
                 referenceType: StockMovementReferenceType::Document,
                 referenceId: $returnNote->id
             );
+
+            $occurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
+            $buffer->enqueue(new MovementGlContext(
+                kind: MovementGlKind::Entry,
+                movementId: $movement->id,
+                companyId: $movement->company_id,
+                currencyCode: (string) $returnNote->currency,
+                reason: $movement->reason ?? throw new \LogicException('Return movement is missing its GL reason.'),
+                quantityBefore: (string) $movement->quantity_before,
+                quantityAfter: (string) $movement->quantity_after,
+                unitCost: (string) ($movement->unit_cost ?? '0'),
+                sourceType: $movement->reference_type,
+                sourceId: $movement->reference_id,
+                occurredAt: \DateTimeImmutable::createFromInterface($occurredAt),
+                entryDate: new \DateTimeImmutable('now'),
+                postedByUserId: $actorId ?? (auth()->id() !== null ? (string) auth()->id() : null),
+                isHistorical: (bool) $movement->is_historical,
+            ));
+
+            $recordsByLineId[$line->id] = [
+                'line_id' => $line->id,
+                'product_id' => $line->product_id,
+                'quantity' => QuantityScale::round(
+                    (string) $line->quantity,
+                    QuantityScale::SCALE,
+                    QuantityScale::HALF_UP,
+                ),
+                'unit_cost' => $basis->unitCost,
+                'source' => $basis->source,
+                'movement_ids' => $basis->movementIds,
+            ];
         }
-    }
 
-    /**
-     * Get the original cost for a returned line.
-     *
-     * If return note references a source document (invoice/delivery note),
-     * use the cost from that document. Otherwise, use current product cost.
-     *
-     * @return numeric-string the unit cost at COST_SCALE — never a float
-     */
-    private function getOriginalCost(DocumentLine $line): string
-    {
-        // If return note references source document, get cost from there.
-        //
-        // NOTE (DPA Wave 3 §0b.3): on production data this branch is dead —
-        // every writer of `document_lines.landed_unit_cost` is purchase-side, so
-        // a customer return's source (a sales invoice or DN) never carries it and
-        // the fallback always wins. Replacing the basis is D-24/T15a's job, NOT
-        // T3's; T3 only stops the value being laundered through a float.
-        if ($line->document->source_document_id !== null) {
-            $sourceLine = DocumentLine::where('document_id', $line->document->source_document_id)
-                ->where('product_id', $line->product_id)
-                ->first();
-
-            if ($sourceLine !== null && $sourceLine->landed_unit_cost !== null) {
-                return CurrencyScale::bcformatStrict((string) $sourceLine->landed_unit_cost, self::COST_SCALE);
-            }
-        }
-
-        // Fallback: use current product cost
-        return CurrencyScale::bcformatStrict((string) ($line->product->cost_price ?? '0'), self::COST_SCALE);
+        $payload['return_cost_basis'] = array_values($recordsByLineId);
+        $returnNote->update(['payload' => $payload]);
     }
 
     /**

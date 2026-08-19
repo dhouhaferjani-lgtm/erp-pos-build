@@ -14,6 +14,7 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\StockLevel;
+use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\FiscalStatus;
@@ -447,8 +448,18 @@ final class ReceiptReturnFlowTest extends TestCase
 
         $saleReceipt = $this->createSaleReceipt();
         // Push it out of window so the resolver forces StoreVoucher.
-        $saleReceipt->posted_at = Carbon::now()->subDays(2);
-        $saleReceipt->save();
+        $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+        if ($isPgsql) {
+            DB::statement('ALTER TABLE pos_receipts DISABLE TRIGGER enforce_receipt_immutability');
+        }
+        try {
+            $saleReceipt->posted_at = Carbon::now()->subDays(2);
+            $saleReceipt->save();
+        } finally {
+            if ($isPgsql) {
+                DB::statement('ALTER TABLE pos_receipts ENABLE TRIGGER enforce_receipt_immutability');
+            }
+        }
 
         $line = ReceiptLine::create([
             'receipt_id' => $saleReceipt->id,
@@ -940,6 +951,84 @@ final class ReceiptReturnFlowTest extends TestCase
         ]);
     }
 
+    public function test_process_return_uses_the_original_sale_movement_cost_without_receipt_line_rounding(): void
+    {
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'cost_price' => '9.000000',
+        ]);
+        StockLevel::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'location_id' => $this->location->id,
+            'quantity' => '10.0000',
+            'reserved' => '0.0000',
+        ]);
+
+        $saleReceipt = $this->createSaleReceipt();
+        $line = ReceiptLine::create([
+            'receipt_id' => $saleReceipt->id,
+            'line_number' => 1,
+            'product_id' => $product->id,
+            'product_code' => $product->sku,
+            'product_name' => $product->name,
+            'quantity' => '2.0000',
+            'unit' => 'piece',
+            'unit_price' => '10.000',
+            'unit_cost' => '1.234568',
+            'line_total' => '20.000',
+            'tax_rate' => '0.00',
+            'tax_amount' => '0.000',
+            'discount_amount' => '0.000',
+        ]);
+        self::assertSame('1.2346', (string) $line->fresh()->unit_cost,
+            'option (b) loses the original six-decimal movement basis at the receipt-line boundary');
+
+        StockMovement::query()->create([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'variant_id' => null,
+            'location_id' => $this->location->id,
+            'movement_type' => MovementType::Issue,
+            'reason' => MovementReason::POSSale,
+            'quantity' => '2.0000',
+            'quantity_before' => '12.0000',
+            'quantity_after' => '10.0000',
+            'unit_cost' => '1.234568',
+            'total_cost' => '2.469136',
+            'reference' => 'Original POS sale',
+            'reference_type' => 'pos_receipt',
+            'reference_id' => $saleReceipt->id,
+            'user_id' => $this->user->id,
+            'is_historical' => false,
+            'occurred_at' => now(),
+        ]);
+
+        $response = $this->postJson(
+            "/api/v1/pos/receipts/{$saleReceipt->id}/return",
+            $this->withVoidReturnApproval($saleReceipt, [
+                'terminal_id' => $this->terminal->id,
+                'return_reason' => ReturnReason::WrongItem->value,
+                'lines' => [[
+                    'line_id' => $line->id,
+                    'quantity' => '2.0000',
+                ]],
+            ]),
+        );
+        $response->assertCreated();
+
+        $returnMovement = StockMovement::query()
+            ->where('reference_id', $response->json('data.id'))
+            ->where('reason', MovementReason::POSReturn)
+            ->sole();
+        self::assertSame('1.234568', (string) $returnMovement->unit_cost);
+        self::assertSame('2.469136', (string) $returnMovement->total_cost);
+    }
+
     // ---------------------------------------------------------------
     // Task 2a — refund_request_id + refund_destination HTTP contract
     // ---------------------------------------------------------------
@@ -1082,9 +1171,19 @@ final class ReceiptReturnFlowTest extends TestCase
                     return;
                 }
                 $injected = true;
-                DB::table('pos_receipts')
-                    ->where('id', $winnerReturnId)
-                    ->update(['refund_request_id' => $replayKey]);
+                $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+                if ($isPgsql) {
+                    DB::statement('ALTER TABLE pos_receipts DISABLE TRIGGER enforce_receipt_immutability');
+                }
+                try {
+                    DB::table('pos_receipts')
+                        ->where('id', $winnerReturnId)
+                        ->update(['refund_request_id' => $replayKey]);
+                } finally {
+                    if ($isPgsql) {
+                        DB::statement('ALTER TABLE pos_receipts ENABLE TRIGGER enforce_receipt_immutability');
+                    }
+                }
             },
         );
 

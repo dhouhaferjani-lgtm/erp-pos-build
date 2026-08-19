@@ -6,6 +6,7 @@ namespace Tests\Unit\Inventory;
 
 use App\Modules\Inventory\Domain\StockMovement;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 /**
  * A3: row-level movement direction is derived from the signed
@@ -18,28 +19,56 @@ final class StockMovementDirectionTest extends TestCase
 {
     public function test_increase_is_inbound(): void
     {
-        $m = new StockMovement;
-        $m->quantity_before = '10.0000';
-        $m->quantity_after = '12.5000';
+        $m = $this->movement([
+            'quantity_before' => '10.0000',
+            'quantity_after' => '12.5000',
+        ]);
 
         $this->assertSame('in', $m->directionForRow());
     }
 
     public function test_decrease_is_outbound(): void
     {
-        $m = new StockMovement;
-        $m->quantity_before = '12.5000';
-        $m->quantity_after = '10.0000';
+        $m = $this->movement([
+            'quantity_before' => '12.5000',
+            'quantity_after' => '10.0000',
+        ]);
 
         $this->assertSame('out', $m->directionForRow());
     }
 
     public function test_zero_delta_is_flat(): void
     {
-        $m = new StockMovement;
-        $m->quantity_before = '10.0000';
-        $m->quantity_after = '10.0000';
+        $m = $this->movement([
+            'quantity_before' => '10.0000',
+            'quantity_after' => '10.0000',
+        ]);
 
         $this->assertSame('flat', $m->directionForRow());
+    }
+
+    public function test_absolute_delta_uses_the_row_at_canonical_quantity_scale(): void
+    {
+        $in = $this->movement([
+            'quantity_before' => '10.0000',
+            'quantity_after' => '12.3456',
+        ]);
+
+        $out = $this->movement([
+            'quantity_before' => '12.3456',
+            'quantity_after' => '10.0000',
+        ]);
+
+        $this->assertSame('2.3456', $in->absoluteDeltaForRow());
+        $this->assertSame('2.3456', $out->absoluteDeltaForRow());
+    }
+
+    /** @param array{quantity_before: numeric-string, quantity_after: numeric-string} $attributes */
+    private function movement(array $attributes): StockMovement
+    {
+        $movement = (new ReflectionClass(StockMovement::class))->newInstanceWithoutConstructor();
+        $movement->setRawAttributes($attributes);
+
+        return $movement;
     }
 }

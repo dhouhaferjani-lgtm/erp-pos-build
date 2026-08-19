@@ -21,6 +21,7 @@ use App\Modules\Document\Domain\Exceptions\ReturnDecisionMismatchesGoodsExceptio
 use App\Modules\Document\Domain\Exceptions\ReturnLocationAmbiguousException;
 use App\Modules\Document\Domain\Exceptions\ReturnLocationUnresolvedException;
 use App\Modules\Document\Domain\Exceptions\ReturnNothingDeliveredException;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
 use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Shared\Contracts\AbilityAuthorizerInterface;
@@ -44,6 +45,7 @@ class RefundService
         private readonly DeliveredQuantityResolver $deliveredQuantityResolver,
         private readonly ProductCostLock $costLock,
         private readonly AbilityAuthorizerInterface $authorizer,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     /**
@@ -78,12 +80,20 @@ class RefundService
         }
 
         try {
-            return DB::transaction(fn (): Document => $this->cancelInvoiceWithDecision(
-                $invoice,
-                $reason,
-                $actorId,
-                $decision,
-            ));
+            return DB::transaction(function () use ($invoice, $reason, $actorId, $decision): Document {
+                $cancelled = $this->cancelInvoiceWithDecision(
+                    $invoice,
+                    $reason,
+                    $actorId,
+                    $decision,
+                );
+
+                // C-2 root tail. The return-note writer runs in a savepoint and
+                // defers its inventory-entry contexts to this frame.
+                $this->glBuffer->flushIfOutermost();
+
+                return $cancelled;
+            });
         } catch (ReturnDecisionConflictException $conflict) {
             // CF-D5 COMMIT-THEN-REFUSE (fiscal gate N2-I1). The conflict was detected
             // INSIDE the transaction above, under the step-0 lock, so the append could
@@ -234,7 +244,13 @@ class RefundService
                     $cancelled->tenant_id,
                     $cancelled->company_id,
                     $this->returnNoteService->lineProductIds($returnNote),
-                    fn (): Document => $this->returnNoteService->confirmWithin($returnNote, $actorId),
+                    fn (): Document => DB::transaction(
+                        fn (): Document => $this->returnNoteService->confirmWithin(
+                            $returnNote,
+                            $actorId,
+                            $this->glBuffer,
+                        ),
+                    ),
                 );
             }
         }
