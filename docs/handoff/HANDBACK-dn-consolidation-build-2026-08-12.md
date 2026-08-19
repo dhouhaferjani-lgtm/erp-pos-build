@@ -8,7 +8,8 @@
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
 - Current M2 implementation SHA: `3b1af7fbc` (bridge round 2 accepted through `52aae14b7`).
-- Milestone being handed back: M2 passed; M3 is next.
+- Current M3 implementation SHA: `c0c0c8273` (awaiting bridge round 1).
+- Milestone being handed back: M3 implementation complete; bridge review in progress.
 - No push, merge, or deployment was performed.
 
 M1 commit list:
@@ -439,6 +440,102 @@ precision findings, two default-SQLite composite-root fixture failures, two fina
 the normalized route-manifest patch, the SaleReceipt chokepoint, and the generated-types residual.
 M2 introduces no new failure and does not modify any inherited-failure owner surface.
 
+## M3 — Global to-bill work queue
+
+**Status: IMPLEMENTATION COMPLETE — bridge round 1 pending.**
+
+M3 commit sequence:
+
+- `aed019e3b Phase 2.3.1: Specify delivery note to-bill queue`
+- `2e767bbac Phase 2.3.2: Build delivery note to-bill queue API`
+- `069912e62 Phase 2.3.3: Specify global delivery note work queue`
+- `aa4332252 Phase 2.3.4: Build delivery note to-bill queue`
+- `ce88e367a Phase 2.3.5: Clear to-bill static analysis gate`
+- `c0c0c8273 Phase 2.3.6: Record to-bill route contract`
+
+### Failing-test-first evidence
+
+The backend RED commit `aed019e3b` introduced `DeliveryNoteToBillQueueTest.php` before the queue
+implementation. Against the inherited thin endpoint, the tests observed the old ungrouped payload,
+no aging or whole-result summary, ignored location/partner/date/periodic filters, and no static lazy
+partner endpoint. `2e767bbac` supplies the implementation and makes the four tests green.
+
+The frontend RED commit `069912e62` introduced the page, location-scope, route-gate, sidebar, and
+mixed-currency regressions before production code. The run failed because `useToBillQueue` did not
+exist, `/sales/to-bill` and its sidebar item did not exist, the allowed route could not render the
+page, and View A still allowed selection of a foreign-currency row. `aa4332252` supplies the page,
+transport, hooks, route, navigation, translations, and selection guard. The initial pagination test
+fixture claimed a two-row response while the request correctly retained the UI's 25-row page size;
+its expectation was corrected to the actual request contract before the green commit.
+
+### Delivered contract
+
+- `GET /delivery-notes/uninvoiced` now returns an oldest-first, customer-only partner roll-up with
+  partner/count/decimal-string total/company currency/oldest date/aging bucket/periodic flag,
+  offset group pagination, four aging buckets, and a page-invariant grand summary.
+- `GET /delivery-notes/uninvoiced/{partner}` is a static route declared before the UUID detail
+  route. It lazily returns that partner's oldest-first delivery-note rows with independent offset
+  pagination and a reconciliation summary. Both endpoints require `module:Sales` and
+  `deliveries.view`.
+- Both reads are tenant/company/location scoped. Location is required and validated against the
+  active membership; `all` is accepted only for an unrestricted membership. Partner search, date
+  range, and billed-periodically filters apply identically to the roll-up and expanded rows and
+  never silently widen on invalid input.
+- The roll-up excludes supplier-only partners, draft or already-invoiced notes, foreign-company
+  rows, and non-company-currency rows. Money remains decimal strings; no float enters the service or
+  frontend.
+- `/sales/to-bill` has independent `ModuleGuard module="Sales"` and
+  `RequirePermission permission="deliveries.view"` route assertions. The Sales sidebar item uses
+  the same permission and follows Delivery notes. The per-group Create invoice action additionally
+  requires `invoices.create`; there is no global bill-everyone action.
+- The page renders the 0–30 / 31–60 / 61–90 / 90+ strip, partner/date/periodic filters,
+  periodic-billing chips, oldest-first groups, lazy rows, row/group pagination, reconciliation text,
+  coexistence guidance, empty/error/loading states, and a partner/count/total confirmation.
+  Confirmation exhausts every row page before calling the existing atomic consolidation mutation.
+- Expanded rows use a `Pick<App.Modules.Document.Application.DTOs.DocumentData>`; no hand-written
+  delivery-note transport mirror was added. Query keys include tenant, company, and active-location
+  scope, so an active location change produces a distinct key and refetch.
+- The M2 round-2 close-before-merge P2 is closed: View A leaves foreign-currency DNs visible but
+  disables their selection, preventing a mixed-currency batch while preserving the server's
+  company-currency aggregate disclosure.
+- The factory route manifest records only `/sales/to-bill` with its exact `Sales` and
+  `deliveries.view` contract. The reserved seeder and generated permission map were not edited.
+
+### M3 verification evidence
+
+- Focused frontend: 6 files / 74 tests passed; typecheck passed. Scoped ESLint reports zero errors
+  and only three inherited warnings in old `useDeliveryNotes.ts` lines outside the M3 additions.
+- Focused backend: queue/access/lane-separation 18 tests / 120 assertions passed. Focused PHPStan
+  reports no errors, and changed-file Pint passes.
+- Exact §6.3 frontend scope: 94 files, 721 tests passed / 2 failed of 723. The failures are exactly
+  the owner-ledgered `finance/api.test.ts` and `finance/hooks/__tests__/tenantScope.test.tsx` reds;
+  every M3 test passes.
+- Exact backend path scope: 1,068 passed / 32 skipped / 2 failed. Both failures are the inherited
+  default-SQLite `InventoryGlCompositeRootTest` fixtures (`tenants` table absent); the PostgreSQL
+  control passes 2 tests / 19 assertions.
+- Whole PHPStan reproduces only the locked `CopiesDocumentData.php:309-310`
+  `precision.hardcodedBcmathScale` findings. Touched PHPStan is green, and NG-4 was respected.
+- Whole-web ESLint has zero errors; TanStack-key audit is 0 new, design-system audit is 734
+  acknowledged / 0 new / 0 stale, quantity audit is 0, web and POS custom ESLint-rule tests pass,
+  and fiscal parity passes 29/29.
+- React Doctor against explicit base `60df88a01` scores 88/100. Its only two findings are the
+  already-reviewed M2 partner-tab component-size/chained-iteration warnings; M3 introduced no
+  Doctor regression. Its initial M3 serial-page-fetch finding was fixed with bounded parallel page
+  requests before commit.
+- Route-manifest regeneration contains no `/sales/to-bill` delta after `c0c0c8273`; only the
+  inherited manifest residual remains. The SaleReceipt audit still reports only
+  `InventoryCountingController.php:135`, while its six-entry receiver validator passes.
+- `git diff --check`, base ancestry, translation parity, generated-DTO source guard, and the
+  no-float scan pass. M3 does not touch `CopiesDocumentData.php`, the permission seeder, or the
+  generated permission map.
+
+### M3 amended differential verdict
+
+**PASSED at `c0c0c8273` for entry to bridge review.** Every M3-touched surface is green. The exact
+repository failure set is byte-identical to or smaller than the pinned-base/M2 record: two locked
+PHPStan findings, two SQLite-only composite-root fixtures, two finance Vitest reds, and the known
+route-manifest/generated-types/SaleReceipt residuals. No new failure is present.
+
 ## Standing findings and deploy obligations
 
 - **F-1 resolved:** all three accountant grants and the merged frontend map are present at the pin.
@@ -505,11 +602,10 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 - Non-race consolidation refusals such as `PARTIAL_DELIVERY_NOTE_SELECTION_INCOMPLETE` fall back to
   the generic untranslated error path. OI-8 condition 1 governs the attributed race refusal, which
   is correctly inline and translated.
-- **M3 close-before-merge:** View A currently renders foreign-currency DNs as selectable, while
-  `CONSOLIDATION_VALIDATION_FAILED` responses (wrong currency/partner/status or no lines) bypass the
-  inline document-attribution parser and fall through to a transient backend-English toast. M3's
-  same-partner/same-currency guard must cover View A; otherwise M5 must widen the parser before the
-  branch can merge.
+- **M3 closure:** View A now keeps foreign-currency DNs visible but non-selectable, so its selection
+  cannot create a mixed-currency batch. Other non-race `CONSOLIDATION_VALIDATION_FAILED` causes
+  (wrong partner/status or no lines) still use the generic untranslated error path and remain an
+  out-of-scope presentation residual for M5 review.
 - The A2 balance line returns `null` for loading, error, and absent-data states alike, so an aggregate
   transport failure is visually indistinguishable from zero un-billed exposure.
 - Refusal-alert dates remain raw `Y-m-d` even though table dates now use the active locale.

@@ -36,10 +36,10 @@ preflight_policy:
     - "packages/shared/types/generated.d.ts is stale at the pinned base: typescript:transform adds SystemAccountPurpose inventory_shrinkage_expense/inventory_gain_income and MovementGlKind from the merged 3C lane; branch drift is byte-identical and remains owner-lane work"
   last_comparison:
     base_sha: 60df88a01b52828665caf33809486bdf0a699bbc
-    branch_sha: 52aae14b7
+    branch_sha: c0c0c8273
     status: passed
-    touched_files: "M2 focused Vitest 72/72, typecheck, scoped ESLint, TanStack-key audit, design-system audit, quantity audit, React Doctor, precision/type source guards, and diff-check green"
-    whole_repo: "Exact §6.3 path sweep 707/709 with only the same two finance reds (one PartnerForm async miss passed immediately in isolation and did not reproduce on the second sweep); backend path sweep 1064 passed/32 skipped with only the same two default-SQLite InventoryGlCompositeRootTest fixture reds; PHPStan same two locked C-3 findings; whole-web ESLint/key/design/quantity/POS and fiscal gates green; normalized route-manifest and SaleReceipt chokepoint residuals unchanged from the M1/base capture"
+    touched_files: "M3 focused Vitest 74/74, typecheck, scoped ESLint, focused PHPStan, changed-file Pint, 18 backend/lane-separation tests (120 assertions), React Doctor, query-key/design/quantity audits, and diff-check green"
+    whole_repo: "Exact §6.3 path sweep 721/723 with only the same two finance reds; backend path sweep 1068 passed/32 skipped with only the same two default-SQLite InventoryGlCompositeRootTest fixture reds (2/2 pass under phpunit-pgsql.xml); PHPStan same two locked C-3 findings; whole-web ESLint 0 errors plus key/design/quantity/POS/fiscal gates green; /sales/to-bill is recorded in the route manifest and only the inherited manifest residual remains; SaleReceipt chokepoint residual unchanged"
 
 # Commit series assigned by the parent (brief §5): Phase 2.<milestone>.<seq>. Do not invent another.
 commit_series: "Phase 2.<milestone>.<seq>"
@@ -106,9 +106,9 @@ milestones:
   - id: M3
     title: "M3 - View B: roll-up shape + GET /delivery-notes/uninvoiced/{partner} lazy expansion (M1 owns the endpoint's existence, authorization and module gate; M3 owns its roll-up shape, lazy expansion and UI), location scoping and filters, /sales/to-bill, sidebar entry, the 30/60/90/90+ aging strip, periodic-billing chip, coexistence helper text. §6.3 green AND the /finance/lane-separation regression green."
     review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: c0c0c8273
     verdict: null
     last_verdict: null
   - id: M4
@@ -145,3 +145,5 @@ findings:
   - "M2 bridge round 1 at 668a4bc47 returned CHANGES-REQUIRED. Blocking fixes: force confirmed status on the partner query, render complete persistent per-DN refusal attribution even for off-page selections, format row money in the DN currency, and record explicit RED-first/deviation evidence. P3 cleanup is included where bounded; the ungated base GET /delivery-notes route remains an owner-scoped residual rather than an unauthorized backend revocation."
   - "M2 bridge fix round 1 is split into RED ed282949a (7 reproduced failures) and GREEN 3b1af7fbc. It forces confirmed status, renders complete off-page attribution, preserves all-refused guarantees, formats row money by document currency, discloses aggregate currency scope, restores four-line coexistence guidance, localizes dates, repairs dl semantics, removes the fake date sentinel, extracts billing status, and adds the negative detail guard."
   - "M2 bridge round 2 at 52aae14b7 returned ACCEPT. The close-before-merge P2 is assigned to M3/M5: View A must prevent mixed-currency invalid batches or widen inline attribution for CONSOLIDATION_VALIDATION_FAILED. P3 tickets recorded in the handback cover confirmed-only All semantics, silent A2 errors, raw refusal dates, the currency-bearing count string, shared FilterTabs ARIA, missing invoiced/all request-shape tests, and inert viewer-only selection."
+  - "M3 at c0c0c8273 delivers the location-scoped customer-only to-bill roll-up and lazy partner rows, aging/filter/group UI, independent Sales/deliveries.view route gates, invoices.create group actions, sidebar and route-manifest entries, generated-DTO row typing, and the View A mixed-currency selection guard assigned by M2 round 2. Seeder and generated permissions map remain untouched."
+  - "M3 amended differential preflight passed before review: focused frontend 74/74 and backend 18/120 are green; exact frontend 721/723 has only the two inherited finance reds; exact backend 1068 passed/32 skipped has only the two inherited SQLite fixture reds, which pass 2/2 on PostgreSQL; whole PHPStan has only locked C-3 lines 309-310; whole lint/audits reproduce no new failure."
