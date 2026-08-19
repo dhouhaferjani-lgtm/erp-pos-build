@@ -105,8 +105,7 @@ class DeliveryNoteController extends Controller
             // the row predicate there while DB-per-tenant mode supplies the same
             // boundary through Stancl's active connection.
             ->forTenant($company->tenant_id)
-            ->ofType(DocumentType::DeliveryNote)
-            ->where('currency', $company->currency);
+            ->ofType(DocumentType::DeliveryNote);
 
         // Apply common filters from the trait
         $query = $this->applyFilters($query, $request);
@@ -193,6 +192,8 @@ class DeliveryNoteController extends Controller
      */
     private function deliveryNoteAggregates(Builder $query, string $currency): array
     {
+        $query->where('currency', $currency);
+
         $scale = $this->scaleResolver->getScale($currency);
         $count = (clone $query)->count();
         $total = (clone $query)

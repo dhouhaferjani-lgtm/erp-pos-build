@@ -320,6 +320,25 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
         $this->assertArrayNotHasKey('total_amount', $first->json('meta'));
     }
 
+    public function test_index_returns_foreign_currency_rows_but_aggregates_only_company_currency_rows(): void
+    {
+        $companyCurrency = $this->deliveryNote('DN-TND', [], '10.125');
+        $foreignCurrency = $this->deliveryNote('DN-EUR', [], '99.875', currency: 'EUR');
+
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/v1/delivery-notes?page=1&with_aggregates=1');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 2)
+            ->assertJsonPath('aggregates.count', 1)
+            ->assertJsonPath('aggregates.total', '10.125')
+            ->assertJsonPath('aggregates.currency', 'TND');
+        $this->assertEqualsCanonicalizing(
+            [$companyCurrency->id, $foreignCurrency->id],
+            array_column($response->json('data'), 'id'),
+        );
+    }
+
     /** @return array{invoiced_at: string, invoice_id: string, invoiced_via: string} */
     private function stamp(DeliveryNoteBillingLane $lane): array
     {
@@ -330,6 +349,7 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
         ];
     }
 
+    /** @param array<string, mixed> $payload */
     private function deliveryNote(
         string $number,
         array $payload = [],
@@ -341,6 +361,7 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
         DocumentType $type = DocumentType::DeliveryNote,
         ?string $tenantId = null,
         ?string $partnerId = null,
+        string $currency = 'TND',
     ): Document {
         return Document::create([
             'tenant_id' => $tenantId ?? $this->tenant->id,
@@ -351,7 +372,7 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
             'status' => $status,
             'document_number' => $number,
             'document_date' => $documentDate,
-            'currency' => 'TND',
+            'currency' => $currency,
             'total' => $total,
             'payload' => $payload,
             'fiscal_category' => FiscalCategory::fromDocumentType($type),
