@@ -1420,16 +1420,19 @@ export function AppRoutes() {
           />
         </Route>
 
-        {/* Parts Catalog */}
+        {/* Parts Catalog — UI-01/UI-43: the `moduleKey="parts_catalog"`
+            wrappers were dead (no such MODULE_PERMISSIONS key, no such
+            backend permission), so they gated on nothing. ModuleGuard
+            module="PlatformIntegration" is and remains the real gate; under
+            the fail-closed contract the dead key would have locked everyone
+            out instead. */}
         <Route
           path="parts-catalog"
           element={
             <ModuleGuard module="PlatformIntegration">
-              <RequirePermission moduleKey="parts_catalog">
-                <SuspenseWrapper>
-                  <PartsCatalogPage />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <SuspenseWrapper>
+                <PartsCatalogPage />
+              </SuspenseWrapper>
             </ModuleGuard>
           }
         />
@@ -1437,11 +1440,9 @@ export function AppRoutes() {
           path="parts-catalog/:articleId"
           element={
             <ModuleGuard module="PlatformIntegration">
-              <RequirePermission moduleKey="parts_catalog">
-                <SuspenseWrapper>
-                  <ArticleDetailPageCatalog />
-                </SuspenseWrapper>
-              </RequirePermission>
+              <SuspenseWrapper>
+                <ArticleDetailPageCatalog />
+              </SuspenseWrapper>
             </ModuleGuard>
           }
         />
@@ -2744,7 +2745,11 @@ export function AppRoutes() {
           <Route
             path="companies"
             element={
-              <RequirePermission moduleKey="partners">
+              /* UI-02: `partners` was never a MODULE_PERMISSIONS key, so this
+                 gated on nothing; `partners.view` is the real permission. The
+                 page itself is a pure redirect to /sales/customers — route
+                 dedup is UI-35 (Wave 4), not this task. */
+              <RequirePermission permission="partners.view">
                 <SuspenseWrapper>
                   <CrmCompanyListPage />
                 </SuspenseWrapper>

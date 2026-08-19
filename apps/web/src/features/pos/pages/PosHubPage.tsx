@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { usePageTitle } from '../../../hooks/usePageTitle'
-import { usePermissions } from '../../../hooks/usePermissions'
+import { usePermissions, type ModuleKey } from '../../../hooks/usePermissions'
 import {
   Store,
   ShoppingCart,
@@ -22,7 +22,7 @@ interface HubCardDef {
   descriptionKey: string
   icon: LucideIcon
   href: string
-  permissionModule?: string
+  permissionModule?: ModuleKey
 }
 
 const cards: HubCardDef[] = [

@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { usePageTitle } from '../../../hooks/usePageTitle'
-import { usePermissions } from '../../../hooks/usePermissions'
+import { usePermissions, type ModuleKey } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import {
   Package,
@@ -25,7 +25,7 @@ interface HubCardDef {
   descriptionKey: string
   icon: LucideIcon
   href: string
-  permissionModule?: string
+  permissionModule?: ModuleKey
   requiredModule?: string
 }
 

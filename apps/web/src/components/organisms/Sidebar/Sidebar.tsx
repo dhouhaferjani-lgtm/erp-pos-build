@@ -67,7 +67,7 @@ import {
   ShieldCheck,
 } from 'lucide-react'
 import type { BackendModule } from '../../../lib/modules'
-import { usePermissions } from '../../../hooks/usePermissions'
+import { usePermissions, type ModuleKey } from '../../../hooks/usePermissions'
 import { useCompanyConfig } from '../../../contexts/CompanyConfigContext'
 import { useProductConfig } from '../../../contexts/ProductConfigContext'
 import { companyVerticalToCatalog } from '../../../features/catalog/hooks/useVerticalLabels'
@@ -108,7 +108,7 @@ interface NavChild {
   icon: React.ComponentType<{ className?: string }>
   labelKey?: string
   module?: BackendModule | BackendModule[]
-  permission?: string
+  permission?: ModuleKey
 }
 
 interface NavModule {
@@ -118,7 +118,7 @@ interface NavModule {
   labelKey?: string
   children?: NavChild[]
   module?: BackendModule | BackendModule[]
-  permission?: string
+  permission?: ModuleKey
   section?: 'main' | 'bottom'
 }
 
@@ -422,7 +422,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
    * - `permission` declared → the user's role must grant it.
    */
   const isNavItemVisible = useCallback(
-    (module?: BackendModule | BackendModule[], permission?: string): boolean => {
+    (module?: BackendModule | BackendModule[], permission?: ModuleKey): boolean => {
       if (module !== undefined) {
         const names = Array.isArray(module) ? module : [module]
         if (!names.some((name) => hasModule(name))) {
