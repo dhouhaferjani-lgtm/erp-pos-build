@@ -9,7 +9,8 @@
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
 - Current M2 implementation SHA: `3b1af7fbc` (bridge round 2 accepted through `52aae14b7`).
 - Current M3 implementation SHA: `2de9df339` (bridge round 2 accepted through `872e2a8e0`).
-- Milestone being handed back: M3 passed; M4 retirement and frequency work is next.
+- Current M4 implementation SHA: `4d747ce41` (awaiting bridge review).
+- Milestone being handed back: M4 implementation and amended preflight complete; bridge review is next.
 - No push, merge, or deployment was performed.
 
 M1 commit list:
@@ -569,6 +570,71 @@ its expectation was corrected to the actual request contract before the green co
 repository failure set is byte-identical to or smaller than the pinned-base/M2 record: two locked
 PHPStan findings, two SQLite-only composite-root fixtures, two finance Vitest reds, and the known
 route-manifest/generated-types/SaleReceipt residuals. No new failure is present.
+
+## M4 — Retirement and periodic-billing classification
+
+**Status: REVIEW — implementation and amended preflight complete.**
+
+M4 commit sequence:
+
+- `b796c9b4f Phase 2.4.1: Specify consolidation retirement and periodic billing`
+- `38fdd18f9 Phase 2.4.2: Retire legacy consolidation controls`
+- `4d747ce41 Phase 2.4.3: Tighten retirement verification`
+
+### Failing-test-first evidence
+
+The RED commit `b796c9b4f` made the create request, periodic-billing copy, and retired route contract
+fail against the inherited implementation: a periodically classified customer without a frequency
+received 422, the form still described and exposed consolidation frequency, and the explicit
+legacy route still rendered. The GREEN commits remove the explicit route and its owned UI,
+relax create validation, remove the selector, and tighten the new terminology assertion. The
+generic UUID detail route is intentionally left to handle an arbitrary literal path; no redirect or
+compatibility alias was added.
+
+### Delivered contract
+
+- The explicit `/inventory/delivery-notes/consolidate` route, lazy page, component, route tests,
+  component tests, and barrel export are deleted. The route manifest no longer records the path.
+  The canonical backend `POST /delivery-notes/consolidate-to-invoice` remains because Views A/B
+  use that atomic mutation.
+- `PartnerForm` and `B2BFieldsSection` no longer own, default, watch, submit, or render
+  `consolidation_frequency`. The database column, enum, backend DTO, generated transport, and update
+  validation are preserved.
+- `CreatePartnerRequest` accepts a nullable enum without conditionally requiring it. The new create
+  regression proves `invoice_consolidation=true` with no frequency returns 201; the update
+  regression independently proves the existing optional/nullable update contract remains intact.
+- The classification is labelled **Billed periodically** / **Facturé périodiquement** with neutral
+  explanatory copy and no scheduling or automation promise.
+- No partner migration exists in `60df88a01..4d747ce41`. The permission seeder and generated map
+  remain untouched.
+
+### M4 verification evidence
+
+- Focused `PartnerForm.test.tsx`: 11/11 passed. Full touched frontend paths
+  `src/features/partners src/routes`: 17 files / 147 tests passed. Typecheck passed; scoped ESLint
+  has zero errors and only six inherited warnings.
+- Partner backend path: 221 passed / 4 skipped / 1,187 assertions. The two new B2B regressions pass;
+  changed-file Pint and focused PHPStan are green.
+- Stable single-worker exact §6.3 frontend scope: 92 files, 724 passed / 2 failed of 726. The two
+  failures are byte-identical to the ledgered finance baseline and every M4 test passes.
+- Query-key and quantity audits report zero; design-system audit reports 728 acknowledged / 0 new /
+  0 stale after removing six entries owned by the deleted UI. React Doctor remains 88/100 with only
+  the two accepted M2 partner-tab findings.
+- Production scans find no `DeliveryNoteConsolidation` symbol or retired path, no form/locale
+  frequency-selector ownership, and no partner migration. Translation keys are present in both
+  English and French and the replacement copy contains no automation implication.
+- Exact backend scope: 1,070 passed / 32 skipped / 2 failed (4,566 assertions). Both failures are
+  the inherited default-SQLite `InventoryGlCompositeRootTest` fixtures; the PostgreSQL control from
+  the prior milestone remains green.
+- Whole PHPStan is green after explicitly clearing its result cache. The owner-expected two C-3
+  findings no longer reproduce, so the failure set is smaller; `CopiesDocumentData.php` was not
+  touched and NG-4 remains respected.
+
+### M4 amended differential verdict
+
+**PASSED at `4d747ce41` for bridge round 1.** Every M4-touched surface is green. The exact frontend
+and backend failure sets are byte-identical to the pinned baseline, and whole PHPStan is smaller
+after a cache-cleared run. No new failure is present.
 
 ## Standing findings and deploy obligations
 

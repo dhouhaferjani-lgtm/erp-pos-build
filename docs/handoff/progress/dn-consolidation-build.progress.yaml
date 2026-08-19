@@ -36,10 +36,10 @@ preflight_policy:
     - "packages/shared/types/generated.d.ts is stale at the pinned base: typescript:transform adds SystemAccountPurpose inventory_shrinkage_expense/inventory_gain_income and MovementGlKind from the merged 3C lane; branch drift is byte-identical and remains owner-lane work"
   last_comparison:
     base_sha: 60df88a01b52828665caf33809486bdf0a699bbc
-    branch_sha: 2a983c621
+    branch_sha: 4d747ce41
     status: passed
-    touched_files: "M3 fix-round focused Vitest 82/82, typecheck, scoped ESLint, focused PHPStan, changed-file Pint, 18 backend/lane-separation tests (127 assertions), React Doctor 88/100, query-key/design/quantity audits, translation/no-float guards, and diff-check green"
-    whole_repo: "Stable single-worker exact §6.3 path sweep 729/731 with only the same two finance reds; backend path sweep 1068 passed/32 skipped with only the same two default-SQLite InventoryGlCompositeRootTest fixture reds (2/2 and 19 assertions pass under phpunit-pgsql.xml); PHPStan same two locked C-3 findings; whole-web ESLint 0 errors plus key/design/quantity/POS/fiscal gates green; /sales/to-bill remains recorded in the route manifest and only the inherited manifest residual remains; SaleReceipt chokepoint residual unchanged"
+    touched_files: "M4 focused PartnerForm 11/11 and touched frontend paths 147/147, typecheck, scoped ESLint, focused PHPStan, changed-file Pint, Partner backend path 221 passed/4 skipped/1187 assertions, React Doctor 88/100, key/design/quantity audits, translation/retirement/no-migration scans, and diff-check green"
+    whole_repo: "Stable single-worker exact §6.3 path sweep 724/726 with only the same two finance reds; backend path sweep 1070 passed/32 skipped with only the same two default-SQLite InventoryGlCompositeRootTest fixture reds; whole PHPStan is green after an explicit result-cache clear (the owner-expected locked C-3 findings are smaller/non-reproducing and CopiesDocumentData.php remains untouched); inherited route-manifest/generated-types/SaleReceipt residuals are unchanged or smaller"
 
 # Commit series assigned by the parent (brief §5): Phase 2.<milestone>.<seq>. Do not invent another.
 commit_series: "Phase 2.<milestone>.<seq>"
@@ -114,11 +114,12 @@ milestones:
   - id: M4
     title: "M4 - Retirement + frequency (runs strictly AFTER both M2 and M3 have passed): delete /inventory/delivery-notes/consolidate (route + page + component + barrel export); retire the consolidation_frequency selector and relax CreatePartnerRequest ONLY; re-label invoice_consolidation (en + fr). Grep proves zero remaining references; the diff contains NO partner migration."
     review_lenses: [frontend-conventions, general]
-    status: pending
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: 4d747ce41
     verdict: null
     last_verdict: null
+    updated: 4d747ce41
   - id: M5
     title: "WHOLE-BRANCH GATE (no new implementation): re-run the §6 verification contract over the integrated branch - preflight with PREFLIGHT_TEST_PATHS and PREFLIGHT_VITEST_PATHS both set (never PREFLIGHT_SCOPE=full), all §6.1 backend tests by path, the §6.2 concurrency test, §6.3 frontend tests, the E2E run or its named blocker - plus the LOCK INVENTORY AS BUILT re-derived from code (every lock kind, acquisition point, acyclicity argument, and the explicit statement that no writer reaches invoice creation before its claims succeed), the OI-14 four-vanishing-artefacts proof, and the OI-8 conditions 1-4 evidence plus the recorded status of proposals 5-7. Every lens once more over the whole branch. Failure of any item blocks."
     review_lenses: [tenancy-authz, treasury, inventory-costing, frontend-conventions, general]
@@ -151,3 +152,5 @@ findings:
   - "M3 fix round 1 is RED 19e0332bc + 47d982037 and GREEN 91468b98d + 2de9df339, with assertion cleanup 2a983c621: real Axios-to-page envelope coverage, attributed OI-8 refusal and explicit remainder retry, debounced min-2 search, customer-group labels, UUID-before-query validation, server-described location/currency scope, entitled all-location access, and a no-company empty state. The register's P3 unbounded fan-out and in-memory group pagination remain recorded rather than expanded into a redesign."
   - "M3 fix-round differential preflight passed at 2a983c621: focused frontend 82/82 and backend 18/127 are green; stable exact frontend 729/731 has only the two inherited finance reds; exact backend is unchanged at 1068 passed/32 skipped/2 inherited SQLite reds with its PostgreSQL control green; PHPStan and route-manifest residual sets are unchanged."
   - "M3 bridge round 2 at 872e2a8e0 returned ACCEPT. Eleven non-blocking P3 notes remain recorded in the handback/register, including live-query pagination/fan-out, stale confirmation totals, cross-location invoice attribution, stale refusal state, date localization, all-location recovery, and no-active-location scope edge cases."
+  - "M4 at 4d747ce41 deletes the legacy consolidation route/page/component/barrel ownership, removes the partner frequency selector while preserving its data contract, relaxes create validation only, and relabels the flag as a neutral en/fr periodic-billing classification. No partner migration, seeder edit, or generated permission-map edit exists."
+  - "M4 amended differential preflight passed: focused/touched surfaces are green; exact frontend has only the same two finance reds; exact backend is 1070 passed/32 skipped with only the same two inherited SQLite fixture reds; a cache-cleared whole PHPStan run is green, so the owner-expected locked C-3 residual is smaller/non-reproducing without touching CopiesDocumentData.php."
