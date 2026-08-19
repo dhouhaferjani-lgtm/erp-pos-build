@@ -921,3 +921,111 @@ Fix round 1 is RED `2bbc28b69` + GREEN `cdec3a5a2`.
   owner-lane work and is identical at base and branch.
 - D-6 remains binding: M1 migrations, grants/reseed, and permission cache reset must be live before
   dependent frontend milestones promote. No deployment was performed here.
+
+---
+
+## Terminal fix round (M5)
+
+The M5 terminal three-lens gate ran at tip `8faec0952` and returned **frontend-conventions
+ACCEPT**, **tenancy-authz CHANGES-REQUIRED**, **treasury CHANGES-REQUIRED**. Registers:
+
+| Lens | Register | Verdict |
+|---|---|---|
+| frontend-conventions | `reviews/dn-consolidation-build/M5-terminal-frontend-conventions.md` | ACCEPT |
+| tenancy-authz | `reviews/dn-consolidation-build/M5-terminal-tenancy-authz.md` | CHANGES-REQUIRED |
+| treasury | `reviews/dn-consolidation-build/M5-terminal-treasury.md` | CHANGES-REQUIRED |
+
+This section records fix round 1 against those registers. Every fix was written red-first, and
+every backend proof was executed on PostgreSQL against a **dedicated scratch database**
+(`autoerp_dn_fix`) — `autoerp_test` was never touched.
+
+### The Critical, found independently by both lenses
+
+`treasury F-1` and `tenancy F-T1` are the same defect, proven twice from different directions.
+`DocumentData.php` bound the free-form JSONB `payload.invoice_id` into the `documents.id`
+PostgreSQL `uuid` primary key with no guard. A non-UUID legacy value raises **22P02**, which is a
+500 on `GET /delivery-notes/{id}` **and on the entire `GET /delivery-notes` list** — `index` maps
+every row through `DocumentData::fromModel` — and, inside a transaction, poisons every later
+statement with 25P02.
+
+It is not hypothetical: the wave's **own** M1C backfill is built on the premise that this row
+shape exists in the field. `safeInvoiceId()` counts such rows as `unparseable_invoice_id`,
+neutralises the **marker**, and *deliberately leaves the dirty `documents.payload` in place* — and
+then the projection reads that payload with no guard. Every tenant carrying one such delivery note
+would lose the primary read surface of the feature this wave ships, the moment the FE went live.
+
+The fix mirrors the migration's own semantics: `Str::isUuid()` before the lookup, so an
+unparseable id resolves to **no invoicing document** while `invoiced_at` and the lane are
+**preserved** — the row reads *billed but unresolved*, not broken. The FE already renders the lane
+badge alone when the invoice number is null (`DeliveryNoteBillingStatus.tsx:49`), so no dead link
+was introduced.
+
+### Findings closed
+
+| # | Finding | What changed |
+|---|---|---|
+| F-1 / F-T1 | **CRITICAL** — unguarded non-UUID `payload.invoice_id` lookup | `DocumentData.php:185-201` — `Str::isUuid()` guard + `Illuminate\Support\Str` import. Regression: `DeliveryNoteBillingProjectionTest::test_a_non_uuid_payload_invoice_id_reads_as_unresolved_…` over three dirty shapes, on **both** the list and detail surfaces |
+| F-2 | Whole-branch verification was SQLite-only | The wave's own backend files now RUN on PostgreSQL. True counts below |
+| F-3 | jsonb merge not object-safe | `DeliveryNoteBillingClaimService.php` — new `postgresPayloadObjectSql()` normalises any non-object base to `'{}'`; used by both the reserve and finalise merges. Pinned by a test that forces `payload = '[]'` **at the database**, not via the Eloquent cast |
+| F-4 | `text = uuid` comparison never executed on PG | `DeliveryNoteBillingClaimServiceTest.php` — `mark.invoice_id::text` on PostgreSQL, as the concurrency file already did |
+| F-5 | Lock-order inversion | `SalesOrderToDeliveryNoteConverter.php` — new `lockOrderHeader()` takes L1 first in both `performFullDelivery` and `performPartialDelivery` |
+| F-6 | Migration's one aborting dirty shape | `2026_08_18_000002_…php` — new `safeInvoicedAt()` + `unparseable_invoiced_at` counter; row counted and skipped, never fatal |
+| F-7 | Integrity alarm rendered as a routine 422 | Both claim exceptions re-parented onto `RuntimeException`; `convertOrderToInvoice`'s catch-all `catch (\Exception)` closed with an explicit rethrow |
+| F-10 / F-T4 | Asymmetric company scoping in `finalise()` | `company_id` predicate added to the marker UPDATE |
+| F-T2 | Index `location_id` filter unguarded | `DeliveryNoteController::applyDeliveryNoteFilters` — `['nullable','uuid']`, mirroring the queue filter |
+| F-T3 | Implicit location path served the whole company | `toBillFilters` — the `$locationId === null && ! $canViewAllLocations` branch now 422s instead of silently widening |
+| E1 | Missing i18n `defaultValue` + evidence overstatement | `SalesOrderDetailPage.tsx:460` gains the fallback; `M5-evidence.md` §4.1 condition 2 corrected in place |
+| E7 | Stale handback header | Header updated to the tip state |
+
+### True PostgreSQL counts for the wave's backend files
+
+Run under `phpunit-pgsql.xml` on `autoerp_dn_fix`, over all 14 test files the wave touches:
+
+| | Before this round | After |
+|---|---|---|
+| PostgreSQL | **4 FAILED** (2 in `DeliveryNoteBillingProjectionTest`, 2 in `DeliveryNoteBillingClaimServiceTest`) | **137 passed / 1005 assertions / 0 failures** |
+| Default engine | — | **124 passed / 13 skipped / 0 failures** |
+
+The 13 default-engine skips are the 12 pre-existing concurrency tests plus the one new lock-order
+assertion, both PostgreSQL-gated for the same reason (SQLite's grammar compiles `lockForUpdate()`
+to nothing). `DeliveryNoteConsolidationConcurrencyTest` remains **12 passed / 148 assertions**,
+unchanged from the §6.2 expectation.
+
+**F-2 is the finding that hid the others**: the §6.1 registry ran on SQLite, which has no `uuid`
+type and whose `json_patch` silently replaces a non-object base — so the Critical *and* two engine
+divergences were structurally invisible to it. That is now closed for this wave's own files.
+
+### Recorded, NOT fixed — with citations
+
+- **treasury F-8** *(IMPORTANT, inherited, register says explicitly do-not-block)* — the 418 accrual
+  sums mixed currencies into one GL amount: `UninvoicedDeliveryNoteService::calculateUninvoicedTotals`
+  (`:385-413`) bcadds `total` across `baseUninvoicedQuery` (`:341-365`), which has **no currency
+  predicate**, and `generateYearEndAdjustment` (`:487-564`) books that single figure as
+  `Dr 418 / Cr 70x`. Pre-existing at `60df88a01`, and currently unreachable over HTTP
+  (`generateYearEndAdjustment` has no route; only `generateYearEndReport` is wired at
+  `ReportsController.php:160`). **This gates any future exposure of the year-end adjustment** — this
+  branch added the currency filter to the *new* queue path and pinned the divergence with a test, so
+  the accrual is now the odd one out.
+- **treasury F-9** *(MINOR)* — `DocumentData.php`'s invoicing-document lookup is an N+1: one extra
+  `documents` SELECT per stamped delivery note, so a 55-row page issues 55 extra queries
+  (`DeliveryNoteBillingProjectionTest:285` builds exactly that page). Not fixed here because it is a
+  shape change to a shared DTO while the Critical fix is one line inside it; resolve the invoicing
+  documents once per page.
+- **tenancy F-T5** *(MINOR)* — `DeliveryNoteBillingClaimService.php:37` uses `protected readonly
+  ConnectionInterface $db` against rule 13's `private readonly`. **Deliberate**: the class is
+  non-final so the two test harnesses can subclass it (`DeliveryNoteBillingClaimServiceTest.php:448`,
+  `SalesOrderBillingClaimTest.php:201`). Recorded, not changed.
+
+### Consequences for promotion
+
+- **OI-12 now has SEVEN counters, not six.** F-6 adds `unparseable_invoiced_at`. Whoever promotes
+  must read it out of the staging `tenants:migrate` log alongside the existing four invoice-id
+  counters.
+- **The OI-12 `unparseable_invoice_id` count stops being a survey and becomes a gate** in spirit:
+  it was the proof that F-1's row shape is real. With F-1 fixed, a non-zero count no longer 500s the
+  list — those delivery notes render as legacy/unresolved instead — but it remains the honest
+  signal of how much dirty billing attribution each tenant carries.
+- **M5-evidence §2.3's acyclicity claim was false as written** and is true only as of F-5. The
+  evidence drew a global "no deadlock is reachable by construction" conclusion from a lock inventory
+  that had explicitly set `SalesOrderToDeliveryNoteConverter` aside as "not on this lane's path" —
+  and that writer held the back edge. It conforms now.
