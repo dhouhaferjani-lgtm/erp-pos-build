@@ -249,6 +249,61 @@ final class DeliveryNoteToBillQueueTest extends TestCase
     }
 
     /**
+     * M5-terminal tenancy-authz F-T2 — the one uuid ingress the wave left unguarded.
+     *
+     * The queue endpoint has carried a conditional `uuid` rule since M3, but the index
+     * `location_id` filter this wave ADDED binds the raw query string into the
+     * `documents.location_id` PostgreSQL uuid column, so a malformed value was a 500
+     * reachable by any holder of `deliveries.view` — and, inside a transaction, it poisons
+     * every statement after it (25P02).
+     */
+    public function test_the_index_location_filter_refuses_a_malformed_uuid_instead_of_500ing(): void
+    {
+        $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?location_id=not-a-uuid')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            ->assertJsonPath('error.errors.location_id.0', 'The location id field must be a valid UUID.');
+
+        // The well-formed filter still works, so the guard narrows nothing.
+        $this->actingAs($this->user)->getJson("/api/v1/delivery-notes?location_id={$this->locationA->id}")
+            ->assertOk();
+    }
+
+    /**
+     * M5-terminal tenancy-authz F-T3 — the implicit location path must not grant what the
+     * explicit one denies.
+     *
+     * With no ACTIVE location in the company, resolveLocationId() returns null; the
+     * membership check sits inside `if ($locationId !== null)`, so the queue used to run
+     * with NO location predicate and served the whole company to a location-restricted
+     * user — in a response that simultaneously declared `can_view_all_locations: false`,
+     * while `?location_id=all` is refused with 422 for that same user.
+     */
+    public function test_a_location_restricted_user_without_an_active_location_is_refused_rather_than_served_the_whole_company(): void
+    {
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => json_encode([$this->locationA->id], JSON_THROW_ON_ERROR)]);
+
+        Location::query()->where('company_id', $this->company->id)->update(['is_active' => false]);
+
+        $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced')
+            ->assertUnprocessable()
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+
+        // A user who may view all locations is unaffected by the new refusal.
+        UserCompanyMembership::query()
+            ->where('user_id', $this->user->id)
+            ->where('company_id', $this->company->id)
+            ->update(['allowed_location_ids' => null]);
+
+        $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced')
+            ->assertOk()
+            ->assertJsonPath('scope.can_view_all_locations', true);
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     private function deliveryNote(

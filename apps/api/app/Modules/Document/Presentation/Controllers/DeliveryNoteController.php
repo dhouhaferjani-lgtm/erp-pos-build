@@ -274,6 +274,24 @@ class DeliveryNoteController extends Controller
                         'location_id' => ['The selected location is invalid or outside your allowed scope.'],
                     ]);
                 }
+            } elseif (! $canViewAllLocations) {
+                // The implicit path must not grant what the explicit one denies.
+                //
+                // resolveLocationId() yields null when the company has no ACTIVE location
+                // (getDefaultLocation filters is_active on both lookups, and the
+                // setLocationId priority is dead in a request). The membership check above
+                // sits inside `if ($locationId !== null)`, so this branch used to add no
+                // predicate at all and queueQuery served the WHOLE company — to a
+                // location-restricted user, in a response that simultaneously declared
+                // `can_view_all_locations: false`, while the explicit request for the same
+                // scope (`?location_id=all`) is refused with 422 for that very user.
+                //
+                // Refuse instead of silently widening: a restricted user whose scope cannot
+                // be resolved gets the same 422 as the explicit request, never the company.
+                // (M5-terminal tenancy-authz F-T3.)
+                throw ValidationException::withMessages([
+                    'location_id' => ['No active location is available within your allowed scope; select a location explicitly.'],
+                ]);
             }
         }
 
@@ -300,6 +318,18 @@ class DeliveryNoteController extends Controller
         } elseif ($request->query('invoiced') === '1') {
             $query->whereDeliveryNoteInvoiced();
         }
+
+        // `documents.location_id` is a PostgreSQL `uuid` column, so an unvalidated query
+        // string binds straight into it and `?location_id=not-a-uuid` raised 22P02 — a 500
+        // reachable by any holder of `deliveries.view`. This wave hardened exactly this
+        // class three times elsewhere (the conditional `uuid` rule on the queue filter at
+        // toBillFilters, and `whereUuid` on documents.show / delivery-notes.show /
+        // uninvoiced/{partner}) and missed the filter it added itself. Mirror the queue
+        // filter's rule so a malformed value is a 422, not a 500.
+        // (M5-terminal tenancy-authz F-T2.)
+        $request->validate([
+            'location_id' => ['nullable', 'uuid'],
+        ]);
 
         $locationId = $request->query('location_id');
         if (is_string($locationId) && $locationId !== '') {
