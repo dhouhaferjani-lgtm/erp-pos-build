@@ -4515,8 +4515,9 @@ final class GeneralLedgerService
 
     /**
      * True when the chart can post a movement-keyed inventory entry.
-     * Count-correction purposes are installed by Wave 3D before that kind is
-     * reachable; Wave 3C exits and returns use COGS as the counter-account.
+     * Wave 3D's tenant migration installs both count-correction purposes on
+     * existing charts. Sales exits/returns use COGS, destructive-loss exits use
+     * shrinkage, and count corrections select shrinkage or gain by direction.
      */
     public function hasInventoryMovementAccounts(string $companyId, MovementReason $reason): bool
     {
@@ -4810,8 +4811,7 @@ final class GeneralLedgerService
             return $existing;
         }
 
-        $counterPurpose = SystemAccountPurpose::InventoryShrinkageExpense;
-        $shrinkageAccount = $this->getAccountByPurpose($companyId, $counterPurpose);
+        $shrinkageAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::InventoryShrinkageExpense);
         $inventoryAccount = $this->getAccountByPurpose($companyId, SystemAccountPurpose::Inventory);
 
         $entry = DB::transaction(function () use (

@@ -45,12 +45,12 @@ final class CertifiedFixtureDeltaTest extends TestCase
         $before = $this->canonicalBytes($template->id);
         $published = app(TemplatePublishingService::class)->publish(
             $template->id,
-            'Certified legacy v1',
+            'Certified Option A v2',
             [$scopeCode],
             $this->m4Actor(),
         );
         self::assertSame(TemplateStatus::Published, $published->status);
-        self::assertSame($before, $this->canonicalBytes($published->id), 'M0 reconciliation pins an empty certification content delta.');
+        self::assertSame($before, $this->canonicalBytes($published->id), 'The Option A v2 fixture must certify without an implicit content delta.');
     }
 
     /** @return iterable<string, array{string, string, bool}> */
