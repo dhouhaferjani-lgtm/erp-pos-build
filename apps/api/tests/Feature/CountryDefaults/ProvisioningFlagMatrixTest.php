@@ -6,6 +6,7 @@ namespace Tests\Feature\CountryDefaults;
 
 use App\Models\SuperAdmin;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\InventoryVarianceAccountProvisioner;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
@@ -211,6 +212,159 @@ final class ProvisioningFlagMatrixTest extends TestCase
                 'country_code' => 'GB',
             ]),
         ])->once();
+    }
+
+    public function test_pre_policy_third_plan_template_installs_required_shrinkage_without_aborting_creation(): void
+    {
+        $actor = $this->m4Actor();
+        $draft = $this->m4Draft('generic');
+        $nextOrder = (int) $draft->accounts()->max('sort_order') + 1;
+        $draft->accounts()->create([
+            'code' => '8000',
+            'name' => 'Third-plan expense root',
+            'type' => 'expense',
+            'parent_code' => null,
+            'system_purpose' => null,
+            'is_system' => false,
+            'sort_order' => $nextOrder,
+        ]);
+        $draft->accounts()->create([
+            'code' => '9000',
+            'name' => 'Third-plan revenue root',
+            'type' => 'revenue',
+            'parent_code' => null,
+            'system_purpose' => null,
+            'is_system' => false,
+            'sort_order' => $nextOrder + 1,
+        ]);
+        $draft->accounts()->where('parent_code', '6000')->update(['parent_code' => '8000']);
+        $draft->accounts()->where('parent_code', '7000')->update(['parent_code' => '9000']);
+        $draft->accounts()->whereIn('code', ['6000', '7000'])->delete();
+        $template = app(TemplatePublishingService::class)->publish(
+            $draft->id,
+            'Third plan carrying neither variance family root',
+            ['GB'],
+            $actor,
+        );
+        $this->m4Assign('GB', $template, $actor);
+        // Certified before shrinkage became REQUIRED: the resolver checks publication
+        // and capability metadata, not mutable row hashes, so a chart with NEITHER
+        // plan family and neither purpose still reaches the creation boundary. It must
+        // complete — a REQUIRED purpose may never roll back tenant registration.
+        $template->accounts()
+            ->whereIn('system_purpose', [
+                SystemAccountPurpose::InventoryShrinkageExpense->value,
+                SystemAccountPurpose::InventoryGainIncome->value,
+            ])
+            ->delete();
+        config(['country_defaults.provisioning_enabled' => true]);
+        [$tenant, $company] = $this->tenantCompanyUser('GB', 'template-neither-family');
+        $logSpy = Log::spy();
+
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        $shrinkage = Account::query()
+            ->where('company_id', $company->id)
+            ->where('system_purpose', SystemAccountPurpose::InventoryShrinkageExpense->value)
+            ->firstOrFail();
+        self::assertSame(
+            '8000',
+            Account::query()->whereKey($shrinkage->parent_id)->value('code'),
+            'the REQUIRED shrinkage account must graft onto a same-type root already in the chart',
+        );
+        self::assertFalse(
+            Account::query()
+                ->where('company_id', $company->id)
+                ->where('system_purpose', SystemAccountPurpose::InventoryGainIncome->value)
+                ->exists(),
+        );
+        self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
+        $logSpy->shouldHaveReceived('warning', [
+            'INVENTORY-VARIANCE-TEMPLATE-OVERLAY grafted required shrinkage onto a fallback parent: no compatible expense plan parent.',
+            Mockery::on(static fn (array $context): bool => $context === [
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'country_code' => 'GB',
+                'parent_code' => '8000',
+            ]),
+        ])->once();
+    }
+
+    public function test_template_overlay_installs_required_shrinkage_as_a_root_when_no_expense_root_exists(): void
+    {
+        [$tenant, $company] = $this->tenantCompanyUser('GB', 'overlay-no-expense-root');
+        Account::query()->create([
+            'tenant_id' => $tenant->id,
+            'company_id' => $company->id,
+            'code' => '1000',
+            'name' => 'Equity',
+            'type' => 'equity',
+            'is_active' => true,
+            'is_system' => false,
+            'balance' => '0.000',
+        ]);
+        $logSpy = Log::spy();
+
+        app(InventoryVarianceAccountProvisioner::class)
+            ->provisionTemplateCompany($company->id, $tenant->id, 'GB');
+
+        $shrinkage = Account::query()
+            ->where('company_id', $company->id)
+            ->where('system_purpose', SystemAccountPurpose::InventoryShrinkageExpense->value)
+            ->firstOrFail();
+        self::assertNull(
+            $shrinkage->parent_id,
+            'with no same-type root to graft onto, the REQUIRED account installs as a root of its own',
+        );
+        self::assertFalse(
+            Account::query()
+                ->where('company_id', $company->id)
+                ->where('system_purpose', SystemAccountPurpose::InventoryGainIncome->value)
+                ->exists(),
+        );
+        self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
+        $logSpy->shouldHaveReceived('warning', [
+            'INVENTORY-VARIANCE-TEMPLATE-OVERLAY grafted required shrinkage onto a fallback parent: no compatible expense plan parent.',
+            Mockery::on(static fn (array $context): bool => $context === [
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'country_code' => 'GB',
+                'parent_code' => null,
+            ]),
+        ])->once();
+    }
+
+    public function test_template_overlay_refuses_a_plan_parent_code_of_the_wrong_type(): void
+    {
+        [$tenant, $company] = $this->tenantCompanyUser('GB', 'overlay-wrong-typed-parent');
+        foreach ([['6000', 'expense'], ['7000', 'expense']] as [$code, $type]) {
+            Account::query()->create([
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'code' => $code,
+                'name' => "Operator root {$code}",
+                'type' => $type,
+                'is_active' => true,
+                'is_system' => false,
+                'balance' => '0.000',
+            ]);
+        }
+
+        app(InventoryVarianceAccountProvisioner::class)
+            ->provisionTemplateCompany($company->id, $tenant->id, 'GB');
+
+        $shrinkage = Account::query()
+            ->where('company_id', $company->id)
+            ->where('system_purpose', SystemAccountPurpose::InventoryShrinkageExpense->value)
+            ->firstOrFail();
+        self::assertSame('6000', Account::query()->whereKey($shrinkage->parent_id)->value('code'));
+        self::assertFalse(
+            Account::query()
+                ->where('company_id', $company->id)
+                ->where('system_purpose', SystemAccountPurpose::InventoryGainIncome->value)
+                ->exists(),
+            'a revenue gain must never be grafted beneath an expense-typed lookalike code',
+        );
     }
 
     public function test_country_parameterized_contract_consumer_uses_template_path(): void
