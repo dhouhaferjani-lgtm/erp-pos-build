@@ -608,6 +608,48 @@
     "searchPlaceholder": "Rechercher par numéro de bon de livraison ou partenaire…",
     "noResults": "Aucun bon de livraison trouvé",
     "noConfirmed": "Aucun bon de livraison confirmé disponible",
+    "partnerTab": {
+      "title": "Bons de livraison",
+      "filters": {
+        "uninvoiced": "Non facturés",
+        "invoiced": "Facturés",
+        "all": "Tous"
+      },
+      "columns": {
+        "number": "Bon de livraison",
+        "date": "Date",
+        "total": "Total",
+        "billingState": "État de facturation"
+      },
+      "billingState": {
+        "uninvoiced": "Non facturé",
+        "refused": "Déjà facturé"
+      },
+      "invoicedVia": {
+        "consolidation": "Facturé par consolidation",
+        "orderConversion": "Facturé depuis la commande client",
+        "prePostDelivery": "Facturé lors de la livraison guidée",
+        "legacyUnknown": "Facturé (origine non enregistrée)",
+        "unknown": "Facturé"
+      },
+      "createInvoice": "Créer une facture à partir de la sélection ({{count}})",
+      "created": "Facture créée à partir des bons de livraison",
+      "summaryLabel": "Total des bons de livraison",
+      "coexistence": "Un bon de livraison n’est facturé qu’une fois, par le premier parcours qui l’atteint. Une fois facturé, il reste visible ici avec la facture associée.",
+      "selectRow": "Sélectionner {{number}}",
+      "selectAll": "Sélectionner tous les bons de livraison",
+      "tableLabel": "Bons de livraison de ce client",
+      "detailBillingLabel": "Facturé sur",
+      "empty": {
+        "title": "Aucun bon de livraison",
+        "description": "Aucun bon de livraison ne correspond à ce filtre de facturation."
+      },
+      "unbilledLine": {
+        "label": "Livré, pas encore facturé",
+        "count_one": "({{count}} bon de livraison)",
+        "count_other": "({{count}} bons de livraison)"
+      }
+    },
     "consolidation": {
       "title": "Regrouper les bons de livraison",
       "description": "Sélectionnez les bons de livraison confirmés à regrouper en une seule facture. Tous les bons sélectionnés doivent appartenir au même partenaire et utiliser la même devise.",

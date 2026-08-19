@@ -14,11 +14,13 @@ import {
   useDeliveryNote,
   useDeliveryNotes,
   useInvoiceableDeliveryNotes,
+  usePartnerDeliveryNotes,
 } from '../useDeliveryNotes'
 
 const mockGetDeliveryNotes = vi.hoisted(() => vi.fn())
 const mockGetInvoiceableDeliveryNotes = vi.hoisted(() => vi.fn())
 const mockGetDeliveryNote = vi.hoisted(() => vi.fn())
+const mockGetPartnerDeliveryNotes = vi.hoisted(() => vi.fn())
 const mockConsolidateDeliveryNotesToInvoice = vi.hoisted(() => vi.fn())
 
 vi.mock('sonner', () => ({
@@ -33,6 +35,7 @@ vi.mock('../../api/deliveryNotes', () => ({
   getDeliveryNote: mockGetDeliveryNote,
   getDeliveryNotes: mockGetDeliveryNotes,
   getInvoiceableDeliveryNotes: mockGetInvoiceableDeliveryNotes,
+  getPartnerDeliveryNotes: mockGetPartnerDeliveryNotes,
 }))
 
 const deliveryNoteParams = { status: 'confirmed' as const, partner_id: 'partner-1' }
@@ -92,6 +95,10 @@ function deliveryNoteFixture(id: string): DeliveryNote {
     total: '100.000',
     currency: 'TND',
     lines: [],
+    invoiced_at: null,
+    invoiced_by_document_id: null,
+    invoiced_by_document_number: null,
+    invoiced_via: null,
     created_at: '2026-05-11T09:00:00Z',
     updated_at: '2026-05-11T09:00:00Z',
   }
@@ -114,6 +121,11 @@ beforeEach(() => {
   mockGetDeliveryNotes.mockResolvedValue([deliveryNoteFixture('delivery-note-1')])
   mockGetInvoiceableDeliveryNotes.mockResolvedValue([deliveryNoteFixture('delivery-note-1')])
   mockGetDeliveryNote.mockResolvedValue(deliveryNoteFixture('delivery-note-1'))
+  mockGetPartnerDeliveryNotes.mockResolvedValue({
+    data: [deliveryNoteFixture('delivery-note-1')],
+    meta: { current_page: 1, last_page: 1, total: 1, per_page: 10, from: 1, to: 1 },
+    aggregates: { count: 1, total: '100.000', currency: 'TND' },
+  })
   mockConsolidateDeliveryNotesToInvoice.mockResolvedValue({
     data: {
       id: 'invoice-1',
@@ -149,17 +161,34 @@ describe('delivery note hooks tenant scope', () => {
       detail: useDeliveryNote('delivery-note-1'),
       invoiceable: useInvoiceableDeliveryNotes('partner-1'),
       list: useDeliveryNotes(deliveryNoteParams),
+      partnerPage: usePartnerDeliveryNotes({
+        partnerId: 'partner-1',
+        filter: 'uninvoiced',
+        page: 1,
+        perPage: 10,
+      }),
     }), { wrapper })
 
     await waitFor(() => {
       expect(result.current.detail.isSuccess).toBe(true)
       expect(result.current.invoiceable.isSuccess).toBe(true)
       expect(result.current.list.isSuccess).toBe(true)
+      expect(result.current.partnerPage.isSuccess).toBe(true)
     })
 
     expect(queryClient.getQueryData(['delivery-note', 'delivery-note-1', 'tenant-A', 'company-1'])).toBeDefined()
     expect(queryClient.getQueryData(['delivery-notes', 'invoiceable', 'partner-1', 'tenant-A', 'company-1'])).toBeDefined()
     expect(queryClient.getQueryData(['delivery-notes', deliveryNoteParams, 'tenant-A', 'company-1'])).toBeDefined()
+    expect(queryClient.getQueryData([
+      'delivery-notes',
+      'partner',
+      'partner-1',
+      'uninvoiced',
+      1,
+      10,
+      'tenant-A',
+      'company-1',
+    ])).toBeDefined()
   })
 
   it('does not fetch delivery note reads without tenant/company scope', () => {
@@ -171,11 +200,18 @@ describe('delivery note hooks tenant scope', () => {
       detail: useDeliveryNote('delivery-note-1'),
       invoiceable: useInvoiceableDeliveryNotes('partner-1'),
       list: useDeliveryNotes(deliveryNoteParams),
+      partnerPage: usePartnerDeliveryNotes({
+        partnerId: 'partner-1',
+        filter: 'uninvoiced',
+        page: 1,
+        perPage: 10,
+      }),
     }), { wrapper })
 
     expect(mockGetDeliveryNote).not.toHaveBeenCalled()
     expect(mockGetDeliveryNotes).not.toHaveBeenCalled()
     expect(mockGetInvoiceableDeliveryNotes).not.toHaveBeenCalled()
+    expect(mockGetPartnerDeliveryNotes).not.toHaveBeenCalled()
   })
 
   it('bounds delivery consolidation invalidation to the active tenant cache (.194-.196)', async () => {
@@ -242,6 +278,40 @@ describe('delivery note hooks tenant scope', () => {
     expect(queryClient.getQueryData(['delivery-notes', 'invoiceable', 'partner-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-invoiceable' })
     expect(queryClient.getQueryData(['documents', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-documents' })
     expect(queryClient.getQueryData(['invoices', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-invoices' })
+  })
+
+  it('invalidates every current-tenant C9 surface and no cross-tenant cache', async () => {
+    const queryClient = createPersistentQueryClient()
+    const wrapper = makeWrapper(queryClient)
+    const currentKeys = [
+      ['delivery-note', 'delivery-note-1', 'tenant-A', 'company-1'],
+      ['document', 'delivery-note-1', 'tenant-A', 'company-1'],
+      ['delivery-notes', { partnerId: 'partner-1' }, 'tenant-A', 'company-1'],
+      ['partner-account-balance', 'partner-1', 'tenant-A', 'company-1'],
+      ['delivery-notes-to-bill', { page: 1 }, 'tenant-A', 'company-1'],
+    ] as const
+    const foreignKeys = currentKeys.map((key) => [...key.slice(0, -2), 'tenant-B', 'company-1'])
+    const invalidated = vi.spyOn(queryClient, 'invalidateQueries')
+
+    for (const key of [...currentKeys, ...foreignKeys]) {
+      queryClient.setQueryData(key, { marker: key.join(':') })
+    }
+
+    const { result } = renderHook(() => useConsolidateDeliveryNotes(), { wrapper })
+    await act(async () => {
+      await result.current.mutateAsync(['delivery-note-1'])
+    })
+
+    const predicates = invalidated.mock.calls
+      .map(([filters]) => filters?.predicate)
+      .filter((predicate): predicate is NonNullable<typeof predicate> => predicate !== undefined)
+
+    for (const key of currentKeys) {
+      expect(predicates.some((predicate) => predicate({ queryKey: key } as never))).toBe(true)
+    }
+    for (const key of foreignKeys) {
+      expect(predicates.some((predicate) => predicate({ queryKey: key } as never))).toBe(false)
+    }
   })
 
   it('suppresses only the attributed billing-refusal toast', async () => {

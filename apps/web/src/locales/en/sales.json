@@ -608,6 +608,48 @@
     "searchPlaceholder": "Search by delivery note number or partner…",
     "noResults": "No delivery notes found",
     "noConfirmed": "No confirmed delivery notes available",
+    "partnerTab": {
+      "title": "Delivery notes",
+      "filters": {
+        "uninvoiced": "Un-invoiced",
+        "invoiced": "Invoiced",
+        "all": "All"
+      },
+      "columns": {
+        "number": "Delivery note",
+        "date": "Date",
+        "total": "Total",
+        "billingState": "Billing state"
+      },
+      "billingState": {
+        "uninvoiced": "Not invoiced",
+        "refused": "Already invoiced"
+      },
+      "invoicedVia": {
+        "consolidation": "Billed by consolidation",
+        "orderConversion": "Billed from sales order",
+        "prePostDelivery": "Billed during guided delivery",
+        "legacyUnknown": "Invoiced (source not recorded)",
+        "unknown": "Invoiced"
+      },
+      "createInvoice": "Create invoice from selected ({{count}})",
+      "created": "Invoice created from delivery notes",
+      "summaryLabel": "Delivery-note total",
+      "coexistence": "A delivery note is billed once, by whichever route reaches it first. Once invoiced, it stays visible here with the invoice that took it.",
+      "selectRow": "Select {{number}}",
+      "selectAll": "Select all delivery notes",
+      "tableLabel": "Delivery notes for this customer",
+      "detailBillingLabel": "Invoiced on",
+      "empty": {
+        "title": "No delivery notes",
+        "description": "No delivery notes match this billing filter."
+      },
+      "unbilledLine": {
+        "label": "Delivered, not yet invoiced",
+        "count_one": "({{count}} delivery note)",
+        "count_other": "({{count}} delivery notes)"
+      }
+    },
     "consolidation": {
       "title": "Consolidate Delivery Notes",
       "description": "Select confirmed delivery notes to combine into a single invoice. All selected notes must belong to the same partner and use the same currency.",

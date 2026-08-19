@@ -43,6 +43,10 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
 import { PageHeaderTitle } from '@/components/molecules/PageHeader/PageHeader'
 import type { OffsetPaginationMeta } from '@/types/pagination'
+import {
+  PartnerDeliveryNotesTab,
+  PartnerUnbilledBalanceLine,
+} from '@/features/documents/delivery-notes/PartnerDeliveryNotesTab'
 
 interface PartnerAccountBalance {
   partner_id: string
@@ -112,7 +116,7 @@ const documentWorkflowClasses: Record<string, string> = {
   cancelled: `${colorTokens.intent.danger.bgSoft} ${colorTokens.intent.danger.textStronger}`,
 }
 
-const PARTNER_DETAIL_TABS = ['overview', 'documents', 'payments', 'vehicles', 'deposits'] as const
+const PARTNER_DETAIL_TABS = ['overview', 'documents', 'payments', 'vehicles', 'deposits', 'delivery-notes'] as const
 type PartnerDetailTab = typeof PARTNER_DETAIL_TABS[number]
 
 function isPartnerDetailTab(value: string | null): value is PartnerDetailTab {
@@ -212,6 +216,14 @@ export function PartnerDetailPage() {
     hasModule('Vehicle') &&
     (partner?.type === 'customer' || partner?.type === 'both')
   const showDepositsTab = isCustomerContext && (partner?.type === 'customer' || partner?.type === 'both')
+  const hasSalesModule = hasModule('Sales')
+  const canViewDeliveryNotes = hasPermission('deliveries.view')
+  const canCreateDeliveryNoteInvoice = hasPermission('invoices.create')
+  const showDeliveryNotesTab =
+    isCustomerContext &&
+    hasSalesModule &&
+    canViewDeliveryNotes &&
+    (partner?.type === 'customer' || partner?.type === 'both')
   const showLoyaltyCard =
     isCustomerContext &&
     hasModule('Loyalty') &&
@@ -436,6 +448,11 @@ export function PartnerDetailPage() {
               {t('deposits:tabLabel')} ({deposits.length})
             </TabsTrigger>
           )}
+          {showDeliveryNotesTab && (
+            <TabsTrigger value="delivery-notes">
+              {t('sales:deliveryNotes.partnerTab.title')}
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Overview Tab */}
@@ -456,6 +473,10 @@ export function PartnerDetailPage() {
                       {formatAmount(partner.receivable_balance ?? '0')}
                     </dd>
                   </div>
+                )}
+
+                {showDeliveryNotesTab && (
+                  <PartnerUnbilledBalanceLine partnerId={partner.id} />
                 )}
 
                 {/* Total Payable - for suppliers */}
@@ -878,6 +899,15 @@ export function PartnerDetailPage() {
                 </DataTable>
               </div>
             )}
+          </TabsContent>
+        )}
+
+        {showDeliveryNotesTab && (
+          <TabsContent value="delivery-notes" className="mt-6">
+            <PartnerDeliveryNotesTab
+              partnerId={partner.id}
+              canCreateInvoice={hasSalesModule && canCreateDeliveryNoteInvoice}
+            />
           </TabsContent>
         )}
       </Tabs>

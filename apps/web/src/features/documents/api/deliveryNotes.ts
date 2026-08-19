@@ -21,10 +21,33 @@ export type DeliveryNote = Pick<App.Modules.Document.Application.DTOs.DocumentDa
   | 'total'
   | 'currency'
   | 'lines'
+  | 'invoiced_at'
+  | 'invoiced_by_document_id'
+  | 'invoiced_by_document_number'
+  | 'invoiced_via'
   | 'created_at'
   | 'updated_at'
 >
 export type DeliveryNoteLine = App.Modules.Document.Application.DTOs.DocumentLineData
+
+export type PartnerDeliveryNoteFilter = 'uninvoiced' | 'invoiced' | 'all'
+
+export interface PartnerDeliveryNotesResponse {
+  data: DeliveryNote[]
+  meta: {
+    current_page: number
+    last_page: number
+    total: number
+    per_page: number
+    from: number | null
+    to: number | null
+  }
+  aggregates?: {
+    count: number
+    total: string
+    currency: string
+  }
+}
 
 /**
  * Response from consolidation endpoint
@@ -81,6 +104,31 @@ export async function getInvoiceableDeliveryNotes(partnerId?: string): Promise<D
   })
 
   return deliveryNotes
+}
+
+export async function getPartnerDeliveryNotes({
+  partnerId,
+  filter,
+  page,
+  perPage,
+}: {
+  partnerId: string
+  filter: PartnerDeliveryNoteFilter
+  page: number
+  perPage: number
+}): Promise<PartnerDeliveryNotesResponse> {
+  const filterParam = filter === 'all' ? {} : { [filter]: 1 }
+  const response = await api.get<PartnerDeliveryNotesResponse>('/delivery-notes', {
+    params: {
+      partner_id: partnerId,
+      ...filterParam,
+      page,
+      per_page: perPage,
+      with_aggregates: 1,
+    },
+  })
+
+  return response.data
 }
 
 /**

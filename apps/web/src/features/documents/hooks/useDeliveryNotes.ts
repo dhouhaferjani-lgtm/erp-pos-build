@@ -12,11 +12,14 @@ import {
   getDeliveryNotes,
   getInvoiceableDeliveryNotes,
   getDeliveryNote,
+  getPartnerDeliveryNotes,
   consolidateDeliveryNotesToInvoice,
   type DeliveryNote,
+  type PartnerDeliveryNoteFilter,
 } from '../api/deliveryNotes'
 import { getErrorMessage } from '@/lib/api'
 import { parseDeliveryNoteBillingRefusal } from '../deliveryNoteBillingRefusal'
+import { useTranslation } from 'react-i18next'
 
 function scopedNamespacePredicate(
   namespace: string,
@@ -84,6 +87,29 @@ export function useInvoiceableDeliveryNotes(partnerId?: string) {
   })
 }
 
+export function usePartnerDeliveryNotes({
+  partnerId,
+  filter,
+  page,
+  perPage,
+  enabled = true,
+}: {
+  partnerId: string
+  filter: PartnerDeliveryNoteFilter
+  page: number
+  perPage: number
+  enabled?: boolean
+}) {
+  const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
+
+  return useQuery({
+    queryKey: tenantScopedKey(['delivery-notes', 'partner', partnerId, filter, page, perPage]),
+    queryFn: () => getPartnerDeliveryNotes({ partnerId, filter, page, perPage }),
+    enabled: enabled && tenantId !== null && companyId !== null,
+  })
+}
+
 /**
  * Query hook: Get a single delivery note by ID.
  *
@@ -130,6 +156,7 @@ export function useDeliveryNote(id: string | undefined) {
  */
 export function useConsolidateDeliveryNotes() {
   const queryClient = useQueryClient()
+  const { t } = useTranslation('sales')
   const tenantId = useAuthStore((state) => state.user?.tenant_id ?? null)
   const companyId = useCompanyStore((state) => state.currentCompanyId ?? null)
 
@@ -148,8 +175,20 @@ export function useConsolidateDeliveryNotes() {
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('invoices', tenantId, companyId),
         }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('delivery-note', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('document', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('partner-account-balance', tenantId, companyId),
+        }),
+        queryClient.invalidateQueries({
+          predicate: scopedNamespacePredicate('delivery-notes-to-bill', tenantId, companyId),
+        }),
       ])
-      toast.success('Invoice created from delivery notes')
+      toast.success(t('deliveryNotes.partnerTab.created'))
     },
     onError: (error) => {
       if (parseDeliveryNoteBillingRefusal(error) === null) {
