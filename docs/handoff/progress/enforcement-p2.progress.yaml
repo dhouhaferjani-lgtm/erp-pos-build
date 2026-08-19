@@ -257,10 +257,10 @@ milestones:
     review_lenses: [frontend-conventions]
     status: review
     fix_rounds: 0
-    commit: null
+    commit: 0fce1206d4e99d8c2a06433873d0413943235125
     verdict: null
     last_verdict: null
-    updated: pending-commit
+    updated: 0fce1206d
   - id: M4
     title: "WHOLE-PACKAGE GATE (no new implementation, gate-r1 H-8): rerun the full accumulated evidence with EVERY lens this package used (frontend-conventions, tenancy-authz) over the integrated branch — pnpm lint / node tools/audit-i18n-completeness.mjs / pnpm test:tools (the exact CI command string — gate-r2 R2-H-3) / pnpm test:eslint-rules all green — each preceded by the LOCAL AUTHORITY SETUP export (gate-r4 R4-H-4); local workflow-change evidence per brief §5 (no executor CI links — the remote proof is the owner's PRE-promotion workflow_dispatch gate on EXACTLY the accepted SHA, receipt recorded post-promotion in pre_promotion_ci_dispatch, gate-r2 R2-C-2/R2-H-2 + gate-r3 R3-C-2; the handback names the step/job ids that run must show executed); scope proof git diff --stat <base_sha>..HEAD + allowlist. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
     review_lenses: [frontend-conventions, tenancy-authz]
