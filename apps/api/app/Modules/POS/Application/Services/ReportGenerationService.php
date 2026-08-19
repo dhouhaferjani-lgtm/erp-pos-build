@@ -510,6 +510,14 @@ final class ReportGenerationService
      *
      * @param  array<int, CashCountInputDTO>  $inputs
      * @return array<string, string> payment_method_id → scale-4 numeric-string
+     *
+     * @deprecated This is a takings-only server-authoring surface with no shipped client.
+     *             Production is whole-drawer via the device. Retained only for the
+     *             schema-v2 compatibility branch, reachable only by a direct legacy API
+     *             caller, and its regression tests.
+     *             Opening cash is shift-level, not per-tender: accurate schema, false
+     *             business meaning. The defect is a missing join, not a wrong doctrine.
+     *             This is the fourth reader to reach it; this annotation stops a fifth.
      */
     private function buildExpectedPerMethod(Shift $shift, array $inputs): array
     {
@@ -969,9 +977,9 @@ final class ReportGenerationService
      * - `payment_methods` is NET of refund payout legs (spec §7.3, pinned by
      *   ReceiptReturnRefactorV3Test: "Z cash must be net of the refund payout,
      *   not gross"). Return receipts used to be skipped entirely here, so the
-     *   printed Z showed CASH gross-of-refunds while the cash-count expected
-     *   figure (buildExpectedPerMethod) showed the net — two numbers on the
-     *   same Z that disagreed by the refund.
+     *   printed Z showed CASH gross-of-refunds while the legacy takings-only
+     *   reconciliation figure showed the net — two numbers on the same Z that
+     *   disagreed by the refund.
      *
      * VAT breakdown stays SALE-ONLY, unchanged: refunds are their own block.
      *

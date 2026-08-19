@@ -40,7 +40,8 @@ final class CompanyFraudSettingsVerticalDefaultsTest extends TestCase
         $this->assertSame('20.0000', (string) $settings->cash_variance_over_hard);
     }
 
-    public function test_izipos_company_gets_blind_count_disabled(): void
+    /** SV-9 red by design: blind counting is ruled on for every vertical. */
+    public function test_izipos_company_gets_blind_count_enabled(): void
     {
         $tenant = Tenant::factory()->create(['vertical' => Vertical::Retail]);
         $company = Company::factory()->create([
@@ -50,7 +51,7 @@ final class CompanyFraudSettingsVerticalDefaultsTest extends TestCase
 
         $settings = $this->service->ensureForCompany($company->id);
 
-        $this->assertFalse($settings->require_blind_cash_count);
+        $this->assertTrue($settings->require_blind_cash_count);
         $this->assertTrue($settings->require_manager_pin_above_hard);
         $this->assertSame('1.0000', (string) $settings->cash_variance_over_soft);
         $this->assertSame('20.0000', (string) $settings->cash_variance_over_hard);

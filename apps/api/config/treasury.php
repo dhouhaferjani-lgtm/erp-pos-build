@@ -16,15 +16,14 @@ return [
     // DPA lane G3 — the shift-close cash-variance GL leg
     // (PostShiftCashVarianceAdjustment). Defaults to FALSE and ships DISABLED.
     //
-    // The pre-enable gate is an OWNER RULING on POS count semantics: does a
-    // cashier count the shift's TAKINGS or the WHOLE DRAWER? The variance the
-    // listener books is the one the system already computes, and
-    // `ReportGenerationService::buildExpectedPerMethod()` sums receipt payments
-    // ONLY — no opening float, no deposits, no payouts. Under whole-drawer
-    // semantics the float would therefore be booked to 658/758 on every single
-    // close, permanently. Until that question is answered, this stays off; the
-    // flag is also the kill switch if it ever needs stopping without a code
-    // change. Everything else in the lane (document, GL entry, movement,
-    // idempotency, audit trail) is in place behind it.
+    // The count semantics are settled: cashiers count the WHOLE DRAWER. This
+    // stays off because Treasury does not yet book the opening float or the
+    // mid-shift drawer operations that form that expected balance (SV-3/SV-4).
+    // Enabling the variance leg first would therefore create a cash/GL mismatch.
+    // The flag remains the global kill switch if the lane ever needs stopping
+    // without a code change. The remaining pre-enable gates are tracked in
+    // docs/superpowers/tickets/2026-08-08-g3-shift-variance-gl-deploy-notes.md.
+    // Everything else in the lane (document, GL entry, movement, idempotency,
+    // audit trail) is in place behind it.
     'shift_variance_gl_enabled' => (bool) env('TREASURY_SHIFT_VARIANCE_GL_ENABLED', false),
 ];

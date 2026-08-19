@@ -1,0 +1,7 @@
+{
+  "fraudSettings": {
+    "cashControls": {
+      "blindCountLabel": "طلب جرد أعمى (لا يرى أمناء الصندوق المبلغ المتوقع)"
+    }
+  }
+}

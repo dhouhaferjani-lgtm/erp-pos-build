@@ -4,13 +4,52 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\POS\Application\Services\ReportGenerationService;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
+use ReflectionMethod;
 use SplFileInfo;
 use Tests\TestCase;
 
 final class ZReportServerAuthoringChokepointTest extends TestCase
 {
+    public function test_takings_only_expected_per_method_surface_is_deprecated(): void
+    {
+        $method = new ReflectionMethod(ReportGenerationService::class, 'buildExpectedPerMethod');
+        $docblock = $method->getDocComment();
+
+        $this->assertIsString($docblock);
+        $this->assertStringContainsString('@deprecated', $docblock);
+        $this->assertStringContainsString('takings-only', $docblock);
+        $this->assertStringContainsString('Production is whole-drawer via the device', $docblock);
+        $this->assertStringContainsString('The defect is a missing join, not a wrong doctrine', $docblock);
+        $this->assertStringContainsString('this annotation stops a fifth', $docblock);
+    }
+
+    public function test_takings_only_expected_per_method_surface_has_no_shipped_client(): void
+    {
+
+        $repoRoot = dirname(base_path(), 2);
+        $webClientPath = $repoRoot.'/apps/web/src/features/pos/api/shiftApi.ts';
+        $deviceClientPath = $repoRoot.'/apps/pos/src/api/reportApi.ts';
+
+        if (! is_file($webClientPath) || ! is_file($deviceClientPath)) {
+            $this->markTestSkipped('Shipped-client inventory requires the monorepo web and device apps.');
+        }
+
+        $webClient = $this->read($webClientPath);
+        $deviceClient = $this->read($deviceClientPath);
+
+        $this->assertMatchesRegularExpression(
+            '/export interface ZReportData\s*\{\s*terminal_id: string\s*\}/s',
+            $webClient,
+        );
+        $this->assertMatchesRegularExpression(
+            '/\/\*\*(?:(?!\*\/)[\s\S])*@deprecated(?:(?!\*\/)[\s\S])*\*\/\s*export async function generateZReportServer\(terminalId: string\)[\s\S]*?\{ terminal_id: terminalId \}/',
+            $deviceClient,
+        );
+    }
+
     public function test_z_report_generation_call_sites_are_known_and_cutover_guarded(): void
     {
         $this->assertSame([

@@ -72,6 +72,34 @@ describe('CashCountTable', () => {
     expect(screen.queryByText('Expected')).not.toBeInTheDocument();
   });
 
+  it('hides an electronic tender expected amount in the Actual column before blind commit', () => {
+    const { rerender } = render(
+      <CashCountTable
+        tenders={[cardTender]}
+        actuals={{}}
+        onActualChange={vi.fn()}
+        blindMode
+        committed={false}
+        variances={{}}
+      />,
+    );
+
+    expect(screen.queryByText('50.0000')).not.toBeInTheDocument();
+
+    rerender(
+      <CashCountTable
+        tenders={[cardTender]}
+        actuals={{}}
+        onActualChange={vi.fn()}
+        blindMode
+        committed
+        variances={{}}
+      />,
+    );
+
+    expect(screen.getAllByText('50.0000')).toHaveLength(2);
+  });
+
   it('reveals Expected and Variance columns in blindMode Phase 2 (committed)', () => {
     render(
       <CashCountTable

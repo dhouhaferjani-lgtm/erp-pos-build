@@ -3,8 +3,12 @@ import { render, screen, within, fireEvent, waitFor, act } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { EndOfDayPreviewModal, type CompanyFraudSettings } from './EndOfDayPreviewModal';
 import { TOLERANCE_AUTO_ACCEPT_LIMIT_PER_SHIFT } from '@/lib/payment/cashRounding';
+import enPos from '@/locales/en/pos.json';
+import frPos from '@/locales/fr/pos.json';
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
+
+const modalI18nState = vi.hoisted(() => ({ locale: 'en' as 'en' | 'fr' }));
 
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
@@ -43,6 +47,10 @@ vi.mock('react-i18next', () => ({
         'reports.paymentCount': 'Count',
         'reports.paymentAmount': 'Amount',
         'reports.loading': 'Generating report...',
+        'cash_count.policy_unavailable':
+          modalI18nState.locale === 'fr'
+            ? "Impossible de fermer ce service : la politique de comptage de caisse n'a pas été synchronisée sur cet appareil. Connectez-vous au réseau, puis réessayez."
+            : 'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.',
         'shift.number': `Shift #${String(opts?.number ?? '')}`,
       };
       // Fall back to defaultValue when provided (covers cash_count.* keys),
@@ -144,13 +152,16 @@ function renderModal(
         terminalId="term-1"
         onConfirmAndClose={onConfirmAndClose}
         onPrintReceipt={onPrintReceipt}
+        fraudSettings={baseFraudSettings}
+        cashCountPolicyResolved
       />
     </MemoryRouter>,
   );
 }
 
 interface CashCountRenderOpts {
-  fraudSettings?: CompanyFraudSettings;
+  fraudSettings?: CompanyFraudSettings | null;
+  cashCountPolicyResolved?: boolean;
   onConfirmAndClose?: ReturnType<typeof vi.fn>;
   onClose?: ReturnType<typeof vi.fn>;
   onVerifyManagerPin?: ReturnType<typeof vi.fn>;
@@ -163,6 +174,13 @@ function renderModalWithCashCount(opts: CashCountRenderOpts = {}) {
   const onVerifyManagerPin =
     opts.onVerifyManagerPin ?? vi.fn().mockResolvedValue({ valid: true });
   const onManagerPinThrottleUpdate = vi.fn();
+  // Preserve an explicitly supplied undefined to exercise the JavaScript boundary.
+  const cashCountPolicyResolved = Object.prototype.hasOwnProperty.call(
+    opts,
+    'cashCountPolicyResolved',
+  )
+    ? opts.cashCountPolicyResolved
+    : true;
   const result = render(
     <MemoryRouter>
       <EndOfDayPreviewModal
@@ -171,7 +189,12 @@ function renderModalWithCashCount(opts: CashCountRenderOpts = {}) {
         shift={sampleShift}
         terminalId="term-1"
         onConfirmAndClose={onConfirmAndClose}
-        fraudSettings={opts.fraudSettings ?? baseFraudSettings}
+        fraudSettings={
+          Object.prototype.hasOwnProperty.call(opts, 'fraudSettings')
+            ? opts.fraudSettings
+            : baseFraudSettings
+        }
+        cashCountPolicyResolved={cashCountPolicyResolved as boolean}
         authorizedManagers={[
           { id: 'mgr-1', name: 'Mgr One' },
           { id: 'mgr-2', name: 'Mgr Two' },
@@ -194,8 +217,8 @@ function renderModalWithCashCount(opts: CashCountRenderOpts = {}) {
 // see the same stale value and overwrite instead of append).
 // Clicks are scoped to cash-count-numpad-panel to avoid ambiguity when
 // the manager PIN numpad also appears (e.g. when variance > hard).
-async function enterCashActual(value: string = '130') {
-  fireEvent.click(screen.getByTestId('tender-actual-input-CASH'));
+async function enterTenderActual(code: string, value: string) {
+  fireEvent.click(screen.getByTestId(`tender-actual-input-${code}`));
   await Promise.resolve(); // wait for numpad panel to render
   const numpadPanel = screen.getByTestId('cash-count-numpad-panel');
   for (const ch of value) {
@@ -208,11 +231,16 @@ async function enterCashActual(value: string = '130') {
   }
 }
 
+async function enterCashActual(value: string = '130') {
+  await enterTenderActual('CASH', value);
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('EndOfDayPreviewModal', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    modalI18nState.locale = 'en';
     mockBuildEndOfDayPreview.mockResolvedValue(samplePreview);
   });
 
@@ -328,7 +356,7 @@ describe('EndOfDayPreviewModal', () => {
   // ── New tests for cash-count integration ──────────────────────────────────
 
   describe('cash-count mode', () => {
-    it('hides cash reconciliation section in legacy mode (no fraudSettings)', async () => {
+    it('hides cash reconciliation section in legacy mode without supporting props', async () => {
       renderModal();
       expect(await screen.findByText('Confirm and Close Day')).toBeInTheDocument();
       expect(
@@ -483,6 +511,187 @@ describe('EndOfDayPreviewModal', () => {
       expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
       // The expected value (130.00) must not appear anywhere pre-commit.
       expect(screen.queryByText(/130\.00/)).not.toBeInTheDocument();
+    });
+
+    it('SECURITY: withholds preview values while policy is unresolved or unavailable', async () => {
+      const { rerender } = renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: false,
+      });
+      await waitFor(() => {
+        expect(mockBuildEndOfDayPreview).toHaveBeenCalledOnce();
+      });
+
+      expect(screen.getByText('Generating report...')).toBeInTheDocument();
+      expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
+      expect(screen.queryByText('130.00')).not.toBeInTheDocument();
+
+      rerender(
+        <MemoryRouter>
+          <EndOfDayPreviewModal
+            isOpen
+            onClose={vi.fn()}
+            shift={sampleShift}
+            terminalId="term-1"
+            onConfirmAndClose={vi.fn().mockResolvedValue(confirmResult)}
+            fraudSettings={null}
+            cashCountPolicyResolved
+            authorizedManagers={[]}
+            cashierUserId="user-1"
+            onVerifyManagerPin={vi.fn().mockResolvedValue({ valid: true })}
+            managerPinThrottle={{ until: null, failedAttempts: 0 }}
+            onManagerPinThrottleUpdate={vi.fn()}
+          />
+        </MemoryRouter>,
+      );
+
+      expect(screen.getByText(/Cannot close this shift/)).toBeInTheDocument();
+      expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
+      expect(screen.queryByText('130.00')).not.toBeInTheDocument();
+    });
+
+    it('SECURITY: treats an undefined runtime policy-resolution signal as pending', async () => {
+      renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: undefined,
+      });
+      await waitFor(() => {
+        expect(mockBuildEndOfDayPreview).toHaveBeenCalledOnce();
+      });
+
+      expect(screen.getByText('Generating report...')).toBeInTheDocument();
+      expect(screen.queryByText('Expected Cash')).not.toBeInTheDocument();
+      expect(screen.queryByText('130.00')).not.toBeInTheDocument();
+    });
+
+    it('renders the unavailable-policy message in French and pins both locale files', async () => {
+      const english =
+        'Cannot close this shift: the cash-count policy has not been synced to this device. Connect to the network once, then retry the close.';
+      const french =
+        "Impossible de fermer ce service : la politique de comptage de caisse n'a pas été synchronisée sur cet appareil. Connectez-vous au réseau, puis réessayez.";
+      expect(enPos.cash_count.policy_unavailable).toBe(english);
+      expect(frPos.cash_count.policy_unavailable).toBe(french);
+
+      modalI18nState.locale = 'fr';
+      renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: true,
+      });
+
+      expect(await screen.findByText(french)).toBeInTheDocument();
+      expect(screen.queryByText(english)).not.toBeInTheDocument();
+    });
+
+    it('preserves a preview-build error when policy is also unavailable', async () => {
+      mockBuildEndOfDayPreview.mockRejectedValueOnce(new Error('preview exploded'));
+      renderModalWithCashCount({
+        fraudSettings: null,
+        cashCountPolicyResolved: true,
+      });
+
+      expect(await screen.findByText('preview exploded')).toBeInTheDocument();
+      expect(screen.queryByText(/cash-count policy/)).not.toBeInTheDocument();
+    });
+
+    it('SECURITY: withholds financial preview amounts until blind counts are committed', async () => {
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        payment_methods: [
+          ...samplePreview.payment_methods,
+          {
+            payment_method_id: 'pm-check',
+            payment_method_code: 'CHECK',
+            is_physical: true,
+            total_amount: '430.00',
+            transaction_count: 1,
+          },
+        ],
+      });
+      renderModalWithCashCount({
+        fraudSettings: { ...baseFraudSettings, require_blind_cash_count: true },
+      });
+      const paymentSummary = (await screen.findByText('Payments')).parentElement!;
+
+      expect(within(paymentSummary).queryByText('30.00')).not.toBeInTheDocument();
+      expect(within(paymentSummary).queryByText('15.00')).not.toBeInTheDocument();
+      expect(within(paymentSummary).queryByText('430.00')).not.toBeInTheDocument();
+      expect(screen.queryByText('45.00')).not.toBeInTheDocument();
+      expect(screen.queryByText('37.82')).not.toBeInTheDocument();
+      expect(screen.queryByText('7.18')).not.toBeInTheDocument();
+
+      await act(async () => {
+        await enterTenderActual('CASH', '130');
+      });
+      await act(async () => {
+        await enterTenderActual('CHECK', '430');
+      });
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+
+      expect(within(paymentSummary).getByText('30.00')).toBeInTheDocument();
+      expect(within(paymentSummary).getByText('15.00')).toBeInTheDocument();
+      expect(within(paymentSummary).getByText('430.00')).toBeInTheDocument();
+      expect(screen.getAllByText('45.00')).toHaveLength(2);
+      expect(screen.getAllByText('37.82')).toHaveLength(2);
+      expect(screen.getAllByText('7.18')).toHaveLength(2);
+    });
+
+    it('SECURITY: resets the parent commit boundary across a policy refresh', async () => {
+      const blindSettings = { ...baseFraudSettings, require_blind_cash_count: true };
+      const refreshedBlindSettings = { ...blindSettings };
+      mockBuildEndOfDayPreview.mockResolvedValueOnce({
+        ...samplePreview,
+        payment_methods: [
+          ...samplePreview.payment_methods,
+          {
+            payment_method_id: 'pm-check',
+            payment_method_code: 'CHECK',
+            is_physical: true,
+            total_amount: '430.00',
+            transaction_count: 1,
+          },
+        ],
+      });
+      const view = renderModalWithCashCount({
+        fraudSettings: blindSettings,
+        cashCountPolicyResolved: true,
+      });
+      let paymentSummary = (await screen.findByText('Payments')).parentElement!;
+
+      await act(async () => {
+        await enterTenderActual('CASH', '130');
+        await enterTenderActual('CHECK', '430');
+      });
+      fireEvent.click(screen.getByTestId('commit-counts-button'));
+      expect(within(paymentSummary).getByText('430.00')).toBeInTheDocument();
+
+      const renderAtPolicyState = (resolved: boolean) => (
+        <MemoryRouter>
+          <EndOfDayPreviewModal
+            isOpen
+            onClose={vi.fn()}
+            shift={sampleShift}
+            terminalId="term-1"
+            onConfirmAndClose={vi.fn().mockResolvedValue(confirmResult)}
+            fraudSettings={resolved ? refreshedBlindSettings : null}
+            cashCountPolicyResolved={resolved}
+            authorizedManagers={[]}
+            cashierUserId="user-1"
+            onVerifyManagerPin={vi.fn().mockResolvedValue({ valid: true })}
+            managerPinThrottle={{ until: null, failedAttempts: 0 }}
+            onManagerPinThrottleUpdate={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+
+      view.rerender(renderAtPolicyState(false));
+      expect(screen.getByText('Generating report...')).toBeInTheDocument();
+
+      view.rerender(renderAtPolicyState(true));
+      paymentSummary = screen.getByText('Payments').parentElement!;
+      expect(within(paymentSummary).queryByText('430.00')).not.toBeInTheDocument();
+      expect(screen.queryByText('Expected')).not.toBeInTheDocument();
+      expect(screen.getByTestId('commit-counts-button')).toBeDisabled();
+      expect(screen.getByTestId('end-of-day-confirm-button')).toBeDisabled();
     });
 
     it('shows the legacy expected-cash summary only when there is no cash-count reconciliation', async () => {

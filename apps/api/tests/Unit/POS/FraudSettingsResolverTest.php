@@ -29,7 +29,7 @@ final class FraudSettingsResolverTest extends TestCase
         $this->assertSame($company->id, $dto->companyId);
         $this->assertSame('1.0000', $dto->cashVarianceOverSoft);
         $this->assertSame('20.0000', $dto->cashVarianceOverHard);
-        $this->assertFalse($dto->requireBlindCashCount);
+        $this->assertTrue($dto->requireBlindCashCount);
         $this->assertTrue($dto->requireManagerPinAboveHard);
         $this->assertSame('none', $dto->cashVarianceEmailSeverity);
     }

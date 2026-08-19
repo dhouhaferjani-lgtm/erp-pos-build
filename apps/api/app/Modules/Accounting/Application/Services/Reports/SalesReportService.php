@@ -254,12 +254,10 @@ final class SalesReportService
         // payment row (a receipt can carry several cash legs in a split
         // payment) and never leaked into a non-cash group OR a same-code cash
         // group belonging to a DIFFERENT payment method. We pre-aggregate
-        // per-receipt change_due in a subquery BEFORE summing, mirroring
-        // ReportGenerationService::buildExpectedPerMethod (POS/Application/
-        // Services/ReportGenerationService.php:504-532), which faces the
-        // identical row-fan-out hazard for the cash-count reconciliation
-        // report and resolves it the same way: MAX(change_due) grouped by
-        // receipt first, summed second. Subtracting `pos_receipts.change_due`
+        // per-receipt change_due in a subquery BEFORE summing. The deprecated
+        // `ReportGenerationService::buildExpectedPerMethod()` compatibility
+        // query faces the identical row-fan-out hazard: MAX(change_due) grouped
+        // by receipt first, summed second. Subtracting `pos_receipts.change_due`
         // directly in the outer SUM after the payment-row join would multiply
         // the change by the number of cash rows on the receipt (double- or
         // triple-counting it for split cash tenders) — pre-aggregating per

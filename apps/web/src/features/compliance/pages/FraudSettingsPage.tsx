@@ -33,6 +33,13 @@ function narrowEmailSeverity(value: string | null | undefined): EmailSeverity {
     : 'none'
 }
 
+function normalizeFraudSettings(settings: Partial<FraudSettings>): Partial<FraudSettings> {
+  return {
+    ...settings,
+    require_blind_cash_count: settings.require_blind_cash_count ?? true,
+  }
+}
+
 export function FraudSettingsPage() {
   const { t } = useTranslation(['common', 'compliance'])
   const queryClient = useQueryClient()
@@ -52,7 +59,7 @@ export function FraudSettingsPage() {
     cash_variance_over_hard: '20.00',
     cash_variance_under_soft: '1.00',
     cash_variance_under_hard: '20.00',
-    require_blind_cash_count: false,
+    require_blind_cash_count: true,
     require_manager_pin_above_hard: true,
     cash_variance_email_severity: 'none',
   })
@@ -71,7 +78,7 @@ export function FraudSettingsPage() {
   // Update form when data loads
   useEffect(() => {
     if (settingsData?.data) {
-      setFormData(settingsData.data)
+      setFormData(normalizeFraudSettings(settingsData.data))
     }
   }, [settingsData])
 
@@ -393,7 +400,7 @@ export function FraudSettingsPage() {
             cash_variance_over_hard: formData.cash_variance_over_hard ?? '20.00',
             cash_variance_under_soft: formData.cash_variance_under_soft ?? '1.00',
             cash_variance_under_hard: formData.cash_variance_under_hard ?? '20.00',
-            require_blind_cash_count: formData.require_blind_cash_count ?? false,
+            require_blind_cash_count: formData.require_blind_cash_count ?? true,
             require_manager_pin_above_hard: formData.require_manager_pin_above_hard ?? true,
             cash_variance_email_severity: narrowEmailSeverity(formData.cash_variance_email_severity),
           }}

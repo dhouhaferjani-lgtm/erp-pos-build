@@ -42,14 +42,12 @@ use Throwable;
  * journal entry + one movement, cross-linked, in one transaction.
  *
  * ── SHIPS DISABLED (gate finding I1) ─────────────────────────────────────────
- * `treasury.shift_variance_gl_enabled` defaults to FALSE. The lane's own report
- * asks for an owner ruling on POS count semantics (does a cashier count the
- * takings, or the whole drawer including the opening float?) before this books
- * real money — `ReportGenerationService::buildExpectedPerMethod()` sums receipt
- * payments only, so a whole-drawer count would post the float to 658/758 on
- * every close, forever. Shipping enabled while asking that question would have
- * contradicted the report. The flag is the kill switch: no code deploy needed
- * to stop it, and nothing at all runs while it is off.
+ * `treasury.shift_variance_gl_enabled` defaults to FALSE. POS count semantics
+ * are settled as whole-drawer, but Treasury does not yet book the opening float
+ * or mid-shift drawer operations that form the expected balance (SV-3/SV-4).
+ * Enabling this variance leg first would create a cash/GL mismatch. The flag is
+ * the kill switch: no code deploy is needed to stop it, and nothing at all runs
+ * while it is off.
  *
  * ── ONE NUMBER (gate finding C1/I2) ──────────────────────────────────────────
  * The amount booked is `CashCountRecorded::$aggregateVariance` — byte-for-byte
@@ -69,13 +67,14 @@ use Throwable;
  * `createPosToleranceWriteoffEntry`). It is NOT double counted here, and the
  * reason is structural rather than defensive: every 658/758 writer books
  * Dr 658 / **Cr ProductRevenue** (or the AR-side B2B mirror) and NONE touches a
- * cash account, while both expected-cash bases — the server's
- * `SUM(pos_receipt_payments.amount) − change_due` and the device's own
- * `cashTendered − change_due` term — are TENDERED-based, i.e. the cash that
- * physically entered the drawer. The tolerance is therefore already netted out
- * of "expected", and an honest count of a shift that wrote one off is BALANCED.
+ * cash account. On the live device path, the receipt term in the whole-drawer
+ * expected balance is `cashTendered − change_due`: the cash that physically
+ * entered the drawer. The tolerance is therefore already netted out of
+ * "expected", and an honest count of a shift that wrote one off is BALANCED.
+ * The retired schema-v2 server helper reached the same tolerance conclusion,
+ * but it is not a live expected-cash basis and must not define policy.
  *
- * That is the whole substantive answer, and it holds on both bases. The device's
+ * That is the whole substantive answer on the live basis. The device's
  * LEGACY fallback — which attributes `receipt.total` when a receipt carries no
  * per-payment breakdown, inflating expected by exactly the shortfall — is
  * covered by an additional BELT:

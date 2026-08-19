@@ -11,9 +11,7 @@ return new class extends Migration
 {
     /**
      * Backfill a company_fraud_settings row for every company that does not
-     * already have one. Applies vertical-aware defaults: Otospex companies
-     * (automotive) get blind cash counting enabled; IziPOS companies (retail /
-     * all others) get it disabled.
+     * already have one. Blind cash counting is enabled for every vertical.
      *
      * Uses chunk(200) with eager-loaded tenant to avoid N+1 queries.
      * Calls CompanyFraudSettings::defaultsForVertical() directly — the service

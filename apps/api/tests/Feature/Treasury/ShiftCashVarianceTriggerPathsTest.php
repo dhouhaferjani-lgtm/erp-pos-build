@@ -259,14 +259,15 @@ final class ShiftCashVarianceTriggerPathsTest extends TestCase
 
     /**
      * Gate finding M6 / fiscal C2 — the double-count guard proven by DRIVING the
-     * real server basis, not by asserting a hand-picked balanced pair.
+     * retained schema-v2 compatibility path, not by asserting a balanced pair.
      *
      * A receipt with a genuine tolerance write-off: total 100.000, TENDERED
      * 99.950, 0.050 written off to 658 (Dr 658 / Cr ProductRevenue, no cash leg).
-     * `ReportGenerationService::buildExpectedPerMethod()` therefore computes
-     * expected = 99.950 — the cash actually in the drawer — so an honest count of
-     * 99.950 is BALANCED and the shift close books nothing. 658 must still carry
-     * the per-receipt 0.050 alone.
+     * The deprecated takings-only helper computes 99.950, which matches the cash
+     * receipt term for this no-float/no-drawer-operation fixture. An honest count
+     * of 99.950 is BALANCED and the shift close books nothing. 658 must still
+     * carry the per-receipt 0.050 alone. This fixture does not define the live
+     * whole-drawer expected basis.
      */
     public function test_a_tolerance_bearing_receipt_leaves_an_honest_count_balanced_and_books_nothing(): void
     {

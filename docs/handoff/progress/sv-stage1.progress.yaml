@@ -22,12 +22,12 @@ max_fix_rounds: 5
 base_sha: df85d43f404a9e55fd29b0e3c7533852966652df
 # Branch codex/sv-stage1 in worktree .worktrees/sv-stage1, created from base_sha off LOCAL dev.
 # Handback only: NOT merged, NOT pushed — the orchestrator merges after the wave completes.
-branch: null
+branch: codex/sv-stage1
 
 owner_gates:
   - id: base-sha-pin
     question: "Confirm base_sha is an ancestor content baseline, digest verifies at HEAD, and base_sha..HEAD is administrative-only — M0 verifies all three."
-    status: satisfiable_by_M0
+    status: satisfied
   # informational — conditional logic lives in the milestone text (M3).
   # The harness treats a milestone `owner_gate:` field as an UNCONDITIONAL STOP
   # (SELF-REVIEW-HARNESS.md step 4 / condition B), so this gate must NOT be wired
@@ -45,53 +45,79 @@ owner_gates:
 
 milestones:
   - id: M0
-    title: "Preflight — contract digest verify (abort on mismatch), HEAD==BASE_SHA, read dossier §1 binding rulings (whole-drawer CONFIRMED, blind counting RULED ON everywhere, takings formula = dead code) + §2 rows SV-1/SV-9/SV-10/SV-11 in full + §3 Stage 1 + §5.1; citation inventory (unresolved=0); record the device-Arabic finding and the SV-9 six-touch-point prerequisite question list; declare the by-path regression set."
+    title: "Preflight — amended base check (base ancestor + contract digest at HEAD + administrative-only delta), read dossier §1 binding rulings (whole-drawer CONFIRMED, blind counting RULED ON everywhere, takings formula = dead code) + §2 rows SV-1/SV-9/SV-10/SV-11 in full + §3 Stage 1 + §5.1; citation inventory (unresolved=0); record the device-Arabic finding and the SV-9 six-touch-point prerequisite question list; declare the by-path regression set."
     review_lenses: [fiscal-pos]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 5
+    commit: b3eaf0523a28074c84f13abb764271cd242038b8
+    verdict: docs/handoff/reviews/sv-stage1/M0-round6.md
+    last_verdict: ACCEPT
+    updated: 8aecd49c9
   - id: M1
     title: "SV-1 — bury the takings-only formula (delete-with-branch OR @deprecated annotation, justified by an ENUMERATED grep-proof of consumers + a removal test) and correct the THREE artefacts that cite it as policy: config/treasury.php shift_variance_gl_enabled comment block, PostShiftCashVarianceAdjustment 'SHIPS DISABLED' docblock, ticket 2026-08-08-g3-shift-variance-gl-deploy-notes.md §G-1 — each stating the REAL gate (float + drawer ops unbooked, SV-3/SV-4). Preserve the historical note (R16 §1.3). Do NOT touch CashDrawerService::calculateExpectedCash()."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 5
+    commit: 0059f56c8c710be94417e4d4178045094a3e9171
+    verdict: docs/handoff/reviews/sv-stage1/M1-round2.md
+    last_verdict: ACCEPT
+    updated: 35c3bc7e7
   - id: M2
     title: "SV-11 — count-screen copy, the EXACT dossier §2 strings: (1) always-visible whole-drawer instruction with the interpolated float, (2) float-disclosure line on expected (renders AFTER Commit Counts under blind mode), (3) 'No difference'/'Aucun écart' + the 6-line reveal decomposition — LINE 2 Stage-1 rendering contract: render ONLY the cash-sales row, NO rounding placeholder and NO reserved DOM slot; the structural extension is deferred explicitly to SV-12 (Stage 5, OUT of scope), (4) keep 'Écart'. Through t(), en+fr in parallel; NO device ar tree — ship en+fr, file docs/superpowers/tickets/2026-08-11-pos-device-arabic-locale.md, and PROCEED: the ar-locale gate is INFORMATIONAL ONLY and NEVER stops this milestone. Presentation only — no money recomputation, no parseFloat."
     review_lenses: [fiscal-pos]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 1
+    commit: 54e1341b6
+    verdict: docs/handoff/reviews/sv-stage1/M2-round2.md
+    last_verdict: ACCEPT
+    updated: 0f8cd885f
   - id: M3
     title: "SV-9 — blind counting ON everywhere. FIRST execute and RECORD the prerequisite check (R-6): walk each of the six touch points + the migration and ask whether it genuinely requires G-3 (the backfill command) or another Stage-5 policy gate. IF ANY touch point genuinely does, set status blocked_owner (gate SV-9-blind-default-prerequisite), name the touch point and prerequisite in blockers, and STOP; OTHERWISE proceed. Record the outcome EITHER WAY — a silent pass is not a check. Then the six touch points + the self-guarding data migration for rows persisted false by the one-off 2026-04-25 seed (unattended tenants:migrate; savepoint wrapper not bare catch; warning-level completion token). CompanyFraudSettingsVerticalDefaultsTest goes RED BY DESIGN and is rewritten — declare it. Acceptance: both verticals resolve true; persisted-false rows migrated; FE round-trip on a row-less company does NOT re-disable. apps/web strings en+fr+ar."
     review_lenses: [fiscal-pos, frontend-conventions, tenancy-authz]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    # User-authorized resume after the original M3-round1..M3-round6 bridge-tool failures.
+    # Those registers remain historical evidence; the resumed allowance uses M3-resume1-round*.md.
+    status: passed
+    fix_rounds: 1
+    commit: 41da762c1ddc9d2e518bec6bebf94ec2fa46966d
+    verdict: docs/handoff/reviews/sv-stage1/M3-resume1-round2.md
+    last_verdict: ACCEPT
+    updated: 0417f59a2
   - id: M4
     title: "SV-10 — blind-mode leak audit: READ-ONLY audit of the enumerated surfaces (EndOfDayPreviewModal defended card, CashReconciliationSection severity/reason prompts, CashCountTable reveal gate, any sibling rendering a variance-derived value pre-commit), findings to a file in docs/handoff/reviews/sv-stage1/. Fixes ONLY for leaks in-scope per the row (expected/variance MAGNITUDE disclosed before Commit Counts under blind mode); anything larger -> ticket + report. Do not weaken the existing defence."
     review_lenses: [fiscal-pos, frontend-conventions]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 4
+    commit: 434dc742512db6574711b0f4f30db9488a29ed1b
+    verdict: docs/handoff/reviews/sv-stage1/M4-round5.md
+    last_verdict: ACCEPT
+    updated: b2a6e92a2
   - id: M5
     title: "WHOLE-LANE GATE — re-run the full accumulated evidence over the integrated branch with EVERY lens used in the wave (treasury included: it rides M1's Treasury config + listener docblock rewrites). Paste git diff --name-only BASE_SHA..HEAD and prove the negative: no Stage 2-5 row (SV-2..SV-8, SV-12..SV-18), TREASURY_SHIFT_VARIANCE_GL_ENABLED untouched, no event added/renamed/retired, no Lane A0/A1 file."
     review_lenses: [fiscal-pos, treasury, frontend-conventions, tenancy-authz]
-    status: pending
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 4
+    commit: f7b9fffeb8c8ab1c861179340f429f661509156e
+    verdict: docs/handoff/reviews/sv-stage1/M5-round5.md
+    last_verdict: ACCEPT
+    updated: f7b9fffeb
 
-status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+post_acceptance_quality:
+  source: "parent terminal audit"
+  status: passed
+  commit: 03034170cd9fb8ee709811d4ad2514e08de3042a
+  changes:
+    - "P2-1: EndOfDayPreviewModal requires cashCountPolicyResolved and treats every value other than true as pending."
+    - "P3-4: device-cache blind-count coercion accepts 1, '1', and true."
+    - "P3-1: the historical column migration points to the converging 2026_08_12_100000 migration."
+    - "P3-3: the future schema-version 422 for server-authored cash_counts is carried in the M5 P3 ticket."
+  evidence:
+    red: "3 failed / 37 passed: undefined modal signal leaked preview; string and boolean driver true shapes mapped false."
+    green: "51 passed across Header, EndOfDayPreviewModal, and companyFraudSettingsCacheRepository."
+    typecheck: "apps/pos pnpm typecheck: exit 0"
+    eslint: "five touched POS TS/TSX files: exit 0"
+    pint: "comment-only historical migration: pass"
+    react_doctor: "changed scope against HEAD: 92/100; only the pre-existing EndOfDayPreviewModal prefer-useReducer warning"
+    mutation: "production-only reverse reproduced the same 3 failures; exact replay restored 40/40 focused green"
+
+status: complete      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []

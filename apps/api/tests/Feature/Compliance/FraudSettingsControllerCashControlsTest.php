@@ -123,8 +123,8 @@ final class FraudSettingsControllerCashControlsTest extends TestCase
      *
      * Since PR #37 the EnsureFraudSettingsOnCompanyCreated listener auto-provisions
      * a CompanyFraudSettings row whenever a Company is created. This test's tenant
-     * has no `vertical` set, so the listener picks non-automotive defaults
-     * (require_blind_cash_count=false). `is_configured` therefore reflects "a row
+     * has no `vertical` set, and SV-9 requires blind counting for every vertical.
+     * `is_configured` therefore reflects "a row
      * exists" — which is now true for every newly-created company.
      */
     public function test_show_returns_cash_control_defaults_for_fresh_company(): void
@@ -138,7 +138,7 @@ final class FraudSettingsControllerCashControlsTest extends TestCase
         $data = $response->json('data');
         $this->assertSame('1.0000', $data['cash_variance_over_soft']);
         $this->assertSame('20.0000', $data['cash_variance_over_hard']);
-        $this->assertFalse($data['require_blind_cash_count']);
+        $this->assertTrue($data['require_blind_cash_count']);
         $this->assertTrue($data['require_manager_pin_above_hard']);
         $this->assertSame('none', $data['cash_variance_email_severity']);
         $this->assertTrue($data['is_configured']);

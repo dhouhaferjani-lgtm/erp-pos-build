@@ -48,7 +48,10 @@ Continue only when the SHA-256 equals the release value and the signing result m
 4. Log in with the assigned operator account.
 5. Enter the pairing token or select the assigned terminal when prompted.
 6. Wait for initial sync to finish. Confirm products, categories, payment methods, and terminal settings are visible.
-7. Set up the operator PIN.
+7. Keep the device online until its cash-count fraud policy has synced successfully. A freshly
+   provisioned or wiped device **must complete one successful policy sync before its first shift
+   close or Z generation**; there is no offline fallback for an unknown policy.
+8. Set up the operator PIN.
 
 ## Windows Time And Timezone
 
@@ -101,6 +104,12 @@ Record the final NTP source, timezone, and current local time in the install log
    - Void or refund the test sale according to the live procedure.
    - Confirm the receipt appears in local history and server receipts.
    - Confirm no red fiscal-chain or sync banner remains.
+   - While still online, open End of Day once and confirm that the cash-count flow loads without the
+     "cash-count policy has not been synced" error. Opening this flow performs another live policy
+     refresh and proves the device has an authoritative cached policy.
+   - If the policy-unavailable error appears, do not close the shift and do not generate a Z report.
+     Restore connectivity and retry until the cash-count flow loads. Record the successful policy
+     sync in the onboarding tracker before the device is handed to staff.
 
 ## Data Locations To Confirm
 

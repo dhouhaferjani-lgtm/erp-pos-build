@@ -48,14 +48,19 @@ tenant can hold a conflicting pair.
 
 ## 3. HARD PRE-ENABLE GATES — do not flip the flag until all four are closed
 
-### G-1 — Owner ruling on POS count semantics
-Do cashiers count the shift's **takings** or the **whole drawer**? The listener books the number
-the system already computes, and `ReportGenerationService::buildExpectedPerMethod()` sums receipt
-payments ONLY — no opening float, no deposits, no payouts. Under whole-drawer semantics the float
-would be booked to 658/758 on **every** close, permanently. The ruling should be taken together
-with two linked questions: whether mid-shift `DEPOSIT`/`PAYOUT` drawer operations belong in the
-expected basis, and whether an OUT variance that would take a till negative should refuse (today's
-behaviour) or record-and-alert.
+### G-1 — Book the whole-drawer basis in Treasury before enabling
+Cashiers count the **whole drawer**. The remaining gate is Treasury representation: the opening float
+and mid-shift drawer operations that form the expected balance are still unbooked (SV-3/SV-4).
+Enabling the variance leg before those flows are represented would create a cash/GL mismatch, so
+`TREASURY_SHIFT_VARIANCE_GL_ENABLED` stays false.
+
+Historical note: the retired takings-only server helper omitted opening cash because opening cash is
+shift-level, not per-tender. That statement is accurate about the schema but false as a business
+meaning: the defect is a missing join, not a wrong doctrine. This was the fourth reader to mistake
+the dead helper for policy; its deprecation annotation exists to stop a fifth.
+
+The separate questions about drawer-operation GL typing and negative-till behaviour remain owner-owed
+and out of this Stage-1 change.
 
 ### G-2 — Tenant policy must move out of config, into a company setting
 **Recorded verbatim from the treasury re-review (finding N2), as the reviewer wrote it:**
@@ -65,7 +70,9 @@ behaviour) or record-and-alert.
 
 The in-`handle()` placement of the gate was chosen so this per-company dimension has somewhere to
 land without moving the check; that is the only part of the design that anticipates it. Nothing
-consults `$event->companyId` for gating today.
+consults `$event->companyId` for gating today. The quoted takings-versus-whole-drawer question is
+historical and superseded: cashiers count the whole drawer. G-2 now concerns only where the settled
+tenant policy is stored before this global kill switch can be enabled.
 
 ### G-3 — A backfill command, or a written-off window
 The disabled window is **permanently unrecoverable** without one: a re-sync short-circuits at

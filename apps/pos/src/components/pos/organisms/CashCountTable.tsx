@@ -44,8 +44,7 @@ function varianceColor(status: VarianceStatus | undefined): string {
   }
 }
 
-function formatSigned(amount: string, direction: 'over' | 'under' | 'balanced'): string {
-  if (direction === 'balanced') return amount;
+function formatSigned(amount: string, direction: 'over' | 'under'): string {
   if (direction === 'under' && !amount.startsWith('-')) return '-' + amount;
   return amount;
 }
@@ -137,7 +136,9 @@ export function CashCountTable({
                       {actual === '' ? '—' : actual}
                     </button>
                   ) : (
-                    <span className="text-ink-muted">{tender.expected_amount}</span>
+                    <span className="text-ink-muted">
+                      {blindMode && !committed ? '—' : tender.expected_amount}
+                    </span>
                   )}
                 </td>
                 {showVariance && (
@@ -145,7 +146,11 @@ export function CashCountTable({
                     className={`px-2 py-2 text-right tabular-nums ${varianceColor(variance?.status)}`}
                     data-testid={`tender-variance-${tender.payment_method_code}`}
                   >
-                    {variance ? formatSigned(variance.amount, variance.direction) : '—'}
+                    {variance?.direction === 'balanced'
+                      ? t('cash_count.no_difference', { defaultValue: 'No difference' })
+                      : variance
+                        ? formatSigned(variance.amount, variance.direction)
+                        : '—'}
                   </td>
                 )}
               </tr>

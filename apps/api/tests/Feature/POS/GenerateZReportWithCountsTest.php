@@ -571,13 +571,13 @@ final class GenerateZReportWithCountsTest extends TestCase
     }
 
     /**
-     * The Z's printed CASH figure and the cash-count expected figure are two
-     * views of the same drawer and MUST agree once refunds exist.
+     * The Z's printed CASH figure and the deprecated takings-only reconciliation
+     * figure must agree on the net receipt term once refunds exist.
      *
      * `calculateShiftTotals` used to `continue` past return receipts before the
      * payment loop, so the printed Z showed CASH gross-of-refunds (100.00) while
-     * `buildExpectedPerMethod` reported the net (88.00) — two numbers on one Z
-     * that disagree by the refund. The device contract is unambiguous: the
+     * the legacy reconciliation reported the net (88.00) — two numbers on one Z
+     * that disagreed by the refund. The device contract is unambiguous: the
      * payment-method breakdown is NET of the refund payout
      * (spec §7.3, pinned by ReceiptReturnRefactorV3Test — "Z cash must be net of
      * the refund payout, not gross"), while refunds stay a SEPARATE

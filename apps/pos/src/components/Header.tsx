@@ -75,8 +75,11 @@ export function Header() {
   const [showEndOfDay, setShowEndOfDay] = useState(false);
 
   // Cash-count fraud settings state (loaded when EOD modal opens)
-  const [fraudSettings, setFraudSettings] = useState<CompanyFraudSettings | null>(null);
-  const [authorizedManagers, setAuthorizedManagers] = useState<AuthorizedManager[]>([]);
+  const [fraudSettingsValue, setFraudSettingsValue] = useState<CompanyFraudSettings | null>(null);
+  const [fraudSettingsTerminal, setFraudSettingsTerminal] = useState<typeof terminal>(null);
+  const [cashCountPolicyTerminal, setCashCountPolicyTerminal] = useState<typeof terminal>(null);
+  const [authorizedManagersValue, setAuthorizedManagersValue] = useState<AuthorizedManager[]>([]);
+  const [authorizedManagersTerminal, setAuthorizedManagersTerminal] = useState<typeof terminal>(null);
   const [managerPinThrottle, setManagerPinThrottleState] = useState<{
     until: string | null;
     failedAttempts: number;
@@ -108,6 +111,11 @@ export function Header() {
       isTraining: terminal.is_training_mode === true,
     };
   }, [tenantId, companyId, terminal, operator?.id, userId]);
+  const cashCountPolicyResolved =
+    terminal !== null && cashCountPolicyTerminal === terminal;
+  const fraudSettings = fraudSettingsTerminal === terminal ? fraudSettingsValue : null;
+  const authorizedManagers =
+    authorizedManagersTerminal === terminal ? authorizedManagersValue : [];
 
   // Load fraud settings + authorized managers + local throttle when EOD modal opens
   useEffect(() => {
@@ -122,7 +130,7 @@ export function Header() {
         ]);
         if (cancelled) return;
 
-        setFraudSettings({
+        setFraudSettingsValue({
           cash_variance_over_soft: settings.cashVarianceOverSoft,
           cash_variance_over_hard: settings.cashVarianceOverHard,
           cash_variance_under_soft: settings.cashVarianceUnderSoft,
@@ -130,7 +138,9 @@ export function Header() {
           require_blind_cash_count: settings.requireBlindCashCount,
           require_manager_pin_above_hard: settings.requireManagerPinAboveHard,
         });
-        setAuthorizedManagers(managers);
+        setFraudSettingsTerminal(terminal);
+        setAuthorizedManagersValue(managers);
+        setAuthorizedManagersTerminal(terminal);
 
         // Load throttle state from local SQLite
         const { getDatabase } = await import('@/lib/db');
@@ -189,7 +199,7 @@ export function Header() {
           );
           const cachedFraud = await getCompanyFraudSettings(db, companyId);
           if (!cancelled && cachedFraud) {
-            setFraudSettings({
+            setFraudSettingsValue({
               cash_variance_over_soft: cachedFraud.cash_variance_over_soft,
               cash_variance_over_hard: cachedFraud.cash_variance_over_hard,
               cash_variance_under_soft: cachedFraud.cash_variance_under_soft,
@@ -197,6 +207,7 @@ export function Header() {
               require_blind_cash_count: cachedFraud.require_blind_cash_count,
               require_manager_pin_above_hard: cachedFraud.require_manager_pin_above_hard,
             });
+            setFraudSettingsTerminal(terminal);
           }
 
           // F-3 (B7): the authorized-managers list for the offline above-hard
@@ -210,7 +221,8 @@ export function Header() {
             .filter((o) => o.approval_scopes?.includes('close_shift_variance'))
             .map((o) => ({ id: o.id, name: o.name }));
           if (!cancelled) {
-            setAuthorizedManagers(offlineManagers);
+            setAuthorizedManagersValue(offlineManagers);
+            setAuthorizedManagersTerminal(terminal);
           }
 
           const ts = await getTerminalState(db, terminal.id);
@@ -223,6 +235,8 @@ export function Header() {
         } catch {
           // Silently ignore — throttle state resets to defaults
         }
+      } finally {
+        if (!cancelled) setCashCountPolicyTerminal(terminal);
       }
     })();
 
@@ -230,6 +244,17 @@ export function Header() {
       cancelled = true;
     };
   }, [showEndOfDay, terminal, companyId]);
+
+  const handleOpenEndOfDay = () => {
+    // Fail closed on every open. This prevents a first-load null or a stale
+    // false policy from mounting a disclosure path while the refresh is in flight.
+    setFraudSettingsValue(null);
+    setFraudSettingsTerminal(null);
+    setAuthorizedManagersValue([]);
+    setAuthorizedManagersTerminal(null);
+    setCashCountPolicyTerminal(null);
+    setShowEndOfDay(true);
+  };
 
   // B7: above-hard-variance close manager approval is now OFFLINE-CAPABLE,
   // reusing the audited operator-approval verifier (online-first → anti-downgrade
@@ -608,7 +633,7 @@ export function Header() {
           {shift ? (
             <button
               type="button"
-              onClick={() => setShowEndOfDay(true)}
+              onClick={handleOpenEndOfDay}
               className="flex min-h-12 items-center rounded-pill px-1 transition-colors hover:bg-surface-sunken"
               title={t('shift.opening', { amount: shift.opening_cash })}
             >
@@ -706,6 +731,7 @@ export function Header() {
           onConfirmAndClose={handleEndOfDayConfirm}
           onPrintReceipt={isTauriEnvironment() ? handlePrintZReport : undefined}
           fraudSettings={fraudSettings}
+          cashCountPolicyResolved={cashCountPolicyResolved}
           authorizedManagers={authorizedManagers}
           cashierUserId={operator?.id ?? ''}
           onVerifyManagerPin={onVerifyManagerPin}
