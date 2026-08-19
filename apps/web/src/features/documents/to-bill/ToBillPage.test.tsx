@@ -173,11 +173,46 @@ describe('ToBillPage', () => {
     const user = userEvent.setup()
     renderWithProviders(<ToBillPage />)
 
-    await user.type(screen.getByRole('searchbox', { name: 'Search partners' }), 'a')
+    const search = screen.getByRole('searchbox', { name: 'Search partners' })
+    await user.type(search, 'a')
+    await user.type(search, 'b')
 
-    expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({
-      partnerSearch: '',
+    // Waiting for 'ab' proves the debounce window elapsed, so a one-character
+    // term ('a') was never a request the backend would 422 on.
+    await waitFor(
+      () => {
+        expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({
+          partnerSearch: 'ab',
+        }))
+      },
+      { timeout: 2000 },
+    )
+    expect(mockUseToBillQueue).not.toHaveBeenCalledWith(expect.objectContaining({
+      partnerSearch: 'a',
     }))
+  })
+
+  it('debounces the partner search instead of re-querying on every keystroke', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ToBillPage />)
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search partners' }), 'atlas')
+
+    await waitFor(
+      () => {
+        expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({
+          partnerSearch: 'atlas',
+        }))
+      },
+      { timeout: 2000 },
+    )
+
+    // Without a debounce each intermediate prefix is its own server request.
+    for (const prefix of ['at', 'atl', 'atla']) {
+      expect(mockUseToBillQueue).not.toHaveBeenCalledWith(expect.objectContaining({
+        partnerSearch: prefix,
+      }))
+    }
   })
 
   it('lazily expands rows and reconciles them with the partner summary', async () => {
@@ -272,10 +307,48 @@ describe('ToBillPage', () => {
     })
     renderWithProviders(<ToBillPage />)
 
-    expect(screen.getByText(/Showing TND delivery notes for Tunis/)).toBeInTheDocument()
-    expect(screen.getByText(/Unassigned-location and other-currency notes are excluded/)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'All locations' }))
+    expect(screen.getByText(
+      'Showing Tunis only. Delivery notes with no location are excluded, and only TND delivery notes are counted.',
+    )).toBeInTheDocument()
+
+    const toggle = screen.getByRole('button', { name: 'All locations' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    await user.click(toggle)
     expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({ locationId: 'all' }))
+  })
+
+  it('discloses the company-wide scope the server actually served when no location is active', () => {
+    mockUseLocation.mockReturnValue({
+      currentLocation: null,
+      currentLocationId: null,
+      locations: [],
+      isLoading: false,
+    })
+    mockUseToBillQueue.mockReturnValue({
+      data: { ...queue, scope: { location_id: null, can_view_all_locations: true } },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderWithProviders(<ToBillPage />)
+
+    expect(screen.getByText(
+      'Showing every location, including delivery notes with no location. Only TND delivery notes are counted; notes in another currency are excluded.',
+    )).toBeInTheDocument()
+    expect(screen.getByRole('article', { name: /Atlas Periodic/ })).toBeInTheDocument()
+  })
+
+  it('explains an unresolved queue instead of rendering an empty region', () => {
+    mockUseToBillQueue.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderWithProviders(<ToBillPage />)
+
+    expect(screen.getByText('No active company scope')).toBeInTheDocument()
+    expect(screen.queryByText('Nothing left to bill')).not.toBeInTheDocument()
   })
 
   it('hides every group action from a deliveries.view-only user', () => {
