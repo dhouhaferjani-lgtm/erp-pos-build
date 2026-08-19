@@ -8,8 +8,8 @@
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
 - Current M2 implementation SHA: `3b1af7fbc` (bridge round 2 accepted through `52aae14b7`).
-- Current M3 implementation SHA: `c0c0c8273` (awaiting bridge round 1).
-- Milestone being handed back: M3 implementation complete; bridge review in progress.
+- Current M3 implementation SHA: `2de9df339` (round-1 fix complete; differential gate at `2a983c621`).
+- Milestone being handed back: M3 fix round 1 complete; bridge round 2 pending.
 - No push, merge, or deployment was performed.
 
 M1 commit list:
@@ -442,7 +442,7 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 
 ## M3 — Global to-bill work queue
 
-**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — scoped fix round 1 in progress.**
+**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — scoped fix round 1 complete; round 2 pending.**
 
 Bridge round 1 reviewed `60df88a01..87f4b75db` through frontend-conventions, tenancy-authz,
 treasury, and general. It found two P1s: `apiGet` stripped the queue's top-level `meta`/`summary`
@@ -450,6 +450,14 @@ envelope, and View B suppressed attributed 422 toasts without supplying the requ
 recovery. Four P2s cover one-character search requests, partner-group counts mislabeled as delivery
 notes, malformed PostgreSQL UUID input, and silent/unreachable location/currency scope. Fix round 1
 is limited to those findings plus directly related P3 test hardening.
+
+The fix round now preserves the complete transport envelope through a real Axios-to-page seam,
+renders the ratified OI-8 attribution and explicit remainder retry, debounces and guards partner
+search, labels summary values as customer groups, validates UUIDs before PostgreSQL, and exposes
+server-described location/currency scope with an entitled all-locations toggle. An unresolved
+company context renders a named empty state rather than a blank region. The register's P3
+in-memory group pagination and unbounded remaining-page fan-out are recorded, not widened into a
+queue redesign.
 
 M3 commit sequence:
 
@@ -459,6 +467,13 @@ M3 commit sequence:
 - `aa4332252 Phase 2.3.4: Build delivery note to-bill queue`
 - `ce88e367a Phase 2.3.5: Clear to-bill static analysis gate`
 - `c0c0c8273 Phase 2.3.6: Record to-bill route contract`
+- `87f4b75db Phase 2.3.7: Record M3 differential preflight`
+- `8c4bb6cdd Phase 2.3.8: Record M3 bridge round one`
+- `19e0332bc Phase 2.3.9: Reproduce M3 bridge findings`
+- `91468b98d Phase 2.3.10: Close M3 bridge findings`
+- `47d982037 Phase 2.3.11: Reproduce remaining M3 bridge findings`
+- `2de9df339 Phase 2.3.12: Close remaining M3 bridge findings`
+- `2a983c621 Phase 2.3.13: Tighten to-bill transport assertion`
 
 ### Failing-test-first evidence
 
@@ -484,8 +499,9 @@ its expectation was corrected to the actual request contract before the green co
   route. It lazily returns that partner's oldest-first delivery-note rows with independent offset
   pagination and a reconciliation summary. Both endpoints require `module:Sales` and
   `deliveries.view`.
-- Both reads are tenant/company/location scoped. Location is required and validated against the
-  active membership; `all` is accepted only for an unrestricted membership. Partner search, date
+- Both reads are tenant/company/location scoped. An explicit location is validated against the
+  active membership; without one the server resolves its established company/default scope, and
+  `all` is accepted only for an unrestricted membership. Partner search, date
   range, and billed-periodically filters apply identically to the roll-up and expanded rows and
   never silently widen on invalid input.
 - The roll-up excludes supplier-only partners, draft or already-invoiced notes, foreign-company
@@ -510,13 +526,16 @@ its expectation was corrected to the actual request contract before the green co
 
 ### M3 verification evidence
 
-- Focused frontend: 6 files / 74 tests passed; typecheck passed. Scoped ESLint reports zero errors
-  and only three inherited warnings in old `useDeliveryNotes.ts` lines outside the M3 additions.
-- Focused backend: queue/access/lane-separation 18 tests / 120 assertions passed. Focused PHPStan
+- Focused frontend after the fix round: 7 files / 82 tests passed; typecheck passed. Scoped ESLint
+  reports zero errors and only three inherited warnings in old `useDeliveryNotes.ts` lines outside
+  the M3 additions.
+- Focused backend: queue/access/lane-separation 18 tests / 127 assertions passed. Focused PHPStan
   reports no errors, and changed-file Pint passes.
-- Exact §6.3 frontend scope: 94 files, 721 tests passed / 2 failed of 723. The failures are exactly
+- Stable single-worker exact §6.3 frontend scope: 95 files, 729 tests passed / 2 failed of 731. The failures are exactly
   the owner-ledgered `finance/api.test.ts` and `finance/hooks/__tests__/tenantScope.test.tsx` reds;
-  every M3 test passes.
+  every M3 test passes. Two default-parallel sweeps also exposed a load-sensitive PartnerForm race
+  (and once a Sidebar timeout); both files pass together 55/55 in isolation and neither is touched
+  by this fix round, so they are recorded as runner flake rather than added to the stable failure set.
 - Exact backend path scope: 1,068 passed / 32 skipped / 2 failed. Both failures are the inherited
   default-SQLite `InventoryGlCompositeRootTest` fixtures (`tenants` table absent); the PostgreSQL
   control passes 2 tests / 19 assertions.
@@ -525,10 +544,9 @@ its expectation was corrected to the actual request contract before the green co
 - Whole-web ESLint has zero errors; TanStack-key audit is 0 new, design-system audit is 734
   acknowledged / 0 new / 0 stale, quantity audit is 0, web and POS custom ESLint-rule tests pass,
   and fiscal parity passes 29/29.
-- React Doctor against explicit base `60df88a01` scores 88/100. Its only two findings are the
+- React Doctor against explicit base `60df88a01` scores 88/100 across 27 changed files. Its only two findings are the
   already-reviewed M2 partner-tab component-size/chained-iteration warnings; M3 introduced no
-  Doctor regression. Its initial M3 serial-page-fetch finding was fixed with bounded parallel page
-  requests before commit.
+  Doctor regression.
 - Route-manifest regeneration contains no `/sales/to-bill` delta after `c0c0c8273`; only the
   inherited manifest residual remains. The SaleReceipt audit still reports only
   `InventoryCountingController.php:135`, while its six-entry receiver validator passes.
@@ -538,7 +556,7 @@ its expectation was corrected to the actual request contract before the green co
 
 ### M3 amended differential verdict
 
-**PASSED at `c0c0c8273` for entry to bridge review.** Every M3-touched surface is green. The exact
+**PASSED at `2a983c621` for bridge round 2.** Every M3-touched surface is green. The exact
 repository failure set is byte-identical to or smaller than the pinned-base/M2 record: two locked
 PHPStan findings, two SQLite-only composite-root fixtures, two finance Vitest reds, and the known
 route-manifest/generated-types/SaleReceipt residuals. No new failure is present.

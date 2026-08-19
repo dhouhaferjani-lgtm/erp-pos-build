@@ -36,10 +36,10 @@ preflight_policy:
     - "packages/shared/types/generated.d.ts is stale at the pinned base: typescript:transform adds SystemAccountPurpose inventory_shrinkage_expense/inventory_gain_income and MovementGlKind from the merged 3C lane; branch drift is byte-identical and remains owner-lane work"
   last_comparison:
     base_sha: 60df88a01b52828665caf33809486bdf0a699bbc
-    branch_sha: c0c0c8273
+    branch_sha: 2a983c621
     status: passed
-    touched_files: "M3 focused Vitest 74/74, typecheck, scoped ESLint, focused PHPStan, changed-file Pint, 18 backend/lane-separation tests (120 assertions), React Doctor, query-key/design/quantity audits, and diff-check green"
-    whole_repo: "Exact §6.3 path sweep 721/723 with only the same two finance reds; backend path sweep 1068 passed/32 skipped with only the same two default-SQLite InventoryGlCompositeRootTest fixture reds (2/2 pass under phpunit-pgsql.xml); PHPStan same two locked C-3 findings; whole-web ESLint 0 errors plus key/design/quantity/POS/fiscal gates green; /sales/to-bill is recorded in the route manifest and only the inherited manifest residual remains; SaleReceipt chokepoint residual unchanged"
+    touched_files: "M3 fix-round focused Vitest 82/82, typecheck, scoped ESLint, focused PHPStan, changed-file Pint, 18 backend/lane-separation tests (127 assertions), React Doctor 88/100, query-key/design/quantity audits, translation/no-float guards, and diff-check green"
+    whole_repo: "Stable single-worker exact §6.3 path sweep 729/731 with only the same two finance reds; backend path sweep 1068 passed/32 skipped with only the same two default-SQLite InventoryGlCompositeRootTest fixture reds (2/2 and 19 assertions pass under phpunit-pgsql.xml); PHPStan same two locked C-3 findings; whole-web ESLint 0 errors plus key/design/quantity/POS/fiscal gates green; /sales/to-bill remains recorded in the route manifest and only the inherited manifest residual remains; SaleReceipt chokepoint residual unchanged"
 
 # Commit series assigned by the parent (brief §5): Phase 2.<milestone>.<seq>. Do not invent another.
 commit_series: "Phase 2.<milestone>.<seq>"
@@ -107,8 +107,8 @@ milestones:
     title: "M3 - View B: roll-up shape + GET /delivery-notes/uninvoiced/{partner} lazy expansion (M1 owns the endpoint's existence, authorization and module gate; M3 owns its roll-up shape, lazy expansion and UI), location scoping and filters, /sales/to-bill, sidebar entry, the 30/60/90/90+ aging strip, periodic-billing chip, coexistence helper text. §6.3 green AND the /finance/lane-separation regression green."
     review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
     status: review
-    fix_rounds: 0
-    commit: c0c0c8273
+    fix_rounds: 1
+    commit: 2de9df339
     verdict: docs/handoff/reviews/dn-consolidation-build/M3-round1.md
     last_verdict: CHANGES-REQUIRED
   - id: M4
@@ -148,3 +148,5 @@ findings:
   - "M3 at c0c0c8273 delivers the location-scoped customer-only to-bill roll-up and lazy partner rows, aging/filter/group UI, independent Sales/deliveries.view route gates, invoices.create group actions, sidebar and route-manifest entries, generated-DTO row typing, and the View A mixed-currency selection guard assigned by M2 round 2. Seeder and generated permissions map remain untouched."
   - "M3 amended differential preflight passed before review: focused frontend 74/74 and backend 18/120 are green; exact frontend 721/723 has only the two inherited finance reds; exact backend 1068 passed/32 skipped has only the two inherited SQLite fixture reds, which pass 2/2 on PostgreSQL; whole PHPStan has only locked C-3 lines 309-310; whole lint/audits reproduce no new failure."
   - "M3 bridge round 1 at 87f4b75db returned CHANGES-REQUIRED. Blocking fixes: preserve the queue's top-level data/meta/summary envelope, implement OI-8 attributed refusal and explicit remainder recovery on View B, suppress invalid one-character search requests, label group counts as groups, validate malformed location UUIDs before PostgreSQL, and make location/company-currency exclusions explicit with a reachable all-locations scope for entitled users."
+  - "M3 fix round 1 is RED 19e0332bc + 47d982037 and GREEN 91468b98d + 2de9df339, with assertion cleanup 2a983c621: real Axios-to-page envelope coverage, attributed OI-8 refusal and explicit remainder retry, debounced min-2 search, customer-group labels, UUID-before-query validation, server-described location/currency scope, entitled all-location access, and a no-company empty state. The register's P3 unbounded fan-out and in-memory group pagination remain recorded rather than expanded into a redesign."
+  - "M3 fix-round differential preflight passed at 2a983c621: focused frontend 82/82 and backend 18/127 are green; stable exact frontend 729/731 has only the two inherited finance reds; exact backend is unchanged at 1068 passed/32 skipped/2 inherited SQLite reds with its PostgreSQL control green; PHPStan and route-manifest residual sets are unchanged."
