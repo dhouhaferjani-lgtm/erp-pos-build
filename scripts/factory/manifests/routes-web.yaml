@@ -807,6 +807,10 @@ routes:
     component: CreateReturnNotePage
     module_gate: sales
     permission: null
+  - path: /sales/to-bill
+    component: ToBillPage
+    module_gate: Sales
+    permission: deliveries.view
   - path: /scheduling
     component: SchedulerPage
     module_gate: null
