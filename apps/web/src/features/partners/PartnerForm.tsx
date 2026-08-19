@@ -40,7 +40,6 @@ interface Partner {
   credit_limit: string | null
   discount_percentage: string | null
   invoice_consolidation: boolean
-  consolidation_frequency: string | null
   email: string | null
   phone: string | null
   street_address: string | null
@@ -92,7 +91,6 @@ export interface PartnerFormData {
   credit_limit: string
   discount_percentage: string
   invoice_consolidation: boolean
-  consolidation_frequency: string
   email: string
   phone: string
   street_address: string
@@ -213,7 +211,6 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       credit_limit: '',
       discount_percentage: '',
       invoice_consolidation: false,
-      consolidation_frequency: '',
       email: '',
       phone: '',
       street_address: '',
@@ -324,7 +321,6 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
         credit_limit: partner.credit_limit ?? '',
         discount_percentage: partner.discount_percentage ?? '',
         invoice_consolidation: partner.invoice_consolidation,
-        consolidation_frequency: partner.consolidation_frequency ?? '',
         email: partner.email ?? '',
         phone: partner.phone ?? '',
         street_address: partner.street_address ?? '',
@@ -419,7 +415,6 @@ export function PartnerForm({ partnerType }: PartnerFormProps) {
       exemption_valid_until: data.exemption_valid_until || null,
       credit_limit: data.credit_limit || null,
       discount_percentage: data.discount_percentage || null,
-      consolidation_frequency: data.consolidation_frequency || null,
       company_legal_name: data.company_legal_name || null,
       business_registration_number: data.business_registration_number || null,
       bank_accounts: data.bank_accounts.map((account) => ({

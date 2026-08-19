@@ -114,9 +114,8 @@
       "paymentTermsDays": "Délai de paiement (jours)",
       "creditLimit": "Plafond de crédit",
       "discountPercentage": "Pourcentage de remise",
-      "invoiceConsolidation": "Activer la consolidation des factures",
-      "consolidationFrequency": "Fréquence de consolidation",
-      "selectFrequency": "Sélectionner la fréquence",
+      "invoiceConsolidation": "Facturé périodiquement",
+      "invoiceConsolidationHelp": "Ce client est facturé périodiquement.",
       "validateTaxId": "Valider",
       "taxIdValid": "Valide",
       "taxIdInvalid": "Invalide",
@@ -149,10 +148,6 @@
       "net_60": "Net 60",
       "net_90": "Net 90",
       "custom": "Personnalisé"
-    },
-    "consolidation": {
-      "weekly": "Hebdomadaire",
-      "monthly": "Mensuel"
     },
     "contacts": {
       "title": "Personnes de contact",

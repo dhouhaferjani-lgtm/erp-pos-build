@@ -327,10 +327,6 @@ routes:
     component: DeliveryNoteDetailPage
     module_gate: inventory
     permission: null
-  - path: /inventory/delivery-notes/consolidate
-    component: DeliveryNoteConsolidationPage
-    module_gate: Sales
-    permission: invoices.create
   - path: /inventory/delivery-notes/new
     component: DocumentForm
     module_gate: null

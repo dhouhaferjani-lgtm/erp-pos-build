@@ -92,7 +92,6 @@ class CreatePartnerRequest extends FormRequest
             'consolidation_frequency' => [
                 'nullable',
                 new Enum(ConsolidationFrequency::class),
-                Rule::requiredIf(fn (): bool => (bool) $this->input('invoice_consolidation')),
             ],
             'is_active' => ['sometimes', 'boolean'],
             'notes' => ['nullable', 'string', 'max:5000'],

@@ -26,7 +26,6 @@ export { ReturnNoteMetadata } from './ReturnNoteMetadata'
 
 // Document Management Components
 export { DocumentLineEditor, type DocumentLine } from './DocumentLineEditor'
-export { DeliveryNoteConsolidation } from './DeliveryNoteConsolidation'
 export { DocumentAttachments } from './DocumentAttachments'
 export { RelatedDocumentsTab } from './RelatedDocumentsTab'
 

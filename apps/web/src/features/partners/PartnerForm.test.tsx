@@ -53,7 +53,6 @@ function makeExistingPartner() {
     credit_limit: null,
     discount_percentage: null,
     invoice_consolidation: false,
-    consolidation_frequency: null,
     email: null,
     phone: '+21699999999',
     street_address: 'Existing Street',

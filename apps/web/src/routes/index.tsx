@@ -45,7 +45,6 @@ const CustomerForm = lazy(() => import('../features/partners/PartnerForm').then(
 // Documents - reusing for quotes/orders/invoices
 const DocumentListPage = lazy(() => import('../features/documents/DocumentListPage').then((m) => ({ default: m.DocumentListPage })))
 const DocumentForm = lazy(() => import('../features/documents/DocumentForm').then((m) => ({ default: m.DocumentForm })))
-const DeliveryNoteConsolidationPage = lazy(() => import('../features/documents/DeliveryNoteConsolidationPage').then((m) => ({ default: m.DeliveryNoteConsolidationPage })))
 const ToBillPage = lazy(() => import('../features/documents/to-bill/ToBillPage').then((m) => ({ default: m.ToBillPage })))
 const CreateCreditNotePage = lazy(() => import('../features/documents/CreateCreditNotePage').then((m) => ({ default: m.CreateCreditNotePage })))
 const ReturnNoteListPage = lazy(() => import('../features/documents/ReturnNoteListPage').then((m) => ({ default: m.ReturnNoteListPage })))
@@ -1254,18 +1253,6 @@ export function AppRoutes() {
                   <DocumentForm documentType="delivery_note" />
                 </SuspenseWrapper>
               </RequirePermission>
-            }
-          />
-          <Route
-            path="delivery-notes/consolidate"
-            element={
-              <ModuleGuard module="Sales">
-                <RequirePermission permission="invoices.create">
-                  <SuspenseWrapper>
-                    <DeliveryNoteConsolidationPage />
-                  </SuspenseWrapper>
-                </RequirePermission>
-              </ModuleGuard>
             }
           />
           <Route
