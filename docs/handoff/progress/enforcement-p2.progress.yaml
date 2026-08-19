@@ -11,7 +11,7 @@ max_fix_rounds: 5
 # quiet_window_ack (below) — this package edits .github/workflows/ci.yml, changing CI behaviour for
 # EVERY open lane, and P2-M1's frontend-lint step additions are themselves a CI-contract change
 # (gate-r1 H-3; mechanism corrected r4/R0-3 — the job runs discrete steps, never pnpm lint).
-base_sha: null
+base_sha: c97e0d1ada0ff73c7beb12dca478fa106df23128
 # Parent records here, BEFORE dispatch (gate-r2 R2-H-1 SPLIT — the final checklist does not exist until
 # M3, so M0 attests only the PRELIMINARY state): the owner-approved quiet window AND that a PRELIMINARY
 # scope notice (what will change, roughly when) was SENT to all active lanes (brief F-6).
@@ -91,7 +91,7 @@ closing_receipt: null
 # R2-H-2) — + local run of the job's commands + job-graph reasoning); remote-CI proof is the owner's
 # PRE-promotion workflow_dispatch gate (pre_promotion_ci_dispatch above; LEDGER §2 row S-14). The
 # parent promotes only after that run is green.
-branch: null
+branch: codex/enforcement-p2-ci-guards
 
 # F-1: parent writes the `Phase <major.minor.patch>` series here BEFORE dispatch (AGENTS.md:16).
 commit_series: "Phase 5.<milestone>.<seq>"
@@ -148,11 +148,14 @@ milestones:
   - id: M0
     title: "Preconditions (SETUP-ONLY, no bridge review): (1) quiet_window_ack non-null — the owner-approved quiet window + the PRELIMINARY scope notice only (gate-r2 R2-H-1; the FINAL announcement is a separate post-M3/M4 parent artifact attested by merge_announcement_ack, NOT an M0 input — M0 must not claim the M3 checklist was sent); (2) commit_series non-null; (3) OWNERSHIP SNAPSHOT recorded into the handback (gate-r1 H-2): ui-wave0.progress.yaml M4/wave status + grep of ci.yml at base_sha for check-manifest-drift + the OpenAPI lane's CI-wiring state at base — the 2(a) branch decision (verify-only vs implement vs blocked_owner) is derived from THIS snapshot, not from a later grep; (4) fresh worktree/branch off base_sha; (5) ratchet_trust_model_ack non-null (gate-r5 R5-H-1 — the F-8 principal enumeration + non-authorship assertion is an M0 artifact, not prose); (6) control_manifest non-null and the manifest file present at base with a matching sha256 (gate-r8 R8-H-1). Any failure: blocked_precondition, STOP. No adversarial register is produced."
     review_lenses: []
-    status: pending
+    status: passed
     fix_rounds: 0
     commit: null
-    verdict: null
+    verdict: null   # SETUP-ONLY milestone: no adversarial register is produced (per M0 title)
     last_verdict: null
+    updated: c97e0d1ad
+    # Ownership snapshot + all six preconditions recorded in
+    # docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M0 (the handback quotes it verbatim).
   - id: M1
     title: "2(c) i18n completeness + 2(d) guard-liveness — CLASSIFIED AS A CI-CONTRACT CHANGE (gate-r1 H-3; mechanism corrected r4/R0-3): the i18n audit lands as an EXPLICIT DISCRETE STEP in the frontend-lint job in ci.yml — NEVER via the package.json lint chain (frontend-lint runs discrete steps + lint:ratchet, never pnpm lint; ci.yml:885 comment says the ratchet supersedes it; the chain is local-only) — and that workflow edit changes frontend-lint's pass/fail on every open lane, so M1 carries the same quiet-window/announcement/observe-first-or-baselined treatment as M2/M3 (the old 'pure additions, safe first' label was false). Acceptance greps ci.yml for the step; H-9: verify frontend-lint in all-checks-pass needs (:1104 at brief base), wire if absent. 2(c) audits AUTHORED-LOCALE PROVENANCE — source translation files/imports, never the merged resources object (gate-r1 H-5): English-aliased namespaces (i18n.ts:392-405,416-424) and spread-supplied keys (:429-430) count as UNTRANSLATED and enter the ratchet baseline; production-shaped alias/spread tamper fixture required. The i18n ratchet carries the anti-growth check in its TWO-PHASE PINNED form (gate-r2 R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4): commit 1 = dedicated SEED COMMIT, commit 2 = mirror pins (i18n_baseline_seed_commit + i18n_baseline_protected_blob + the PRE-ALLOCATED i18n_baseline_pin_tag NAME, gate-r5 R5-C-2) + checker metadata, ONLY THEN this milestone's bridge review (verdict covers both commits; a seed-changing fix round RECREATES the same two-step topology then re-reviews both — gate-r4 R4-H-3, single self-identifying fix commit forbidden); the CI checker compares PARSED KEY SETS against the blob named by the OWNER-SET repository variable I18N_BASELINE_PROTECTED_BLOB (git cat-file blob; never the YAML, never a branch name; FAIL CLOSED on unset variable / unfetchable blob / YAML-mirror drift; keys removal-only; bootstrap + re-pins are owner variable writes at promotion, brief §6 F-8; the before-state IS the variable-held blob) — any added key FAILS + its planted violation+matching-key tamper case must fail against the variable-held comparison (plus mirror-drift -> FAIL, unset variable -> FAIL via isolated env -u subshell). LOCAL green runs use the authority setup export (derive seed blob, assert == mirror, export I18N_BASELINE_PROTECTED_BLOB — gate-r4 R4-H-4); the CI step maps ${{ vars.I18N_BASELINE_PROTECTED_BLOB }} into the checker env and fetches the pin tag explicitly (gate-r4 R4-H-2). CLDR plural-category check per locale. 2(d): RuleTester for each untested ESLint rule; tamper test per audit script (C6 Record<X, StatusTone> case coordinated with UI Wave 0 T7 under the ownership rule); the convention written into docs/conventions/; PLUS named deliverable 4 (r4/R0-3; runner corrected gate-r2 R2-H-3): the tools tests STAY ON VITEST — add the script \"test:tools\": \"vitest run tools/__tests__\" to apps/web/package.json and wire pnpm test:eslint-rules AND pnpm test:tools (that exact command string, also in M4 + package acceptance; node --test removed everywhere) into CI (both run in NO workflow today) as a discrete step or job (executor's choice, justified in the decision doc), with a planted-failing-rule-test tamper proof."
     review_lenses: [frontend-conventions]
@@ -186,5 +189,5 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
