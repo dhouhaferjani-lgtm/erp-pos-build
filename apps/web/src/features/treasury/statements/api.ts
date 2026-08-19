@@ -110,8 +110,7 @@ export interface StatementTargetProvenance {
 
 export interface StatementListResponse {
   data: BankStatementSummary[]
-  // BankStatementController::index emits only the four core fields (no from/to).
-  meta: Omit<OffsetPaginationMeta, 'from' | 'to'>
+  meta: OffsetPaginationMeta
 }
 
 export interface StatementProfile {
