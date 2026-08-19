@@ -133,7 +133,7 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                     $terminals->count(),
                 ));
 
-                /** @var list<array{terminal_code: string, company: string, chain_type: string, status: string, count: int, break_point: string}> $rows */
+                /** @var list<array{terminal_code: string, company: string, chain_type: string, status: string, count: int, inspected: int, break_point: string}> $rows */
                 $rows = [];
                 $tenantFailed = false;
 
@@ -148,6 +148,7 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                                 'chain_type' => $result['chain_type'],
                                 'status' => $result['is_valid'] ? "\u{2713}" : "\u{2717}",
                                 'count' => $result['count'],
+                                'inspected' => $result['inspected'],
                                 'break_point' => $result['break_point'],
                             ];
 
@@ -165,6 +166,9 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                             'chain_type' => 'Z-Reports',
                             'status' => $result['is_valid'] ? "\u{2713}" : "\u{2717}",
                             'count' => $result['count'],
+                            // The Z arm's verdict spans exactly the Z reports it
+                            // counts — R-1: no Z-arm behaviour change here.
+                            'inspected' => $result['count'],
                             'break_point' => $result['break_point'],
                         ];
 
@@ -175,7 +179,7 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                 }
 
                 $this->table(
-                    ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Break Point'],
+                    ['Terminal Code', 'Company', 'Chain Type', 'Status', 'Count', 'Inspected', 'Break Point'],
                     $rows,
                 );
 
@@ -287,7 +291,17 @@ final class VerifyPosChainCommand extends TenantScopedCommand
     /**
      * Verify and report each receipt-chain arm for a terminal.
      *
-     * @return list<array{chain_type: string, is_valid: bool, count: int, break_point: string}>
+     * **Count vs Inspected (M2-round1 finding 3).** `count` is receipt
+     * coverage — how many RECEIPTS this arm speaks for. `inspected` is the
+     * number of rows the arm's VERDICT actually spans, which for the
+     * authoritative fiscal arm includes every terminal event (registry
+     * snapshots, session opens/closes) and not just receipt-linked ones.
+     * Printing the verdict against `count` alone rendered a tampered
+     * TERMINAL_REGISTRY_SNAPSHOT as `Receipts: Fiscal Events ✗ count 0` —
+     * a verdict over a count of zero, misattributed to the receipt lane.
+     * Both numbers are reported so the operator can tell what failed.
+     *
+     * @return list<array{chain_type: string, is_valid: bool, count: int, inspected: int, break_point: string}>
      */
     private function verifyReceiptChains(Terminal $terminal): array
     {
@@ -305,6 +319,7 @@ final class VerifyPosChainCommand extends TenantScopedCommand
                 'chain_type' => $label,
                 'is_valid' => $arm->isValid,
                 'count' => $arm->count,
+                'inspected' => $arm->inspectedCount,
                 'break_point' => $arm->breakPoint ?? '-',
             ];
         }
