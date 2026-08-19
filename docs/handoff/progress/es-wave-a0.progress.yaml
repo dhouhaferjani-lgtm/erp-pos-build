@@ -102,11 +102,38 @@ milestones:
     # the comment/rendering path exactly so the Z service stays untouched).
     # NO straggler implementation landed — DeadLetteredProjectionsController,
     # FiscalEventQuarantine and OutboxIngestor are all untouched in this range.
+    #
+    # ROUND 1 = CHANGES-REQUIRED (docs/handoff/reviews/es-wave-a0/M3-round1.md,
+    # register commit 4a93f8631). Fix round 1 delivered 2026-08-19 in ONE commit,
+    # 7c836cee3, over the slice 4a93f8631..7c836cee3:
+    #   F-1 (Important) — the recovery round-trip omitted JSON_UNESCAPED_UNICODE
+    #     while production canonical bytes are RFC 8785 raw UTF-8
+    #     (CanonicalJsonEncoder.php:106-108), so the ES-06 discriminating branch
+    #     was unreachable for any envelope carrying non-ASCII free text — i.e.
+    #     most French/Tunisian receipts. Fixed with the one flag
+    #     (VerifyEventChainCommand.php:697-700) plus THREE red-first tests: the
+    #     faithful and the divergent non-ASCII corrections (recovery must fire)
+    #     and a \uXXXX-escaped non-canonical envelope (recovery must still
+    #     refuse — the widening is bounded). The register's "harness cannot
+    #     express a non-ASCII fixture on PG (22P02)" sub-note resolved: it is a
+    #     BACKSLASH problem, not a non-ASCII one — Connection::bindValues() binds
+    #     a plain string as PDO::PARAM_STR (bytea escape rules); the fixture now
+    #     seals the canonical raw-UTF-8 form and binds via a stream
+    #     (PDO::PARAM_LOB). Test harness only.
+    #   F-2 (Important) — ES-16 clause 16-C DROPPED (option (i)); ES-16 is now a
+    #     pure visibility contract, F16-7 added, defect item 5 corrected in place.
+    #     M3-straggler-contracts.md is at revision 2. NO command change:
+    #     EnqueueResolvedEventProjectionsCommand.php diff = 0 lines.
+    #   F-3 (Minor) — clause 16-F citation :104 -> :106.
+    # The evidence artifact now DISCLOSES the F-1 limit (new §1.6 + §2.1 + a
+    # fix-round verification block) — the register faulted the non-disclosure
+    # explicitly.
+    # D-8 still NOT reached; R-1 still holds; still no straggler implementation.
     status: review
-    fix_rounds: 0
-    commit: 1edbf2633
-    verdict: null
-    last_verdict: null
+    fix_rounds: 1
+    commit: 7c836cee3
+    verdict: docs/handoff/reviews/es-wave-a0/M3-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M3b
     title: "ES-16/ES-17 straggler IMPLEMENTATION, strictly to the contracts approved at M3. Implementing beyond or against the approved contract is a milestone failure, not a style problem. Own bridge review."
     review_lenses: [fiscal-pos, treasury]
