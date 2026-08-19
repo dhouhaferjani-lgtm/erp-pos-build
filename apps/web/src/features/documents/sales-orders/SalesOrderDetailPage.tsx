@@ -25,6 +25,7 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal/Modal'
 import { Button } from '../../../components/atoms/Button/Button'
+import { Checkbox } from '../../../components/atoms/Checkbox/Checkbox'
 import { Input } from '../../../components/atoms/Input/Input'
 import { StatusBadge, type StatusTone } from '../../../components/atoms/StatusBadge/StatusBadge'
 import { Textarea } from '../../../components/atoms/Textarea/Textarea'
@@ -713,8 +714,7 @@ export function SalesOrderDetailPage() {
                 key={line.id}
                 className={`flex cursor-pointer items-start gap-3 rounded-md border ${semanticColorTokens.border.subtle} p-3`}
               >
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={selectedRemainingLineIds.has(line.id)}
                   onChange={() => { toggleRemainingLine(line.id); }}
                   className="mt-1"
