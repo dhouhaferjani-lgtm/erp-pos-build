@@ -8,6 +8,10 @@
 
 **Implementation commit:** `ea1280d21d9e573e4b8f43f8f94ba6ecd6580aa5`
 
+**Round-1 guard tests:** `81441329a`
+
+**Round-1 remediation:** `d82670202`
+
 ## Delivered map and lifecycle
 
 - TN and FR: `6586` expense under `65` for `inventory_shrinkage_expense`; `7586` revenue under `75`
@@ -102,6 +106,11 @@ After restoring the row, the identical command returned **3 tests, 21 assertions
   claimed purpose before secondary type/active validation; the schema guard emits the stable token.
   Importer comparisons use `(sort_order, code)` for deterministic tie ordering. Custom non-TN/FR
   PCG-shaped charts remain intentionally fail-loud and are called out in the deploy checklist.
+
+Round-1 revert-replay removed `d82670202` while `81441329a` kept the covering tests present. The focused
+PostgreSQL run returned **4 tests: 3 failures and 1 error**—repurpose ordering, schema token, REQUIRED
+classification, and the missing automatic migration all went red for their intended reason. Aborting the
+revert restored the committed tip and the green results below.
 
 ### Commit revert-replay
 

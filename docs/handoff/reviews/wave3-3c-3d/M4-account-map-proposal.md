@@ -14,6 +14,8 @@
 
 **Implementation commit:** `ea1280d21d9e573e4b8f43f8f94ba6ecd6580aa5`
 
+**Round-1 remediation commit:** `d82670202`
+
 ## Owner decision — 2026-08-19
 
 The treasury owner approved **Option A** in full, including the TN/FR/Generic codes, types, parents,
