@@ -641,8 +641,8 @@
       },
       "unbilledLine": {
         "label": "Delivered, not yet invoiced",
-        "count_one": "({{count}} {{currency}} delivery note)",
-        "count_other": "({{count}} {{currency}} delivery notes)"
+        "count_one": "({{count}} delivery note in {{currency}})",
+        "count_other": "({{count}} delivery notes in {{currency}})"
       }
     },
     "consolidation": {

@@ -326,7 +326,7 @@ describe('PartnerDeliveryNotesTab', () => {
   it('discloses that aggregate count and total are company-currency scoped', () => {
     renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
 
-    expect(screen.getByText('(3 TND delivery notes)')).toBeInTheDocument()
+    expect(screen.getByText('(3 delivery notes in TND)')).toBeInTheDocument()
   })
 
   it('renders the complete four-line coexistence guidance', () => {
@@ -381,7 +381,7 @@ describe('PartnerUnbilledBalanceLine', () => {
       '/sales/customers/partner-1?tab=delivery-notes',
     )
     expect(screen.getByText('TND 300.750')).toBeInTheDocument()
-    expect(screen.getByText('(3 TND delivery notes)')).toBeInTheDocument()
+    expect(screen.getByText('(3 delivery notes in TND)')).toBeInTheDocument()
     expect(container.querySelector('dt')).toBeInTheDocument()
     expect(container.querySelector('dd')).toBeInTheDocument()
   })
