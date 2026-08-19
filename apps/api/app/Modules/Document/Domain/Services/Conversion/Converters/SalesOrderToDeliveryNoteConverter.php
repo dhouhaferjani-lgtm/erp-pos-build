@@ -10,6 +10,7 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\SalesOrderHeaderLockException;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\DocumentNumberingService;
@@ -185,8 +186,11 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
      * exception and no signal. An ordering guarantee that can silently not happen is
      * not a guarantee. Unreachable today (`convert()` has already validated the same
      * model), which is precisely why it must fail loudly if it ever becomes reachable:
-     * a RuntimeException surfaces as a 500-class alert rather than a routine 422, the
-     * same disposition F-7 established for this wave's other integrity alarms.
+     * SalesOrderHeaderLockException is a DEDICATED type that the controller's
+     * convertOrderToDelivery rethrow arm carries past its catch-all to a 500-class
+     * alert (bare RuntimeException could not be used — the controller lane throws it
+     * for routine 422 refusals), the same disposition F-7 established. Pinned over
+     * HTTP by DocumentConversionIntegrityDispositionTest. (M5-terminal treasury r3.)
      * (M5-terminal r2: treasury `R2-6` == tenancy `F-R2-3`.)
      *
      * (M5-terminal treasury F-5; total order per M5-evidence.md section 2.3.)
@@ -202,10 +206,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
             ->first();
 
         if ($locked === null) {
-            throw new RuntimeException(sprintf(
-                'Lock order violation: the sales-order header %s could not be locked before the delivery-note sequence.',
-                $order->id,
-            ));
+            throw SalesOrderHeaderLockException::forOrder($order->id);
         }
     }
 

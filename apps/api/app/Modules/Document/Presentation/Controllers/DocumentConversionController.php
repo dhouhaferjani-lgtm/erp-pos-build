@@ -13,6 +13,7 @@ use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimNotFinalisedException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimRequiresTransactionException;
+use App\Modules\Document\Domain\Exceptions\SalesOrderHeaderLockException;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
@@ -145,6 +146,14 @@ class DocumentConversionController extends Controller
                 'data' => $delivery->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Sales order converted to delivery note successfully',
             ], 201);
+        } catch (SalesOrderHeaderLockException $e) {
+            // Integrity alarm, not a customer-data refusal: a lock-order miss means the
+            // L1<L2 ordering guarantee silently did not happen. Rethrown past the
+            // catch-all below so it reaches the error reporter as a 500-class alert —
+            // the same disposition the invoice lane gives its claim-integrity alarms.
+            // Red-proven over HTTP: without this arm the catch-all returns 422.
+            // (M5-terminal treasury r3.)
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'error' => $e->getMessage(),

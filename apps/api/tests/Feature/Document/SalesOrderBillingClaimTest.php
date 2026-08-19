@@ -20,6 +20,7 @@ use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimNotFinalisedException;
+use App\Modules\Document\Domain\Exceptions\SalesOrderHeaderLockException;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
@@ -883,6 +884,112 @@ final class SalesOrderBillingClaimTest extends TestCase
         $sourceLine->update(['quantity_delivered' => $sourceLine->quantity]);
 
         return $deliveryNote->fresh(['lines']);
+    }
+
+    public function test_a_lock_order_violation_surfaces_as_a_500_class_alert_over_http(): void
+    {
+        $order = $this->createOrder();
+        $this->user->givePermissionTo('deliveries.create');
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+        // Swap the registry with one whose delivery conversion raises the lock alarm.
+        // This pins the CONTROLLER DISPOSITION — the rethrow arm in
+        // convertOrderToDelivery — which the unit-level ReflectionMethod test cannot
+        // reach. (M5-terminal treasury r3: the round-2 claim asserted this disposition
+        // without an HTTP test; the catch-all was flattening it to 422.)
+        $this->app->instance(
+            DocumentConverterRegistry::class,
+            $this->registryWithDeliveryConverterThrowing(
+                static fn (Document $source) => throw SalesOrderHeaderLockException::forOrder($source->id),
+            ),
+        );
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/orders/{$order->id}/convert-to-delivery");
+
+        $this->assertSame(
+            500,
+            $response->getStatusCode(),
+            'A lock-order violation must raise a 500-class alert, never a routine 422.',
+        );
+        $this->assertInstanceOf(
+            SalesOrderHeaderLockException::class,
+            $response->exception,
+            'The 500 must be the lock alarm itself, not an unrelated server error.',
+        );
+        $this->assertStringContainsString('Lock order violation', $response->exception->getMessage());
+
+        $this->forgetConverters();
+    }
+
+    public function test_a_routine_delivery_conversion_refusal_still_returns_422(): void
+    {
+        $order = $this->createOrder();
+        $this->user->givePermissionTo('deliveries.create');
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+        // Control for the rethrow arm: a bare RuntimeException is the routine-refusal
+        // type this lane throws for customer-data problems — it must keep its 422
+        // disposition, proving the new arm is narrow.
+        $this->app->instance(
+            DocumentConverterRegistry::class,
+            $this->registryWithDeliveryConverterThrowing(
+                static fn () => throw new RuntimeException('Order has no deliverable lines.'),
+            ),
+        );
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/orders/{$order->id}/convert-to-delivery");
+
+        $response->assertStatus(422);
+        $this->assertSame('Order has no deliverable lines.', $response->json('error'));
+
+        $this->forgetConverters();
+    }
+
+    /**
+     * A real (final) registry whose only SalesOrder->DeliveryNote converter throws —
+     * the registry and the production converter are both final, so the disposition
+     * tests swap at the ONE seam the design leaves open: the interface register().
+     */
+    private function registryWithDeliveryConverterThrowing(Closure $thrower): DocumentConverterRegistry
+    {
+        $registry = new DocumentConverterRegistry;
+        $registry->register(new class($thrower) implements \App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface
+        {
+            public function __construct(private readonly Closure $thrower)
+            {
+            }
+
+            public function sourceType(): DocumentType
+            {
+                return DocumentType::SalesOrder;
+            }
+
+            public function targetType(): DocumentType
+            {
+                return DocumentType::DeliveryNote;
+            }
+
+            public function convert(Document $source, array $options = []): Document
+            {
+                ($this->thrower)($source);
+
+                throw new RuntimeException('unreachable');
+            }
+
+            public function canConvert(Document $source): bool
+            {
+                return true;
+            }
+
+            public function getConversionErrors(Document $source): array
+            {
+                return [];
+            }
+        });
+
+        return $registry;
     }
 
     private function registry(): DocumentConverterRegistry

@@ -184,7 +184,9 @@ class DeliveryNoteConsolidationTest extends TestCase
         $invoiceId = (string) $response->json('data.id');
         $this->assertEquals(3, $response->json('meta.consolidated_delivery_notes'));
         $this->assertCount(4, $response->json('data.lines')); // 1 + 2 + 1 = 4 lines
-        $this->assertSame(1, Document::query()->where('type', DocumentType::Invoice)->count());
+        // Company-scoped (M5-terminal treasury r3 minor): absolute global counts in this
+        // class bleed under one-process PG runs alongside the fork-based concurrency file.
+        $this->assertSame(1, Document::query()->where('type', DocumentType::Invoice)->where('company_id', $this->company->id)->count());
         $this->assertSame(
             3,
             DB::table('delivery_note_billing_marks')
@@ -668,7 +670,9 @@ class DeliveryNoteConsolidationTest extends TestCase
             $this->assertStringContainsString('active company', $exception->getMessage());
         }
 
-        $this->assertSame(1, Document::query()->where('type', DocumentType::Invoice)->count());
+        // Company-scoped (M5-terminal treasury r3 minor): absolute global counts in this
+        // class bleed under one-process PG runs alongside the fork-based concurrency file.
+        $this->assertSame(1, Document::query()->where('type', DocumentType::Invoice)->where('company_id', $this->company->id)->count());
         $this->assertSame(0, DB::table('delivery_note_billing_marks')->whereIn('delivery_note_id', $ids)->count());
         $this->assertNull($source->refresh()->payload);
         $this->assertNull($wrongCompany->refresh()->payload);

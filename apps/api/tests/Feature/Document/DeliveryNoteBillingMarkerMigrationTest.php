@@ -167,6 +167,21 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             'invoice_id' => $validInvoice->id,
             'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
         ]);
+        // Year-zero shapes: Carbon parses both, PostgreSQL rejects both in ISO form
+        // ('0000-00-00' -> year -0001 -> 22007; '0000-01-01' -> year 0 -> 22008).
+        // The year bound in safeInvoicedAt() counts them as unparseable instead of
+        // aborting tenants:migrate. (M5-terminal tenancy F-R3-1 — the reviewer
+        // falsified the pre-fix absolute claim by direct INSERT probes.)
+        $invoicedAtYearZero = $this->deliveryNote('DN-INVOICED-AT-YEAR-ZERO', [
+            'invoiced_at' => '0000-00-00',
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+        $invoicedAtYearZeroIso = $this->deliveryNote('DN-INVOICED-AT-YEAR-ZERO-ISO', [
+            'invoiced_at' => '0000-01-01',
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
 
         $this->assertFalse(Schema::hasTable('delivery_note_billing_marks'));
         Log::spy();
@@ -226,7 +241,7 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
                     'cross_company_invoice_id' => 1,
                     'non_invoice_document_id' => 1,
                     'missing_invoiced_via' => 2,
-                    'unparseable_invoiced_at' => 4,
+                    'unparseable_invoiced_at' => 6, // +2 year-zero shapes (M5-terminal tenancy F-R3-1)
                 ])
             ->once();
 

@@ -32,14 +32,17 @@ final class DeliveryNoteBillingState
      * check (`safeInvoicedAt():176` — `is_string` then `trim` then `CarbonImmutable::parse`;
      * `safeInvoiceId():204` — `is_string` then `trim` then `Str::isUuid`). This DTO owns
      * the `is_string` half for both keys; the format half lives at the consumer
-     * (`DocumentData.php:198` runs `Str::isUuid()` before the `documents.id` lookup).
+     * (`DocumentData::fromModel()` runs `Str::isUuid()` before the `documents.id` lookup).
      * Together the two layers reproduce the migration's contract; NEITHER layer
      * reproduces it alone. `invoiced_via` below has been guarded this way since M1.
      *
      * A non-string value is therefore treated as ABSENT, never cast:
      * a dirty `invoice_id` resolves to no invoicing document, and a dirty `invoiced_at`
-     * reads as not-yet-billed — exactly what the backfill records (it writes no marker
-     * row for either shape) and never a 500.
+     * reads as not-yet-billed, never a 500. The backfill's treatment differs by key —
+     * a stamped row with an unparseable `invoice_id` still gets a marker row with
+     * `invoice_id = NULL` + lane `legacy_unknown` (the DN stays claimed), while an
+     * unparseable `invoiced_at` is only counted — so this projection is the more
+     * conservative reader of the two, by design. (M5-terminal tenancy F-R3-3.)
      * (M5-terminal r2: treasury `R2-1` == tenancy `F-R2-1`; round 1 = treasury `F-1` /
      * tenancy `F-T1`.)
      *

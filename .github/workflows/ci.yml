@@ -652,7 +652,8 @@ jobs:
           php artisan test -c phpunit-pgsql.xml \
             tests/Feature/Document/DeliveryNoteConsolidationConcurrencyTest.php \
             tests/Feature/Document/DeliveryNoteBillingProjectionTest.php \
-            tests/Feature/Document/DeliveryNoteBillingClaimServiceTest.php
+            tests/Feature/Document/DeliveryNoteBillingClaimServiceTest.php \
+            tests/Feature/Document/DeliveryNoteBillingMarkerMigrationTest.php
 
   t6-phase0b-pgsql:
     name: T6 Phase 0b — database-per-tenant flip (PHPUnit + PostgreSQL)

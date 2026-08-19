@@ -290,7 +290,11 @@ final class DeliveryNoteToBillQueueTest extends TestCase
 
         $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced')
             ->assertUnprocessable()
-            ->assertJsonPath('error.code', 'VALIDATION_ERROR');
+            ->assertJsonPath('error.code', 'VALIDATION_ERROR')
+            // Pin the translated refusal string, not just the code — the en key was
+            // hardcoded English until M5-terminal r2/F-R2-2; this assertion keeps the
+            // key resolving (a raw-key render would fail it). (treasury r3 minor)
+            ->assertJsonPath('error.errors.location_id.0', __('documents.to_bill_queue.no_active_location_in_scope'));
 
         // A user who may view all locations is unaffected by the new refusal.
         UserCompanyMembership::query()

@@ -179,8 +179,11 @@ return new class extends Migration
      * Inserting `$parsed->toIso8601String()` collapses the two grammars into Carbon's alone:
      * every value this method accepts is now, by construction, a value PostgreSQL accepts,
      * and a relative value resolves once, here, rather than again at INSERT. A well-formed
-     * absolute timestamp keeps its instant and its offset (ISO 8601 is round-trip exact for
-     * the `timestamptz` column), so nothing about the existing backfill's output changes.
+     * absolute timestamp keeps its instant and its offset. `toIso8601String()` truncates
+     * sub-second precision — harmless here, since no producer in this repo has ever
+     * written a fractional `invoiced_at` — and, as a real improvement over the legacy
+     * `toDateTimeString()` rows, it pins the offset explicitly where PostgreSQL used to
+     * resolve bare datetimes in the session timezone. (treasury r3 minor.)
      * (M5-terminal treasury F-6; completed in r2 by treasury `R2-4`.)
      *
      * @param  array<string, mixed>  $payload
@@ -198,6 +201,17 @@ return new class extends Migration
         try {
             $parsed = CarbonImmutable::parse($invoicedAt);
         } catch (Throwable) {
+            $counts['unparseable_invoiced_at']++;
+
+            return null;
+        }
+
+        // Carbon accepts shapes PostgreSQL rejects: '0000-00-00' normalises to year -0001
+        // (ISO '-0001-11-30…' -> SQLSTATE 22007) and '0000-01-01' to year 0 (22008). Bound
+        // the parsed year to what timestamptz text input accepts in ISO form, counting the
+        // rest as unparseable — the same counted-and-skipped disposition as every other
+        // dirty shape, never an abort. (M5-terminal tenancy F-R3-1.)
+        if ($parsed->year < 1 || $parsed->year > 9999) {
             $counts['unparseable_invoiced_at']++;
 
             return null;
