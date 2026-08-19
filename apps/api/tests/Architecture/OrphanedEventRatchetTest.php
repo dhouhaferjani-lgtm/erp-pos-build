@@ -174,16 +174,32 @@ final class OrphanedEventRatchetTest extends TestCase
 
         // — no register row.
         'App\Modules\Loyalty\Domain\Events\LoyaltyAdjusted',
-        // ES-88, WITH A CORRECTION. The row names "the V1 predecessors of
-        // PointsRedeemed/MemberEnrolled/TierUpgraded/TierDowngraded/RewardRedeemed"
-        // and says listener absence was never verified. Verified here: it is the
-        // **V2** classes that are dispatched with no listener. The V1 names are
-        // not in this list because they are not dispatched in app/ at all.
+        // ES-88, PARTIALLY — narrowed at M5 round 1 (F-7), because the first
+        // version of this comment generalised past the census.
+        //
+        // The row names "the V1 predecessors of PointsRedeemed / MemberEnrolled
+        // / TierUpgraded / TierDowngraded / RewardRedeemed" and says listener
+        // absence was never verified. What the census actually shows, name by
+        // name:
+        //   - FOUR of the row's five have a `…V2` sibling that IS dispatched
+        //     with no listener: MemberEnrolledV2, TierUpgradedV2,
+        //     TierDowngradedV2, RewardRedeemedV2. Those four are below.
+        //   - `PointsRedeemedV2` DOES NOT EXIST. The only reference to that name
+        //     in the codebase is a docblock line in PointsRedeemed.php ("If
+        //     requirements change, create PointsRedeemedV2.").
+        //   - `PointsEarnedV2` IS an orphan but is NOT one of the row's names —
+        //     it is below because the census found it, not because ES-88 did.
+        //   - None of the V1 classes themselves is in this baseline: MemberEnrolled,
+        //     TierUpgraded, TierDowngraded, RewardRedeemed, PointsRedeemed and
+        //     PointsEarned all have ZERO dispatch sites in app/, so they are
+        //     never-emitted classes — the third blind spot in the class docblock,
+        //     not orphans by this test's definition.
         'App\Modules\Loyalty\Domain\Events\MemberEnrolledV2',
+        // Census-only — see the note above; ES-88 does not name this one.
         'App\Modules\Loyalty\Domain\Events\PointsEarnedV2',
         // — no register row.
         'App\Modules\Loyalty\Domain\Events\ProgramDeactivated',
-        // ES-88, same correction.
+        // ES-88, per the note above.
         'App\Modules\Loyalty\Domain\Events\RewardRedeemedV2',
         'App\Modules\Loyalty\Domain\Events\TierDowngradedV2',
         'App\Modules\Loyalty\Domain\Events\TierUpgradedV2',

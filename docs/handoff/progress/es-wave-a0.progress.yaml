@@ -544,12 +544,89 @@ milestones:
     # A0 EXIT STATEMENT: in the report and in §5 of the M5 evidence. Seven tamper
     # shapes demonstrated red with green controls, as of the last CODE commit
     # c533f005ae2c9a80302089f9d92b1f6542fc2f21.
+    #
+    # ROUND 1 = CHANGES-REQUIRED
+    # (docs/handoff/reviews/es-wave-a0/M5-round1.md, register commit 9ce7b2090).
+    # No code defect and no fiscal fact moved: the reviewer independently
+    # re-derived the 75-name census, reproduced BOTH ratchets' tamper proofs, and
+    # confirmed F-3's discharge and the 7/13/17 recount branch by branch. All
+    # three Important findings landed on the ARTIFACT this milestone exists to
+    # produce — the exit statement and the whole-lane evidence, which is what A1
+    # trusts and nobody re-reads after an ACCEPT. Fix round 1 delivered in ONE
+    # commit:
+    #   F-1 (Important) — the CI reach was OVER-CLAIMED. The step is real and
+    #     carries no `if:` of its own, but `backend-test` has a JOB-level `if:`
+    #     one line above the steps (ci.yml:185) limiting it to workflow_dispatch
+    #     / base_ref == main / push to refs/heads/main, and the workflow's `on:`
+    #     triggers `push` for main only. So the ratchets gate PR->main,
+    #     push->main and manual dispatch — and NOTHING on dev: a PR->dev skips
+    #     backend-test, and a push to origin/dev (the rule-21 promotion path)
+    #     fires no workflow at all. "wired into an ordinary-push CI step" was
+    #     false for the flow this program actually uses. Corrected in evidence §3
+    #     (with the full trigger matrix as a table), §5.3 (what A1 inherits — now
+    #     says run the ratchets locally before promoting) and the ci.yml step
+    #     comment. Wiring a lane that runs on PR->dev means editing the CI job
+    #     matrix from inside a fiscal-verifier wave (rule 4), so it is DEFERRED
+    #     to the enforcement-P2 ci.yml reconciliation, where the parent has
+    #     ticketed it.
+    #   F-2 (Important) — ReceiptReturnRefactorV3Test is NOT an inherited red.
+    #     Root-caused rather than just re-run: PG session timezone. See the
+    #     `blockers:` note below for the full diagnosis. GREEN at HEAD under a
+    #     UTC session (9 passed / 345 assertions); the four remaining reds do NOT
+    #     clear under PGTZ=UTC. Inventory corrected to 12-across-4 in §4.1, §4.2,
+    #     §4.3 and exit item 11 (which is now marked RETRACTED); the
+    #     post-Z-close causal claim is WITHDRAWN; the parent-ownership blocker is
+    #     REMOVED.
+    #   F-3 (Important) — §4.0 published the R-1 zero-line gate against
+    #     .../POS/Domain/Services/Fiscal/V3/ZReportHashService.php, a path that
+    #     DOES NOT EXIST (real path has no Fiscal/V3/ segment). An empty numstat
+    #     against a non-existent path is a green obtained without touching the
+    #     thing measured — the same class M4-F-2 faulted — published as the proof
+    #     of the wave's most repeated constraint. Path corrected and the gate
+    #     re-measured against the real file: still zero, R-1 genuinely holds.
+    #   F-4 (Minor) — CODE FIX. emitsADomainEvent() matched RAW source, so the
+    #     single line `// PROBE: event(new Something());` appended to
+    #     ZReportProjection.php dropped it from the discovered list and fired the
+    #     "delete its line AND close the register row" message — a docblock edit
+    #     away from closing ES-04. It now strips T_COMMENT/T_DOC_COMMENT via
+    #     token_get_all() (tokenising, not regex: a comment-skipping regex must
+    #     understand strings/heredocs/escaping, and getting that subtly wrong is
+    #     the same silent-miss class). Pinned by a new test
+    #     (test_a_commented_out_emission_does_not_count_as_emitting) with two
+    #     fixtures under tests/Architecture/ProjectorEmissionFixtures/ — a
+    #     commented-emission negative and a real-emission positive control, so
+    #     the stripping cannot blind the detector wholesale. Controls run and
+    #     reverted: comment probe -> 4 passed (no longer bites); a REAL
+    #     event(new \stdClass()) on the same file -> 1 failed, 3 passed (still
+    #     bites). BOTH error directions are now named in the docblock and in
+    #     evidence §2/§5.2, including the under-report the first version denied:
+    #     pattern 2 matches any Symbol::dispatch(, so a projector dispatching a
+    #     QUEUED JOB reads as emitting. Not live today (all six POS projectors
+    #     contain no ::dispatch, ->dispatch or event( at all).
+    #   F-5 (Minor) — the never-registered cluster table summed to 38 and omitted
+    #     the Vehicle pair while §5.3 said forty. §5.3 was right: 40, re-derived
+    #     mechanically (75 entries, exactly 40 carrying a "no register row"
+    #     marker). Table now enumerates all ELEVEN clusters and sums.
+    #   F-6 (Minor) — the inherited-red control's caveat is now stated:
+    #     `git checkout <base> -- <paths>` restores base content but does NOT
+    #     delete files the lane CREATED, so the control is "base plus this lane's
+    #     new, unreferenced classes", not a clean base checkout. Adequate (the
+    #     provider and routes are reverted, so nothing is wired) but described
+    #     loosely; a clean worktree at the merge-base is the stronger control.
+    #   F-7 (Minor) — the ES-88 baseline comment generalised past the census.
+    #     Narrowed name by name: FOUR of the row's five names have a V2 sibling in
+    #     the baseline; PointsRedeemedV2 DOES NOT EXIST (the only reference is a
+    #     docblock in PointsRedeemed.php); PointsEarnedV2 is in the baseline but
+    #     is NOT one of the row's names; and all six V1 classes have ZERO dispatch
+    #     sites, so they are never-emitted classes, not orphans by this test's
+    #     definition.
     status: review
-    fix_rounds: 0
+    fix_rounds: 1
     # Milestone slice for the reviewer: 9fdd9bc08..HEAD
+    # Fix-round-1 slice: 9ce7b2090..HEAD
     commit: c533f005a
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/es-wave-a0/M5-round1.md
+    last_verdict: CHANGES-REQUIRED
 
 status: review      # pending | in_progress | review | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 
@@ -592,4 +669,36 @@ blockers:
   #     full end-to-end shape including the receipt-verification arm.
   #   - M2-round1 findings 1, 3 and 4 were fixed in the same round; finding 5
   #     is recorded.
-  - "OPEN QUESTION FOR THE PARENT (not a wave blocker) — M2-round1 finding 6: ReceiptReturnRefactorV3Test is 2/9 red on this branch and on its base, failing identically at tests/Feature/POS/ReceiptReturnRefactorV3Test.php:771 (bccomp($independentNet,'10.000') -> -1). It is an INHERITED residual: this wave touches no Z-aggregate code and the ruling excludes it from A0's scope. Which lane owns it? Consequence worth registering: the failure aborts before the post-Z-close pos:verify-chains assertion at :941, which is how the context-flattening defect stayed invisible to the suite."
+  # WITHDRAWN 2026-08-19 at M5 round 1 (F-2). The entry read:
+  #   "OPEN QUESTION FOR THE PARENT (not a wave blocker) — M2-round1 finding 6:
+  #    ReceiptReturnRefactorV3Test is 2/9 red on this branch and on its base …
+  #    the failure aborts before the post-Z-close pos:verify-chains assertion …
+  #    Which lane owns it?"
+  # It asked the parent to assign ownership of a red that does not exist. The
+  # suite is GREEN at HEAD — 9 passed (345 assertions) — and the recorded red is
+  # a PostgreSQL SESSION-TIMEZONE artifact, not an inherited code red:
+  #   - the test builds its Z window from Carbon::now('UTC')
+  #     (ReceiptReturnRefactorV3Test.php:580-581) and compares it as
+  #     'Y-m-d H:i:s' TEXT against pos_receipts.posted_at (:755-757);
+  #   - the scratch server reports `show timezone` -> Africa/Tunis (UTC+1), so
+  #     every row renders exactly one hour outside the window, all three drop
+  #     out, $independentNet becomes 0.000 and bccomp('0.000','10.000') is -1;
+  #   - instrumented and dumped to prove it, then reverted:
+  #       default session : window 22:38:54..22:44:54 vs rows at 23:39/23:41/23:43 -> net 0.000
+  #       PGTZ=UTC        : window 22:39:26..22:45:26 vs rows at 22:40/22:42/22:44 -> net 10.000
+  #   - PGTZ=UTC          -> 9 passed (345 assertions), matching the reviewer's
+  #     independent measurement exactly. Deterministic in both directions (3 runs
+  #     each).
+  # M2-round1 finding 6's "red on this branch AND on its base" was right about
+  # the observation and wrong about the attribution — both runs used the same
+  # non-UTC server. The causal claim (that the failure hides the post-Z-close
+  # pos:verify-chains assertion) is WITHDRAWN: the test reaches it.
+  # The four remaining inherited reds do NOT clear under PGTZ=UTC, so the
+  # inherited-red inventory for this lane is 12 tests across 4 files, not 14
+  # across 5: TreasuryDepositBridgeTest 9 (5 errors + 4 failures),
+  # AccountStatusChangedServerOnlyTest 1, DepositReceiptAppendTest 1,
+  # Task33FiscalFullFlowVerificationTest 1.
+  # CARRY-FORWARD (a harness rule, not a defect): run this lane's PG suites with
+  # a UTC session (PGTZ=UTC, or a server whose timezone GUC is UTC). A non-UTC
+  # session manufactures red in every window-based aggregate test.
+  []

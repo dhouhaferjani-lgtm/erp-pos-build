@@ -295,10 +295,23 @@ jobs:
 
       # ES wave A0, M5 — the two program-wide EVENT RATCHETS. Named files, not
       # the whole tests/Architecture directory: that directory carries unrelated
-      # inherited baseline failures (recorded in the A0 wave ledger) and only
-      # runs in the manual-dispatch gate below, so a ratchet placed there alone
-      # would never gate an ordinary push — i.e. it would not be "in CI" in the
-      # sense the handover asks for.
+      # inherited baseline failures (recorded in the A0 wave ledger — measured
+      # 53 tests / 4 failures on the default driver at M5 round 1) and otherwise
+      # runs ONLY in the manual-dispatch gate below.
+      #
+      # ⚠️ WHAT THIS STEP ACTUALLY GATES — read the JOB-level `if:` above, not
+      # just this step. `backend-test` runs on **PR→main, push→main and
+      # workflow_dispatch ONLY**; it is deliberately skipped on PR→dev, and a
+      # push of local `dev` to `origin/dev` (the promotion path rule 21
+      # prescribes) fires **no workflow at all** — `on:` triggers `push` for
+      # `main` only. So these ratchets do NOT gate day-to-day `dev` work today.
+      # Placing them here is still a real improvement (workflow_dispatch-only →
+      # also PR→main / push→main), but the drift they exist to catch can land on
+      # `dev` and only be caught at the `main` boundary.
+      # Raised as M5 round 1, F-1. Wiring a ratchet lane that runs on PR→dev is
+      # DEFERRED to the enforcement-P2 ci.yml reconciliation, where the parent
+      # has ticketed it — doing it here would mean editing the job matrix from
+      # inside a fiscal-verifier wave (rule 4).
       #   OrphanedEventRatchetTest  — an event dispatched with zero registered
       #     listeners fires into nothing; the baseline enumerates the existing
       #     75 BY NAME and the check fails on the 76th.

@@ -167,14 +167,25 @@ the baseline's comments:
 
 | Never-registered cluster | Count |
 |---|---|
+| Workshop/WorkOrder lifecycle (beside 7 siblings that DO have listeners) | 7 |
 | Scheduling — the entire emission surface | 6 |
 | Taxation — VAT period + withholding certificate lifecycle | 6 |
-| Workshop/WorkOrder lifecycle (beside 7 siblings that DO have listeners) | 7 |
-| Workshop/Technician — the module's own emissions | 3 |
 | Voucher lifecycle (issued / partially / fully redeemed / voided) | 4 |
-| Product created/updated/deleted | 3 |
+| Workshop/Technician — the module's own emissions | 3 |
+| Product created / updated / deleted | 3 |
 | Catalog attribute + variant | 3 |
-| Channel, Company, Loyalty (`LoyaltyAdjusted`, `ProgramDeactivated`) | 6 |
+| **Vehicle** (`MileageAnomalyDetected`, `MileageReadingLogged`) | **2** |
+| Channel (`ChannelOrderReceived`, `ChannelSyncDriftDetected`) | 2 |
+| Company (`FirstTransactionPosted`, `FiscalYearValidated`) | 2 |
+| Loyalty (`LoyaltyAdjusted`, `ProgramDeactivated`) | 2 |
+| **Total** | **40** |
+
+> **Corrected at M5 round 1, F-5.** The first version of this table summed to **38**: it omitted the
+> Vehicle pair entirely and collapsed Channel/Company/Loyalty into one row, while §5.3 said "forty".
+> §5.3 was right. The count is re-derived mechanically from the baseline's own annotations — 75
+> entries, of which exactly 40 carry a `— no register row` marker — and this table now enumerates
+> all eleven clusters and sums. A1 is pointed at this table as its never-registered inventory, so an
+> omission here is directly consumed.
 
 Baselining a number that was never measured would have produced a ratchet that is wrong on its
 first run. The baseline is the measurement; the discrepancy is stated in the test's own docblock so
@@ -286,12 +297,47 @@ READS `pos_receipts` (which is why it runs at `priority=150` behind the POS-core
 pinned on **both** sides of the partition (`test_the_registered_projector_set_is_unchanged`), so a
 new projector in either module is classified deliberately rather than silently.
 
-**Blind spot, named:** emission is detected on the projector's own source. A projector that emits
-by delegating to a collaborator service reads as non-emitting. The direction is conservative (it
-over-reports the gap), and the detection matches the fix shape the register prescribes for the whole
-T1 cluster — *"emit inside the projector's `DB::transaction`, after the write, inside the existing
-idempotency guard so Horizon redelivery cannot double-emit"*. If A1 chooses a delegating shape, the
-detection must be widened deliberately.
+**Detection, and its blind spots — BOTH directions, corrected at M5 round 1 (F-4).** Emission is
+detected on the projector's own source, which matches the fix shape the register prescribes for the
+whole T1 cluster — *"emit inside the projector's `DB::transaction`, after the write, inside the
+existing idempotency guard so Horizon redelivery cannot double-emit"*. The first version of this
+paragraph asserted the error direction was one-way and "conservative". It is not:
+
+- **Over-report** — a projector that emits by delegating to a collaborator service reads as silent.
+  A fix in that shape makes the ratchet red for the right list and the wrong reason.
+- **Under-report** — pattern 2 matches any `Symbol::dispatch(`, so a projector that dispatches a
+  **queued job** and emits no domain event reads as emitting and never enters the baseline. Not live
+  today (all six POS projectors contain no `::dispatch`, no `->dispatch` and no `event(` at all),
+  but this is the direction that loses coverage silently. Fix shape if it ever becomes live: resolve
+  the dispatched symbol through the file's `use` map and require it to land under
+  `Domain\Events\` / `Shared\Events\`.
+
+**Comments are now stripped before matching, and that was a real hole, not a nicety.** The round-1
+reviewer appended one line to `ZReportProjection.php`:
+
+```php
+// PROBE: event(new Something());
+```
+
+and the projector dropped out of the discovered list, firing the message that instructs a maintainer
+to *"delete its line AND close the register row"* — i.e. a doc-block edit on a 2 000-line projector
+could talk someone into closing **ES-04**. `emitsADomainEvent()` now runs the source through
+`token_get_all()` and drops `T_COMMENT` / `T_DOC_COMMENT` before matching. Tokenising rather than
+regex-stripping is deliberate: a regex that skips comments has to understand strings, heredocs and
+escaping, and getting that subtly wrong is the same silent-miss class the ratchet exists to prevent.
+
+Pinned by a new test, `test_a_commented_out_emission_does_not_count_as_emitting`, with two fixtures
+under `tests/Architecture/ProjectorEmissionFixtures/` — one whose only emissions are inside `//`,
+`#` and `/* */` comments and a doc-block (must read as NOT emitting) and one positive control with a
+real `event(new …)` (must read as emitting, so the stripping cannot blind the detector wholesale).
+
+**Controls, run and reverted:**
+
+```text
+CONTROL A  comment probe re-applied to ZReportProjection  ->  4 passed (5 assertions)   [no longer bites]
+CONTROL B  a REAL event(new \stdClass()) on the same file ->  1 failed, 3 passed        [still bites]
+RESTORED                                                  ->  4 passed (5 assertions)
+```
 
 ### TAMPER PROOF — it bites in BOTH directions
 
@@ -334,25 +380,58 @@ GREEN
 
 ---
 
-## 3. "in CI" — made true, narrowly
+## 3. "in CI" — partially, and the reach is narrower than M5 first claimed
 
-The handover asks for the orphaned-event ratchet **in CI**. It would not have been.
-`tests/Architecture` runs in exactly one CI job step, and that step is
-`if: github.event_name == 'workflow_dispatch'` — the manual security gate. An ordinary push or PR
-never runs it.
+**Corrected at M5 round 1, F-1.** The first version of this section said *"An ordinary push or PR
+never runs it"* about the pre-existing state and implied the new step fixed that. The first half is
+true; the implication is not, and the difference matters because A1 will act on it.
 
-`.github/workflows/ci.yml` therefore gains **one** step in `backend-test`, running exactly the two
-ratchet files by path:
+**Before this lane:** `tests/Architecture` appeared in exactly one CI step — "Full backend suite
+(manual security gate)" — guarded by `if: ${{ always() && github.event_name == 'workflow_dispatch' }}`.
+A ratchet placed in that directory alone would only ever run on a manual dispatch. That part stands.
+
+**What the new step actually gates.** `.github/workflows/ci.yml` gains one step in `backend-test`
+running exactly the two ratchet files by path:
 
 ```yaml
 - name: Event ratchets (orphaned events + projector emission)
   run: ./vendor/bin/phpunit tests/Architecture/OrphanedEventRatchetTest.php tests/Architecture/ProjectorEmissionRatchetTest.php
 ```
 
+The step carries no `if:` of its own — but the **job** does, one line above the steps
+(`ci.yml:185`):
+
+```yaml
+if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+```
+
+and the workflow's own `on:` block triggers `push` for `main` only. The real matrix is therefore:
+
+| Event | Do the ratchets run? |
+|---|---|
+| `workflow_dispatch` | **yes** |
+| PR → `main` | **yes** |
+| push → `main` | **yes** |
+| PR → `dev` | **no** — the workflow starts, `backend-test` is skipped on the job-level `if:` |
+| push → `origin/dev` (the rule-21 promotion path this whole program uses) | **no workflow runs at all** |
+
+So the improvement is real (workflow_dispatch-only → also the `main` boundary), but **the ratchets
+do not gate day-to-day `dev` work today.** Drift can land on `dev` and will only be caught when it
+reaches `main`. The M5 round-1 reviewer found this by reading the job-level `if:` that the first
+pass missed, and it is the finding that mattered most, because the milestone's deliverable is the
+exit statement.
+
+**Deferred, not silently left:** wiring a ratchet lane that runs on PR→`dev` means editing the CI
+job matrix, which is out of scope for a fiscal-verifier wave (rule 4). It is deferred to the
+**enforcement-P2 `ci.yml` reconciliation**, where the parent has ticketed it. The step's own comment
+in `ci.yml` states the true matrix and the deferral, so nobody reads the step and assumes more than
+it does.
+
 Named files, **not** the whole directory: `tests/Architecture` carries unrelated inherited baseline
-failures, and adding the directory to an ordinary-push job would turn CI red on landing. Both files
-are SQLite-safe — they read source text and the live container, no rows — verified green on the
-default driver. The step comment states all of that so nobody "helpfully" widens it later.
+failures — measured at round 1 as `Tests: 53, Assertions: 238, Failures: 4` on the default driver,
+the four being `QueueJobTenantContextTest` and siblings — so adding the directory would turn the job
+red on landing. Both ratchet files are SQLite-safe (they read source text and the live container, no
+rows), verified green on the default driver.
 
 ---
 
@@ -369,7 +448,7 @@ architecture tests and 1 trait), **1 CI workflow**, plus the review/ledger/ticke
 `git diff --numstat a5520f23c..HEAD -- <path>` returns **no entry** for any of these:
 
 ```text
-0  apps/api/app/Modules/POS/Domain/Services/Fiscal/V3/ZReportHashService.php        (R-1 — the Z arm)
+0  apps/api/app/Modules/POS/Domain/Services/ZReportHashService.php                  (R-1 — the Z arm)
 0  apps/api/app/Modules/Fiscal/Application/Services/OutboxIngestor.php              (:815 PARAM_STR untouched)
 0  apps/api/app/Modules/Fiscal/Application/Services/ParseFailureResolutionService.php (R-9 / D-8 — detection only)
 0  apps/api/app/Modules/Fiscal/Infrastructure/Commands/EnqueueResolvedEventProjectionsCommand.php (F16-7)
@@ -378,6 +457,16 @@ architecture tests and 1 trait), **1 CI workflow**, plus the review/ledger/ticke
 
 Every constraint the brief and the STOP-C ruling placed on this lane holds across the whole branch,
 not merely within the milestone that promised it.
+
+> **Path corrected at M5 round 1, F-3.** The first version of this block published the Z-arm gate
+> against `apps/api/app/Modules/POS/Domain/Services/Fiscal/V3/ZReportHashService.php` — **a path
+> that does not exist**. An empty numstat against a non-existent path proves nothing about the file
+> it claims to measure, which is exactly the unfalsifiable-assertion class M4-F-2 faulted, published
+> here as the proof of R-1 — the most repeated constraint in this wave. The real path has no
+> `Fiscal/V3/` segment. **The gate genuinely holds:** re-measured against the real path (by the
+> round-1 reviewer independently, and again here), `git diff --numstat a5520f23c..HEAD --
+> apps/api/app/Modules/POS/Domain/Services/ZReportHashService.php` returns no entry and the file is
+> present.
 
 ### 4.1 Every test file this lane touched, re-run on PostgreSQL by path
 
@@ -400,7 +489,7 @@ not merely within the milestone that promised it.
 | `tests/Feature/POS/ReceiptChainVerificationTest` | 8 passed (34 assertions) |
 | `tests/Feature/POS/VerifyPosChainCommandTest` | 15 passed (34 assertions) |
 | `tests/Feature/Fiscal/Task33FiscalFullFlowVerificationTest` | **1 failed (14 assertions)** — inherited, §4.3 |
-| `tests/Feature/POS/ReceiptReturnRefactorV3Test` | **2 failed, 7 passed (253 assertions)** — inherited, §4.3 |
+| `tests/Feature/POS/ReceiptReturnRefactorV3Test` | **9 passed (345 assertions)** — GREEN; the previously recorded red was a PG-session-timezone artifact, §4.3 |
 
 Every count that a milestone register recorded reproduces exactly, with one deliberate exception:
 `FiscalEventIngestionEndpointTest` is 69 assertions rather than M4's 66, because of the three F-7
@@ -420,43 +509,119 @@ quietly re-run, because a reviewer reproducing this lane will hit it.
 | `DepositReceiptProjectionTest` | 5 passed (14 assertions) |
 | `TerminalRegistrySnapshotTest` | 19 passed (71 assertions) |
 | `DeadLetteredProjectionsControllerTest` | 12 passed (33 assertions) |
-| `TreasuryDepositBridgeTest` | **9 failed (5 assertions)** — inherited, §4.3 |
+| `TreasuryDepositBridgeTest` | **9 red (5 errors + 4 failures, 5 assertions)** — inherited, §4.3 |
 | `AccountStatusChangedServerOnlyTest` | **1 failed (12 assertions)** — inherited, §4.3 |
 | `DepositReceiptAppendTest` | **1 failed, 8 passed (26 assertions)** — inherited, §4.3 |
 
-### 4.3 The inherited reds — PROVEN inherited, not asserted
+*(`TreasuryDepositBridgeTest` was written as "9 failed" in the first version; PHPUnit reports it as
+5 errors + 4 failures. The count of 9 is right, the wording was loose — tightened at M5 round 1.)*
 
-Five suites are red on this branch. Rather than repeat the per-milestone claims, the whole-lane
-control reverts **every** production and test file this lane touched to the merge-base
-(`git checkout a5520f23c -- apps/api/app apps/api/tests`) and re-runs the five:
+### 4.3 The inherited reds — **12 across 4**, proven inherited
+
+**Corrected at M5 round 1, F-2.** The first version of this section published *"14 failing tests
+across 5 files"* and singled out `ReceiptReturnRefactorV3Test` as *"the one inherited red with a
+verification consequence"*. The reviewer could not reproduce that suite's red — twice green at HEAD
+and twice green at the base. Both measurements were correct, and the discriminating variable has now
+been found.
+
+#### `ReceiptReturnRefactorV3Test` is GREEN — the red was a **PostgreSQL session-timezone** artifact
+
+Re-run at HEAD on the same scratch database, varying one thing:
+
+```text
+default scratch session  ->  Tests: 2 failed, 7 passed (253 assertions)   [x3, deterministic]
+PGTZ=UTC                 ->  Tests: 9 passed (345 assertions)             [matches the reviewer]
+```
+
+Diagnosed rather than guessed. Instrumenting the failing assertion (added, dumped, reverted) shows
+the aggregate window and the rows are **exactly one hour apart**:
+
+```text
+DIAG net=0.000 vat=0.000 gross=0.000
+     window=2026-08-19 22:38:54..22:44:54
+     rows=[{"sale","2026-08-19 23:39:54"},{"return","23:41:54"},{"sale","23:43:54"}]
+
+with PGTZ=UTC:
+DIAG net=10.000 vat=2.000 gross=12.000
+     window=2026-08-19 22:39:26..22:45:26
+     rows=[{"sale","22:40:26"},{"return","22:42:26"},{"sale","22:44:26"}]
+```
+
+The test builds its Z window from `Carbon::now('UTC')` (`ReceiptReturnRefactorV3Test.php:580-581`)
+and compares it as `'Y-m-d H:i:s'` text against `pos_receipts.posted_at` (`:755-757`). The scratch
+PostgreSQL server reports `show timezone` → **`Africa/Tunis`** (UTC+1), so every row renders one
+hour outside the window, all three drop out, `$independentNet` becomes `0.000`, and
+`bccomp('0.000','10.000')` is `-1` at `:779`. Nothing about the code under test is involved.
+
+**Consequences, stated plainly:**
+
+- The suite is **GREEN at HEAD** on a UTC session. There is no inherited code red here and nothing
+  for the parent to assign.
+- The **historical record was wrong in attribution.** M2 round-1 finding 6 recorded it as "2/9 red
+  on this branch and on its base"; it was red on both because the same non-UTC scratch server was
+  used both times, not because of anything in the code.
+- The causal claim attached to it — that the failure aborts before the post-Z-close
+  `pos:verify-chains` assertion and *"is how the context-flattening defect stayed invisible to the
+  suite"* — is **withdrawn**. On a UTC session the test runs to completion and reaches that
+  assertion.
+- The `blockers:` entry asking the parent to assign ownership is **removed** from the ledger.
+- **Carry-forward for anyone reproducing this lane:** run the PG suites with a **UTC session**
+  (`PGTZ=UTC`, or a server whose `timezone` GUC is `UTC`). A non-UTC session manufactures red in
+  window-based aggregate tests. This is the same failure class the M4 register already recorded for
+  `DepositReceiptAppendTest` ("a one-hour local-TZ artifact"); it is now understood as a harness
+  property, not a per-test quirk.
+
+#### The four that are real
+
+Re-run at HEAD with `PGTZ=UTC` — all four are unchanged by the timezone, so they are genuine:
+
+```text
+PGTZ=UTC TreasuryDepositBridgeTest             9 red (5 errors + 4 failures, 5 assertions)
+PGTZ=UTC AccountStatusChangedServerOnlyTest    1 failed (12 assertions)
+PGTZ=UTC DepositReceiptAppendTest              1 failed, 8 passed (26 assertions)
+PGTZ=UTC Task33FiscalFullFlowVerificationTest  1 failed (14 assertions)
+PGTZ=UTC ReceiptReturnRefactorV3Test           9 passed (345 assertions)
+```
+
+**The inherited-red inventory is 12 failing tests across 4 files**, not 14 across 5.
+
+Proven inherited by reverting **every** production and test file this lane touched to the merge-base
+(`git checkout a5520f23c -- apps/api/app apps/api/tests`) and re-running:
 
 ```text
 BASE TreasuryDepositBridgeTest.php             Tests:    9 failed (5 assertions)
 BASE AccountStatusChangedServerOnlyTest.php    Tests:    1 failed (12 assertions)
 BASE DepositReceiptAppendTest.php              Tests:    1 failed, 8 passed (26 assertions)
 BASE Task33FiscalFullFlowVerificationTest.php  Tests:    1 failed (14 assertions)
-BASE ReceiptReturnRefactorV3Test.php           Tests:    2 failed, 7 passed (253 assertions)
 ```
 
-**Identical, test for test and assertion for assertion, to the HEAD runs above.** 14 failing tests
-across 5 files, unchanged by this lane. Restored with `git checkout HEAD -- apps/api/app
-apps/api/tests`; `git status --porcelain` empty and `git diff --stat HEAD` empty afterwards.
+Identical to the HEAD runs, test for test and assertion for assertion. Restored with `git checkout
+HEAD -- apps/api/app apps/api/tests`; `git status --porcelain` empty and `git diff --stat HEAD`
+empty afterwards.
 
-Characterisations:
+> **Caveat on the control's method — M5 round 1, F-6.** `git checkout <base> -- apps/api/app
+> apps/api/tests` restores files that exist at the base; it does **not delete** files this lane
+> CREATED (`ServerAuthoredChainPlacementVerifier.php`, `QuarantineIncidentResolutionService` /
+> `Controller`, the two new exceptions, the two ratchets, `tests/Traits/ReadsCanonicalBytes.php`).
+> So the control is "base content plus this lane's new, unreferenced classes", not a clean base
+> checkout. It is adequate — with `FiscalServiceProvider.php` and `routes.php` reverted those
+> classes are not wired into anything — but the description "re-running the merge-base" was looser
+> than the method. The round-1 reviewer also hit a practical edge reproducing it: the first
+> post-checkout run can error inside `RefreshDatabase` bootstrap before settling on the second run,
+> which is exactly the kind of artifact that can manufacture a "red at base" line. **A clean
+> worktree checked out at the merge-base is the stronger control** if this ever needs re-running.
+
+Characterisations of the four:
 
 - `TreasuryDepositBridgeTest` (9) — `TreasuryDepositBridge::__construct` arity mismatch in the
   test's own wiring.
 - `AccountStatusChangedServerOnlyTest` (1) — array key ORDER in an `assertSame`.
-- `DepositReceiptAppendTest` (1) — a one-hour local-timezone artifact.
+- `DepositReceiptAppendTest` (1) — a one-hour local-timezone artifact (and now understood as the
+  same harness property that produced the `ReceiptReturnRefactorV3Test` false red, though this one
+  does **not** clear under `PGTZ=UTC` and so has a second cause).
 - `Task33FiscalFullFlowVerificationTest` (1) — a PG `bytea` stream-handle `assertSame` in the test
   itself; all 14 assertions before it pass, i.e. the POST through the ES-42-gated route succeeds and
   the ingested row is read back.
-- `ReceiptReturnRefactorV3Test` (2) — `bccomp($independentNet, '10.000') === -1` at
-  `ReceiptReturnRefactorV3Test.php:778` (recorded as `:771` at M2; the file has shifted). **This one
-  is not cosmetic** and it is the wave's open question for the parent: the failure aborts before the
-  post-Z-close `pos:verify-chains` assertion at the end of the test, which is how the
-  context-flattening defect stayed invisible to the suite. Ownership is still unassigned — see
-  `blockers:` in the ledger.
 
 ### 4.4 Static gates, whole lane
 
@@ -578,7 +743,9 @@ phpstan level 8  <18 changed production files>   [OK] No errors
 
 5. **The orphaned-event ratchet does not catch a listener with no emitter** (ES-21's shape), a
    never-emitted class (`PointsExpired`), indirect consumption, or dispatch from outside `app/`.
-6. **The projector-emission ratchet does not catch emission via a collaborator service**, and its
+6. **The projector-emission ratchet errs in BOTH directions** — it does not catch emission via a
+   collaborator service (over-report), and it reads a `SomeJob::dispatch(` as an emission
+   (under-report, the direction that loses coverage silently; not live today). Its
    POS classification is by module ownership rather than by observed writes.
 7. **75 orphaned events are baselined, not fixed.** A0 retired nothing and wired nothing. The
    ratchet stops the 76th; it does not reduce the 75.
@@ -596,11 +763,19 @@ phpstan level 8  <18 changed production files>   [OK] No errors
     with `22P02`. Discovered at M3, escalated, and **deliberately untouched** by every subsequent
     milestone (`OutboxIngestor.php` is 0-line across M3b, M4 and M5). It is an ingestion-lane
     ticket and it is still open.
-11. **`ReceiptReturnRefactorV3Test` is 2/9 red and unowned** — inherited, red at the merge-base,
-    excluded from A0's scope by the STOP-C ruling. Its failure aborts the test **before** the
-    post-Z-close `pos:verify-chains` assertion, which is how the context-flattening defect stayed
-    invisible to the suite. **Someone has to own this**; it is the one inherited red with a
-    verification consequence.
+11. **RETRACTED at M5 round 1 (F-2) — `ReceiptReturnRefactorV3Test` is NOT an inherited red.** The
+    first version of this item called it *"the one inherited red with a verification consequence"*
+    and asked the parent to assign ownership. It is **GREEN at HEAD: 9 passed (345 assertions)**.
+    The red was a PostgreSQL **session-timezone** artifact — the scratch server runs
+    `timezone = Africa/Tunis`, the test's Z window is built from `Carbon::now('UTC')`, and every
+    `pos_receipts.posted_at` renders one hour outside it; with `PGTZ=UTC` the suite is green
+    (diagnosis and dumps in §4.3). The historical record (M2 round-1 finding 6, "2/9 red on this
+    branch and on its base") was wrong in attribution — both runs used the same non-UTC server. The
+    causal claim that its failure hid the post-Z-close `pos:verify-chains` assertion is **withdrawn**;
+    the test reaches that assertion. The `blockers:` entry is removed. **The inherited-red inventory
+    is 12 across 4, not 14 across 5.**
+    *What A1 does inherit here is a harness rule, not a defect:* **run this lane's PG suites with a
+    UTC session.** A non-UTC session manufactures red in every window-based aggregate test.
 12. **Owner gates still open:** `D-8` (ES-06 second approver / correcting event), `D-11` (ES-43
     unkeyed SHA-256 vs the NF525 RSA/ECDSA requirement — ES-43 is entirely outside A0's scope until
     ruled), `nf525-s8-resolved-by` (should the §8 export publish `resolved_by`?).
@@ -616,9 +791,15 @@ phpstan level 8  <18 changed production files>   [OK] No errors
 - **A red-first template.** Every milestone in this wave produced its red block by swapping the
   pre-fix production file back in and re-running the FINAL tests. A1 should do the same; the
   registers show what the reviewers will re-run.
-- **Two ratchets that fail on drift**, wired into an ordinary-push CI step, with baselines A1 will
-  shrink rather than edit. `ProjectorEmissionRatchetTest`'s skip-list is A1's ES-01/02/03/04/05
-  worklist, already annotated with the register rows.
+- **Two ratchets that fail on drift**, with baselines A1 will shrink rather than edit.
+  `ProjectorEmissionRatchetTest`'s skip-list is A1's ES-01/02/03/04/05 worklist, already annotated
+  with the register rows.
+  **⚠️ Corrected at M5 round 1 (F-1): they do NOT gate `dev` today.** The first version of this line
+  said "wired into an ordinary-push CI step", which A1 would have read as "my `dev` work is gated".
+  It is not: `backend-test` carries a **job-level** `if:` limiting it to PR→`main`, push→`main` and
+  `workflow_dispatch`, and a push to `origin/dev` fires no workflow at all. Until the enforcement-P2
+  `ci.yml` reconciliation wires a lane that runs on PR→`dev`, **run the two ratchet files locally
+  before promoting** — see §3 for the full trigger matrix.
 - **Three unclassified projectors** — `AccountCharge`, `AccountPayment`, `DepositReceipt` — with an
   explicit instruction NOT to invent an event for them, and a ruling owed on whether they owe one.
 - **Forty never-registered orphaned events**, clustered by module in the baseline's comments. The
@@ -633,6 +814,26 @@ phpstan level 8  <18 changed production files>   [OK] No errors
 
 ## 6. Ledger state
 
-`M4: passed` (verdict `M4-round1.md`, ACCEPT). `M5: review`, wave `status: review` — the parent
-orchestrator runs the whole-lane gate itself with both lenses, per the brief. Branch
-`codex/es-wave-a0`, **not merged, not pushed**.
+`M4: passed` (verdict `M4-round1.md`, ACCEPT). `M5: review`, `fix_rounds: 1`, `last_verdict:
+CHANGES-REQUIRED` (`M5-round1.md`), wave `status: review` — the parent orchestrator runs the
+verification round. `blockers:` is now **empty** (the `ReceiptReturnRefactorV3Test` ownership
+question was withdrawn at round 1, F-2). Branch `codex/es-wave-a0`, **not merged, not pushed**.
+
+### Fix round 1 — what changed, and what did not
+
+Round 1 was CHANGES-REQUIRED with **no code defect and no fiscal fact moved**. The reviewer
+independently re-derived the 75-name census, reproduced both ratchets' tamper proofs, verified F-3's
+discharge at the M4 tip, and re-derived the 7/13/17 trigger recount branch by branch. All three
+Important findings landed on the *artifact* — the exit statement and the whole-lane evidence — which
+is precisely what A1 trusts and nobody re-reads after an ACCEPT, the same failure mode that produced
+M4-F-3 one milestone earlier.
+
+| Finding | Disposition |
+|---|---|
+| **F-1** CI reach over-claimed | §3 rewritten with the real trigger matrix; §5.3 and the `ci.yml` step comment corrected; PR→`dev` wiring deferred to the enforcement-P2 `ci.yml` reconciliation |
+| **F-2** `ReceiptReturnRefactorV3Test` | Root-caused to the PG session timezone, not re-run and hand-waved. GREEN at HEAD under `PGTZ=UTC`. §4.1/§4.2/§4.3 and exit item 11 corrected, blocker removed, inventory now 12-across-4 |
+| **F-3** `ZReportHashService` path | Corrected; gate re-measured against the real file and it holds |
+| **F-4** raw-source matching | **The only code change:** comments/doc-blocks stripped via `token_get_all()`, new test + two fixtures, both error directions documented |
+| **F-5** cluster table 38 → 40 | All eleven clusters enumerated, Vehicle pair restored, table sums |
+| **F-6** control caveat | Stated: `git checkout <base> -- <paths>` leaves lane-added files in place |
+| **F-7** ES-88 generalisation | Narrowed name by name (`PointsRedeemedV2` does not exist; `PointsEarnedV2` is census-only; the V1s are never-emitted) |

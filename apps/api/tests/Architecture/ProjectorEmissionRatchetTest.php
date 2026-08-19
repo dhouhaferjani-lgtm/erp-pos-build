@@ -7,6 +7,8 @@ namespace Tests\Architecture;
 use App\Modules\Fiscal\Application\Contracts\FiscalEventProjector;
 use App\Modules\Fiscal\Application\Services\FiscalEventProjectionRegistry;
 use ReflectionClass;
+use Tests\Architecture\ProjectorEmissionFixtures\FixtureProjectorWithCommentedEmission;
+use Tests\Architecture\ProjectorEmissionFixtures\FixtureProjectorWithRealEmission;
 use Tests\TestCase;
 
 /**
@@ -61,7 +63,7 @@ use Tests\TestCase;
  * FULL registered set on both sides of the partition, so a new projector in
  * either module is noticed rather than silently classified.
  *
- * # "Emits its corresponding domain event" — detection, and its one blind spot
+ * # "Emits its corresponding domain event" — detection, and its blind spots
  *
  * Source-text on the projector's OWN class file: `event(new …)`,
  * `X::dispatch(`, `->dispatch(new …)`, `Event::dispatch(`. This matches the fix
@@ -70,12 +72,31 @@ use Tests\TestCase;
  * idempotency guard so Horizon redelivery cannot double-emit"* — i.e. emission
  * belongs in the projector, next to the write it describes.
  *
- * **Blind spot, named:** a projector that emits by delegating to a collaborator
- * service reads as non-emitting here. The direction of that error is
- * conservative (it over-reports the gap), but it also means a fix that
- * delegates emission will make this test RED for the right list and the wrong
- * reason. If A1 chooses that shape, widen the detection deliberately — do not
- * silently drop the entry.
+ * **Comments and doc-blocks are stripped before matching** (`token_get_all()`,
+ * dropping `T_COMMENT` / `T_DOC_COMMENT`). M5 round 1, F-4 proved why that is
+ * not a nicety: appending the single line `// PROBE: event(new Something());`
+ * to `ZReportProjection.php` was enough to drop it from the discovered list and
+ * fire the failure message that instructs a maintainer to *"delete its line AND
+ * close the register row"* — i.e. a docblock edit on a 2 000-line projector
+ * could talk someone into closing **ES-04**. It cannot now;
+ * {@see test_a_commented_out_emission_does_not_count_as_emitting} pins that.
+ *
+ * **Blind spots — BOTH directions, named. The error is NOT one-directional.**
+ *
+ *   - **Under-report (reads as emitting when it is not).** Pattern 2 matches any
+ *     `Symbol::dispatch(`, so a projector that dispatches a **queued job**
+ *     (`SomeJob::dispatch(...)`) and emits no domain event is classified as
+ *     emitting and never enters the baseline. Not live today — all six POS
+ *     projectors contain no `::dispatch`, no `->dispatch` and no `event(` call
+ *     at all — but it is the direction that loses coverage silently, so it is
+ *     the one to fix first if it ever becomes live. The fix shape: resolve the
+ *     dispatched symbol through the file's `use` map and require it to land
+ *     under a `Domain\Events\` / `Shared\Events\` namespace.
+ *   - **Over-report (reads as non-emitting when it emits).** A projector that
+ *     emits by delegating to a collaborator service reads as silent here. A fix
+ *     in that shape will make this test RED for the right list and the wrong
+ *     reason — widen the detection deliberately rather than silently dropping
+ *     the entry.
  */
 final class ProjectorEmissionRatchetTest extends TestCase
 {
@@ -222,6 +243,31 @@ final class ProjectorEmissionRatchetTest extends TestCase
         );
     }
 
+    /**
+     * M5 round 1, F-4 — the detector used to match raw source text, so a single
+     * commented-out `event(new …)` line dropped a projector out of the
+     * discovered list and fired the "a projector started emitting, delete its
+     * line AND close the register row" message. On a 2 000-line projector that
+     * is a doc-block edit away from closing ES-04.
+     *
+     * Both directions are pinned: comments do not count, and stripping them does
+     * not also blind the detector to real code.
+     */
+    public function test_a_commented_out_emission_does_not_count_as_emitting(): void
+    {
+        $this->assertFalse(
+            $this->emitsADomainEvent(FixtureProjectorWithCommentedEmission::class),
+            'PROJECTOR-EMISSION RATCHET: a commented-out emission must NOT retire a baseline entry. Comments and '
+            .'doc-blocks are stripped with token_get_all() before matching — if this fails, that stripping regressed.',
+        );
+
+        $this->assertTrue(
+            $this->emitsADomainEvent(FixtureProjectorWithRealEmission::class),
+            'PROJECTOR-EMISSION RATCHET: the positive control. Stripping comments must not blind the detector to a '
+            .'real emission, or the whole ratchet reads every projector as silent and can never go red.',
+        );
+    }
+
     // =================================================================
     // Discovery
     // =================================================================
@@ -280,7 +326,7 @@ final class ProjectorEmissionRatchetTest extends TestCase
             $this->fail(sprintf('PROJECTOR-EMISSION RATCHET: cannot locate the source file for %s.', $class));
         }
 
-        $source = (string) file_get_contents($file);
+        $source = $this->sourceWithoutComments((string) file_get_contents($file));
 
         foreach ([
             '/\bevent\s*\(\s*new\s+/',
@@ -293,5 +339,39 @@ final class ProjectorEmissionRatchetTest extends TestCase
         }
 
         return false;
+    }
+
+    /**
+     * Strip comments and doc-blocks so a commented-out emission cannot retire a
+     * baseline entry (M5 round 1, F-4).
+     *
+     * Tokenising is the smallest honest fix: a regex that tries to skip
+     * comments has to understand strings, heredocs and escaping, and getting
+     * that subtly wrong is the same class of silent-miss the ratchet exists to
+     * prevent. PHP's own lexer already knows.
+     */
+    private function sourceWithoutComments(string $source): string
+    {
+        $stripped = '';
+
+        foreach (token_get_all($source) as $token) {
+            if (is_array($token)) {
+                if ($token[0] === T_COMMENT || $token[0] === T_DOC_COMMENT) {
+                    // Keep a newline so line-oriented constructs either side do
+                    // not accidentally fuse into one another.
+                    $stripped .= "\n";
+
+                    continue;
+                }
+
+                $stripped .= $token[1];
+
+                continue;
+            }
+
+            $stripped .= $token;
+        }
+
+        return $stripped;
     }
 }
