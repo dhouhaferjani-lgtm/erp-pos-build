@@ -28,6 +28,23 @@ final class InventoryVarianceAccountProvisioner
     }
 
     /**
+     * Complete an assigned template using the account families that the
+     * template actually seeded. Country code remains the preferred plan, but a
+     * legal cross-country assignment may deliberately use the other plan.
+     */
+    public function provisionTemplateCompany(string $companyId, string $tenantId, string $countryCode): void
+    {
+        foreach ($this->definitions($countryCode) as $definition) {
+            $this->applyDefinition(
+                $companyId,
+                $tenantId,
+                $this->resolveTemplateParent($companyId, $definition),
+                false,
+            );
+        }
+    }
+
+    /**
      * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
      * @return 'created'|'promoted'|'satisfied'
      */
@@ -132,5 +149,37 @@ final class InventoryVarianceAccountProvisioner
         if (! (bool) $account->is_active) {
             throw new RuntimeException(sprintf('Company %s account %s is inactive.', $companyId, (string) $account->code));
         }
+    }
+
+    /**
+     * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
+     * @return array{code: string, name: string, type: string, parent_code: string, purpose: string}
+     */
+    private function resolveTemplateParent(string $companyId, array $definition): array
+    {
+        $familyParents = $definition['purpose'] === SystemAccountPurpose::InventoryShrinkageExpense->value
+            ? ['65', '6000']
+            : ['75', '7000'];
+        $candidates = array_values(array_unique([$definition['parent_code'], ...$familyParents]));
+
+        foreach ($candidates as $parentCode) {
+            $exists = $this->database->table('accounts')
+                ->where('company_id', $companyId)
+                ->where('code', $parentCode)
+                ->exists();
+            if (! $exists) {
+                continue;
+            }
+
+            $definition['parent_code'] = $parentCode;
+            $frenchPlan = in_array($parentCode, ['65', '75'], true);
+            $definition['name'] = $definition['purpose'] === SystemAccountPurpose::InventoryShrinkageExpense->value
+                ? ($frenchPlan ? "Écarts d'inventaire — manquants et pertes" : 'Inventory Shrinkage Expense')
+                : ($frenchPlan ? "Écarts d'inventaire — excédents" : 'Inventory Count Gain');
+
+            return $definition;
+        }
+
+        return $definition;
     }
 }

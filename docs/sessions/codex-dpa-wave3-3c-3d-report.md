@@ -462,3 +462,11 @@ variance installer atomically to assigned-template provisioning (including
 pre-policy published assignments), exercises rollback on a purpose collision,
 and makes the legacy preview count the installer. The three frozen seeders and
 workflow files remain untouched.
+
+Round 4 found the template overlay still selected parent families from company
+country. A legally certified French-plan template assigned to Morocco and
+omitting the SOFT gain row therefore looked for `7000` and aborted company
+creation despite the chart containing `75`. The template-only overlay now
+selects from the parent families actually present in the seeded chart while
+legacy/backfill repair retains its strict country-map refusal. The cross-plan
+case is red-first and the full Country Defaults directories remain green.

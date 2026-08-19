@@ -26,7 +26,11 @@ final class LegacyExistingChartRepairPreviewer
         private readonly InventoryVarianceAccountProvisioner $inventoryVarianceAccounts,
     ) {}
 
-    /** @return array{int, int, int} [created, promoted, reparented] */
+    /**
+     * @return array{int, int, int} [created, promoted, reparented]
+     *
+     * @throws \RuntimeException When a purpose/code collision or missing approved parent makes repair unsafe
+     */
     public function preview(Company $company): array
     {
         $connection = $this->database->connection();

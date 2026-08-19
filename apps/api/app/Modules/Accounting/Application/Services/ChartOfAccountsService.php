@@ -47,7 +47,7 @@ class ChartOfAccountsService
             );
             DB::transaction(function () use ($company, $template): void {
                 $this->templateSeeder->seed($template, $company);
-                $this->inventoryVarianceAccounts->provisionCompany(
+                $this->inventoryVarianceAccounts->provisionTemplateCompany(
                     $company->id,
                     $company->tenant_id,
                     $company->country_code,

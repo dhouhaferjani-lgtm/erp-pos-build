@@ -32,10 +32,14 @@ a country map from visual chart shape.
 
 - Do not edit or re-pin the three frozen legacy seeders.
 - Normal registration and second-company creation call `ChartOfAccountsService`, which installs both
-  approved purposes atomically after either the frozen legacy seeder or an assigned template. No
-  production writer calls a frozen seeder directly. Raw calls exist only in the rollback-owned preview,
-  golden exporter/tests, and historical migrations; any future direct writer must use the same guarded
-  no-entry compatibility contract until the idempotent command is run.
+  approved purposes atomically after either the frozen legacy seeder or an assigned template. For an
+  assigned template, this is an explicit two-account certified-template overlay: it selects `65`/`75` or
+  `6000`/`7000` from the chart actually seeded, so a legal country-to-plan mismatch does not abort company
+  creation. `country-defaults:verify` validates the template and assignment; the per-company chart-health
+  detector validates the resulting overlay. No production writer calls a frozen seeder directly. Raw
+  calls exist only in the rollback-owned preview, golden exporter/tests, and historical migrations; any
+  future direct writer must use the same guarded no-entry compatibility contract until the idempotent
+  command is run.
 - Historical Damage/Expiry/WriteOff entries remain in COGS (`601`/`603`); entries after this cutover land
   in shrinkage (`6586`). Period-over-period COGS, expense reports, and expert-comptable exports spanning
   the cutover therefore show a deliberate step change; do not restate hash-sealed historical journals.

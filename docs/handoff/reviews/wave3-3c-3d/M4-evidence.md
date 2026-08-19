@@ -243,3 +243,29 @@ Round-3 revert-replay removed `ad9909716` while test commit `266d37bc1` remained
 PostgreSQL guards all failed for their intended reasons: required-purpose membership, detector output,
 pre-policy template completion, template rollback, preview count parity, and missing-parent wording.
 Aborting the revert restored the committed tip and the same six tests passed with 17 assertions.
+
+## Adversarial round 4 remediation
+
+Round 4 identified a legal cross-country chart assignment: a French-plan template certified for Morocco
+can omit the SOFT gain purpose while still satisfying Morocco's protected-code registry. Before the fix,
+the overlay derived `7000` from company country and aborted because the assigned chart contains `75`.
+The focused PostgreSQL test failed with exactly that missing-parent exception before implementation.
+
+The template-only overlay now prefers the country-derived parent but falls back to the matching parent
+family that actually exists in the freshly seeded chart. Strict legacy/backfill provisioning is unchanged,
+including the deliberately fail-loud custom-chart contract. The overlay is explicitly documented as the
+two-account post-template layer validated by per-company chart health; `country-defaults:verify` remains
+the template/assignment verifier. The previewer declares its refusal exceptions, and the manifest test
+name now states the 43-case partition it asserts.
+
+Fresh round-4 verification:
+
+```text
+RED — French-plan template assigned to MA without gain: 1 test, 1 error (missing parent 7000)
+GREEN — same focused test:                            1 test, 1 assertion
+GREEN — provisioning matrix + manifest conformance: 26 tests, 457 assertions
+GREEN — Country Defaults feature + unit directories: 221 tests, 1838 assertions
+GREEN — accounting chart/command/migration set:      56 tests, 343 assertions
+Pint on round-4 production + test paths:             pass
+PHPStan level 8 on round-4 production paths:         [OK] No errors
+```
