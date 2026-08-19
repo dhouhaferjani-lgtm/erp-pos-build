@@ -157,23 +157,6 @@ export async function getDeliveryNotes(params?: {
   return apiGet<DeliveryNote[]>('/delivery-notes', params)
 }
 
-/**
- * Get confirmed delivery notes that are not yet invoiced.
- *
- * GET /api/v1/delivery-notes?status=confirmed
- *
- * Fetches delivery notes eligible for consolidation (confirmed and not invoiced).
- */
-export async function getInvoiceableDeliveryNotes(partnerId?: string): Promise<DeliveryNote[]> {
-  const deliveryNotes = await apiGet<DeliveryNote[]>('/delivery-notes', {
-    status: 'confirmed',
-    partner_id: partnerId,
-    uninvoiced: 1,
-  })
-
-  return deliveryNotes
-}
-
 export async function getPartnerDeliveryNotes({
   partnerId,
   filter,

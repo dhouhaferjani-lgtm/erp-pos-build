@@ -13,12 +13,10 @@ import {
   useConsolidateDeliveryNotes,
   useDeliveryNote,
   useDeliveryNotes,
-  useInvoiceableDeliveryNotes,
   usePartnerDeliveryNotes,
 } from '../useDeliveryNotes'
 
 const mockGetDeliveryNotes = vi.hoisted(() => vi.fn())
-const mockGetInvoiceableDeliveryNotes = vi.hoisted(() => vi.fn())
 const mockGetDeliveryNote = vi.hoisted(() => vi.fn())
 const mockGetPartnerDeliveryNotes = vi.hoisted(() => vi.fn())
 const mockConsolidateDeliveryNotesToInvoice = vi.hoisted(() => vi.fn())
@@ -34,7 +32,6 @@ vi.mock('../../api/deliveryNotes', () => ({
   consolidateDeliveryNotesToInvoice: mockConsolidateDeliveryNotesToInvoice,
   getDeliveryNote: mockGetDeliveryNote,
   getDeliveryNotes: mockGetDeliveryNotes,
-  getInvoiceableDeliveryNotes: mockGetInvoiceableDeliveryNotes,
   getPartnerDeliveryNotes: mockGetPartnerDeliveryNotes,
 }))
 
@@ -119,7 +116,6 @@ beforeEach(() => {
   vi.clearAllMocks()
   setTenant('tenant-A', 'company-1')
   mockGetDeliveryNotes.mockResolvedValue([deliveryNoteFixture('delivery-note-1')])
-  mockGetInvoiceableDeliveryNotes.mockResolvedValue([deliveryNoteFixture('delivery-note-1')])
   mockGetDeliveryNote.mockResolvedValue(deliveryNoteFixture('delivery-note-1'))
   mockGetPartnerDeliveryNotes.mockResolvedValue({
     data: [deliveryNoteFixture('delivery-note-1')],
@@ -159,7 +155,6 @@ describe('delivery note hooks tenant scope', () => {
 
     const { result } = renderHook(() => ({
       detail: useDeliveryNote('delivery-note-1'),
-      invoiceable: useInvoiceableDeliveryNotes('partner-1'),
       list: useDeliveryNotes(deliveryNoteParams),
       partnerPage: usePartnerDeliveryNotes({
         partnerId: 'partner-1',
@@ -171,13 +166,11 @@ describe('delivery note hooks tenant scope', () => {
 
     await waitFor(() => {
       expect(result.current.detail.isSuccess).toBe(true)
-      expect(result.current.invoiceable.isSuccess).toBe(true)
       expect(result.current.list.isSuccess).toBe(true)
       expect(result.current.partnerPage.isSuccess).toBe(true)
     })
 
     expect(queryClient.getQueryData(['delivery-note', 'delivery-note-1', 'tenant-A', 'company-1'])).toBeDefined()
-    expect(queryClient.getQueryData(['delivery-notes', 'invoiceable', 'partner-1', 'tenant-A', 'company-1'])).toBeDefined()
     expect(queryClient.getQueryData(['delivery-notes', deliveryNoteParams, 'tenant-A', 'company-1'])).toBeDefined()
     expect(queryClient.getQueryData([
       'delivery-notes',
@@ -198,7 +191,6 @@ describe('delivery note hooks tenant scope', () => {
 
     renderHook(() => ({
       detail: useDeliveryNote('delivery-note-1'),
-      invoiceable: useInvoiceableDeliveryNotes('partner-1'),
       list: useDeliveryNotes(deliveryNoteParams),
       partnerPage: usePartnerDeliveryNotes({
         partnerId: 'partner-1',
@@ -210,7 +202,6 @@ describe('delivery note hooks tenant scope', () => {
 
     expect(mockGetDeliveryNote).not.toHaveBeenCalled()
     expect(mockGetDeliveryNotes).not.toHaveBeenCalled()
-    expect(mockGetInvoiceableDeliveryNotes).not.toHaveBeenCalled()
     expect(mockGetPartnerDeliveryNotes).not.toHaveBeenCalled()
   })
 
@@ -218,17 +209,12 @@ describe('delivery note hooks tenant scope', () => {
     const queryClient = createPersistentQueryClient()
     const wrapper = makeWrapper(queryClient)
     let deliveryNotesCalls = 0
-    let invoiceableCalls = 0
     let documentsCalls = 0
     let invoicesCalls = 0
 
     mockGetDeliveryNotes.mockImplementation(async () => {
       deliveryNotesCalls += 1
       return [deliveryNoteFixture(`delivery-note-list-${deliveryNotesCalls}`)]
-    })
-    mockGetInvoiceableDeliveryNotes.mockImplementation(async () => {
-      invoiceableCalls += 1
-      return [deliveryNoteFixture(`delivery-note-invoiceable-${invoiceableCalls}`)]
     })
     const documentsQuery = vi.fn(async () => {
       documentsCalls += 1
@@ -240,23 +226,19 @@ describe('delivery note hooks tenant scope', () => {
     })
 
     queryClient.setQueryData(['delivery-notes', deliveryNoteParams, 'tenant-B', 'company-1'], { marker: 'tenant-B-delivery-notes' })
-    queryClient.setQueryData(['delivery-notes', 'invoiceable', 'partner-1', 'tenant-B', 'company-1'], { marker: 'tenant-B-invoiceable' })
     queryClient.setQueryData(['documents', 'tenant-B', 'company-1'], { marker: 'tenant-B-documents' })
     queryClient.setQueryData(['invoices', 'tenant-B', 'company-1'], { marker: 'tenant-B-invoices' })
 
     const { result: reads } = renderHook(() => ({
       documents: useProbe(['documents'], documentsQuery),
-      invoiceable: useInvoiceableDeliveryNotes('partner-1'),
       invoices: useProbe(['invoices'], invoicesQuery),
       list: useDeliveryNotes(deliveryNoteParams),
     }), { wrapper })
     await waitFor(() => {
       expect(reads.current.documents.isSuccess).toBe(true)
-      expect(reads.current.invoiceable.isSuccess).toBe(true)
       expect(reads.current.invoices.isSuccess).toBe(true)
       expect(reads.current.list.isSuccess).toBe(true)
       expect(deliveryNotesCalls).toBe(1)
-      expect(invoiceableCalls).toBe(1)
       expect(documentsCalls).toBe(1)
       expect(invoicesCalls).toBe(1)
     })
@@ -269,13 +251,11 @@ describe('delivery note hooks tenant scope', () => {
 
     await waitFor(() => {
       expect(deliveryNotesCalls).toBe(2)
-      expect(invoiceableCalls).toBe(2)
       expect(documentsCalls).toBe(2)
       expect(invoicesCalls).toBe(2)
     })
 
     expect(queryClient.getQueryData(['delivery-notes', deliveryNoteParams, 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-delivery-notes' })
-    expect(queryClient.getQueryData(['delivery-notes', 'invoiceable', 'partner-1', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-invoiceable' })
     expect(queryClient.getQueryData(['documents', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-documents' })
     expect(queryClient.getQueryData(['invoices', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-invoices' })
   })

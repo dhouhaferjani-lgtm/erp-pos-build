@@ -646,13 +646,6 @@
       }
     },
     "consolidation": {
-      "title": "Regrouper les bons de livraison",
-      "description": "Sélectionnez les bons de livraison confirmés à regrouper en une seule facture. Tous les bons sélectionnés doivent appartenir au même partenaire et utiliser la même devise.",
-      "noDeliveryNotes": "Aucun bon de livraison disponible",
-      "noDeliveryNotesDescription": "Il n'y a aucun bon de livraison confirmé en attente de facturation.",
-      "selected": "sélectionné(s)",
-      "invoiceTotal": "Total de la facture",
-      "createInvoice": "Créer la facture",
       "billingRefusal": {
         "title": "Certains bons de livraison n’ont pas pu être facturés",
         "guarantee": "Aucune facture n’a été créée. Aucun numéro de facture n’a été utilisé.",
@@ -666,11 +659,6 @@
         "openInvoice": "Ouvrir {{number}}",
         "invoiceUnavailable": "Facture associée indisponible",
         "removeAndRetry": "Retirer ces {{count}} éléments et réessayer"
-      },
-      "errors": {
-        "differentPartners": "Tous les bons de livraison sélectionnés doivent appartenir au même partenaire",
-        "differentCurrencies": "Tous les bons de livraison sélectionnés doivent utiliser la même devise",
-        "invalidSelection": "Veuillez sélectionner au moins un bon de livraison"
       }
     },
     "confirmed": "Bon de livraison confirmé",

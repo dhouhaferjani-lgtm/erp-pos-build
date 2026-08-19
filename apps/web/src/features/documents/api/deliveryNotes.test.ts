@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mockApiGet = vi.hoisted(() => vi.fn())
 const mockApi = vi.hoisted(() => ({ get: vi.fn() }))
 
 beforeEach(() => {
@@ -14,23 +13,7 @@ vi.mock('@/lib/api', async () => {
   return {
     ...actual,
     api: mockApi,
-    apiGet: mockApiGet,
   }
-})
-
-describe('getInvoiceableDeliveryNotes', () => {
-  it('asks the server for confirmed uninvoiced delivery notes instead of filtering a client payload mirror', async () => {
-    mockApiGet.mockResolvedValue([])
-
-    const { getInvoiceableDeliveryNotes } = await import('./deliveryNotes')
-    await getInvoiceableDeliveryNotes('partner-42')
-
-    expect(mockApiGet).toHaveBeenCalledWith('/delivery-notes', {
-      status: 'confirmed',
-      partner_id: 'partner-42',
-      uninvoiced: 1,
-    })
-  })
 })
 
 describe('getPartnerDeliveryNotes', () => {

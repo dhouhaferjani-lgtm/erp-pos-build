@@ -646,13 +646,6 @@
       }
     },
     "consolidation": {
-      "title": "Consolidate Delivery Notes",
-      "description": "Select confirmed delivery notes to combine into a single invoice. All selected notes must belong to the same partner and use the same currency.",
-      "noDeliveryNotes": "No delivery notes available",
-      "noDeliveryNotesDescription": "There are no confirmed delivery notes waiting to be invoiced.",
-      "selected": "selected",
-      "invoiceTotal": "Invoice Total",
-      "createInvoice": "Create Invoice",
       "billingRefusal": {
         "title": "Some delivery notes could not be invoiced",
         "guarantee": "No invoice was created. No invoice number was used.",
@@ -666,11 +659,6 @@
         "openInvoice": "Open {{number}}",
         "invoiceUnavailable": "Taking invoice unavailable",
         "removeAndRetry": "Remove these {{count}} and retry"
-      },
-      "errors": {
-        "differentPartners": "All selected delivery notes must belong to the same partner",
-        "differentCurrencies": "All selected delivery notes must use the same currency",
-        "invalidSelection": "Please select at least one delivery note"
       }
     },
     "confirmed": "Delivery note confirmed",

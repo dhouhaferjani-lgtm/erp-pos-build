@@ -86,14 +86,20 @@ feature/
 
 ---
 
-### Documents Feature (4 pages)
+### Documents Feature (5 pages)
 **Purpose**: Unified document management
 
 **Pages**:
 - `DocumentListPage` - List with type filter
 - `DocumentDetailPage` - Document view
 - `DocumentForm` - Create/edit
-- `DeliveryNoteConsolidationPage` - DN to invoice
+- `DeliveryNoteDetailPage` - Delivery note view with billing attribution
+- `ToBillPage` - Un-invoiced delivery notes grouped by customer (`/sales/to-bill`)
+
+> `DeliveryNoteConsolidationPage` was retired: the standalone
+> `/inventory/delivery-notes/consolidate` page, its component and its barrel
+> export were deleted. Billing a customer's delivery notes now happens from
+> `ToBillPage` or from the partner "Delivery notes" tab.
 
 **Props Pattern**:
 ```tsx

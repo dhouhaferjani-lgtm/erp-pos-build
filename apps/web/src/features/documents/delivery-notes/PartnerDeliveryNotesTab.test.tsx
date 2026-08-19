@@ -254,6 +254,45 @@ describe('PartnerDeliveryNotesTab', () => {
     expect(mockMutateAsync).toHaveBeenCalledTimes(1)
   })
 
+  // Restores the French coverage of the OI-8 refusal surface. The only test that
+  // asserted this copy lived on the deleted consolidation component and went with
+  // it in 38fdd18f9, leaving `billingRefusal.guarantee` / `.removeAndRetry` — still
+  // live product copy on two surfaces — unasserted in fr (M4 round 1, finding 5).
+  it('renders the no-artifact guarantee and the selective-retry action in French', async () => {
+    const user = userEvent.setup()
+    await i18n.changeLanguage('fr')
+    mockUsePartnerDeliveryNotes.mockReturnValue({
+      data: response([deliveryNote('001')]),
+      isLoading: false,
+      isError: false,
+    })
+    mockMutateAsync.mockRejectedValueOnce({
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'DELIVERY_NOTE_ALREADY_INVOICED',
+            details: { documents: [{ id: '001', document_number: 'DN-001' }] },
+          },
+        },
+      },
+    })
+    renderWithProviders(<PartnerDeliveryNotesTab partnerId="partner-1" canCreateInvoice />)
+
+    await user.click(screen.getByRole('checkbox', { name: 'Sélectionner DN-001' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Créer une facture à partir de la sélection (1)' }),
+    )
+
+    const refusal = await screen.findByRole('alert')
+    expect(refusal).toHaveTextContent(
+      'Aucune facture n’a été créée. Aucun numéro de facture n’a été utilisé.',
+    )
+    expect(
+      screen.getByRole('button', { name: 'Retirer ces 1 éléments et réessayer' }),
+    ).toBeInTheDocument()
+  })
+
   it('formats each row total in the delivery note currency', () => {
     mockUsePartnerDeliveryNotes.mockReturnValue({
       data: response([deliveryNote('eur', { currency: 'EUR', total: '99.875' })]),
