@@ -24,6 +24,21 @@ use App\Shared\Domain\Enums\StockMovementReferenceType;
  */
 final class FixtureLinkageProofWrites
 {
+    private ?string $pendingSourceId = null;
+
+    /**
+     * Assigns the nullable property so its declared type is honest — the
+     * fixture's point is that the DECLARED nullability is what the guard reads.
+     */
+    public function rememberSourceId(string $sourceId): void
+    {
+        $this->pendingSourceId = $sourceId;
+    }
+
+    public function __construct(
+        private readonly string $documentId = '',
+    ) {}
+
     /**
      * Non-nullable parameters: linkage is proven at every call site.
      */
@@ -63,6 +78,113 @@ final class FixtureLinkageProofWrites
             'reference_type' => $referenceType?->value,
             'reference_id' => $referenceId,
         ]);
+    }
+
+    /**
+     * A local variable assigned `null` in the same function is null-admitting,
+     * however it is spelled at the call site (M1 gate round 2, finding 1).
+     */
+    public function journalEntryWithNullAssignedLocal(): void
+    {
+        $sourceType = null;
+        $sourceId = null;
+
+        JournalEntry::create([
+            'entry_number' => 'JE-P3',
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ]);
+    }
+
+    /**
+     * A nullable PROPERTY on $this is null-admitting.
+     */
+    public function journalEntryWithNullableProperty(string $sourceType): void
+    {
+        JournalEntry::create([
+            'entry_number' => 'JE-P4',
+            'source_type' => $sourceType,
+            'source_id' => $this->pendingSourceId,
+        ]);
+    }
+
+    /**
+     * A nullable-returning method on $this is null-admitting.
+     */
+    public function movementWithNullableReturnLinkage(string $productId): void
+    {
+        StockMovement::create([
+            'product_id' => $productId,
+            'quantity' => '1.0000',
+            'reference_type' => StockMovementReferenceType::Document,
+            'reference_id' => $this->maybeReferenceId(),
+        ]);
+    }
+
+    /**
+     * An array element is never statically decidable.
+     *
+     * @param  array<string, string|null>  $context
+     */
+    public function movementWithArrayElementLinkage(string $productId, array $context): void
+    {
+        StockMovement::create([
+            'product_id' => $productId,
+            'quantity' => '1.0000',
+            'reference_type' => StockMovementReferenceType::Document,
+            'reference_id' => $context['document_id'],
+        ]);
+    }
+
+    /**
+     * A non-nullable promoted property IS credited.
+     */
+    public function journalEntryWithNonNullableProperty(string $sourceType): void
+    {
+        JournalEntry::create([
+            'entry_number' => 'JE-P5',
+            'source_type' => $sourceType,
+            'source_id' => $this->documentId,
+        ]);
+    }
+
+    // --- unreadable MUTATE payloads (round 2, finding 2) -------------------
+
+    /**
+     * `update($vars)` may set the linkage columns to anything, so it must not
+     * be the way around the erasure rule.
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    public function journalEntryUpdateWithUnreadablePayload(string $entryId, array $payload): void
+    {
+        JournalEntry::query()->whereKey($entryId)->update($payload);
+    }
+
+    /**
+     * The array-union form demonstrably nulls linkage while reading as
+     * unresolvable.
+     *
+     * @param  array<string, mixed>  $extra
+     */
+    public function journalEntryUpdateWithArrayUnionPayload(string $entryId, array $extra): void
+    {
+        JournalEntry::query()->whereKey($entryId)->update(['source_id' => null] + $extra);
+    }
+
+    /**
+     * Erasure through a null-admitting expression rather than a literal null.
+     */
+    public function journalEntrySaveErasesViaNullableCall(string $entryId): void
+    {
+        $entry = JournalEntry::query()->findOrFail($entryId);
+        $entry->source_id = $this->maybeReferenceId();
+        $entry->save();
+    }
+
+    private function maybeReferenceId(): ?string
+    {
+        return $this->pendingSourceId;
     }
 
     /**

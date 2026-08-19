@@ -138,6 +138,14 @@ final class DocumentPerActionWriteGuardTest extends TestCase
             ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithNullableLinkage', 'expected' => 'violation', 'note' => 'keys present, values nullable — linkage is not proven'],
             ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureLinkageProofWrites', 'method' => 'movementWithNullsafeLinkage', 'expected' => 'violation', 'note' => 'the S0 chokepoint shape: nullsafe read off a nullable enum'],
             ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureLinkageProofWrites', 'method' => 'movementWithCoalescedLinkage', 'expected' => 'linked', 'note' => 'null-coalesced onto a non-nullable fallback IS proven'],
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithNullAssignedLocal', 'expected' => 'violation', 'note' => 'round 2 finding 1: local assigned null'],
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithNullableProperty', 'expected' => 'violation', 'note' => 'round 2 finding 1: nullable $this property'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureLinkageProofWrites', 'method' => 'movementWithNullableReturnLinkage', 'expected' => 'violation', 'note' => 'round 2 finding 1: nullable-returning $this method'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureLinkageProofWrites', 'method' => 'movementWithArrayElementLinkage', 'expected' => 'violation', 'note' => 'round 2 finding 1: array element'],
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithNonNullableProperty', 'expected' => 'linked', 'note' => 'non-nullable promoted property is credited (blind spot E boundary)'],
+            ['mechanism' => 'update', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateWithUnreadablePayload', 'expected' => 'violation', 'note' => 'round 2 finding 2: unreadable MUTATE payload fails closed'],
+            ['mechanism' => 'update', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateWithArrayUnionPayload', 'expected' => 'violation', 'note' => 'round 2 finding 2: array-union payload that nulls linkage'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntrySaveErasesViaNullableCall', 'expected' => 'violation', 'note' => 'round 2 finding 3: erasure through a null-admitting expression'],
 
             // ---------------- relation-mediated + model-internal (findings 2, 5)
             ['mechanism' => 'create', 'table' => 'stock_levels', 'class' => 'FixtureRelationAndInheritanceWrites', 'method' => 'relationCreateBypassingMovement', 'expected' => 'violation', 'note' => 'relation-mediated write, no movement'],
@@ -248,16 +256,11 @@ final class DocumentPerActionWriteGuardTest extends TestCase
     #[Test]
     public function every_cell_with_a_linked_form_pins_a_negative_case(): void
     {
-        // Cells whose rule admits NO linked form: raw SQL against any table,
-        // and every MUTATE/DELETE mechanism against the append-only movement
-        // ledger plus the fiscal-row rules on journal_entries.
-        $positiveOnly = [
-            'journal_entries' => ['delete', 'increment', 'decrement', 'raw_sql'],
-            'stock_movements' => ['update', 'save', 'delete', 'increment', 'decrement', 'raw_sql'],
-            'stock_levels' => ['raw_sql'],
-            'inventory_batch_stock' => ['raw_sql'],
-        ];
-
+        // Which cells must pin a negative control is DERIVED from the
+        // scanner's own rule surface (DocumentPerActionWriteScanner::linkedFormExists),
+        // never from a map inside this test — a hardcoded map here is a knob
+        // that could be edited to drop a requirement from the liveness
+        // certificate itself.
         $covered = [];
         foreach (self::fixtureMatrix() as $case) {
             $covered[$case['table']][$case['mechanism']][] = $case['expected'];
@@ -266,7 +269,7 @@ final class DocumentPerActionWriteGuardTest extends TestCase
         $missing = [];
         foreach (array_keys(DocumentPerActionWriteScanner::TABLE_MODELS) as $table) {
             foreach (self::MECHANISMS as $mechanism) {
-                if (in_array($mechanism, $positiveOnly[$table], true)) {
+                if (! DocumentPerActionWriteScanner::linkedFormExists($table, $mechanism)) {
                     continue;
                 }
                 $expectations = $covered[$table][$mechanism] ?? [];

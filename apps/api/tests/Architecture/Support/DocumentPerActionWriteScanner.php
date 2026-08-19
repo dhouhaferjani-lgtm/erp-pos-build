@@ -53,16 +53,23 @@ use SplFileInfo;
  *    (`JournalEntry::$fillable`; note `journal_entries(source_type,source_id)`
  *    is NOT globally unique, so the check is PRESENCE, never uniqueness).
  *    - CREATE : LINKED iff the payload statically carries BOTH `source_type`
- *               and `source_id` with PROVABLY non-null values (see
- *               provablyNonNull(): a nullable-typed parameter, a null default,
- *               a nullsafe read or a literal null does NOT prove linkage — the
- *               row can be written unlinked on any call). Unresolvable payload
- *               (variable, spread, dynamic key) => VIOLATION (fail closed).
+ *               and `source_id` with values that are not STATICALLY KNOWN to
+ *               admit null (see nullAdmitting(): a literal null, a nullable or
+ *               null-defaulted parameter, a local assigned null, a nullable
+ *               property or nullable-returning method on `$this`, a nullsafe
+ *               read, or an array element). Values the scanner cannot decide
+ *               are treated as non-null — blind spot E, stated below.
+ *               Unresolvable payload (variable, spread, dynamic key) =>
+ *               VIOLATION (fail closed).
  *    - DELETE : always VIOLATION. A posted journal entry is removed by a
  *               reversal document, never by a row delete (DPA lane V1).
- *    - MUTATE : VIOLATION when the payload resolvably NULLS or blanks either
- *               linkage column (linkage erasure), or when the mechanism is
- *               increment/decrement (numeric mutation of a fiscal row).
+ *    - MUTATE : VIOLATION when the payload is UNREADABLE (`update($vars)` could
+ *               set the linkage columns to anything — fail closed; `save()` is
+ *               excluded because it never carries an inspectable payload and is
+ *               covered by the property-assignment erasure rule instead), when
+ *               the payload sets either linkage column to a null-admitting value
+ *               (linkage erasure), or when the mechanism is increment/decrement
+ *               (numeric mutation of a fiscal row).
  *               Otherwise NOT IN CONTRACT: `journal_entries` carries no
  *               monetary amount (debit/credit live on `journal_entry_lines`,
  *               outside this package's four-table contract), so a lifecycle
@@ -79,8 +86,8 @@ use SplFileInfo;
  *    PAIRED (the S0 seam: StockAdjustmentService::recordMovement asserts
  *    `assertReferenceLinkagePaired`).
  *    - CREATE : LINKED iff the payload statically carries BOTH `reference_type`
- *               and `reference_id` with PROVABLY non-null values; unresolvable
- *               => VIOLATION. Note the consequence, which is deliberate: the S0
+ *               and `reference_id` with values not statically known to admit
+ *               null (same predicate as rule 1); unresolvable => VIOLATION. Note the consequence, which is deliberate: the S0
  *               chokepoint's own create (`recordMovement`, whose reference
  *               parameters are `?…= null` and whose `assertReferenceLinkagePaired`
  *               explicitly permits null/null) is a BASELINE ENTRY, not a
@@ -160,6 +167,25 @@ use SplFileInfo;
  *    the message misleads; read the file:line in the report, not just the key.
  * D. RAW SQL is matched by table name plus an INSERT/UPDATE/DELETE keyword in a
  *    statically-resolvable string. SQL assembled from variables is not matched.
+ * E. LINKAGE-VALUE NULLABILITY IS REFUSED, NOT PROVEN. nullAdmitting() refuses
+ *    an ENUMERATED set of shapes (literal null, nullable/null-defaulted
+ *    parameter, null-assigned local, nullable `$this` property or
+ *    nullable-returning `$this` method, nullsafe read, array element). Every
+ *    other value — most importantly `$document->id` and any call on a
+ *    collaborator — is treated as non-null WITHOUT proof. A writer that obtains
+ *    its reference id from a nullable source the scanner cannot see (an
+ *    untyped member, a nullable return on another class, a container call) is
+ *    credited as `linked`. Inverting this default would flag the ordinary
+ *    `$document->id` shape and drown the baseline; the residue is accepted and
+ *    named here instead of being claimed away.
+ * F. PAIRING ARM ASYMMETRY. Arm (b) (a `stock_movements` create in the same
+ *    function) is credited only when that create is ITSELF `linked`. Arm (a)
+ *    (reaching the chokepoint) is credited regardless of whether the movement
+ *    the chokepoint writes carries a reference — and the chokepoint's own
+ *    create is a baseline entry precisely because it permits null/null. So a
+ *    `linked` classification on a level write means "traceable to a movement",
+ *    NOT "a justifying document exists". Read it that way in the baseline
+ *    cross-check.
  *
  * A per-site key is line-number-free and stable under reformatting:
  *   `<relative file>::<class>::<function>::<table>::<mechanism>#<ordinal>`
@@ -168,6 +194,35 @@ use SplFileInfo;
  */
 final class DocumentPerActionWriteScanner
 {
+    /**
+     * Does a LINKED (or not-in-contract) form of this cell exist BY RULE?
+     *
+     * The liveness certificate uses this to decide which cells must pin a
+     * negative control, so that knowledge lives HERE, next to the rules it
+     * describes, instead of being a hardcoded map inside the test that could be
+     * edited to drop a requirement.
+     *
+     * False for: raw SQL against any table (never credited), and every MUTATE or
+     * DELETE against the append-only movement ledger; plus delete/increment/
+     * decrement on `journal_entries`, which are violations by rule.
+     */
+    public static function linkedFormExists(string $table, string $mechanism): bool
+    {
+        if ($mechanism === 'raw_sql') {
+            return false;
+        }
+
+        if ($table === 'stock_movements') {
+            return in_array($mechanism, ['create', 'firstOrCreate', 'updateOrCreate', 'query_builder'], true);
+        }
+
+        if ($table === 'journal_entries') {
+            return ! in_array($mechanism, ['delete', 'increment', 'decrement'], true);
+        }
+
+        return true;
+    }
+
     /**
      * Table => the Eloquent model FQCN whose `$table` is that table.
      *
@@ -336,6 +391,15 @@ final class DocumentPerActionWriteScanner
     /** @var array<string, true> parameter names of the function being scanned whose declared type is nullable or which default to null */
     private array $nullableVars = [];
 
+    /** @var array<string, true> local variables assigned `null` anywhere in the function being scanned */
+    private array $nullAssignedVars = [];
+
+    /** @var array<string, true> properties of the class being scanned whose declared type is nullable */
+    private array $nullableProperties = [];
+
+    /** @var array<string, true> methods of the class being scanned whose declared return type is nullable */
+    private array $nullableReturnMethods = [];
+
     /**
      * Subclass FQCN => target-model FQCN. A class extending one of the four
      * models writes the same table, so `$this->update([...])` inside it is the
@@ -414,6 +478,8 @@ final class DocumentPerActionWriteScanner
             $this->propertyTypes = $this->buildPropertyTypes($classLike['node']);
             $this->methodReturnTypes = $this->buildMethodReturnTypes($classLike['node']);
             $this->propertyClasses = $this->buildPropertyClasses($classLike['node']);
+            $this->nullableProperties = $this->buildNullableProperties($classLike['node']);
+            $this->nullableReturnMethods = $this->buildNullableReturnMethods($classLike['node']);
 
             foreach ($this->functionLikes($classLike['node']) as $fn) {
                 foreach ($this->scanFunction($fn['node'], $relative, $fn['name']) as $site) {
@@ -428,6 +494,8 @@ final class DocumentPerActionWriteScanner
         $this->propertyTypes = [];
         $this->methodReturnTypes = [];
         $this->propertyClasses = [];
+        $this->nullableProperties = [];
+        $this->nullableReturnMethods = [];
         foreach ($this->topLevelFunctionLikes($stmts) as $fn) {
             foreach ($this->scanFunction($fn['node'], $relative, $fn['name']) as $site) {
                 $sites[] = $site;
@@ -579,6 +647,16 @@ final class DocumentPerActionWriteScanner
         // journal_entries MUTATE
         if ($mechanism === 'increment' || $mechanism === 'decrement') {
             return ['violation', 'numeric mutation of a fiscal journal row without a justifying document'];
+        }
+
+        if (! $payload['resolved'] && $mechanism !== 'save') {
+            // An update()/upsert() whose payload the scanner cannot read may set
+            // the linkage columns to anything, including null. Fail closed —
+            // `update($vars)` must not be the way around the erasure rule.
+            // `save()` is excluded because it never carries an inspectable
+            // payload by construction; its erasure path is the property-assignment
+            // rule below.
+            return ['violation', sprintf('%s with an unreadable payload — cannot prove %s/%s linkage survives (fail closed)', $mechanism, $typeColumn, $idColumn)];
         }
 
         if ($payload['resolved']) {
@@ -1021,25 +1099,61 @@ final class DocumentPerActionWriteScanner
      */
     private function provablyNonNull(Expr $value): bool
     {
+        return ! $this->nullAdmitting($value);
+    }
+
+    /**
+     * Is this value expression STATICALLY KNOWN to admit null?
+     *
+     * The enumerated null-admitting shapes are refused; anything the scanner
+     * cannot decide is treated as non-null (blind spot E in the header — this
+     * is stated, not claimed away). Refused shapes:
+     *   - the literal `null`;
+     *   - a nullsafe read (`$enum?->value`) — it short-circuits to null;
+     *   - a parameter declared nullable or defaulted to null;
+     *   - a LOCAL assigned `null` anywhere in the same function;
+     *   - `$this-><prop>` whose declared property type is nullable;
+     *   - `$this-><method>()` whose declared return type is nullable;
+     *   - an array element (`$ctx['id']`) — never statically decidable;
+     *   - a ternary either of whose branches admits null;
+     *   - `??` whose right-hand side admits null.
+     */
+    private function nullAdmitting(Expr $value): bool
+    {
         if ($value instanceof Expr\ConstFetch && $value->name->toLowerString() === 'null') {
-            return false;
+            return true;
         }
         if ($value instanceof Expr\NullsafePropertyFetch || $value instanceof Expr\NullsafeMethodCall) {
-            return false;
+            return true;
+        }
+        if ($value instanceof Expr\ArrayDimFetch) {
+            return true;
         }
         if ($value instanceof Expr\Variable && is_string($value->name)) {
-            return ! isset($this->nullableVars[$value->name]);
+            return isset($this->nullableVars[$value->name]) || isset($this->nullAssignedVars[$value->name]);
+        }
+        if ($value instanceof Expr\PropertyFetch
+            && $value->var instanceof Expr\Variable
+            && $value->var->name === 'this'
+            && $value->name instanceof Node\Identifier) {
+            return isset($this->nullableProperties[$value->name->toString()]);
+        }
+        if ($value instanceof Expr\MethodCall
+            && $value->var instanceof Expr\Variable
+            && $value->var->name === 'this'
+            && $value->name instanceof Node\Identifier) {
+            return isset($this->nullableReturnMethods[$value->name->toString()]);
         }
         if ($value instanceof Expr\Ternary) {
             $ifTrue = $value->if ?? $value->cond;
 
-            return $this->provablyNonNull($ifTrue) && $this->provablyNonNull($value->else);
+            return $this->nullAdmitting($ifTrue) || $this->nullAdmitting($value->else);
         }
         if ($value instanceof Expr\BinaryOp\Coalesce) {
-            return $this->provablyNonNull($value->right);
+            return $this->nullAdmitting($value->right);
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -1120,7 +1234,7 @@ final class DocumentPerActionWriteScanner
             if (! $assign->var instanceof Expr\PropertyFetch || ! $assign->var->name instanceof Node\Identifier) {
                 continue;
             }
-            if (! ($assign->expr instanceof Expr\ConstFetch && $assign->expr->name->toLowerString() === 'null')) {
+            if (! $this->nullAdmitting($assign->expr)) {
                 continue;
             }
 
@@ -1245,7 +1359,8 @@ final class DocumentPerActionWriteScanner
 
         foreach ($this->files($roots) as $path) {
             $code = (string) file_get_contents($path);
-            if (! str_contains($code, 'hasMany') && ! str_contains($code, 'hasOne') && ! str_contains($code, 'morphMany')) {
+            if (! str_contains($code, 'hasMany') && ! str_contains($code, 'hasOne')
+                && ! str_contains($code, 'morphMany') && ! str_contains($code, 'morphOne')) {
                 continue;
             }
             $stmts = $this->parser->parse($code);
@@ -1574,6 +1689,77 @@ final class DocumentPerActionWriteScanner
     }
 
     /**
+     * Properties whose declared type admits null.
+     *
+     * @return array<string, true>
+     */
+    private function buildNullableProperties(Node $classLike): array
+    {
+        $out = [];
+
+        foreach ($this->finder->findInstanceOf($classLike, Stmt\Property::class) as $property) {
+            /** @var Stmt\Property $property */
+            if (! $this->typeAdmitsNull($property->type)) {
+                continue;
+            }
+            foreach ($property->props as $prop) {
+                $out[$prop->name->toString()] = true;
+            }
+        }
+
+        foreach ($this->finder->findInstanceOf($classLike, Node\Param::class) as $param) {
+            /** @var Node\Param $param */
+            if ($param->flags === 0 || ! $param->var instanceof Expr\Variable || ! is_string($param->var->name)) {
+                continue;
+            }
+            if ($this->typeAdmitsNull($param->type)
+                || ($param->default instanceof Expr\ConstFetch && $param->default->name->toLowerString() === 'null')) {
+                $out[$param->var->name] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Methods whose declared return type admits null.
+     *
+     * @return array<string, true>
+     */
+    private function buildNullableReturnMethods(Node $classLike): array
+    {
+        $out = [];
+        foreach ($this->finder->findInstanceOf($classLike, Stmt\ClassMethod::class) as $method) {
+            /** @var Stmt\ClassMethod $method */
+            if ($this->typeAdmitsNull($method->returnType)) {
+                $out[$method->name->toString()] = true;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * A missing type declaration admits null as far as this scanner can tell —
+     * but only the DECLARED-nullable shapes are refused (blind spot E), so an
+     * untyped member returns false here and is treated as non-null.
+     */
+    private function typeAdmitsNull(?Node $type): bool
+    {
+        if ($type instanceof Node\NullableType) {
+            return true;
+        }
+        if ($type instanceof Node\UnionType) {
+            return $this->unionAdmitsNull($type);
+        }
+        if ($type instanceof Node\Identifier && $type->toLowerString() === 'null') {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * The declared class name of a type node, or null for scalars/unions with
      * no single class.
      */
@@ -1664,6 +1850,16 @@ final class DocumentPerActionWriteScanner
 
         $this->varClasses = [];
         $this->nullableVars = [];
+        $this->nullAssignedVars = [];
+        foreach ($this->finder->findInstanceOf($fn, Expr\Assign::class) as $assign) {
+            /** @var Expr\Assign $assign */
+            if ($assign->var instanceof Expr\Variable
+                && is_string($assign->var->name)
+                && $assign->expr instanceof Expr\ConstFetch
+                && $assign->expr->name->toLowerString() === 'null') {
+                $this->nullAssignedVars[$assign->var->name] = true;
+            }
+        }
         foreach ($this->finder->findInstanceOf($fn, Node\Param::class) as $param) {
             /** @var Node\Param $param */
             if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
