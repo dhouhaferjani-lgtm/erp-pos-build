@@ -30,8 +30,9 @@ use PHPStan\Type\VerbosityLevel;
  * blocked. PHPStan analyses app/ only, so migrations, backfills, seeders, and
  * tests are outside its view. It cannot reliably see non-literal or dynamic
  * table names, payload keys, merged/spread arrays, dynamic method dispatch,
- * generic unresolved builders, or raw PDO. Literal marker-table SQL matching
- * is substring based rather than a SQL parser. Whole-payload assignments are only matched
+ * generic unresolved builders, or raw PDO. Literal marker-table and
+ * delivery-note payload SQL matching are substring based rather than a SQL
+ * parser. Whole-payload assignments are only matched
  * when their right-hand side is a literal array containing an enumerated key,
  * including the supported literal payload nesting; dynamic values remain
  * outside this rule's boundary. A green build makes no claim beyond those
@@ -174,7 +175,8 @@ final class DeliveryNoteBillingWritesOnlyViaClaimService implements Rule
             && $node->args[0]->value instanceof String_) {
             $sql = strtolower($node->args[0]->value->value);
 
-            return str_contains($sql, self::MARKER_TABLE);
+            return str_contains($sql, self::MARKER_TABLE)
+                || $this->isLiteralDeliveryNotePayloadBillingSql($sql);
         }
 
         return in_array($method, ['create', 'insert'], true)
@@ -244,6 +246,25 @@ final class DeliveryNoteBillingWritesOnlyViaClaimService implements Rule
         $defaults = $classReflection->getNativeReflection()->getDefaultProperties();
 
         return ($defaults['table'] ?? null) === self::MARKER_TABLE;
+    }
+
+    private function isLiteralDeliveryNotePayloadBillingSql(string $sql): bool
+    {
+        return str_contains($sql, 'documents')
+            && str_contains($sql, 'delivery_note')
+            && str_contains($sql, 'payload')
+            && $this->stringContainsBillingKey($sql);
+    }
+
+    private function stringContainsBillingKey(string $value): bool
+    {
+        foreach (self::BILLING_KEYS as $billingKey) {
+            if (str_contains($value, $billingKey)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function identifierIs(Node $node, string $expected): bool

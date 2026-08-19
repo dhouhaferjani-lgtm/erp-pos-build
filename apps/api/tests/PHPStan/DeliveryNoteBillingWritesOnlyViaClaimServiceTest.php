@@ -69,4 +69,12 @@ final class DeliveryNoteBillingWritesOnlyViaClaimServiceTest extends RuleTestCas
             [[self::SET_MESSAGE, 14]],
         );
     }
+
+    public function test_reports_literal_delivery_note_payload_raw_sql_without_marker_table(): void
+    {
+        $this->analyse(
+            [__DIR__.'/Fixtures/DeliveryNoteBillingPayloadRawSqlFixture.php'],
+            [[self::MESSAGE, 13]],
+        );
+    }
 }
