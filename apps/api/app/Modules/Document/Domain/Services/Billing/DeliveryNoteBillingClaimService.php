@@ -109,8 +109,14 @@ class DeliveryNoteBillingClaimService
         $billingState = new DeliveryNoteBillingState($set->invoicedAt, $invoiceId, $set->invoicedVia);
         $payloadPatch = $billingState->toPayloadPatch();
 
+        // The `company_id` predicate mirrors the payload half below (`:126`), so both
+        // halves of one invariant carry the same scope. Defence in depth rather than a
+        // live hole — `delivery_note_id` is the marker table's primary key and every id
+        // in the set was already company-predicated by the reserve CAS.
+        // (M5-terminal treasury F-10 / tenancy-authz F-T4.)
         $markerCount = $this->db->table('delivery_note_billing_marks')
             ->whereIn('delivery_note_id', $set->deliveryNoteIds)
+            ->where('company_id', $set->companyId)
             ->whereNull('invoice_id')
             ->update(['invoice_id' => $invoiceId]);
 
@@ -140,15 +146,36 @@ class DeliveryNoteBillingClaimService
     private function finalisePayloadMergeSql(): string
     {
         return $this->driverName() === 'pgsql'
-            ? "COALESCE(payload, '{}'::jsonb) || jsonb_build_object('invoice_id', ?::text)"
+            ? $this->postgresPayloadObjectSql()." || jsonb_build_object('invoice_id', ?::text)"
             : "json_patch(COALESCE(payload, '{}'), json_object('invoice_id', ?))";
     }
 
     private function reservePayloadMergeSql(): string
     {
         return $this->driverName() === 'pgsql'
-            ? "COALESCE(payload, '{}'::jsonb) || jsonb_build_object('invoiced_at', ?::text, 'invoiced_via', ?::text)"
+            ? $this->postgresPayloadObjectSql()." || jsonb_build_object('invoiced_at', ?::text, 'invoiced_via', ?::text)"
             : "json_patch(COALESCE(payload, '{}'), json_object('invoiced_at', ?, 'invoiced_via', ?))";
+    }
+
+    /**
+     * The left-hand side of every payload merge, normalised to a jsonb OBJECT.
+     *
+     * PostgreSQL's `||` does not merge an object into an array — it APPENDS:
+     * `'[]'::jsonb || jsonb_build_object('invoiced_at','x')` yields `[{"invoiced_at":"x"}]`.
+     * A delivery note whose payload is a JSON array therefore had its payload destroyed by
+     * reserve(); `payload->>'invoiced_at'` then read NULL again, finalise()'s guard matched
+     * 0 rows, and the claim aborted — leaving the delivery note permanently unbillable.
+     * `COALESCE` alone does not defend this, because it only substitutes for NULL.
+     *
+     * Normalising any non-object (array, scalar, NULL) to `'{}'` makes the merge total and
+     * aligns PostgreSQL with SQLite, whose `json_patch` already replaces a non-object base.
+     * Nothing is lost that any consumer could read: every payload reader in this module
+     * addresses string keys, which an array payload can never carry.
+     * (M5-terminal treasury F-3.)
+     */
+    private function postgresPayloadObjectSql(): string
+    {
+        return "CASE WHEN jsonb_typeof(payload) = 'object' THEN payload ELSE '{}'::jsonb END";
     }
 
     private function payloadValueSql(string $key): string

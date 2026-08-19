@@ -134,6 +134,50 @@ final class DeliveryNoteBillingClaimServiceTest extends TestCase
             ->count());
     }
 
+    /**
+     * M5-terminal treasury F-3.
+     *
+     * PostgreSQL's `||` APPENDS an object to an array instead of merging into it:
+     * `'[]'::jsonb || jsonb_build_object('invoiced_at','x')` => `[{"invoiced_at":"x"}]`.
+     * With the un-normalised `COALESCE(payload,'{}'::jsonb) || …` merge, a delivery note
+     * whose payload is a JSON ARRAY had its payload destroyed by reserve(), after which
+     * `payload->>'invoiced_at'` read NULL again, finalise()'s guard matched 0 rows and the
+     * claim aborted with DeliveryNoteClaimNotFinalisedException — i.e. the delivery note
+     * became permanently unbillable, surfaced to the operator as a routine refusal.
+     * SQLite's `json_patch` replaces the array outright, so this diverged by engine.
+     *
+     * Contract: a non-object payload is normalised to an object, the claim completes, and
+     * the billing triple lands on both representations.
+     */
+    public function test_an_array_payload_is_normalised_instead_of_stranding_the_delivery_note_unbillable(): void
+    {
+        $deliveryNote = $this->deliveryNote();
+
+        // Force the hazardous shape at the database, independently of how the Eloquent
+        // `array` cast happens to encode an empty PHP array.
+        DB::table('documents')->where('id', $deliveryNote->id)->update(['payload' => '[]']);
+        $this->assertSame('[]', DB::table('documents')->where('id', $deliveryNote->id)->value('payload'));
+
+        $invoice = null;
+        $this->db->transaction(function () use ($deliveryNote, &$invoice): void {
+            $this->service->claim($this->request([$deliveryNote->id]), function () use (&$invoice): string {
+                $invoice = $this->numberedInvoice();
+
+                return $invoice->id;
+            });
+        });
+
+        $this->assertInstanceOf(Document::class, $invoice);
+
+        $payload = $deliveryNote->fresh()->payload ?? [];
+        $this->assertSame($invoice->id, $payload['invoice_id'] ?? null);
+        $this->assertSame(DeliveryNoteBillingLane::Consolidation->value, $payload['invoiced_via'] ?? null);
+        $this->assertNotNull($payload['invoiced_at'] ?? null);
+
+        // Both representations agree — the invariant the count guard exists to protect.
+        $this->assertMatchingFinalisedPairs([$deliveryNote->id], $invoice->id);
+    }
+
     public function test_second_claim_loses_the_payload_cas_before_creating_an_invoice(): void
     {
         $deliveryNote = $this->deliveryNote();
@@ -337,9 +381,17 @@ final class DeliveryNoteBillingClaimServiceTest extends TestCase
     /** @param list<string> $ids */
     private function assertMatchingFinalisedPairs(array $ids, string $invoiceId): void
     {
-        $payloadInvoiceId = $this->db->getDriverName() === 'pgsql'
+        // M5-terminal treasury F-4: on PostgreSQL the payload side of this comparison is
+        // `text` while `delivery_note_billing_marks.invoice_id` is `uuid`, and there is no
+        // implicit cast — the un-cast form raised 42883 ("operator does not exist:
+        // text = uuid"), so this file's flagship both-representations assertion had never
+        // actually EXECUTED on the production engine. Cast the marker side to text, as
+        // DeliveryNoteConsolidationConcurrencyTest.php:935 already does.
+        $isPostgres = $this->db->getDriverName() === 'pgsql';
+        $payloadInvoiceId = $isPostgres
             ? "document.payload->>'invoice_id'"
             : "json_extract(document.payload, '$.invoice_id')";
+        $markerInvoiceId = $isPostgres ? 'mark.invoice_id::text' : 'mark.invoice_id';
 
         $this->assertSame(count($ids), DB::table('delivery_note_billing_marks')
             ->whereIn('delivery_note_id', $ids)
@@ -353,7 +405,7 @@ final class DeliveryNoteBillingClaimServiceTest extends TestCase
             ->join('documents as document', 'document.id', '=', 'mark.delivery_note_id')
             ->whereIn('mark.delivery_note_id', $ids)
             ->where('mark.invoice_id', $invoiceId)
-            ->whereRaw($payloadInvoiceId.' = mark.invoice_id')
+            ->whereRaw($payloadInvoiceId.' = '.$markerInvoiceId)
             ->count());
     }
 
