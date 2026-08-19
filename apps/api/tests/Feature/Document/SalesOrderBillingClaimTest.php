@@ -635,6 +635,49 @@ final class SalesOrderBillingClaimTest extends TestCase
             ->assertJsonMissingPath('error.details.documents');
     }
 
+    /**
+     * M5-terminal treasury F-5 — lock-order conformance for the standalone SO->DN lane.
+     *
+     * The wave's global order is L1 sales-order header < L2 document_sequences[delivery_note].
+     * SalesOrderToInvoiceConverter takes L1 immediately after BEGIN and only then reaches L2
+     * on its auto-create branch. SalesOrderToDeliveryNoteConverter used to do the opposite —
+     * createTargetDocument (L2) first, and L1 only later via appendToSourcePayload's write to
+     * the order header — so two concurrent requests on the SAME sales order formed a wait-for
+     * cycle that PostgreSQL broke with 40P01 (a 500 on the invoice lane, a 422 carrying a
+     * deadlock string on this one, since this lane has no retrier).
+     *
+     * A two-session deadlock reproduction is inherently racy; the invariant that actually
+     * matters is the ORDER in which the two locks are requested, which is deterministic and
+     * asserted directly here. The cycle is unreachable while this ordering holds.
+     */
+    public function test_delivery_note_conversion_locks_the_order_header_before_the_delivery_note_sequence(): void
+    {
+        $order = $this->createOrder();
+
+        $queries = [];
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = ['sql' => $query->sql, 'bindings' => $query->bindings];
+        });
+
+        $this->registry()->convert($order, DocumentType::DeliveryNote);
+
+        // L1 — the sales-order header row, SELECT ... FOR UPDATE on this order's id.
+        $headerLock = $this->queryPosition($queries, 'for update', $order->id);
+        // L2 — the delivery-note document_sequences row.
+        $sequenceLock = $this->queryPosition(
+            $queries,
+            'document_sequences',
+            DocumentType::DeliveryNote->value,
+        );
+
+        $this->assertLessThan(
+            $sequenceLock,
+            $headerLock,
+            'SO->DN conversion must take L1 (order header) before L2 (delivery-note sequence), '
+            .'matching SalesOrderToInvoiceConverter, or the two lanes deadlock on the same order.',
+        );
+    }
+
     private function createOrder(string $quantityDelivered = '0.0000'): Document
     {
         $order = Document::create([

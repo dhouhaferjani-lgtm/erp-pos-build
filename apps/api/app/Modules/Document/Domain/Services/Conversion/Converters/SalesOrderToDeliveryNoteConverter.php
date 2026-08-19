@@ -155,11 +155,49 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
     }
 
     /**
+     * Take L1 — the sales-order header row — immediately after BEGIN.
+     *
+     * The wave's global lock order is
+     * L1 sales-order header < L2 document_sequences[delivery_note] < L3 delivery-note
+     * documents rows < L4 delivery_note_billing_marks < L5 document_sequences[invoice].
+     *
+     * This converter used to take L2 first (createTargetDocument -> DocumentNumberingService)
+     * and only reach L1 later, when appendToSourcePayload write-locked the order header —
+     * the exact inversion of the L1 -> L2 order SalesOrderToInvoiceConverter takes at its
+     * own BEGIN. Two concurrent requests on the SAME sales order (convert-to-invoice on an
+     * order with physical lines and no delivery note yet, vs convert-to-delivery) therefore
+     * formed a wait-for cycle and PostgreSQL broke it with 40P01: the invoice lane burned
+     * its two retries and surfaced a 500 with a raw driver message, while this lane — which
+     * has no retrier — returned a 422 carrying a deadlock string. Money-safe (both
+     * transactions roll back whole, billed-once was never at risk), but a live defect and a
+     * falsification of the acyclicity claim.
+     *
+     * Acquiring L1 here removes the back edge, so the wait-for graph is acyclic again and
+     * the two lanes serialise on the order header instead of deadlocking. The lock is taken
+     * for its ordering effect only: the caller's already-loaded $order (and its lines) stay
+     * authoritative, so no validation or copy behaviour changes.
+     *
+     * (M5-terminal treasury F-5; total order per M5-evidence.md section 2.3.)
+     */
+    private function lockOrderHeader(Document $order): void
+    {
+        Document::query()
+            ->where('tenant_id', $order->tenant_id)
+            ->where('company_id', $order->company_id)
+            ->where('id', $order->id)
+            ->where('type', DocumentType::SalesOrder->value)
+            ->lockForUpdate()
+            ->first();
+    }
+
+    /**
      * Perform a full delivery - all remaining quantities are delivered.
      */
     private function performFullDelivery(Document $order): Document
     {
         return DB::transaction(function () use ($order): Document {
+            $this->lockOrderHeader($order);
+
             $delivery = $this->createTargetDocument($order, DocumentType::DeliveryNote);
 
             // Copy lines and update quantity_delivered on source lines
@@ -217,6 +255,8 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
         }
 
         return DB::transaction(function () use ($order, $deliveryQuantities): Document {
+            $this->lockOrderHeader($order);
+
             $delivery = $this->createTargetDocument($order, DocumentType::DeliveryNote, [
                 // Don't copy totals for partial - will recalculate
                 'subtotal' => null,
