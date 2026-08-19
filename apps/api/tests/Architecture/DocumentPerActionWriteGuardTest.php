@@ -146,6 +146,12 @@ final class DocumentPerActionWriteGuardTest extends TestCase
             ['mechanism' => 'update', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateWithUnreadablePayload', 'expected' => 'violation', 'note' => 'round 2 finding 2: unreadable MUTATE payload fails closed'],
             ['mechanism' => 'update', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateWithArrayUnionPayload', 'expected' => 'violation', 'note' => 'round 2 finding 2: array-union payload that nulls linkage'],
             ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntrySaveErasesViaNullableCall', 'expected' => 'violation', 'note' => 'round 2 finding 3: erasure through a null-admitting expression'],
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithAliasedNullableCall', 'expected' => 'violation', 'note' => 'round 3 finding 1: one alias hop must not launder a nullable call'],
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithDoubleAliasedNull', 'expected' => 'violation', 'note' => 'round 3 finding 1: two alias hops from a null literal'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureLinkageProofWrites', 'method' => 'movementWithAliasedNullableParameter', 'expected' => 'violation', 'note' => 'round 3 finding 1: alias of a nullable parameter'],
+            ['mechanism' => 'updateOrCreate', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateOrInsertUnlinked', 'expected' => 'violation', 'note' => 'round 3 finding 2: updateOrInsert INSERTS, so it is CREATE-class'],
+            ['mechanism' => 'updateOrCreate', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateOrInsertLinked', 'expected' => 'linked', 'note' => 'round 3 finding 2: linked updateOrInsert'],
+            ['mechanism' => 'query_builder', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'builderUpdateOrInsertUnlinked', 'expected' => 'violation', 'note' => 'round 3 finding 2: same reclassification through the builder mechanism'],
 
             // ---------------- relation-mediated + model-internal (findings 2, 5)
             ['mechanism' => 'create', 'table' => 'stock_levels', 'class' => 'FixtureRelationAndInheritanceWrites', 'method' => 'relationCreateBypassingMovement', 'expected' => 'violation', 'note' => 'relation-mediated write, no movement'],
@@ -281,6 +287,38 @@ final class DocumentPerActionWriteGuardTest extends TestCase
         }
 
         $this->assertSame([], $missing, "Fixture matrix has no negative control for:\n".implode("\n", $missing));
+    }
+
+    /**
+     * `linkedFormExists()` is consulted by the negative-control gate, but it is
+     * a restatement of the rules rather than a derivation from them, so the two
+     * can drift. This ties them together over every cell the matrix exercises:
+     * a cell may only expect `linked` where the rule surface says a linked form
+     * exists, and a cell the rule surface calls linkable must never be pinned
+     * as violation-only across the whole matrix.
+     */
+    #[Test]
+    public function the_rule_surface_agrees_with_the_pinned_classifications(): void
+    {
+        $mismatches = [];
+        $expectationsByCell = [];
+
+        foreach (self::fixtureMatrix() as $case) {
+            $expectationsByCell[$case['table']][$case['mechanism']][] = $case['expected'];
+
+            if ($case['expected'] === 'linked'
+                && ! DocumentPerActionWriteScanner::linkedFormExists($case['table'], $case['mechanism'])) {
+                $mismatches[] = sprintf(
+                    '%s / %s: a fixture pins `linked` (%s::%s) but linkedFormExists() says no linked form exists',
+                    $case['table'],
+                    $case['mechanism'],
+                    $case['class'],
+                    $case['method'],
+                );
+            }
+        }
+
+        $this->assertSame([], $mismatches, "The rule surface and the pinned classifications disagree:\n".implode("\n", $mismatches));
     }
 
     /**

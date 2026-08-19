@@ -41,9 +41,9 @@ use SplFileInfo;
  *
  * A "write class" is one of:
  *   CREATE  — create/forceCreate/createMany/createQuietly/firstOrCreate/
- *             updateOrCreate/insert/insertGetId/insertOrIgnore/insertUsing/
- *             upsert, DB::table() insert/upsert, raw INSERT
- *   MUTATE  — update/updateQuietly/updateOrInsert/save/saveQuietly/saveMany/
+ *             updateOrCreate/updateOrInsert/insert/insertGetId/insertOrIgnore/
+ *             insertUsing/upsert, DB::table() insert/upsert, raw INSERT
+ *   MUTATE  — update/updateQuietly/save/saveQuietly/saveMany/
  *             push/increment/decrement/incrementEach/decrementEach/restore,
  *             DB::table()->update/increment/decrement, raw UPDATE
  *   DELETE  — delete/deleteQuietly/forceDelete/destroy/truncate,
@@ -69,7 +69,13 @@ use SplFileInfo;
  *               covered by the property-assignment erasure rule instead), when
  *               the payload sets either linkage column to a null-admitting value
  *               (linkage erasure), or when the mechanism is increment/decrement
- *               (numeric mutation of a fiscal row).
+ *               (numeric mutation of a fiscal row). The property-assignment
+ *               erasure path (`$entry->source_id = …; $entry->save();`) is
+ *               `$this`-SCOPED on the value side: it refuses the shapes
+ *               nullAdmitting() can decide, so an erasure through a
+ *               COLLABORATOR's nullable call (`$helper->maybe()`) is not caught
+ *               — blind spot E again, stated here so the rule is not read as
+ *               general.
  *               Otherwise NOT IN CONTRACT: `journal_entries` carries no
  *               monetary amount (debit/credit live on `journal_entry_lines`,
  *               outside this package's four-table contract), so a lifecycle
@@ -165,6 +171,8 @@ use SplFileInfo;
  *    same function renumbers the later ones, so the ratchet reports one `stale`
  *    plus one `new` instead of a clean addition. It fails SAFE (still red), but
  *    the message misleads; read the file:line in the report, not just the key.
+ *    Methods of a nested anonymous class are attributed to that anonymous class
+ *    only (they used to be double-counted onto the enclosing class as well).
  * D. RAW SQL is matched by table name plus an INSERT/UPDATE/DELETE keyword in a
  *    statically-resolvable string. SQL assembled from variables is not matched.
  * E. LINKAGE-VALUE NULLABILITY IS REFUSED, NOT PROVEN. nullAdmitting() refuses
@@ -297,7 +305,9 @@ final class DocumentPerActionWriteScanner
         'upsert' => ['create', 'CREATE'],
         'update' => ['update', 'MUTATE'],
         'updateQuietly' => ['update', 'MUTATE'],
-        'updateOrInsert' => ['update', 'MUTATE'],
+        // Query\Builder::updateOrInsert() INSERTS when no row matches — it is a
+        // CREATE-class write, not a MUTATE (M1 gate round 3, finding 2).
+        'updateOrInsert' => ['updateOrCreate', 'CREATE'],
         'save' => ['save', 'MUTATE'],
         'saveQuietly' => ['save', 'MUTATE'],
         'saveMany' => ['save', 'MUTATE'],
@@ -1471,9 +1481,28 @@ final class DocumentPerActionWriteScanner
      */
     private function functionLikes(Node $classLike): array
     {
+        // Methods declared inside a NESTED class-like (an anonymous class in a
+        // method body) belong to that class, not to this one. Without this
+        // filter one physical write emits three keys — the anon class's own,
+        // plus two bogus ones on the outer class — and a single remediation
+        // would strand three baseline entries as stale (M1 gate round 3,
+        // finding 4).
+        $nested = [];
+        foreach ($this->finder->findInstanceOf($classLike, Stmt\ClassLike::class) as $inner) {
+            if ($inner === $classLike) {
+                continue;
+            }
+            foreach ($this->finder->findInstanceOf($inner, Stmt\ClassMethod::class) as $innerMethod) {
+                $nested[spl_object_id($innerMethod)] = true;
+            }
+        }
+
         $out = [];
         foreach ($this->finder->findInstanceOf($classLike, Stmt\ClassMethod::class) as $method) {
             /** @var Stmt\ClassMethod $method */
+            if (isset($nested[spl_object_id($method)])) {
+                continue;
+            }
             $out[] = ['name' => $method->name->toString(), 'node' => $method];
         }
 
@@ -1851,15 +1880,6 @@ final class DocumentPerActionWriteScanner
         $this->varClasses = [];
         $this->nullableVars = [];
         $this->nullAssignedVars = [];
-        foreach ($this->finder->findInstanceOf($fn, Expr\Assign::class) as $assign) {
-            /** @var Expr\Assign $assign */
-            if ($assign->var instanceof Expr\Variable
-                && is_string($assign->var->name)
-                && $assign->expr instanceof Expr\ConstFetch
-                && $assign->expr->name->toLowerString() === 'null') {
-                $this->nullAssignedVars[$assign->var->name] = true;
-            }
-        }
         foreach ($this->finder->findInstanceOf($fn, Node\Param::class) as $param) {
             /** @var Node\Param $param */
             if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
@@ -1879,6 +1899,33 @@ final class DocumentPerActionWriteScanner
             $fqcn = $this->typeToModel($param->type);
             if ($fqcn !== null && $param->var instanceof Expr\Variable && is_string($param->var->name)) {
                 $types[$param->var->name] = $fqcn;
+            }
+        }
+
+        // Null-admittance PROPAGATES through local aliases, to a fixpoint:
+        // `$id = $this->maybeId();` (nullable return) or `$b = $a;` where `$a`
+        // already admits null must not launder the value into "linked" one hop
+        // later (M1 gate round 3, finding 1). Bounded iteration — each pass can
+        // only add variables, and there are finitely many.
+        $assignments = $this->finder->findInstanceOf($fn, Expr\Assign::class);
+        for ($pass = 0; $pass < 8; $pass++) {
+            $grew = false;
+            foreach ($assignments as $assign) {
+                /** @var Expr\Assign $assign */
+                if (! $assign->var instanceof Expr\Variable || ! is_string($assign->var->name)) {
+                    continue;
+                }
+                $name = $assign->var->name;
+                if (isset($this->nullAssignedVars[$name]) || isset($this->nullableVars[$name])) {
+                    continue;
+                }
+                if ($this->nullAdmitting($assign->expr)) {
+                    $this->nullAssignedVars[$name] = true;
+                    $grew = true;
+                }
+            }
+            if (! $grew) {
+                break;
             }
         }
 

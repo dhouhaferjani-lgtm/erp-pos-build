@@ -7,6 +7,7 @@ namespace Tests\Architecture\DocumentPerActionFixtures;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Fixtures for what actually counts as PROVEN linkage (M1 gate finding 4).
@@ -180,6 +181,87 @@ final class FixtureLinkageProofWrites
         $entry = JournalEntry::query()->findOrFail($entryId);
         $entry->source_id = $this->maybeReferenceId();
         $entry->save();
+    }
+
+    // --- alias laundering, refused (round 3, finding 1) --------------------
+
+    /**
+     * One alias assignment used to launder every refused shape back into
+     * "linked". Null-admittance now propagates through local aliases.
+     */
+    public function journalEntryWithAliasedNullableCall(string $sourceType): void
+    {
+        $sourceId = $this->maybeReferenceId();
+
+        JournalEntry::create([
+            'entry_number' => 'JE-P6',
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ]);
+    }
+
+    /**
+     * Two hops: `$a = null; $b = $a;`.
+     */
+    public function journalEntryWithDoubleAliasedNull(string $sourceType): void
+    {
+        $first = null;
+        $second = $first;
+
+        JournalEntry::create([
+            'entry_number' => 'JE-P7',
+            'source_type' => $sourceType,
+            'source_id' => $second,
+        ]);
+    }
+
+    /**
+     * Aliased from a nullable PARAMETER — the round-1 refusal must survive the
+     * hop too.
+     */
+    public function movementWithAliasedNullableParameter(string $productId, ?string $referenceId = null): void
+    {
+        $resolved = $referenceId;
+
+        StockMovement::create([
+            'product_id' => $productId,
+            'quantity' => '1.0000',
+            'reference_type' => StockMovementReferenceType::Document,
+            'reference_id' => $resolved,
+        ]);
+    }
+
+    // --- updateOrInsert is a CREATE (round 3, finding 2) --------------------
+
+    /**
+     * `updateOrInsert` INSERTS when nothing matches, so an unlinked payload
+     * creates an unjustified row.
+     */
+    public function journalEntryUpdateOrInsertUnlinked(string $entryNumber): void
+    {
+        JournalEntry::query()->updateOrInsert(
+            ['entry_number' => $entryNumber],
+            ['status' => 'posted', 'entry_date' => '2026-01-01'],
+        );
+    }
+
+    public function journalEntryUpdateOrInsertLinked(string $entryNumber, string $documentId): void
+    {
+        JournalEntry::query()->updateOrInsert(
+            ['entry_number' => $entryNumber],
+            ['source_type' => 'document', 'source_id' => $documentId],
+        );
+    }
+
+    /**
+     * The same reclassification through the query-builder mechanism.
+     */
+    public function builderUpdateOrInsertUnlinked(string $entryNumber): void
+    {
+        DB::table('journal_entries')->updateOrInsert(
+            ['entry_number' => $entryNumber],
+            ['status' => 'posted'],
+        );
     }
 
     private function maybeReferenceId(): ?string
