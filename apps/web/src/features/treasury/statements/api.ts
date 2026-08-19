@@ -110,7 +110,13 @@ export interface StatementTargetProvenance {
 
 export interface StatementListResponse {
   data: BankStatementSummary[]
-  meta: OffsetPaginationMeta
+  // `Pick<>` and not the whole `OffsetPaginationMeta`: BankStatementController::index
+  // (apps/api/.../Treasury/Presentation/Controllers/BankStatementController.php:53-58)
+  // emits only the four core fields — declaring `from`/`to` would assert two
+  // properties that are `undefined` on the wire. A TypeReference also satisfies
+  // the offset-pagination consolidation guard, which flags duplicate inline type
+  // LITERALS of the four core fields, not references.
+  meta: Pick<OffsetPaginationMeta, 'current_page' | 'last_page' | 'per_page' | 'total'>
 }
 
 export interface StatementProfile {

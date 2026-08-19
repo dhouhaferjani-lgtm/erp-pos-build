@@ -18,9 +18,17 @@
  *
  * WHAT IT CHECKS
  * --------------
- *   1. `missing` — a key authored in `en/<ns>.json` with no counterpart in
- *      `<locale>/<ns>.json` (a namespace with no file at all = every key missing).
- *   2. `plural`  — per-locale CLDR plural-category completeness. A flat en↔fr
+ *   1. `aliased` — the namespace is WIRED to the English bundle for that locale
+ *      (`catalog: enCatalog` under `ar`), so the runtime serves English no matter
+ *      what sits in `locales/<locale>/`. One entry per (locale, namespace), never
+ *      per key: per-key entries would make every NEW English key an instant CI
+ *      failure in namespaces the locale does not cover at all. The entry can only
+ *      be cleared by WIRING a real bundle — never by adding unwired JSON files,
+ *      which is precisely the ratchet bypass this classification closes.
+ *   2. `missing` — a key authored in `en/<ns>.json` with no counterpart in
+ *      `<locale>/<ns>.json`, for namespaces the locale IS wired into (`own` or
+ *      `{...en, ...partialLocale}` spread).
+ *   3. `plural`  — per-locale CLDR plural-category completeness. A flat en↔fr
  *      key diff is structurally blind to this: the required categories come
  *      from CLDR per locale (French requires `many`, which English has no
  *      counterpart for; Arabic requires all six). Categories are DERIVED at
@@ -29,8 +37,16 @@
  *      checked — a family it authors none of is already a `missing` finding.
  *
  * STRUCTURAL failures (never baselined, always fatal): a namespace in the `ns`
- * array with no entry in a locale's `resources` block, a namespace with no
- * English source file, or an unparseable translation file.
+ * array with no entry in a locale's `resources` block; a namespace wired under
+ * `en` but absent from the `ns` array; a `locales/<locale>/` directory with no
+ * parseable block in `resources` (a reformat that breaks the wiring parse must
+ * not look like burn-down); a namespace with no English source file; or an
+ * unparseable translation file.
+ *
+ * SURFACE-COVERAGE INVARIANT: every `locale|namespace` the PINNED protected
+ * baseline references must still be inside the scanned surface. Stale baseline
+ * entries are burn-down (a note, never a failure), so without this a vanished
+ * locale or namespace would be reported as progress.
  *
  * RATCHET — TWO-PHASE PINNED BASELINE (gate-r2 R2-C-1, gate-r3 R3-C-1)
  * --------------------------------------------------------------------
@@ -218,9 +234,46 @@ export function auditRoot(root) {
   const wiring = parseI18nWiring(root);
   const structural = [];
   const findings = [];
-  const stats = { keysPerLocale: {}, namespaces: wiring.namespaces.length };
+  const stats = {
+    keysPerLocale: {},
+    namespaces: wiring.namespaces.length,
+    aliasedNamespaces: {},
+    keysBehindAliases: {},
+  };
 
-  for (const locale of wiring.locales) stats.keysPerLocale[locale] = 0;
+  for (const locale of wiring.locales) {
+    stats.keysPerLocale[locale] = 0;
+    stats.aliasedNamespaces[locale] = 0;
+    stats.keysBehindAliases[locale] = 0;
+  }
+
+  // The parse is line-oriented; a locale block that stops matching would drop
+  // that locale's entire finding set silently (and be reported as burn-down).
+  // Every locale directory on disk must therefore be present in the parsed
+  // `resources` graph — a reformat that hides one is STRUCTURAL, not progress.
+  const localesDir = path.join(root, 'locales');
+  if (fs.existsSync(localesDir)) {
+    for (const entry of fs.readdirSync(localesDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name.startsWith('__')) continue;
+      if (!wiring.locales.includes(entry.name)) {
+        structural.push(
+          `locale "${entry.name}" has a locales/ directory but no parseable block in the \`resources\` object ` +
+            `(parsed locales: ${wiring.locales.join(', ')}) — the wiring parse may have been broken by a reformat`,
+        );
+      }
+    }
+  }
+
+  // A namespace wired under `en` but absent from the `ns` array would drop out
+  // of the scanned surface entirely while its translations keep working.
+  for (const ns of Object.keys(wiring.assignments.en ?? {})) {
+    if (!wiring.namespaces.includes(ns)) {
+      structural.push(
+        `namespace "${ns}" is wired in the \`en\` resources block but is missing from the \`ns\` array — ` +
+          'it would silently leave the audited surface',
+      );
+    }
+  }
 
   for (const ns of wiring.namespaces) {
     for (const locale of wiring.locales) {
@@ -256,6 +309,27 @@ export function auditRoot(root) {
       const authored = tree === null ? [] : flattenKeys(tree);
       if (locale !== 'en') stats.keysPerLocale[locale] += authored.length;
       const authoredSet = new Set(authored);
+
+      // PROVENANCE GATE (gate-r1 H-5). A namespace WIRED to the English bundle
+      // serves English at runtime no matter what sits in locales/<locale>/.
+      // Deciding coverage from the file alone would credit `ar/catalog.json`
+      // (261 authored keys) as translated while `i18n.ts` wires
+      // `catalog: enCatalog` under `ar` — and would let the Arabic baseline be
+      // "burned down" by dropping unwired JSON files into the tree.
+      // `unknown` is treated the same way: fail closed on an unrecognised shape.
+      const kind = wiring.assignments[locale]?.[ns]?.kind ?? 'unknown';
+      if (locale !== 'en' && (kind === 'en-aliased' || kind === 'unknown')) {
+        // ONE entry per aliased (locale, namespace), not one per key. Per-key
+        // entries would make every NEW English key an instant CI failure in the
+        // 23 namespaces Arabic does not cover at all — an effective
+        // full-parity-on-every-new-key policy the repo's en+fr posture does not
+        // carry. The single entry can only be removed by WIRING a real bundle,
+        // never by adding files, which is the invariant that matters.
+        findings.push({ locale, ns, type: 'aliased', key: '*' });
+        stats.aliasedNamespaces[locale] += 1;
+        stats.keysBehindAliases[locale] += enKeys.length;
+        continue;
+      }
 
       if (locale !== 'en') {
         for (const k of enKeys) {
@@ -307,6 +381,30 @@ export function addedKeysAgainstProtected(workingEntries, protectedEntries) {
   return workingEntries.filter((k) => !prot.has(k)).sort();
 }
 
+/**
+ * SURFACE-COVERAGE INVARIANT.
+ *
+ * Every `locale|namespace` the PINNED protected baseline knows about must still
+ * be inside the surface this run actually scanned. Without this, a locale block
+ * the line-oriented parser stops recognising — or a namespace dropped from the
+ * `ns` array — silently removes thousands of findings, and the shrink-only
+ * comparison reports the loss as burn-down PROGRESS (stale entries are a
+ * console note, never a failure). The protected baseline is the one description
+ * of the surface no candidate can edit, so it is the right thing to check against.
+ *
+ * @returns {string[]} sorted "locale|ns" pairs that are no longer scanned
+ */
+export function missingScannedSurface(protectedEntries, locales, namespaces) {
+  const localeSet = new Set(locales);
+  const nsSet = new Set(namespaces);
+  const gone = new Set();
+  for (const entry of protectedEntries) {
+    const [locale, ns] = entry.split('|');
+    if (!localeSet.has(locale) || !nsSet.has(ns)) gone.add(`${locale}|${ns}`);
+  }
+  return [...gone].sort();
+}
+
 export function parseBaselineDocument(text, label) {
   let doc;
   try {
@@ -336,7 +434,6 @@ function parseArgs(argv) {
     baseline: DEFAULT_BASELINE,
     mirror: DEFAULT_MIRROR,
     write: false,
-    ratchet: true,
     json: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -345,7 +442,6 @@ function parseArgs(argv) {
       case '--baseline': opts.baseline = path.resolve(argv[++i]); break;
       case '--mirror': opts.mirror = path.resolve(argv[++i]); break;
       case '--write-baseline': opts.write = true; break;
-      case '--no-ratchet': opts.ratchet = false; break;
       case '--json': opts.json = true; break;
       default: throw new Error(`unknown argument: ${argv[i]}`);
     }
@@ -392,7 +488,9 @@ function main() {
   let failed = false;
 
   // ---- anti-growth against the OWNER-PINNED protected blob (fail closed) ----
-  if (opts.ratchet) {
+  // There is deliberately NO opt-out flag: a `--no-ratchet` escape hatch would
+  // be a one-word bypass of the package's own trust anchor.
+  {
     const pinned = process.env[PROTECTED_BLOB_ENV];
     if (!pinned) {
       console.error(
@@ -443,6 +541,25 @@ function main() {
       );
       process.exit(1);
     }
+    const goneSurface = missingScannedSurface(
+      protectedEntries,
+      wiring.locales,
+      wiring.namespaces,
+    );
+    if (goneSurface.length > 0) {
+      console.error(
+        `i18n completeness — FAIL CLOSED: SCANNED SURFACE SHRANK. ${goneSurface.length} ` +
+          'locale|namespace pair(s) present in the pinned protected baseline are no longer scanned:',
+      );
+      for (const k of goneSurface) console.error(`  ✗ ${k}`);
+      console.error(
+        '  A locale block the wiring parser stopped recognising, or a namespace dropped from the `ns`\n' +
+          '  array, removes findings silently — and the shrink-only comparison would report the loss as\n' +
+          '  burn-down PROGRESS. Fix the wiring, or regenerate + re-pin deliberately (owner).',
+      );
+      process.exit(1);
+    }
+
     const added = addedKeysAgainstProtected(workingEntries, protectedEntries);
     if (added.length > 0) {
       failed = true;
@@ -474,10 +591,15 @@ function main() {
     const perLocale = Object.entries(stats.keysPerLocale)
       .map(([l, n]) => `${l}=${n}`)
       .join(' ');
+    const aliased = Object.entries(stats.aliasedNamespaces)
+      .filter(([, n]) => n > 0)
+      .map(([l, n]) => `${l}: ${n} ns / ${stats.keysBehindAliases[l]} keys served in English`)
+      .join('; ');
     console.log(
       `i18n completeness OK — ${wiring.namespaces.length} namespaces, authored keys: ${perLocale}; ` +
         `${covered.length} known gap(s) held at the baseline.`,
     );
+    if (aliased) console.log(`  English-aliased namespaces — ${aliased}`);
   }
 
   process.exit(failed ? 1 : 0);

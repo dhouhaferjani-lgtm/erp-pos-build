@@ -38,9 +38,12 @@ ruleTester.run('no-untranslated-literal', rule, {
     { filename: FILE, code: 'const x = <span>camelCaseThing</span>' },
     { filename: FILE, code: 'const x = <span>some-kebab-token</span>' },
     // Dotted path / i18n key form (the rule excludes `.`, `_` and `/` tokens).
-    // NOTE (recorded, not fixed here — this package ships liveness tests, it
-    // does not change rule behaviour): the COLON form `common:save` is NOT
-    // excluded by the same heuristic and would be flagged as copy.
+    // KNOWN DEFECT, pinned as current behaviour — TICKET: decision record
+    // docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M1(8).
+    // This package ships liveness tests and does not change rule behaviour, so
+    // the COLON form `common:save` — which the same heuristic does NOT exclude —
+    // is still flagged as copy. Whoever fixes the rule must delete this case;
+    // the ticket is the record that the deletion is intended, not a regression.
     { filename: FILE, code: 'const x = <span>common.save</span>' },
     // Test/story files bail out entirely.
     { filename: 'src/features/sales/InvoiceCard.test.tsx', code: 'const x = <button>Save changes</button>' },
@@ -71,8 +74,20 @@ ruleTester.run('no-untranslated-literal', rule, {
       code: 'const x = <span title="Outstanding balance" />',
       errors: [{ messageId: 'attr', data: { attr: 'title', text: 'Outstanding balance' } }],
     },
+    // alt attribute — the rule claims five user-facing attributes; all five are covered.
+    {
+      filename: FILE,
+      code: 'const x = <img alt="Company logo" />',
+      errors: [{ messageId: 'attr', data: { attr: 'alt', text: 'Company logo' } }],
+    },
+    // label attribute.
+    {
+      filename: FILE,
+      code: 'const x = <Field label="Due date" />',
+      errors: [{ messageId: 'attr', data: { attr: 'label', text: 'Due date' } }],
+    },
   ],
 })
 
 // eslint-disable-next-line no-console
-console.log('no-untranslated-literal: all RuleTester cases passed (10 valid, 4 invalid)')
+console.log('no-untranslated-literal: all RuleTester cases passed (10 valid, 6 invalid)')

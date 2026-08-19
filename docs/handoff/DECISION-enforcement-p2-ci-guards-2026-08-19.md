@@ -228,10 +228,24 @@ Reasons, in order of weight:
    enforcement, not translation.
 3. **Ratcheted ≠ exempt, and the ratchet is real.** The baseline is removal-only against an
    OWNER-PINNED protected blob, so (a) no existing Arabic gap can regrow once burned down, and (b)
-   **any new English key added to a namespace Arabic already partially covers fails CI immediately**
-   unless it is translated — which is the actual enforcement goal. The matched-growth tamper (plant a
-   gap, add its baseline entry) fails by construction because the comparison is against the pinned
-   blob, not the editable file.
+   **any new English key added to a namespace Arabic is WIRED into fails CI immediately** unless it is
+   translated — which is the actual enforcement goal. The matched-growth tamper (plant a gap, add its
+   baseline entry) fails by construction because the comparison is against the pinned blob, not the
+   editable file.
+
+   **Scoping, stated exactly (M1 round-1 finding 6 — the round-1 wording said "already partially
+   covers", which was both vague and, under the original per-key design, wrong).** New English keys
+   behave differently per namespace class, and this is the line the M3 announcement must carry:
+
+   | ar namespace class | count | New English key there → |
+   |---|---|---|
+   | `own` (`arX`) or `english-spread` (`{...enX, ...arX}`) | 33 | **CI FAILS** until `ar` authors it |
+   | `en-aliased` (wired to the English bundle) | 23 | **CI passes** — the namespace carries ONE `aliased` entry, not per-key entries |
+
+   Under the round-1 per-key design *every* new English key anywhere failed CI without an Arabic
+   translation — an effective full-parity-on-every-new-key policy that contradicts the repo's standing
+   en+fr posture. The `aliased` entry type (see §10) removes that: an unwired namespace is one fact,
+   not N facts, so adding English keys to it changes nothing.
 4. **The alternative was considered and rejected:** gating `ar` at full parity while baselining `en`
    and `fr` would be the same gate with a different, unenforceable threshold.
 
@@ -327,3 +341,148 @@ The i18n checker reads the non-authoritative mirror pin from
 `docs/handoff/progress/enforcement-p2.progress.yaml`. If that file is later moved or deleted, the gate
 fails closed. That is the mirror-drift check the brief mandates (gate-r3 R3-C-1); the coupling is
 recorded so a future mover knows the checker's `--mirror` default must move with it.
+
+---
+
+## M1 fix round 1 — response to `docs/handoff/reviews/enforcement-p2/M1-round1.md`
+
+Verdict at round 1: **CHANGES-REQUIRED** (2 P1, 3 P2, 6 P3). Every finding was verified against the
+code before acting; all were correct. Dispositions below.
+
+### (10) ⚠️ F-1 (P1) — provenance was computed and then discarded → the `aliased` finding type
+
+**The defect, confirmed:** `classifyAssignment()` produced `kind`, and `auditRoot()` never read it.
+Coverage came purely from the file on disk. Live consequence: `src/locales/ar/catalog.json` authors
+261 leaf keys while `src/lib/i18n.ts:397` wires `catalog: enCatalog` under `ar` — Arabic users are
+served English for the whole namespace, and the audit reported only 22 gaps. Worse, it was a live
+**ratchet bypass**: the Arabic baseline could be "burned down" by dropping unwired JSON files into
+`src/locales/ar/`, shrinking the baseline and rotating the pin while not one string changed for an
+Arabic user. That is the vacuous-parity failure gate-r1 H-5 exists to forbid, reached from the
+opposite direction.
+
+**Fix, and where it departs from the reviewer's suggested shape.** The reviewer proposed: for an
+`en-aliased` `(locale, ns)`, treat **every** English key as `missing`. That enforces the invariant but
+detonates finding 6 — it makes every new English key in any of the 23 unwired Arabic namespaces an
+instant CI failure. Shipped instead: a **new finding type `aliased`, one entry per aliased
+`(locale, namespace)`** (`ar|catalog|aliased|*`), with no per-key entries and no plural checks inside
+an aliased namespace. This:
+
+- enforces the H-5 invariant exactly as required — an aliased namespace is untranslated no matter what
+  is on disk, so the file-dropping bypass is closed;
+- is **strictly stronger** as an invariant than per-key entries: the entry clears only when a real
+  bundle is **wired**, never by adding files;
+- resolves finding 6 rather than trading it, and states the true blast radius in §3's table;
+- reports the scale that per-key entries conveyed, in the summary line rather than the baseline
+  (`English-aliased namespaces — ar: 23 ns / N keys served in English`).
+
+`unknown` (an assignment shape the classifier does not recognise) is treated as aliased — fail closed.
+
+**Residual, recorded:** for `english-spread` namespaces the audit still trusts the locale file. Nested
+spreads merge only the subtrees `i18n.ts` names explicitly, so a key authored under a subtree that is
+not spread would be counted as translated while the runtime serves English. Detecting that needs
+subtree-level parsing of the spread graph; out of scope here and noted for whoever extends this.
+
+### (11) F-2 (P1) — the alias fixture passed for the wrong reason
+
+Confirmed: the fixture shipped no `locales/ar/alpha.json` at all, so
+"counts the English-aliased namespace as fully UNTRANSLATED" was proven by **file absence**, not by
+aliasing — the brief's mandatory production-shaped case was non-discriminating, and deleting the whole
+`kind` mechanism would have broken no behavioural assertion. This also failed the checklist in the
+package's own `08-DETECTOR-LIVENESS.md`.
+
+Fixed: `locales/ar/alpha.json` now authors **every** English key while `i18n.ts` keeps
+`alpha: enAlpha` under `ar`. **Red-first evidence, against the pre-fix scanner at `3615b103b`:**
+
+```
+$ git show 3615b103b:apps/web/tools/audit-i18n-completeness.mjs > /tmp/old-audit-i18n.mjs
+=== PRE-FIX SCANNER (commit 3615b103b) against the NEW discriminating fixture ===
+kind ar.alpha = en-aliased
+ar|alpha findings: []
+  ^ EMPTY: a namespace the runtime serves in ENGLISH is credited as fully translated
+```
+
+### (12) F-3 (P2) — the surface-coverage invariant
+
+Confirmed: `parseI18nWiring` is a line-oriented parse, a locale that stops matching is simply absent
+from `wiring.locales`, and every one of its baseline entries then lands in `stale` — a `console.log`
+that is explicitly never a failure. A prettier pass collapsing the `ar:` block would have made ~2 900
+Arabic findings disappear **and be announced as burn-down progress**.
+
+Three fixes: (i) `missingScannedSurface()` — every `locale|namespace` in the **pinned protected**
+baseline must still be inside the scanned surface, else FAIL CLOSED (the protected blob is the one
+description of the surface no candidate can edit); (ii) structural failure when a `locales/<locale>/`
+directory has no parseable `resources` block; (iii) structural failure when a namespace wired under
+`en` is missing from the `ns` array.
+
+### (13) F-4 (P2) — `pnpm lint` broke for every developer, and preflight still never ran the detector
+
+Both halves confirmed. `pnpm lint` gained `audit:i18n`, which fails closed without the repository
+variable no developer machine has; and `scripts/preflight.sh` — the gate CLAUDE.md rule 10 makes
+mandatory — never invoked the `lint` chain at all (it runs discrete steps and, for rule tests, only
+the **POS** half). So the brief's "add it to the local lint chain for preflight parity" assumed
+chain ≡ preflight; it is not.
+
+Fixed with `scripts/i18n-baseline-authority.sh`: it reads the mirror pins, re-derives the blob from
+the reviewed seed commit (`git rev-parse <seed>:<baseline-path>`), **asserts derived == mirror**, then
+execs the checker with the value exported. `pnpm lint` now calls `audit:i18n:local` (the wrapper);
+**CI keeps calling `audit:i18n` with `${{ vars.I18N_BASELINE_PROTECTED_BLOB }}`**. `preflight.sh` gains
+two discrete steps: the i18n gate (through the wrapper) and the **web** rule tests.
+
+**Not a bypass:** the wrapper supplies the same value from the same reviewed seed commit and cannot
+make CI pass. A candidate editing mirror + baseline together still fails CI (variable ≠ mirror →
+MIRROR DRIFT; the variable's blob ≠ the working file → RATCHET GROWTH). It removes only the
+developer-machine hard-fail, and it fails loudly on seed/mirror drift.
+
+### (14) F-5 (P2) — the type change declared fields the endpoint never emits
+
+Confirmed and my §6 justification was wrong on the facts. `BankStatementController::index`
+(`apps/api/app/Modules/Treasury/Presentation/Controllers/BankStatementController.php:53-58`) emits
+exactly `current_page / last_page / per_page / total`; widening to the full `OffsetPaginationMeta`
+asserted `from`/`to` that are `undefined` on the wire — a false contract introduced by a guard-only
+package. Now `Pick<OffsetPaginationMeta, 'current_page' | 'last_page' | 'per_page' | 'total'>`, which
+the consolidation guard also accepts (it flags duplicate inline type **literals** of the four core
+fields; a `TypeReference` is not one). `pnpm typecheck` green; the guard's 3 tests green.
+
+### (15) F-7 (P3) — pin-tag drift between `ci.yml` and the progress YAML
+
+Added a tools test asserting `ci.yml` fetches exactly the tag named in `i18n_baseline_pin_tag`. Desync
+already failed closed in CI, but only after a wasted gate round.
+
+**Pin-tag name after this seed-changing fix round: `ci-pin/enforcement-p2-r1`, UNCHANGED.** The
+never-reuse rule binds tags that have been *created*; `git tag -l 'ci-pin/*'` is still empty, so the
+pre-allocated name has never been used and remains the correct `n = 1` allocation.
+
+### (16) F-8 (P3) — the checker's own authority path was untested
+
+Confirmed: the suite exercised only pure helpers; `main()` — unset variable, mirror drift, unfetchable
+blob, `git cat-file`, exit codes — had no coverage, in a package whose thesis is that untested guards
+rot. Added 8 CLI tests that run the **real script** via `execFileSync` against the fixture root, with
+the protected baseline written as a **genuine git blob** (`git hash-object -w --stdin`) so
+`git cat-file blob` resolves exactly as it will in CI. And the `--no-ratchet` trapdoor is **deleted**
+(a one-word bypass of the trust anchor), with a test asserting it stays deleted.
+
+### (17) F-9 (P3) — a false motivating fact in a permanent convention doc
+
+Confirmed. `vitest.config.ts:11` includes `tools/**`, and `frontend-test` runs `pnpm test`
+(`ci.yml:988`) — but only on PR→main / push→main / `workflow_dispatch`. So the tools suite was
+**PR→dev-dead**, not CI-dead; the `test:eslint-rules` half of the claim was correct (no workflow at
+all). Both `08-DETECTOR-LIVENESS.md` and §6 above now state this precisely.
+
+### (18) F-10 (P3) — rule-test completeness and the pinned false positive
+
+`no-untranslated-literal` claims five user-facing attributes; three were covered. Added `alt` and
+`label` (now 10 valid / 6 invalid). The pinned colon-form false positive now carries an explicit
+TICKET pointer to §M1(8) of this document, so deleting that case when the rule is fixed reads as
+intended rather than as a regression.
+
+### (19) F-11 (P3) — one-directional key comparison
+
+Accepted as noted; no action. `fr` orphans stay out of scope, recorded in §2.
+
+### (20) Baseline regeneration and re-pin
+
+F-1 changes what the scanner reports, so the seed baseline is regenerated under the **same two-step
+topology** the protocol requires for a seed-changing fix round (gate-r4 R4-H-3): a seed-revision
+commit containing only the baseline, then a distinct metadata commit updating
+`i18n_baseline_seed_commit` / `i18n_baseline_protected_blob`. A single self-identifying fix commit is
+forbidden. Both are re-reviewed at round 2.

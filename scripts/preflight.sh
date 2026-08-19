@@ -186,6 +186,21 @@ echo -e "\n${YELLOW}Running quantity-display audit...${NC}"
 pnpm audit:quantity
 echo -e "${GREEN}✓ Quantity-display audit passed${NC}"
 
+echo -e "\n${YELLOW}Running i18n completeness gate...${NC}"
+# Mirrors the discrete `frontend-lint` CI step. Locally the owner-set repository
+# variable does not exist, so this goes through the authority-setup wrapper,
+# which re-derives the protected blob from the reviewed seed commit and asserts
+# it equals the progress-YAML mirror pin before running the same checker.
+pnpm audit:i18n:local
+echo -e "${GREEN}✓ i18n completeness passed${NC}"
+
+echo -e "\n${YELLOW}Running web ESLint rule tests...${NC}"
+# docs/conventions/08-DETECTOR-LIVENESS.md: the web RuleTester suites gate merges
+# via a frontend-lint step; preflight must be able to reproduce that failure
+# locally. Only the POS half ran here before.
+pnpm test:eslint-rules
+echo -e "${GREEN}✓ Web ESLint rule tests passed${NC}"
+
 echo -e "\n${YELLOW}Running POS ESLint rule tests...${NC}"
 ( cd "$ROOT_DIR/apps/pos" && pnpm test:eslint-rules )
 echo -e "${GREEN}✓ POS ESLint rule tests passed${NC}"

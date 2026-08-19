@@ -1,4 +1,7 @@
 // @ts-check
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -9,12 +12,15 @@ import {
   auditRoot,
   entryKey,
   flattenKeys,
+  missingScannedSurface,
   parseI18nWiring,
   partitionByBaseline,
   pluralCategoriesFor,
 } from '../audit-i18n-completeness.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SCRIPT = path.join(__dirname, '..', 'audit-i18n-completeness.mjs');
+const REPO_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const FIXTURE_ROOT = path.join(
   __dirname,
   '..',
@@ -73,10 +79,36 @@ describe('audit-i18n-completeness — production-shaped alias/spread audit', () 
   const findings = auditRoot(FIXTURE_ROOT).findings;
   const keys = findings.map(entryKey);
 
-  it('counts the English-aliased namespace as fully UNTRANSLATED for ar', () => {
-    expect(keys).toContain('ar|alpha|missing|title');
-    expect(keys).toContain('ar|alpha|missing|subtitle');
-    expect(keys).toContain('ar|alpha|missing|nested.a');
+  // THE DISCRIMINATING CASE. `locales/ar/alpha.json` is COMPLETE on disk — every
+  // English key is authored — but `i18n.ts` wires `alpha: enAlpha` under `ar`, so
+  // the runtime serves English. This is the live `catalog` shape: `ar/catalog.json`
+  // carries 261 authored keys while `i18n.ts:397` reads `catalog: enCatalog`.
+  // A file-only scanner reports ZERO gaps here (verified against the pre-fix
+  // commit 3615b103b), which is both the vacuous-parity failure gate-r1 H-5
+  // forbids AND a live ratchet bypass: the Arabic baseline could be "burned
+  // down" by dropping unwired JSON files into the tree.
+  it('counts an English-ALIASED namespace as untranslated even when the locale file is COMPLETE', () => {
+    const arAlphaFile = JSON.parse(
+      readFileSync(path.join(FIXTURE_ROOT, 'locales', 'ar', 'alpha.json'), 'utf8'),
+    );
+    // Precondition: the fixture really does author every English key.
+    expect(flattenKeys(arAlphaFile).sort()).toEqual(['nested.a', 'subtitle', 'title']);
+
+    expect(keys).toContain('ar|alpha|aliased|*');
+    // …and NOT credited as translated, nor exploded into per-key noise:
+    expect(keys.filter((k) => k.startsWith('ar|alpha|missing'))).toEqual([]);
+  });
+
+  it('emits ONE aliased entry per namespace, so new English keys do not fail CI there', () => {
+    // Per-key entries would make every new English key an instant failure in the
+    // 23 namespaces Arabic does not cover at all — an effective
+    // full-parity-on-every-new-key policy. The single entry is strictly stronger
+    // as an invariant: it clears only when a real bundle is WIRED.
+    expect(keys.filter((k) => k.startsWith('ar|alpha|'))).toEqual(['ar|alpha|aliased|*']);
+  });
+
+  it('raises no plural findings inside an aliased namespace', () => {
+    expect(keys.filter((k) => k.startsWith('ar|alpha|plural'))).toEqual([]);
   });
 
   it('counts spread-supplied English keys as UNTRANSLATED for ar', () => {
@@ -147,5 +179,167 @@ describe('audit-i18n-completeness — anti-growth against the PINNED protected b
     expect(addedKeysAgainstProtected(tampered, protectedEntries)).toEqual([
       'ar|beta|missing|items_one',
     ]);
+  });
+});
+
+describe('audit-i18n-completeness — surface-coverage invariant', () => {
+  const protectedEntries = [
+    'ar|alpha|aliased|*',
+    'ar|beta|missing|two',
+    'fr|beta|plural|items_many',
+  ];
+
+  it('passes while every pinned locale|namespace is still scanned', () => {
+    expect(missingScannedSurface(protectedEntries, ['en', 'fr', 'ar'], ['alpha', 'beta'])).toEqual(
+      [],
+    );
+  });
+
+  it('catches a LOCALE that dropped out of the parsed wiring', () => {
+    // A prettier pass that collapses the `ar:` block onto one line makes the
+    // line-oriented parser skip the locale. Every ar baseline entry then falls
+    // into `stale`, which is a console note — the loss would read as burn-down.
+    expect(missingScannedSurface(protectedEntries, ['en', 'fr'], ['alpha', 'beta'])).toEqual([
+      'ar|alpha',
+      'ar|beta',
+    ]);
+  });
+
+  it('catches a NAMESPACE dropped from the `ns` array', () => {
+    // Runtime translations keep working (resources is static), so nothing else notices.
+    expect(missingScannedSurface(protectedEntries, ['en', 'fr', 'ar'], ['alpha'])).toEqual([
+      'ar|beta',
+      'fr|beta',
+    ]);
+  });
+});
+
+describe('audit-i18n-completeness — CLI fail-closed paths (the authority itself)', () => {
+  /**
+   * Runs the REAL script the CI step runs, against the fixture root, with a
+   * genuine git blob written into the object store as the protected revision —
+   * so `git cat-file blob` resolves exactly as it will in CI once the pin tag
+   * has been fetched. Never throws: the exit status is the assertion.
+   * @returns {{status: number, out: string}}
+   */
+  function runCli({ env = {}, baselineEntries, mirrorBlob, protectedEntries = baselineEntries }) {
+    const dir = mkdtempSync(path.join(tmpdir(), 'i18n-cli-'));
+    const baselinePath = path.join(dir, 'baseline.json');
+    writeFileSync(baselinePath, JSON.stringify({ entries: baselineEntries }));
+
+    const blob = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+      cwd: REPO_ROOT,
+      input: JSON.stringify({ entries: protectedEntries }),
+      encoding: 'utf8',
+    }).trim();
+
+    const mirrorPath = path.join(dir, 'mirror.yaml');
+    writeFileSync(mirrorPath, `i18n_baseline_protected_blob: ${mirrorBlob ?? blob}\n`);
+
+    try {
+      const out = execFileSync(
+        process.execPath,
+        [SCRIPT, '--root', FIXTURE_ROOT, '--baseline', baselinePath, '--mirror', mirrorPath],
+        {
+          cwd: path.join(REPO_ROOT, 'apps', 'web'),
+          encoding: 'utf8',
+          env: { ...process.env, I18N_BASELINE_PROTECTED_BLOB: blob, ...env },
+        },
+      );
+      return { status: 0, out };
+    } catch (err) {
+      return { status: err.status ?? 1, out: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+    }
+  }
+
+  const runCliSafe = runCli;
+
+  const fixtureBaseline = [
+    'ar|alpha|aliased|*',
+    'ar|beta|missing|items_one',
+    'ar|beta|missing|items_other',
+    'ar|beta|missing|two',
+    'fr|beta|plural|items_many',
+  ];
+
+  it('exits 0 when the pinned blob, the mirror and the working baseline all agree', () => {
+    const r = runCliSafe({ baselineEntries: fixtureBaseline });
+    expect(r.status).toBe(0);
+    expect(r.out).toContain('i18n completeness OK');
+  });
+
+  it('FAILS CLOSED when the protected-blob variable is unset', () => {
+    const r = runCliSafe({
+      baselineEntries: fixtureBaseline,
+      env: { I18N_BASELINE_PROTECTED_BLOB: '' },
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('is unset');
+  });
+
+  it('FAILS CLOSED on mirror drift (YAML pin !== variable)', () => {
+    const r = runCliSafe({
+      baselineEntries: fixtureBaseline,
+      mirrorBlob: '0000000000000000000000000000000000000000',
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('MIRROR DRIFT');
+  });
+
+  it('FAILS CLOSED when the protected blob cannot be read', () => {
+    const r = runCliSafe({
+      baselineEntries: fixtureBaseline,
+      env: { I18N_BASELINE_PROTECTED_BLOB: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' },
+      mirrorBlob: 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef',
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('cannot read the protected baseline blob');
+  });
+
+  it('FAILS on MATCHED GROWTH — a planted gap plus its matching baseline entry', () => {
+    const r = runCliSafe({
+      baselineEntries: [...fixtureBaseline, 'ar|beta|missing|plantedTamperKey'],
+      protectedEntries: fixtureBaseline,
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('RATCHET GROWTH');
+  });
+
+  it('FAILS on a NEW gap the working baseline does not cover', () => {
+    const r = runCliSafe({
+      baselineEntries: fixtureBaseline.filter((k) => k !== 'ar|beta|missing|two'),
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('NEW gap');
+  });
+
+  it('FAILS CLOSED when the pinned surface is no longer scanned', () => {
+    const r = runCliSafe({
+      baselineEntries: [...fixtureBaseline, 'de|alpha|aliased|*'],
+      protectedEntries: [...fixtureBaseline, 'de|alpha|aliased|*'],
+    });
+    expect(r.status).toBe(1);
+    expect(r.out).toContain('SCANNED SURFACE SHRANK');
+  });
+
+  it('has no --no-ratchet opt-out (a one-word bypass of the trust anchor)', () => {
+    const src = readFileSync(SCRIPT, 'utf8');
+    expect(src).not.toMatch(/case '--no-ratchet'/);
+  });
+});
+
+describe('i18n baseline pin tag — ci.yml and the progress YAML must agree', () => {
+  it('fetches exactly the pre-allocated tag named in the progress YAML', () => {
+    // Tags are never reused, so a seed-changing fix round that allocates a new
+    // name must edit BOTH places. Desync fails closed in CI (the new blob is
+    // unreachable) but costs a whole gate round to discover.
+    const ci = readFileSync(path.join(REPO_ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+    const yaml = readFileSync(
+      path.join(REPO_ROOT, 'docs', 'handoff', 'progress', 'enforcement-p2.progress.yaml'),
+      'utf8',
+    );
+    const pinned = yaml.match(/^i18n_baseline_pin_tag:\s*(\S+)\s*$/m);
+    expect(pinned).not.toBeNull();
+    expect(ci).toContain(`git fetch origin tag ${pinned[1]}`);
   });
 });

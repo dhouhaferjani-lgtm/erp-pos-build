@@ -30,9 +30,13 @@ asked it to say something. (UI Wave 0 task T7 fixes the regex; this convention p
 `no-hardcoded-entity-route.js`. Three rules named in CLAUDE.md rule 19 as CI-failing precision guards
 had no proof they still matched anything after any refactor of their AST handling.
 
-Worse: **`pnpm test:eslint-rules` ran in no GitHub Actions workflow at all**, and neither did the
-`apps/web/tools/__tests__/` suite. Even the three rules that *had* tests were CI-dead — the tests only
-ran if a human happened to run the local `lint` chain or `scripts/preflight.sh`.
+Worse: **`pnpm test:eslint-rules` ran in no GitHub Actions workflow at all** — not on any event. Even
+the three rules that *had* tests were CI-dead; they ran only if a human happened to run the local
+`lint` chain (`scripts/preflight.sh` ran the **POS** half only). The `apps/web/tools/__tests__/` suite
+was better off but still half-covered: `vitest.config.ts:11` includes `tools/**/*.{test,spec}.{ts,mjs}`,
+so `frontend-test` picked it up via `pnpm test` — but that job is `if:`-gated to **PR→main, push→main
+and `workflow_dispatch`**, so the tamper tests never ran on a PR→`dev`, which is where day-to-day work
+merges. Precisely accurate: the rule tests were CI-dead everywhere; the tools tests were PR→dev-dead.
 
 Both incidents share one root cause: **the detector's own correctness was never itself under test in
 the lane that gates merges.**
@@ -74,8 +78,11 @@ convention:
 - **fails on new violations** — the shrink-only baseline partition test;
 - **fails on matched growth** — adding a baseline entry alongside a planted gap still fails, because
   the comparison is against an owner-pinned protected blob, not the editable file;
-- **runs in the merge gate** — a discrete step in the `frontend-lint` job, which is in the
-  `all-checks-pass` `needs` list.
+- **runs in the merge gate** — a discrete step in the `frontend-lint` job, which runs on every event
+  that starts the workflow (including PR→`dev`) and is in the `all-checks-pass` `needs` list;
+- **is reproducible locally** — `scripts/preflight.sh` runs the same checker through
+  `scripts/i18n-baseline-authority.sh`, which re-derives the owner-pinned protected blob from the
+  reviewed seed commit. A CI gate a developer cannot reproduce locally is a gate that gets disabled.
 
 The ESLint rules follow the same shape: `no-parsefloat-on-money.test.mjs`,
 `no-untranslated-literal.test.mjs` and `no-hardcoded-entity-route.test.mjs` were added by the same
