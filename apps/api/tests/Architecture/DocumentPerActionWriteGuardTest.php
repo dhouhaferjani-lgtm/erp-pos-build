@@ -152,6 +152,17 @@ final class DocumentPerActionWriteGuardTest extends TestCase
             ['mechanism' => 'updateOrCreate', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateOrInsertUnlinked', 'expected' => 'violation', 'note' => 'round 3 finding 2: updateOrInsert INSERTS, so it is CREATE-class'],
             ['mechanism' => 'updateOrCreate', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryUpdateOrInsertLinked', 'expected' => 'linked', 'note' => 'round 3 finding 2: linked updateOrInsert'],
             ['mechanism' => 'query_builder', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'builderUpdateOrInsertUnlinked', 'expected' => 'violation', 'note' => 'round 3 finding 2: same reclassification through the builder mechanism'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryFillErasesLinkage', 'expected' => 'violation', 'note' => 'round 4 finding 2: fill() erasure'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryForceFillUnreadable', 'expected' => 'violation', 'note' => 'round 4 finding 2: forceFill() with an unreadable payload'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntrySetAttributeErasesLinkage', 'expected' => 'violation', 'note' => 'round 4 finding 2: setAttribute() erasure'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryFillLifecycleOnly', 'expected' => 'not_applicable', 'note' => 'round 4 finding 2: a fill() touching no linkage column stays lifecycle work'],
+            ['mechanism' => 'firstOrCreate', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryFirstOrCreateValuesNullLinkage', 'expected' => 'violation', 'note' => 'round 4 finding 4: $values wins over $attributes (Laravel merge order)'],
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithDestructuredNull', 'expected' => 'violation', 'note' => 'round 4 finding 5: destructured null'],
+
+            // ---------------- top-level / route-closure code (round 4, finding 1)
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureTopLevelRouteWrites', 'method' => '(top-level)', 'expected' => 'violation', 'note' => 'inline route-closure write — 50 files under app/ were dark before this pass'],
+            ['mechanism' => 'create', 'table' => 'stock_levels', 'class' => 'FixtureTopLevelRouteWrites', 'method' => '(top-level)', 'expected' => 'violation', 'note' => 'inline route-closure level write'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureTopLevelLinkedWrite', 'method' => '(top-level)', 'expected' => 'linked', 'note' => 'bare top-level statement, properly linked (own file: the top-level scope spans a whole file)'],
 
             // ---------------- relation-mediated + model-internal (findings 2, 5)
             ['mechanism' => 'create', 'table' => 'stock_levels', 'class' => 'FixtureRelationAndInheritanceWrites', 'method' => 'relationCreateBypassingMovement', 'expected' => 'violation', 'note' => 'relation-mediated write, no movement'],
@@ -353,6 +364,17 @@ final class DocumentPerActionWriteGuardTest extends TestCase
 
     private function fixtureKey(string $class, string $method, string $table, string $mechanism): string
     {
+        // Top-level (class-less) code is keyed with the scanner's `(none)`
+        // class placeholder and its synthetic `(top-level)` scope name.
+        if ($method === '(top-level)') {
+            return sprintf(
+                'DocumentPerActionFixtures/%s.php::(none)::(top-level)::%s::%s#1',
+                $class,
+                $table,
+                $mechanism,
+            );
+        }
+
         return sprintf(
             'DocumentPerActionFixtures/%s.php::%s\%s::%s::%s::%s#1',
             self::FIXTURE_FILES[$class] ?? $class,

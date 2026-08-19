@@ -264,6 +264,78 @@ final class FixtureLinkageProofWrites
         );
     }
 
+    // --- mass-assignment erasure (round 4, finding 2) ----------------------
+
+    /**
+     * `fill()` reaches the same erasure the property-assignment rule covers.
+     */
+    public function journalEntryFillErasesLinkage(string $entryId): void
+    {
+        $entry = JournalEntry::query()->findOrFail($entryId);
+        $entry->fill(['source_type' => null, 'source_id' => null]);
+        $entry->save();
+    }
+
+    /**
+     * `forceFill()` with an UNREADABLE payload cannot be shown to preserve
+     * linkage — fail closed, same standard as `update()`.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    public function journalEntryForceFillUnreadable(string $entryId, array $attributes): void
+    {
+        $entry = JournalEntry::query()->findOrFail($entryId);
+        $entry->forceFill($attributes);
+        $entry->save();
+    }
+
+    /**
+     * `setAttribute('source_id', null)` — the two-argument erasure form.
+     */
+    public function journalEntrySetAttributeErasesLinkage(string $entryId): void
+    {
+        $entry = JournalEntry::query()->findOrFail($entryId);
+        $entry->setAttribute('source_id', null);
+        $entry->save();
+    }
+
+    /**
+     * A `fill()` that touches no linkage column is ordinary lifecycle work.
+     */
+    public function journalEntryFillLifecycleOnly(string $entryId): void
+    {
+        $entry = JournalEntry::query()->findOrFail($entryId);
+        $entry->fill(['description' => 'renamed']);
+        $entry->save();
+    }
+
+    // --- two-arg merge order (round 4, finding 4) --------------------------
+
+    /**
+     * `firstOrCreate` creates via array_merge($attributes, $values), so a
+     * linkage key nulled in $values overrides the same key in $attributes.
+     */
+    public function journalEntryFirstOrCreateValuesNullLinkage(string $documentId): void
+    {
+        JournalEntry::firstOrCreate(
+            ['source_type' => 'document', 'source_id' => $documentId],
+            ['source_id' => null, 'status' => 'draft'],
+        );
+    }
+
+    // --- destructuring (round 4, finding 5) --------------------------------
+
+    public function journalEntryWithDestructuredNull(): void
+    {
+        [$sourceType, $sourceId] = ['document', null];
+
+        JournalEntry::create([
+            'entry_number' => 'JE-P8',
+            'source_type' => $sourceType,
+            'source_id' => $sourceId,
+        ]);
+    }
+
     private function maybeReferenceId(): ?string
     {
         return $this->pendingSourceId;

@@ -75,7 +75,11 @@ use SplFileInfo;
  *               nullAdmitting() can decide, so an erasure through a
  *               COLLABORATOR's nullable call (`$helper->maybe()`) is not caught
  *               — blind spot E again, stated here so the rule is not read as
- *               general.
+ *               general. The erasure rule covers BOTH routes to a stripped
+ *               reference: direct property assignment
+ *               (`$e->source_id = null;`) and mass assignment
+ *               (`fill()`/`forceFill()` with a null-admitting linkage key OR an
+ *               unreadable payload, and `setAttribute('source_id', null)`).
  *               Otherwise NOT IN CONTRACT: `journal_entries` carries no
  *               monetary amount (debit/credit live on `journal_entry_lines`,
  *               outside this package's four-table contract), so a lifecycle
@@ -512,6 +516,24 @@ final class DocumentPerActionWriteScanner
             }
         }
 
+        // EVERYTHING ELSE AT FILE LEVEL — bare statements and the closures they
+        // carry. This is the whole `routes.php` class of file (50 files under
+        // app/ carry top-level statements): `Route::post('/x', function () {
+        // JournalEntry::create([...]); })` lives in no class and in no named
+        // function, so before this pass it was never opened at all — a fully
+        // resolvable static call on a target model that emitted no site (M1
+        // gate round 4, finding 1). Class and named-function declarations are
+        // excluded here because they are scanned above.
+        $topLevel = $this->topLevelStatements($stmts);
+        if ($topLevel !== []) {
+            $synthetic = new Stmt\Function_(new Node\Identifier('top_level'));
+            $synthetic->stmts = $topLevel;
+
+            foreach ($this->scanFunction($synthetic, $relative, '(top-level)') as $site) {
+                $sites[] = $site;
+            }
+        }
+
         return $sites;
     }
 
@@ -520,6 +542,14 @@ final class DocumentPerActionWriteScanner
      */
     private function scanFunction(Node $fn, string $relativeFile, string $functionName): array
     {
+        // Nodes belonging to a nested class-like (an anonymous class declared in
+        // this body) are that class's, not this scope's. Excluding them stops
+        // one physical write emitting two keys — round 3 removed the third key
+        // by filtering the METHOD list, but the finder still walked into the
+        // body from the enclosing scope (M1 gate round 4, finding 3).
+        $nestedNodes = $this->nestedClassLikeNodeIds($fn);
+        $outside = static fn (Node $n): bool => ! isset($nestedNodes[spl_object_id($n)]);
+
         $this->varTypes = $this->buildVarTypes($fn);
 
         $pairing = $this->functionRecordsMovement($fn);
@@ -528,16 +558,16 @@ final class DocumentPerActionWriteScanner
         /** @var list<array{node: Node, table: string, mechanism: string, write_class: string, payload: array{resolved: bool, keys: array<string, bool>}}> $raw */
         $raw = [];
 
-        foreach ($this->finder->find($fn, static fn (Node $n): bool => $n instanceof Expr\MethodCall
+        foreach ($this->finder->find($fn, static fn (Node $n): bool => ($n instanceof Expr\MethodCall
             || $n instanceof Expr\NullsafeMethodCall
-            || $n instanceof Expr\StaticCall) as $node) {
+            || $n instanceof Expr\StaticCall) && $outside($n)) as $node) {
             $hit = $this->classifyCall($node);
             if ($hit !== null) {
                 $raw[] = $hit;
             }
         }
 
-        foreach ($this->finder->find($fn, static fn (Node $n): bool => $n instanceof Expr\StaticCall || $n instanceof Expr\MethodCall) as $node) {
+        foreach ($this->finder->find($fn, static fn (Node $n): bool => ($n instanceof Expr\StaticCall || $n instanceof Expr\MethodCall) && $outside($n)) as $node) {
             $hit = $this->classifyRawSql($node);
             if ($hit !== null) {
                 $raw[] = $hit;
@@ -587,6 +617,25 @@ final class DocumentPerActionWriteScanner
         }
 
         return $sites;
+    }
+
+    /**
+     * Every node inside a class-like nested in this scope, by object id.
+     *
+     * @return array<int, true>
+     */
+    private function nestedClassLikeNodeIds(Node $fn): array
+    {
+        $ids = [];
+
+        foreach ($this->finder->findInstanceOf($fn, Stmt\ClassLike::class) as $inner) {
+            foreach ($this->finder->find($inner, static fn (Node $n): bool => true) as $node) {
+                $ids[spl_object_id($node)] = true;
+            }
+            $ids[spl_object_id($inner)] = true;
+        }
+
+        return $ids;
     }
 
     /**
@@ -1080,9 +1129,12 @@ final class DocumentPerActionWriteScanner
 
                     continue;
                 }
-                $isNonNull = $this->provablyNonNull($item->value);
-                // A key seen non-null anywhere wins; a null-only key stays false.
-                $keys[$key] = ($keys[$key] ?? false) || $isNonNull;
+                // LATER argument wins, matching Laravel's own merge order:
+                // firstOrCreate/updateOrCreate/updateOrInsert create the row via
+                // array_merge($attributes, $values), so a linkage key nulled in
+                // $values overrides the same key set in $attributes (M1 gate
+                // round 4, finding 4).
+                $keys[$key] = $this->provablyNonNull($item->value);
             }
         }
 
@@ -1260,6 +1312,78 @@ final class DocumentPerActionWriteScanner
             }
         }
 
+        // MASS-ASSIGNMENT routes to the same erasure. `save()` is exempted from
+        // the unreadable-payload rule on the stated grounds that its erasure
+        // path is covered here, so `fill()` / `forceFill()` / `setAttribute()`
+        // must be covered too or that exemption is false (M1 gate round 4,
+        // finding 2).
+        foreach ($this->finder->find($fn, static fn (Node $n): bool => $n instanceof Expr\MethodCall
+            || $n instanceof Expr\NullsafeMethodCall) as $call) {
+            /** @var Expr\MethodCall|Expr\NullsafeMethodCall $call */
+            if (! $call->name instanceof Node\Identifier) {
+                continue;
+            }
+            $method = $call->name->toString();
+            if (! in_array($method, ['fill', 'forceFill', 'setAttribute'], true)) {
+                continue;
+            }
+
+            $receiver = $this->expressionModel($call->var, $this->varTypes);
+            if ($receiver === null && $call->var instanceof Expr\Variable && $call->var->name === 'this') {
+                $receiver = $this->currentClass;
+            }
+            $table = $receiver === null ? null : $this->tableForModel($receiver);
+            if ($table === null) {
+                continue;
+            }
+            $columns = self::TABLE_REFERENCE_COLUMNS[$table] ?? null;
+            if ($columns === null) {
+                continue;
+            }
+
+            $args = $call->getArgs();
+
+            if ($method === 'setAttribute') {
+                if (count($args) < 2) {
+                    continue;
+                }
+                $column = $this->stringValue($args[0]->value);
+                if ($column === null || ! in_array($column, $columns, true)) {
+                    continue;
+                }
+                if ($this->nullAdmitting($args[1]->value)) {
+                    $out[$table] = true;
+                }
+
+                continue;
+            }
+
+            // fill() / forceFill(): an unreadable payload cannot be shown to
+            // preserve linkage — fail closed, same standard as update().
+            if ($args === [] || ! $args[0]->value instanceof Expr\Array_) {
+                $out[$table] = true;
+
+                continue;
+            }
+
+            foreach ($args[0]->value->items as $item) {
+                if ($item->key === null || $item->unpack) {
+                    $out[$table] = true;
+
+                    continue;
+                }
+                $key = $this->stringValue($item->key);
+                if ($key === null) {
+                    $out[$table] = true;
+
+                    continue;
+                }
+                if (in_array($key, $columns, true) && $this->nullAdmitting($item->value)) {
+                    $out[$table] = true;
+                }
+            }
+        }
+
         return $out;
     }
 
@@ -1268,9 +1392,9 @@ final class DocumentPerActionWriteScanner
      *   - `$this->recordMovement(...)` INSIDE StockAdjustmentService, or
      *   - `<receiver declared as StockAdjustmentService>->entryPoint(...)` where
      *     entryPoint is a method of that class whose own body calls
-     *     `$this->recordMovement(...)` (derived from the AST at scan time, so it
-     *     cannot rot into a hardcoded list).
-     * An empty local `recordMovement()` stub no longer credits anything.
+     *     `$this->recordMovement(...)` (derived from the AST at scan time by
+     *     transitive closure, so it cannot rot into a hardcoded list).
+     * An empty local `recordMovement()` stub credits nothing.
      */
     private function isChokepointMovementCall(Node $call): bool
     {
@@ -1461,11 +1585,18 @@ final class DocumentPerActionWriteScanner
     private function classLikes(array $stmts): array
     {
         $out = [];
+        $anonymous = 0;
         foreach ($this->finder->findInstanceOf($stmts, Stmt\ClassLike::class) as $classLike) {
             /** @var Stmt\ClassLike $classLike */
             $name = $classLike->name?->toString();
             if ($name === null) {
-                $name = '(anonymous)';
+                // Two anonymous classes in one file used to produce
+                // BYTE-IDENTICAL keys, merging two distinct violations into one
+                // baseline entry — fail-open, in the direction the ratchet does
+                // not police (M1 gate round 4, finding 3). Number them in file
+                // order instead.
+                $anonymous++;
+                $name = sprintf('(anonymous#%d)', $anonymous);
             }
             $out[] = [
                 'name' => $this->namespace === '' ? $name : $this->namespace.'\\'.$name,
@@ -1504,6 +1635,38 @@ final class DocumentPerActionWriteScanner
                 continue;
             }
             $out[] = ['name' => $method->name->toString(), 'node' => $method];
+        }
+
+        return $out;
+    }
+
+    /**
+     * File-level statements, namespaces unwrapped, with class-like and named
+     * function DECLARATIONS removed (they are scanned in their own scopes).
+     * What remains is the executable body of a route/bootstrap/helper file.
+     *
+     * @param  array<int, Node>  $stmts
+     * @return list<Stmt>
+     */
+    private function topLevelStatements(array $stmts): array
+    {
+        $out = [];
+
+        foreach ($stmts as $stmt) {
+            if ($stmt instanceof Stmt\Namespace_) {
+                $out = [...$out, ...$this->topLevelStatements($stmt->stmts)];
+
+                continue;
+            }
+            if ($stmt instanceof Stmt\ClassLike || $stmt instanceof Stmt\Function_) {
+                continue;
+            }
+            if ($stmt instanceof Stmt\Use_ || $stmt instanceof Stmt\GroupUse || $stmt instanceof Stmt\Declare_) {
+                continue;
+            }
+            if ($stmt instanceof Stmt) {
+                $out[] = $stmt;
+            }
         }
 
         return $out;
@@ -1924,6 +2087,35 @@ final class DocumentPerActionWriteScanner
                     $grew = true;
                 }
             }
+
+            // `[$type, $id] = ['X', null];` — a destructure whose source element
+            // admits null (M1 gate round 4, finding 5). Only literal element
+            // lists are decidable; a destructure from a call is undecidable and
+            // falls under blind spot E.
+            foreach ($assignments as $assign) {
+                /** @var Expr\Assign $assign */
+                $target = $assign->var;
+                if (! $target instanceof Expr\List_ && ! $target instanceof Expr\Array_) {
+                    continue;
+                }
+                $source = $assign->expr instanceof Expr\Array_ ? $assign->expr : null;
+                foreach ($target->items as $index => $item) {
+                    if ($item === null || ! $item->value instanceof Expr\Variable || ! is_string($item->value->name)) {
+                        continue;
+                    }
+                    $name = $item->value->name;
+                    if (isset($this->nullAssignedVars[$name])) {
+                        continue;
+                    }
+                    $element = $source?->items[$index] ?? null;
+                    $admits = $element === null || $this->nullAdmitting($element->value);
+                    if ($admits) {
+                        $this->nullAssignedVars[$name] = true;
+                        $grew = true;
+                    }
+                }
+            }
+
             if (! $grew) {
                 break;
             }
