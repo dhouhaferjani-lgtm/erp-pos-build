@@ -174,6 +174,11 @@ GREEN — command/migration/chart service/creation paths: 66 tests, 359 assertio
 GREEN — complete Country Defaults feature + unit dirs: 218 tests, 1831 assertions
 ```
 
+Round-2 revert-replay removed `c1a067287` while the pre-existing full-purpose parity guard remained.
+The focused PostgreSQL test failed with TN missing both `inventory_gain_income` and
+`inventory_shrinkage_expense` (1 test, 1 assertion, 1 failure). Aborting the revert restored the exact
+committed tree, and the same test passed (1 test, 3 assertions).
+
 Pint and PHPStan level 8 pass on the new provisioner, command, and chart service. Deptrac remains exactly
 **174 violations**, matching the pinned 3D base and the pre-round result. The three frozen seeder files and
 `.github/workflows/**` remain untouched.
