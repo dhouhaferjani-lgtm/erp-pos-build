@@ -232,7 +232,12 @@ jobs:
       - name: Fetch the durable baseline pin tag
         working-directory: .
         run: |
-          PIN_TAG="$(sed -n 's/^dpa_baseline_pin_tag:[[:space:]]*//p' docs/handoff/progress/enforcement-p1.progress.yaml | head -1 | awk '{print $1}' | tr -d '"'\'')"
+          # `awk '{print $1}'` already drops the trailing `# …` comment; the
+          # `tr` is defensive against a future quoted YAML value. Quote it as a
+          # double-quoted string containing an escaped " and a ' — the earlier
+          # '"'\'' form left an unterminated single quote that swallowed the
+          # rest of the script (caught by the bash -n check in §7.3 Layer 1).
+          PIN_TAG="$(sed -n 's/^dpa_baseline_pin_tag:[[:space:]]*//p' docs/handoff/progress/enforcement-p1.progress.yaml | head -1 | awk '{print $1}' | tr -d "\"'")"
           if [ -z "$PIN_TAG" ] || [ "$PIN_TAG" = "null" ]; then
             echo "::error::dpa_baseline_pin_tag is not recorded in the progress YAML — the owner-pinned baseline blob would have no durable ref. Failing closed."
             exit 1
