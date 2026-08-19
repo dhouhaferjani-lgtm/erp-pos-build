@@ -188,11 +188,11 @@ milestones:
   - id: M2
     title: "Baseline generation via the TWO-PHASE PINNED protocol (gate-r2 R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4; --write-baseline bootstrap ONLY, in a DEDICATED SEED COMMIT; sorted, stable, line-number-free keys). ORDER INSIDE THIS MILESTONE: commit 1 = seed commit; commit 2 = mirror pins (dpa_baseline_seed_commit + dpa_baseline_protected_blob + the PRE-ALLOCATED dpa_baseline_pin_tag NAME, gate-r5 R5-C-2) + checker metadata; ONLY THEN the bridge review, whose verdict covers both commits (seed reviewed against the scanner output + register cross-check); a seed-changing fix round RECREATES the same two-step topology (seed-revision commit, then a distinct metadata commit, then BOTH re-reviewed — gate-r4 R4-H-3; a single self-identifying fix commit is forbidden). THREE-direction ratchet: growth FAILS, stale FAILS, and the ANTI-GROWTH check — the CI checker compares PARSED KEY SETS of the working baseline against the blob named by the OWNER-SET repository variable DPA_BASELINE_PROTECTED_BLOB (git cat-file blob \"$DPA_BASELINE_PROTECTED_BLOB\"; never the YAML, never a branch name), FAILING on any ADDED key, so 'new violation + regenerated matching baseline entry in one change' cannot pass; FAIL CLOSED on unset variable / unfetchable blob / YAML-mirror drift; the before-state IS the variable-held blob (PR-vs-push ambiguity moot); bootstrap + re-pins are owner variable writes at promotion (brief §6 F-8). Tamper case 5 (plant violation + matching baseline key together -> FAIL against the variable-held comparison; plus mirror-drift -> FAIL, unset variable -> FAIL via isolated env -u subshell) demonstrated. LOCAL green runs use the authority setup export (derive the reviewed seed blob, assert == mirror, export under the checker's env name — gate-r4 R4-H-4); the CI step maps ${{ vars.DPA_BASELINE_PROTECTED_BLOB }} into the checker env and fetches the durable pin tag explicitly before resolving the blob (gate-r4 R4-H-2). Plus the baseline<->DPA-register cross-check table: every register violator the scan misses is investigated and dispositioned."
     review_lenses: [stock-gl-interaction, inventory-costing]
-    status: review
+    status: passed
     fix_rounds: 1
     commit: 441dad0fe35074be4d2b670994d2aa15ae3baa72
-    verdict: docs/handoff/reviews/enforcement-p1/M2-round1.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/enforcement-p1/M2-round2.md
+    last_verdict: ACCEPT
     updated: 441dad0fe
     m2_evidence:
       seed_commit: "ff5642f87998e458059694f256d4033636809605 — commit 1, contains exactly one file: the generated baseline (34 keys, sorted, unique, line-number-free)"
@@ -205,11 +205,23 @@ milestones:
   - id: M3
     title: "CI wiring (lean static-only job, no `if:`, runs the Architecture guard + tamper tests in the same lane — stating the TRUE event graph, gate-r2 R2-C-2: the workflow starts on PR->main, PR->dev, push->main and workflow_dispatch ONLY (ci.yml:3-8); a direct dev push never starts it (:740-747)) + all-checks-pass `needs` MEMBERSHIP with the skipped-job-semantics comment (gate-r1 H-9; mirror CODEX-DISPATCH-ui-wave0-2026-08-11.md:240-247) + EVENT-GRAPH ACCEPTANCE CHECK (gate-r2 R2-C-2; receipt semantics gate-r3 R3-C-2): the handback names the exact job id(s) the owner's pre-promotion workflow_dispatch run must show executed (run on EXACTLY the accepted SHA, which is merged unchanged; receipt recorded in pre_promotion_ci_dispatch in the post-promotion admin commit; promotion blocked without a green run) + WHOLE-PACKAGE GATE: rerun the full accumulated evidence with EVERY lens this package used over the integrated branch (harness final-milestone obligation) — each green invocation preceded by the LOCAL AUTHORITY SETUP export (derive the reviewed seed blob, assert == mirror, export DPA_BASELINE_PROTECTED_BLOB — gate-r4 R4-H-4). Scope proof via git diff --stat <base_sha>..HEAD + the path allowlist check (gate-r1 M-2): only apps/api/tests/Architecture/**, .github/workflows/ci.yml, docs/handoff/** may appear. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
     review_lenses: [stock-gl-interaction, inventory-costing]
-    status: pending
+    status: review          # PARENT-INVOKED final gate (gate-r6 R6-C-1): handed over, not self-reviewed
     fix_rounds: 0
-    commit: null
-    verdict: null
+    commit: 37786b645d9a3eda9650d2bdb84c0ec3523a6ddd
+    verdict: null           # an executor-run final register is NOT acceptance evidence
     last_verdict: null
+    updated: 37786b645
+    m3_evidence:
+      ci_job_id: backend-dpa-guard
+      dispatch_must_show: "job backend-dpa-guard executed and green, with steps 'Document-per-action write guard (fixture matrix + liveness)' and 'Document-per-action baseline ratchet (growth / stale / anti-growth)'"
+      owner_prerequisites: "before dispatching, the owner must set DPA_BASELINE_PROTECTED_BLOB=1381983d463e6c546535be907d4aa1c7ca94c597 and push the annotated pin tag ci-pin/enforcement-p1-r1 at A — otherwise the ratchet fails closed by design"
+      aggregate_membership: "backend-dpa-guard is in all-checks-pass needs (ci.yml:1198) with the skipped-job-semantics comment at :1192; the job has no if: so it can never come back skipped"
+      no_if_guard: true
+      event_graph: "PR->main, PR->dev, push->main, workflow_dispatch ONLY; a direct push to dev never starts the workflow, so promotion is gated on the owner's pre-promotion dispatch (LEDGER S-14)"
+      suite_scoping: "runs the two DPA classes BY PATH, not --testsuite=Architecture: that suite is red at base for 4 pre-existing unrelated failures (AuthLifecycleTest, ConsoleCommandTenantContextTest, ControllerTenantContextTest, QueueJobTenantContextTest)"
+      scope_proof: "git diff --name-only base..HEAD -> 15 files, all inside apps/api/tests/Architecture/** | .github/workflows/ci.yml | docs/handoff/**; 0 allowlist violations; no control file touched; no production code; no workflow permissions grant"
+      whole_package_rerun: "guard OK (4 tests) - ratchet OK (2 tests, 113 assertions) - phpstan level 8 [OK] No errors - pint pass - unset-variable isolated negative case exits non-zero"
+      actionlint: "NOT INSTALLED on this machine (recorded per brief §5 layer 1); strict YAML parse used instead, and that layer is insufficient for the Actions job/event graph by contract"
 
-status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
