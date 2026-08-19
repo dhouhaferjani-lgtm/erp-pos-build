@@ -403,17 +403,11 @@ jobs:
           flags: backend
           fail_ci_if_error: false
 
-      # tests/Feature/Security is the module/flag/permission regression lane:
-      # per-module access control, the marketplace kill-switch (both halves) and
-      # the first-tenant production security contract. It lives under
-      # tests/Feature, so `--testsuite=Unit` above never touched it and the two
-      # pgsql --filter allowlists do not name it — i.e. before this step the
-      # directory ran in NO CI gate at all (found by the 2026-08-05 marketplace
-      # kill-switch review). Whole directory, not a filter list, so new classes
-      # are gated the moment they land. SQLite-only by design: every test in it
-      # is route/permission/config-level and needs no PG-specific behaviour.
-      - name: Security regression suite (module gating + kill-switches)
-        run: ./vendor/bin/phpunit tests/Feature/Security
+      # NOTE: the tests/Feature/Security step that used to live here MOVED to the
+      # dedicated `security-regression` job (2026-08-19, parent ruling on brief
+      # F-2 sub-decision). This job is `if:`-gated and skipped on PR→dev, so the
+      # module-gating and kill-switch suite never ran on the day-to-day merge
+      # gate. The new job has NO `if:` guard.
 
       # ES wave A0, M5 — the two program-wide EVENT RATCHETS. Named files, not
       # the whole tests/Architecture directory: that directory carries unrelated
@@ -478,6 +472,74 @@ jobs:
             echo "::endgroup::"
           done
           exit "${status}"
+
+  security-regression:
+    name: Security Regression (module gating + kill-switches)
+    runs-on: ubuntu-latest
+    # NO `if:` GUARD — ON PURPOSE. tests/Feature/Security is the module/flag/
+    # permission regression lane: per-module access control, the marketplace
+    # kill-switch (both halves) and the first-tenant production security
+    # contract. It is the surface CLAUDE.md rule 12 leans on.
+    #
+    # It used to be a step inside `backend-test`, which IS `if:`-gated and is
+    # skipped on PR→dev — so these 17 classes never ran on the day-to-day merge
+    # gate. Found by the enforcement-p2 lane census and ruled by the parent on
+    # 2026-08-19 (brief §6 F-2 sub-decision): "RULED YES — move it onto the
+    # PR→dev lane (+~43 s): it closes the rule-12 module-gating blind spot, is
+    # trivially reversible, and its absence is a live safety gap rather than a
+    # cost-policy question."
+    #
+    # Whole directory, not a --filter list, so new classes are gated the moment
+    # they land. SQLite in-memory by design (phpunit.xml pins it): every test is
+    # route/permission/config-level and needs no PG-specific behaviour, so this
+    # job runs no database service. ~43 s.
+    #
+    # The manifest checker asserts this job has no `if:` guard — see
+    # apps/api/tests/feature-lane-manifest.json (`runs_on_pr_dev: true`) and the
+    # liveness case `test_it_fires_when_a_lane_misreports_its_pr_dev_coverage`.
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_sqlite, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment
+        # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+        # because config/broadcasting.php has no "redis" connection defined.
+        # Same fix backend-test applies; no DB_* edits are needed because
+        # phpunit.xml pins DB_CONNECTION=sqlite (:memory:).
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+        env:
+          APP_KEY: base64:71Dy19GJfnJyC8FcCpA0Z2YJ+7B68g/Rrv5e/QSe6xY=
+
+      - name: Security regression suite (module gating + kill-switches)
+        run: ./vendor/bin/phpunit tests/Feature/Security
 
   backend-test-pgsql:
     name: Backend Tests — PG-only invariants (PHPUnit + PostgreSQL)
@@ -1357,7 +1419,7 @@ jobs:
     # cannot, so adding it is safe by the same argument already made above for
     # treasury-spine-pgsql. A guard visible in CI but absent from this list is
     # not merge-gating.
-    needs: [backend-lint, backend-analyse, backend-architecture, backend-dpa-guard, backend-test, backend-test-pgsql, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
+    needs: [backend-lint, backend-analyse, backend-architecture, backend-dpa-guard, backend-test, backend-test-pgsql, security-regression, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
     steps:
       - name: All checks passed
         run: echo "All CI checks have passed!"

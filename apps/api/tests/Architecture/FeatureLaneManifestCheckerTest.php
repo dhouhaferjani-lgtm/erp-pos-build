@@ -184,12 +184,65 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     {
         $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
-        $manifest['lanes']['backend-test/security']['runs_on_pr_dev'] = true;
+        $manifest['lanes']['security-regression']['runs_on_pr_dev'] = false;
         file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 
         [$exit, $out] = $this->runChecker();
 
         self::assertSame(1, $exit, $out);
         self::assertStringContainsString('runs_on_pr_dev', $out);
+    }
+
+    /**
+     * LIVENESS PROOF for the parent's 2026-08-19 F-2 sub-decision.
+     *
+     * tests/Feature/Security was moved out of the `if:`-gated `backend-test` job
+     * into the dedicated `security-regression` job precisely so it runs on the
+     * PR→dev merge gate. The way that silently regresses is someone adding an
+     * `if:` guard back onto the job — which is invisible to every other check.
+     * The manifest's `runs_on_pr_dev: true` is verified against the live job
+     * `if:`, so re-gating the job must FAIL.
+     */
+    public function test_it_fires_when_the_security_job_is_re_gated_off_pr_dev(): void
+    {
+        $wf = $this->workflow();
+        self::assertStringContainsString('  security-regression:', $wf);
+
+        $this->writeWorkflow(str_replace(
+            "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n",
+            "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n"
+            . "    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'\n",
+            $wf,
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('runs_on_pr_dev', $out);
+        self::assertStringContainsString('security-regression', $out);
+    }
+
+    public function test_the_security_suite_is_wired_to_a_job_with_no_if_guard(): void
+    {
+        // Positive assertion of the ruled state, so the move itself is pinned and
+        // not merely the absence of a regression.
+        $wf = \Symfony\Component\Yaml\Yaml::parse($this->workflow());
+
+        self::assertArrayHasKey('security-regression', $wf['jobs']);
+        self::assertArrayNotHasKey('if', $wf['jobs']['security-regression']);
+        self::assertContains('security-regression', $wf['jobs']['all-checks-pass']['needs']);
+
+        $runs = [];
+        foreach ($wf['jobs']['security-regression']['steps'] as $step) {
+            if (isset($step['run'])) {
+                $runs[] = $step['run'];
+            }
+        }
+        self::assertContains('./vendor/bin/phpunit tests/Feature/Security', $runs);
+
+        // …and it is no longer duplicated inside the if:-gated job it came from.
+        foreach ($wf['jobs']['backend-test']['steps'] as $step) {
+            self::assertStringNotContainsString('tests/Feature/Security', (string) ($step['run'] ?? ''));
+        }
     }
 }

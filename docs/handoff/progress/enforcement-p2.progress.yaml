@@ -138,7 +138,35 @@ owner_gates:
   - id: F-2-ci-minutes-budget
     question: "2(b) Option A cost: measured LOCALLY (single local run, wall time — no push). Fires ONLY if the measurement is material: then the A-vs-B choice is the owner's with the number in front of them — STOP blocked_owner. Conditional; the logic lives in M2's text."
     blocks_milestone: none
-    status: conditional
+    status: escalated_to_owner
+    # FIRED at M2 round 1 on the executor's own measurement (6.24 s/class mean;
+    # ~138 min for the whole Feature suite per triggering event). PARENT RULING,
+    # recorded verbatim:
+    #
+    #   "F-2 RULED INTERIM (parent orchestrator, 2026-08-19): (1) B-as-shipped is
+    #    ADOPTED as the interim execution scope — it is already landed, costs zero
+    #    CI minutes, and every structural guarantee holds regardless of scope
+    #    (visibility of new directories, non-growth ceilings, no substring
+    #    shadowing, no commented-out certification). (2) The tests/Feature/Security
+    #    sub-decision is RULED YES — move it onto the PR→dev lane (+~43 s): it
+    #    closes the rule-12 module-gating blind spot, is trivially reversible, and
+    #    its absence is a live safety gap rather than a cost-policy question.
+    #    Implement it as part of M2 with its own liveness proof. (3) The A vs
+    #    B-full vs B-partial EXECUTION-SCOPE choice is escalated to the OWNER SHEET
+    #    as an owed decision at promotion — it is a recurring-cost policy (~2 h/event
+    #    at the top end) the parent will not self-authorize; it is additive and
+    #    revisitable at any time under this same package's protocol, so it does not
+    #    block M3/M4. Record it in the YAML owner_gates with status:
+    #    escalated_to_owner and in the M3 announcement checklist as an open owner
+    #    line."
+    #
+    # (1) and (2) are IMPLEMENTED in M2. (3) is OWED at promotion — see the M3
+    # announcement checklist's open-owner line and DECISION §M2(51).
+    owed_at_promotion: >-
+      OWNER SHEET: choose the tests/Feature CI execution scope — A (whole suite on PG, ~138 min/event),
+      B-full (the 71 laneless groups, ~116 min), B-partial (e.g. POS 143 / Inventory 105 / Fiscal 73,
+      ~10 min per 100 classes), or hold at B-as-shipped (0 min, landed). Additive and revisitable at
+      any time; does not block this package.
   - id: t3b-ownership
     question: "Manifest-drift job OWNERSHIP (gate-r1 H-2): 2(a) implements T3(b) ONLY if docs/handoff/progress/ui-wave0.progress.yaml shows the task relinquished or the wave complete WITHOUT the job on base. UI M4 pending/in_progress = verify-only + record the dependency, even though the job is absent from base. Landed-but-not-in-aggregate = record + fix membership only (gate-r1 H-9). Any ambiguous state -> STOP blocked_owner."
     blocks_milestone: none
@@ -196,11 +224,11 @@ milestones:
   - id: M2
     title: "2(b) Feature-suite strategy: decision doc + implementation of the chosen option. LOCAL timing measurement only (no push — gate-r1 H-7); if material -> F-2 fires (blocked_owner). Kill the unanchored --filter substring mechanism (anchor survivors ^...Test$ + exactly-one-match lint). MANDATORY (gate-r1 H-6): the mechanically-checked class-to-lane/exclusion manifest covering EVERY tests/Feature class (script/test fails on any unassigned class) + the planted-new-Feature-class negative proof in a previously-UNCOVERED directory (selected automatically or loud failure; revert; both outputs pasted). Pointing at already-covered Treasury/Accounting (ci.yml:833-851) does not satisfy it. RECIPROCAL NOTE (gate-r2 R2-H-6; hardened gate-r3 R3-H-2/R3-H-3): P3 dispatches only after the WHOLE P2 package lands (p2_landed_sha is a P3-M0 dispatch precondition — P3's base contains this milestone's outcome by construction; there is no mid-wave pin); P3-M2 wires its country-chart completeness test into the lane this milestone selects; any later P2 restructuring of the Feature lanes/allowlist must reconcile against that landed P3 wiring — never silently drop the landed P3 test."
     review_lenses: [frontend-conventions, tenancy-authz]
-    status: blocked_owner
+    status: review
     fix_rounds: 1
     commit: 4ee7ca1c5597e6feed8089026c166b5fd36e3786
     verdict: docs/handoff/reviews/enforcement-p2/M2-round1.md
-    last_verdict: CHANGES-REQUIRED   # F-1 (P1) = owner gate F-2 fired; STOP condition B
+    last_verdict: CHANGES-REQUIRED   # F-1 (P1) closed by the parent F-2 ruling of 2026-08-19
     updated: 4ee7ca1c5
   - id: M3
     title: "2(a) per the M0 ownership snapshot: verify-only (no `if:` + all-checks-pass `needs` membership, gate-r1 H-9) OR implement per the T3(b) spec (only on recorded relinquish/complete-without-artifact) — never regenerate manifests unless T2's KeyedByRouteId fix is on base. Plus the aggregate PR->dev proposal (owner knob, proposal only) and the MERGE-ANNOUNCEMENT CHECKLIST for the parent: every open lane, one 'what you must rebase for' line each, incl. the OpenAPI merge-order/reconciliation line and the M1 frontend-lint step-addition contract change (r4/R0-3). The checklist is the INPUT to the parent's FINAL announcement, SENT after M3/M4 acceptance and before promotion; merge_announcement_ack records the sent fact in the POST-promotion admin commit (gate-r2 R2-H-1; gate-r3 R3-C-2 — nothing is committed to the accepted candidate between ACCEPT and merge); it is not the M0 preliminary notice and the executor never sends it."
@@ -219,34 +247,8 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: blocked_owner    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers:
-  - milestone: M2
-    condition: "STOP condition B — owner gate F-2 FIRED. The A-vs-B choice for tests/Feature CI coverage is the owner's, with the measured number in front of them."
-    register: docs/handoff/reviews/enforcement-p2/M2-round1.md
-    finding: >-
-      F-1 (P1): the executor made the owner-reserved A-vs-B choice and set M2 `status: review`
-      instead of `blocked_owner`, reasoning from `blocks_milestone: none`. That reasoning is
-      WITHDRAWN — the same field appears on gates whose text says "promotion blocked", and the YAML
-      header states that conditional logic lives in the milestone text, which names blocked_owner.
-      Status/authority defect only; the shipped artifacts are usable as-is under either option.
-    owner_question: "Which tests/Feature groups, if any, should execute in CI, and on which lane/event?"
-    measured_cost: >-
-      6.24 s/class mean of two independent samples (40-class random 6.18, Accounting 6.29) on SQLite
-      in-memory, the FAST path — Option A means PostgreSQL and is slower.
-      Option A (whole suite, 1329 classes) ~138 min per triggering event.
-      Option B-full (the 71 laneless groups, 1114 classes) ~116 min.
-      Option B-as-shipped (manifest + ceilings + anchoring, no new execution) 0 min — landed.
-      Option B-partial: ~10 min per 100 classes (e.g. POS 143, Inventory 105, Fiscal 73).
-    sub_decision: >-
-      F-8: tests/Feature/Security — the module-gating + kill-switch suite CLAUDE.md rule 12 leans on —
-      runs on PR->main/push->main/dispatch only, NOT on the day-to-day PR->dev merge gate. Moving it
-      there costs ~43 s.
-    already_true_regardless: >-
-      No new directory can appear unnoticed (hard fail); no laneless group can grow (enforced
-      ceilings); no allowlist can shadow by substring (anchored, all argument forms); no lane can be
-      certified by a commented-out step; the debt is counted out loud on every run. The ruling decides
-      what to EXECUTE, not what is VISIBLE.
   - milestone: "(wave-level, NOT owned by P2)"
     condition: "THREE inherited CI gates are RED at base_sha, which blocks the mandatory pre-promotion workflow_dispatch (brief §5 item 4 / LEDGER S-14)."
     detail: >-

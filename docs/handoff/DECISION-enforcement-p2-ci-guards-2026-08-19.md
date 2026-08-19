@@ -1245,3 +1245,54 @@ It does **not** run on the day-to-day PR→`dev` merge gate. Moving it there cos
 no laneless group can grow (hard fail), no allowlist can shadow by substring (anchored, all argument
 forms), no lane can be certified by a commented-out step, and the debt is counted out loud on every
 run. The ruling decides only what to *execute*, not what is *visible*.
+
+---
+
+## (51) PARENT RULING on the F-2 owner gate — recorded verbatim, and what it changed
+
+Recorded verbatim beside the `F-2-ci-minutes-budget` gate in the progress YAML (`status:
+escalated_to_owner`):
+
+> "F-2 RULED INTERIM (parent orchestrator, 2026-08-19): (1) B-as-shipped is ADOPTED as the interim
+> execution scope — it is already landed, costs zero CI minutes, and every structural guarantee holds
+> regardless of scope (visibility of new directories, non-growth ceilings, no substring shadowing, no
+> commented-out certification). (2) The tests/Feature/Security sub-decision is RULED YES — move it onto
+> the PR→dev lane (+~43 s): it closes the rule-12 module-gating blind spot, is trivially reversible,
+> and its absence is a live safety gap rather than a cost-policy question. Implement it as part of M2
+> with its own liveness proof. (3) The A vs B-full vs B-partial EXECUTION-SCOPE choice is escalated to
+> the OWNER SHEET as an owed decision at promotion — it is a recurring-cost policy (~2 h/event at the
+> top end) the parent will not self-authorize; it is additive and revisitable at any time under this
+> same package's protocol, so it does not block M3/M4. Record it in the YAML owner_gates with status:
+> escalated_to_owner and in the M3 announcement checklist as an open owner line."
+
+**(1) B-as-shipped — ADOPTED.** No change required; it is what M2 landed.
+
+**(2) `tests/Feature/Security` onto PR→dev — IMPLEMENTED.** This is a real CI-contract change and the
+second one this package makes, so it goes into the M3 announcement.
+
+- New job **`security-regression`** with **no `if:` guard**, so it runs on every event that starts the
+  workflow — including PR→`dev`. SQLite in-memory (`phpunit.xml` pins it), no database service, ~43 s.
+- The step was **removed from `backend-test`**, which is `if:`-gated and skipped on PR→dev. That is
+  where the blind spot came from: 17 module-gating and kill-switch classes — the surface CLAUDE.md
+  rule 12 leans on — never ran on the day-to-day merge gate.
+- **H-9 satisfied:** `security-regression` added to the `all-checks-pass` `needs` list.
+- Manifest lane renamed `backend-test/security` → `security-regression` with `runs_on_pr_dev: true`,
+  and the checker verifies that boolean against the job's live `if:`.
+
+**Its own liveness proof**, as the ruling required — two new cases in
+`tests/Architecture/FeatureLaneManifestCheckerTest.php` (now **9 cases**):
+
+- `test_it_fires_when_the_security_job_is_re_gated_off_pr_dev` — the way this move silently regresses
+  is someone adding an `if:` back onto the job, which nothing else would notice. Planting
+  `if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main'` onto
+  `security-regression` makes the checker **FAIL** on the `runs_on_pr_dev` mismatch.
+- `test_the_security_suite_is_wired_to_a_job_with_no_if_guard` — pins the ruled state positively: the
+  job exists, has no `if:`, is in `all-checks-pass` `needs`, runs
+  `./vendor/bin/phpunit tests/Feature/Security`, and the step is **no longer duplicated** inside
+  `backend-test`.
+
+**(3) Execution scope — ESCALATED, not decided.** `F-2-ci-minutes-budget` is now
+`status: escalated_to_owner` with an `owed_at_promotion` line carrying the four costed options. It
+carries into the M3 announcement checklist as an **open owner line**. It does not block M3/M4: the
+choice is additive and revisitable under this package's own protocol, and every structural guarantee
+already holds at B-as-shipped.

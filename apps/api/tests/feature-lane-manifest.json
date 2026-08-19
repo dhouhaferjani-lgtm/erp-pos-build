@@ -6,12 +6,12 @@
     "deferred": "CAN run, but no lane runs it yet; blocked on the F-2 CI-budget decision. Requires `reason`. Counted loudly on every CI run."
   },
   "lanes": {
-    "backend-test/security": {
-      "job": "backend-test",
+    "security-regression": {
+      "job": "security-regression",
       "step": "Security regression suite (module gating + kill-switches)",
       "selector": "./vendor/bin/phpunit tests/Feature/Security",
-      "runs_on_pr_dev": false,
-      "events_note": "PR->main, push->main, workflow_dispatch. The job is `if:`-gated, so these 17 classes do NOT run on the day-to-day PR->dev merge gate.",
+      "runs_on_pr_dev": true,
+      "events_note": "EVERY event that starts the workflow \u2014 PR->dev, PR->main, push->main, workflow_dispatch. The job has NO `if:` guard, by the parent ruling of 2026-08-19 on brief F-2's sub-decision. It was previously a step inside the `if:`-gated backend-test job and therefore did not run on PR->dev.",
       "note": "Whole directory, not a filter list, so new classes are gated the moment they land."
     },
     "treasury-spine-pgsql/feature-treasury": {
@@ -322,7 +322,7 @@
       "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
     },
     "Security": {
-      "lane": "backend-test/security",
+      "lane": "security-regression",
       "classes": 17
     },
     "Seeders": {
