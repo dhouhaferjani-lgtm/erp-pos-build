@@ -101,5 +101,23 @@ milestones:
     last_verdict: ACCEPT
     updated: f7b9fffeb
 
+post_acceptance_quality:
+  source: "parent terminal audit"
+  status: passed
+  commit: 03034170cd9fb8ee709811d4ad2514e08de3042a
+  changes:
+    - "P2-1: EndOfDayPreviewModal requires cashCountPolicyResolved and treats every value other than true as pending."
+    - "P3-4: device-cache blind-count coercion accepts 1, '1', and true."
+    - "P3-1: the historical column migration points to the converging 2026_08_12_100000 migration."
+    - "P3-3: the future schema-version 422 for server-authored cash_counts is carried in the M5 P3 ticket."
+  evidence:
+    red: "3 failed / 37 passed: undefined modal signal leaked preview; string and boolean driver true shapes mapped false."
+    green: "51 passed across Header, EndOfDayPreviewModal, and companyFraudSettingsCacheRepository."
+    typecheck: "apps/pos pnpm typecheck: exit 0"
+    eslint: "five touched POS TS/TSX files: exit 0"
+    pint: "comment-only historical migration: pass"
+    react_doctor: "changed scope against HEAD: 92/100; only the pre-existing EndOfDayPreviewModal prefer-useReducer warning"
+    mutation: "production-only reverse reproduced the same 3 failures; exact replay restored 40/40 focused green"
+
 status: complete      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []

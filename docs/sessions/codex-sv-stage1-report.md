@@ -646,6 +646,8 @@ apps/pos/src/components/pos/molecules/CashDrawerRevealSummary.tsx
 apps/pos/src/components/pos/organisms/CashCountTable.test.tsx
 apps/pos/src/components/pos/organisms/CashCountTable.tsx
 apps/pos/src/lib/db/__tests__/migration22.integration.test.ts
+apps/pos/src/lib/db/repositories/__tests__/companyFraudSettingsCacheRepository.test.ts
+apps/pos/src/lib/db/repositories/companyFraudSettingsCacheRepository.ts
 apps/pos/src/lib/offline/__tests__/endOfDayPreview.test.ts
 apps/pos/src/lib/offline/endOfDayPreview.ts
 apps/pos/src/locales/en/pos.json
@@ -773,7 +775,7 @@ tests used PostgreSQL on `127.0.0.1:5432` with the fresh database
   allowed. Mechanically reversing the wave's `apps/api/app` patch and rerunning at the pinned content
   baseline produced the identical 116 violations and category counts / 12,915 allowed, then the exact
   patch was restored and the worktree returned clean. The lane adds zero architecture violations.
-- `git diff --name-only df85d43f4..HEAD` contains 81 files; the complete pasted list above was refreshed
+- `git diff --name-only df85d43f4..HEAD` contains 83 files; the complete pasted list above was refreshed
   through the accepted `M5-round5.md`, the install runbook, and the carried-P3 ticket and read.
   Production/test paths remain
   limited to SV-1, SV-9, SV-10, and SV-11. The implementation-only range contains no Fiscal module,
@@ -825,3 +827,47 @@ Arabic compliance fallback merge, and the misleading vertical-default compatibil
 M4-round5 policy-unavailable display P3s remain in their existing availability ticket. The extra
 Accounting comment rewrite is explicitly recorded as comment-only cleanup of a stale reference to the
 deprecated formula; no additional action is required.
+
+## Post-acceptance parent terminal audit
+
+Parent audit commit `03034170cd9fb8ee709811d4ad2514e08de3042a` closes one required P2 and folds
+in the three requested P3 dispositions without changing the accepted M5 verdict or its reviewed commit.
+
+- `EndOfDayPreviewModalProps.cashCountPolicyResolved` is required. The render gate now treats every
+  value other than literal `true` as pending, so an omitted/undefined JavaScript-boundary value cannot
+  enter the legacy preview branch while `fraudSettings` is null. The production `Header` caller already
+  supplied the signal; test callers now supply a resolved policy explicitly.
+- The device cache maps the three supported true shapes (`1`, `'1'`, and `true`) to a blind-count
+  requirement. It does not use general truthiness, so values such as `'0'` cannot accidentally enable
+  the policy.
+- The historical 2026-04-25 migration now records the retroactive default flip and points directly at
+  the converging `2026_08_12_100000` migration.
+- P3-3 is ticket-only in `docs/superpowers/tickets/2026-08-18-sv-stage1-carried-m5-p3s.md`: a future
+  lane should reject `cash_counts` with HTTP 422 when the terminal schema cannot use the legacy
+  server-authoring path. No endpoint code changed in this round.
+- The Today's Sales ruling and release-build devtools verification remain parent-owned and were not
+  changed or claimed here.
+
+Red-first evidence: the two focused files produced 3 failures / 37 passes. The undefined modal signal
+rendered the financial preview, while `'1'` and `true` cache-driver values both mapped to false; numeric
+`1` remained the passing control. The minimal implementation returned those files to 40/40. A
+production-only reverse/replay reproduced the same three failures with the regressions retained, and
+exact replay restored 40/40.
+
+Fresh scoped handback evidence:
+
+- `Header.test.tsx`, `EndOfDayPreviewModal.test.tsx`, and
+  `companyFraudSettingsCacheRepository.test.ts`: 51/51, exit 0;
+- POS typecheck: exit 0;
+- focused ESLint over the five touched TS/TSX files: exit 0 with no output;
+- Pint test mode for the comment-only historical migration: `pass`;
+- React Doctor's required `--diff` command was discarded as a regression signal because the tool
+  deprecated the flag and compared the long-lived branch to `main`. Its prescribed uncommitted-delta
+  replacement, `--scope changed --base HEAD`, scanned five files, scored 92/100, and reported only the
+  already recorded broad `prefer-useReducer` suggestion on `EndOfDayPreviewModal`; and
+- `git diff --check`: exit 0.
+
+The refreshed pinned-baseline inventory contains 83 paths. The only newly introduced paths are the
+cache repository and its test; the modal, Header test, historical migration, carried-P3 ticket,
+progress YAML, and this report were already present in the Stage-1 inventory. Production/test scope
+remains limited to SV-1, SV-9, SV-10, and SV-11.
