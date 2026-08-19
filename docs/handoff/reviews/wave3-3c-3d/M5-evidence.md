@@ -135,7 +135,7 @@ before the expert-comptable ratification of the Option A presentation is recorde
 That ticket required D-e's `reference_type = inventory_counting` exclusion to be deleted in the same
 commit that wires `MovementGlKind::CountCorrection`. Deleting it outright would have made every
 completed count a permanent false alarm while posting is deliberately dormant, so the exclusion is
-now **tied to the flag** (`CheckCogsCoverageCommand.php:257-274`): silent while dormant, reporting
+now **tied to the flag** (`CheckCogsCoverageCommand.php:258-274`): silent while dormant, reporting
 the moment posting goes live.
 
 **AMENDED at M5 round 1 (inventory-costing finding 1 / treasury finding 2).** This section originally
@@ -149,7 +149,7 @@ full-location count — and `postForCountCorrection()` then returns null on `dir
 
 D-e now carries `where('is_historical', false)` and
 `whereColumn('quantity_before', '<>', 'quantity_after')`
-(`CheckCogsCoverageCommand.php:242` and `:250`), matching D-a (`:202`) and D-b (`:221`) on the historical
+(`CheckCogsCoverageCommand.php:243` and `:251`), matching D-a (`:202`) and D-b (`:221`) on the historical
 filter. The lifted exclusion therefore reports the corrections that SHOULD have posted and did not.
 Covered positively and negatively by
 `CheckCogsCoverageCommandTest::test_de_reports_count_corrections_once_their_posting_flag_is_live` and
