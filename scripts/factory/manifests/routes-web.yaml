@@ -129,8 +129,8 @@ routes:
     permission: null
   - path: /crm/companies
     component: CrmCompanyListPage
-    module_gate: partners
-    permission: null
+    module_gate: null
+    permission: partners.view
   - path: /crm/contacts
     component: CrmContactListPage
     module_gate: contacts
