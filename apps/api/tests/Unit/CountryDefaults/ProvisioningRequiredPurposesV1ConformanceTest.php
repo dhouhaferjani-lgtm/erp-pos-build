@@ -54,7 +54,6 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
                 'voucher_liability', 'marketing_goodwill_expense', 'pos_tender_clearing',
                 'rounding_loss_expense', 'payment_tolerance_expense',
                 'payment_tolerance_income', 'purchase_expenses',
-                'inventory_shrinkage_expense',
             ],
             'SCOPE_REQUIRED' => ['sales_stamp_duty_payable'],
             'CONDITIONAL' => [
@@ -65,7 +64,7 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
                 'office_expense', 'travel_expense', 'meals_expense', 'utilities_expense',
                 'retained_earnings', 'realized_fx_gain', 'realized_fx_loss',
                 'voucher_breakage_income', 'uninvoiced_revenue',
-                'inventory_gain_income',
+                'inventory_shrinkage_expense', 'inventory_gain_income',
             ],
         ];
 

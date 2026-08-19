@@ -167,20 +167,16 @@ final class BootstrapKeyAssertionImportTest extends TestCase
         self::assertSame([], $genericEscapeHatches);
     }
 
-    public function test_migration_down_refuses_historical_published_bootstrap_history(): void
+    public function test_migration_down_refuses_published_certified_bootstrap_history(): void
     {
         $actor = $this->m4Actor();
         $template = AdminTemplate::query()->where('bootstrap_key', 'coa.tn.legacy-v1')->firstOrFail();
-        // A legacy-v1 bootstrap can exist as certified history from before M4,
-        // but cannot be newly certified now that the live shrinkage purpose is
-        // REQUIRED. Recreate that historical state directly; the publication
-        // gate itself is exercised against Option A v2 fixtures elsewhere.
-        DB::connection($template->getConnectionName())->table('admin_templates')->where('id', $template->id)->update([
-            'status' => TemplateStatus::Published->value,
-            'certified_by' => $actor->id,
-            'published_at' => now(),
-        ]);
-        $published = $template->refresh();
+        $published = app(TemplatePublishingService::class)->publish(
+            $template->id,
+            'Authenticated legacy certification',
+            ['TN'],
+            $actor,
+        );
         $rowCount = $published->accounts()->count();
 
         try {

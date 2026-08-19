@@ -423,22 +423,3 @@ Pre-gate verification on the pinned tree: `FrozenSeederDocblockTest` plus
 No production, migration, seeder, or `.github/workflows/**` file changed. Per
 the amended exit, M4 returns to `blocked_owner` before T20/T20b implementation;
 no adversarial review or fix round is consumed.
-
-### M4 implemented after treasury approval
-
-The treasury owner subsequently approved Option A (`6586` / `7586`) and all 17
-movement classifications. M4 then implemented the v2 country-default templates,
-purpose-first tenant backfill, exhaustive movement counter families, and the
-Damage/Expiry/WriteOff reroute from COGS to shrinkage. The three legacy seeders
-remain byte-identical. The earlier proposal-only paragraph above is historical
-STOP-B evidence and no longer describes the branch tip.
-
-Adversarial round 1 found that the live destructive-loss repoint would deploy
-before the manual backfill was run. The scoped remediation adds an unattended
-tenant migration that delegates to the tested command inside a connection-bound
-savepoint and emits a distinct warning-level deploy token. Shrinkage is REQUIRED
-for every newly certified country-default template; the frozen-seeder fallback
-remains the explicit owner-approved warning/no-entry exception. Command coverage
-now includes promotion, repurpose refusal, missing parents, dry-run, schema-guard
-tokens, and PostgreSQL containment. The stale write-off account docblock and this
-handback narrative were corrected in the same round.

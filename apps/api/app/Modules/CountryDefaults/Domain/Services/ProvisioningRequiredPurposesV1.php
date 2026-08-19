@@ -41,7 +41,6 @@ final class ProvisioningRequiredPurposesV1
             self::entry(SystemAccountPurpose::ProductRevenue, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:416|AccountingService::createInvoiceGLEntries|findAccountByPurpose|ProductRevenue'),
             self::entry(SystemAccountPurpose::ServiceRevenue, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:420|AccountingService::createInvoiceGLEntries|findAccountByPurpose|ServiceRevenue'),
             self::entry(SystemAccountPurpose::CostOfGoodsSold, 'GeneralLedgerService::createLinkedCostCapitalizationEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4340|GeneralLedgerService::createLinkedCostCapitalizationEntry|getAccountByPurpose|CostOfGoodsSold'),
-            self::entry(SystemAccountPurpose::InventoryShrinkageExpense, 'GeneralLedgerService::createInventoryWriteOffEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4814|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|InventoryShrinkageExpense'),
             self::entry(SystemAccountPurpose::GeneralExpense, 'GeneralLedgerService::createFromExpense category fallback', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4101|GeneralLedgerService::createFromExpense|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4087|GeneralLedgerService::createFromExpense|GeneralExpense'),
             self::entry(SystemAccountPurpose::OpeningBalanceEquity, 'AccountingOpeningService::postBatch', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingOpeningService.php:314|AccountingOpeningService::postBatch|findByPurposeOrFail|OpeningBalanceEquity'),
             self::entry(SystemAccountPurpose::PurchasePriceVarianceExpense, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2055|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|PurchasePriceVarianceExpense'),
@@ -76,10 +75,11 @@ final class ProvisioningRequiredPurposesV1
             self::entry(SystemAccountPurpose::RealizedFxLoss, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
             self::entry(SystemAccountPurpose::VoucherBreakageIncome, 'NONE', self::SOFT, null, 'NONE:No Expired voucher arm is wired in production.'),
             self::entry(SystemAccountPurpose::UninvoicedRevenue, 'NONE', self::SOFT, null, 'NONE:UninvoicedDeliveryNoteService has zero production callers; production-root AST scan enforced.'),
-            // Gain remains SOFT until T21. Shrinkage is REQUIRED for every newly
-            // certified template because destructive-loss writers are live. The
-            // separately ruled frozen-seeder fallback bypasses this publication
-            // gate and retains its explicit warning/no-entry compatibility path.
+            // Both variance purposes remain SOFT at the template publication
+            // gate. Live destructive-loss writers preflight the shrinkage mapping
+            // and guard missing legacy purposes as a warning/no-entry no-op; the
+            // gain purpose has no producer until T21.
+            self::entry(SystemAccountPurpose::InventoryShrinkageExpense, 'NONE', self::SOFT, null, 'NONE:Destructive-loss posting preflights the purpose and fails soft for frozen legacy charts.'),
             self::entry(SystemAccountPurpose::InventoryGainIncome, 'NONE', self::SOFT, null, 'NONE:Count-correction GL posting fail-softs when unmapped; no CountCorrection producer until T21.'),
         ];
     }
@@ -173,9 +173,9 @@ final class ProvisioningRequiredPurposesV1
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4428|GeneralLedgerService::createLinkedCostCapitalizationReversalEntry|getAccountByPurpose|CostOfGoodsSold',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4496|GeneralLedgerService::expensePaymentAccount|getAccountByPurpose|Bank',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4497|GeneralLedgerService::expensePaymentAccount|getAccountByPurpose|Cash',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4591|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|Inventory',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4592|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|DYNAMIC',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4814|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|InventoryShrinkageExpense',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4590|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|Inventory',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4591|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|DYNAMIC',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4814|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|DYNAMIC',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4815|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|Inventory',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:5000|GeneralLedgerService::getAccountByPurpose|findByPurposeOrFail|DYNAMIC',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:520|GeneralLedgerService::reverseSupplierAdvanceJournalEntry|getAccountByPurpose|SupplierAdvance',
@@ -246,8 +246,8 @@ final class ProvisioningRequiredPurposesV1
             }
         }
 
-        if ($counts !== [self::REQUIRED => 28, self::SCOPE_REQUIRED => 1, self::CONDITIONAL => 4, self::SOFT => 10]) {
-            throw new LogicException('The v1 purpose partition must be exactly 28 + 1 + 4 + 10.');
+        if ($counts !== [self::REQUIRED => 27, self::SCOPE_REQUIRED => 1, self::CONDITIONAL => 4, self::SOFT => 11]) {
+            throw new LogicException('The v1 purpose partition must be exactly 27 + 1 + 4 + 11.');
         }
         if (count($seen) !== count(SystemAccountPurpose::cases())) {
             throw new LogicException('The v1 purpose manifest must cover every SystemAccountPurpose exactly once.');

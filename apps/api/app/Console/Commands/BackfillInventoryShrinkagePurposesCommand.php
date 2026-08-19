@@ -43,10 +43,6 @@ final class BackfillInventoryShrinkagePurposesCommand extends Command
         if (! Schema::hasTable('companies') || ! Schema::hasTable('accounts')) {
             $this->error('Tenant accounting tables are unavailable; run this command through tenants:run.');
 
-            $token = self::SUMMARY_TOKEN_PREFIX.' 1';
-            Log::warning($token);
-            $this->line($token);
-
             return self::FAILURE;
         }
 
@@ -117,6 +113,7 @@ final class BackfillInventoryShrinkagePurposesCommand extends Command
 
         $existing = (clone $accounts)->where('code', $definition['code'])->first();
         if ($existing !== null) {
+            $this->assertUsable($companyId, $existing, $definition);
             if ($existing->system_purpose !== null) {
                 throw new RuntimeException(sprintf(
                     'Company %s account %s already carries system_purpose %s; refusing to repurpose it.',
@@ -125,7 +122,6 @@ final class BackfillInventoryShrinkagePurposesCommand extends Command
                     (string) $existing->system_purpose,
                 ));
             }
-            $this->assertUsable($companyId, $existing, $definition);
             if (! $dryRun) {
                 $this->database->table('accounts')->where('id', $existing->id)->update([
                     'system_purpose' => $definition['purpose'],
