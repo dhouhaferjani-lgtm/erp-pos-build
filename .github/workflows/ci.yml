@@ -492,7 +492,14 @@ jobs:
     # Whole directory, not a --filter list, so new classes are gated the moment
     # they land. SQLite in-memory by design (phpunit.xml pins it): every test is
     # route/permission/config-level and needs no PG-specific behaviour, so this
-    # job runs no database service. ~43 s.
+    # job runs no database service.
+    #
+    # COST, stated honestly: the phpunit invocation alone is ~43 s (the figure the
+    # parent ruling quoted), but this is a whole JOB — checkout + setup-php +
+    # composer cache/install + env setup — so budget ~2-3 min of billed runner
+    # time per triggering event, on every PR->dev, PR->main, push->main and
+    # dispatch. The ruling stands on its merits (a live safety gap), but F-2 IS
+    # the CI-minutes gate, so this number must not be understated.
     #
     # The manifest checker asserts this job has no `if:` guard — see
     # apps/api/tests/feature-lane-manifest.json (`runs_on_pr_dev: true`) and the

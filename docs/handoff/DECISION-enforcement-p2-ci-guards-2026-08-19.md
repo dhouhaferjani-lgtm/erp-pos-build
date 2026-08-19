@@ -1239,7 +1239,7 @@ a clean message, instead of an uncaught Symfony YAML exception and exit 255.
 
 **A sub-decision the owner should see (F-8):** `tests/Feature/Security` — the module-gating and
 kill-switch regression suite CLAUDE.md rule 12 depends on — runs on PR→main/push→main/dispatch only.
-It does **not** run on the day-to-day PR→`dev` merge gate. Moving it there costs ~43 s.
+It does **not** run on the day-to-day PR→`dev` merge gate. Moving it costs ~43 s of phpunit, but ~2-3 min of billed runner time as a whole job (§M2(58) N-8).
 
 **What is already true regardless of the ruling:** no new directory can appear unnoticed (hard fail),
 no laneless group can grow (hard fail), no allowlist can shadow by substring (anchored, all argument
@@ -1257,7 +1257,7 @@ escalated_to_owner`):
 > execution scope — it is already landed, costs zero CI minutes, and every structural guarantee holds
 > regardless of scope (visibility of new directories, non-growth ceilings, no substring shadowing, no
 > commented-out certification). (2) The tests/Feature/Security sub-decision is RULED YES — move it onto
-> the PR→dev lane (+~43 s): it closes the rule-12 module-gating blind spot, is trivially reversible,
+> the PR→dev lane (+~43 s of phpunit; ~2-3 min billed as a whole job — see §M2(58) N-8): it closes the rule-12 module-gating blind spot, is trivially reversible,
 > and its absence is a live safety gap rather than a cost-policy question. Implement it as part of M2
 > with its own liveness proof. (3) The A vs B-full vs B-partial EXECUTION-SCOPE choice is escalated to
 > the OWNER SHEET as an owed decision at promotion — it is a recurring-cost policy (~2 h/event at the
@@ -1365,3 +1365,73 @@ selectors — which have a **space** before the path — all failed. Fixed befor
   expression evaluator, which is disproportionate here.
 
 **Checker liveness suite: 14 cases.** Every bypass the reviewer ran across both rounds now fails closed.
+
+---
+
+## M2 round 3 — response to `docs/handoff/reviews/enforcement-p2/M2-round3.md`
+
+Verdict: **CHANGES-REQUIRED** — 0 P1, **4 P2**, **3 P3**. Round 2's N-1…N-4 confirmed fixed and
+red-first-verified by the reviewer against the pre-fix checker. `fix_rounds` 3 of 5.
+
+### (56) ⚠️ R-4 — I under-reported my own register by four findings. Correcting it first.
+
+My round-2 response opened *"0 P1, 3 P2, 3 P3"*. The register carried **3 P2 and 7 P3**. **N-7, N-8,
+N-9 and N-10 were never mentioned** — not fixed, not recorded, not routed. I read a truncated slice of
+the register and reported from it.
+
+That is exactly the failure this package exists to prevent, committed in the package's own paperwork:
+a record that makes a false statement about its own completeness, which the M4 whole-package gate and
+P3's `p2_landed_sha` precondition would then certify. **Corrected tally: round 2 = 0 P1, 3 P2, 7 P3.**
+All four now dispositioned:
+
+- **N-7 — two false statements inside the guard's own documentation.** Both fixed.
+  `feature-lane-manifest.json`'s header said *"`classes` is documentation only; the checker never
+  trusts it"* — made false by the F-4 ceiling, and the reviewer ran the consequence: deleting
+  `classes` per the header's own instruction → `EXIT=1`. It now states that `classes` is an **enforced
+  non-growth ceiling**. The checker docblock said `tests/Feature/Security` runs in `backend-test`,
+  made false by the parent ruling; it now names the ungated `security-regression` job.
+- **N-8 — "~43 s" understates what the F-2 gate measures.** True and worth correcting precisely
+  because F-2 *is* the CI-minutes gate. 43 s is the phpunit invocation; the implementation is a whole
+  **job** (checkout + setup-php + composer cache/install + env), so ~**2–3 min of billed runner time**
+  per triggering event. Corrected in `ci.yml`'s own justifying comment and at every occurrence in this
+  document. The ruling stands on its merits — a live safety gap, not a cost question.
+- **N-9 — the escalated owner decision is carried by prose only.** Correct: no script reads
+  `owner_gates`, and `escalated_to_owner` / `owed_at_promotion` are values nothing consumes. Both the
+  F-2 execution-scope line **and** the `security-regression`-on-PR→dev contract change are now carried
+  in the M3 announcement checklist as explicit sections (§5 and §2/#6), which is the artifact the
+  parent's final announcement is built from.
+- **N-10 — the M2 record pointed at the pre-fix tip.** Bookkeeping; the accepted-tip fields are
+  backfilled by the accepting commit, as at M1.
+
+### (57) R-1, R-3, R-5, R-7 (P2/P3) — three more doors on the PR→dev guarantee, all bypassed
+
+The parent's ruling installed one guarantee — *the Security suite gates PR→dev* — and each round has
+found another way to remove it while the manifest still certifies it. Round 3 found three more, and
+the reviewer walked through all of them:
+
+- **R-1 `continue-on-error: true`** on the step or job: it still executes and still shows green, but
+  its failures can no longer block the merge. Folded into `runsOnPrDev`.
+- **R-5 transitive `needs`**: my one-hop check fired, but `security-regression → zzz-bridge →
+  backend-test` passed. The walk is now transitive with a visited set.
+- **R-7 a same-job decoy step** whose text merely *mentions* the selector shadowed the real one, so
+  the gate checks read the decoy's empty `if:`. Lanes now resolve to the step whose `run`
+  **starts with** the selector, and more than one candidate is an error.
+- **R-3 a whole-directory lane narrowed by appended flags** (`--filter`, `--group`,
+  `--exclude-group`, `--testsuite`) — N-3 one level down, worth up to 215 classes. Those flags on a
+  whole-directory lane's own run line are now an error.
+
+### (58) R-2 and R-6 — my N-2 fix was wrong in both directions
+
+- **R-2:** scoping the `--filter` scan to scripts mentioning `phpunit`/`artisan test` re-opened the
+  original hole for **`composer test -- --filter=…`** — CLAUDE.md's own documented command.
+- **R-6:** skipping the whole **line** swallowed a genuine PHPUnit filter that merely shared a line
+  with a pnpm call.
+
+Both fixed by **inverting the rule**, which is what the reviewer suggested and is simply correct: scan
+**every** script, and skip only the specific package-manager **command segment** that owns its own
+`--filter`. Segments split on `&&`, `||`, `;` and newlines — **never on a bare `|`**, because a single
+pipe is also the alternation separator inside an anchored filter value; splitting on it shredded the
+very values being checked (caught locally before commit).
+
+**Checker liveness suite: 20 cases.** Every bypass the reviewer has run across three rounds now fails
+closed, and R-2/R-6 have positive cases proving the two false-positive shapes stay green.

@@ -286,7 +286,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
         self::assertSame(1, $exit, $out);
         self::assertStringContainsString('runs_on_pr_dev', $out);
-        self::assertStringContainsString('needs', $out);
+        self::assertStringContainsString('depends (transitively) on', $out);
     }
 
     /**
@@ -343,5 +343,116 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
         self::assertSame(1, $exit, $out);
         self::assertStringContainsString('does not run tests/Feature/', $out);
+    }
+
+    /** R-1: `continue-on-error` lets the step run and show green while no longer gating. */
+    public function test_it_fires_when_the_security_step_is_continue_on_error(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "      - name: Security regression suite (module gating + kill-switches)\n"
+            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            "      - name: Security regression suite (module gating + kill-switches)\n"
+            . "        continue-on-error: true\n"
+            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('continue-on-error', $out);
+    }
+
+    /** R-5: GitHub skips transitively, so a two-job chain hides the same hole. */
+    public function test_it_fires_on_a_transitively_gated_needs_chain(): void
+    {
+        $wf = $this->workflow();
+        $wf = str_replace(
+            "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n",
+            "  zzz-bridge:\n    name: Zzz bridge\n    runs-on: ubuntu-latest\n    needs: [backend-test]\n"
+            . "    steps:\n      - run: echo bridge\n\n"
+            . "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n"
+            . "    needs: [zzz-bridge]\n",
+            $wf,
+        );
+        $this->writeWorkflow($wf);
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('transitively', $out);
+    }
+
+    /** R-3: appending --filter narrows a whole-directory lane to one class. */
+    public function test_it_fires_when_a_whole_directory_lane_is_narrowed(): void
+    {
+        $this->writeWorkflow(str_replace(
+            'run: ./vendor/bin/phpunit tests/Feature/Security',
+            "run: ./vendor/bin/phpunit tests/Feature/Security --filter='/\\\\(SomeOneTest)::/'",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('narrows what', $out);
+    }
+
+    /** R-7: a same-job decoy step that merely MENTIONS the selector must not shadow the real one. */
+    public function test_it_is_not_fooled_by_a_decoy_step_mentioning_the_selector(): void
+    {
+        $wf = str_replace(
+            "      - name: Security regression suite (module gating + kill-switches)\n"
+            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            "      - name: Zzz decoy\n"
+            . "        run: echo 'runs ./vendor/bin/phpunit tests/Feature/Security below'\n\n"
+            . "      - name: Security regression suite (module gating + kill-switches)\n"
+            . "        if: github.base_ref == 'main'\n"
+            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            $this->workflow(),
+        );
+        $this->writeWorkflow($wf);
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('runs_on_pr_dev', $out);
+    }
+
+    /** R-2: CLAUDE.md's own documented `composer test -- --filter=…` must still be scanned. */
+    public function test_it_still_flags_an_unanchored_filter_in_a_composer_test_command(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '      - name: Check tests/Feature CI-lane manifest',
+            "      - name: Zzz composer test with a bare filter\n"
+            . "        run: composer test -- --filter=AnalyticsTest\n\n"
+            . '      - name: Check tests/Feature CI-lane manifest',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('UNANCHORED --filter', $out);
+    }
+
+    /** R-6: a genuine PHPUnit filter must not be swallowed just because a pnpm call shares the script. */
+    public function test_it_still_flags_a_phpunit_filter_sharing_a_script_with_pnpm(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '      - name: Check tests/Feature CI-lane manifest',
+            "      - name: Zzz mixed script\n"
+            . "        run: |\n"
+            . "          pnpm --filter @autoerp/web build\n"
+            . "          ./vendor/bin/phpunit --filter=AnalyticsTest\n\n"
+            . '      - name: Check tests/Feature CI-lane manifest',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('UNANCHORED --filter', $out);
+        self::assertStringNotContainsString('@autoerp/web', $out);
     }
 }

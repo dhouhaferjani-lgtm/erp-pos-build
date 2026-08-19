@@ -9,7 +9,7 @@ declare(strict_types=1);
  * ----------------------
  * `tests/Feature` reaches CI three ways, and all three are silent when they miss:
  *
- *   1. Whole-directory runs — `tests/Feature/Security` (backend-test),
+ *   1. Whole-directory runs — `tests/Feature/Security` (the dedicated `security-regression` job, ungated),
  *      `tests/Feature/Treasury` + `tests/Feature/Accounting` (treasury-spine-pgsql).
  *   2. Two hand-maintained PHPUnit `--filter` allowlists in `.github/workflows/ci.yml`.
  *   3. …nothing else. `backend-test` runs `--testsuite=Unit`, never `--testsuite=Feature`.
@@ -108,10 +108,13 @@ function collectWorkflowRuns(array $workflowYaml): array
     $runs = [];
     $ifs = [];
     $needs = [];
+    $jobSoft = [];
     $stepJob = [];
     $stepIf = [];
+    $stepSoft = [];
     foreach (($workflowYaml['jobs'] ?? []) as $jobId => $job) {
         $ifs[$jobId] = (string) ($job['if'] ?? '');
+        $jobSoft[$jobId] = ($job['continue-on-error'] ?? false) === true;
         $jobNeeds = $job['needs'] ?? [];
         $needs[$jobId] = is_array($jobNeeds) ? $jobNeeds : [(string) $jobNeeds];
         foreach (($job['steps'] ?? []) as $step) {
@@ -125,6 +128,10 @@ function collectWorkflowRuns(array $workflowYaml): array
             // GitHub skips the step. Deriving coverage from the job guard alone
             // let two words on the step silently remove a lane from PR->dev.
             $stepIf[$run] = (string) ($step['if'] ?? '');
+            // `continue-on-error: true` is a THIRD way to stop a lane gating:
+            // the step still executes and still shows green, but its failure can
+            // no longer block the merge.
+            $stepSoft[$run] = ($step['continue-on-error'] ?? false) === true;
         }
     }
 
@@ -132,8 +139,10 @@ function collectWorkflowRuns(array $workflowYaml): array
         'runs' => $runs,
         'ifs' => $ifs,
         'needs' => $needs,
+        'jobSoft' => $jobSoft,
         'stepJob' => $stepJob,
         'stepIf' => $stepIf,
+        'stepSoft' => $stepSoft,
     ];
 }
 
@@ -272,13 +281,28 @@ foreach ($lanes as $laneId => $lane) {
 
         continue;
     }
-    $owningJob = null;
+    // Resolve to the step whose `run` STARTS WITH the selector. A `str_contains`
+    // match let an earlier step in the same job that merely MENTIONS the selector
+    // (an echo, a comment) shadow the real one — the gate checks then read the
+    // decoy's empty `if:`.
+    $candidates = [];
     foreach ($wf['runs'] as $run) {
-        if (str_contains($run, $selector)) {
-            $owningJob = $wf['stepJob'][$run] ?? null;
-            break;
+        if (str_starts_with(trim($run), $selector)) {
+            $candidates[] = $run;
         }
     }
+    if (count($candidates) > 1) {
+        $errors[] = sprintf(
+            'LANE "%s" selector %s resolves to %d steps; the lane must be unambiguous.',
+            $laneId,
+            var_export($selector, true),
+            count($candidates),
+        );
+
+        continue;
+    }
+    $laneRun = $candidates[0] ?? null;
+    $owningJob = $laneRun === null ? null : ($wf['stepJob'][$laneRun] ?? null);
     if ($owningJob === null) {
         $errors[] = sprintf(
             'LANE "%s" is a FICTION: its selector %s does not appear in any LIVE `run:` step of '
@@ -289,6 +313,22 @@ foreach ($lanes as $laneId => $lane) {
         );
 
         continue;
+    }
+
+    // R-3: a whole-directory lane must actually run the WHOLE directory. Appending
+    // `--filter=OneTest` to the step narrows it to one class while the manifest
+    // still certifies the directory — N-3's failure ("the lane was real, it just
+    // did not run the group") one level down, worth up to 215 classes.
+    foreach (['--filter', '--group', '--exclude-group', '--testsuite'] as $narrowing) {
+        if (str_contains((string) $laneRun, $narrowing)) {
+            $errors[] = sprintf(
+                'LANE "%s" is a whole-directory lane but its run line carries %s, which narrows what '
+                . 'actually executes: %s',
+                $laneId,
+                $narrowing,
+                var_export(trim((string) $laneRun), true),
+            );
+        }
     }
 
     // The manifest also claims which EVENTS the lane runs on. Verify that claim
@@ -318,26 +358,38 @@ foreach ($lanes as $laneId => $lane) {
     // A step-level `if:` skips the step on PR->dev exactly as a job guard would.
     // Conservative by design: ANY `if:` on a lane's own step means we do not
     // certify PR->dev coverage.
-    $selectorStepIf = '';
-    foreach ($wf['stepIf'] as $run => $stepIf) {
-        if (str_contains($run, $selector)) {
-            $selectorStepIf = $stepIf;
-            break;
-        }
-    }
+    $selectorStepIf = (string) ($wf['stepIf'][$laneRun] ?? '');
     if ($selectorStepIf !== '') {
+        $runsOnPrDev = false;
+    }
+
+    // R-1: `continue-on-error` on the step or the job means failures cannot block
+    // the merge — the lane executes but no longer GATES.
+    $soft = ($wf['stepSoft'][$laneRun] ?? false) || ($wf['jobSoft'][$owningJob] ?? false);
+    if ($soft) {
         $runsOnPrDev = false;
     }
 
     // …and GitHub skips a job whose dependency was skipped, so a `needs:` on a
     // gated job removes the lane from PR->dev through a second door.
+    // R-5: GitHub skips TRANSITIVELY, so a two-job chain hides the same hole.
     $skippedNeed = null;
-    foreach (($wf['needs'][$owningJob] ?? []) as $needed) {
-        $neededIf = $wf['ifs'][(string) $needed] ?? '';
+    $queue = $wf['needs'][$owningJob] ?? [];
+    $seen = [];
+    while ($queue !== []) {
+        $needed = (string) array_shift($queue);
+        if (isset($seen[$needed])) {
+            continue;
+        }
+        $seen[$needed] = true;
+        $neededIf = $wf['ifs'][$needed] ?? '';
         if ($neededIf !== '' && ! str_contains($neededIf, "base_ref == 'dev'")) {
-            $skippedNeed = (string) $needed;
+            $skippedNeed = $needed;
             $runsOnPrDev = false;
             break;
+        }
+        foreach (($wf['needs'][$needed] ?? []) as $next) {
+            $queue[] = $next;
         }
     }
     if ($claimsPrDev !== $runsOnPrDev) {
@@ -345,8 +397,11 @@ foreach ($lanes as $laneId => $lane) {
         if ($selectorStepIf !== '') {
             $why .= '; the lane STEP carries `if: ' . $selectorStepIf . '`, which skips it';
         }
+        if ($soft) {
+            $why .= '; `continue-on-error` is set, so failures cannot block the merge';
+        }
         if ($skippedNeed !== null) {
-            $why .= '; the job `needs: ' . $skippedNeed . '`, which is itself gated off PR->dev';
+            $why .= '; the job depends (transitively) on `' . $skippedNeed . '`, itself gated off PR->dev';
         }
         $errors[] = sprintf(
             'LANE "%s" claims runs_on_pr_dev=%s but the workflow says %s. (%s)',
@@ -380,38 +435,40 @@ foreach ($wf['runs'] as $run) {
     // guard, so it blocked every PR — with an error telling the author to rewrite
     // their pnpm selector as a PHPUnit regex. Only test-runner scripts are scanned;
     // inside them the check still fails closed.
-    if (preg_match('/\bphpunit\b|\bartisan\s+test\b/', $run) !== 1) {
-        continue;
-    }
-    $offset = 0;
-    while (($pos = strpos($run, '--filter', $offset)) !== false) {
-        // …and even inside a test-runner script, a `pnpm`/`turbo` invocation on
-        // the same command line owns its own `--filter`.
-        $lineStart = strrpos(substr($run, 0, $pos), "\n");
-        $lineStart = $lineStart === false ? 0 : $lineStart + 1;
-        $before = substr($run, $lineStart, $pos - $lineStart);
-        if (preg_match('/\b(pnpm|npm|yarn|turbo)\b/', $before) === 1) {
+    // Scan EVERY script and skip only the specific package-manager INVOCATION that
+    // owns its own `--filter`. Scoping by "does the script mention phpunit" instead
+    // re-opened the hole for `composer test -- --filter=…` (CLAUDE.md's own
+    // documented command), and skipping the whole LINE swallowed a genuine PHPUnit
+    // filter that merely shared a line with a pnpm call. The unit is the command
+    // segment.
+    // Split on `&&`, `||`, `;` and newlines ONLY — never on a bare `|`. A single
+    // pipe is also the alternation separator INSIDE an anchored filter value
+    // (`/\\(A|B|C)::/`), so splitting on it shreds the very value being checked.
+    foreach (preg_split('/(?:&&|\|\||;|\n)/', $run) as $segment) {
+        $isPackageManager = preg_match('/^\s*(?:\S*\/)?(pnpm|npm|yarn|turbo)\b/', $segment) === 1;
+        if ($isPackageManager && ! preg_match('/\bphpunit\b|\bartisan\s+test\b/', $segment)) {
+            continue;
+        }
+        $offset = 0;
+        while (($pos = strpos($segment, '--filter', $offset)) !== false) {
             $offset = $pos + 8;
+            $rest = substr($segment, $offset);
+            if (preg_match('/^(?:=|[ \t]+)(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s]+))/s', $rest, $m) !== 1) {
+                $errors[] = sprintf(
+                    'UNPARSEABLE --filter in a `run:` step (context: %s). Fail closed: the anchoring and '
+                    . 'uniqueness lint cannot certify an allowlist it cannot read.',
+                    trim(substr($segment, max(0, $pos - 20), 60)),
+                );
 
-            continue;
-        }
-        $offset = $pos + 8;
-        $rest = substr($run, $offset);
-        if (preg_match('/^(?:=|[ \t]+)(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s]+))/s', $rest, $m) !== 1) {
-            $errors[] = sprintf(
-                'UNPARSEABLE --filter in a `run:` step (context: %s). Fail closed: the anchoring and '
-                . 'uniqueness lint cannot certify an allowlist it cannot read.',
-                trim(substr($run, max(0, $pos - 20), 60)),
-            );
-
-            continue;
-        }
-        if (($m[1] ?? '') !== '') {
-            $filterValues[] = $m[1];
-        } elseif (($m[2] ?? '') !== '') {
-            $filterValues[] = $m[2];
-        } else {
-            $filterValues[] = $m[3] ?? '';
+                continue;
+            }
+            if (($m[1] ?? '') !== '') {
+                $filterValues[] = $m[1];
+            } elseif (($m[2] ?? '') !== '') {
+                $filterValues[] = $m[2];
+            } else {
+                $filterValues[] = $m[3] ?? '';
+            }
         }
     }
 }
