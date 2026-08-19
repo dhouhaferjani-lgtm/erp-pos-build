@@ -20,8 +20,8 @@ use Illuminate\Support\Facades\DB;
  * re-keyed `POST /fiscal/refund-compensations` endpoint (§5.2's ⚖️
  * ruling), never nested under this controller.
  *
- * **Two addressable classes, both keyed by `fiscal_events.id` (§5.2's
- * gap-(2) closure):**
+ * **Three addressable classes, all keyed by `fiscal_events.id` (§5.2's
+ * gap-(2) closure; the third added by ES-16, below):**
  *   - `dead_lettered_projection` — a `fiscal_event_projections` row with
  *     `projection_status = DeadLettered`. Filterable by `projector_name`
  *     (`?projector=pos_core_receipt` / `?projector=treasury_receipt_bridge`
@@ -35,10 +35,26 @@ use Illuminate\Support\Facades\DB;
  *     different, pre-`fiscal_events`-insertion rejection class with no
  *     `fiscal_events.id` to key by at all), this class always has a
  *     stable `fiscal_events.id`.
+ *   - `z_session_lifecycle_quarantine` — **ES-16.** A `fiscal_events` row
+ *     that tripped one of the seven `z_session_lifecycle` rules. Its
+ *     `integrity_exception_class` is `sequence_gap` (the lifecycle verdict
+ *     is folded into the linkage verdict at `OutboxIngestor.php:182-186`,
+ *     so the discriminator survives only inside
+ *     `integrity_exception_reason`), and `dispatchProjections()` suppresses
+ *     every projection for it at `OutboxIngestor.php:922-924`. It therefore
+ *     landed in NEITHER class above — zero projection rows for the first,
+ *     wrong exception class for the second — while a suppressed
+ *     `SESSION_CLOSE` / `Z_REPORT` means the day's Z aggregates silently
+ *     never project. This class is READ-ONLY VISIBILITY: it surfaces the
+ *     incident and names no action (see `formatZSessionLifecycleRow()`).
+ *     The suppression itself is CORRECT and is not touched — projecting a
+ *     lifecycle-invalid Z session would write wrong aggregates.
  *
- * Each list/detail row surfaces `write_off_action_url` — the URL of the
- * write-off endpoint already built behind this read surface — so an
- * operator UI never has to hardcode it.
+ * Rows of the first two classes surface `write_off_action_url` — the URL of
+ * the write-off endpoint already built behind this read surface — so an
+ * operator UI never has to hardcode it. The ES-16 class deliberately does
+ * NOT: see `formatZSessionLifecycleRow()` for why naming any action on such
+ * a row is the failure mode, not the feature.
  *
  * **review round-2 IMPORTANT 14 (§5.2 evidence (a)).** Both row formats
  * ALSO surface `shift_id` and `refund_amount`, read from the event's own
@@ -49,6 +65,18 @@ use Illuminate\Support\Facades\DB;
  */
 final class DeadLetteredProjectionsController extends Controller
 {
+    /**
+     * The verdict prefix `OutboxIngestor::verifyZSessionLifecycle()` emits and
+     * `OutboxIngestor::dispatchProjections()` suppresses on
+     * (`OutboxIngestor.php:922-924`,
+     * `str_contains($exceptionReason, 'z_session_lifecycle:')`).
+     *
+     * The ES-16 partition below matches on exactly this prefix, so the rows it
+     * surfaces are BY CONSTRUCTION the rows the ingestor's own suppression
+     * hid — not an approximation of them.
+     */
+    private const Z_SESSION_LIFECYCLE_PREFIX = 'z_session_lifecycle:';
+
     public function index(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -115,6 +143,28 @@ final class DeadLetteredProjectionsController extends Controller
 
             foreach ($quarantined as $event) {
                 $rows[] = $this->formatQuarantineRow($event);
+            }
+
+            // ES-16 — the z_session_lifecycle blind spot. Same reasoning as
+            // the ingress-quarantine class above: these rows have no
+            // projector_name at all, so a projector-filtered query would
+            // never legitimately include them.
+            $lifecycleQuarantined = FiscalEvent::query()
+                ->where('tenant_id', $user->tenant_id)
+                ->where('integrity_exception_reason', 'like', '%'.self::Z_SESSION_LIFECYCLE_PREFIX.'%')
+                ->whereNotExists(function ($query): void {
+                    $query->selectRaw('1')
+                        ->from('fiscal_event_projections')
+                        ->whereColumn('fiscal_event_projections.fiscal_event_id', 'fiscal_events.id');
+                })
+                ->orderByDesc('server_received_at')
+                ->get([
+                    'id', 'event_type', 'terminal_id', 'chain_context', 'server_received_at',
+                    'integrity_exception_class', 'integrity_exception_reason', 'payload',
+                ]);
+
+            foreach ($lifecycleQuarantined as $event) {
+                $rows[] = $this->formatZSessionLifecycleRow($event);
             }
         }
 
@@ -227,6 +277,97 @@ final class DeadLetteredProjectionsController extends Controller
             'refund_amount' => $this->extractRefundAmount($payload),
             'write_off_action_url' => route('fiscal.refund-compensations.store'),
         ];
+    }
+
+    /**
+     * ES-16 — a `z_session_lifecycle`-quarantined `fiscal_events` row.
+     *
+     * **This row deliberately carries NO action affordance** — no
+     * `write_off_action_url`, no remediation/recovery/next-action field, no
+     * command name anywhere (contract clause 16-C as amended in revision 2,
+     * falsifier F16-7). It reports the incident and stops.
+     *
+     * The reason is not squeamishness about UI copy. The one command that
+     * would act on such a row, `fiscal:enqueue-resolved-event-projections`,
+     * filters only on `payload_parse_status = parsed`
+     * (`EnqueueResolvedEventProjectionsCommand.php:244-245`) and its
+     * `createMissingPendingRows()` (`:340-365`) inserts a pending row per
+     * active projector without re-checking the suppression at
+     * `OutboxIngestor.php:922-924`. Running it here would create precisely the
+     * projections the ingestor refused — i.e. write the wrong Z aggregates.
+     * An operator who can SEE the row can escalate; an operator who is told to
+     * run the command corrupts the day's Z totals. Adjudicating the underlying
+     * lifecycle violation is a decision on sealed data (owner gate D-8) and is
+     * not in this wave.
+     *
+     * `refund_amount` and `write_off_action_url` are omitted for the same
+     * reason they exist on the other two formats: they belong to the refund
+     * write-off surface, and a lifecycle-invalid Z session has no write-off.
+     *
+     * @return array<string, mixed>
+     */
+    private function formatZSessionLifecycleRow(FiscalEvent $event): array
+    {
+        $payload = is_array($event->payload) ? $event->payload : null;
+
+        return [
+            'source' => 'z_session_lifecycle_quarantine',
+            'fiscal_event_id' => $event->id,
+            'event_type' => $event->event_type->value,
+            'terminal_id' => $event->terminal_id,
+            'chain_context' => $event->chain_context,
+            'projector_name' => null,
+            'integrity_exception_class' => $event->integrity_exception_class,
+            'integrity_exception_reason' => $event->integrity_exception_reason,
+            'lifecycle_violation' => $this->extractLifecycleViolation($event->integrity_exception_reason),
+            'server_received_at' => $event->server_received_at->toIso8601String(),
+            'session_id' => $this->extractSessionId($payload),
+            'shift_id' => $this->extractShiftId($payload),
+        ];
+    }
+
+    /**
+     * Pull the `z_session_lifecycle:<reason>` discriminator out of the
+     * free-form `integrity_exception_reason` (contract clause 16-B).
+     *
+     * The column is a `;`-joined list of verdicts, and the lifecycle verdict
+     * itself may be `|`-appended to a linkage verdict when BOTH fired
+     * (`OutboxIngestor.php:182-186` — e.g.
+     * `sequence_gap:no_prior_row_but_sequence=2_must_be_1|z_session_lifecycle:missing_session_open`).
+     * So the discriminator is read out of the string rather than assumed to be
+     * the whole of it, and the full reason is surfaced alongside it — this is
+     * an extraction, never a replacement.
+     *
+     * Returns null rather than guessing if the prefix is present but no
+     * recognisable reason token follows it: a wrong violation name is worse
+     * than an absent one when the operator is deciding what to escalate.
+     */
+    private function extractLifecycleViolation(?string $reason): ?string
+    {
+        if ($reason === null) {
+            return null;
+        }
+
+        $matched = preg_match(
+            '/'.preg_quote(self::Z_SESSION_LIFECYCLE_PREFIX, '/').'([a-z0-9_]+)/',
+            $reason,
+            $matches,
+        );
+
+        return $matched === 1 ? self::Z_SESSION_LIFECYCLE_PREFIX.$matches[1] : null;
+    }
+
+    /**
+     * The Z session the suppressed event belongs to — the coordinate an
+     * operator needs to find the session whose aggregates never projected.
+     *
+     * @param  array<string, mixed>|null  $payload
+     */
+    private function extractSessionId(?array $payload): ?string
+    {
+        $sessionId = $payload['session_id'] ?? null;
+
+        return is_string($sessionId) && $sessionId !== '' ? $sessionId : null;
     }
 
     /**

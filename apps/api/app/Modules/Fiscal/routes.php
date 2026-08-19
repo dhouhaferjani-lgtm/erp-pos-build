@@ -6,6 +6,7 @@ use App\Modules\Fiscal\Presentation\Controllers\DeadLetteredProjectionsControlle
 use App\Modules\Fiscal\Presentation\Controllers\FiscalEventIngestionController;
 use App\Modules\Fiscal\Presentation\Controllers\ParseFailureResolutionController;
 use App\Modules\Fiscal\Presentation\Controllers\QuarantineBestEffortParseController;
+use App\Modules\Fiscal\Presentation\Controllers\QuarantineIncidentResolutionController;
 use App\Modules\Fiscal\Presentation\Controllers\RefundCompensationController;
 use App\Modules\Identity\Presentation\Middleware\EnforceTokenTenantClaim;
 use App\Modules\Identity\Presentation\Middleware\SetPermissionsTeam;
@@ -32,6 +33,15 @@ Route::prefix('api/v1')
         Route::post('/fiscal/quarantine/{id}/best-effort-parse', [QuarantineBestEffortParseController::class, 'store'])
             ->middleware('can:fiscal.events.resolve_quarantine');
         Route::post('/fiscal/events/{id}/resolve-parse-failure', [ParseFailureResolutionController::class, 'store'])
+            ->middleware('can:fiscal.events.resolve_quarantine');
+        // ES-17 — record that an operator has ADJUDICATED a
+        // `fiscal_event_quarantine` incident, so `fiscal:verify-event-chain`
+        // stops reporting it (`VerifyEventChainCommand.php:856`). Reuses the
+        // EXISTING seeded `fiscal.events.resolve_quarantine` that already gates
+        // the two sibling quarantine actions above: no new permission, no role
+        // seeder change, no `permission:cache-reset` to deploy.
+        Route::post('/fiscal/quarantine/{id}/resolve-incident', [QuarantineIncidentResolutionController::class, 'store'])
+            ->name('fiscal.quarantine.resolve-incident')
             ->middleware('can:fiscal.events.resolve_quarantine');
         // v3-refund-chain-integration spec §5.2/§17.
         Route::post('/fiscal/refund-compensations', [RefundCompensationController::class, 'store'])

@@ -182,9 +182,67 @@ milestones:
     # contract path requires one), zero-line diff on
     # EnqueueResolvedEventProjectionsCommand.php (F16-7 / contract :147-153), and
     # no OutboxIngestor.php:815 PARAM_STR change (separate ingestion-lane ticket).
-    status: in_progress
+    #
+    # DELIVERED 2026-08-19 over two commits, f28306baf (opening ledger + the
+    # three swept M3 round-2 P3s) and the implementation commit recorded in
+    # `commit:` below. Evidence:
+    # docs/handoff/reviews/es-wave-a0/M3b-implementation-evidence.md — §3 and §4
+    # are the clause-by-clause mapping brief line 594 requires, each clause
+    # quoted verbatim.
+    #
+    # ES-16: a THIRD read partition on DeadLetteredProjectionsController::index()
+    #   (source `z_session_lifecycle_quarantine`), matching on the SAME string
+    #   OutboxIngestor's own suppression uses, so the rows surfaced are by
+    #   construction the rows it hid. Carries the `lifecycle_violation`
+    #   discriminator read out of integrity_exception_reason, and DELIBERATELY
+    #   no action affordance at all (16-C as amended, F16-7) — not even the
+    #   write_off_action_url the other two partitions carry.
+    # ES-17: the missing resolved_at/resolved_by writer —
+    #   QuarantineIncidentResolutionService + QuarantineIncidentResolutionController
+    #   + POST /api/v1/fiscal/quarantine/{id}/resolve-incident, gated by the
+    #   EXISTING seeded fiscal.events.resolve_quarantine. Single-actor
+    #   adjudication record; refuses a re-stamp rather than overwriting the
+    #   original resolved_by. VerifyEventChainCommand.php:856 is UNTOUCHED —
+    #   only the writer was missing (F17-4).
+    #
+    # GATES, measured mechanically over 32671a9f6..HEAD, all 0-line diffs:
+    #   ZReportHashService.php (R-1), OutboxIngestor.php (16-D, and so :815's
+    #   PARAM_STR binding stays untouched), EnqueueResolvedEventProjectionsCommand.php
+    #   (F16-7), ParseFailureResolutionService.php (F16-6 / D-8).
+    # NO migration, NO onQueue (so no horizon.php entry owed), NO config, NO
+    # front-end, NO new permission / role seeder / permission:cache-reset.
+    # D-8 NOT reached. NO STOP triggered: 17-E's conditional STOP was checked
+    # FIRST and does not fire (the permission is seeded and the principal holds
+    # it, asserted as the first test in the ES-17 file).
+    #
+    # VERIFICATION: red-first on both rows (ES-16 5 of 7 red, each because the
+    # row is ABSENT; ES-17 8 of 10 red, all HTTP 404 = no path exists today —
+    # two ES-17 tests were vacuously green on the first red run and were
+    # STRENGTHENED before implementing, disclosed in the evidence §5). Green on
+    # PG 7/91 + 10/69; default driver agrees at 17/160. M3 headline counts
+    # reproduce unchanged (ParseFailureResumeTest 27/209,
+    # VerifyEventChainCommandTest 34/138). Regression 50/240; the pre-existing
+    # DeadLetteredProjectionsControllerTest reproduces 12/33 unchanged (16-E).
+    # pint --test pass on all 9 changed files; phpstan level 8 [OK] on all 7
+    # production files.
+    #
+    # INHERITED REDS, proven by removing every line of M3b production code and
+    # re-running (identical baselines, evidence §6): OutboxIngestorTest clock
+    # test (local TZ artifact), QuarantineBestEffortParseControllerTest x3 (the
+    # tests' OWN fixtures trip the fiscal_events immutability trigger), and
+    # tests/Architecture x4 (46/231 identical across the swap — which also
+    # proves the new controller IS tenant-classified).
+    #
+    # DISCLOSED RESIDUAL for M3b's reviewer to rule on: DeadLetteredProjectionsController::show()
+    # was NOT extended. Clause 16-A names index() and only index(), so a
+    # lifecycle row still returns 409 NOT_DEAD_LETTERED on the detail endpoint —
+    # the behaviour it has today, unchanged. Not taken silently either way: if
+    # the reviewer reads "the existing dead-letter read surface" in the
+    # contract's headline as including show(), that is an amendment to make at
+    # review and implement in a fix round.
+    status: review
     fix_rounds: 0
-    commit: null
+    commit: null      # set to this milestone's tip in the delivering commit
     verdict: null
     last_verdict: null
   - id: M4
