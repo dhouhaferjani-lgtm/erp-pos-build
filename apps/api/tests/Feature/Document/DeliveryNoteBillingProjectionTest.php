@@ -238,6 +238,69 @@ final class DeliveryNoteBillingProjectionTest extends TestCase
         $this->assertNotContains($mismatchedTenantRow->id, array_column($serviceRows, 'id'));
     }
 
+    /**
+     * M5-terminal treasury F-1 / tenancy F-T1.
+     *
+     * `documents.payload` is free-form JSONB and the M1C backfill
+     * (`2026_08_18_000002_create_delivery_note_billing_marks_table.php`, counter
+     * `unparseable_invoice_id`) documents non-UUID `invoice_id` values as EXISTING in
+     * the field — it neutralises the marker row but deliberately leaves the dirty
+     * payload in place. Binding that value into the `documents.id` PostgreSQL `uuid`
+     * key raises 22P02, which is a 500 on the DN read surfaces (and, because the value
+     * poisons the transaction, on everything after it).
+     *
+     * Contract asserted here, mirroring the migration's own `safeInvoiceId()`:
+     * an unparseable `invoice_id` is treated as ABSENT (no resolved invoice number),
+     * while `invoiced_at` and the lane are PRESERVED so the row still reads as billed
+     * — legacy/unresolved, never a 500.
+     */
+    public function test_a_non_uuid_payload_invoice_id_reads_as_unresolved_instead_of_500ing_the_list_and_detail_surfaces(): void
+    {
+        $dirtyShapes = [
+            'DN-DIRTY-DOCNUM' => 'INV-2024-001',
+            'DN-DIRTY-BLANK' => ' ',
+            'DN-DIRTY-NUMERIC' => 123,
+        ];
+
+        $dirty = [];
+        foreach ($dirtyShapes as $number => $invoiceId) {
+            $dirty[$number] = $this->deliveryNote($number, [
+                'invoiced_at' => '2026-08-12T09:10:11+00:00',
+                'invoice_id' => $invoiceId,
+                'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+            ]);
+        }
+
+        // (a) the LIST surface — one dirty row must not take out the page for every
+        //     user in the tenant.
+        $list = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?page=1');
+        $list->assertOk();
+        $this->assertEqualsCanonicalizing(
+            array_map(static fn (Document $document): string => $document->id, array_values($dirty)),
+            array_column($list->json('data'), 'id'),
+        );
+        foreach ($list->json('data') as $row) {
+            $this->assertNull($row['invoiced_by_document_number']);
+            $this->assertSame('2026-08-12T09:10:11+00:00', $row['invoiced_at']);
+            $this->assertSame(DeliveryNoteBillingLane::Consolidation->value, $row['invoiced_via']);
+        }
+
+        // (b) the DETAIL surface.
+        foreach ($dirty as $document) {
+            $detail = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/'.$document->id);
+            $detail->assertOk()
+                ->assertJsonPath('data.invoiced_by_document_number', null)
+                ->assertJsonPath('data.invoiced_at', '2026-08-12T09:10:11+00:00')
+                ->assertJsonPath('data.invoiced_via', DeliveryNoteBillingLane::Consolidation->value);
+        }
+
+        // The invoiced/uninvoiced complement is driven by `invoiced_at`, so the lane
+        // stays on the billed side of the filter despite the unresolvable id.
+        $invoiced = $this->actingAs($this->user)->getJson('/api/v1/delivery-notes?invoiced=1');
+        $invoiced->assertOk();
+        $this->assertCount(3, $invoiced->json('data'));
+    }
+
     public function test_offset_pagination_returns_the_second_twenty_five_rows_and_cursor_mode_remains_available(): void
     {
         foreach (range(51, 1) as $number) {

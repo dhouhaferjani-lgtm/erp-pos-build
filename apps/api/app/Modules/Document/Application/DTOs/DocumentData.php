@@ -7,6 +7,7 @@ namespace App\Modules\Document\Application\DTOs;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Domain\CurrencyScale;
+use Illuminate\Support\Str;
 use Spatie\LaravelData\Data;
 use Spatie\TypeScriptTransformer\Attributes\TypeScript;
 
@@ -182,8 +183,19 @@ final class DocumentData extends Data
                 ->find($document->source_document_id);
         }
 
+        // `documents.payload` is free-form JSONB, so `payload.invoice_id` is an
+        // arbitrary legacy value — NOT a validated UUID. Binding it straight into the
+        // `documents.id` PostgreSQL `uuid` key raises 22P02 (a 500 that also poisons
+        // the surrounding transaction with 25P02), and the M1C backfill
+        // (`2026_08_18_000002_create_delivery_note_billing_marks_table.php`) proves the
+        // dirty shape exists in the field: its `safeInvoiceId()` counts such rows as
+        // `unparseable_invoice_id`, neutralises the MARKER, and deliberately leaves the
+        // payload untouched. Mirror that contract here — an unparseable id resolves to
+        // no invoicing document, while `invoiced_at` and the lane below stay intact so
+        // the row still reads as billed-but-unresolved rather than 500ing the whole
+        // delivery-note list. (M5-terminal treasury F-1 / tenancy-authz F-T1.)
         $invoicingDocument = null;
-        if ($billingState->invoice_id !== null) {
+        if ($billingState->invoice_id !== null && Str::isUuid($billingState->invoice_id)) {
             $invoicingDocument = Document::query()
                 ->where('tenant_id', $document->tenant_id)
                 ->where('company_id', $document->company_id)
