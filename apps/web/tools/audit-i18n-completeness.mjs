@@ -251,7 +251,7 @@ function stripComments(raw) {
  * `finance.overview` has `cash`/`upcoming`/`trend`), so this is the case that
  * matters, not the top-level one.
  *
- * @returns {Array<{scope: number, prefix: string}>} in source order
+ * @returns {Array<{scope: number, depth: number, prefix: string}>} in source order
  */
 function spreadsByScope(code) {
   const out = [];
@@ -266,7 +266,11 @@ function spreadsByScope(code) {
     } else if (m[0] === '}') {
       if (stack.length > 1) stack.pop();
     } else {
-      out.push({ scope: stack[stack.length - 1], prefix: m[1].slice(0, 2) });
+      out.push({
+        scope: stack[stack.length - 1],
+        depth: stack.length - 1,
+        prefix: m[1].slice(0, 2),
+      });
     }
   }
   return out;
@@ -303,13 +307,24 @@ function classifyAssignment(locale, code) {
     // depth-keying let a later English-first sibling mask an English-last one.
     const byScope = new Map();
     spreadsByScope(code).forEach((sp, index) => {
-      if (!byScope.has(sp.scope)) byScope.set(sp.scope, { en: -1, own: -1 });
+      if (!byScope.has(sp.scope)) byScope.set(sp.scope, { en: -1, own: -1, depth: sp.depth });
       const seen = byScope.get(sp.scope);
       if (sp.prefix === 'en') seen.en = index;
       else if (sp.prefix === prefix) seen.own = index;
     });
-    for (const { en, own: ownIndex } of byScope.values()) {
+
+    for (const { en, own: ownIndex, depth } of byScope.values()) {
+      // (a) English applied LAST in this literal — English wins every key here.
       if (en > -1 && ownIndex > -1 && en > ownIndex) return 'en-aliased';
+
+      // (b) A NESTED literal that spreads English and NOTHING of this locale.
+      // Depth-keying caught this by accident (it compared the last `en` index
+      // against the last own index across everything at a depth); scope-keying
+      // buckets per literal, so a scope with `en` and no own would match nothing
+      // and the namespace would fall through to `english-spread`. That subtree is
+      // served 100% in English while the locale's keys for it sit dead on disk —
+      // the arrival being a revert like `// RTL broken, drop ar locations`.
+      if (depth > 1 && en > -1 && ownIndex === -1) return 'en-aliased';
     }
 
     return 'english-spread';

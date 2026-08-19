@@ -31,7 +31,9 @@ const resources = {
     beta: {
       ...enBeta,
       ...arBeta,
-      reversed: { ...arBeta, ...enBeta },
+      // NO reversed sibling here: this fixture isolates the english-only nested
+      // literal so it alone is what flips the classification.
+      reversed: { ...enBeta, ...arBeta },
       normal: { ...enBeta, ...arBeta },
       // THIRD sibling, placed AFTER a normal one on purpose: a nested literal
       // that spreads English and NOTHING of this locale. Placing it first would

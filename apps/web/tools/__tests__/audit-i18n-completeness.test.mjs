@@ -517,3 +517,44 @@ describe('audit-i18n-completeness — spread order is keyed per OBJECT LITERAL, 
     expect(auditRoot(FIXTURE_ROOT).wiring.assignments.ar.beta.kind).toBe('english-spread');
   });
 });
+
+describe('audit-i18n-completeness — a nested literal that spreads ONLY English', () => {
+  // Depth-keying caught this shape by accident (it compared the last `en` index
+  // against the last own index across everything at a depth). Scope-keying
+  // buckets per literal, so a scope holding `en` and no own spread matched
+  // nothing and the namespace fell through to `english-spread` — a net DETECTION
+  // LOSS introduced by the round-4 fix.
+  //
+  // Measured on a copy of the real tree, deleting `...arSettings.locations` from
+  // `settings.locations`:
+  //   007b1a49c (depth-keyed)  kind ar.settings = en-aliased      -> RED
+  //   2085fbdf8 (scope-keyed)  kind ar.settings = english-spread  -> GREEN (regression)
+  //   HEAD       (+ predicate) kind ar.settings = en-aliased      -> RED again
+  //
+  // The fixture places the english-only sibling AFTER a normal one on purpose:
+  // first position would also pass under the depth-keyed code, so it would not
+  // be a red-first pin.
+  const EN_ONLY_ROOT = path.join(
+    __dirname,
+    '..',
+    '__fixtures__',
+    'i18n-completeness',
+    'english-only-subtree',
+  );
+
+  it('the fixture has no reversed sibling — the english-only literal is the only signal', () => {
+    const src = readFileSync(path.join(EN_ONLY_ROOT, 'lib', 'i18n.ts'), 'utf8');
+    expect(src).toContain('englishOnly: { ...enBeta }');
+    expect(src).not.toContain('{ ...arBeta, ...enBeta }');
+  });
+
+  it('classifies the namespace en-aliased on the english-only nested literal alone', () => {
+    const { wiring, findings } = auditRoot(EN_ONLY_ROOT);
+    expect(wiring.assignments.ar.beta.kind).toBe('en-aliased');
+    expect(findings.map(entryKey)).toContain('ar|beta|aliased|*');
+  });
+
+  it('does not fire on a nested literal that spreads BOTH (prod-shaped stays english-spread)', () => {
+    expect(auditRoot(FIXTURE_ROOT).wiring.assignments.ar.beta.kind).toBe('english-spread');
+  });
+});

@@ -382,10 +382,15 @@ an aliased namespace. This:
 
 `unknown` (an assignment shape the classifier does not recognise) is treated as aliased — fail closed.
 
-**Residual, recorded:** for `english-spread` namespaces the audit still trusts the locale file. Nested
-spreads merge only the subtrees `i18n.ts` names explicitly, so a key authored under a subtree that is
-not spread would be counted as translated while the runtime serves English. Detecting that needs
-subtree-level parsing of the spread graph; out of scope here and noted for whoever extends this.
+**Residual, RESTATED after rounds 4 and 5 (the original wording understated it — see §M1(37)):** for
+`english-spread` namespaces the audit trusts the locale file for any subtree the spread graph does not
+contradict. Rounds 3–5 closed three of the four shapes that defeat this (English-last at top level,
+English-last in a nested sibling, and a nested literal spreading only English). **The surviving shape
+is a nested subtree assigned WITHOUT a spread at all** — `sections: enSettings.sections` as a bare
+property. That is per-subtree and total, not per-key: the whole subtree is served in English while the
+locale's keys for it sit dead on disk. Closing it needs a property-assignment arm in the classifier
+(reading `ns.sub: enX.sub` as an alias of that subtree), which is a genuine scope call for whoever
+extends this — recorded, not silently carried.
 
 ### (11) F-2 (P1) — the alias fixture passed for the wrong reason
 
@@ -760,3 +765,64 @@ namespace name appear in `structural`. An `en`-only `readdirSync` fails it under
   `docs/handoff/progress/enforcement-p2.progress.yaml`. Added a **"THIS FILE IS A CI INPUT — DO NOT
   MOVE"** banner at the top of that YAML naming every file that must move with it (checker default,
   `i18n-baseline-authority.sh`, the consistency test).
+
+---
+
+## M1 fix round 5 — response to `docs/handoff/reviews/enforcement-p2/M1-round5.md`
+
+Verdict: **CHANGES-REQUIRED** — 0 P1, 1 P2 (required), 4 P3. `fix_rounds` 4 → 5, the last round
+`max_fix_rounds` allows. **Baseline-neutral** (byte-identical, 2 917), so no seed revision, no re-pin,
+pin tag unchanged.
+
+### (37) ⚠️ R5-1 (P2) — my round-4 fix was a net DETECTION LOSS
+
+The sharpest possible review outcome: the round-4 scope-keying **removed** a detection the commit it
+replaced had. Depth-keying compared the *last* `en` index against the *last* own index across every
+literal sharing a depth, which accidentally covered a second shape — **a nested literal containing
+only `...en*`, sitting after a locale-spread sibling**. Scope-keying buckets per literal, so a scope
+with `en` and no own spread matched nothing and the namespace fell through to `english-spread`.
+
+Measured on a copy of the real tree, deleting `...arSettings.locations` from `src/lib/i18n.ts`:
+
+```
+007b1a49c (depth-keyed)   kind ar.settings = en-aliased      CLI: "1 NEW gap … ar|settings|aliased|*"  RED
+2085fbdf8 (scope-keyed)   kind ar.settings = english-spread  CLI: "i18n completeness OK"  EXIT=0        GREEN  ← regression
+HEAD      (+ predicate)   kind ar.settings = en-aliased      aliased entry present                      RED again
+```
+
+The arrival is a revert — `// RTL broken, drop ar locations` — after which `settings.locations` is
+served 100% in English, `ar/settings.json`'s `locations.*` keys are dead, and the gate that went red
+on that edit yesterday passes today.
+
+Fixed with one predicate: inside `classifyAssignment`, a **nested** scope (`depth > 1`) holding an
+`en` spread and **no** own spread returns `en-aliased`. **Provably neutral** — swept the whole
+production graph and all five existing fixtures for that shape: zero matches, baseline byte-identical.
+
+Pinned by a **third sibling** in a new `english-only-subtree` fixture, placed **after** a normal
+sibling (first position would also pass under the old code, so it would not be a red-first proof), and
+with the reversed sibling removed so the english-only literal is the only signal. Red-first against
+`2085fbdf8`: `english-spread` → `en-aliased`.
+
+**Lesson, recorded plainly:** rounds 3, 4 and 5 each closed a different door on ONE invariant —
+"English must not be what the runtime serves for a namespace the gate calls translated" — and round 4
+opened a door while closing another. A regex-and-heuristics parse of a hand-written wiring graph has
+no closure property; each shape must be enumerated. §M1(10)'s residual is restated above accordingly.
+
+### (38) R5-2..R5-5 (P3) — dispositions
+
+- **R5-2 the recorded residual was understated.** Correct. Restated in §M1(10) as *per-subtree and
+  total*, with the one surviving shape (a bare-property subtree assignment, `sections:
+  enSettings.sections`) named explicitly as the open scope call. Neither depth- nor scope-keying ever
+  caught it, so it is a standing limitation, not a regression.
+- **R5-3 `lint:ratchet` swallows the lint chain's exit code.** `scripts/lint-ratchet.mjs` runs
+  `pnpm --filter @autoerp/web lint` and parses the ESLint summary; a hard failure inside the chain's
+  new tail would be invisible to it because the summary line is always present. Direction is safe (no
+  false red; the discrete steps do the real gating), and the CI step ordering puts the discrete i18n
+  and liveness steps BEFORE the ratchet, so a genuine failure reddens the job first. Recorded, not
+  changed — altering `lint-ratchet.mjs` is outside this package's scope.
+- **R5-4 housekeeping.** A stray untracked `apps/api/feature-lane-manifest.json` (an M2 dry-run
+  artifact) was in the worktree; **deleted**. The M4 hand-over requires `git status --porcelain` to
+  show exactly one entry — the untracked handback.
+- **R5-5 carry-forward.** None of the CI wiring has executed on a real runner; the three
+  first-execution surfaces and the two owner prerequisites are named in §M1(36) and go into the
+  handback's event-graph list.
