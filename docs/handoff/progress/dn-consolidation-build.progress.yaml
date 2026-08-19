@@ -99,10 +99,10 @@ milestones:
     title: "M2 - View A + A2 + View C: partner 'Delivery notes' tab, balance-card un-billed line, the /finance/lane-separation nav link (no grant is needed and none may be added), the invoiced_via badge + invoice link incl. on DeliveryNoteDetailPage, the OI-9 legacy_unknown neutral badge (en + fr), C9 invalidation. §6.3 green."
     review_lenses: [frontend-conventions, treasury, general]
     status: in_progress
-    fix_rounds: 0
+    fix_rounds: 1
     commit: 483457a41
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/dn-consolidation-build/M2-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M3
     title: "M3 - View B: roll-up shape + GET /delivery-notes/uninvoiced/{partner} lazy expansion (M1 owns the endpoint's existence, authorization and module gate; M3 owns its roll-up shape, lazy expansion and UI), location scoping and filters, /sales/to-bill, sidebar entry, the 30/60/90/90+ aging strip, periodic-billing chip, coexistence helper text. §6.3 green AND the /finance/lane-separation regression green."
     review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
@@ -142,3 +142,4 @@ findings:
   - "Bridge P3s are recorded in the handback rather than silently fixed: SO source_line_id provenance expansion, invoiced-DN DTO N+1, future nested-retrier rollback risk, 55P03 generic failure, raw date formatting, hand-edited partial billing payload behavior, and malformed legacy invoiced_at cast risk. C8 is undefined outside the spec milestone table and is returned as DEFERRED owner ambiguity."
   - "M2 at 483457a41 delivers the customer-only Sales-module/permission-gated partner DN tab and action, generated-DTO typing, exact-row 422 recovery, currency-formatted shared aggregates, billing attribution, C9 invalidation, and the reports.financial lane-separation sidebar link. Seeder and generated permissions map remain untouched."
   - "M2 amended differential preflight passed: focused M2 66/66 and all touched/static gates green; exact §6.3 has only the same two finance reds; exact backend paths have only the same two default-SQLite composite-root reds; PHPStan, route-manifest, SaleReceipt, and generated-type residuals are unchanged from the pin/M1 capture. UI E2E is blocked by an unavailable API proxy plus unrelated baseline locator failures; Playwright produced the documented screenshot."
+  - "M2 bridge round 1 at 668a4bc47 returned CHANGES-REQUIRED. Blocking fixes: force confirmed status on the partner query, render complete persistent per-DN refusal attribution even for off-page selections, format row money in the DN currency, and record explicit RED-first/deviation evidence. P3 cleanup is included where bounded; the ungated base GET /delivery-notes route remains an owner-scoped residual rather than an unauthorized backend revocation."

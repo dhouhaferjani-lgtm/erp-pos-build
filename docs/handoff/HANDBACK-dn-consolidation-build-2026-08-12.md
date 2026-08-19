@@ -305,7 +305,15 @@ overlap is disclosed for owner integration; it is additive and typecheck remains
 
 ## M2 — View A, A2, and View C
 
-**Status: IMPLEMENTED AND VERIFIED — awaiting bridge review.**
+**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — fix round 1 in progress.**
+
+Bridge round 1 reviewed `60df88a01..668a4bc47` through frontend-conventions, treasury, and general
+lenses. It confirmed the module/permission riders, generated DTO flow, C9 tenant scoping, sidebar
+permission-route parity, translations, precision guard, and the 66 focused tests. It found four
+blocking gaps: the shipped list request omitted `status=confirmed`; off-page refused selections
+were absent from the persistent attribution region; row totals used company rather than document
+currency; and the handback lacked explicit RED-first/deviation evidence. Fix round 1 addresses
+those blockers and the bounded P3 presentation issues in the same surface.
 
 ### Delivered surfaces and binding riders
 
