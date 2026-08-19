@@ -132,7 +132,17 @@ describe('to-bill queue API', () => {
     expect(mockApi.get).toHaveBeenNthCalledWith(
       2,
       '/delivery-notes/uninvoiced/partner-42',
-      { params: expect.objectContaining({ page: 2, per_page: 100 }) },
+      {
+        params: {
+          location_id: 'location-7',
+          partner_search: 'atlas',
+          date_from: '2026-07-01',
+          date_to: '2026-08-10',
+          periodic_only: 1,
+          page: 2,
+          per_page: 100,
+        },
+      },
     )
   })
 })
