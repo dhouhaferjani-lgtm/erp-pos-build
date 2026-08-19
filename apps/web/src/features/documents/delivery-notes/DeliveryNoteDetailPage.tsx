@@ -25,7 +25,7 @@ import { useCompanyStore } from '../../../stores/companyStore'
 import type { Document } from '../../../types/document'
 import { colorClasses, semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
-import { DeliveryNoteBillingStatus } from './PartnerDeliveryNotesTab'
+import { DeliveryNoteBillingStatus } from './DeliveryNoteBillingStatus'
 
 type ConfirmAction = 'confirm' | null
 type DeliveryNoteDetail = Document & Pick<

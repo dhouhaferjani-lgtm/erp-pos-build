@@ -635,7 +635,7 @@
       "createInvoice": "Créer une facture à partir de la sélection ({{count}})",
       "created": "Facture créée à partir des bons de livraison",
       "summaryLabel": "Total des bons de livraison",
-      "coexistence": "Un bon de livraison n’est facturé qu’une fois, par le premier parcours qui l’atteint. Une fois facturé, il reste visible ici avec la facture associée.",
+      "coexistence": "Un bon de livraison n’est facturé qu’une fois, par le premier parcours qui l’atteint.\nFacturez depuis la commande client lorsque toute la commande est expédiée et facturée en une seule opération.\nFacturez depuis les bons de livraison lorsque les livraisons sont répétées dans le cadre d’un accord permanent et que la période est facturée.\nUne fois qu’un bon de livraison figure sur une facture, il quitte la liste des éléments non facturés et indique la facture qui l’a pris.",
       "selectRow": "Sélectionner {{number}}",
       "selectAll": "Sélectionner tous les bons de livraison",
       "tableLabel": "Bons de livraison de ce client",
@@ -646,8 +646,8 @@
       },
       "unbilledLine": {
         "label": "Livré, pas encore facturé",
-        "count_one": "({{count}} bon de livraison)",
-        "count_other": "({{count}} bons de livraison)"
+        "count_one": "({{count}} bon de livraison en {{currency}})",
+        "count_other": "({{count}} bons de livraison en {{currency}})"
       }
     },
     "consolidation": {

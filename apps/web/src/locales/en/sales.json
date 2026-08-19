@@ -635,7 +635,7 @@
       "createInvoice": "Create invoice from selected ({{count}})",
       "created": "Invoice created from delivery notes",
       "summaryLabel": "Delivery-note total",
-      "coexistence": "A delivery note is billed once, by whichever route reaches it first. Once invoiced, it stays visible here with the invoice that took it.",
+      "coexistence": "A delivery note is billed once, by whichever route reaches it first.\nBill from the sales order when the whole order goes out and gets invoiced as one job.\nBill from delivery notes when you deliver repeatedly against a standing arrangement and invoice the period.\nOnce a delivery note is on an invoice it leaves the un-invoiced list and shows which invoice took it.",
       "selectRow": "Select {{number}}",
       "selectAll": "Select all delivery notes",
       "tableLabel": "Delivery notes for this customer",
@@ -646,8 +646,8 @@
       },
       "unbilledLine": {
         "label": "Delivered, not yet invoiced",
-        "count_one": "({{count}} delivery note)",
-        "count_other": "({{count}} delivery notes)"
+        "count_one": "({{count}} {{currency}} delivery note)",
+        "count_other": "({{count}} {{currency}} delivery notes)"
       }
     },
     "consolidation": {

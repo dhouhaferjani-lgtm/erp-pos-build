@@ -9,8 +9,8 @@ import type {
   PartnerDeliveryNoteFilter,
   PartnerDeliveryNotesResponse,
 } from '../api/deliveryNotes'
+import { DeliveryNoteBillingStatus } from './DeliveryNoteBillingStatus'
 import {
-  DeliveryNoteBillingStatus,
   PartnerDeliveryNotesTab,
   PartnerUnbilledBalanceLine,
 } from './PartnerDeliveryNotesTab'
@@ -27,9 +27,13 @@ vi.mock('../hooks/useDeliveryNotes', () => ({
   }),
 }))
 
-vi.mock('@/hooks/useCurrency', () => ({
-  useCurrency: () => ({ format: mockFormat }),
-}))
+vi.mock('@/hooks/useCurrency', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/hooks/useCurrency')>()
+  return {
+    ...actual,
+    useCurrency: () => ({ format: mockFormat }),
+  }
+})
 
 function deliveryNote(
   id: string,
@@ -213,7 +217,7 @@ describe('PartnerDeliveryNotesTab', () => {
     const alert = await screen.findByRole('alert')
     expect(within(alert).getByText('DN-001')).toBeInTheDocument()
     expect(within(alert).getByText(/2026-08-12/)).toBeInTheDocument()
-    expect(within(alert).getByText('Billed from sales order')).toBeInTheDocument()
+    expect(within(alert).getByText(/Billed from sales order/)).toBeInTheDocument()
     expect(within(alert).getByRole('link', { name: 'Open INV-001' })).toHaveAttribute(
       'href',
       '/sales/invoices/invoice-1',

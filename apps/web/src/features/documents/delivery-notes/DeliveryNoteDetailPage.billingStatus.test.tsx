@@ -101,4 +101,27 @@ describe('DeliveryNoteDetailPage billing state', () => {
     )
     expect(screen.getByText('Billed from sales order')).toBeInTheDocument()
   })
+
+  it('does not render billing attribution for an un-invoiced delivery note', async () => {
+    mockApi.get.mockResolvedValue({
+      data: {
+        data: {
+          ...billedDeliveryNote,
+          invoiced_at: null,
+          invoiced_by_document_id: null,
+          invoiced_by_document_number: null,
+          invoiced_via: null,
+        },
+      },
+    })
+    renderWithProviders(
+      <Routes>
+        <Route path="/inventory/delivery-notes/:id" element={<DeliveryNoteDetailPage />} />
+      </Routes>,
+      { route: '/inventory/delivery-notes/delivery-note-1' },
+    )
+
+    expect(await screen.findByText('DN-001')).toBeInTheDocument()
+    expect(screen.queryByText('Invoiced on')).not.toBeInTheDocument()
+  })
 })

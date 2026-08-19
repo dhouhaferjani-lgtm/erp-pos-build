@@ -3,17 +3,18 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/atoms/Button'
-import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
+import { StatusBadge } from '@/components/atoms/StatusBadge'
 import { DataTable, type DataTableColumn } from '@/components/molecules/DataTable/DataTable'
 import { FilterTabs } from '@/components/molecules/FilterTabs'
 import { QueryError } from '@/components/QueryError'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
-import { useCurrency } from '@/hooks/useCurrency'
+import { formatAmount, useCurrency } from '@/hooks/useCurrency'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import type { DeliveryNote, PartnerDeliveryNoteFilter } from '../api/deliveryNotes'
 import { parseDeliveryNoteBillingRefusal, type DeliveryNoteBillingRefusal } from '../deliveryNoteBillingRefusal'
 import { useConsolidateDeliveryNotes, usePartnerDeliveryNotes } from '../hooks/useDeliveryNotes'
+import { DeliveryNoteBillingAttribution, DeliveryNoteBillingStatus } from './DeliveryNoteBillingStatus'
 
 interface PartnerDeliveryNotesTabProps {
   partnerId: string
@@ -24,76 +25,11 @@ interface PartnerUnbilledBalanceLineProps {
   partnerId: string
 }
 
-const laneTones: Record<string, StatusTone> = {
-  consolidation: 'info',
-  order_conversion: 'success',
-  pre_post_delivery: 'info',
-  legacy_unknown: 'neutral',
-}
-
-function billingLaneKey(lane: string | null): string {
-  switch (lane) {
-    case 'consolidation':
-      return 'consolidation'
-    case 'order_conversion':
-      return 'orderConversion'
-    case 'pre_post_delivery':
-      return 'prePostDelivery'
-    case 'legacy_unknown':
-      return 'legacyUnknown'
-    default:
-      return 'unknown'
-  }
-}
-
-export function DeliveryNoteBillingStatus({
-  deliveryNote,
-}: {
-  deliveryNote: Pick<DeliveryNote,
-    | 'invoiced_at'
-    | 'invoiced_by_document_id'
-    | 'invoiced_by_document_number'
-    | 'invoiced_via'
-  >
-}) {
-  const { t } = useTranslation('sales')
-
-  if (deliveryNote.invoiced_at === null) {
-    return <StatusBadge tone="pending">{t('deliveryNotes.partnerTab.billingState.uninvoiced')}</StatusBadge>
-  }
-
-  const lane = deliveryNote.invoiced_via
-  const badge = (
-    <StatusBadge tone={lane === null ? 'neutral' : (laneTones[lane] ?? 'neutral')}>
-      {t(`deliveryNotes.partnerTab.invoicedVia.${billingLaneKey(lane)}`)}
-    </StatusBadge>
-  )
-
-  if (
-    deliveryNote.invoiced_by_document_id === null ||
-    deliveryNote.invoiced_by_document_number === null
-  ) {
-    return badge
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {badge}
-      <Link
-        to={entityRoutes.document(deliveryNote.invoiced_by_document_id, { documentType: 'invoice' })}
-        className={`font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
-      >
-        {deliveryNote.invoiced_by_document_number}
-      </Link>
-    </div>
-  )
-}
-
 export function PartnerDeliveryNotesTab({
   partnerId,
   canCreateInvoice,
 }: PartnerDeliveryNotesTabProps) {
-  const { t } = useTranslation('sales')
+  const { t, i18n } = useTranslation('sales')
   const { format: formatMoney } = useCurrency()
   const navigate = useNavigate()
   const [filter, setFilter] = useState<PartnerDeliveryNoteFilter>('uninvoiced')
@@ -143,13 +79,15 @@ export function PartnerDeliveryNotesTab({
     {
       key: 'document_date',
       header: t('deliveryNotes.partnerTab.columns.date'),
-      render: (deliveryNote) => new Date(deliveryNote.document_date).toLocaleDateString(),
+      render: (deliveryNote) => new Date(deliveryNote.document_date).toLocaleDateString(
+        i18n.resolvedLanguage ?? i18n.language,
+      ),
     },
     {
       key: 'total',
       header: t('deliveryNotes.partnerTab.columns.total'),
       numeric: true,
-      render: (deliveryNote) => formatMoney(deliveryNote.total ?? '0'),
+      render: (deliveryNote) => formatAmount(deliveryNote.total ?? '0', deliveryNote.currency),
     },
     {
       key: 'billing_state',
@@ -168,17 +106,16 @@ export function PartnerDeliveryNotesTab({
             <StatusBadge tone="danger">
               {t('deliveryNotes.partnerTab.billingState.refused')}
             </StatusBadge>
-            <DeliveryNoteBillingStatus deliveryNote={{
-              invoiced_at: refusal.invoice_date ?? 'attributed',
-              invoiced_by_document_id: refusal.invoice_id,
-              invoiced_by_document_number: refusal.invoice_number,
-              invoiced_via: refusal.invoiced_via,
-            }} />
+            <DeliveryNoteBillingAttribution
+              invoiceId={refusal.invoice_id}
+              invoiceNumber={refusal.invoice_number}
+              lane={refusal.invoiced_via}
+            />
           </span>
         )
       },
     },
-  ], [formatMoney, refusalById, t])
+  ], [i18n.language, i18n.resolvedLanguage, refusalById, t])
 
   const toggle = (id: string) => {
     setSelectedIds((current) => {
@@ -214,8 +151,9 @@ export function PartnerDeliveryNotesTab({
   const removeAndRetry = async () => {
     const remaining = Array.from(selectedIds).filter((id) => !refusedIds.has(id))
     setSelectedIds(new Set(remaining))
+    if (remaining.length === 0) return
     setBillingRefusal(null)
-    if (remaining.length > 0) await submit(remaining)
+    await submit(remaining)
   }
 
   return (
@@ -240,7 +178,7 @@ export function PartnerDeliveryNotesTab({
         ) : null}
       </div>
 
-      <p className={`text-sm ${colorTokens.text.muted}`}>
+      <p className={`whitespace-pre-line text-sm ${colorTokens.text.muted}`}>
         {t('deliveryNotes.partnerTab.coexistence')}
       </p>
 
@@ -253,6 +191,7 @@ export function PartnerDeliveryNotesTab({
             <span className={`ms-1 font-normal ${colorTokens.text.muted}`}>
               {t('deliveryNotes.partnerTab.unbilledLine.count', {
                 count: query.data.aggregates.count,
+                currency: query.data.aggregates.currency,
               })}
             </span>
           </span>
@@ -273,17 +212,66 @@ export function PartnerDeliveryNotesTab({
           <p className={`mt-1 text-sm ${colorTokens.intent.danger.text}`}>
             {t('deliveryNotes.consolidation.billingRefusal.guarantee')}
           </p>
-          <Button
-            variant="dangerOutline"
-            size="sm"
-            className="mt-3"
-            onClick={() => { void removeAndRetry() }}
-            disabled={consolidation.isPending}
-          >
-            {t('deliveryNotes.consolidation.billingRefusal.removeAndRetry', {
-              count: billingRefusal.documents.length,
+          <ul className="mt-3 space-y-2">
+            {billingRefusal.documents.map((document) => {
+              const laneLabel = document.invoiced_via === null
+                ? t('deliveryNotes.consolidation.billingRefusal.billedBy.unknown')
+                : t(
+                    `deliveryNotes.consolidation.billingRefusal.billedBy.${document.invoiced_via}`,
+                    {
+                      defaultValue: t('deliveryNotes.consolidation.billingRefusal.billedBy.unknown'),
+                    },
+                  )
+
+              return (
+                <li
+                  key={document.id}
+                  className={`rounded-md border ${colorTokens.intent.danger.borderSubtle} ${colorTokens.surface.base} p-3`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className={`font-medium ${colorTokens.text.primary}`}>
+                        {document.document_number}
+                      </p>
+                      <p className={`mt-1 text-sm ${colorTokens.text.muted}`}>
+                        {document.invoice_date ?? '—'}
+                        {' · '}
+                        {laneLabel}
+                      </p>
+                    </div>
+                    {document.invoice_id !== null && document.invoice_number !== null ? (
+                      <Link
+                        to={entityRoutes.document(document.invoice_id, { documentType: 'invoice' })}
+                        className={`text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
+                      >
+                        {t('deliveryNotes.consolidation.billingRefusal.openInvoice', {
+                          number: document.invoice_number,
+                        })}
+                      </Link>
+                    ) : (
+                      <span className={`text-sm ${colorTokens.text.muted}`}>
+                        {document.invoice_number
+                          ?? t('deliveryNotes.consolidation.billingRefusal.invoiceUnavailable')}
+                      </span>
+                    )}
+                  </div>
+                </li>
+              )
             })}
-          </Button>
+          </ul>
+          {selectedIds.size > 0 ? (
+            <Button
+              variant="dangerOutline"
+              size="sm"
+              className="mt-3"
+              onClick={() => { void removeAndRetry() }}
+              disabled={consolidation.isPending}
+            >
+              {t('deliveryNotes.consolidation.billingRefusal.removeAndRetry', {
+                count: billingRefusal.documents.length,
+              })}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 
@@ -352,21 +340,24 @@ export function PartnerUnbilledBalanceLine({ partnerId }: PartnerUnbilledBalance
   if (aggregates === undefined) return null
 
   return (
-    <div className={`border-t ${colorTokens.border.hairline} pt-3`}>
-      <Link
-        to="?tab=delivery-notes"
-        className={`flex items-start justify-between gap-4 rounded-md px-2 py-2 ${colorTokens.intent.primary.bgSubtleAlphaLight} ${colorTokens.intent.neutral.bgHover}`}
-      >
-        <span className={`text-sm font-medium ${colorTokens.intent.primary.text}`}>
+    <div className={`flex items-start justify-between gap-4 border-t ${colorTokens.border.hairline} px-2 pt-3`}>
+      <dt>
+        <Link
+          to="?tab=delivery-notes"
+          className={`rounded-md text-sm font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.bgSubtleAlphaLight} ${colorTokens.intent.neutral.bgHover}`}
+        >
           {t('deliveryNotes.partnerTab.unbilledLine.label')}
           <span className={`ms-1 font-normal ${colorTokens.text.muted}`}>
-            {t('deliveryNotes.partnerTab.unbilledLine.count', { count: aggregates.count })}
+            {t('deliveryNotes.partnerTab.unbilledLine.count', {
+              count: aggregates.count,
+              currency: aggregates.currency,
+            })}
           </span>
-        </span>
-        <span className={`text-sm font-semibold tabular-nums ${colorTokens.text.primary}`}>
-          {formatMoney(aggregates.total)}
-        </span>
-      </Link>
+        </Link>
+      </dt>
+      <dd className={`text-sm font-semibold tabular-nums ${colorTokens.text.primary}`}>
+        {formatMoney(aggregates.total)}
+      </dd>
     </div>
   )
 }

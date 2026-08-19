@@ -121,6 +121,7 @@ export async function getPartnerDeliveryNotes({
   const response = await api.get<PartnerDeliveryNotesResponse>('/delivery-notes', {
     params: {
       partner_id: partnerId,
+      status: 'confirmed',
       ...filterParam,
       page,
       per_page: perPage,
