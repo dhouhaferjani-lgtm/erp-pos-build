@@ -708,8 +708,10 @@ Fix round 1 is RED `2bbc28b69` + GREEN `cdec3a5a2`.
   resolution rather than the status code alone, because the default SQLite test path returns a clean
   404 for a non-UUID and structurally cannot show the PostgreSQL `SQLSTATE[22P02]` 500; the
   controller's own miss is distinguishable by its `error.code = NOT_FOUND` body.
-  **Survey of the same file, recorded not fixed** (the wave did not touch these params, so
-  constraining them was left out of scope): `POST /delivery-notes/{deliveryNote}/confirm` (`:292`)
+  **Survey, recorded not fixed** — 14 of the 59 unconstrained parameter bindings in that
+  `routes.php` (the file has more; these are the document/delivery-note params adjacent to this
+  wave; line numbers below are as of `bbef65232`, one lower than HEAD after the `:49` insertion —
+  M4-round2 N5): `POST /delivery-notes/{deliveryNote}/confirm` (`:292`)
   and the `documents/{document}/*` sub-resources — additional-costs (`:327`, `:331`, `:335`, `:339`),
   landed-cost-breakdown (`:343`), related (`:348`), tax-breakdown (`:353`), payments (`:358`),
   credit-allocations (`:363`), pdf (`:368`, `:372`) and email (`:377`, `:381`) — all bind a raw
@@ -727,15 +729,25 @@ Fix round 1 is RED `2bbc28b69` + GREEN `cdec3a5a2`.
   (`DeliveryNoteConsolidation.tsx:13-16,67,75,87`). `useInvoiceableDeliveryNotes`,
   `getInvoiceableDeliveryNotes`, `groupDeliveryNotesByPartner` and `calculateConsolidationTotals` are
   removed; the latter two had zero references anywhere, tests included.
-  `calculateConsolidationTotals` also carried four `parseFloat` calls over money, so deleting it
-  removes a dormant rule-19 violation that a green test was certifying. The orphaned assertions were
+  `calculateConsolidationTotals` also carried three `parseFloat` calls over money (count corrected
+  M4 round 2, N2), so deleting it removes a dormant rule-19 violation that a green test was
+  certifying. The two lint warnings its deletion removed are `no-unnecessary-condition`, not
+  precision warnings. ESCALATION (M4-round2 N2, parent-ledgered): re-deriving this exposed that
+  `apps/web/eslint-rules/no-parsefloat-on-money.js:29-40` bails at `:66` on a `LogicalExpression`
+  argument, so `parseFloat(x.total ?? '0')` is invisible to the rule-19 guard — 22 live sites today
+  incl. `DocumentListPage.tsx:199-200,264-265`. Owned by the parent as a guard-gap ticket
+  (coordinates with enforcement-P2's RuleTester deliverable). The orphaned assertions were
   adjusted rather than dropped wholesale: the `getInvoiceableDeliveryNotes` describe block leaves
   `api/deliveryNotes.test.ts` with its now-unused `apiGet` mock, and the invoiceable probe leaves the
   three `deliveryNotesTenantScope` cases, whose tenant-scope and C9 subject matter survives through
   the remaining detail/list/partner-page probes. **Note for M5:** the transport this removes was
   `GET /delivery-notes?status=confirmed&uninvoiced=1` — a query-param shape on the base index route
-  (`DeliveryNoteController.php:298`), not a distinct endpoint. That server-side branch is now
-  unused by the web client and is a candidate for the same triage.
+  (`DeliveryNoteController.php:298`), not a distinct endpoint. CORRECTION (M4 round 2, N1): that
+  server-side branch is LIVE, not a triage candidate — `getPartnerDeliveryNotes`
+  (`apps/web/src/features/documents/api/deliveryNotes.ts:171-180`) sends
+  `status=confirmed&uninvoiced=1&partner_id=…` on the partner tab's default lane, hitting the same
+  `DeliveryNoteController.php:298` branch, pinned by that file's own green test. Only the RETIRED
+  page's consumer of the un-scoped shape is gone.
 - **Finding 5 (P3) — CLOSED.** `PartnerDeliveryNotesTab.test.tsx` gains a French case asserting
   `billingRefusal.guarantee` and `.removeAndRetry`, restoring the fr coverage of the OI-8 refusal
   surface that was deleted with the consolidation component while the copy stayed live on two
@@ -743,6 +755,13 @@ Fix round 1 is RED `2bbc28b69` + GREEN `cdec3a5a2`.
 - **Finding 6 (P3) — CLOSED.** `docs/architecture/frontend.md` no longer lists the deleted
   `DeliveryNoteConsolidationPage`; it names `DeliveryNoteDetailPage` and `ToBillPage` and records the
   retirement.
+- **M4-round2 N4, recorded:** `PartnerForm.test.tsx:356` is a contention flake under the DEFAULT
+  vitest pool (2 of 4 default-pool runs failed; 533/533 ×3 under `--maxWorkers=1`; partners alone
+  3/3 green). Pre-existing, not introduced by the M4 delta — M5 must not read it as a regression.
+- **M4-round2 N6, recorded for M5's reachability pass:** the retired URL now renders the detail
+  page's bare error card (`DeliveryNoteDetailPage.tsx:115-123`, no back link) — pinned as intended
+  by `DeliveryNoteConsolidationRoute.retired.test.tsx`; a friendlier not-found treatment is an M5
+  candidate, not owed here.
 - **Finding 7 (P3) — RECORDED, NOT FIXED. The differential pin is stale and M5/parent must
   re-derive it.** The preflight policy pins two `expected_inherited_residuals` at
   `CopiesDocumentData.php:309` and `:310`

@@ -86,12 +86,12 @@ feature/
 
 ---
 
-### Documents Feature (5 pages)
-**Purpose**: Unified document management
+### Documents Feature (selected pages)
+**Purpose**: Unified document management (the feature holds 12 page components across its
+type-specific subdirectories; the load-bearing ones for this doc are listed)
 
 **Pages**:
 - `DocumentListPage` - List with type filter
-- `DocumentDetailPage` - Document view
 - `DocumentForm` - Create/edit
 - `DeliveryNoteDetailPage` - Delivery note view with billing attribution
 - `ToBillPage` - Un-invoiced delivery notes grouped by customer (`/sales/to-bill`)
