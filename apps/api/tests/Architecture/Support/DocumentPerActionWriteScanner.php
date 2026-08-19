@@ -78,8 +78,9 @@ use SplFileInfo;
  *               general. The erasure rule covers BOTH routes to a stripped
  *               reference: direct property assignment
  *               (`$e->source_id = null;`) and mass assignment
- *               (`fill()`/`forceFill()` with a null-admitting linkage key OR an
- *               unreadable payload, and `setAttribute('source_id', null)`).
+ *               (`fill()`/`forceFill()`/`setRawAttributes()` with a
+ *               null-admitting linkage key OR an unreadable payload, and
+ *               `setAttribute('source_id', null)`).
  *               Otherwise NOT IN CONTRACT: `journal_entries` carries no
  *               monetary amount (debit/credit live on `journal_entry_lines`,
  *               outside this package's four-table contract), so a lifecycle
@@ -169,7 +170,11 @@ use SplFileInfo;
  *    including one inside an unrelated `if` branch, and regardless of order
  *    (deliberate: both orders are legitimate inside one transaction). A function
  *    that records one movement and writes two unrelated levels is credited for
- *    both.
+ *    both. FOR CLASS-LESS FILES THE SCOPE IS THE WHOLE FILE: top-level code is
+ *    scanned as one synthetic `(top-level)` scope, so a movement in one route
+ *    closure credits a level write in a DIFFERENT closure of the same file.
+ *    That is a real widening of this limitation, and it is why the top-level
+ *    fixtures keep their linked counterpart in a separate file.
  * C. BASELINE KEYS CARRY A POSITIONAL ORDINAL within (file, class, function,
  *    table, mechanism). Inserting a second same-mechanism write earlier in the
  *    same function renumbers the later ones, so the ratchet reports one `stale`
@@ -177,8 +182,17 @@ use SplFileInfo;
  *    the message misleads; read the file:line in the report, not just the key.
  *    Methods of a nested anonymous class are attributed to that anonymous class
  *    only (they used to be double-counted onto the enclosing class as well).
+ *    Anonymous classes are numbered `(anonymous#N)` in FILE order, which is a
+ *    second churn axis on the same footing: inserting an anonymous class
+ *    earlier in a file renumbers every later one.
  * D. RAW SQL is matched by table name plus an INSERT/UPDATE/DELETE keyword in a
  *    statically-resolvable string. SQL assembled from variables is not matched.
+ * D2. `upsert()` can never classify as LINKED: its argument 0 is a LIST of row
+ *    arrays and argument 1 is a positional column list, so payload extraction
+ *    always resolves to `false` and the site fails closed to `violation` even
+ *    when linkage is complete. Direction is safe; there are zero `upsert` calls
+ *    on the four tables today. If one ever lands, expect a false positive and
+ *    teach extractPayload() the list-of-rows shape rather than relaxing it.
  * E. LINKAGE-VALUE NULLABILITY IS REFUSED, NOT PROVEN. nullAdmitting() refuses
  *    an ENUMERATED set of shapes (literal null, nullable/null-defaulted
  *    parameter, null-assigned local, nullable `$this` property or
@@ -529,7 +543,8 @@ final class DocumentPerActionWriteScanner
             $synthetic = new Stmt\Function_(new Node\Identifier('top_level'));
             $synthetic->stmts = $topLevel;
 
-            foreach ($this->scanFunction($synthetic, $relative, '(top-level)') as $site) {
+            $declaredFunctions = $this->namedFunctionNodeIds($topLevel);
+            foreach ($this->scanFunction($synthetic, $relative, '(top-level)', $declaredFunctions) as $site) {
                 $sites[] = $site;
             }
         }
@@ -540,14 +555,18 @@ final class DocumentPerActionWriteScanner
     /**
      * @return list<array{key: string, file: string, line: int, class: string, function: string, table: string, mechanism: string, write_class: string, classification: string, reason: string}>
      */
-    private function scanFunction(Node $fn, string $relativeFile, string $functionName): array
+    /**
+     * @param  array<int, true>  $additionalExclusions  node ids that belong to a scope scanned elsewhere
+     * @return list<array{key: string, file: string, line: int, class: string, function: string, table: string, mechanism: string, write_class: string, classification: string, reason: string}>
+     */
+    private function scanFunction(Node $fn, string $relativeFile, string $functionName, array $additionalExclusions = []): array
     {
         // Nodes belonging to a nested class-like (an anonymous class declared in
         // this body) are that class's, not this scope's. Excluding them stops
         // one physical write emitting two keys — round 3 removed the third key
         // by filtering the METHOD list, but the finder still walked into the
         // body from the enclosing scope (M1 gate round 4, finding 3).
-        $nestedNodes = $this->nestedClassLikeNodeIds($fn);
+        $nestedNodes = $this->nestedClassLikeNodeIds($fn) + $additionalExclusions;
         $outside = static fn (Node $n): bool => ! isset($nestedNodes[spl_object_id($n)]);
 
         $this->varTypes = $this->buildVarTypes($fn);
@@ -1324,7 +1343,7 @@ final class DocumentPerActionWriteScanner
                 continue;
             }
             $method = $call->name->toString();
-            if (! in_array($method, ['fill', 'forceFill', 'setAttribute'], true)) {
+            if (! in_array($method, ['fill', 'forceFill', 'setRawAttributes', 'setAttribute'], true)) {
                 continue;
             }
 
@@ -1358,8 +1377,9 @@ final class DocumentPerActionWriteScanner
                 continue;
             }
 
-            // fill() / forceFill(): an unreadable payload cannot be shown to
-            // preserve linkage — fail closed, same standard as update().
+            // fill() / forceFill() / setRawAttributes(): an unreadable payload
+            // cannot be shown to preserve linkage — fail closed, same standard
+            // as update().
             if ($args === [] || ! $args[0]->value instanceof Expr\Array_) {
                 $out[$table] = true;
 
@@ -1685,6 +1705,30 @@ final class DocumentPerActionWriteScanner
         }
 
         return $out;
+    }
+
+    /**
+     * Every node inside a named function declaration, by object id. The
+     * top-level pass must skip them: `topLevelFunctionLikes()` finds
+     * `Stmt\Function_` at ANY depth, so a function declared inside a top-level
+     * `if` would otherwise be scanned twice — once in its own scope and once as
+     * part of the synthetic `(top-level)` body (M1 gate round 5, note 4).
+     *
+     * @param  list<Stmt>  $stmts
+     * @return array<int, true>
+     */
+    private function namedFunctionNodeIds(array $stmts): array
+    {
+        $ids = [];
+
+        foreach ($this->finder->findInstanceOf($stmts, Stmt\Function_::class) as $function) {
+            foreach ($this->finder->find($function, static fn (Node $n): bool => true) as $node) {
+                $ids[spl_object_id($node)] = true;
+            }
+            $ids[spl_object_id($function)] = true;
+        }
+
+        return $ids;
     }
 
     /**

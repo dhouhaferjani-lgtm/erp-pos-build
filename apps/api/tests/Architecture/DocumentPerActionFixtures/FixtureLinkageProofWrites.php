@@ -300,6 +300,17 @@ final class FixtureLinkageProofWrites
     }
 
     /**
+     * `setRawAttributes()` — the mass-assignment route one rung below
+     * `forceFill()` (M1 gate round 5, note 2).
+     */
+    public function journalEntrySetRawAttributesErasesLinkage(string $entryId): void
+    {
+        $entry = JournalEntry::query()->findOrFail($entryId);
+        $entry->setRawAttributes(['source_id' => null]);
+        $entry->save();
+    }
+
+    /**
      * A `fill()` that touches no linkage column is ordinary lifecycle work.
      */
     public function journalEntryFillLifecycleOnly(string $entryId): void
