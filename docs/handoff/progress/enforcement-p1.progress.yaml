@@ -62,9 +62,9 @@ dpa_3c_reviewed_sha: d07868ccaf7f395bb50744a767c56aa4ab945983  # wave3-3c-3d M3.
 # (gate-r3 R3-C-2). Never executor, never CI, never a candidate diff. LOCAL green runs export the
 # reviewed seed blob under the same env name after asserting it equals the mirror; the unset negative
 # case runs isolated via env -u (gate-r4 R4-H-4).
-dpa_baseline_seed_commit: null
-dpa_baseline_protected_blob: null
-dpa_baseline_pin_tag: null
+dpa_baseline_seed_commit: ff5642f87998e458059694f256d4033636809605
+dpa_baseline_protected_blob: 1381983d463e6c546535be907d4aa1c7ca94c597
+dpa_baseline_pin_tag: ci-pin/enforcement-p1-r1   # PRE-ALLOCATED: no ci-pin/enforcement-p1-* tag exists locally or on origin, so n = 1
 
 # PRE-PROMOTION CI DISPATCH receipt (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2 — a receipt
 # committed into the candidate changes the SHA it attests). The GATE is procedural (brief §5 item 4):

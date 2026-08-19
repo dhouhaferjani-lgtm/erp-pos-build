@@ -441,6 +441,20 @@ final class DocumentPerActionWriteScanner
 
     private Parser $parser;
 
+    /**
+     * Parsed ASTs for the lifetime of ONE scan() call, kept ONLY for files that
+     * can possibly contribute to a resolution map or a write site (see
+     * mayMatter()). The scan makes five passes over the tree — relation map,
+     * model-returning methods, chokepoint entry points, model inheritance, then
+     * the write census — and without this cache every pass re-parses every file:
+     * ~50 s instead of ~10 s, which matters for a static-only CI lane. The
+     * prefilter keeps peak memory bounded (caching the whole tree exhausted a
+     * 512 MB CLI limit).
+     *
+     * @var array<string, array<int, Node>|null>
+     */
+    private array $astCache = [];
+
     public function __construct()
     {
         $this->finder = new NodeFinder;
@@ -464,6 +478,7 @@ final class DocumentPerActionWriteScanner
      */
     public function scan(array $roots, string $relativeTo, array $contextRoots = []): array
     {
+        $this->astCache = [];
         $mapRoots = [...$roots, ...$contextRoots];
         $this->relationMap = $this->buildRelationMap($mapRoots);
         $this->modelReturningMethods = $this->buildModelReturningMethods($mapRoots);
@@ -479,6 +494,8 @@ final class DocumentPerActionWriteScanner
 
         usort($sites, static fn (array $a, array $b): int => [$a['file'], $a['line'], $a['key']] <=> [$b['file'], $b['line'], $b['key']]);
 
+        $this->astCache = [];
+
         return $sites;
     }
 
@@ -487,8 +504,7 @@ final class DocumentPerActionWriteScanner
      */
     public function scanFile(string $path, string $relativeTo): array
     {
-        $code = (string) file_get_contents($path);
-        $stmts = $this->parser->parse($code);
+        $stmts = $this->parseFile($path);
         if ($stmts === null) {
             return [];
         }
@@ -1043,7 +1059,7 @@ final class DocumentPerActionWriteScanner
             if (! str_contains($code, 'extends')) {
                 continue;
             }
-            $stmts = $this->parser->parse($code);
+            $stmts = $this->parseFile($path);
             if ($stmts === null) {
                 continue;
             }
@@ -1470,6 +1486,47 @@ final class DocumentPerActionWriteScanner
     // ---------------------------------------------------------------- parsing
 
     /**
+     * @return array<int, Node>|null
+     */
+    private function parseFile(string $path): ?array
+    {
+        if (array_key_exists($path, $this->astCache)) {
+            return $this->astCache[$path];
+        }
+
+        $code = (string) file_get_contents($path);
+        $stmts = $this->parser->parse($code);
+
+        if ($this->mayMatter($code)) {
+            $this->astCache[$path] = $stmts;
+        }
+
+        return $stmts;
+    }
+
+    /**
+     * Cheap textual prefilter: can this file contribute to any resolution map
+     * or carry a write to one of the four tables? Files that mention none of
+     * the four models, none of the four table names, no relation declaration
+     * and no `extends` are parsed once and immediately discarded.
+     */
+    private function mayMatter(string $code): bool
+    {
+        foreach (self::TABLE_MODELS as $table => $model) {
+            $short = substr((string) strrchr($model, '\\'), 1);
+            if (str_contains($code, $short) || str_contains($code, $table)) {
+                return true;
+            }
+        }
+
+        return str_contains($code, 'hasMany')
+            || str_contains($code, 'hasOne')
+            || str_contains($code, 'morphMany')
+            || str_contains($code, 'morphOne')
+            || str_contains($code, 'extends');
+    }
+
+    /**
      * @param  list<string>  $roots
      * @return list<string>
      */
@@ -1517,7 +1574,7 @@ final class DocumentPerActionWriteScanner
                 && ! str_contains($code, 'morphMany') && ! str_contains($code, 'morphOne')) {
                 continue;
             }
-            $stmts = $this->parser->parse($code);
+            $stmts = $this->parseFile($path);
             if ($stmts === null) {
                 continue;
             }
@@ -1788,7 +1845,7 @@ final class DocumentPerActionWriteScanner
             if (basename($path) !== $short.'.php') {
                 continue;
             }
-            $stmts = $this->parser->parse((string) file_get_contents($path));
+            $stmts = $this->parseFile($path);
             if ($stmts === null) {
                 continue;
             }
@@ -1860,8 +1917,7 @@ final class DocumentPerActionWriteScanner
         $map = [];
 
         foreach ($this->files($roots) as $path) {
-            $code = (string) file_get_contents($path);
-            $stmts = $this->parser->parse($code);
+            $stmts = $this->parseFile($path);
             if ($stmts === null) {
                 continue;
             }
