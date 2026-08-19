@@ -579,8 +579,9 @@ foreach (array_unique($mustBeInAggregate) as $jobId) {
 // it the package's entire backend guard surface is removable by exactly the
 // remediation an unrelated lane reaches for when `backend-architecture` goes red
 // — gate it, soften it, or make it depend on a gated job — while every check here
-// still reports OK. 43 s of security tests were protected against five doors; the
-// guard that protects them was protected against none.
+// still reports OK. The asymmetry this removes: the security lane was protected
+// against every door in `gatingDefects()` and the guard protecting IT against
+// none. Both sides now run the same helper, so the door set cannot diverge again.
 $selfJob = 'backend-architecture';
 $selfSteps = [
     'php tools/feature-lane-manifest-check.php',

@@ -1723,6 +1723,16 @@ edit can always make a job not gate while a text check says it does.** N-4 (allo
 outside `ci.yml`) and N-5 (the *default* `phpunit.xml` gaining one more excluded group) are the two
 named, still-open instances.
 
+**The named open residuals (the complete list M4 and P3 inherit):**
+
+| # | Residual | Family |
+|---|---|---|
+| N-4 | An allowlist relocated outside `ci.yml` (a shell script, a second workflow) leaves the anchoring lint's field of view. **P3-M2 must not wire its country-chart entry into a list outside `ci.yml`.** | scan surface |
+| N-5 | One more `<groups><exclude>` in the **default** `phpunit.xml` partially guts a certified lane; total emptying is caught by the selection assertion, partial is not. | config surface |
+| R8-1 | Three more trigger-set edits stop the workflow starting and are not checked: a positive `paths` filter, a `paths-ignore` list that is not literally `'**'`, and GitHub's negation form `branches: [main, dev, '!dev']`. | trigger set |
+| R8-2 | The `if:` door is a substring test, so a *containing* expression walks through it — `if: ${{ github.base_ref == 'dev' && false }}` passes. | self-application |
+| R8-3 | The N-3 companion guard remains a single-needle lexical check (`sprintf`, `implode`, or renaming `$selector` evade it). The behavioural proof beside it is what carries the weight. | lexical guard |
+
 **Standing mitigation, which is what actually bounds this:** the S-14 owner-run pre-promotion
 `workflow_dispatch` runs on **exactly the accepted SHA** and **executes the real jobs**. A workflow
 softened into not-gating shows up there as a job that did not run or did not fail correctly. The human
@@ -1806,3 +1816,40 @@ growth nor a formatter rewriting concatenation can silently make it vacuous agai
   **The N-4 line for P3-M2 is owed in the M3 checklist** and is included there.
 
 **Liveness suite: 46 cases.** `./vendor/bin/pint --test` → `{"result":"pass"}`.
+
+---
+
+## M2 round 8 — **ACCEPT**
+
+`docs/handoff/reviews/enforcement-p2/M2-round8.md`. Tally: 0 P1, 2 P2, 5 P3 — and the ACCEPT is
+correctly reasoned, not a waiver. The reviewer confirmed:
+
+- the blocking round-7 P1 (**Pint**) closed and **measured green in both directions**;
+- all four parent-authorized items (N-1/N-2/N-3/N-6) still closed — and **N-3 verified closed in the
+  strong empirical sense *after* the formatter rewrote the file carrying it**, which was the single
+  interaction most likely to have silently regressed;
+- the three same-family findings round 7 raised as residuals were **fixed rather than shipped**;
+- the rewritten history restored; manifest and debt numbers unmoved;
+- **nothing of a different family**: no false claim in the evidence, no coverage regression, no CI job
+  turned red. `backend-lint` green, checker green, liveness 46/46, `tests/Feature/Security` green.
+
+The two new P2s fall squarely inside the two families the parent's terminal condition names as
+residuals, so the ACCEPT stands on that ruling. Both are now in the §(73) residual table as **R8-1**
+(three more trigger-set doors) and **R8-2** (the `if:` substring test admits a containing expression).
+
+### (79) Closed in the accepting commit (P3s worth the two minutes)
+
+- **Finding 4** — a shipped in-file comment still said "five doors" after the unification made it six:
+  the exact prose-drift class N-6 was raised about, inside a shipped file. Rewritten **count-free** so
+  it cannot drift again. *(My first attempt at this edit corrupted the comment block into duplicate
+  lines; caught and repaired before commit — noted because it is the second time in this milestone a
+  blunt text edit damaged something, after §(77).)*
+- **Finding 6** — two of the four new liveness cases asserted on needles so weak they would pass on
+  almost any failure (`'paths-ignore'`, `'types'`). Both now pin the actual message text.
+- **Findings 3, 5, 7** — recorded, not code-fixable here. **Finding 5 is a concrete M4 obligation:**
+  the new `security-regression` job's environment is a strict *subset* of `backend-test`'s (no
+  services, `pdo_sqlite` only). The reasoning is sound and documented, and it is green locally — but a
+  latent service dependency would not surface on a developer box with a running stack, and the
+  executor cannot push. **The M4 handback's event-graph acceptance list must name `security-regression`
+  as a job id the S-14 pre-promotion `workflow_dispatch` has to show executed and green**, alongside
+  the `frontend-lint` step ids.

@@ -906,7 +906,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         [$exit, $out] = $this->runChecker();
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('paths-ignore', $out);
+        self::assertStringContainsString('excludes every path', $out);
     }
 
     /** Round-7 finding 3, second form: a `types` list without the ordinary PR events. */
@@ -921,6 +921,6 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         [$exit, $out] = $this->runChecker();
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('types', $out);
+        self::assertStringContainsString('contains none of opened/synchronize/reopened', $out);
     }
 }
