@@ -164,9 +164,24 @@ return new class extends Migration
      * so during `tenants:migrate`, which this repository auto-runs on every push to
      * origin/dev. Count and skip instead, exactly like `unparseable_invoice_id`.
      *
-     * The original string is returned unchanged when it parses, so well-formed values keep
-     * their offset and nothing about the existing backfill's output changes.
-     * (M5-terminal treasury F-6.)
+     * The value Carbon RESOLVED is what gets inserted — not the raw string.
+     *
+     * F-6 as first written validated with `CarbonImmutable::parse()` but inserted the raw
+     * string, leaving PostgreSQL to parse it a second time with a DIFFERENT grammar, so the
+     * abort path was narrowed rather than closed. Measured:
+     *
+     *   value        CarbonImmutable::parse   ::timestamptz
+     *   '+1 day'     OK                       ERROR 22007   <- still aborted tenants:migrate
+     *   '@175…'      OK                       ERROR 22008   <- still aborted tenants:migrate
+     *   'now'        OK                       OK, but resolved at INSERT time
+     *   'yes', '0'   THROW (counted)          ERROR
+     *
+     * Inserting `$parsed->toIso8601String()` collapses the two grammars into Carbon's alone:
+     * every value this method accepts is now, by construction, a value PostgreSQL accepts,
+     * and a relative value resolves once, here, rather than again at INSERT. A well-formed
+     * absolute timestamp keeps its instant and its offset (ISO 8601 is round-trip exact for
+     * the `timestamptz` column), so nothing about the existing backfill's output changes.
+     * (M5-terminal treasury F-6; completed in r2 by treasury `R2-4`.)
      *
      * @param  array<string, mixed>  $payload
      * @param  array<string, int>  $counts
@@ -181,14 +196,14 @@ return new class extends Migration
         }
 
         try {
-            CarbonImmutable::parse($invoicedAt);
+            $parsed = CarbonImmutable::parse($invoicedAt);
         } catch (Throwable) {
             $counts['unparseable_invoiced_at']++;
 
             return null;
         }
 
-        return $invoicedAt;
+        return $parsed->toIso8601String();
     }
 
     /** @param array<string, mixed> $payload @param array<string, int> $counts */

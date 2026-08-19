@@ -208,13 +208,40 @@ class DeliveryNoteConsolidationTest extends TestCase
             $this->assertStringContainsString('for update', strtolower($scopedLockQueries[0]));
         }
 
+        // M5-terminal r2, treasury `R2-3`. These two counts were GLOBAL — no company,
+        // tenant or document predicate — which made this test order-dependent and red
+        // whenever DeliveryNoteConsolidationConcurrencyTest ran first in the same
+        // process: that file forks child processes on cloned connections whose writes
+        // COMMIT, so they survive RefreshDatabase's parent-connection transaction and
+        // are still in the database when this test counts. Measured before this fix:
+        // the 14-file wave set run in ONE process was 1 failed / 137 passed
+        // ("actual size 9 matches expected size 3"), while the executor's 13+1 file
+        // split was green — the split hid it.
+        //
+        // Scoped to the invoice this test actually created. NOTE: `stored_events`
+        // .`aggregate_uuid` is NULL for these rows — `DocumentConverted` does pass
+        // `$targetDocumentId` to `DomainEvent::__construct`, but these events reach the
+        // store through the event bus rather than an aggregate root, so the column is
+        // never populated (verified by dumping the table). The serialized payload is
+        // the reliable axis: `event_properties->targetDocumentId` is the new invoice's
+        // id on all three rows.
+        //
+        // `audit_events` is scoped by this test's own company — `AuditService::record()`
+        // takes `companyId` as an explicit argument (`:44`) and writes it to the column
+        // (`AuditEvent.php:127`), whereas `tenant_id` is derived from the auth context.
+        // The forked children run under a company of their own, which is the axis the
+        // bleed crosses. It did not bleed in the measured run, but it is the identical
+        // unscoped-count shape two lines away and there is no reason to leave the class
+        // half-closed.
         $storedEvents = DB::table('stored_events')
             ->where('event_class', DocumentConverted::class)
+            ->where('event_properties->targetDocumentId', $invoiceId)
             ->get();
         $this->assertCount(3, $storedEvents);
 
         $auditEvents = DB::table('audit_events')
             ->where('event_type', 'document.converted')
+            ->where('company_id', $this->company->id)
             ->get();
         $this->assertCount(3, $auditEvents);
         $auditSources = [];

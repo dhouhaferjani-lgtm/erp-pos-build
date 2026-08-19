@@ -20,6 +20,7 @@ use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * Converter for Sales Order to Delivery Note conversion.
@@ -134,7 +135,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
         }
 
         if ($source->status === DocumentStatus::Cancelled) {
-            throw new \RuntimeException('Cannot convert cancelled sales order');
+            throw new RuntimeException('Cannot convert cancelled sales order');
         }
 
         if ($source->status === DocumentStatus::Draft) {
@@ -143,7 +144,7 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
 
         // Check if already fully delivered using line-level tracking
         if ($source->getDeliveryStatus() === DeliveryStatus::FullyDelivered) {
-            throw new \RuntimeException('Sales order has already been fully delivered');
+            throw new RuntimeException('Sales order has already been fully delivered');
         }
 
         // If delivery_quantities provided, this is a partial delivery
@@ -177,17 +178,35 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
      * for its ordering effect only: the caller's already-loaded $order (and its lines) stay
      * authoritative, so no validation or copy behaviour changes.
      *
+     * The result is ASSERTED, not discarded. `->first()` returning null means the
+     * predicate matched nothing — tenant/company/type drift, or a concurrent delete —
+     * and in that case the statement locks NOTHING and this converter would proceed,
+     * silently reinstating the exact L1<->L2 back edge the fix removes, with no
+     * exception and no signal. An ordering guarantee that can silently not happen is
+     * not a guarantee. Unreachable today (`convert()` has already validated the same
+     * model), which is precisely why it must fail loudly if it ever becomes reachable:
+     * a RuntimeException surfaces as a 500-class alert rather than a routine 422, the
+     * same disposition F-7 established for this wave's other integrity alarms.
+     * (M5-terminal r2: treasury `R2-6` == tenancy `F-R2-3`.)
+     *
      * (M5-terminal treasury F-5; total order per M5-evidence.md section 2.3.)
      */
     private function lockOrderHeader(Document $order): void
     {
-        Document::query()
+        $locked = Document::query()
             ->where('tenant_id', $order->tenant_id)
             ->where('company_id', $order->company_id)
             ->where('id', $order->id)
             ->where('type', DocumentType::SalesOrder->value)
             ->lockForUpdate()
             ->first();
+
+        if ($locked === null) {
+            throw new RuntimeException(sprintf(
+                'Lock order violation: the sales-order header %s could not be locked before the delivery-note sequence.',
+                $order->id,
+            ));
+        }
     }
 
     /**

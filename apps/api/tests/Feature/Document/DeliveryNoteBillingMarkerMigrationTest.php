@@ -16,6 +16,7 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -141,12 +142,38 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
         ]);
 
+        // M5-terminal r2, treasury `R2-4`. `safeInvoicedAt()` VALIDATED with
+        // `CarbonImmutable::parse()` but INSERTED the raw string, leaving PostgreSQL to
+        // parse it a second time with a different grammar. The two disagree, so F-6's
+        // abort path was narrowed rather than closed. Two measured classes:
+        //
+        //   '+1 day'  — Carbon OK, `::timestamptz` ERROR 22007  => still ABORTED
+        //               `tenants:migrate`, i.e. exactly the failure F-6 set out to
+        //               remove, on a value F-6's own validator accepts.
+        //   'now'     — both accept, but PostgreSQL resolves it at INSERT time, so the
+        //               row silently acquires an `invoiced_at` of the migration run.
+        //               Inherited, not introduced; inserting the parsed value makes the
+        //               resolution happen in ONE grammar instead of two.
+        //
+        // Inserting `$parsed->toIso8601String()` collapses both grammars into Carbon's,
+        // which is what the F-6 docblock always intended.
+        $invoicedAtRelative = $this->deliveryNote('DN-INVOICED-AT-RELATIVE', [
+            'invoiced_at' => 'now',
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+        $invoicedAtOffset = $this->deliveryNote('DN-INVOICED-AT-OFFSET', [
+            'invoiced_at' => '+1 day',
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+
         $this->assertFalse(Schema::hasTable('delivery_note_billing_marks'));
         Log::spy();
         $this->runMigration();
 
         $this->assertTrue(Schema::hasTable('delivery_note_billing_marks'));
-        $this->assertSame(13, DB::table('delivery_note_billing_marks')->count());
+        $this->assertSame(15, DB::table('delivery_note_billing_marks')->count());
         $this->assertSame($validInvoice->id, $this->marker($valid)->invoice_id);
         $this->assertSame(DeliveryNoteBillingLane::Consolidation->value, $this->marker($valid)->invoiced_via);
         $this->assertSame($validInvoice->id, $this->marker($orderConversion)->invoice_id);
@@ -169,13 +196,30 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             $this->assertNull($this->marker($undatedDeliveryNote));
         }
 
+        // r2 / R2-4: the Carbon-parseable shapes are WRITTEN, not aborted on and not
+        // counted — the migration now inserts the value Carbon resolved, so PostgreSQL
+        // never sees a grammar it does not share. '+1 day' is the decisive one: it is
+        // ERROR 22007 to `::timestamptz`, so before this fix its mere presence in a
+        // tenant's payload aborted `tenants:migrate` for that tenant.
+        $relativeMarker = $this->marker($invoicedAtRelative);
+        $offsetMarker = $this->marker($invoicedAtOffset);
+        $this->assertNotNull($relativeMarker);
+        $this->assertNotNull($offsetMarker);
+        $this->assertEqualsWithDelta(
+            24.0,
+            CarbonImmutable::parse($relativeMarker->invoiced_at)
+                ->diffInHours(CarbonImmutable::parse($offsetMarker->invoiced_at), absolute: true),
+            0.05,
+            "'+1 day' must resolve one day past 'now' through Carbon's grammar, not PostgreSQL's.",
+        );
+
         $tenantId = $this->tenant->id;
         Log::shouldHaveReceived('info')
             ->withArgs(static fn (string $message, array $context): bool => $message === 'delivery_note_billing_marks.backfill'
                 && $context === [
                     'tenant_id' => $tenantId,
                     'database' => DB::connection()->getDatabaseName(),
-                    'rows_written' => 13,
+                    'rows_written' => 15,
                     'missing_invoice_id' => 2,
                     'unparseable_invoice_id' => 4,
                     'dangling_invoice_id' => 1,

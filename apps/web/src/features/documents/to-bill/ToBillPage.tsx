@@ -426,9 +426,16 @@ export function ToBillPage() {
         <div className={cn('flex flex-wrap items-center justify-between gap-3 text-sm', colorTokens.text.muted)}>
           {/*
             Driven by the scope the SERVER actually served, never by the local
-            toggle: with no active location the backend falls back to the
-            company default (or to every location when none exists), so a
-            client-side guess would describe a scope the rows do not come from.
+            toggle: a client-side guess would describe a scope the rows do not
+            come from.
+
+            With no active location the backend's behaviour now DEPENDS on the
+            user's entitlement (M5-terminal tenancy F-T3, comment corrected in
+            r2 as F-R2-4): a user with can_view_all_locations serves the whole
+            company, while a location-restricted user gets a 422 rather than
+            the silent widening that used to happen — so for them this branch
+            never renders at all, the QueryError below does. The old comment
+            claimed the every-location fallback applied unconditionally.
           */}
           <p>
             {servedLocationId === null

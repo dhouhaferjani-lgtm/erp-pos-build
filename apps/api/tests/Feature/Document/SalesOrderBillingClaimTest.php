@@ -23,6 +23,7 @@ use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimNotFinalisedExceptio
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
+use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToDeliveryNoteConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToInvoiceConverter;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Identity\Domain\Enums\UserStatus;
@@ -41,6 +42,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
+use ReflectionMethod;
+use RuntimeException;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -671,10 +674,25 @@ final class SalesOrderBillingClaimTest extends TestCase
         $response = $this->actingAs($this->user)
             ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
 
-        $this->assertGreaterThanOrEqual(
+        // M5-terminal r2, treasury `R2-6`. `assertGreaterThanOrEqual(500, ...)` was red
+        // pre-fix (the old path returned 422), so the regression was real — but it would
+        // ALSO have passed on a 500 raised for an unrelated reason, e.g. the anonymous
+        // subclass container swap above failing to construct. Pin the exact status AND
+        // the exact exception that produced it, so the test can only pass for the
+        // intended reason.
+        $this->assertSame(
             500,
             $response->getStatusCode(),
             'A broken billed-once invariant must raise a 500-class alert, never a routine 422.',
+        );
+        $this->assertInstanceOf(
+            DeliveryNoteClaimNotFinalisedException::class,
+            $response->exception,
+            'The 500 must be the integrity alarm itself, not an unrelated server error.',
+        );
+        $this->assertSame(
+            'Delivery-note payload finalisation affected 0 rows; expected 1.',
+            $response->exception->getMessage(),
         );
 
         $this->app->forgetInstance(DeliveryNoteBillingClaimService::class);
@@ -730,6 +748,48 @@ final class SalesOrderBillingClaimTest extends TestCase
             'SO->DN conversion must take L1 (order header) before L2 (delivery-note sequence), '
             .'matching SalesOrderToInvoiceConverter, or the two lanes deadlock on the same order.',
         );
+    }
+
+    /**
+     * M5-terminal r2 — treasury `R2-6` == tenancy `F-R2-3`.
+     *
+     * `lockOrderHeader()` discarded the result of `->first()`. If any predicate fails
+     * to match — tenant/company/type drift, or a concurrent delete — the statement
+     * locks NOTHING and the converter proceeded, silently reinstating the exact
+     * L1<->L2 back edge the F-5 fix removed, with no exception and no signal.
+     *
+     * The F-5 test above cannot catch this: it proves the ORDER of the two locks when
+     * the header lock DOES fire, and a lock that never fires simply produces no
+     * `for update` statement to position. This test drives the miss directly. It is
+     * engine-independent — it asserts the guard, not a row-lock property — so unlike
+     * the F-5 assertion it runs on SQLite too.
+     */
+    public function test_the_order_header_lock_refuses_to_proceed_when_its_predicate_matches_nothing(): void
+    {
+        $order = $this->createOrder();
+
+        // An id the predicate cannot match — the concurrent-delete / drift case.
+        // `convert()` has already validated the real model in production, which is
+        // exactly why a miss here means the invariant has broken rather than that the
+        // caller passed bad input.
+        $missingId = (string) Str::uuid();
+        $drifted = $order->replicate();
+        $drifted->id = $missingId;
+
+        $converter = new ReflectionMethod(SalesOrderToDeliveryNoteConverter::class, 'lockOrderHeader');
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessage('Lock order violation: the sales-order header '.$missingId);
+
+        $converter->invoke($this->deliveryNoteConverter(), $drifted);
+    }
+
+    private function deliveryNoteConverter(): SalesOrderToDeliveryNoteConverter
+    {
+        $converter = $this->registry()->getConverter(DocumentType::SalesOrder, DocumentType::DeliveryNote);
+        $this->assertInstanceOf(SalesOrderToDeliveryNoteConverter::class, $converter);
+
+        return $converter;
     }
 
     private function createOrder(string $quantityDelivered = '0.0000'): Document

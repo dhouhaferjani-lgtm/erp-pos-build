@@ -38,4 +38,16 @@ return [
         'legacy_bucket_help' => 'Invoices posted before goods were delivered. New invoices can no longer be posted this way; this list is an exception register for documents that predate the policy.',
         'policy_in_force' => 'Policy in force: :policy (from :source)',
     ],
+
+    /*
+     | M5-terminal r2, tenancy `F-R2-2`. The to-bill queue's location refusals are
+     | OPERATOR-facing: ToBillPage renders query failures through
+     | <QueryError error={query.error} …> (:511-512), so a location-restricted user in a
+     | company with no active location reads this message verbatim in a French or Arabic
+     | UI. The refusal has no client-side mirror — the scope is resolved server-side from
+     | the user's location entitlements — so it belongs here rather than in frontend i18n.
+     */
+    'to_bill_queue' => [
+        'no_active_location_in_scope' => 'No active location is available within your allowed scope; select a location explicitly.',
+    ],
 ];

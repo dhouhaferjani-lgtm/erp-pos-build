@@ -22,4 +22,7 @@ return [
         'legacy_bucket_help' => "Factures comptabilisées avant la livraison des marchandises. Les nouvelles factures ne peuvent plus être comptabilisées ainsi ; cette liste est un registre d'exceptions pour les documents antérieurs à la règle.",
         'policy_in_force' => 'Règle en vigueur : :policy (source : :source)',
     ],
+    'to_bill_queue' => [
+        'no_active_location_in_scope' => "Aucun emplacement actif n'est disponible dans votre périmètre autorisé ; sélectionnez un emplacement explicitement.",
+    ],
 ];

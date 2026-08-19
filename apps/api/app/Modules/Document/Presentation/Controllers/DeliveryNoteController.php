@@ -289,8 +289,16 @@ class DeliveryNoteController extends Controller
                 // Refuse instead of silently widening: a restricted user whose scope cannot
                 // be resolved gets the same 422 as the explicit request, never the company.
                 // (M5-terminal tenancy-authz F-T3.)
+                //
+                // Translated, because this message is operator-facing: ToBillPage renders
+                // query failures through <QueryError error={query.error} …> (:511-512), so
+                // a location-restricted user reads it verbatim in a French or Arabic UI.
+                // The sibling refusal at :274 is still a hardcoded English literal — it is
+                // PRE-EXISTING (M3, untouched by this wave) and stays RECORDED rather than
+                // silently swept in here; it is owed the same treatment in the i18n
+                // follow-up that already carries it. (M5-terminal r2, tenancy `F-R2-2`.)
                 throw ValidationException::withMessages([
-                    'location_id' => ['No active location is available within your allowed scope; select a location explicitly.'],
+                    'location_id' => [__('documents.to_bill_queue.no_active_location_in_scope')],
                 ]);
             }
         }
