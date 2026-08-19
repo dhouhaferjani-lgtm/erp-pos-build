@@ -100,21 +100,26 @@ export function VoucherListPage() {
 
       {/* Source filter chips */}
       <div className="flex flex-wrap gap-2">
-        {SOURCE_FILTERS.map((filter) => (
-          <Button variant="secondary"
-            key={filter.value}
-            type="button"
-            onClick={() => { handleSourceFilter(filter.value) }}
-            className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-              source === filter.value
-                ? ``
-                : ``
-            }`}
-            data-testid={`source-filter-${filter.value || 'all'}`}
-          >
-            {t(`vouchers:${filter.label}`)}
-          </Button>
-        ))}
+        {SOURCE_FILTERS.map((filter) => {
+          const isSelected = source === filter.value
+          return (
+            // Selected/unselected treatment matched to the house filter-chip pattern at
+            // features/import/pages/ImportHistoryPage.tsx:90-104 (selected = primary
+            // bgStrong + inverse text; unselected = neutral surface). Expressed through
+            // the canonical Button variants rather than className overrides so the tokens
+            // come from one place and cannot lose a Tailwind class-order fight.
+            <Button variant={isSelected ? 'primary' : 'secondary'}
+              key={filter.value}
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => { handleSourceFilter(filter.value) }}
+              className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium transition-colors"
+              data-testid={`source-filter-${filter.value || 'all'}`}
+            >
+              {t(`vouchers:${filter.label}`)}
+            </Button>
+          )
+        })}
       </div>
 
       {/* Table */}
