@@ -116,15 +116,15 @@ milestones:
     review_lenses: [inventory-costing, treasury]
     owner_gate: V-7-treasury-codes
     status: review
-    fix_rounds: 4
-    commit: e28562448
+    fix_rounds: 5
+    commit: 7179bb643
     proposal: docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md
     proposal_commit: 3ed96bc7c4c9c565a4606366c42209980f62c320
-    verdict: docs/handoff/reviews/wave3-3c-3d/M4-round4.md
+    verdict: docs/handoff/reviews/wave3-3c-3d/M4-round5.md
     last_verdict: CHANGES-REQUIRED
     owner_ruling: docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md
     evidence: docs/handoff/reviews/wave3-3c-3d/M4-evidence.md
-    updated: e28562448
+    updated: 7179bb643
   - id: M5
     title: "3D listener: T21, T22. Whole-branch gate: re-run full accumulated evidence + every lens over the integrated branch."
     review_lenses: [inventory-costing, fiscal-pos, treasury]
