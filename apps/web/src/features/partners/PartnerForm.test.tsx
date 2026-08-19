@@ -97,6 +97,7 @@ function makeCountry(code: string, name: string): Country {
 function renderPartnerForm(
   initialEntries: (string | { pathname: string; state?: unknown })[],
   path: string,
+  partnerType: 'customer' | 'supplier' = 'supplier',
 ): QueryClient {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -109,7 +110,7 @@ function renderPartnerForm(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={initialEntries}>
         <Routes>
-          <Route path={path} element={<PartnerForm partnerType="supplier" />} />
+          <Route path={path} element={<PartnerForm partnerType={partnerType} />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -298,6 +299,22 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
     expect(screen.getByLabelText(/credit limit/i)).toHaveValue(null)
     expect(screen.getByLabelText(/discount percentage/i)).toHaveValue(null)
     expect(screen.getByLabelText(/^payment terms$/i)).toHaveValue('')
+  })
+
+  it('describes invoice consolidation as a periodic-billing classification', () => {
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+
+    expect(screen.getByRole('checkbox', { name: 'Billed periodically' })).toBeInTheDocument()
+    expect(screen.getByText('This customer is billed periodically.')).toBeInTheDocument()
+  })
+
+  it('does not expose a consolidation-frequency selector when periodic billing is selected', () => {
+    renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
+    fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: /billed periodically|enable invoice consolidation/i }))
+
+    expect(screen.queryByRole('combobox', { name: /consolidation frequency/i })).not.toBeInTheDocument()
   })
 
   it('adds a bank account on the edit page, derives its IBAN, and submits without blocking', async () => {

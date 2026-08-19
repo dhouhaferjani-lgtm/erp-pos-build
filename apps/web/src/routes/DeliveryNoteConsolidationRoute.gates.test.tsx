@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, screen } from '@testing-library/react'
 import { Outlet } from 'react-router-dom'
 import { renderWithProviders } from '@/test/renderWithProviders'
-import { defaultCompanyConfig } from '@/test/fixtures/companyConfig'
+import { mechanicCompanyConfig } from '@/test/fixtures/companyConfig'
 import { resetAuth, seedAuth } from '@/test/seedAuth'
 import { useAuthStore } from '@/stores/authStore'
 import { AppRoutes } from './index'
@@ -30,7 +30,7 @@ function setInvoiceCreationPermission() {
   })
 }
 
-describe('delivery-note consolidation route gates', () => {
+describe('retired delivery-note consolidation route', () => {
   beforeEach(() => {
     act(() => {
       seedAuth({ roles: ['admin'] })
@@ -44,10 +44,10 @@ describe('delivery-note consolidation route gates', () => {
     })
   })
 
-  it('does not render protected consolidation content when Sales is disabled despite invoice permission', async () => {
+  it('falls through to the dashboard even when Sales and invoice creation are enabled', async () => {
     renderWithProviders(<AppRoutes />, {
       route: '/inventory/delivery-notes/consolidate',
-      companyConfig: defaultCompanyConfig,
+      companyConfig: mechanicCompanyConfig,
     })
 
     expect(await screen.findByText('dashboard fallback')).toBeInTheDocument()
