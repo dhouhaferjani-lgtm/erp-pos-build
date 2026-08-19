@@ -386,6 +386,69 @@ class CheckCogsCoverageCommandTest extends TestCase
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
     }
 
+    /**
+     * M5 round 1 — inventory-costing P2·1 / treasury P2-2.
+     *
+     * Lifting the flag-tied exclusion must surface the postings that FAILED, not
+     * the ones the posting service DECLINED by design. Two populations are
+     * declined and must stay silent even with the flag live:
+     *
+     *  - a zero-variance counted line (`quantity_before == quantity_after`), for
+     *    which `postForCountCorrection()` reaches `direction === 'flat'` and
+     *    returns null — the majority outcome of a real full-location count;
+     *  - a historical count correction, which the same method declines on
+     *    `$ctx->isHistorical` and which D-a/D-b already filter out.
+     *
+     * A genuine non-flat, non-historical unposted correction still reports.
+     */
+    public function test_de_excludes_flat_and_historical_count_corrections_once_the_flag_is_live(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+        config(['inventory.count_correction_gl_posting_enabled' => true]);
+
+        $flat = $this->movement(
+            MovementReason::CountCorrection,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: 'inventory_counting',
+            quantityBefore: '10.0000',
+            quantityAfter: '10.0000',
+        );
+        $historical = $this->movement(
+            MovementReason::CountCorrection,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: 'inventory_counting',
+            quantityBefore: '10.0000',
+            quantityAfter: '8.0000',
+            isHistorical: true,
+        );
+
+        // Both rows are in D-e's reason/reference population and have no entry;
+        // only the flat-delta and is_historical predicates keep them out.
+        $this->assertSame($flat->quantity_before, $flat->quantity_after);
+        $this->assertTrue($historical->is_historical);
+
+        Log::spy();
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+
+        // The genuine population the lifted exclusion exists to surface.
+        $real = $this->movement(
+            MovementReason::CountCorrection,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: 'inventory_counting',
+            quantityBefore: '10.0000',
+            quantityAfter: '7.0000',
+        );
+        Log::spy();
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '[D-e]')
+                && ($context['movement_id'] ?? null) === $real->id,
+        );
+    }
+
     public function test_dg_fires_only_for_return_lines_using_current_cost(): void
     {
         $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
@@ -647,6 +710,9 @@ class CheckCogsCoverageCommandTest extends TestCase
         \DateTimeInterface $createdAt,
         string $referenceType = 'Document',
         ?string $referenceId = null,
+        ?string $quantityBefore = null,
+        ?string $quantityAfter = null,
+        bool $isHistorical = false,
     ): StockMovement {
         $movement = StockMovement::create([
             'tenant_id' => $this->dpTenant->id,
@@ -656,13 +722,13 @@ class CheckCogsCoverageCommandTest extends TestCase
             'movement_type' => $reason->getMovementType() === 'in' ? MovementType::Receipt : MovementType::Issue,
             'reason' => $reason,
             'quantity' => '1.0000',
-            'quantity_before' => $reason->getMovementType() === 'in' ? '0.0000' : '2.0000',
-            'quantity_after' => $reason->getMovementType() === 'in' ? '1.0000' : '1.0000',
+            'quantity_before' => $quantityBefore ?? ($reason->getMovementType() === 'in' ? '0.0000' : '2.0000'),
+            'quantity_after' => $quantityAfter ?? ($reason->getMovementType() === 'in' ? '1.0000' : '1.0000'),
             'unit_cost' => $unitCost,
             'total_cost' => $unitCost,
             'reference_type' => $referenceType,
             'reference_id' => $referenceId ?? (string) Str::uuid(),
-            'is_historical' => false,
+            'is_historical' => $isHistorical,
             'occurred_at' => $createdAt,
         ]);
         DB::table('stock_movements')->where('id', $movement->id)->update([

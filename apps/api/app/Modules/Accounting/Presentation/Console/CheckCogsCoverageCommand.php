@@ -237,6 +237,18 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
         $dE = StockMovement::query()
             ->where('company_id', $company->id)
             ->where('created_at', '>=', $cutoverAt)
+            // A historical movement is DECLINED by every posting arm
+            // (`InventoryGlPostingService.php:38`, `:91`, `:133`), so its missing
+            // entry is by design, exactly as for D-a (`:202`) and D-b (`:221`).
+            ->where('is_historical', false)
+            // A flat row — the counted quantity matched, the majority outcome of a
+            // real full-location count — reaches `direction === 'flat'` and is
+            // DECLINED (`InventoryGlPostingService.php:43-46`), while
+            // `postCountCorrection()` still writes the movement unconditionally
+            // (`StockAdjustmentService.php:1371-1388`). Reporting it would drown
+            // the failures this check exists to surface.
+            // M5 round 1: inventory-costing finding 1 / treasury finding 2.
+            ->whereColumn('quantity_before', '<>', 'quantity_after')
             ->whereIn('reason', $nonCogsGlReasons)
             // D-20 deliberately leaves the stock-adjustment document lane out
             // of the GL buffer even though its reasons require a GL entry.
@@ -250,8 +262,9 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             // the flag is off, count corrections are movement-only BY DESIGN and
             // reporting them would make every completed count a permanent false
             // alarm; the moment posting goes live the exclusion lifts and D-e
-            // reports exactly the failed or declined count-correction postings it
-            // exists to surface. Closes
+            // reports the count corrections that SHOULD have posted and did not
+            // — the by-design declines (flat, historical) are filtered above.
+            // Closes
             // docs/superpowers/tickets/2026-08-18-remove-counting-detector-exclusion-with-t21.md.
             ->when(
                 ! (bool) config('inventory.count_correction_gl_posting_enabled', false),

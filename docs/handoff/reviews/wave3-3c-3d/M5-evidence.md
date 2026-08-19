@@ -135,11 +135,26 @@ before the expert-comptable ratification of the Option A presentation is recorde
 That ticket required D-e's `reference_type = inventory_counting` exclusion to be deleted in the same
 commit that wires `MovementGlKind::CountCorrection`. Deleting it outright would have made every
 completed count a permanent false alarm while posting is deliberately dormant, so the exclusion is
-now **tied to the flag** (`CheckCogsCoverageCommand.php:247-260`): silent while dormant, reporting
-the moment posting goes live. That preserves the ticket's intent exactly — D-e surfaces failed or
-declined count-correction postings — without spamming the detector for a feature that is off by
-design. Covered positively and negatively by
-`CheckCogsCoverageCommandTest::test_de_reports_count_corrections_once_their_posting_flag_is_live`.
+now **tied to the flag** (`CheckCogsCoverageCommand.php:257-274`): silent while dormant, reporting
+the moment posting goes live.
+
+**AMENDED at M5 round 1 (inventory-costing finding 1 / treasury finding 2).** This section originally
+claimed the lifted exclusion "reports exactly the failed or declined count-correction postings it
+exists to surface". It did not: a *declined* posting is a by-design non-event, and D-e carried no
+predicate for the two populations the posting service declines. `postCountCorrection()` writes a
+movement unconditionally, including for a zero-variance counted line — the majority outcome of a real
+full-location count — and `postForCountCorrection()` then returns null on `direction === 'flat'`
+(`InventoryGlPostingService.php:43-46`) and on `isHistorical` (`:38`). Reproduced on PostgreSQL: a
+900-line count where 870 lines match would emit 870 D-e findings on the first run after the flip.
+
+D-e now carries `where('is_historical', false)` and
+`whereColumn('quantity_before', '<>', 'quantity_after')`
+(`CheckCogsCoverageCommand.php:242` and `:250`), matching D-a (`:202`) and D-b (`:221`) on the historical
+filter. The lifted exclusion therefore reports the corrections that SHOULD have posted and did not.
+Covered positively and negatively by
+`CheckCogsCoverageCommandTest::test_de_reports_count_corrections_once_their_posting_flag_is_live` and
+`::test_de_excludes_flat_and_historical_count_corrections_once_the_flag_is_live` (red before the
+predicate, green after; both drivers).
 
 ---
 
@@ -324,16 +339,35 @@ names a file this change touches. `ApplyStockAdjustmentsOnCountingCompleted` is 
 
 `ReplayFinalizeTest.php:157` builds a 21-character `counting_number` against a `varchar(20)` column.
 SQLite accepts it; PostgreSQL rejects every insert with `SQLSTATE 22001`, so the counting replay
-lane's primary regression file has never run on the production driver. Shortening the fixture (tried,
-then reverted) exposes **three genuine PG-only divergences** — including
-`test_case_b_pre_count_sale_excluded` returning `12.0000` instead of `17.0000`, i.e. the
-pre-count-sale exclusion behaving differently on PostgreSQL.
+lane's primary regression file has never run on the production driver. All **11** cases in the file
+error before asserting anything.
 
-Root-causing timestamp handling in the replay window is a separate lane. M5 left
-`ReplayFinalizeTest.php:157` exactly as inherited, excluded the file from its PG lane, and filed
-`docs/superpowers/tickets/2026-08-19-replay-finalize-test-not-pg-runnable.md` with the measured
-table. M5's own addition to that file is driver-agnostic and green on SQLite; its PostgreSQL
-counterpart is `CountCorrectionGlPostingTest`.
+**CORRECTED at M5 round 1 (inventory-costing finding 2, with fiscal-pos F-2 on the case count).**
+This section originally recorded that shortening the fixture exposes "three genuine PG-only
+divergences" in the replay window, and the filed ticket sent a follow-up lane after a
+`MovementReplayService` timestamp defect. That root cause is **wrong, and was disproved by
+experiment**: the reviewer re-ran the identical shortened file against the identical database with
+only the PostgreSQL **session timezone** forced —
+
+```
+PGTZ=UTC TZ=UTC … phpunit -c phpunit-pgsql.xml <shortened ReplayFinalizeTest copy>
+->  OK (11 tests, 36 assertions)
+```
+
+All three divergences vanish. `config/database.php`'s `pgsql` block pins `charset` and `search_path`
+but carries **no `timezone` key**, so on a `CET+0100` machine a datetime bound without an offset is
+interpreted in the session zone, shifting `final_qty_as_of` one hour earlier — which admits the
+pre-count sale into the replay window (b: 20 − 5 − 3 = 12) and pushes the t+5min movement outside the
+15-minute basket window (c: 20 − 1 = 19). Both observed deltas match that shift arithmetically. There
+is **no product defect in `MovementReplayService`**, and the file's exclusion from M5's PG lane is
+owed to the 21-character fixture **alone**.
+
+M5 left `ReplayFinalizeTest.php:157` exactly as inherited, excluded the file from its PG lane, and
+filed `docs/superpowers/tickets/2026-08-19-replay-finalize-test-not-pg-runnable.md`, now corrected to
+record the measured PGTZ root cause. Pinning `'timezone' => 'UTC'` on the `pgsql`/`tenant`
+connections is a repo-wide lane the parent has ledgered separately; `config/database.php` is **not**
+touched by this wave. M5's own addition to that file is driver-agnostic and green on SQLite; its
+PostgreSQL counterpart is `CountCorrectionGlPostingTest`.
 
 ### 6.2 The `[PG]` non-transactional pattern has two ordering properties
 
