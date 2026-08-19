@@ -106,8 +106,9 @@ export function VoucherListPage() {
             // Selected/unselected treatment matched to the house filter-chip pattern at
             // features/import/pages/ImportHistoryPage.tsx:90-104 (selected = primary
             // bgStrong + inverse text; unselected = neutral surface). Expressed through
-            // the canonical Button variants rather than className overrides so the tokens
-            // come from one place and cannot lose a Tailwind class-order fight.
+            // the canonical Button variants rather than className overrides: duplicate
+            // colour utilities across variantStyles and className resolve by stylesheet
+            // order, not attribute order, so an override is not deterministic.
             <Button variant={isSelected ? 'primary' : 'secondary'}
               key={filter.value}
               type="button"

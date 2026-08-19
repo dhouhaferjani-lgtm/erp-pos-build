@@ -104,18 +104,20 @@ milestones:
     # and on the same branch, continuing the M5 execution handover. Four commits, one per task, in
     # brief order: 83b46e752 (T5), 4fcf447bf (T7), ee87f153e (T8-c), 4275794ee (T14). `commit:`
     # carries the last IMPLEMENTATION commit; the ledger commit that records this row sits on top
-    # of it. The M6 bridge review has NOT been run - it is the parent's to run
-    # (--range 9b46e8d52..HEAD covers exactly the M6 work). Nothing was pushed.
-    status: review
-    updated: 4275794ee
+    # of it. The M6 bridge ran as a single register (round 1, ACCEPT, zero fix rounds):
+    # docs/handoff/reviews/ui-wave0/M6-round1.md at 2621abbff, range 9b46e8d52..5caeb61a2.
+    # Its P2-1 and P3-1 documentation directives are applied at the M7 opening commit.
+    # Nothing was pushed.
+    status: passed
+    updated: 2621abbff
     fix_rounds: 0
     commit: 4275794ee
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/ui-wave0/M6-round1.md
+    last_verdict: ACCEPT
   - id: M7
     title: "T9 (UI-44) - documentation debt, consuming T1's report (M1) and T3's regenerated manifest (M4). Where a runtime assertion is impossible the acceptance criterion is a reproducible command whose output goes in the handback."
     review_lenses: [general]
-    status: pending
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -218,5 +220,5 @@ findings:
   - "M6 T14 harness repair, as the brief warned: TenantSupportAccessPage.test.tsx rendered through a bare QueryClientProvider + MemoryRouter with no ProductConfigProvider, and useProductConfig THROWS without one (ProductConfigContext.tsx:128-135), so the suite would have thrown the moment the page called the hook. CHOSE the explicit `<ProductConfigProvider initialProduct={…}>` wrap over switching to renderWithProviders, because it adds exactly the missing provider without also pulling in CompanyConfigProvider and a seeded company-config cache entry that none of these tests asked for. renderPage() defaults to 'izipos' so the two pre-existing cases keep their behaviour and still pass."
   - "M6 T14 red-first evidence, both component proofs plus the data assertion: PrivacyPolicyPage.test.tsx 4/4 failed then 4/4 passed; TenantSupportAccessPage.test.tsx 3 new cases failed then passed; appNamePlaceholder.test.ts 13/14 failed then 14/14 passed. Both render tests seed the NON-default product ('otospex') so the assertion cannot pass by coincidence, and each also pins the 'izipos' branch to prove the copy follows config rather than a new baked-in name. The locale test is explicitly labelled a DATA assertion that does not substitute for either render proof."
   - "M6 BRIEF ARITHMETIC CORRECTIONS, disclosed rather than silently absorbed. (1) T14's site table is introduced as 'exactly the eight sites' but its rows expand to TEN verified locale hits (3 appName + 2 en privacy + 2 fr privacy + 3 support-access); all ten are handled. (2) T14 says TermsOfServicePage hardcodes the brand 'six times'; the actual count at :37-38, :49-50, :107-108, :131-132 is TEN occurrences across eight lines (four EN/FR branch pairs). The TermsOfServicePage leak remains OUT OF SCOPE and unfixed, reported for the parent to ticket together with its rule-11 violation (inline non-t() strings doing their own FR/EN branching in JSX)."
-  - "M6 gate outputs: pnpm typecheck clean at every commit. pnpm lint EXIT=0 at T5, T7, T8-c and T14 - 0 errors throughout (warnings 6513 -> 6520, all from the new test files; the two trivially fixable Array<T> warnings were cleaned up, the remaining three are unsafe-type-assertion warnings inherent to walking untyped locale JSON). Gate C 0 acknowledged / 0 new / 0 stale; audit-quantity clean; design-system 736 -> 818 acknowledged with 0 new / 0 stale after T7. Focused vitest by path with --maxWorkers=1 throughout: vouchers 78/78, tools/audit-design-system 19/19, comingSoonKeyPruning 26/26, i18n + legal + support-access 74 passed. The ONLY failing file anywhere in M6's focused runs is the inherited M0b exception src/__tests__/i18n/arLocaleCoverage.test.ts (3 failed / 7 passed), whose missing-key counts are UNCHANGED at 122 / 1 / 19 on common, workshop-technicians and vehicles - namespaces M6 never touched - while ar/inventory PASSES, which is the positive evidence that the ar deletions kept that bundle aligned."
+  - "M6 gate outputs: pnpm typecheck clean at every commit. pnpm lint EXIT=0 at T5, T7, T8-c and T14 - 0 errors throughout (warnings 6513 -> 6520, all from the new test files; the two trivially fixable Array<T> warnings were cleaned up, the remaining three are unsafe-type-assertion warnings inherent to walking untyped locale JSON). Gate C 0 acknowledged / 0 new / 0 stale; audit-quantity clean; design-system 736 -> 818 acknowledged with 0 new / 0 stale after T7. Focused vitest by path with --maxWorkers=1 throughout: vouchers 78/78, tools/audit-design-system 19/19, comingSoonKeyPruning 26/26, i18n + legal + support-access 74 passed. The ONLY failing file anywhere in M6's focused runs is the inherited M0b exception src/__tests__/i18n/arLocaleCoverage.test.ts (3 failed / 7 passed), whose missing-key counts are UNCHANGED at 122 / 1 / 19 on common, workshop-technicians and vehicles - namespaces M6 never touched. CORRECTED per M6 review P2-1 (the earlier wording here claimed 'ar/inventory PASSES in arLocaleCoverage', which was false): arLocaleCoverage.test.ts:67-75 enumerates only nine namespaces (common, validation, workshop-bundles, workshop-technicians, workshop-work-orders, vehicles, vehicle-ownership, scheduling, pickers) and NEVER evaluates ar/inventory, so it can supply no evidence either way about that bundle. The real evidence that the ar deletions kept ar/inventory aligned is (a) the deletions are symmetric across en/fr/ar for all three ar-touched keys - counting.detailsComingSoon and counting.create.categorySelectionComingSoon(+Hint) were removed from en, fr AND ar together - and (b) comingSoonKeyPruning.test.ts:54,58,62 assert the absence of exactly those three paths in ar/inventory, with all five touched bundles re-validated as parseable JSON. COVERAGE GAP, stated honestly: no EN<->AR alignment test covers the inventory namespace anywhere in apps/web/src - comingSoonKeyPruning.test.ts's alignment assertion (:113-131) is EN<->FR only - so ar/inventory alignment rests on the symmetry of the diff, not on an automated check."
   - "M6 open for the parent: the bridge review for M6 (lenses frontend-conventions, general) has NOT been run - milestone status is `review`, verdict null. Full-suite `pnpm test` was not run for M6 (M8 owns the whole-branch gate); evidence is focused-by-path per the brief's iterate-by-path rule. UI E2E was not run (M8 item). No push was made."
