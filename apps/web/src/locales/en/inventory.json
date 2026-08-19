@@ -211,7 +211,6 @@
     "messages": {
       "deleteProduct": "Delete Product",
       "confirmDeleteProduct": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone.",
-      "stockComingSoon": "Stock information coming soon",
       "viewAllStock": "View all stock levels"
     },
     "productInformation": "Product Information",
@@ -609,7 +608,6 @@
     "new": "New Count",
     "newCount": "New Count",
     "count": "Count",
-    "detailsComingSoon": "Detailed counting cards and progress tracking coming soon",
     "fullImplementationInProgress": "Full reconciliation, reports, and complete workflow in progress",
     "viewAll": "View all",
     "overdue": "OVERDUE",
@@ -706,8 +704,6 @@
       "selectionDescriptionZone": "Choose a location, then select nodes from its storage hierarchy",
       "productSelectionHelper": "Search and select products by name, SKU, or barcode",
       "locationSelectionHelper": "Search and select locations to include in the count",
-      "categorySelectionComingSoon": "Category Selection Coming Soon",
-      "categorySelectionComingSoonHint": "Product categories are not yet implemented. Use Full Inventory or Product scope instead.",
       "zoneLocationLabel": "Location",
       "zoneLocationHelper": "Storage nodes belong to a single location — pick the location to count first",
       "zoneSelectLabel": "Nodes / Zones",
