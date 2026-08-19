@@ -712,7 +712,7 @@ milestones:
     #     token-class change in a terminal documentation round would re-open the
     #     exit statement's code anchor for a vector that is not live. Fix shape
     #     written down for whoever next opens the file.
-    status: review
+    status: passed
     fix_rounds: 2
     # Milestone slice for the reviewer: 9fdd9bc08..HEAD
     # Fix-round-1 slice: 9ce7b2090..413166120
@@ -720,9 +720,9 @@ milestones:
     #   apps/api/app is empty, and the only test-file change is a docblock)
     commit: c533f005a
     verdict: docs/handoff/reviews/es-wave-a0/M5-round2.md
-    last_verdict: CHANGES-REQUIRED
+    last_verdict: ACCEPT
 
-status: review      # pending | in_progress | review | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: complete    # pending | in_progress | review | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 
 # TAKEOVER, 2026-08-19. The Codex executor's quota was exhausted mid-STOP-C.
 # The parent orchestrator's implementation agent took over in this same
