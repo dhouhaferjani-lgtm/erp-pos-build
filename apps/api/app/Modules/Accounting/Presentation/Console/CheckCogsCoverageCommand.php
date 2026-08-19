@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Domain\Enums\MovementGlCounterFamily;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\InventoryGlSourceTypes;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -53,7 +54,9 @@ use Illuminate\Support\Facades\Log;
  *    movement it would have keyed on was never written.
  *
  *  - **D-e** non-COGS `requiresGLEntry()` movements with no movement-keyed GL
- *    entry, with the same stock-adjustment exclusion as D-b.
+ *    entry, with the same stock-adjustment exclusion as D-b, plus an
+ *    inventory-counting exclusion that lifts the moment T21's posting flag is
+ *    enabled (see the check body).
  *  - **D-g** return-note lines whose recorded basis fell back to current cost.
  *
  * Tenant-isolation: cat-(a-per-tenant-iter) — iterates via
@@ -161,15 +164,27 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
     private function scanMovementChecks(Tenant $tenant, Company $company, \DateTimeInterface $cutoverAt): int
     {
         $findings = 0;
-        $cogsReasons = array_values(array_map(
+        $costedExitReasons = array_values(array_map(
             static fn (MovementReason $reason): string => $reason->value,
-            array_filter(MovementReason::cases(), static fn (MovementReason $reason): bool => $reason->affectsCOGS()),
+            array_filter(
+                MovementReason::cases(),
+                static fn (MovementReason $reason): bool => in_array(
+                    $reason->glCounterFamily(),
+                    [MovementGlCounterFamily::Cogs, MovementGlCounterFamily::Shrinkage],
+                    true,
+                ),
+            ),
         ));
         $nonCogsGlReasons = array_values(array_map(
             static fn (MovementReason $reason): string => $reason->value,
             array_filter(
                 MovementReason::cases(),
-                static fn (MovementReason $reason): bool => $reason->requiresGLEntry() && ! $reason->affectsCOGS(),
+                static fn (MovementReason $reason): bool => $reason->requiresGLEntry()
+                    && ! in_array(
+                        $reason->glCounterFamily(),
+                        [MovementGlCounterFamily::Cogs, MovementGlCounterFamily::Shrinkage],
+                        true,
+                    ),
             ),
         ));
 
@@ -185,7 +200,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where('created_at', '>=', $cutoverAt)
             ->where('occurred_at', '<=', now()->subHours(2))
             ->where('is_historical', false)
-            ->whereIn('reason', $cogsReasons)
+            ->whereIn('reason', $costedExitReasons)
             ->where(function ($query): void {
                 $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
@@ -204,7 +219,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where('company_id', $company->id)
             ->where('created_at', '>=', $cutoverAt)
             ->where('is_historical', false)
-            ->whereIn('reason', $cogsReasons)
+            ->whereIn('reason', $costedExitReasons)
             ->where(function ($query): void {
                 $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
@@ -216,24 +231,47 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->get();
         foreach ($dB as $movement) {
             $findings++;
-            $this->reportMovement('D-b', 'COGS-bearing inventory movement has no usable cost.', $tenant, $movement);
+            $this->reportMovement('D-b', 'P&L-bearing inventory movement has no usable cost.', $tenant, $movement);
         }
 
         $dE = StockMovement::query()
             ->where('company_id', $company->id)
             ->where('created_at', '>=', $cutoverAt)
+            // A historical movement is DECLINED by every posting arm
+            // (`InventoryGlPostingService.php:38`, `:91`, `:133`), so its missing
+            // entry is by design, exactly as for D-a (`:202`) and D-b (`:221`).
+            ->where('is_historical', false)
+            // A flat row — the counted quantity matched, the majority outcome of a
+            // real full-location count — reaches `direction === 'flat'` and is
+            // DECLINED (`InventoryGlPostingService.php:43-46`), while
+            // `postCountCorrection()` still writes the movement unconditionally
+            // (`StockAdjustmentService.php:1371-1388`). Reporting it would drown
+            // the failures this check exists to surface.
+            // M5 round 1: inventory-costing finding 1 / treasury finding 2.
+            ->whereColumn('quantity_before', '<>', 'quantity_after')
             ->whereIn('reason', $nonCogsGlReasons)
             // D-20 deliberately leaves the stock-adjustment document lane out
             // of the GL buffer even though its reasons require a GL entry.
             ->where(function ($query): void {
                 $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
-            // T21 is an M5 writer. Until it lands, inventory-counting
-            // corrections are intentionally movement-only; reporting them in
-            // 3C would make every completed count a permanent false alarm.
-            ->where(function ($query): void {
-                $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::InventoryCounting->value);
-            })
+            // T21 landed as an M5 writer, but its posting is held behind
+            // `inventory.count_correction_gl_posting_enabled` until the
+            // expert-comptable ratifies the Option A presentation (OQ-12/H-5).
+            // The exclusion is therefore tied to the FLAG, not to the wave: while
+            // the flag is off, count corrections are movement-only BY DESIGN and
+            // reporting them would make every completed count a permanent false
+            // alarm; the moment posting goes live the exclusion lifts and D-e
+            // reports the count corrections that SHOULD have posted and did not
+            // — the by-design declines (flat, historical) are filtered above.
+            // Closes
+            // docs/superpowers/tickets/2026-08-18-remove-counting-detector-exclusion-with-t21.md.
+            ->when(
+                ! (bool) config('inventory.count_correction_gl_posting_enabled', false),
+                fn ($query) => $query->where(function ($inner): void {
+                    $inner->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::InventoryCounting->value);
+                }),
+            )
             ->whereNotExists($missingEntry)
             ->orderBy('created_at')
             ->orderBy('id')

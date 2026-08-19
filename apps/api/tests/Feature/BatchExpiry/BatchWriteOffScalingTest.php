@@ -160,7 +160,7 @@ final class BatchWriteOffScalingTest extends TestCase
             'code' => '601',
             'name' => 'Cost of Goods Sold',
             'type' => AccountType::Expense,
-            'system_purpose' => SystemAccountPurpose::CostOfGoodsSold,
+            'system_purpose' => SystemAccountPurpose::InventoryShrinkageExpense,
             'is_active' => true,
         ]);
 
@@ -186,7 +186,7 @@ final class BatchWriteOffScalingTest extends TestCase
         // Sanity: GL accounts must exist before we call writeOff
         $this->assertDatabaseHas('accounts', [
             'company_id' => $this->company->id,
-            'system_purpose' => SystemAccountPurpose::CostOfGoodsSold->value,
+            'system_purpose' => SystemAccountPurpose::InventoryShrinkageExpense->value,
         ]);
         $this->assertDatabaseHas('accounts', [
             'company_id' => $this->company->id,

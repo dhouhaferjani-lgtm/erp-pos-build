@@ -416,7 +416,7 @@ final class ReceiptReturnService
             // NOT_RECEIVED → zero movements (goods never came back).
             // RESTOCK      → receive back (+qty), then batch restitution.
             // SCRAP        → receive back (+qty) then a COST-BEARING write-off
-            //                (-qty, Dr COGS / Cr Inventory keyed on the movement —
+            //                (-qty, Dr Shrinkage / Cr Inventory keyed on the movement —
             //                DPA V10); net aggregate change = 0; batch restitution
             //                skipped (scrapped goods never re-enter a sellable batch).
             // ─────────────────────────────────────────────────────────────────
@@ -1413,7 +1413,7 @@ final class ReceiptReturnService
      * document and inventory value walked off the balance sheet. It now goes
      * through the settled write-off idiom (`ReturnScrapWriteOffService`):
      * cost-resolved `StockAdjustmentService::issue()` + a movement-keyed
-     * Dr COGS / Cr Inventory entry sealed in this same transaction.
+     * Dr Shrinkage / Cr Inventory entry sealed in this same transaction.
      *
      * ATOMIC (gate C1). The two legs are only meaningful together, so they run
      * inside ONE SAVEPOINT. If the destruction leg cannot be recorded — archived

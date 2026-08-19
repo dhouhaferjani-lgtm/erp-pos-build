@@ -40,7 +40,7 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_manifest_is_the_complete_exact_41_case_partition(): void
+    public function test_manifest_is_the_complete_exact_43_case_partition(): void
     {
         // Production break caught: a purpose disappears, appears twice, or changes operational classification.
         $expected = [
@@ -54,6 +54,7 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
                 'voucher_liability', 'marketing_goodwill_expense', 'pos_tender_clearing',
                 'rounding_loss_expense', 'payment_tolerance_expense',
                 'payment_tolerance_income', 'purchase_expenses',
+                'inventory_shrinkage_expense',
             ],
             'SCOPE_REQUIRED' => ['sales_stamp_duty_payable'],
             'CONDITIONAL' => [
@@ -64,9 +65,7 @@ final class ProvisioningRequiredPurposesV1ConformanceTest extends TestCase
                 'office_expense', 'travel_expense', 'meals_expense', 'utilities_expense',
                 'retained_earnings', 'realized_fx_gain', 'realized_fx_loss',
                 'voucher_breakage_income', 'uninvoiced_revenue',
-                // 3C merge-seam (2026-08-19): count-correction purposes fail-soft when
-                // unmapped and have no producer until T21; codes are T20's deliverable.
-                'inventory_shrinkage_expense', 'inventory_gain_income',
+                'inventory_gain_income',
             ],
         ];
 

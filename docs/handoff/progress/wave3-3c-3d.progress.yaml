@@ -31,21 +31,61 @@ review_resume:
     consumed_by_verdict: docs/handoff/reviews/wave3-3c-3d/M3-round7.md
     result: accepted
 
+reviewer_tool_incidents:
+  - milestone: M4
+    review_round: 6
+    reviewed_tip: f56fd9e65
+    verdict: ACCEPT
+    issue: "The read-only bridge created three post-snapshot commits and left one worktree edit after taking the reviewed snapshot."
+    preserved_ref: codex/reviewer-round6-unauthorized-mutations
+    preserved_stash: "round6-reviewer-unauthorized-movement-docblock"
+    cleanup_reverts: [9baf292a6, 9c4f6a537, 94a7a43b4]
+    result: "Net tracked tree restored to reviewed_tip plus M4-round6 register and progress metadata; no unauthorized code delta retained."
 # Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
 base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
 # 3C branch off base_sha; after 3C merges to local dev, create 3D branch off the new dev (see brief DELIVERABLE).
 branch_3c: codex/dpa-wave3-3c
-branch_3d: null
+branch_3d: codex/dpa-wave3-3d
+base_sha_3d: 48cebf0f2c1b481c592bf35d478302499f9fda5d
+
+# Owner-gate resume authority is separate from review_resume: no review budget is consumed.
+owner_gate_resume:
+  - milestone: M4
+    authorized: 2026-08-19
+    after_blocker: "V-7-treasury-codes"
+    authority: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m4-stop-b.md
+    scope: account_map_proposal_only
+    result: proposal_committed_waiting_owner_choice
+  - milestone: M4
+    authorized: 2026-08-19
+    after_blocker: "V-7-treasury-codes"
+    authority: docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md
+    scope: option_a_implementation
+    result: approved_option_a_6586_7586
 
 owner_gates:
   - id: base-sha-pin
     question: "Confirm base_sha is local dev with 3A/3B+3E merged and both Workshop tickets present (M0 verifies)."
     status: satisfiable_by_M0
   - id: V-7-treasury-codes
-    question: "T20 proposes TN/FR/Generic shrinkage/gain account codes; treasury-reviewer must APPROVE before T20 merges. This is a merge condition, not an opinion."
+    question: "Treasury owner must ratify one complete TN/FR/Generic shrinkage/gain map from M4-account-map-proposal.md: Option A (class-7 gain, current Revenue typing) or Option B (603 symmetric credit, explicitly reopening InventoryGainIncome expectedAccountType), including the OQ-12/H-5 liasse caveat and F-3 MovementReason routing."
     blocks_milestone: M4
-    status: open
-  # OQ-13 (device-date), OQ-2 (seed best-known codes), OQ-12 (accept liasse caveat) are ALREADY RULED — not gates.
+    status: approved_option_a
+    decision: "Option A: TN/FR/Generic 6586 shrinkage expense and 7586 gain revenue; all 17 MovementReason classifications approved."
+    authority: docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md
+  - id: OQ-12-H-5-count-correction-live
+    question: "Expert-comptable must ratify the approved Option A presentation before count-correction posting goes live."
+    # AMENDED 2026-08-19 by the parent orchestrator —
+    # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+    # "Goes live" is the production flag flip at deploy time, NOT the dormant implementation. The
+    # treasury ruling of record explicitly instructed "record that in the map document and proceed".
+    # M5's T21/T22 therefore PROCEEDED with the feature flag OFF and both count-correction purposes
+    # dormant, exactly as 3C shipped them. The obligation is retained as a DEPLOY-TIME blocker below.
+    blocks_milestone: null
+    blocks_deploy: "inventory.count_correction_gl_posting_enabled"
+    authority: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+    status: queued_for_expert_comptable_pre_flag_flip
+  # OQ-13 (device-date) and OQ-2 (seed best-known codes) are already ruled. OQ-12/H-5 remains the M5 pre-live rider above.
 
 milestones:
   - id: M0
@@ -90,27 +130,86 @@ milestones:
     last_verdict: ACCEPT
     updated: 6f8a47c55
   - id: M4
-    title: "3D France/purposes arm: T20 (propose shrinkage/gain codes — treasury approval a MERGE CONDITION), T20b. requiresGLEntry stays TRUE; thread unitCost, exclude adjustment path from GL buffer, preserve D-b exclusion."
+    title: "3D purposes arm: T20 via versioned country-defaults templates (legacy seeders frozen), T20b, and F-3 rerouting of Damage/Expiry/WriteOff from COGS to shrinkage. Map choice remains owner-only."
     review_lenses: [inventory-costing, treasury]
     owner_gate: V-7-treasury-codes
-    status: blocked_owner
-    fix_rounds: 0
-    commit: null
-    verdict: null
-    last_verdict: null
+    status: passed
+    fix_rounds: 5
+    commit: 7179bb643
+    proposal: docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md
+    proposal_commit: 3ed96bc7c4c9c565a4606366c42209980f62c320
+    verdict: docs/handoff/reviews/wave3-3c-3d/M4-round6.md
+    last_verdict: ACCEPT
+    owner_ruling: docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md
+    evidence: docs/handoff/reviews/wave3-3c-3d/M4-evidence.md
+    reviewed_tip: f56fd9e65
+    updated: 94a7a43b4
   - id: M5
     title: "3D listener: T21, T22. Whole-branch gate: re-run full accumulated evidence + every lens over the integrated branch."
     review_lenses: [inventory-costing, fiscal-pos, treasury]
-    status: pending
-    fix_rounds: 0
-    commit: null
+    # OQ-12/H-5 no longer blocks this milestone — the parent AMENDED it to a deploy-time flag-flip
+    # blocker (see owner_gates above and the ruling). T21 shipped fully built and tested with
+    # `inventory.count_correction_gl_posting_enabled` FALSE.
+    owner_gate: null
+    owner_gate_amended_by: docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+    status: passed
+    fix_rounds: 1
+    verdict: docs/handoff/reviews/wave3-3c-3d/M5-round2-inventory-costing.md
+    last_verdict: ACCEPT
+    # Whole-branch gate CLOSED 2026-08-19 (parent-run): treasury ACCEPT (M5-round1-treasury.md, 454ae733d),
+    # fiscal-pos ACCEPT (M5-round1-fiscal-pos.md, 264cd6bad), inventory-costing round-1 CHANGES-REQUIRED
+    # (a58adfe52) -> fix round (a9ebf091c..7542e8eb9) -> round-2 ACCEPT (M5-round2-inventory-costing.md, 7ffd6b4f2).
+    ruling_commit: cf9994b11
+    # The three M4-round6 commits preserved on codex/reviewer-round6-unauthorized-mutations, adopted
+    # as M5's opening work per the ruling. They close M4-round6's recorded finding 1 and are
+    # UNREVIEWED — they fall under M5's own bridge review like any other M5 work.
+    adopted_commits: [3c2791724, cdbefd40f, 75a06d987]
+    commit: dfeb7bea8
+    evidence: docs/handoff/reviews/wave3-3c-3d/M5-evidence.md
+    # Whole-branch gate, round 1 — all three lenses run over the integrated branch.
+    # Two ACCEPTs and one CHANGES-REQUIRED, so the milestone stays in review.
+    round_1_registers:
+      - lens: treasury
+        register: docs/handoff/reviews/wave3-3c-3d/M5-round1-treasury.md
+        verdict: ACCEPT
+        commit: 454ae733d
+      - lens: inventory-costing
+        register: docs/handoff/reviews/wave3-3c-3d/M5-round1-inventory-costing.md
+        verdict: CHANGES-REQUIRED
+        commit: a58adfe52
+      - lens: fiscal-pos
+        register: docs/handoff/reviews/wave3-3c-3d/M5-round1-fiscal-pos.md
+        verdict: ACCEPT
+        commit: 264cd6bad
+    # Round-1 fix: the inventory-costing register's two blocking P2s ONLY.
+    #   P2-1  D-e flat-delta + is_historical predicates (also treasury finding 2)
+    #   P2-2  M5-evidence.md §6.1 + the ReplayFinalizeTest ticket's Finding 2 corrected to the
+    #         measured PGTZ root cause; the ticket's "14 cases" -> 11 (fiscal-pos F-2)
+    # The eight P3s are NOT in scope for this round. `config/database.php` deliberately untouched —
+    # the timezone pin is the parent's repo-wide lane.
+    fix_round_1_commit: a9ebf091c        # the substantive fix (code + evidence + ticket)
+    fix_round_1_commits: [a9ebf091c, 7a9d474db, 3da145110]   # + this ledger entry, + a citation fix
     verdict: null
     last_verdict: null
+    updated: 3da145110
 
-status: blocked_owner      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: complete  # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
+#
+# 2026-08-19 M5 blocked_owner RESOLVED by parent orchestrator ruling (OQ-12/H-5 amended from a
+# milestone blocker to a deploy-time flag-flip blocker) — see
+# docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m5-oq12-gate.md
+#
+# TAKEOVER 2026-08-19: M5 was implemented by the PARENT ORCHESTRATOR'S IMPLEMENTATION AGENT, not by
+# the wave's Codex executor. That Codex session went terminal at `blocked_owner` on
+# OQ-12-H-5-count-correction-live and is inactive; it produced no M5 work. The takeover adopted the
+# three preserved M4-round6 commits (see M5.adopted_commits) and delivered T21 + T22 at `dfeb7bea8`.
+# The M5 bridge review was NOT run by the executor — the parent runs the whole-branch gate itself.
 blockers:
-  - "STOP B — V-7-treasury-codes: the treasury reviewer must approve the proposed TN/FR/Generic shrinkage/gain account-code map before T20 merges; M4 is not started."
-  - "3D ancestry precondition: the parent/orchestrator must merge accepted codex/dpa-wave3-3c to local dev, record the resulting 3D_BASE_SHA, and only then create codex/dpa-wave3-3d."
+  # DEPLOY-TIME, not milestone. M5 is implemented and dormant; this binds the FLAG FLIP.
+  - "OQ-12-H-5-count-correction-live (DEPLOY-TIME): `inventory.count_correction_gl_posting_enabled` must NOT be enabled for any tenant before the expert-comptable ratification of the approved Option A (6586/7586) presentation is recorded. The T21 listener ships fully built and tested with the flag FALSE; both count-correction purposes stay dormant exactly as 3C shipped them. Parent carries this on the LEDGER at merge."
+  - "S-16 (PARENT-OWNED): parent must run the per-tenant duplicate-count query as a hard pre-promotion gate; no local vacuous probe is accepted."
+  - "Inherited deptrac ratchet (PARENT-OWNED): pinned 3D base and M4 tip both report 174 violations and RESULT: FAIL against checked-in baseline 99 while the dispatch states 111; parent must reconcile before promotion. M5 adds ZERO new ModuleDomain->ModuleApplication edges by construction (the count-correction GL sink is a \\Closure, and the Application-layer listener owns the buffer enqueue) — see M5-evidence.md §1.3."
+  - "PGTZ timezone pin (PARENT-OWNED, repo-wide lane): config/database.php pgsql connection pins no session timezone; unpinned PGTZ produced the phantom replay divergences retracted in M5-evidence §6.1 and ticket 2026-08-19-replay-finalize-test-not-pg-runnable.md. The remedy (timezone => UTC + its own review of every PG timestamp read) is owned by the parent as a dedicated post-merge lane — recorded here so the corrected root cause has an owner (M5-round2 P3)."

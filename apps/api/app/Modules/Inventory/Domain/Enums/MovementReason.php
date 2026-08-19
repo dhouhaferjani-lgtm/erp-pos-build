@@ -62,15 +62,34 @@ enum MovementReason: string
 
     public function affectsCOGS(): bool
     {
+        return $this->glCounterFamily() === MovementGlCounterFamily::Cogs;
+    }
+
+    public function affectsShrinkage(): bool
+    {
+        return $this->glCounterFamily() === MovementGlCounterFamily::Shrinkage;
+    }
+
+    public function glCounterFamily(): MovementGlCounterFamily
+    {
         return match ($this) {
-            self::Delivery => true,
-            self::CustomerReturn => true,
-            self::Damage => true,
-            self::Expiry => true,
-            self::WriteOff => true,
-            self::POSSale => true,
-            self::POSReturn => true,
-            default => false,
+            self::Delivery,
+            self::CustomerReturn,
+            self::POSSale,
+            self::POSReturn => MovementGlCounterFamily::Cogs,
+            self::Damage,
+            self::Expiry,
+            self::WriteOff => MovementGlCounterFamily::Shrinkage,
+            self::CountCorrection => MovementGlCounterFamily::DirectionalVariance,
+            self::GoodsReceipt,
+            self::AdjustmentPositive,
+            self::TransferIn,
+            self::ProductionOutput,
+            self::OpeningBalance,
+            self::SupplierReturn,
+            self::AdjustmentNegative,
+            self::TransferOut,
+            self::Consumption => MovementGlCounterFamily::Neither,
         };
     }
 
@@ -132,15 +151,15 @@ enum MovementReason: string
      *   MovementType::Opening via OpeningBalancePostingService, reachable from
      *   the product editor's opening_qty / opening_unit_cost fields.
      * - `Expiry` (D7a) — an expiry is always lot-identified, and
-     *   BatchWriteOffService already posts the Dr COGS / Cr Inventory leg this
+     *   BatchWriteOffService already posts the Dr Shrinkage / Cr Inventory leg this
      *   document does not (GL is deferred to G1). Routing it here would LOSE a
      *   journal entry that exists today.
-     * - `Consumption` (D7b) — `requiresGLEntry()` and `affectsCOGS()` are both
-     *   false via the `default` arms, so offering it would be a silent value leak
+     * - `Consumption` (D7b) — `requiresGLEntry()` is false and the exhaustive
+     *   `glCounterFamily()` match classifies it as `Neither`, so offering it would be a silent value leak
      *   the moment G1 lands. Internal consumption is represented by
      *   `AdjustmentNegative` in v1 (an inventory-adjustment leg, no COGS leg) —
-     *   NEVER by `WriteOff`, whose `affectsCOGS()` is true and would produce a
-     *   WRONG COGS rather than a missing one.
+     *   NEVER by `WriteOff`, whose shrinkage counter-family would produce a
+     *   WRONG destructive-loss expense rather than a missing one.
      *
      * @return list<self>
      */

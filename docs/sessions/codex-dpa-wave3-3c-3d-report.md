@@ -390,3 +390,98 @@ TN/FR/Generic shrinkage/gain account-code map before T20 merges; no code-map
 choice was guessed and M4 was not started. The brief's ancestry rule also
 requires the parent/orchestrator to merge accepted 3C to local `dev`, record
 the resulting `3D_BASE_SHA`, and only then create `codex/dpa-wave3-3d`.
+
+### M4 resumed — amended proposal-only exit
+
+The parent discharged the original, unsatisfiable STOP B after merging accepted
+3C at `1e8c0fa03`, applying the `3a8e4b05b` merge-seam reconciliation, and
+pinning `3D_BASE_SHA` to `48cebf0f2c1b481c592bf35d478302499f9fda5d`.
+The dedicated branch is `codex/dpa-wave3-3d`.
+
+The amended authority is recorded at
+`docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-19-m4-stop-b.md`.
+It authorizes a proposal only. The three legacy chart seeders are fingerprint-
+frozen; T20 must use a new country-defaults chart-template version and must not
+edit or re-pin those seeders. The proposal deliberately leaves the frozen
+fallback without the two purposes behind the existing warning/no-entry guard;
+existing companies are handled only by the explicit backfill.
+
+`docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md` presents both
+owner choices without selecting one: class-65/class-75 variance accounts while
+preserving `InventoryGainIncome => Revenue`, or 6038/6039 symmetric debit/credit
+subaccounts while reopening the gain purpose to `Expense`. It carries the
+OQ-12/H-5 liasse caveat and classifies all 17 `MovementReason` cases. In both
+options, `Damage`, `Expiry`, and `WriteOff` move off COGS to shrinkage.
+
+F-7 is recorded without code at
+`docs/superpowers/tickets/2026-08-19-inventory-movement-entry-idempotency-company-scope.md`.
+S-16 remains the parent-side per-tenant pre-promotion gate at
+`docs/handoff/LEDGER.md`; no local zero-row probe is claimed as evidence.
+
+Pre-gate verification on the pinned tree: `FrozenSeederDocblockTest` plus
+`ProvisioningRequiredPurposesV1ConformanceTest` pass `14 tests / 432 assertions`.
+No production, migration, seeder, or `.github/workflows/**` file changed. Per
+the amended exit, M4 returns to `blocked_owner` before T20/T20b implementation;
+no adversarial review or fix round is consumed.
+
+### M4 implemented after treasury approval
+
+The treasury owner subsequently approved Option A (`6586` / `7586`) and all 17
+movement classifications. M4 then implemented the v2 country-default templates,
+purpose-first tenant backfill, exhaustive movement counter families, and the
+Damage/Expiry/WriteOff reroute from COGS to shrinkage. The three legacy seeders
+remain byte-identical. The earlier proposal-only paragraph above is historical
+STOP-B evidence and no longer describes the branch tip.
+
+Adversarial round 1 found that the live destructive-loss repoint would deploy
+before the manual backfill was run. The scoped remediation adds an unattended
+tenant migration that delegates to the tested command inside a connection-bound
+savepoint and emits a distinct warning-level deploy token. Shrinkage is REQUIRED
+for every newly certified country-default template; the frozen-seeder fallback
+remains the explicit owner-approved warning/no-entry exception. Command coverage
+now includes promotion, repurpose refusal, missing parents, dry-run, schema-guard
+tokens, and PostgreSQL containment. The stale write-off account docblock and this
+handback narrative were corrected in the same round.
+
+Round 2 found the remaining future-company half: production keeps Country
+Defaults provisioning disabled until Release 2, so post-deploy onboarding still
+used the frozen seeders. A shared `InventoryVarianceAccountProvisioner` now
+supplies the same purpose-first definitions to the command and to
+`ChartOfAccountsService`; the seeder plus installer are one transaction and
+therefore cover both registration and second-company creation without changing
+the frozen seeder bytes. G2 now directs operators to clone, certify, and assign
+the three `*.default-v2` bootstraps. The parent fixture/hash re-pin and the
+historical COGS-to-new-shrinkage reporting cutover are explicitly recorded.
+
+Round 3 confirmed M4 adds no deptrac edge, but also proved the architecture gate
+is inherited-red: the checked-in baseline is 99, the dispatch says 111, and both
+the pinned 3D base and M4 tip measure 174 with `RESULT: FAIL`. That discrepancy
+is now a parent promotion blocker rather than a claimed green result. The code
+remediation aligns chart health with the REQUIRED shrinkage purpose, applies the
+variance installer atomically to assigned-template provisioning (including
+pre-policy published assignments), exercises rollback on a purpose collision,
+and makes the legacy preview count the installer. The three frozen seeders and
+workflow files remain untouched.
+
+Round 4 found the template overlay still selected parent families from company
+country. A legally certified French-plan template assigned to Morocco and
+omitting the SOFT gain row therefore looked for `7000` and aborted company
+creation despite the chart containing `75`. The template-only overlay now
+selects from the parent families actually present in the seeded chart while
+legacy/backfill repair retains its strict country-map refusal. The cross-plan
+case is red-first and the full Country Defaults directories remain green.
+
+Round 5 closed the remaining third-plan case. If a legally published custom
+template has neither supported revenue-family parent and omits the SOFT gain,
+company creation now succeeds with REQUIRED shrinkage intact and emits a stable
+tenant/company/country warning for the skipped optional gain. Parent candidates
+must match the account type. The strict legacy repair command remains unchanged
+and is now explicitly scoped to pre-G2 charts in the deploy checklist.
+
+M4 round 6 accepted the committed tip `f56fd9e65` after all five fix rounds.
+The review bridge then violated its read-only contract by creating three
+post-snapshot commits and an uncommitted edit. They were preserved on a safety
+ref/stash and reverted from the delivery branch; the resulting tracked code is
+the exact accepted tree. M5 remains unstarted and is blocked on expert-
+comptable ratification of OQ-12/H-5. S-16 and the inherited deptrac ratchet
+failure remain parent pre-promotion gates.

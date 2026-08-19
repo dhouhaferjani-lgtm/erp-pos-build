@@ -13,16 +13,24 @@ use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\Seeder;
 
 /**
- * Read-only preview of the frozen existing-chart repair baseline.
+ * Read-only preview of the normal legacy provisioning baseline: the frozen
+ * country seeder followed by the approved inventory-variance installer.
  *
  * The collaborator owns and always rolls back its nested transaction, so neither
  * direct calls nor calls inside a committing outer transaction can persist repairs.
  */
 final class LegacyExistingChartRepairPreviewer
 {
-    public function __construct(private readonly DatabaseManager $database) {}
+    public function __construct(
+        private readonly DatabaseManager $database,
+        private readonly InventoryVarianceAccountProvisioner $inventoryVarianceAccounts,
+    ) {}
 
-    /** @return array{int, int, int} [created, promoted, reparented] */
+    /**
+     * @return array{int, int, int} [created, promoted, reparented]
+     *
+     * @throws \RuntimeException When a purpose/code collision or missing approved parent makes repair unsafe
+     */
     public function preview(Company $company): array
     {
         $connection = $this->database->connection();
@@ -33,6 +41,11 @@ final class LegacyExistingChartRepairPreviewer
             $seeder = $this->seederForCountry($company->country_code);
             /** @var TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder $seeder */
             $seeder->run($company->id, $company->tenant_id);
+            $this->inventoryVarianceAccounts->provisionCompany(
+                $company->id,
+                $company->tenant_id,
+                $company->country_code,
+            );
 
             return $this->diff($before, $this->snapshot((string) $company->id));
         } finally {

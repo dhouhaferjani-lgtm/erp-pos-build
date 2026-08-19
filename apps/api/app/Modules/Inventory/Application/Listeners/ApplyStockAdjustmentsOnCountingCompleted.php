@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace App\Modules\Inventory\Application\Listeners;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Inventory\Application\DTOs\MovementGlContext;
 use App\Modules\Inventory\Application\DTOs\ReplayAuditDto;
+use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
 use App\Modules\Inventory\Domain\Enums\CountingItemFlagReason;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
+use App\Modules\Inventory\Domain\Enums\MovementGlKind;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
 use App\Modules\Inventory\Domain\InventoryCounting;
@@ -49,6 +53,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         private readonly MovementReplayService $replayService,
         private readonly OpeningCostGate $openingCostGate,
         private readonly CountingReplayGuardEvaluator $guardEvaluator,
+        private readonly InventoryGlPostingBuffer $glBuffer,
     ) {}
 
     public function handle(InventoryCountingCompleted $event): void
@@ -67,55 +72,80 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         $window = $counting->ambiguity_window_minutes;
         $adjustedCount = 0;
 
-        foreach ($counting->items as $item) {
-            if ($item->resolution_method === ItemResolutionMethod::Pending) {
-                Log::warning('ApplyStockAdjustments: Skipping pending item in finalized counting', [
-                    'counting_id' => $event->countingId,
-                    'item_id' => $item->id,
-                ]);
+        // T21 RULING (fiscal R3-3) — the flush needs a ROOT FRAME that did not
+        // exist. handle() opened NO transaction and applyCountResult()'s is PER
+        // ITEM, so "flush after the loop" sat at depth 0 (flushIfOutermost can
+        // never post there, and D-10 forbids autocommit posting) while flushing
+        // inside the loop would take the company advisory before item N+1's
+        // ProductCostLock / stock_levels row locks — violating I-1. Neither is
+        // implementable. So: ONE transaction around the whole item loop, enqueue
+        // per item, flush at this transaction's tail.
+        //
+        // The consequence, stated rather than discovered: the per-item
+        // boundaries the applyReplay() comment defends become SAVEPOINTS, so an
+        // item-N failure no longer commits items 1..N-1. This listener is
+        // ShouldQueue with $tries = 3 and the retry re-runs the whole counting,
+        // which the `replay_audit` marker and the legacy existing-movement probe
+        // already make idempotent. Pinned by
+        // CountCorrectionGlPostingTest::test_an_item_that_throws_...
+        DB::transaction(function () use ($counting, $event, $reference, $window, &$adjustedCount): void {
+            $currencyCode = $this->resolveCurrencyCode($counting->company_id);
 
-                continue;
-            }
+            foreach ($counting->items as $item) {
+                if ($item->resolution_method === ItemResolutionMethod::Pending) {
+                    Log::warning('ApplyStockAdjustments: Skipping pending item in finalized counting', [
+                        'counting_id' => $event->countingId,
+                        'item_id' => $item->id,
+                    ]);
 
-            $finalQty = $item->final_qty;
-
-            if ($finalQty === null) {
-                continue;
-            }
-
-            // Legacy path: counts created before the replay feature carry no
-            // final_qty_as_of — apply the exact historical `final − theoretical`
-            // delta so pre-existing behaviour (and its regression sentinels)
-            // stays byte-for-byte identical.
-            if ($item->final_qty_as_of === null) {
-                if ($this->applyLegacyDelta($item, $counting->company_id, $reference, $event->completedBy, $counting->id)) {
-                    $adjustedCount++;
+                    continue;
                 }
 
-                continue;
+                $finalQty = $item->final_qty;
+
+                if ($finalQty === null) {
+                    continue;
+                }
+
+                // Legacy path: counts created before the replay feature carry no
+                // final_qty_as_of — apply the exact historical `final − theoretical`
+                // delta so pre-existing behaviour (and its regression sentinels)
+                // stays byte-for-byte identical.
+                if ($item->final_qty_as_of === null) {
+                    if ($this->applyLegacyDelta($item, $counting->company_id, $reference, $event->completedBy, $counting->id, $currencyCode)) {
+                        $adjustedCount++;
+                    }
+
+                    continue;
+                }
+
+                // Idempotency guard (queue-retry double-apply defense). This listener
+                // is ShouldQueue with $tries=3; if item N throws after items 1..N-1
+                // committed, the WHOLE job replays. The replay path stamps
+                // `replay_audit` in the SAME transaction as its stock movement (see
+                // applyReplay), so a non-null marker proves this item already reached
+                // a terminal state on a prior attempt — posted OR flagged (flags carry
+                // an audit too). Re-running would re-sum the prior correction inside a
+                // fresh replay window and double-apply. Skip it.
+                if ($item->replay_audit !== null) {
+                    Log::info('ApplyStockAdjustments: Skipping already-applied replay item (queue retry)', [
+                        'counting_id' => $event->countingId,
+                        'item_id' => $item->id,
+                    ]);
+
+                    continue;
+                }
+
+                if ($this->applyReplay($item, $counting, $window, $event->completedBy, $currencyCode)) {
+                    $adjustedCount++;
+                }
             }
 
-            // Idempotency guard (queue-retry double-apply defense). This listener
-            // is ShouldQueue with $tries=3; if item N throws after items 1..N-1
-            // committed, the WHOLE job replays. The replay path stamps
-            // `replay_audit` in the SAME transaction as its stock movement (see
-            // applyReplay), so a non-null marker proves this item already reached
-            // a terminal state on a prior attempt — posted OR flagged (flags carry
-            // an audit too). Re-running would re-sum the prior correction inside a
-            // fresh replay window and double-apply. Skip it.
-            if ($item->replay_audit !== null) {
-                Log::info('ApplyStockAdjustments: Skipping already-applied replay item (queue retry)', [
-                    'counting_id' => $event->countingId,
-                    'item_id' => $item->id,
-                ]);
-
-                continue;
-            }
-
-            if ($this->applyReplay($item, $counting, $window)) {
-                $adjustedCount++;
-            }
-        }
+            // The tail of the ROOT frame: every count correction this job
+            // enqueued posts here, once, with the company advisory taken after
+            // the last item released its product-grain locks.
+            $this->glBuffer->flushIfOutermost();
+        });
 
         Log::info('ApplyStockAdjustments: Stock adjustments applied', [
             'counting_id' => $event->countingId,
@@ -134,6 +164,10 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
      *                              StockMovementReferenceType::InventoryCounting).
      *                              Additive to the free-text `COUNTING:{number}`
      *                              label, which remains the legacy idempotency key.
+     * @param  string  $currencyCode  The company's ISO 4217 code, resolved ONCE per job.
+     *                                Explicit because this listener is queued and runs with no
+     *                                CompanyContext, where a bare no-arg scale resolution throws
+     *                                (house rules 19/20).
      */
     private function applyLegacyDelta(
         InventoryCountingItem $item,
@@ -141,6 +175,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         string $reference,
         string $completedBy,
         string $countingId,
+        string $currencyCode,
     ): bool {
         $finalQty = $item->final_qty;
         $theoreticalQty = $item->theoretical_qty;
@@ -193,7 +228,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         /** @var numeric-string $newQuantity */
         $newQuantity = bcadd($currentStock, $delta, 4);
 
-        $this->stockAdjustmentService->adjust(
+        $movement = $this->stockAdjustmentService->adjust(
             productId: $item->product_id,
             locationId: $item->location_id,
             newQuantity: $newQuantity,
@@ -205,6 +240,10 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
             referenceType: StockMovementReferenceType::InventoryCounting,
             referenceId: $countingId,
         );
+
+        // T21 — the legacy path posts too, on the SAME basis as the replay path
+        // (the row's own persisted unit_cost). One basis, on the row, both paths.
+        $this->enqueueCountCorrectionGl($movement, $currencyCode, $completedBy);
 
         return true;
     }
@@ -218,6 +257,8 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         InventoryCountingItem $item,
         InventoryCounting $counting,
         int $window,
+        string $completedBy,
+        string $currencyCode,
     ): bool {
         /** @var CarbonInterface $asOf */
         $asOf = $item->final_qty_as_of;
@@ -254,7 +295,7 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
         // double-apply. This is the fix for the finalize double-apply blocker.
         $countingId = $counting->id;
 
-        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId): bool {
+        return DB::transaction(function () use ($item, $window, $asOf, $onboarding, $openingUnitCost, $finalQty, $countingId, $completedBy, $currencyCode): bool {
             $audit = $this->stockAdjustmentService->applyCountResult(
                 productId: $item->product_id,
                 locationId: $item->location_id,
@@ -268,6 +309,13 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
                 // counting row itself, not just the free-text COUNT_REPLAY label.
                 referenceType: StockMovementReferenceType::InventoryCounting,
                 referenceId: $countingId,
+                // T21 — the GL sink fires ONLY for the postCountCorrection()
+                // branch. postCountOpening() writes MovementType::Opening /
+                // MovementReason::OpeningBalance, which is outside the seam, so
+                // the onboarding first count still posts no shrinkage/gain leg.
+                onCountCorrection: function (StockMovement $movement) use ($currencyCode, $completedBy): void {
+                    $this->enqueueCountCorrectionGl($movement, $currencyCode, $completedBy);
+                },
             );
 
             // Null return means the negative-at-apply guard tripped (basket window
@@ -286,6 +334,71 @@ final class ApplyStockAdjustmentsOnCountingCompleted implements ShouldQueue
 
             return true;
         });
+    }
+
+    /**
+     * Hand ONE count_correction movement to the inventory GL buffer (T21).
+     *
+     * Enqueueing is pure — no database work happens until `flushIfOutermost()`
+     * at the tail of handle()'s root transaction — so calling it from inside a
+     * per-item savepoint, while the item still holds its ProductCostLock and
+     * stock_levels row, cannot take the company advisory early and cannot
+     * invert the I-1 lock order.
+     *
+     * Every value is copied off the PERSISTED row. The amount the posting
+     * service derives is `unit_cost x |quantity_after − quantity_before|`, so
+     * both counting paths share one basis and neither re-reads a WAC that may
+     * have moved since the movement was written.
+     *
+     * ## Dormant by configuration (OQ-12/H-5)
+     *
+     * `inventory.count_correction_gl_posting_enabled` ships FALSE. The
+     * expert-comptable must ratify the approved Option A (6586 / 7586)
+     * presentation before the flag is flipped for any tenant. With it off the
+     * stock correction and its costed movement row still happen; only the
+     * journal entry is withheld, so nothing is lost — the ledger can be built
+     * from the movement rows once the gate clears.
+     */
+    private function enqueueCountCorrectionGl(StockMovement $movement, string $currencyCode, string $completedBy): void
+    {
+        if (! (bool) config('inventory.count_correction_gl_posting_enabled', false)) {
+            return;
+        }
+
+        $occurredAt = $movement->occurred_at ?? $movement->created_at ?? now();
+
+        $this->glBuffer->enqueue(new MovementGlContext(
+            kind: MovementGlKind::CountCorrection,
+            movementId: $movement->id,
+            companyId: $movement->company_id,
+            currencyCode: $currencyCode,
+            reason: $movement->reason ?? throw new \LogicException('Count correction movement is missing its GL reason.'),
+            quantityBefore: (string) $movement->quantity_before,
+            quantityAfter: (string) $movement->quantity_after,
+            unitCost: (string) ($movement->unit_cost ?? '0'),
+            sourceType: $movement->reference_type,
+            sourceId: $movement->reference_id,
+            occurredAt: \DateTimeImmutable::createFromInterface($occurredAt),
+            entryDate: new \DateTimeImmutable('now'),
+            // The queued listener has no authenticated user; the counting's
+            // finalizer is the acting identity for the posting.
+            postedByUserId: $completedBy,
+            isHistorical: (bool) $movement->is_historical,
+            productId: $movement->product_id,
+        ));
+    }
+
+    /**
+     * The company's ISO 4217 code, resolved ONCE per job.
+     *
+     * Queued listeners run with NO CompanyContext, where a bare no-arg
+     * `CurrencyScaleResolver::getScale()` throws (house rules 19/20). The
+     * posting service scales on `MovementGlContext::$currencyCode`, so the
+     * entity currency has to be carried explicitly from here.
+     */
+    private function resolveCurrencyCode(string $companyId): string
+    {
+        return (string) Company::query()->findOrFail($companyId)->currency;
     }
 
     /**

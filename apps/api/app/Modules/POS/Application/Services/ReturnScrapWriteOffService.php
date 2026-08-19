@@ -37,7 +37,7 @@ use Illuminate\Support\Facades\Log;
  *
  *   cost-resolved `StockAdjustmentService::issue()`  (persists unit_cost/total_cost
  *   at COST_SCALE=6, emits StockMovementRecorded/V2, stamps the DPA S0 document
- *   linkage) + a buffered movement-keyed Dr COGS / Cr Inventory entry.
+ *   linkage) + a buffered movement-keyed Dr Shrinkage / Cr Inventory entry.
  *
  * THE PAIR IS ATOMIC — IT NEVER DECLINES QUIETLY (gate C1)
  *
@@ -190,7 +190,7 @@ final class ReturnScrapWriteOffService
 
             // Post-Wave-3 three-entry arithmetic: sale exit relieves Inventory,
             // return entry restores it, and this write-off relieves it again.
-            // The T16 net assertion pins the final Dr COGS / Cr Inventory once.
+            // The T16 net assertion pins the final Dr Shrinkage / Cr Inventory once.
 
             return $movement;
         });

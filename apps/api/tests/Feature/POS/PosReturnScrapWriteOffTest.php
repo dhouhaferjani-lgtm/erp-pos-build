@@ -45,7 +45,7 @@ use Tests\TestCase;
  *   leg 1 (restore)   +qty, `MovementReason::POSReturn`   — goods came back
  *   leg 2 (write-off) −qty, `MovementReason::WriteOff`    — goods destroyed,
  *                     carrying `unit_cost`/`total_cost` and a movement-keyed
- *                     Dr COGS / Cr Inventory journal entry.
+ *                     Dr Shrinkage / Cr Inventory journal entry.
  *
  * Net sellable quantity is unchanged (the two legs cancel); what changes is
  * that the destruction is now costed and posted, and the write-off movement
@@ -155,10 +155,10 @@ final class PosReturnScrapWriteOffTest extends TestCase
     }
 
     // =========================================================================
-    // Movement-keyed Dr COGS / Cr Inventory journal entry
+    // Movement-keyed Dr Shrinkage / Cr Inventory journal entry
     // =========================================================================
 
-    public function test_scrap_write_off_posts_movement_keyed_cogs_inventory_entry(): void
+    public function test_scrap_write_off_posts_movement_keyed_shrinkage_inventory_entry(): void
     {
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
@@ -189,13 +189,14 @@ final class PosReturnScrapWriteOffTest extends TestCase
             ->sole();
 
         // TND scale 3: 2.000 × 2.500000 = 5.000
+        $shrinkageAccountId = $this->accountId(SystemAccountPurpose::InventoryShrinkageExpense);
         $cogsAccountId = $this->accountId(SystemAccountPurpose::CostOfGoodsSold);
         $inventoryAccountId = $this->accountId(SystemAccountPurpose::Inventory);
 
-        $debit = $entry->lines->firstWhere('account_id', $cogsAccountId);
+        $debit = $entry->lines->firstWhere('account_id', $shrinkageAccountId);
         $credit = $entry->lines->firstWhere('account_id', $inventoryAccountId);
 
-        self::assertNotNull($debit, 'Dr COGS line missing');
+        self::assertNotNull($debit, 'Dr Shrinkage line missing');
         self::assertNotNull($credit, 'Cr Inventory line missing');
         self::assertSame('5.000', (string) $debit->debit);
         self::assertSame('5.000', (string) $credit->credit);
@@ -406,8 +407,8 @@ final class PosReturnScrapWriteOffTest extends TestCase
         self::assertNotNull($entry->posted_at);
         self::assertNotNull($entry->fiscal_hash, 'the entry must be sealed into the GL chain');
 
-        // Balances actually moved: Dr COGS 5.000 / Cr Inventory 5.000.
-        self::assertSame('5.000', $this->postedSum($this->accountId(SystemAccountPurpose::CostOfGoodsSold), 'debit'));
+        // Balances actually moved: Dr Shrinkage 5.000 / Cr Inventory 5.000.
+        self::assertSame('5.000', $this->postedSum($this->accountId(SystemAccountPurpose::InventoryShrinkageExpense), 'debit'));
         self::assertSame('5.000', $this->postedSum($this->accountId(SystemAccountPurpose::Inventory), 'credit'));
     }
 
@@ -600,10 +601,20 @@ final class PosReturnScrapWriteOffTest extends TestCase
         Account::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
-            'code' => '601',
+            'code' => '603',
             'name' => 'Cost of Goods Sold',
             'type' => AccountType::Expense,
             'system_purpose' => SystemAccountPurpose::CostOfGoodsSold,
+            'is_active' => true,
+        ]);
+
+        Account::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'code' => '6586',
+            'name' => 'Inventory Shrinkage Expense',
+            'type' => AccountType::Expense,
+            'system_purpose' => SystemAccountPurpose::InventoryShrinkageExpense,
             'is_active' => true,
         ]);
 

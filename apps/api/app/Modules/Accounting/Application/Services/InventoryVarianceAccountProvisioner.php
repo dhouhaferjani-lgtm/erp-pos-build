@@ -1,0 +1,261 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Modules\Accounting\Application\Services;
+
+use App\Modules\Accounting\Domain\Enums\AccountType;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use Illuminate\Database\DatabaseManager;
+use Illuminate\Support\Str;
+use Psr\Log\LoggerInterface;
+use RuntimeException;
+
+/**
+ * Purpose-first installer shared by new-company provisioning and the tenant
+ * backfill command. The frozen legacy seeders remain unchanged; their normal
+ * ChartOfAccountsService path adds the approved accounts in the same atomic
+ * transaction immediately after seeding.
+ */
+final class InventoryVarianceAccountProvisioner
+{
+    public function __construct(
+        private readonly DatabaseManager $database,
+        private readonly LoggerInterface $logger,
+    ) {}
+
+    public function provisionCompany(string $companyId, string $tenantId, string $countryCode): void
+    {
+        foreach ($this->definitions($countryCode) as $definition) {
+            $this->applyDefinition($companyId, $tenantId, $definition, false);
+        }
+    }
+
+    /**
+     * Complete an assigned template using the account families that the
+     * template actually seeded. Country code remains the preferred plan, but a
+     * legal cross-country assignment may deliberately use the other plan.
+     *
+     * A third chart plan carrying neither family is legal — publication never
+     * requires a `65`/`6000`/`75`/`7000` root — so this path must never abort
+     * company creation. The two purposes are treated asymmetrically because
+     * their classifications differ: REQUIRED shrinkage is grafted onto a
+     * same-type root already in the chart (or installed as a root of its own)
+     * rather than rolling back tenant registration; the SOFT gain is skipped
+     * with a warning rather than grafted beneath an unreviewed parent, because
+     * its consumer fail-softs (InventoryGlPostingService::postForCountCorrection)
+     * while a missing shrinkage account silently drops a write-off journal entry.
+     */
+    public function provisionTemplateCompany(string $companyId, string $tenantId, string $countryCode): void
+    {
+        foreach ($this->definitions($countryCode) as $definition) {
+            $resolved = $this->resolveTemplateParent($companyId, $definition);
+            if ($resolved === null && $definition['purpose'] === SystemAccountPurpose::InventoryGainIncome->value) {
+                $this->logger->warning(
+                    'INVENTORY-VARIANCE-TEMPLATE-OVERLAY skipped optional gain: no compatible revenue parent.',
+                    [
+                        'tenant_id' => $tenantId,
+                        'company_id' => $companyId,
+                        'country_code' => strtoupper($countryCode),
+                    ],
+                );
+
+                continue;
+            }
+
+            if ($resolved === null) {
+                $resolved = $this->fallbackTemplateParent($companyId, $definition);
+                $this->logger->warning(
+                    'INVENTORY-VARIANCE-TEMPLATE-OVERLAY grafted required shrinkage onto a fallback parent: no compatible expense plan parent.',
+                    [
+                        'tenant_id' => $tenantId,
+                        'company_id' => $companyId,
+                        'country_code' => strtoupper($countryCode),
+                        'parent_code' => $resolved['parent_code'],
+                    ],
+                );
+            }
+
+            $this->applyDefinition($companyId, $tenantId, $resolved, false);
+        }
+    }
+
+    /**
+     * `parent_code` is nullable only for the template overlay's root fallback;
+     * `definitions()` always yields a country-derived code, so the legacy and
+     * backfill paths keep their strict missing-parent refusal.
+     *
+     * @param  array{code: string, name: string, type: string, parent_code: string|null, purpose: string}  $definition
+     * @return 'created'|'promoted'|'satisfied'
+     */
+    public function applyDefinition(string $companyId, string $tenantId, array $definition, bool $dryRun): string
+    {
+        $accounts = $this->database->table('accounts')->where('company_id', $companyId);
+        $holder = (clone $accounts)->where('system_purpose', $definition['purpose'])->first();
+        if ($holder !== null) {
+            $this->assertUsable($companyId, $holder, $definition);
+
+            return 'satisfied';
+        }
+
+        $existing = (clone $accounts)->where('code', $definition['code'])->first();
+        if ($existing !== null) {
+            if ($existing->system_purpose !== null) {
+                throw new RuntimeException(sprintf(
+                    'Company %s account %s already carries system_purpose %s; refusing to repurpose it.',
+                    $companyId,
+                    $definition['code'],
+                    (string) $existing->system_purpose,
+                ));
+            }
+            $this->assertUsable($companyId, $existing, $definition);
+            if (! $dryRun) {
+                $this->database->table('accounts')->where('id', $existing->id)->update([
+                    'system_purpose' => $definition['purpose'],
+                    'is_system' => true,
+                    'updated_at' => now(),
+                ]);
+            }
+
+            return 'promoted';
+        }
+
+        $parentId = null;
+        if ($definition['parent_code'] !== null) {
+            $parentId = (clone $accounts)->where('code', $definition['parent_code'])->value('id');
+            if (! is_string($parentId)) {
+                throw new RuntimeException(sprintf(
+                    'Company %s is missing parent account %s; cannot provision inventory variance account %s.',
+                    $companyId,
+                    $definition['parent_code'],
+                    $definition['code'],
+                ));
+            }
+        }
+        if (! $dryRun) {
+            $now = now();
+            $this->database->table('accounts')->insert([
+                'id' => Str::uuid()->toString(),
+                'tenant_id' => $tenantId,
+                'company_id' => $companyId,
+                'parent_id' => $parentId,
+                'code' => $definition['code'],
+                'name' => $definition['name'],
+                'type' => $definition['type'],
+                'system_purpose' => $definition['purpose'],
+                'is_active' => true,
+                'is_system' => true,
+                'balance' => '0.000',
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
+
+        return 'created';
+    }
+
+    /** @return list<array{code: string, name: string, type: string, parent_code: string, purpose: string}> */
+    public function definitions(string $countryCode): array
+    {
+        $frenchPlan = in_array(strtoupper($countryCode), ['TN', 'FR'], true);
+
+        return [
+            [
+                'code' => '6586',
+                'name' => $frenchPlan ? "Écarts d'inventaire — manquants et pertes" : 'Inventory Shrinkage Expense',
+                'type' => AccountType::Expense->value,
+                'parent_code' => $frenchPlan ? '65' : '6000',
+                'purpose' => SystemAccountPurpose::InventoryShrinkageExpense->value,
+            ],
+            [
+                'code' => '7586',
+                'name' => $frenchPlan ? "Écarts d'inventaire — excédents" : 'Inventory Count Gain',
+                'type' => AccountType::Revenue->value,
+                'parent_code' => $frenchPlan ? '75' : '7000',
+                'purpose' => SystemAccountPurpose::InventoryGainIncome->value,
+            ],
+        ];
+    }
+
+    /** @param array{type: string, purpose: string} $definition */
+    private function assertUsable(string $companyId, \stdClass $account, array $definition): void
+    {
+        if ((string) $account->type !== $definition['type']) {
+            throw new RuntimeException(sprintf(
+                'Company %s account %s has wrong type %s; expected %s.',
+                $companyId,
+                (string) $account->code,
+                (string) $account->type,
+                $definition['type'],
+            ));
+        }
+        if (! (bool) $account->is_active) {
+            throw new RuntimeException(sprintf('Company %s account %s is inactive.', $companyId, (string) $account->code));
+        }
+    }
+
+    /**
+     * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
+     * @return array{code: string, name: string, type: string, parent_code: string, purpose: string}|null
+     */
+    private function resolveTemplateParent(string $companyId, array $definition): ?array
+    {
+        $accounts = $this->database->table('accounts')->where('company_id', $companyId);
+        $alreadyUsableWithoutParent = (clone $accounts)
+            ->where(function ($query) use ($definition): void {
+                $query->where('system_purpose', $definition['purpose'])
+                    ->orWhere('code', $definition['code']);
+            })
+            ->exists();
+        if ($alreadyUsableWithoutParent) {
+            return $definition;
+        }
+
+        $familyParents = $definition['purpose'] === SystemAccountPurpose::InventoryShrinkageExpense->value
+            ? ['65', '6000']
+            : ['75', '7000'];
+        $candidates = array_values(array_unique([$definition['parent_code'], ...$familyParents]));
+
+        foreach ($candidates as $parentCode) {
+            $exists = (clone $accounts)
+                ->where('code', $parentCode)
+                ->where('type', $definition['type'])
+                ->exists();
+            if (! $exists) {
+                continue;
+            }
+
+            $definition['parent_code'] = $parentCode;
+            $frenchPlan = in_array($parentCode, ['65', '75'], true);
+            $definition['name'] = $definition['purpose'] === SystemAccountPurpose::InventoryShrinkageExpense->value
+                ? ($frenchPlan ? "Écarts d'inventaire — manquants et pertes" : 'Inventory Shrinkage Expense')
+                : ($frenchPlan ? "Écarts d'inventaire — excédents" : 'Inventory Count Gain');
+
+            return $definition;
+        }
+
+        return null;
+    }
+
+    /**
+     * Last resort for a REQUIRED purpose on a chart plan this installer does not
+     * know: the lowest same-type root already present, else the account itself
+     * becomes a root (legal — `GenericChartOfAccountsSeeder` seeds `6000` with a
+     * null parent). The country-derived name is kept because no plan matched.
+     *
+     * @param  array{code: string, name: string, type: string, parent_code: string|null, purpose: string}  $definition
+     * @return array{code: string, name: string, type: string, parent_code: string|null, purpose: string}
+     */
+    private function fallbackTemplateParent(string $companyId, array $definition): array
+    {
+        $rootCode = $this->database->table('accounts')
+            ->where('company_id', $companyId)
+            ->where('type', $definition['type'])
+            ->whereNull('parent_id')
+            ->orderBy('code')
+            ->value('code');
+        $definition['parent_code'] = is_string($rootCode) ? $rootCode : null;
+
+        return $definition;
+    }
+}
