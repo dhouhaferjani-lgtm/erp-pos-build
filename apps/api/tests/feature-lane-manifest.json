@@ -1,0 +1,400 @@
+{
+  "note": "Assignment of every tests/Feature top-level group to a CI lane, an exclusion, or a deferral. Enforced by tools/feature-lane-manifest-check.php, which runs as a discrete step in the backend-architecture job (no `if:` guard, in all-checks-pass `needs`). A new directory has no entry here and FAILS the check - that is the whole point: before this file, a new Feature class in an unlisted directory ran nowhere, forever, and nothing said so. `classes` is documentation only; the checker never trusts it.",
+  "dispositions": {
+    "lane": "Runs automatically in the named CI lane. New classes in the group are picked up with no edit here.",
+    "excluded": "Genuinely cannot run in CI (needs a device, an external service, a manual fixture). Requires `reason`.",
+    "deferred": "CAN run, but no lane runs it yet; blocked on the F-2 CI-budget decision. Requires `reason`. Counted loudly on every CI run."
+  },
+  "lanes": {
+    "backend-test/security": {
+      "job": "backend-test",
+      "step": "Security regression suite (module gating + kill-switches)",
+      "selector": "./vendor/bin/phpunit tests/Feature/Security",
+      "events": "PR->main, push->main, workflow_dispatch (job is `if:`-gated; skipped on PR->dev)",
+      "note": "Whole directory, not a filter list, so new classes are gated the moment they land."
+    },
+    "treasury-spine-pgsql/feature-treasury": {
+      "job": "treasury-spine-pgsql",
+      "step": "PG-only invariants - Treasury Feature suite",
+      "selector": "./vendor/bin/phpunit tests/Feature/Treasury",
+      "events": "PR->dev, PR->main, push->main, workflow_dispatch",
+      "note": "Real Postgres: the forbid-balance-write trigger, repository_movements immutability, GL advisory locks and savepoints all markTestSkipped on sqlite."
+    },
+    "treasury-spine-pgsql/feature-accounting": {
+      "job": "treasury-spine-pgsql",
+      "step": "PG-only invariants - Accounting Feature suite",
+      "selector": "./vendor/bin/phpunit tests/Feature/Accounting",
+      "events": "PR->dev, PR->main, push->main, workflow_dispatch",
+      "note": "Same PG rationale as the Treasury directory."
+    }
+  },
+  "groups": {
+    "(root files)": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Accounting": {
+      "lane": "treasury-spine-pgsql/feature-accounting",
+      "classes": 79
+    },
+    "Admin": {
+      "deferred": true,
+      "classes": 9,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Api": {
+      "deferred": true,
+      "classes": 2,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Architecture": {
+      "deferred": true,
+      "classes": 2,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Authorization": {
+      "deferred": true,
+      "classes": 2,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "BatchExpiry": {
+      "deferred": true,
+      "classes": 16,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Billing": {
+      "deferred": true,
+      "classes": 2,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Bootstrap": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Broadcasting": {
+      "deferred": true,
+      "classes": 2,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Cart": {
+      "deferred": true,
+      "classes": 6,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Catalog": {
+      "deferred": true,
+      "classes": 33,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Channel": {
+      "deferred": true,
+      "classes": 9,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Communication": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Company": {
+      "deferred": true,
+      "classes": 30,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "CompanyConfig": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Compliance": {
+      "deferred": true,
+      "classes": 22,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Console": {
+      "deferred": true,
+      "classes": 15,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Contact": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "CountryDefaults": {
+      "deferred": true,
+      "classes": 27,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Coupon": {
+      "deferred": true,
+      "classes": 2,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Dashboard": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Document": {
+      "deferred": true,
+      "classes": 65,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "DocumentIngestion": {
+      "deferred": true,
+      "classes": 6,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "EventSourcing": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Events": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Expense": {
+      "deferred": true,
+      "classes": 22,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Fiscal": {
+      "deferred": true,
+      "classes": 73,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Http": {
+      "deferred": true,
+      "classes": 2,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Identity": {
+      "deferred": true,
+      "classes": 31,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Import": {
+      "deferred": true,
+      "classes": 16,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Income": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Inventory": {
+      "deferred": true,
+      "classes": 105,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Jobs": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Location": {
+      "deferred": true,
+      "classes": 6,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Loyalty": {
+      "deferred": true,
+      "classes": 17,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Marketplace": {
+      "deferred": true,
+      "classes": 8,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Menu": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Migration": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Migrations": {
+      "deferred": true,
+      "classes": 5,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "ModelUpdates": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Modules": {
+      "deferred": true,
+      "classes": 53,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Notification": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "POS": {
+      "deferred": true,
+      "classes": 143,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Partner": {
+      "deferred": true,
+      "classes": 20,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Performance": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Permissions": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "PlatformIntegration": {
+      "deferred": true,
+      "classes": 11,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Precision": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Pricing": {
+      "deferred": true,
+      "classes": 8,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Procurement": {
+      "deferred": true,
+      "classes": 25,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Product": {
+      "deferred": true,
+      "classes": 55,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Progression": {
+      "deferred": true,
+      "classes": 6,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Promotion": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "PurchaseHub": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Replenishment": {
+      "deferred": true,
+      "classes": 7,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Scheduling": {
+      "deferred": true,
+      "classes": 23,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Schema": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Security": {
+      "lane": "backend-test/security",
+      "classes": 17
+    },
+    "Seeders": {
+      "deferred": true,
+      "classes": 26,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Service": {
+      "deferred": true,
+      "classes": 7,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Services": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Shared": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "SmartPrompts": {
+      "deferred": true,
+      "classes": 3,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Subscription": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "SupportAccess": {
+      "deferred": true,
+      "classes": 13,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "T2": {
+      "deferred": true,
+      "classes": 1,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Taxation": {
+      "deferred": true,
+      "classes": 31,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Tenant": {
+      "deferred": true,
+      "classes": 29,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Treasury": {
+      "lane": "treasury-spine-pgsql/feature-treasury",
+      "classes": 119
+    },
+    "Uom": {
+      "deferred": true,
+      "classes": 5,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Vehicle": {
+      "deferred": true,
+      "classes": 16,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Voucher": {
+      "deferred": true,
+      "classes": 10,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    },
+    "Workshop": {
+      "deferred": true,
+      "classes": 46,
+      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+    }
+  }
+}

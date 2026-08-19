@@ -960,3 +960,186 @@ Predicate (b) keeps its own independent pin (mutant with predicate (b) deleted):
 So both predicates are independently killable-detectable, which is exactly what
 `08-DETECTOR-LIVENESS.md` requires. Baseline regenerated: **byte-identical, 2 917 entries** — no seed
 revision, no re-pin, pin tag unchanged at `ci-pin/enforcement-p2-r1`. 46 i18n tests green.
+
+---
+
+## M2 — 2(b) `tests/Feature` strategy in CI
+
+### (40) The census — the defect is much larger than the substring bug
+
+The finding that motivated 2(b) was the hand-maintained `--filter` allowlist. It has grown again: the
+brief measured **93** entries at `ci.yml:629`; at `base_sha` it is **112**, plus a second **16**-entry
+list at `:730`. But enumerating the tree turned up a far bigger hole.
+
+| Measure | Value |
+|---|---|
+| `tests/Feature` classes | **1 329** |
+| Top-level groups | **74** |
+| Groups a whole-directory CI run covers | **3** (`Security` 17, `Treasury` 119, `Accounting` 79) |
+| Distinct classes reachable by ANY CI job on ANY event | **326** |
+| **Distinct classes reachable by NO CI job, ever** | **990** |
+| Classes living in groups no lane runs | **1 114** |
+
+`backend-test` runs `php artisan test --testsuite=Unit` — it never runs `--testsuite=Feature`. So
+`tests/Feature` reaches CI only via three whole-directory steps and the two `--filter` lists. **A new
+Feature class in any of the other 71 directories runs nowhere, forever, and nothing says so.**
+
+### (41) The substring-shadowing defect, proven rather than asserted
+
+PHPUnit `--filter` is an unanchored regex over `Namespace\Class::method`:
+
+```
+$ ./vendor/bin/phpunit --list-tests --filter="AnalyticsTest"
+Tests\Feature\Expense\ExpenseAnalyticsTest
+Tests\Feature\POS\AnalyticsTest
+
+$ ./vendor/bin/phpunit --list-tests --filter='/\\(AnalyticsTest)::/'
+Tests\Feature\POS\AnalyticsTest
+```
+
+The anchored form requires a namespace separator immediately before the class name, so
+`ExpenseAnalyticsTest` can no longer be dragged in by `AnalyticsTest`. Both are listed explicitly in
+the allowlist, so **no coverage is lost** by anchoring — only accidental selection is removed.
+
+### (42) ⚠️ THE MEASUREMENT — Option A is not marginal, it is ~2 hours
+
+The brief requires a LOCAL measurement before choosing Option A, and the house rule forbids running
+the full PHPUnit suite on this machine. Resolution: a **40-class random sample drawn from the
+uncovered remainder** (seed 20260819), executed in ONE PHPUnit invocation via an anchored filter, so
+bootstrap cost is paid once.
+
+```
+$ ./vendor/bin/phpunit --testsuite=Feature --filter="/\\(<40 sampled classes>)::/" --no-progress
+Time: 04:07.347, Memory: 414.00 MB
+Tests: 324, Assertions: 10529, PHPUnit Deprecations: 333, Skipped: 16.
+```
+
+| Derived | Value |
+|---|---|
+| Per class | **6.18 s** |
+| Per test | 0.763 s |
+| Uncovered remainder (1 114 classes) | **≈ 115 min** |
+| Whole `tests/Feature` (1 329 classes) | **≈ 137 min** |
+
+Caveats stated honestly: this ran on **SQLite in-memory** (`phpunit.xml`), which is the *fast* path —
+Option A explicitly means running on **PostgreSQL**, which is slower; and it ran concurrently with an
+LLM-bound review process and another lane's PG tests (60% CPU), so contention cuts both ways. Neither
+caveat moves the answer: **~2 hours per CI run is material by any reading**, and no refinement of the
+measurement changes the decision.
+
+A second, independent datapoint from a whole real directory: `tests/Feature/Security` — 17 classes,
+93 tests, **37.5 s** (2.2 s/class). That directory is unusually light (route/permission/config-level);
+the random sample is the better estimator for the remainder.
+
+### (43) ⚠️ DECISION — Option B, and why the brief's A-vs-B framing under-modelled the problem
+
+**Chosen: Option B — a principled, mechanically-checked inclusion rule, plus anchoring.** Option A is
+rejected on the measured number.
+
+But the census exposes something the brief's framing did not anticipate, and it must be said plainly:
+**Option B *as literally described* — "replace the allowlist with directory-level inclusion" — has the
+same cost problem as Option A.** Directory inclusion for the 71 uncovered groups is 1 114 classes,
+≈ 115 min, i.e. Option A's bill under a different name. The brief assumed the uncovered surface was
+small enough that directory inclusion was free; it is 75% of `tests/Feature`.
+
+So Option B is implemented as the part that is *provable and free*, with the part that *spends the
+owner's CI budget* routed to the owner with the number:
+
+| Shipped now (free, provable) | Routed to the owner (F-2) |
+|---|---|
+| `tests/feature-lane-manifest.json` — every one of the 74 groups carries an explicit disposition | Which of the 71 deferred groups to actually turn on, and on which lane/event |
+| `tools/feature-lane-manifest-check.php` — fails on any unassigned group, any fictional lane, any dead/ambiguous filter entry, any unanchored filter | The CI-minutes bill for doing so (≈115 min/run sequential, less if sharded) |
+| Both `--filter` lists anchored | |
+| Planted-class negative proof | |
+
+### (44) ⚠️ DEVIATION — a third disposition, `deferred`, was invented
+
+The brief's manifest vocabulary is *lane* or *reasoned exclusion* — "classes that genuinely cannot run
+in that environment". Labelling 990 classes "genuinely cannot run" would be **false**: the 40-class
+sample proves they run fine; they are simply unbudgeted. Baking a false statement into a permanent
+manifest to satisfy a two-value schema would be worse than extending the schema.
+
+So the manifest has three dispositions — `lane`, `excluded` (cannot run; requires `reason`), and
+`deferred` (can run, no lane yet; requires `reason`) — and the checker **prints a counted COVERAGE
+DEBT warning on every CI run** naming the group and class totals. The hole becomes loud and
+un-growable instead of silent: a *new* directory still hard-FAILS until someone dispositions it.
+
+### (45) F-2 disposition — FIRED as an owner question, milestone NOT blocked
+
+F-2's YAML record is `blocks_milestone: none`, and the gate's substance is "may the executor spend the
+owner's CI budget". The answer taken here is **no** — nothing in this milestone spends it. The
+measured number is put in front of the owner, per F-2's own wording, and the decision of what to turn
+on is theirs. **M2 is therefore not set `blocked_owner`**: the deliverable that kills the silence and
+the shadowing is complete and lands; only the *purchase* is deferred. Flagged prominently here and in
+the handback because it is a judgement call the brief did not spell out.
+
+### (46) M2 acceptance evidence — as landed
+
+**Timing, final set** (two independent large samples agree; `Security` is an unusually light
+route/permission directory and is the outlier, not the estimator):
+
+| Sample | Classes | Wall time | s/class |
+|---|---|---|---|
+| `tests/Feature/Security` | 17 | 42.6 s | 2.51 |
+| `tests/Feature/Accounting` | 79 | 8 m 17 s | **6.29** |
+| random 40 from the uncovered remainder (seed 20260819) | 40 | 4 m 07 s | **6.18** |
+| `tests/Feature/Treasury` | 119 | > 10 min (capped) | consistent with ~6.2 |
+
+Mean of the two large samples **6.24 s/class** → uncovered remainder (1 114) ≈ **116 min**, whole
+`tests/Feature` (1 329) ≈ **138 min**, on **SQLite in-memory** (the fast path; Option A means
+PostgreSQL, which is slower).
+
+**Caveat recorded honestly:** local directory runs are NOT the CI lanes. `tests/Feature/Accounting`
+showed 5 errors + 1 failure and `tests/Feature/Fiscal` 31 errors + 14 failures on SQLite here, but CI
+runs those on PostgreSQL (`treasury-spine-pgsql`, `backend-test-pgsql`) where the PG-only tests do not
+`markTestSkipped`. Those local failures are **not** evidence of red CI lanes and are not reported as
+such.
+
+**Checker wired** as a discrete step in `backend-architecture` (no `if:` guard, already in
+`all-checks-pass` `needs` — so no aggregate edit):
+
+```
+$ php tools/feature-lane-manifest-check.php
+tests/Feature lane manifest OK — 1329 Feature classes in 74 groups; every group has a disposition;
+every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched
+against 1707 test classes across all suites.
+  ⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es) run in NO CI lane on any event, pending the
+    F-2 CI-budget decision.
+```
+
+**Negative proof 1 — planted class in a previously-uncovered directory** (the brief's named requirement):
+
+```
+$ mkdir tests/Feature/ZzzPlantedLaneProof && …PlantedLaneProofTest.php
+$ php tools/feature-lane-manifest-check.php
+  ✗ UNASSIGNED GROUP "ZzzPlantedLaneProof" (1 class(es)…)          EXIT=1
+$ rm -rf tests/Feature/ZzzPlantedLaneProof
+$ php tools/feature-lane-manifest-check.php                         EXIT=0
+```
+
+**Negative proof 2 — un-anchor one allowlist**:
+
+```
+$ (un-anchor the 112-entry filter in ci.yml)
+  ✗ UNANCHORED --filter in ci.yml (starts: VoucherLedgerTest|…)     EXIT=1
+$ (restore)                                                          EXIT=0
+```
+
+**Anchoring is coverage-neutral, proven not asserted** — selection sets compared with
+`phpunit --list-tests`:
+
+| allowlist | entries | unanchored selects | anchored selects | dropped | added |
+|---|---|---|---|---|---|
+| `ci.yml` pgsql lane | 112 | 112 classes | 112 classes | **0** | **0** |
+| `ci.yml` t6-phase0b lane | 16 | 16 classes | 16 classes | **0** | **0** |
+
+`ExpenseAnalyticsTest` is itself an allowlist entry, so nothing is lost today; what anchoring removes
+is the *prospective* silent join. Confirmed the anchored form is accepted by the lane's actual runner,
+`php artisan test` (not just `vendor/bin/phpunit`): `--filter='/\\(ChokepointCompletenessTest|StockThresholdTest)::/'`
+selected exactly those two classes, 15 tests.
+
+**Checker correctness note.** `--filter` is handed to `php artisan test -c phpunit-pgsql.xml`, which
+spans **every** testsuite. An early version resolved entries against `tests/Feature` alone and reported
+good Unit entries (e.g. `VoucherLedgerTest`, at `tests/Unit/Voucher/Domain/`) as dead. Group
+*dispositions* stay scoped to `tests/Feature`; filter *resolution* uses all 1 707 classes across
+Unit/Feature/Integration/Architecture/PHPStan/E2E.
