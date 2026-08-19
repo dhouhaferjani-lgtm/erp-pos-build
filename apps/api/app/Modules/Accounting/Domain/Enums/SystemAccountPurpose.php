@@ -182,6 +182,19 @@ enum SystemAccountPurpose: string
             // had no fallback account. All three country charts now seed them.
             self::CostOfGoodsSold,
             self::GeneralExpense,
+            // Wave 3D M4: `InventoryShrinkageExpense` is listed and its sibling
+            // `InventoryGainIncome` deliberately is NOT. The list gates
+            // ChartOfAccountsService::validateCompanyAccounts(), so membership
+            // means "a chart without this is unhealthy". Shrinkage qualifies:
+            // GeneralLedgerService::hasInventoryWriteOffAccounts() returns false
+            // without it and the destructive-loss movement is written with no
+            // journal entry at all. The gain does not: it is SOFT in
+            // ProvisioningRequiredPurposesV1, a published template may legally
+            // omit `7586`, the template overlay skips it with a warning when the
+            // chart has no same-type revenue parent, and its only consumer
+            // (InventoryGlPostingService::postForCountCorrection) fail-softs with
+            // a logged warning. Adding it here would report every such legal
+            // chart unhealthy. The overlay's warning token is its operator signal.
             self::InventoryShrinkageExpense,
         ];
     }
