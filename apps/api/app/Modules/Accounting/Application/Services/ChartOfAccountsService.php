@@ -30,6 +30,7 @@ class ChartOfAccountsService
     public function __construct(
         private readonly CountryTemplateResolver $templateResolver,
         private readonly TemplateChartOfAccountsSeeder $templateSeeder,
+        private readonly InventoryVarianceAccountProvisioner $inventoryVarianceAccounts,
     ) {}
 
     /**
@@ -54,6 +55,11 @@ class ChartOfAccountsService
         DB::transaction(function () use ($company, $seeder): void {
             /** @var TunisiaChartOfAccountsSeeder|FranceChartOfAccountsSeeder|GenericChartOfAccountsSeeder $seeder */
             $seeder->run($company->id, $company->tenant_id);
+            $this->inventoryVarianceAccounts->provisionCompany(
+                $company->id,
+                $company->tenant_id,
+                $company->country_code,
+            );
         });
     }
 

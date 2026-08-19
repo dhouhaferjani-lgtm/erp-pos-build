@@ -442,3 +442,13 @@ remains the explicit owner-approved warning/no-entry exception. Command coverage
 now includes promotion, repurpose refusal, missing parents, dry-run, schema-guard
 tokens, and PostgreSQL containment. The stale write-off account docblock and this
 handback narrative were corrected in the same round.
+
+Round 2 found the remaining future-company half: production keeps Country
+Defaults provisioning disabled until Release 2, so post-deploy onboarding still
+used the frozen seeders. A shared `InventoryVarianceAccountProvisioner` now
+supplies the same purpose-first definitions to the command and to
+`ChartOfAccountsService`; the seeder plus installer are one transaction and
+therefore cover both registration and second-company creation without changing
+the frozen seeder bytes. G2 now directs operators to clone, certify, and assign
+the three `*.default-v2` bootstraps. The parent fixture/hash re-pin and the
+historical COGS-to-new-shrinkage reporting cutover are explicitly recorded.

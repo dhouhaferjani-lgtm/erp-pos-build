@@ -102,7 +102,7 @@ final class ProvisioningRequiredPurposesV1
             'app/Modules/Accounting/Application/Services/AccountingService.php:568|AccountingService::createCreditNoteGLEntries|findAccountByPurpose|ProductRevenue',
             'app/Modules/Accounting/Application/Services/AccountingService.php:572|AccountingService::createCreditNoteGLEntries|findAccountByPurpose|ServiceRevenue',
             'app/Modules/Accounting/Application/Services/AccountingService.php:576|AccountingService::createCreditNoteGLEntries|findAccountByPurpose|VatCollected',
-            'app/Modules/Accounting/Application/Services/ChartOfAccountsService.php:90|ChartOfAccountsService::getAccountByPurpose|findByPurposeOrFail|DYNAMIC',
+            'app/Modules/Accounting/Application/Services/ChartOfAccountsService.php:96|ChartOfAccountsService::getAccountByPurpose|findByPurposeOrFail|DYNAMIC',
             'app/Modules/Accounting/Application/Services/PartnerBalanceService.php:172|PartnerBalanceService::getControlAccountBalance|findByPurposeOrFail|DYNAMIC',
             'app/Modules/Accounting/Application/Services/PartnerBalanceService.php:206|PartnerBalanceService::reconcileSubledger|findByPurposeOrFail|DYNAMIC',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:1040|GeneralLedgerService::createOutboundInstrumentCancellationEntry|getAccountByPurpose|SupplierPayable',

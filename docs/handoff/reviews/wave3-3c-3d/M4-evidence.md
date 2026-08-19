@@ -23,7 +23,9 @@
   is now REQUIRED for newly certified country-default templates because destructive-loss writers are live;
   `InventoryGainIncome` remains SOFT until T21.
 - The frozen fallback is deliberate absence: a legacy chart missing shrinkage logs a warning and creates
-  no destructive-loss entry. The v2 template and unattended tenant backfill make the chart posting-ready.
+  no destructive-loss entry when a frozen seeder is invoked directly. Normal legacy provisioning through
+  `ChartOfAccountsService` installs both purposes atomically; the v2 template and unattended tenant
+  backfill cover the other creation-time and existing-company populations.
 - The expert-comptable OQ-12/H-5 rider remains a pre-live M5 gate for count-correction posting. M4 does not
   make that listener live.
 
@@ -148,6 +150,33 @@ Running the seven real-root BatchExpiry classes in one PHPUnit process reproduce
 collisions; each owning class passes in isolation. This is the previously recorded F-7 defect—movement
 entry idempotency omits `company_id`—and is not folded into M4 code. Its future-slice ticket remains
 `docs/superpowers/tickets/2026-08-19-inventory-movement-entry-idempotency-company-scope.md`.
+
+## Adversarial round 2 remediation
+
+The round-2 P1 was reproduced before the fix by the existing full-purpose parity guard:
+`ChartOfAccountsPurposeParityTest` failed for TN with both `inventory_shrinkage_expense` and
+`inventory_gain_income` missing. `InventoryVarianceAccountProvisioner` now owns the single
+purpose-first/code-second definition set used by both the command and `ChartOfAccountsService`.
+The legacy seeder plus installer run in one transaction, so onboarding and second-company creation cannot
+commit a chart without the approved accounts. The raw seeders and their fingerprints remain unchanged.
+
+Owner-checklist G2 now names the three `*.default-v2` bootstraps and requires cloning each to an editable
+draft before authenticated HTTP/UI publication and assignment. The parent-pinned fixture/hash consequence
+is surfaced in `docs/superpowers/tickets/2026-08-19-m4-country-defaults-v2-certification-repin.md`. The
+deploy checklist also records the non-restated COGS-to-shrinkage reporting discontinuity.
+
+Fresh PostgreSQL evidence after the fix:
+
+```text
+RED — accounting chart parity/service: 29 tests, 191 assertions, 1 failure
+      TN missing inventory_shrinkage_expense and inventory_gain_income
+GREEN — command/migration/chart service/creation paths: 66 tests, 359 assertions
+GREEN — complete Country Defaults feature + unit dirs: 218 tests, 1831 assertions
+```
+
+Pint and PHPStan level 8 pass on the new provisioner, command, and chart service. Deptrac remains exactly
+**174 violations**, matching the pinned 3D base and the pre-round result. The three frozen seeder files and
+`.github/workflows/**` remain untouched.
 
 The complete `tests/Unit/Inventory` directory was executed as required. Its M4 tests pass, while the run
 retains two pre-existing `GoodsReceiptDataTest` fixture errors (`warehouse` relation is null): **142 tests,

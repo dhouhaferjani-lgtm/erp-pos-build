@@ -87,9 +87,11 @@ CLOSED by wave 4 · M2/M3 defaults revision with pilot data.
 - [ ] **G1. Release 1:** deploy the additive central schema, draft bootstrap import, admin API/UI,
       and provisioning code with both `COUNTRY_DEFAULTS_EXTERNAL_EDITORS_ENABLED=false` and
       `COUNTRY_DEFAULTS_PROVISIONING_ENABLED=false`.
-- [ ] **G2. Authenticated certification:** a logged-in active `super_admin` reviews and publishes
-      the TN, FR, and Generic chart templates through the HTTP surface, then assigns `TN`, `FR`,
-      and `*`. No CLI/synthetic certification is permitted.
+- [ ] **G2. Authenticated certification:** a logged-in active `super_admin` selects
+      `coa.tn.default-v2`, `coa.fr.default-v2`, and `coa.generic.default-v2`, clones each bootstrap
+      draft through the HTTP/UI surface, reviews and publishes those editable certification drafts,
+      then assigns `TN`, `FR`, and `*`. Do not certify the frozen `*.legacy-v1` bootstraps: they
+      predate the now-required live shrinkage purpose. No CLI/synthetic certification is permitted.
 - [ ] **G3. Blocking verification gate:** after G2 certification and assignments, run
       `php artisan country-defaults:verify` to zero exit on staging and again on production. A
       non-zero exit in either environment blocks G4: keep

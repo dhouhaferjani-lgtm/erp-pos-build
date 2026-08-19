@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
+use App\Modules\Accounting\Application\Services\InventoryVarianceAccountProvisioner;
 use App\Modules\Accounting\Application\Services\LegacyExistingChartRepairPreviewer;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Company\Domain\Company;
@@ -309,7 +310,7 @@ final class SeedChartsCommandTest extends TestCase
         $tenant = Tenant::factory()->create();
         Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
 
-        $this->app->instance(ChartOfAccountsService::class, new class($this->app->make(CountryTemplateResolver::class), $this->app->make(TemplateChartOfAccountsSeeder::class)) extends ChartOfAccountsService
+        $this->app->instance(ChartOfAccountsService::class, new class($this->app->make(CountryTemplateResolver::class), $this->app->make(TemplateChartOfAccountsSeeder::class), $this->app->make(InventoryVarianceAccountProvisioner::class)) extends ChartOfAccountsService
         {
             public function seedForCompany(Company $company): void
             {

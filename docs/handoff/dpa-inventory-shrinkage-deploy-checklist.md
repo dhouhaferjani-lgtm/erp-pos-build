@@ -31,7 +31,12 @@ a country map from visual chart shape.
 ## Scope boundaries
 
 - Do not edit or re-pin the three frozen legacy seeders.
-- A company provisioned later through the legacy-seeder fallback can still lack the purposes; the writer
-  warns and creates no variance entry until this same idempotent command is run.
+- Normal registration and second-company creation call `ChartOfAccountsService`, which installs both
+  approved purposes atomically after the frozen legacy seeder. Direct/raw use of a frozen seeder outside
+  that service remains the owner-approved compatibility case: the writer warns and creates no variance
+  entry until the idempotent command is run.
+- Historical Damage/Expiry/WriteOff entries remain in COGS (`601`/`603`); entries after this cutover land
+  in shrinkage (`6586`). Period-over-period COGS, expense reports, and expert-comptable exports spanning
+  the cutover therefore show a deliberate step change; do not restate hash-sealed historical journals.
 - Expert-comptable ratification under OQ-12/H-5 is still required before M5 makes count-correction
   posting live.

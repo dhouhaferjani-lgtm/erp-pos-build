@@ -47,6 +47,7 @@ final class ProvisioningFlagMatrixTest extends TestCase
         app(ChartOfAccountsService::class)->seedForCompany($company);
 
         self::assertSame('Equity', $this->accountName($company, '1000'));
+        $this->assertInventoryVariancePurposes($company);
     }
 
     public function test_additional_company_path_uses_template_when_flag_is_true(): void
@@ -84,6 +85,7 @@ final class ProvisioningFlagMatrixTest extends TestCase
         app(TenantInitializationService::class)->initializeForNewRegistration($tenant, $company, $user);
 
         self::assertSame('Equity', $this->accountName($company, '1000'));
+        $this->assertInventoryVariancePurposes($company);
     }
 
     public function test_registration_path_uses_template_when_flag_is_true(): void
@@ -315,5 +317,21 @@ final class ProvisioningFlagMatrixTest extends TestCase
             ->where('company_id', $company->id)
             ->where('code', $code)
             ->value('name');
+    }
+
+    private function assertInventoryVariancePurposes(Company $company): void
+    {
+        foreach ([
+            SystemAccountPurpose::InventoryShrinkageExpense,
+            SystemAccountPurpose::InventoryGainIncome,
+        ] as $purpose) {
+            self::assertTrue(
+                Account::query()
+                    ->where('company_id', $company->id)
+                    ->where('system_purpose', $purpose->value)
+                    ->exists(),
+                "{$purpose->value} must be installed atomically on the legacy provisioning path.",
+            );
+        }
     }
 }
