@@ -20,6 +20,8 @@ use Illuminate\Support\Str;
  */
 return new class extends Migration
 {
+    private const BACKFILL_CHUNK_SIZE = 100;
+
     public function up(): void
     {
         if (! Schema::hasTable('documents') || ! Schema::hasTable('companies')) {
@@ -57,14 +59,47 @@ return new class extends Migration
             $table->index('company_id');
         });
 
-        $deliveryNotesByTenant = DB::table('documents')
+        /** @var array<string, array<string, int>> $countsByTenant */
+        $countsByTenant = [];
+        $sawDeliveryNote = false;
+
+        DB::table('documents')
             ->select(['id', 'tenant_id', 'company_id', 'payload'])
             ->where('type', DocumentType::DeliveryNote->value)
             ->orderBy('id')
-            ->get()
-            ->groupBy('tenant_id');
+            ->chunkById(self::BACKFILL_CHUNK_SIZE, function ($deliveryNotes) use (&$countsByTenant, &$sawDeliveryNote): void {
+                foreach ($deliveryNotes as $deliveryNote) {
+                    $sawDeliveryNote = true;
+                    $tenantId = (string) $deliveryNote->tenant_id;
+                    if (! array_key_exists($tenantId, $countsByTenant)) {
+                        $countsByTenant[$tenantId] = $this->newCounts();
+                    }
+                    $counts = &$countsByTenant[$tenantId];
 
-        if ($deliveryNotesByTenant->isEmpty()) {
+                    $payload = $this->payload($deliveryNote->payload);
+                    if (! array_key_exists('invoiced_at', $payload) || $payload['invoiced_at'] === null) {
+                        continue;
+                    }
+
+                    $invoicedVia = $this->billingLane($payload, $counts);
+                    $invoiceId = $this->safeInvoiceId($payload, (string) $deliveryNote->company_id, $counts);
+
+                    if ($invoiceId === null) {
+                        $invoicedVia = DeliveryNoteBillingLane::LegacyUnknown->value;
+                    }
+
+                    DB::table('delivery_note_billing_marks')->insert([
+                        'delivery_note_id' => $deliveryNote->id,
+                        'invoice_id' => $invoiceId,
+                        'invoiced_via' => $invoicedVia,
+                        'invoiced_at' => $payload['invoiced_at'],
+                        'company_id' => $deliveryNote->company_id,
+                    ]);
+                    $counts['rows_written']++;
+                }
+            }, 'id');
+
+        if (! $sawDeliveryNote) {
             $currentTenant = function_exists('tenant') ? tenant() : null;
             $tenantId = $currentTenant?->getTenantKey();
             $this->logCounts($tenantId === null ? null : (string) $tenantId, $this->newCounts());
@@ -72,39 +107,8 @@ return new class extends Migration
             return;
         }
 
-        foreach ($deliveryNotesByTenant as $tenantId => $deliveryNotes) {
-            $counts = $this->newCounts();
-
-            foreach ($deliveryNotes as $deliveryNote) {
-                $payload = $this->payload($deliveryNote->payload);
-                if (! array_key_exists('invoiced_at', $payload) || $payload['invoiced_at'] === null) {
-                    continue;
-                }
-
-                $invoicedVia = $this->billingLane($payload, $counts);
-                $invoiceId = $this->safeInvoiceId($payload, (string) $deliveryNote->company_id, $counts);
-
-                if ($invoiceId === null) {
-                    $invoicedVia = DeliveryNoteBillingLane::LegacyUnknown->value;
-                }
-
-                if (DB::table('delivery_note_billing_marks')
-                    ->where('delivery_note_id', $deliveryNote->id)
-                    ->exists()) {
-                    continue;
-                }
-
-                DB::table('delivery_note_billing_marks')->insert([
-                    'delivery_note_id' => $deliveryNote->id,
-                    'invoice_id' => $invoiceId,
-                    'invoiced_via' => $invoicedVia,
-                    'invoiced_at' => $payload['invoiced_at'],
-                    'company_id' => $deliveryNote->company_id,
-                ]);
-                $counts['rows_written']++;
-            }
-
-            $this->logCounts((string) $tenantId, $counts);
+        foreach ($countsByTenant as $tenantId => $counts) {
+            $this->logCounts($tenantId, $counts);
         }
     }
 

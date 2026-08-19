@@ -200,6 +200,46 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
         $this->assertNotNull(Document::find($invoice->id));
     }
 
+    public function test_it_reads_large_delivery_note_histories_in_bounded_chunks(): void
+    {
+        $now = now();
+        $rows = [];
+        for ($index = 0; $index < 101; $index++) {
+            $rows[] = [
+                'id' => (string) Str::uuid(),
+                'tenant_id' => $this->tenant->id,
+                'company_id' => $this->company->id,
+                'partner_id' => $this->partner->id,
+                'type' => DocumentType::DeliveryNote->value,
+                'status' => DocumentStatus::Confirmed->value,
+                'document_number' => 'DN-CHUNK-'.str_pad((string) $index, 3, '0', STR_PAD_LEFT),
+                'document_date' => '2026-08-18',
+                'currency' => 'TND',
+                'payload' => '{}',
+                'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::DeliveryNote)->value,
+                'fiscal_status' => FiscalStatus::Draft->value,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ];
+        }
+        foreach (array_chunk($rows, 25) as $chunk) {
+            DB::table('documents')->insert($chunk);
+        }
+
+        $documentReads = [];
+        DB::listen(static function ($query) use (&$documentReads): void {
+            if (str_contains($query->sql, 'from "documents"')
+                && str_contains($query->sql, 'order by "id" asc')) {
+                $documentReads[] = $query->sql;
+            }
+        });
+
+        $this->runMigration();
+
+        $this->assertGreaterThanOrEqual(2, count($documentReads));
+        $this->assertSame(0, DB::table('delivery_note_billing_marks')->count());
+    }
+
     public function test_an_existing_incomplete_marker_table_is_not_treated_as_a_completed_run(): void
     {
         Schema::create('delivery_note_billing_marks', function (Blueprint $table): void {
