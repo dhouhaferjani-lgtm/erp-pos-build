@@ -45,7 +45,14 @@ class ChartOfAccountsService
                 TemplateDomain::ChartOfAccounts,
                 $company->country_code,
             );
-            $this->templateSeeder->seed($template, $company);
+            DB::transaction(function () use ($company, $template): void {
+                $this->templateSeeder->seed($template, $company);
+                $this->inventoryVarianceAccounts->provisionCompany(
+                    $company->id,
+                    $company->tenant_id,
+                    $company->country_code,
+                );
+            });
 
             return;
         }

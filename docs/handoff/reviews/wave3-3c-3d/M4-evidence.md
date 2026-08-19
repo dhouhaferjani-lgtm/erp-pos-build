@@ -179,9 +179,12 @@ The focused PostgreSQL test failed with TN missing both `inventory_gain_income` 
 `inventory_shrinkage_expense` (1 test, 1 assertion, 1 failure). Aborting the revert restored the exact
 committed tree, and the same test passed (1 test, 3 assertions).
 
-Pint and PHPStan level 8 pass on the new provisioner, command, and chart service. Deptrac remains exactly
-**174 violations**, matching the pinned 3D base and the pre-round result. The three frozen seeder files and
-`.github/workflows/**` remain untouched.
+Pint and PHPStan level 8 pass on the new provisioner, command, and chart service. Deptrac reports exactly
+**174 violations** at both the pinned 3D base and the M4 tip, but this is **not a green gate**: the checked-in
+baseline totals 99, the dispatch names 111, and the ratchet returns `RESULT: FAIL` with a Domain-tier
+BLOCKER. M4 introduces no violation. The inherited discrepancy is a parent-owned promotion blocker at
+`docs/superpowers/tickets/2026-08-19-wave3d-inherited-deptrac-ratchet-blocker.md`. The three frozen seeder
+files and `.github/workflows/**` remain untouched.
 
 The complete `tests/Unit/Inventory` directory was executed as required. Its M4 tests pass, while the run
 retains two pre-existing `GoodsReceiptDataTest` fixture errors (`warehouse` relation is null): **142 tests,
@@ -193,12 +196,45 @@ Static and architectural checks:
 ```text
 Pint (all changed PHP paths): pass
 PHPStan level 8 (all changed production paths): [OK] No errors
-deptrac pinned 3D base: 174 violations
-deptrac M4 tip:         174 violations (zero regression; no M4-introduced file reported)
+deptrac checked-in baseline: 99 violations
+dispatch-stated baseline:    111 violations
+deptrac pinned 3D base:      174 violations, RESULT: FAIL
+deptrac M4 tip:              174 violations, RESULT: FAIL (zero M4-introduced edges)
 git diff --check: pass
 frozen seeder diff: zero files / zero bytes
 .github/workflows/** diff: none
 ```
 
-The deptrac sequence is reconciled as: M1 recorded 116, M2 recorded 127, the parent-reconciled pinned 3D
-base now measures 174, and M4 remains exactly 174. M4 adds no architecture violation.
+The historical deptrac sequence is M1 116, M2 127, and the parent-reconciled pinned 3D base 174. The
+current baseline file still totals 99, so that sequence is not a passing ratchet reconciliation. M4 stays
+at the inherited 174 and adds no architecture violation; the parent ticket above must be discharged before
+promotion.
+
+## Adversarial round 3 remediation
+
+The round-3 red-first PostgreSQL run covered chart health, pre-policy assigned templates, template
+rollback, preview parity, and missing-parent wording: **49 tests, 204 assertions, 5 failures and 1 setup
+error**. After correcting the pre-policy fixture ordering, both template tests remained red for the
+intended reasons. The implementation then produced **49 tests, 210 assertions, green**.
+
+`InventoryShrinkageExpense` is now part of the in-product required-purpose detector. Both legacy and
+assigned-template chart creation run the same variance provisioner inside their chart transaction, so a
+pre-policy published template is completed and a purpose collision rolls back all template writes. The
+rollback-owned legacy preview now includes the variance installer and reports the same creation count as
+the real legacy path. Account types use `AccountType` values and the missing-parent message is accurate in
+both the savepoint backfill and all-or-nothing creation contexts.
+
+The earlier accounting-directory green wording was incorrect: the full-purpose parity test was already
+red at the pinned 3D base and M4 is the change that makes it green. It must not be cited as a passing base
+or pre-M4 regression result.
+
+Fresh round-3 verification:
+
+```text
+focused red set after implementation:       49 tests,  210 assertions, OK
+Country Defaults feature + unit directories: 220 tests, 1837 assertions, OK
+accounting chart/command/migration set:       56 tests,  343 assertions, OK
+Pint on round-3 production + test paths:      pass
+PHPStan level 8 on round-3 production paths: [OK] No errors
+deptrac tip:                                  174 violations, RESULT: FAIL (inherited)
+```

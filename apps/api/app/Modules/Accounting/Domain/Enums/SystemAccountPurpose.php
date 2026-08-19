@@ -182,6 +182,7 @@ enum SystemAccountPurpose: string
             // had no fallback account. All three country charts now seed them.
             self::CostOfGoodsSold,
             self::GeneralExpense,
+            self::InventoryShrinkageExpense,
         ];
     }
 

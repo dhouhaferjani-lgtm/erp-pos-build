@@ -17,7 +17,7 @@ use Throwable;
 /**
  * Productized replacement for the Phase-2 ad-hoc chart-provisioning tinker step
  * (docs/handoff/treasury-phase2-deploy-checklist.md §2). Re-runs the locale chart
- * legacy seeder for every company of the CURRENT tenant. With legacy provisioning
+ * legacy seeder plus approved variance installer for every company of the CURRENT tenant. With legacy provisioning
  * active it delegates writes to {@see ChartOfAccountsService::seedForCompany()}.
  * With template provisioning active, writes fail closed and the rollback-owning
  * {@see LegacyExistingChartRepairPreviewer} remains available for diagnostics only.

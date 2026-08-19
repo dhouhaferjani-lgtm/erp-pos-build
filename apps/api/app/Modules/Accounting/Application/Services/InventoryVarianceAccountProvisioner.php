@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Application\Services;
 
+use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Str;
@@ -65,7 +66,7 @@ final class InventoryVarianceAccountProvisioner
         $parentId = (clone $accounts)->where('code', $definition['parent_code'])->value('id');
         if (! is_string($parentId)) {
             throw new RuntimeException(sprintf(
-                'Company %s is missing parent account %s; inventory variance account %s was skipped.',
+                'Company %s is missing parent account %s; cannot provision inventory variance account %s.',
                 $companyId,
                 $definition['parent_code'],
                 $definition['code'],
@@ -102,14 +103,14 @@ final class InventoryVarianceAccountProvisioner
             [
                 'code' => '6586',
                 'name' => $frenchPlan ? "Écarts d'inventaire — manquants et pertes" : 'Inventory Shrinkage Expense',
-                'type' => 'expense',
+                'type' => AccountType::Expense->value,
                 'parent_code' => $frenchPlan ? '65' : '6000',
                 'purpose' => SystemAccountPurpose::InventoryShrinkageExpense->value,
             ],
             [
                 'code' => '7586',
                 'name' => $frenchPlan ? "Écarts d'inventaire — excédents" : 'Inventory Count Gain',
-                'type' => 'revenue',
+                'type' => AccountType::Revenue->value,
                 'parent_code' => $frenchPlan ? '75' : '7000',
                 'purpose' => SystemAccountPurpose::InventoryGainIncome->value,
             ],

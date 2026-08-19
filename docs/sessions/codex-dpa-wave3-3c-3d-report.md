@@ -452,3 +452,13 @@ therefore cover both registration and second-company creation without changing
 the frozen seeder bytes. G2 now directs operators to clone, certify, and assign
 the three `*.default-v2` bootstraps. The parent fixture/hash re-pin and the
 historical COGS-to-new-shrinkage reporting cutover are explicitly recorded.
+
+Round 3 confirmed M4 adds no deptrac edge, but also proved the architecture gate
+is inherited-red: the checked-in baseline is 99, the dispatch says 111, and both
+the pinned 3D base and M4 tip measure 174 with `RESULT: FAIL`. That discrepancy
+is now a parent promotion blocker rather than a claimed green result. The code
+remediation aligns chart health with the REQUIRED shrinkage purpose, applies the
+variance installer atomically to assigned-template provisioning (including
+pre-policy published assignments), exercises rollback on a purpose collision,
+and makes the legacy preview count the installer. The three frozen seeders and
+workflow files remain untouched.
