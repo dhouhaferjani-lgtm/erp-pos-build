@@ -182,10 +182,11 @@ milestones:
     #         measured PGTZ root cause; the ticket's "14 cases" -> 11 (fiscal-pos F-2)
     # The eight P3s are NOT in scope for this round. `config/database.php` deliberately untouched —
     # the timezone pin is the parent's repo-wide lane.
-    fix_round_1_commit: a9ebf091c
+    fix_round_1_commit: a9ebf091c        # the substantive fix (code + evidence + ticket)
+    fix_round_1_commits: [a9ebf091c, 7a9d474db, 3da145110]   # + this ledger entry, + a citation fix
     verdict: null
     last_verdict: null
-    updated: a9ebf091c
+    updated: 3da145110
 
 status: review    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
