@@ -242,7 +242,10 @@ milestones:
     # review and implement in a fix round.
     status: review
     fix_rounds: 0
-    commit: null      # set to this milestone's tip in the delivering commit
+    # Milestone slice for the reviewer: 32671a9f6..dfa58a418
+    #   f28306baf — opening ledger + the three swept M3 round-2 P3s
+    #   dfa58a418 — ES-16 + ES-17 implementation
+    commit: dfa58a418
     verdict: null
     last_verdict: null
   - id: M4
