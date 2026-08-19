@@ -35,6 +35,16 @@ final class InventoryVarianceAccountProvisioner
      * Complete an assigned template using the account families that the
      * template actually seeded. Country code remains the preferred plan, but a
      * legal cross-country assignment may deliberately use the other plan.
+     *
+     * A third chart plan carrying neither family is legal — publication never
+     * requires a `65`/`6000`/`75`/`7000` root — so this path must never abort
+     * company creation. The two purposes are treated asymmetrically because
+     * their classifications differ: REQUIRED shrinkage is grafted onto a
+     * same-type root already in the chart (or installed as a root of its own)
+     * rather than rolling back tenant registration; the SOFT gain is skipped
+     * with a warning rather than grafted beneath an unreviewed parent, because
+     * its consumer fail-softs (InventoryGlPostingService::postForCountCorrection)
+     * while a missing shrinkage account silently drops a write-off journal entry.
      */
     public function provisionTemplateCompany(string $companyId, string $tenantId, string $countryCode): void
     {
@@ -53,17 +63,29 @@ final class InventoryVarianceAccountProvisioner
                 continue;
             }
 
-            $this->applyDefinition(
-                $companyId,
-                $tenantId,
-                $resolved ?? $definition,
-                false,
-            );
+            if ($resolved === null) {
+                $resolved = $this->fallbackTemplateParent($companyId, $definition);
+                $this->logger->warning(
+                    'INVENTORY-VARIANCE-TEMPLATE-OVERLAY grafted required shrinkage onto a fallback parent: no compatible expense plan parent.',
+                    [
+                        'tenant_id' => $tenantId,
+                        'company_id' => $companyId,
+                        'country_code' => strtoupper($countryCode),
+                        'parent_code' => $resolved['parent_code'],
+                    ],
+                );
+            }
+
+            $this->applyDefinition($companyId, $tenantId, $resolved, false);
         }
     }
 
     /**
-     * @param  array{code: string, name: string, type: string, parent_code: string, purpose: string}  $definition
+     * `parent_code` is nullable only for the template overlay's root fallback;
+     * `definitions()` always yields a country-derived code, so the legacy and
+     * backfill paths keep their strict missing-parent refusal.
+     *
+     * @param  array{code: string, name: string, type: string, parent_code: string|null, purpose: string}  $definition
      * @return 'created'|'promoted'|'satisfied'
      */
     public function applyDefinition(string $companyId, string $tenantId, array $definition, bool $dryRun): string
@@ -98,14 +120,17 @@ final class InventoryVarianceAccountProvisioner
             return 'promoted';
         }
 
-        $parentId = (clone $accounts)->where('code', $definition['parent_code'])->value('id');
-        if (! is_string($parentId)) {
-            throw new RuntimeException(sprintf(
-                'Company %s is missing parent account %s; cannot provision inventory variance account %s.',
-                $companyId,
-                $definition['parent_code'],
-                $definition['code'],
-            ));
+        $parentId = null;
+        if ($definition['parent_code'] !== null) {
+            $parentId = (clone $accounts)->where('code', $definition['parent_code'])->value('id');
+            if (! is_string($parentId)) {
+                throw new RuntimeException(sprintf(
+                    'Company %s is missing parent account %s; cannot provision inventory variance account %s.',
+                    $companyId,
+                    $definition['parent_code'],
+                    $definition['code'],
+                ));
+            }
         }
         if (! $dryRun) {
             $now = now();
@@ -210,5 +235,27 @@ final class InventoryVarianceAccountProvisioner
         }
 
         return null;
+    }
+
+    /**
+     * Last resort for a REQUIRED purpose on a chart plan this installer does not
+     * know: the lowest same-type root already present, else the account itself
+     * becomes a root (legal — `GenericChartOfAccountsSeeder` seeds `6000` with a
+     * null parent). The country-derived name is kept because no plan matched.
+     *
+     * @param  array{code: string, name: string, type: string, parent_code: string|null, purpose: string}  $definition
+     * @return array{code: string, name: string, type: string, parent_code: string|null, purpose: string}
+     */
+    private function fallbackTemplateParent(string $companyId, array $definition): array
+    {
+        $rootCode = $this->database->table('accounts')
+            ->where('company_id', $companyId)
+            ->where('type', $definition['type'])
+            ->whereNull('parent_id')
+            ->orderBy('code')
+            ->value('code');
+        $definition['parent_code'] = is_string($rootCode) ? $rootCode : null;
+
+        return $definition;
     }
 }
