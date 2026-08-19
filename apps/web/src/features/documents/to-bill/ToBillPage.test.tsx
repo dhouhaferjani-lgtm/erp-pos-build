@@ -10,6 +10,13 @@ const mockUseToBillQueue = vi.hoisted(() => vi.fn())
 const mockUseToBillPartnerRows = vi.hoisted(() => vi.fn())
 const mockMutateAsync = vi.hoisted(() => vi.fn())
 const mockHasPermission = vi.hoisted(() => vi.fn(() => true))
+const mockGetAllToBillPartnerRows = vi.hoisted(() => vi.fn())
+const mockUseLocation = vi.hoisted(() => vi.fn())
+
+vi.mock('../api/deliveryNotes', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/deliveryNotes')>()
+  return { ...actual, getAllToBillPartnerRows: mockGetAllToBillPartnerRows }
+})
 
 vi.mock('../hooks/useDeliveryNotes', () => ({
   useToBillQueue: mockUseToBillQueue,
@@ -18,7 +25,7 @@ vi.mock('../hooks/useDeliveryNotes', () => ({
 }))
 
 vi.mock('@/hooks/useLocation', () => ({
-  useLocation: () => ({ currentLocationId: 'location-1', isLoading: false }),
+  useLocation: mockUseLocation,
 }))
 
 vi.mock('@/hooks/usePermissions', () => ({
@@ -108,7 +115,14 @@ beforeEach(() => {
     refetch: vi.fn(),
   }))
   mockMutateAsync.mockResolvedValue({ data: { id: 'invoice-1' } })
+  mockGetAllToBillPartnerRows.mockResolvedValue(rows.data)
   mockHasPermission.mockReturnValue(true)
+  mockUseLocation.mockReturnValue({
+    currentLocation: { id: 'location-1', name: 'Tunis' },
+    currentLocationId: 'location-1',
+    locations: [{ id: 'location-1', name: 'Tunis' }],
+    isLoading: false,
+  })
 })
 
 describe('ToBillPage', () => {
@@ -122,6 +136,7 @@ describe('ToBillPage', () => {
     expect(within(aging).getByText('61–90 days')).toBeInTheDocument()
     expect(within(aging).getByText('90+ days')).toBeInTheDocument()
     expect(within(aging).getByText('TND 175.000')).toBeInTheDocument()
+    expect(within(aging).getByText('2 customer groups')).toBeInTheDocument()
 
     const oldGroup = screen.getByRole('article', { name: /Atlas Periodic/ })
     const newGroup = screen.getByRole('article', { name: /Bizerte Retail/ })
@@ -150,6 +165,17 @@ describe('ToBillPage', () => {
         page: 1,
       }))
     })
+  })
+
+  it('does not send a partner search until the trimmed term has two characters', async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<ToBillPage />)
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search partners' }), 'a')
+
+    expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({
+      partnerSearch: '',
+    }))
   })
 
   it('lazily expands rows and reconciles them with the partner summary', async () => {
@@ -183,6 +209,71 @@ describe('ToBillPage', () => {
     expect(dialog.parentElement).toHaveTextContent('2 delivery notes')
     expect(dialog.parentElement).toHaveTextContent('TND 150.000')
     expect(mockMutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('renders an attributed refusal and explicitly retries only the remaining rows', async () => {
+    const user = userEvent.setup()
+    mockMutateAsync
+      .mockRejectedValueOnce({
+        response: {
+          status: 422,
+          data: {
+            error: {
+              code: 'DELIVERY_NOTE_ALREADY_INVOICED',
+              details: {
+                documents: [{
+                  id: 'dn-1',
+                  document_number: 'DN-001',
+                  invoice_id: 'invoice-taker',
+                  invoice_number: 'INV-TAKER',
+                  invoice_date: '2026-08-19',
+                  invoiced_via: 'order_conversion',
+                }],
+              },
+            },
+          },
+        },
+      })
+      .mockResolvedValueOnce({ data: { id: 'invoice-remainder' } })
+    renderWithProviders(<ToBillPage />)
+
+    const group = screen.getByRole('article', { name: /Atlas Periodic/ })
+    await user.click(within(group).getByRole('button', { name: 'Create invoice' }))
+    await user.click(screen.getByTestId('confirm-dialog-confirm'))
+
+    const refusal = await screen.findByRole('alert')
+    expect(within(refusal).getByText('DN-001')).toBeInTheDocument()
+    expect(within(refusal).getByText(/2026-08-19/)).toBeInTheDocument()
+    expect(within(refusal).getByText(/Billed from sales order/)).toBeInTheDocument()
+    expect(within(refusal).getByRole('link', { name: 'Open INV-TAKER' })).toHaveAttribute(
+      'href',
+      '/sales/invoices/invoice-taker',
+    )
+    expect(within(refusal)).toHaveTextContent('No invoice was created. No invoice number was used.')
+
+    await user.click(within(refusal).getByRole('button', { name: 'Remove these 1 and retry' }))
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenLastCalledWith(['dn-2'])
+    })
+  })
+
+  it('offers all locations only when the server marks that scope as entitled', async () => {
+    const user = userEvent.setup()
+    mockUseToBillQueue.mockReturnValue({
+      data: {
+        ...queue,
+        scope: { location_id: 'location-1', can_view_all_locations: true },
+      },
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    })
+    renderWithProviders(<ToBillPage />)
+
+    expect(screen.getByText(/Showing TND delivery notes for Tunis/)).toBeInTheDocument()
+    expect(screen.getByText(/Unassigned-location and other-currency notes are excluded/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'All locations' }))
+    expect(mockUseToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({ locationId: 'all' }))
   })
 
   it('hides every group action from a deliveries.view-only user', () => {

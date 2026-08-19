@@ -223,6 +223,9 @@ final class DeliveryNoteToBillQueueTest extends TestCase
 
         $this->actingAs($this->user)->getJson("/api/v1/delivery-notes/uninvoiced?location_id={$foreignLocation->id}")
             ->assertUnprocessable();
+        $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced?location_id=not-a-uuid')
+            ->assertUnprocessable()
+            ->assertJsonPath('errors.location_id.0', 'The location id field must be a valid UUID.');
         $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced?partner_search=a')
             ->assertUnprocessable();
 

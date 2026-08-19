@@ -79,4 +79,19 @@ describe('useToBillQueue location and tenant scope', () => {
       expect(getToBillQueue).toHaveBeenLastCalledWith(expect.objectContaining({ locationId: 'location-2' }))
     })
   })
+
+  it('loads the central queue when the company has no active location', async () => {
+    useLocationStore.setState({ locations: [], currentLocationId: null, isLoading: false })
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    )
+    const params = { partnerSearch: '', dateFrom: '', dateTo: '', periodicOnly: false, page: 1, perPage: 25 }
+
+    renderHook(() => useToBillQueue({ ...params, locationId: null }), { wrapper })
+
+    await waitFor(() => {
+      expect(getToBillQueue).toHaveBeenCalledWith(expect.objectContaining({ locationId: null }))
+    })
+  })
 })

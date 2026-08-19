@@ -87,11 +87,12 @@ describe('to-bill queue API', () => {
   }
 
   it('serializes the queue filters for both summary and partner rows', async () => {
-    mockApiGet.mockResolvedValue({ data: [] })
+    const response = { data: [], meta: {}, summary: {} }
+    mockApi.get.mockResolvedValue({ data: response })
 
     const { getToBillPartnerRows, getToBillQueue } = await import('./deliveryNotes')
-    await getToBillQueue(params)
-    await getToBillPartnerRows('partner-42', params)
+    await expect(getToBillQueue(params)).resolves.toBe(response)
+    await expect(getToBillPartnerRows('partner-42', params)).resolves.toBe(response)
 
     const expectedParams = {
       location_id: 'location-7',
@@ -102,34 +103,36 @@ describe('to-bill queue API', () => {
       page: 2,
       per_page: 25,
     }
-    expect(mockApiGet).toHaveBeenNthCalledWith(1, '/delivery-notes/uninvoiced', expectedParams)
-    expect(mockApiGet).toHaveBeenNthCalledWith(
+    expect(mockApi.get).toHaveBeenNthCalledWith(1, '/delivery-notes/uninvoiced', {
+      params: expectedParams,
+    })
+    expect(mockApi.get).toHaveBeenNthCalledWith(
       2,
       '/delivery-notes/uninvoiced/partner-42',
-      expectedParams,
+      { params: expectedParams },
     )
   })
 
   it('loads every partner row page before creating an invoice', async () => {
-    mockApiGet
-      .mockResolvedValueOnce({
+    mockApi.get
+      .mockResolvedValueOnce({ data: {
         data: [{ id: 'dn-1' }],
         meta: { current_page: 1, last_page: 2, total: 2, per_page: 100 },
-      })
-      .mockResolvedValueOnce({
+      } })
+      .mockResolvedValueOnce({ data: {
         data: [{ id: 'dn-2' }],
         meta: { current_page: 2, last_page: 2, total: 2, per_page: 100 },
-      })
+      } })
 
     const { getAllToBillPartnerRows } = await import('./deliveryNotes')
     await expect(getAllToBillPartnerRows('partner-42', params)).resolves.toEqual([
       { id: 'dn-1' },
       { id: 'dn-2' },
     ])
-    expect(mockApiGet).toHaveBeenNthCalledWith(
+    expect(mockApi.get).toHaveBeenNthCalledWith(
       2,
       '/delivery-notes/uninvoiced/partner-42',
-      expect.objectContaining({ page: 2, per_page: 100 }),
+      { params: expect.objectContaining({ page: 2, per_page: 100 }) },
     )
   })
 })
