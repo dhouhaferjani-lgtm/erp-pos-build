@@ -381,3 +381,12 @@ independently re-ran 120 PostgreSQL tests over nine touched suites, and confirme
 all round-5 findings closed. No code or workflow change preceded the verdict.
 M3 and branch 3C are accepted; the remaining P3 note is a missing negative
 mutation assertion on behavior the reviewer verified as correct.
+
+## M4 — STOP B before 3D starts
+
+The harness advanced to M4 and immediately stopped at owner gate
+`V-7-treasury-codes`. The treasury reviewer must approve the proposed
+TN/FR/Generic shrinkage/gain account-code map before T20 merges; no code-map
+choice was guessed and M4 was not started. The brief's ancestry rule also
+requires the parent/orchestrator to merge accepted 3C to local `dev`, record
+the resulting `3D_BASE_SHA`, and only then create `codex/dpa-wave3-3d`.

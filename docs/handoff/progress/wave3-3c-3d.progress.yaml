@@ -93,7 +93,7 @@ milestones:
     title: "3D France/purposes arm: T20 (propose shrinkage/gain codes — treasury approval a MERGE CONDITION), T20b. requiresGLEntry stays TRUE; thread unitCost, exclude adjustment path from GL buffer, preserve D-b exclusion."
     review_lenses: [inventory-costing, treasury]
     owner_gate: V-7-treasury-codes
-    status: pending
+    status: blocked_owner
     fix_rounds: 0
     commit: null
     verdict: null
@@ -107,8 +107,10 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: blocked_owner      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
-blockers: []
+blockers:
+  - "STOP B — V-7-treasury-codes: the treasury reviewer must approve the proposed TN/FR/Generic shrinkage/gain account-code map before T20 merges; M4 is not started."
+  - "3D ancestry precondition: the parent/orchestrator must merge accepted codex/dpa-wave3-3c to local dev, record the resulting 3D_BASE_SHA, and only then create codex/dpa-wave3-3d."
