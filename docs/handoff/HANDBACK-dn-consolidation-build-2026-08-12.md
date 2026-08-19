@@ -7,7 +7,8 @@
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/dn-consolidation`.
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
-- Milestone being handed back: M1.
+- Current M2 implementation SHA: `483457a41` (awaiting the M2 bridge gate).
+- Milestone being handed back: M2.
 - No push, merge, or deployment was performed.
 
 M1 commit list:
@@ -40,6 +41,14 @@ M1 commit list:
 - `37c4b3a00 Phase 2.1.25: Record M1 bridge fix round`
 - `c517635cb Phase 2.1.26: Suppress attributed refusal toast and retry remainder`
 - `95ac2f22a Phase 2.1.27: Record M1 bridge round two`
+- `8e4d21b58 Phase 2.1.28: Accept M1 bridge gate`
+
+M2 commit list:
+
+- `49f7aa451 Phase 2.2.1: Add partner delivery-note billing views`
+- `f74282ddd Phase 2.2.2: Show delivery-note billing attribution`
+- `ff4648ef6 Phase 2.2.3: Link lane-separation report`
+- `483457a41 Phase 2.2.4: Centralize delivery-note billing links`
 
 ## Owner-amended gate
 
@@ -293,6 +302,76 @@ Separately, M1's initial generated-artifact commit includes the four billing DTO
 `DeliveryNoteBillingLane` together with three additive current-source enum outputs:
 `DeliveryComplianceCode`, `PostingContext`, and `PreDeliveryInvoicingPolicy`. That shared-file lane
 overlap is disclosed for owner integration; it is additive and typecheck remains green.
+
+## M2 — View A, A2, and View C
+
+**Status: IMPLEMENTED AND VERIFIED — awaiting bridge review.**
+
+### Delivered surfaces and binding riders
+
+- The customer partner detail page has a URL-driven `delivery-notes` tab. Its visibility requires
+  customer capability, `hasModule('Sales')`, and `deliveries.view`. The module-off assertion is
+  independent from the permission assertions. The create-invoice action independently requires
+  `hasModule('Sales')` and `invoices.create`.
+- The tab defaults to un-invoiced notes and supports Un-invoiced / Invoiced / All server filters,
+  offset pagination, typed row selection, invoiced-row disabling, billing-lane badges, and invoice
+  links. `legacy_unknown` uses the neutral badge in both English and French.
+- A named 422 is persistent and row-visible. A response naming exactly two documents marks exactly
+  those two rows, preserves the remaining selection, and exposes the explicit operator action that
+  removes the refused rows and resubmits only the remainder. There is no automatic retry.
+- The tab type is a `Pick` of generated `App.Modules.Document.Application.DTOs.DocumentData`;
+  `deliveryNotes.ts` contains no hand-written `DeliveryNote` object mirror.
+- The partner balance card renders one bounded un-billed line directly below total receivable.
+  Both it and the tab consume the same aggregate query. `aggregates.count` and decimal-string
+  `aggregates.total` are rendered through `useCurrency().format`; neither surface uses
+  `parseFloat` or `Number`.
+- Delivery-note detail and partner rows show `invoiced_via` plus a centralized entity link to the
+  taking invoice. The partner table's delivery-note and post-success invoice navigation also use
+  `entityRoutes.document`.
+- Consolidation success invalidates the tenant/company-scoped delivery-note list/detail,
+  document/invoice, partner balance, and to-bill namespaces required by C9.
+- View C adds only the `/finance/lane-separation` sidebar entry. It shares the route's exact
+  `reports.financial` permission and leaves the accounting-and-reports permission/route mapping
+  one-to-one. No seeder or generated permissions-map file was edited.
+
+### M2 verification evidence
+
+- Focused M2 Vitest: 6 files, 66 tests passed. This includes five independent partner tab/action
+  gate tests, the exact-two-row 422 test, aggregate-format parity, generated-type source guard,
+  C9 tenant scoping, detail attribution, and the 45-test sidebar suite.
+- Exact §6.3 path sweep: 89 files / 701 tests passed. Only the two owner-ledgered finance tests
+  failed (`src/features/finance/api.test.ts` and
+  `src/features/finance/hooks/__tests__/tenantScope.test.tsx`); no M2 test failed.
+- Exact backend path sweep at M2 HEAD: 1,064 tests passed, 32 skipped. Only the same two
+  default-SQLite `InventoryGlCompositeRootTest` fixtures failed (`tenants` table absent), matching
+  the pinned-base capture. M2 contains no backend change.
+- The exact preflight invocation was attempted and stopped at the same two locked
+  `CopiesDocumentData.php:309-310` PHPStan findings as the pin. The remaining stages were then run
+  independently: Pint green; typecheck green; whole-web ESLint 0 errors; TanStack key audit 0 new;
+  design-system audit 734 acknowledged / 0 new / 0 stale; quantity audit 0; POS ESLint-rule tests
+  green; fiscal parity 29/29 green.
+- The factory route-manifest drift and SaleReceipt chokepoint outputs are unchanged from the M1
+  differential capture: normalized route patch SHA-256
+  `92a1554a51c2090f0550bb41b08ee723d3d9a1981eba3fd837338f650dc78f70`, and the single inherited
+  `InventoryCountingController.php:135` chokepoint finding with its six-entry validator passing.
+- React Doctor against explicit base `60df88a01`: 88/100, 21 changed files scanned, no issues.
+  Scoped ESLint on the M2 files has zero errors, and the two initially exposed hardcoded entity
+  route warnings were closed in `483457a41`.
+- Precision/type guards: no `parseFloat`/`Number` in the new aggregate surface; no hand-written
+  `DeliveryNote` object type; `git diff --check` and the base ancestry check pass.
+- UI E2E was attempted with `pnpm --filter @autoerp/web test:e2e`. The 465-test harness was stopped
+  after the Vite proxy repeatedly failed to reach the API (`ECONNREFUSED`) and unrelated baseline
+  tests began failing (for example the company-switcher strict locator). Playwright captured
+  `apps/web/test-results/company-Company-Switcher-s-d3c63-down-when-clicking-selector-chromium/test-failed-1.png`.
+  This is an environment/baseline blocker, not a green E2E claim.
+
+### M2 amended differential verdict
+
+**PASSED at `483457a41`.** All M2-touched files are green. Across the exact repository scopes, the
+failure set is byte-identical to the already captured `60df88a01` baseline: two locked PHPStan
+precision findings, two default-SQLite composite-root fixture failures, two finance Vitest reds,
+the normalized route-manifest patch, the SaleReceipt chokepoint, and the generated-types residual.
+M2 introduces no new failure and does not modify any inherited-failure owner surface.
 
 ## Standing findings and deploy obligations
 
