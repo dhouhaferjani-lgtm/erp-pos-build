@@ -10,6 +10,7 @@ import { QueryError } from '@/components/QueryError'
 import { OffsetPagination } from '@/components/ui/OffsetPagination'
 import { useCurrency } from '@/hooks/useCurrency'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { entityRoutes } from '@/lib/entityRoutes'
 import type { DeliveryNote, PartnerDeliveryNoteFilter } from '../api/deliveryNotes'
 import { parseDeliveryNoteBillingRefusal, type DeliveryNoteBillingRefusal } from '../deliveryNoteBillingRefusal'
 import { useConsolidateDeliveryNotes, usePartnerDeliveryNotes } from '../hooks/useDeliveryNotes'
@@ -79,7 +80,7 @@ export function DeliveryNoteBillingStatus({
     <div className="flex flex-wrap items-center gap-2">
       {badge}
       <Link
-        to={`/sales/invoices/${deliveryNote.invoiced_by_document_id}`}
+        to={entityRoutes.document(deliveryNote.invoiced_by_document_id, { documentType: 'invoice' })}
         className={`font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
       >
         {deliveryNote.invoiced_by_document_number}
@@ -117,7 +118,7 @@ export function PartnerDeliveryNotesTab({
       const response = await consolidation.mutateAsync(ids)
       setBillingRefusal(null)
       setSelectedIds(new Set())
-      void navigate(`/sales/invoices/${response.data.id}`)
+      void navigate(entityRoutes.document(response.data.id, { documentType: 'invoice' }))
     } catch (error) {
       const refusal = parseDeliveryNoteBillingRefusal(error)
       if (refusal !== null) {
@@ -132,7 +133,7 @@ export function PartnerDeliveryNotesTab({
       header: t('deliveryNotes.partnerTab.columns.number'),
       render: (deliveryNote) => (
         <Link
-          to={`/inventory/delivery-notes/${deliveryNote.id}`}
+          to={entityRoutes.document(deliveryNote.id, { documentType: 'delivery_note' })}
           className={`font-medium ${colorTokens.intent.primary.text} ${colorTokens.intent.primary.textHoverStrongest}`}
         >
           {deliveryNote.document_number}
