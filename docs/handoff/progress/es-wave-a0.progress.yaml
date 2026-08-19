@@ -68,9 +68,14 @@ milestones:
   - id: M2
     title: "ES-07 (NARROWED) — pos:verify-chains COVERAGE/REPORTING + the MIRROR. Defect (a): fiscal-era receipts are not counted, so a terminal whose receipts are all projected returns is_valid:true over a count of 0 and the fiscal arm's result is never surfaced per-arm. Defect (b): NO pos_receipts.fiscal_hash <-> fiscal_events.current_hash cross-check exists anywhere — add it as a new arm. ReceiptHashService::verifyTerminalChain() ALREADY self-partitions (fiscal arm canonical-hashes; legacy arm re-applies whereNull and pipe-hashes only fiscal_event_id IS NULL rows), so a canonical-bytes row can never reach a pipe recomputation — the implementer CHOOSES the mechanism (safe filter removal + per-arm reporting, or an explicit fiscal-era pass). The Z arm is NOT blind — out of scope beyond what the mirror requires. RED on T-c + tampered projected chain; per-arm counts must prove nonzero fiscal-era coverage; negative control on an all-legacy tenant."
     review_lenses: [fiscal-pos, treasury]
-    status: blocked_architecture
-    fix_rounds: 1
-    commit: 4fea617e02fe5ae87dbc7bb7b050f7a27ec29ef6
+    # Fix round 1 delivered 2026-08-19 under the STOP C ruling
+    # (docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md,
+    # commit bd4139ec3). Findings 1, 2, 3, 4 closed; 5 recorded; 6 is an
+    # inherited residual with an open owning-lane question for the parent.
+    # Awaiting the M2 round-2 review.
+    status: review
+    fix_rounds: 2
+    commit: bc692820a19e64cf8c66af370b7299edce51e91a
     verdict: docs/handoff/reviews/es-wave-a0/M2-round1.md
     last_verdict: CHANGES-REQUIRED
   - id: M3
@@ -90,6 +95,12 @@ milestones:
     verdict: null
     last_verdict: null
   - id: M4
+    # SCOPE AMENDED 2026-08-19 by docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md:
+    # ES-09 covers TerminalRegistrySnapshotService and VirtualAdminFiscalEventService
+    # ONLY. ReceiptHashService's (company_id, chain_context) partition was pulled
+    # forward into M2 (commit bc692820a) — M4 must NOT re-fix it. M4's two-context
+    # append test still asserts the full end-to-end shape INCLUDING the
+    # receipt-verification arm.
     title: "Guard/constraint class — THREE DIFFERENT CONTRACTS, do not conflate. ES-09 = CORRECTNESS: chain-head resolution scoped by (company_id, chain_context) at BOTH TerminalRegistrySnapshotService and VirtualAdminFiscalEventService, matching OutboxIngestor's shape; before-fix RED demonstrates context-blind head resolution on a two-context terminal, after-fix GREEN = the two-context append SUCCEEDS with heads resolved per (company_id, chain_context) and no unconditional Verified/Parsed stamp. ES-41 = TRIGGER-PRESENCE regression scoped to its snapshot row (PG trigger presence asserted; the non-PG driver scope is DOCUMENTED, not 'fixed'; pending_seal->fiscalized branch SUSPECTED — verify before asserting). ES-42 = the two-sided REFUSAL contract, gated with the EXISTING pos.operate_terminal (LOCKED — no new permission, no reseed, no permission migration): FIRST verify the fixture's device principal holds pos.operate_terminal; if it does NOT, set status blocked_owner (gate ES-42-device-permission-grant) and STOP; otherwise proceed — unauthorized principal 403s and persists NOTHING, and the fixture device sync path still SUCCEEDS end-to-end."
     review_lenses: [fiscal-pos, treasury]
     status: pending
@@ -106,8 +117,26 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: blocked_architecture      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+
+# TAKEOVER, 2026-08-19. The Codex executor's quota was exhausted mid-STOP-C.
+# The parent orchestrator's implementation agent took over in this same
+# worktree/branch and delivered M2 fix round 1. Same rules: no push, no stash,
+# no full PHPUnit suite, tests by path.
+
 blockers:
-  - "STOP C — M2's clean fiscal-era receipt-verification contract (dispatch M2, docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md:481-503) now necessarily invokes ReceiptHashService::verifyTerminalChainFiscalArm(), but the accepted M0 evidence records that this arm flattens operational + z_session into one sequence stream and cannot verify the required normal v3 two-context shape (docs/handoff/reviews/es-wave-a0/M0-preflight-evidence.md:79-83)."
-  - "The needed context partition is not authorized in M2 and overlaps the later ES-09/context correctness allocation (dispatch M4, docs/handoff/CODEX-DISPATCH-es-wave-a0-2026-08-11.md:525-542). Opus M2 round 1 therefore requires either an explicit re-scope/owner ruling or permission to move the ReceiptHashService context-partition fix into M2; see docs/handoff/reviews/es-wave-a0/M2-round1.md finding 2."
-  - "M2-round1 finding 1 also requires restoring pending_seal exclusion, and findings 3-4 require reporting/controller evidence fixes; these are bounded but intentionally not continued after STOP C was reached."
+  # RESOLVED 2026-08-19 — STOP C RULED by the parent orchestrator.
+  # Ruling of record: docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md
+  # (commit bd4139ec3, committed before any code).
+  #   - The (company_id, chain_context) partition of the ReceiptHashService
+  #     fiscal arm is PULLED FORWARD into M2 as a prerequisite of M2's own
+  #     mandated contract (green on the clean two-context v3 fixture).
+  #     Delivered in bc692820a; VerifyEventChainCommandTest.php:637-647 flipped
+  #     from the M0 characterization assertFalse to assertTrue.
+  #   - M4's ES-09 scope is AMENDED by the same ruling: TerminalRegistrySnapshotService
+  #     and VirtualAdminFiscalEventService ONLY. It must NOT re-fix
+  #     ReceiptHashService, but its two-context append test still asserts the
+  #     full end-to-end shape including the receipt-verification arm.
+  #   - M2-round1 findings 1, 3 and 4 were fixed in the same round; finding 5
+  #     is recorded.
+  - "OPEN QUESTION FOR THE PARENT (not a wave blocker) — M2-round1 finding 6: ReceiptReturnRefactorV3Test is 2/9 red on this branch and on its base, failing identically at tests/Feature/POS/ReceiptReturnRefactorV3Test.php:771 (bccomp($independentNet,'10.000') -> -1). It is an INHERITED residual: this wave touches no Z-aggregate code and the ruling excludes it from A0's scope. Which lane owns it? Consequence worth registering: the failure aborts before the post-Z-close pos:verify-chains assertion at :941, which is how the context-flattening defect stayed invisible to the suite."
