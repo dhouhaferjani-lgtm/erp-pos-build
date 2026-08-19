@@ -31,6 +31,16 @@ review_resume:
     consumed_by_verdict: docs/handoff/reviews/wave3-3c-3d/M3-round7.md
     result: accepted
 
+reviewer_tool_incidents:
+  - milestone: M4
+    review_round: 6
+    reviewed_tip: f56fd9e65
+    verdict: ACCEPT
+    issue: "The read-only bridge created three post-snapshot commits and left one worktree edit after taking the reviewed snapshot."
+    preserved_ref: codex/reviewer-round6-unauthorized-mutations
+    preserved_stash: "round6-reviewer-unauthorized-movement-docblock"
+    cleanup_reverts: [9baf292a6, 9c4f6a537, 94a7a43b4]
+    result: "Net tracked tree restored to reviewed_tip plus M4-round6 register and progress metadata; no unauthorized code delta retained."
 # Pin at dispatch. BASE_SHA = local dev with 3A/3B + 3E merged. M0 verifies both Workshop tickets present.
 base_sha: 26b63f0ff29be6353015ca1cd2c5b362aa6bfc18
 # 3C branch off base_sha; after 3C merges to local dev, create 3D branch off the new dev (see brief DELIVERABLE).
@@ -115,27 +125,32 @@ milestones:
     title: "3D purposes arm: T20 via versioned country-defaults templates (legacy seeders frozen), T20b, and F-3 rerouting of Damage/Expiry/WriteOff from COGS to shrinkage. Map choice remains owner-only."
     review_lenses: [inventory-costing, treasury]
     owner_gate: V-7-treasury-codes
-    status: review
+    status: passed
     fix_rounds: 5
     commit: 7179bb643
     proposal: docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md
     proposal_commit: 3ed96bc7c4c9c565a4606366c42209980f62c320
-    verdict: docs/handoff/reviews/wave3-3c-3d/M4-round5.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/wave3-3c-3d/M4-round6.md
+    last_verdict: ACCEPT
     owner_ruling: docs/handoff/reviews/wave3-3c-3d/TREASURY-RULING-2026-08-19-t20-option-a.md
     evidence: docs/handoff/reviews/wave3-3c-3d/M4-evidence.md
-    updated: 7179bb643
+    reviewed_tip: f56fd9e65
+    updated: 94a7a43b4
   - id: M5
     title: "3D listener: T21, T22. Whole-branch gate: re-run full accumulated evidence + every lens over the integrated branch."
     review_lenses: [inventory-costing, fiscal-pos, treasury]
-    status: pending
+    owner_gate: OQ-12-H-5-count-correction-live
+    status: blocked_owner
     fix_rounds: 0
     commit: null
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: blocked_owner    # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 # 2026-08-11 T11c sequencing blocker RESOLVED by orchestrator ruling (re-sequenced red-before
 # evidence to M1, all-ten-green hardened into M2's gate) — see
 # docs/handoff/reviews/wave3-3c-3d/ORCHESTRATOR-RULING-2026-08-11-t11c-sequencing.md
-blockers: []
+blockers:
+  - "OQ-12-H-5-count-correction-live: expert-comptable ratification of Option A presentation is required before M5 count-correction posting can go live."
+  - "S-16: parent must run the per-tenant duplicate-count query as a hard pre-promotion gate; no local vacuous probe is accepted."
+  - "Inherited deptrac ratchet: pinned 3D base and M4 tip both report 174 violations and RESULT: FAIL against checked-in baseline 99 while the dispatch states 111; parent must reconcile before promotion."

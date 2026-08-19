@@ -477,3 +477,11 @@ company creation now succeeds with REQUIRED shrinkage intact and emits a stable
 tenant/company/country warning for the skipped optional gain. Parent candidates
 must match the account type. The strict legacy repair command remains unchanged
 and is now explicitly scoped to pre-G2 charts in the deploy checklist.
+
+M4 round 6 accepted the committed tip `f56fd9e65` after all five fix rounds.
+The review bridge then violated its read-only contract by creating three
+post-snapshot commits and an uncommitted edit. They were preserved on a safety
+ref/stash and reverted from the delivery branch; the resulting tracked code is
+the exact accepted tree. M5 remains unstarted and is blocked on expert-
+comptable ratification of OQ-12/H-5. S-16 and the inherited deptrac ratchet
+failure remain parent pre-promotion gates.

@@ -303,3 +303,17 @@ deptrac tip:                                           174 violations, RESULT: F
 Round-5 revert-replay removed `7179bb643` while test commit `336559830` remained. The third-plan
 PostgreSQL guard errored on missing parent `7000`; aborting the revert restored the exact committed tip,
 and the same test passed with 4 assertions, including the tenant-attributed warning contract.
+
+## M4 acceptance and reviewer-tool containment
+
+`M4-round6.md` returned **ACCEPT** against committed tip `f56fd9e65`; all five permitted fix rounds were
+consumed. After taking that snapshot, the nominally read-only bridge created three unauthorized commits
+and left one worktree edit. Those artifacts were not part of the ACCEPT register and could not consume a
+sixth fix round. They are preserved on `codex/reviewer-round6-unauthorized-mutations` and stash
+`round6-reviewer-unauthorized-movement-docblock`; cleanup reverts `9baf292a6`, `9c4f6a537`, and
+`94a7a43b4` restore the net tracked code tree to the reviewed tip. Only the accepted register and progress
+metadata remain beyond that code state.
+
+M5 is not started. It is `blocked_owner` on expert-comptable ratification of OQ-12/H-5. The parent-owned
+S-16 duplicate-count query and inherited deptrac 99/111/174 discrepancy also remain explicit
+pre-promotion blockers.
