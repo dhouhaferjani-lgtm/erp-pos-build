@@ -2074,7 +2074,7 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
      *     back, so there is nothing to restore and nothing to destroy).
      *   - `scrap` — the SAME two-leg pair the interactive server return path
      *     writes (DPA V10): restore (`+qty`, `pos_return`) then a COST-BEARING
-     *     write-off (`−qty`, `write_off`, Dr COGS / Cr Inventory keyed on the
+     *     write-off (`−qty`, `write_off`, Dr Shrinkage / Cr Inventory keyed on the
      *     movement) via `ReturnScrapWriteOffService`. Net sellable quantity is
      *     unchanged — exactly as when this branch skipped entirely — but the
      *     destruction is now a costed, GL-posted act instead of an invisible

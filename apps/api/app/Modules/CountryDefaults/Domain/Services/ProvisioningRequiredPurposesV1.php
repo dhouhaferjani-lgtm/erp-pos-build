@@ -40,10 +40,7 @@ final class ProvisioningRequiredPurposesV1
             self::entry(SystemAccountPurpose::VatDeductible, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2052|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|VatDeductible'),
             self::entry(SystemAccountPurpose::ProductRevenue, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:416|AccountingService::createInvoiceGLEntries|findAccountByPurpose|ProductRevenue'),
             self::entry(SystemAccountPurpose::ServiceRevenue, 'AccountingService::createInvoiceGLEntries', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingService.php:420|AccountingService::createInvoiceGLEntries|findAccountByPurpose|ServiceRevenue'),
-            // 3C merge-seam (2026-08-19): createCOGSEntry was DELETED by the COGS cutover
-            // (2bd9595d9 — COGS now posts from inventory movements). The surviving DIRECT
-            // throwing site is the write-off entry writer on the POS scrap path.
-            self::entry(SystemAccountPurpose::CostOfGoodsSold, 'GeneralLedgerService::createInventoryWriteOffEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4809|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|CostOfGoodsSold'),
+            self::entry(SystemAccountPurpose::CostOfGoodsSold, 'GeneralLedgerService::createLinkedCostCapitalizationEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4340|GeneralLedgerService::createLinkedCostCapitalizationEntry|getAccountByPurpose|CostOfGoodsSold'),
             self::entry(SystemAccountPurpose::GeneralExpense, 'GeneralLedgerService::createFromExpense category fallback', self::REQUIRED, null, 'DYNAMIC:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4101|GeneralLedgerService::createFromExpense|getAccountByPurpose|DYNAMIC <- app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4087|GeneralLedgerService::createFromExpense|GeneralExpense'),
             self::entry(SystemAccountPurpose::OpeningBalanceEquity, 'AccountingOpeningService::postBatch', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Application/Services/AccountingOpeningService.php:314|AccountingOpeningService::postBatch|findByPurposeOrFail|OpeningBalanceEquity'),
             self::entry(SystemAccountPurpose::PurchasePriceVarianceExpense, 'GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry', self::REQUIRED, null, 'DIRECT:app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2055|GeneralLedgerService::createSupplierInvoiceGrIrClearingEntry|findByPurposeOrFail|PurchasePriceVarianceExpense'),
@@ -78,12 +75,11 @@ final class ProvisioningRequiredPurposesV1
             self::entry(SystemAccountPurpose::RealizedFxLoss, 'NONE', self::SOFT, null, 'NONE:No registered production throwing purpose-resolution site.'),
             self::entry(SystemAccountPurpose::VoucherBreakageIncome, 'NONE', self::SOFT, null, 'NONE:No Expired voucher arm is wired in production.'),
             self::entry(SystemAccountPurpose::UninvoicedRevenue, 'NONE', self::SOFT, null, 'NONE:UninvoicedDeliveryNoteService has zero production callers; production-root AST scan enforced.'),
-            // 3C merge-seam additions (2026-08-19): the COGS-cutover wave introduced both purposes.
-            // SOFT is the honest classification — InventoryGlPostingService::postForCountCorrection
-            // fail-softs when unmapped (no registered throwing resolution site), and no producer
-            // enqueues MovementGlKind::CountCorrection until T21 (3D/M5). Account-code seeding is
-            // T20's re-scoped M4 deliverable on the country-defaults template path.
-            self::entry(SystemAccountPurpose::InventoryShrinkageExpense, 'NONE', self::SOFT, null, 'NONE:Count-correction GL posting fail-softs when unmapped; no CountCorrection producer until T21.'),
+            // Both variance purposes remain SOFT at the template publication
+            // gate. Live destructive-loss writers preflight the shrinkage mapping
+            // and guard missing legacy purposes as a warning/no-entry no-op; the
+            // gain purpose has no producer until T21.
+            self::entry(SystemAccountPurpose::InventoryShrinkageExpense, 'NONE', self::SOFT, null, 'NONE:Destructive-loss posting preflights the purpose and fails soft for frozen legacy charts.'),
             self::entry(SystemAccountPurpose::InventoryGainIncome, 'NONE', self::SOFT, null, 'NONE:Count-correction GL posting fail-softs when unmapped; no CountCorrection producer until T21.'),
         ];
     }
@@ -177,11 +173,11 @@ final class ProvisioningRequiredPurposesV1
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4428|GeneralLedgerService::createLinkedCostCapitalizationReversalEntry|getAccountByPurpose|CostOfGoodsSold',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4496|GeneralLedgerService::expensePaymentAccount|getAccountByPurpose|Bank',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4497|GeneralLedgerService::expensePaymentAccount|getAccountByPurpose|Cash',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4586|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|Inventory',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4587|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|DYNAMIC',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4809|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|CostOfGoodsSold',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4810|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|Inventory',
-            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4995|GeneralLedgerService::getAccountByPurpose|findByPurposeOrFail|DYNAMIC',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4590|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|Inventory',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4591|GeneralLedgerService::createInventoryMovementEntry|getAccountByPurpose|DYNAMIC',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4814|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|DYNAMIC',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:4815|GeneralLedgerService::createInventoryWriteOffEntry|getAccountByPurpose|Inventory',
+            'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:5000|GeneralLedgerService::getAccountByPurpose|findByPurposeOrFail|DYNAMIC',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:520|GeneralLedgerService::reverseSupplierAdvanceJournalEntry|getAccountByPurpose|SupplierAdvance',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:632|GeneralLedgerService::reverseCustomerAdvanceJournalEntry|getAccountByPurpose|CustomerAdvance',
             'app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:723|GeneralLedgerService::createPaymentRefundJournalEntry|getAccountByPurpose|CustomerReceivable',

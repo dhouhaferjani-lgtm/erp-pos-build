@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Inventory\Application\DTOs\MovementGlContext;
+use App\Modules\Inventory\Domain\Enums\MovementGlCounterFamily;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -96,7 +97,7 @@ final class InventoryGlPostingService
         }
 
         if (! $this->gl->hasInventoryWriteOffAccounts($ctx->companyId)) {
-            Log::warning('Inventory write-off movement exists but its COGS/Inventory accounts are not mapped.', [
+            Log::warning('Inventory write-off movement exists but its Shrinkage/Inventory accounts are not mapped.', [
                 'company_id' => $ctx->companyId,
                 'movement_id' => $ctx->movementId,
             ]);
@@ -128,8 +129,12 @@ final class InventoryGlPostingService
 
     private function postMovement(MovementGlContext $ctx, bool $debitInventory): ?JournalEntry
     {
-        if ($ctx->isHistorical || ! $ctx->reason->affectsCOGS()) {
+        $counterFamily = $ctx->reason->glCounterFamily();
+        if ($ctx->isHistorical || $counterFamily === MovementGlCounterFamily::Neither) {
             return null;
+        }
+        if ($counterFamily === MovementGlCounterFamily::DirectionalVariance) {
+            throw new \LogicException('Count corrections must use the directional variance posting path.');
         }
 
         $movement = $this->movement($ctx);
@@ -177,13 +182,17 @@ final class InventoryGlPostingService
             throw new \DomainException("Inventory movement {$ctx->movementId} direction contradicts {$ctx->reason->value}.");
         }
 
+        $counterPurpose = $counterFamily === MovementGlCounterFamily::Cogs
+            ? SystemAccountPurpose::CostOfGoodsSold
+            : SystemAccountPurpose::InventoryShrinkageExpense;
+
         return $this->gl->createInventoryMovementEntry(
             companyId: $ctx->companyId,
             movementId: $ctx->movementId,
             sourceType: $debitInventory ? 'inventory_entry' : 'inventory_exit',
             amount: $amount,
             reason: $ctx->reason,
-            counterPurpose: SystemAccountPurpose::CostOfGoodsSold,
+            counterPurpose: $counterPurpose,
             debitInventory: $debitInventory,
             entryDate: $ctx->entryDate,
             description: sprintf(

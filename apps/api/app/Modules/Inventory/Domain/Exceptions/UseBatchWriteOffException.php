@@ -12,7 +12,7 @@ use DomainException;
  *
  * Not a limitation — a REDIRECT to a strictly better path. The adjustment
  * document does not post GL in v1, while BatchWriteOffService chains
- * `createInventoryWriteOffEntry` (Dr COGS / Cr Inventory, keyed on the movement
+ * `createInventoryWriteOffEntry` (Dr Shrinkage / Cr Inventory, keyed on the movement
  * id). Routing a lot-identified destruction through this document would LOSE a
  * journal entry that exists today, so batch-tracked lines are limited to pure
  * quantity corrections.
@@ -29,7 +29,7 @@ class UseBatchWriteOffException extends DomainException
     ) {
         parent::__construct(
             "Reason {$reasonCode->value} is not available for batch-tracked product {$productId}: "
-            .'use the batch write-off, which posts the COGS entry this document does not.'
+            .'use the batch write-off, which posts the shrinkage entry this document does not.'
         );
     }
 }

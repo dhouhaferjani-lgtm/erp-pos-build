@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
+use App\Modules\Inventory\Domain\Enums\MovementGlCounterFamily;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\InventoryGlSourceTypes;
 use App\Modules\Inventory\Domain\StockMovement;
@@ -161,15 +162,27 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
     private function scanMovementChecks(Tenant $tenant, Company $company, \DateTimeInterface $cutoverAt): int
     {
         $findings = 0;
-        $cogsReasons = array_values(array_map(
+        $costedExitReasons = array_values(array_map(
             static fn (MovementReason $reason): string => $reason->value,
-            array_filter(MovementReason::cases(), static fn (MovementReason $reason): bool => $reason->affectsCOGS()),
+            array_filter(
+                MovementReason::cases(),
+                static fn (MovementReason $reason): bool => in_array(
+                    $reason->glCounterFamily(),
+                    [MovementGlCounterFamily::Cogs, MovementGlCounterFamily::Shrinkage],
+                    true,
+                ),
+            ),
         ));
         $nonCogsGlReasons = array_values(array_map(
             static fn (MovementReason $reason): string => $reason->value,
             array_filter(
                 MovementReason::cases(),
-                static fn (MovementReason $reason): bool => $reason->requiresGLEntry() && ! $reason->affectsCOGS(),
+                static fn (MovementReason $reason): bool => $reason->requiresGLEntry()
+                    && ! in_array(
+                        $reason->glCounterFamily(),
+                        [MovementGlCounterFamily::Cogs, MovementGlCounterFamily::Shrinkage],
+                        true,
+                    ),
             ),
         ));
 
@@ -185,7 +198,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where('created_at', '>=', $cutoverAt)
             ->where('occurred_at', '<=', now()->subHours(2))
             ->where('is_historical', false)
-            ->whereIn('reason', $cogsReasons)
+            ->whereIn('reason', $costedExitReasons)
             ->where(function ($query): void {
                 $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
@@ -204,7 +217,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where('company_id', $company->id)
             ->where('created_at', '>=', $cutoverAt)
             ->where('is_historical', false)
-            ->whereIn('reason', $cogsReasons)
+            ->whereIn('reason', $costedExitReasons)
             ->where(function ($query): void {
                 $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
@@ -216,7 +229,7 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->get();
         foreach ($dB as $movement) {
             $findings++;
-            $this->reportMovement('D-b', 'COGS-bearing inventory movement has no usable cost.', $tenant, $movement);
+            $this->reportMovement('D-b', 'P&L-bearing inventory movement has no usable cost.', $tenant, $movement);
         }
 
         $dE = StockMovement::query()

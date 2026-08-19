@@ -615,7 +615,7 @@ final class StockAdjustmentDocumentService
      *  - **Negative lines are always allowed**, on all three flags. Clearing
      *    expired stock, correcting a recalled lot's count, or draining a closed
      *    lot is exactly what a correction is FOR — and refusing it forced a
-     *    write-off document, with its COGS posting, for what may be a plain count
+     *    write-off document, with its shrinkage posting, for what may be a plain count
      *    discrepancy. That is a document-per-action mismatch, not a safeguard.
      *  - **Contra lines are exempt entirely.** A contra puts back stock the lot
      *    demonstrably held; refusing it leaves the AGGREGATE wrong rather than
