@@ -6,7 +6,37 @@
 - Branch: `codex/dn-consolidation-2026-08-12`.
 - Worktree: `/Users/houssamr/Projects/syneriva/apps/erp/.worktrees/dn-consolidation`.
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
+- Current M1 implementation SHA: `055b6bd45` (bridge round-1 remediation complete; round 2 pending).
+- Milestone being handed back: M1.
 - No push, merge, or deployment was performed.
+
+M1 commit list:
+
+- `b842b577a Phase 2.1.1: Add delivery note billing projections and filters`
+- `f0e3a3da2 Phase 2.1.2: Fix delivery note billing projection review findings`
+- `2640b4e4a Phase 2.1.3: Align delivery note permissions and module gates`
+- `6f71d2631 Phase 2.1.4: Fix delivery note module gate review findings`
+- `799bbcaf7 Phase 2.1.5: Add delivery note billing marker backfill`
+- `5be0a95a4 Phase 2.1.6: Fix delivery note billing marker rerun audit`
+- `a9fa9c73d Phase 2.1.7: Enforce atomic delivery note billing claims`
+- `20f8864b0 Phase 2.1.8: Harden delivery note claim set issuance`
+- `5765c7d44 Phase 2.1.9: Integrate delivery note billing claims`
+- `9588de5c7 Phase 2.1.10: Fix delivery note claim integration review finding`
+- `129bdcb59 Phase 2.1.11: Refactor sales order billing onto atomic delivery note claims`
+- `7288b5b45 Phase 2.1.12: Fix sales order billing claim review findings`
+- `290b4518a Phase 2.1.13: Prove delivery note billing claims under concurrency`
+- `1b24b5fc4 Phase 2.1.14: Fix delivery note concurrency review findings`
+- `070da89bb Phase 2.1.15: Make billing retry attribution attempt-local`
+- `f06319db6 Phase 2.1.16: Fix delivery note integration preflight regressions`
+- `29dbbc073 Phase 2.1.17: Restore delivery note raw SQL billing guard`
+- `49fb07dd6 Phase 2.0.2: Record amended DN consolidation re-pin`
+- `1437c34d7 Phase 2.1.18: Keep billing fixture out of runtime autoload`
+- `be7deae8d Phase 2.1.19: Align M1 UI and route manifest gates`
+- `e81ac612e Phase 2.1.20: Record amended M1 differential preflight`
+- `e0eb2a2b8 Phase 2.1.21: Chunk delivery note marker backfill`
+- `34101009f Phase 2.1.22: Preserve foreign-currency delivery note rows`
+- `97484c442 Phase 2.1.23: Preserve DN retry exhaustion failures`
+- `055b6bd45 Phase 2.1.24: Attribute consolidation billing refusals`
 
 ## Owner-amended gate
 
@@ -33,7 +63,7 @@ same commands; inherited failures are recorded below and were not repaired by th
 
 ## M1 — the three P0s
 
-**Status: IN PROGRESS — implementation and amended preflight complete; bridge pending.**
+**Status: IN PROGRESS — bridge round 1 remediated; round 2 pending.**
 
 ### Replay and integration
 
@@ -55,6 +85,14 @@ picker and one unrecorded route-manifest delta. Commit `be7deae8d` (`Phase 2.1.1
 checkbox with the repository atom and records only this lane's `Sales` / `invoices.create` route
 metadata. The remaining route-manifest drift patch is SHA-256-identical to the pin's drift patch.
 
+Bridge round 1 reviewed `60df88a01..e81ac612e` and returned `CHANGES-REQUIRED`. Fix round 1 is:
+
+- `e0eb2a2b8`: bounded migration backfill (`chunkById`) with a RED multi-chunk regression.
+- `34101009f`: foreign-currency rows remain visible while aggregates stay company-currency-only.
+- `97484c442`: DN commit exhaustion becomes an attributed refusal only with a durable winner.
+- `055b6bd45`: consolidation-lane attributed refusal and selective human recovery.
+- This expanded §7 evidence, lock, OI-8, OI-14, decision, finding, deviation, and deploy report.
+
 ### Implementation state
 
 - P0-1: typed billing projections, shared uninvoiced scope, real server-side filtering, exhaustible
@@ -69,16 +107,144 @@ metadata. The remaining route-manifest drift patch is SHA-256-identical to the p
 - C5/C8 and OI-8 conditions 1–4: tenant/company/type-scoped lookups, batch-atomic loss, persistent
   attributed refusal, no-artifact copy, and explicit human-confirmed remainder flow.
 
+### Per-spec-item acceptance register
+
+- **P0-1(a) — DONE.** `DocumentData.php:62-65,256-259` exposes the four billing projections and
+  `DeliveryNoteBillingState` resolves them from the marker/payload state. RED-first evidence:
+  `DeliveryNoteBillingProjectionTest.php` initially received no `invoiced_at`, `invoice_id`,
+  `invoice_number`, or `invoiced_via` fields for an invoiced DN.
+- **P0-1(b) — DONE.** The shared predicates are `Document.php:645-664`; the list applies them in
+  `DeliveryNoteController.php:171-183`. RED-first evidence: the initial filter test returned both
+  invoiced and uninvoiced fixtures. Bridge round 1 then proved the row query wrongly excluded a EUR
+  DN; `DeliveryNoteBillingProjectionTest.php:323-342` failed with `meta.total = 1`, expected `2`.
+  `DeliveryNoteController.php:105-116,193-207` now returns both currencies while limiting only the
+  aggregate to company currency.
+- **P0-1(c) — DONE.** `DeliveryNoteController.php:118-143` provides exhaustible offset pagination
+  whenever `page` is present, while preserving cursor mode for existing callers. The RED test could
+  not reach the fixture on page 2 and had no `last_page` before this branch.
+- **P0-1(d) — DONE.** `DeliveryNoteController.php:114-116,193-207` returns page-invariant
+  `aggregates.count`, decimal-string `total`, and `currency`; `DeliveryNoteBillingProjectionTest.php`
+  proves opt-in behavior, page invariance, and company-currency-only money totals.
+- **P0-1 index — DONE.** `2026_08_18_000001_add_delivery_note_uninvoiced_index.php:14-25` is
+  self-guarding, concurrent, partial, and outside the migration transaction. Its source-contract
+  regression failed before the migration existed.
+- **P0-2 — DONE.** The static GET and existing POST have independent `module:Sales` and permission
+  middleware at `routes.php:274-294`; the frontend route has independent `ModuleGuard` and
+  `RequirePermission` at `routes/index.tsx:1248-1254`. RED-first evidence: the four gate regressions
+  in `DeliveryNoteConsolidationAccessControlTest.php`, `DeliveryNoteConsolidation.gates.test.tsx`, and
+  `DeliveryNoteConsolidationRoute.gates.test.tsx` initially observed an allowed response/render with
+  Sales disabled. The accountant seeder and generated permission map were not edited.
+- **P0-3 Layer 0 — DONE.** `SalesOrderToInvoiceConverter.php:165-307` locks the SO header before
+  scenario detection, keeps auto-created DN effects inside the outer retry transaction, locks the
+  complete DN set, and enters invoice creation only through the claim closure. The real two-process
+  tests initially exposed the sequence/DN inversion and rollback artefacts.
+- **P0-3 Layer 1 — DONE.** `DeliveryNoteBillingConcurrencyRetrier.php:34-94` owns one fresh outer
+  transaction per bounded attempt; `DeliveryNoteToInvoiceConverter.php:371-386` and
+  `SalesOrderToInvoiceConverter.php:636-650` lock tenant/company/type-scoped DNs in ascending ID
+  order. The transaction/ordering tests failed before the outer boundary and sorted lock set.
+- **P0-3 Layer 2 — DONE.** `DeliveryNoteBillingClaimService.php:40-146` exposes only `claim()`;
+  `reserve()`/`finalise()` are protected and both marker and payload finalisation require exactly N
+  rows. RED-first service tests observed public half-steps, partial marker state, and a payload count
+  mismatch before the guard. Bridge round 1 additionally reproduced a phantom 422 on third-attempt
+  DN commit exhaustion; the new PG regression expected 500 but received 422. The durable-winner
+  check in `DeliveryNoteToInvoiceConverter.php:130-222` now preserves the infrastructure exception
+  unless marker, invoice, and payload agree.
+- **P0-3 Layer 3 — DONE.** `2026_08_18_000002_create_delivery_note_billing_marks_table.php` creates
+  the durable marker and writes `legacy_unknown` only in this migration. The survey test originally
+  had no marker rows or counters. Bridge round 1 then showed the migration read the whole history in
+  one query; `DeliveryNoteBillingMarkerMigrationTest.php:204-240` failed with one document read,
+  expected at least two. The migration now uses bounded `chunkById(100)` and retains per-tenant
+  counters.
+- **P0-3 Layer 4 — DONE.** `DocumentConversionController.php:303-349,460-570` returns every losing
+  row with its durable taker invoice and lane, and refuses the atomic batch. The original test
+  returned a batch-level string and omitted the second losing row.
+- **P0-3 Layer 5 — DONE.** Conversion events remain inside the successful outer transaction and
+  after exact-N finalisation (`DeliveryNoteToInvoiceConverter.php:347-360`); production-entry tests
+  prove a failed claim stores neither event nor audit record.
+- **Thin GET endpoint — DONE.** `routes.php:274-280` declares `/delivery-notes/uninvoiced` before the
+  UUID-constrained parameter route with `module:Sales` and `deliveries.view`. Its RED route test was
+  swallowed by `{deliveryNote}` before the ordering/constraint fix.
+- **C5 — DONE.** Direct converter loads are tenant/company/type scoped in
+  `DeliveryNoteToInvoiceConverter.php:371-386`; foreign IDs are not visible in the active company.
+- **C8 — DEFERRED.** The normative spec names C8 only in its milestone table and defines no C8
+  behavior or acceptance criterion. No independent implementation claim is made; this ambiguity is
+  returned to the owner. The branch does close the attributed all-or-nothing losing path that the
+  surrounding milestone text appears to intend.
+
+### Lock inventory as built
+
+1. Both billing lanes enter `DeliveryNoteBillingConcurrencyRetrier`, which owns the level-1
+   transaction and permits only `40P01`/`40001`, initial attempt plus two bounded retries.
+2. SO conversion first locks the tenant/company/type-scoped SO header
+   (`SalesOrderToInvoiceConverter.php:171-178`). In the auto-create branch, the shared factory then
+   takes `document_sequences[delivery_note]`, creates the draft DN and lines, stamps source-line
+   `quantity_delivered`, and appends the DN ID to the locked source header—all within that outer
+   transaction.
+3. The SO lane locks all applicable existing DNs in ascending ID order
+   (`SalesOrderToInvoiceConverter.php:636-650`). Consolidation enters the chain at the same sorted DN
+   lock (`DeliveryNoteToInvoiceConverter.php:371-386`).
+4. Every required DN claim is reserved before either lane enters the callback that creates the
+   invoice. Invoice creation then takes `document_sequences[invoice]` through
+   `DocumentNumberingService.php:49-65`.
+5. The SO lane's later prepayment path may lock the partner at
+   `GeneralLedgerService.php:1662-1690`, followed by GL advisory sequencing; no holder of those locks
+   has a reverse edge to SO/DN/numbering locks. Guided invoice-to-DN creates a fresh DN and does not
+   contend for an existing claimable DN. DN confirmation takes no invoice-sequence lock.
+
+The acquisition chain is acyclic: SO header → optional DN sequence/source lines → sorted DN claims
+→ invoice sequence → optional partner → GL sequence. Consolidation begins at sorted DN claims. **No
+writer reaches invoice creation before all required existing-DN claims succeed.**
+
+### OI-8 UI conditions 1–4
+
+1. **Persistent inline refusal — DONE.** The SO refusal is stored/rendered at
+   `SalesOrderDetailPage.tsx:152,434-490`; the consolidation refusal is stored/rendered at
+   `DeliveryNoteConsolidation.tsx:108,303-383`. Tests rerender or interact after failure and keep the
+   `role=alert` region visible; no toast is used.
+2. **Per-DN taker attribution — DONE.** Both regions show DN number, taking invoice/date, human lane,
+   and invoice link. Evidence: `SalesOrderDetailPage.tenantScope.test.tsx:448-486` and
+   `DeliveryNoteConsolidation.billingRefusal.test.tsx:118-146`.
+3. **No-artifact sentence — DONE.** Exact en/fr strings are asserted in
+   `SalesOrderDetailPage.tenantScope.test.tsx:515-517` and
+   `DeliveryNoteConsolidation.billingRefusal.test.tsx:169-178`.
+4. **Human recovery — DONE.** SO offers `Open INV-XXXX` and the explicit `Invoice remaining lines…`
+   confirmation only when complete `billed_order_line_ids` provenance exists
+   (`SalesOrderDetailPage.tsx:450-490,707-739`). Consolidation offers `Remove these N and retry`,
+   which removes only server-named IDs and retains every other selection
+   (`DeliveryNoteConsolidation.tsx:226-233,371-383`).
+
+No browser screenshot is claimed for M1: the local workspace has no authenticated seeded browser
+fixture for these race-only 422 states. The required behavior is covered at the rendered-component
+level; UI E2E and visual evidence remain mandatory before the final UI merge handoff.
+
+#### Research 17 proposals 5–7 — UNRATIFIED
+
+- **5:** only the independently specified C9 invalidation will ship in M2 (spec §3.4); nothing in M1
+  is attributed to this proposal.
+- **6:** no durable losing-claim trace was designed or built; its mechanism remains unfrozen.
+- **7:** no client automatic retry exists. Both recovery paths require a human action.
+
+### OI-14 — vanishing artefacts
+
+`SalesOrderBillingClaimTest.php:184-253` drives the production failed auto-created-DN path. It proves
+there is no draft DN, no consumed DN or invoice sequence number, no new `delivery_note_ids` payload
+entry, no `quantity_delivered` stamp, no stored conversion/audit event, and no false fully-delivered
+status. Re-entry through the real factory succeeds and leaves agreeing marker/payload state.
+
 ### Fresh focused verification
 
 - Standalone guided delivery + consolidation + invoice-confirmation: 38 tests, 294 assertions.
 - 3C inventory GL composite-root regression under PostgreSQL config: 2 tests, 19 assertions.
-- PostgreSQL concurrency suite: 11 tests, 141 assertions.
+- PostgreSQL concurrency suite after bridge remediation: 12 tests, 148 assertions.
+- Billing projection suite: 8 tests, 68 assertions; marker migration: 5 tests, 47 assertions.
 - Billing-write PHPStan rule: 6 tests, 8 assertions.
 - All PHP files changed from the pin: Pint green and PHPStan level 8 green.
 - Changed frontend TypeScript: typecheck and scoped ESLint green.
-- Design-system audit: 734 acknowledged, 0 new, 0 stale; focused recovery UI: 9 tests green.
-- React Doctor against explicit base `60df88a01`: 88/100, 10 changed files scanned, no issues.
+- Design-system audit: 734 acknowledged, 0 new, 0 stale; focused consolidation refusal/gate UI:
+  6 tests green; SO recovery UI: 9 tests green.
+- Exact scoped Vitest after fix round: 86 files/683 tests passed; only the two inherited finance
+  tests failed.
+- React Doctor against explicit base `60df88a01`: 88/100, 11 changed files scanned, no issues.
 - `git diff --check`: green.
 
 ### Amended whole-repository comparison
@@ -120,3 +286,53 @@ commit that unrelated regeneration.
   frontend promotion.
 - Research 17 conditions 5–7 remain proposed and unratified. Only independently specified C9 is in
   scope; no durable losing-claim trace or automatic client retry may be added.
+
+## Decisions, deviations, and discovered out-of-scope findings
+
+### Decisions not specified by the spec
+
+- Retry exhaustion is translated to an already-invoiced domain refusal only after a durable,
+  tenant/company-scoped marker + invoice + payload agreement is re-read after unwind. With no such
+  winner, the original infrastructure exception is preserved.
+- Consolidation recovery removes exactly the server-attributed DNs and requires the user to submit
+  the remaining set again. It never automatically retries.
+
+### Deviations
+
+- The owner-curated `60df88a01` re-pin supersedes the brief's fresh `origin/dev` instruction.
+- The owner-amended differential preflight supersedes whole-repository-green. The inherited set and
+  exact comparisons are recorded above.
+- `copyOrderLinesWithProvenance()` now persists `source_line_id` on SO→Invoice lines so the server can
+  safely produce `billed_order_line_ids` for OI-8 condition 4. This is an intentional, disclosed NG-2
+  data-shape expansion; downstream discount-strip event provenance improves rather than breaks.
+
+### Discovered findings not in scope
+
+- `DocumentData.php:187-193`: resolving `invoice_number` performs a `Document::find()` per invoiced
+  document and may become an N+1 on M2's invoiced tab.
+- `DeliveryNoteBillingConcurrencyRetrier.php:83-92`: a future nested caller could let the PDO cleanup
+  roll back an outer transaction; no production nested caller exists today.
+- `DeliveryNoteBillingConcurrencyRetrier.php:42`: `55P03` lock timeout is not in the bounded retry
+  set and currently reaches the generic 500 path.
+- `DeliveryNoteConsolidation.tsx:219`: inherited `parseFloat` money formatting remains in the
+  retiring screen; this fix round did not widen into M4 retirement work.
+- `SalesOrderDetailPage.tsx:456`: the taking invoice date is rendered as raw `Y-m-d`.
+- `DeliveryNoteBillingClaimService.php:120-140`: hand-edited payload state with `invoice_id` but no
+  `invoiced_at` becomes an exact-N finalisation refusal; no writer creates that shape.
+- `2026_08_18_000002_create_delivery_note_billing_marks_table.php`: a malformed non-null legacy
+  `invoiced_at` can still fail the cast; the named survey contract covers invoice-ID dirt, not this
+  additional case.
+- Base and branch share unrelated factory-route-manifest, SaleReceipt chokepoint, generated-type,
+  PHPStan precision, default-SQLite fixture, and finance-test residuals recorded above.
+
+## Deploy notes owed
+
+- Both tenant migrations are additive and self-guarding. The marker backfill is chunked, logs every
+  tenant's survey counters, and must be observed during `tenants:migrate`; non-zero dirty counts are
+  an owner decision and must not be silently reconciled.
+- The receipts-wave seeder/map delivery is already present at the pin. Promotion still requires the
+  appropriate reseed and `permission:cache-reset`.
+- `packages/shared/types/generated.d.ts` contains M1's billing DTO fields. The separately identified
+  3C enum drift remains owner-lane work and is identical at base and branch.
+- D-6 remains binding: M1 migrations, grants/reseed, and permission cache reset must be live before
+  dependent frontend milestones promote. No deployment was performed here.
