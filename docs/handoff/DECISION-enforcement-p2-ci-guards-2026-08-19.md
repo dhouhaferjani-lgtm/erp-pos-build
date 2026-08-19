@@ -1948,13 +1948,21 @@ to the parent's final announcement — sent after M3/M4 acceptance and before pr
 `merge_announcement_ack` recording the sent fact in the post-promotion admin commit. The executor
 never sends it.
 
-Contents, all measured rather than assumed (`git diff --name-only <p2-base>...<lane-tip>` per
-worktree): the ceiling-hit remediation for **dn-consolidation, es-wave-a0 and dpa-wave3-3d**; the
-**three-lane** `ci.yml` reconciliation order (P2, UI Wave 0, dn-consolidation, then OpenAPI last); the
-two behaviour changes (en+fr+ar for the 33 wired namespaces, and Security now gating PR→dev); the
+Contents — the method is stated in the file itself so a reader can falsify it (all local branches, minus
+those merged into `dev`, impact as **added** files against `dev`): the ceiling remediation for the
+**eleven** lanes that actually add Feature classes; the **six-lane** `ci.yml` reconciliation with its
+**four-way** `needs:` order (P2, `ui-wave0`, `openapi-contract-a-to-z`, `enforcement-p1-dpa-guard`);
+the two behaviour changes (en+fr+ar for the 33 wired namespaces, and Security now gating PR→dev); the
 open owner line for F-2 execution scope with the corrected **~2–3 min** figure; the owner prerequisites
 and the exact step/job ids the S-14 dispatch must show — **including `security-regression`**; the
 parent-owned inherited red gates; and the named residuals, with N-4 called out for P3-M2.
+
+> **Corrected at M3 round 3.** This paragraph survived two fix rounds still describing the
+> *"three-lane reconciliation order (P2, UI Wave 0, dn-consolidation, then OpenAPI last)"* and still
+> handing a ceiling remediation to `dpa-wave3-3d` — a lane already merged into `dev`, whose classes are
+> §8-item-0 drift rather than a lane action. Round 2 cited this exact section and I fixed the sections
+> it pointed *into* while leaving the summary that names them. The decision record is the durable
+> ruling the parent sequences from, so a stale summary here is worse than a stale table elsewhere.
 
 ---
 
@@ -2093,3 +2101,54 @@ Three rounds, three instances of the same shape: a measurement taken over a conv
 reviewer, not by me. The countermeasure now in the artifacts is not a bigger sweep but a **stated
 inclusion rule next to every enumeration** — §10's four bullets, and §(91)'s "every job that runs on
 the event" — so the next reader can falsify the list instead of trusting it.
+
+---
+
+## M3 round 3 — response to `docs/handoff/reviews/enforcement-p2/M3-round3.md`
+
+**Tally, from the full register:** 0 P1, 2 P2, 5 P3. `fix_rounds` 2 → 3. All seven fixed.
+
+### (93) P2-1 — the announcement's own methodology header still stated all three retracted methods
+
+In one sentence at the top of the file: *"`git diff --name-only <p2-base>...<lane-tip>` per worktree"*
+— changed files (retracted), a 47-commit-stale base (retracted), and a worktree sweep (retracted
+twice, the round-1 P1). §10 carried the correct rule, but **the document's most prominent methodology
+statement stated the discredited one**, above tables re-measured a different way. A lane re-running the
+printed command to check its own row would have got a different answer than the table and no way to
+tell which was authoritative — the exact falsifiability §(92) claimed to buy.
+
+Replaced with the current rule **and** an explicit "these three methods were retracted, do not re-use
+them" note, so the retraction is visible where the mistake would be repeated.
+
+### (94) P2-2 — §(82) survived two fix rounds still carrying the wording round 2 quoted verbatim
+
+Round-2 finding 2 cited this section by name. I fixed the sections it pointed *into* (§(80), §4) and
+left the **summary that names them** — so the decision record still described a *"three-lane
+reconciliation order (P2, UI Wave 0, dn-consolidation, then OpenAPI last)"* and still handed a ceiling
+remediation to `dpa-wave3-3d`, a lane already merged into `dev`.
+
+**This is the worst place for it to survive:** the decision record is the durable ruling the parent
+sequences from, so a stale summary here outranks a stale table elsewhere. Now corrected to six writers
+/ four `needs:` rewriters / eleven ceiling-affected lanes, with a note recording that it was cited and
+missed once.
+
+### (95) P3-3 … P3-7 — all fixed
+
+- **P3-3** §1's "ceiling now" column shows P2-base values, and §8 item 0 re-baselines two of them.
+  Added an explicit *"raise the value you find, not the value printed"* clause, and converted the two
+  absolute targets (`to ≥74`, `to ≥79`) to relative ones so the whole table is one style.
+- **P3-4** the stated inclusion rule did not survive its own application on three edges, so the edges
+  are now **stated in the rule**: this package's own branch is excluded (a fourth filter I had left
+  unstated — the very shape §(92) names); `factory/board` shares no merge base with `dev` and was
+  assessed by direct inspection; `l6-integration-verify` has multiple merge bases and the re-verify
+  command is given explicitly. The snapshot-name exclusion is flagged as a judgement call, not a
+  property.
+- **P3-5** the "already merged" courtesy list was itself `codex/*`-filtered. It is now labelled an
+  **illustrative subset**, with the exhaustive statement being the rule
+  (`git merge-base --is-ancestor <branch> dev`) rather than the list — ~70 branches are ancestors of
+  `dev` and enumerating them adds nothing.
+- **P3-6** "Six new steps and one new job" counted the new job as a step. It is **five** steps (2 in
+  `backend-architecture`, 3 in `frontend-lint`) plus one job.
+- **P3-7** *"OpenAPI is the last `ci.yml` writer … lands after P2 with certainty"* was a scheduling
+  assumption in a document whose stated standard is "measured, not guessed". Removed; the §1a remedy
+  is order-independent regardless.

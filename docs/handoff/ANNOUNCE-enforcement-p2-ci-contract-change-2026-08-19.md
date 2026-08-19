@@ -5,8 +5,14 @@
 > records the sent fact in the post-promotion admin commit (gate-r2 R2-H-1, gate-r3 R3-C-2). The
 > executor never sends it.
 >
-> Lane impact below is **measured**, not guessed: `git diff --name-only <p2-base>...<lane-tip>` per
-> worktree, run 2026-08-19.
+> Lane impact below is **measured**, and the method is stated so you can falsify it — see §10 for
+> the full inclusion rule. In short: **all local branches** (no prefix filter), **minus those
+> already merged into `dev`**, impact counted as **added** files against **`dev`**
+> (`git diff --diff-filter=A --name-only dev...<branch>`).
+>
+> *Three earlier methods were retracted during review and must not be re-used: `--name-only`
+> without `--diff-filter=A` (counts changed files, not added classes), `<p2-base>...` (47 commits
+> stale), and enumerating `.worktrees/*` or `codex/*` (both incomplete).*
 
 ---
 
@@ -18,8 +24,8 @@ to such a group now **hard-fails** `backend-architecture`. This is the intended 
 
 | Lane | groups it **adds classes to** | ceiling now | what you must do |
 |---|---|---|---|
-| `codex/dn-consolidation-2026-08-12` | `Document` **+9** | 65 | raise `Document` to ≥74 **and** `debt_ceiling` by 9 |
-| `codex/es-wave-a0` | `Fiscal` **+6** | 73 | raise `Fiscal` to ≥79 **and** `debt_ceiling` by 6 |
+| `codex/dn-consolidation-2026-08-12` | `Document` **+9** | 65 | raise `Document` by **9** **and** `debt_ceiling` by 9 |
+| `codex/es-wave-a0` | `Fiscal` **+6** | 73 | raise `Fiscal` by **6** **and** `debt_ceiling` by 6 |
 | `codex/openapi-contract-a-to-z` | **new group `OpenApi` +6** | — | **§1a — disposition the group**, then raise `debt_ceiling` by 6 if deferred |
 | `l6-integration-verify` | `Http` **+2**, `Modules` **+4**, `Tenant` **+2** | 2 / 53 / 29 | raise all three **and** `debt_ceiling` by 8 |
 | `fix/r2d-bcmath-hardening` | `Modules` **+2** | 53 | raise `Modules` **and** `debt_ceiling` by 2 |
@@ -30,6 +36,10 @@ to such a group now **hard-fails** `backend-architecture`. This is the intended 
 | `fix/r2f2-cancel-flow-prompt` | `Document` **+1** | 65 | raise `Document` **and** `debt_ceiling` by 1 |
 | `feat/owner-dashboard-demo` | `Seeders` **+1** | 26 | raise `Seeders` **and** `debt_ceiling` by 1 |
 
+> **The "ceiling now" column shows P2-base values.** §8 item 0 re-baselines `Inventory` → 106,
+> `CountryDefaults` → 28 and `debt_ceiling` → 1116 in the first commit on `dev` after the merge, so
+> **raise the value you find, not the value printed here** — the actions are relative for that reason.
+>
 > **Counted as ADDED classes (`git diff --diff-filter=A dev...<branch>`), not changed files.** An
 > earlier version counted changed files and told `dn-consolidation` to raise `Partner` and `es-wave-a0`
 > to raise `POS` — groups neither lane adds a class to. **Do not raise a ceiling you do not need:** the
@@ -52,8 +62,7 @@ The failure message names the group and both numbers:
 **`codex/openapi-contract-a-to-z` does exactly this.** It carries
 `apps/api/tests/Feature/OpenApi/` with **6 classes** (`DocumentResponseContractTest`,
 `FeasibilityInventoryGenerationTest`, `PilotGenerationTest`, `PilotVerificationTest`,
-`RouteCoverageCleanCheckoutTest`, `RouteCoverageVerificationTest`), absent from P2's base. Because that
-lane is also the **last** `ci.yml` writer, it lands after P2 with certainty, and
+`RouteCoverageCleanCheckoutTest`, `RouteCoverageVerificationTest`), absent from P2's base. Whenever that lane rebases onto a landed P2,
 `backend-architecture` will fail with:
 
 ```
@@ -76,7 +85,7 @@ lane is also the **last** `ci.yml` writer, it lands after P2 with certainty, and
 
 ## 2. What changes in CI
 
-Six new steps and one new job. `frontend-lint` and `backend-architecture` have **no `if:` guard**, so
+**Five** new steps in existing jobs (2 in `backend-architecture`, 3 in `frontend-lint`) and **one new job**. `frontend-lint` and `backend-architecture` have **no `if:` guard**, so
 their steps run on **every event that starts the workflow** — PR→`main`, PR→`dev`, push→`main`,
 `workflow_dispatch`. (A direct push to `dev` still starts nothing. Unchanged.)
 
@@ -130,7 +139,7 @@ kill-switch, you will now find out on the dev PR instead of at the main merge. C
 |---|---|---|---|
 | **P2** (this package) | 6 steps + 1 job (`security-regression`) | ✅ | — |
 | **`codex/ui-wave0-2026-08-11`** | the `route-manifest-drift` job | ✅ | Both P2 and UI edit the same `needs:` line. Whoever lands last re-verifies **both** entries survive. P2 deliberately did not author the drift job (F-3 ownership); UI's T7 C6 regex fix is likewise still UI's. |
-| **`codex/openapi-contract-a-to-z`** | adds `backend-openapi-contract` | ✅ | Measured from the **branch**: the "no OpenAPI CI wiring" reading came from grepping P2's *base*, and this lane has no worktree. It is the **last** `ci.yml` writer, so it inherits the four-way `needs:` reconciliation. **See §1a — it also adds a brand-new `tests/Feature/OpenApi/` group, which hard-fails until dispositioned.** |
+| **`codex/openapi-contract-a-to-z`** | adds `backend-openapi-contract` | ✅ | Measured from the **branch**: the "no OpenAPI CI wiring" reading came from grepping P2's *base*, and this lane has no worktree. It is one of the four `needs:` rewriters. (An earlier draft called it "the last `ci.yml` writer … lands after P2 with certainty" — that was a scheduling assumption, not a measurement, and nothing in the repo establishes the order. The §1a remedy is order-independent either way.) **See §1a — it also adds a brand-new `tests/Feature/OpenApi/` group, which hard-fails until dispositioned.** |
 | **`codex/enforcement-p1-dpa-guard`** | adds the DPA guard job | ✅ | Sibling enforcement package; the brief allows P1 and P2 to run in parallel. **Coordinate the aggregate edit directly with P2.** Adds **no** Feature classes of its own (§10). |
 | **`codex/dn-consolidation-2026-08-12`** | 1 | — | Rebase and re-verify the aggregate `needs:` survived. Also §1 — 9 added `Document` classes. |
 | **`codex/es-wave-a0`** | adds an Architecture-ratchet step | — | Rebase; your step must survive P2's edits. Also §1 — 6 added `Fiscal` classes. |
@@ -268,7 +277,20 @@ reason — first a worktree-only sweep, then an unstated `codex/*` filter):
 - drop snapshot/backup refs that are not lanes: `*-pre-repin*`, `*-pre-rewrite`, `backup/*`,
   `triage/*`, `worktree-agent-*`;
 - measure impact as **added** files against `dev` (`git diff --diff-filter=A dev...<branch>`), not
-  changed files against P2's base.
+  changed files against P2's base;
+- drop **this package's own branch** (`codex/enforcement-p2-ci-guards`) — it is the thing being
+  announced, not a lane to notify.
+
+**Three edges the rule does not cleanly cover, stated rather than hidden:**
+
+- `factory/board` shares **no merge base** with `dev`, so `git diff dev...factory/board` exits
+  `fatal: no merge base`. Assessed by direct inspection instead: 21 files, none under `tests/Feature`,
+  `apps/web/src/locales` or `.github/workflows` → **nothing to do**.
+- `l6-integration-verify` has **multiple** merge bases, so `dev...` is base-dependent. The counts shown
+  are git's chosen base; a lane re-verifying should use `git diff --diff-filter=A $(git merge-base dev
+  l6-integration-verify)..l6-integration-verify`.
+- Snapshot refs are excluded by name pattern, which is a judgement call, not a property — if a
+  `*-pre-repin` branch is in fact a live lane, it needs a row.
 
 | lane (branch) | added Feature classes | locale files | `ci.yml` | `needs:` | action |
 |---|---|---|---|---|---|
@@ -289,10 +311,13 @@ reason — first a worktree-only sweep, then an unstated `codex/*` filter):
 | `codex/pos-clean-workbench` | — | — | — | — | **Nothing to do.** |
 | `factory/board`, `feat/accounting-gl-go-live`, `feat/db-per-tenant-deploy`, `feat/demo-pharmacy-account`, `feat/pos-prepaid-drawdown` | — | — | — | — | **Nothing to do.** |
 
-**Already merged into `dev` — no action, listed so their absence is not read as an oversight:**
-`codex/dpa-wave3-3c`, `codex/dpa-wave3-3d`, `codex/country-defaults-phase-a`, `codex/sv-stage1`,
-`codex/pos-receipts-2026-08-12`, `codex/accounting-gaps-cghi`, `codex/tenant-impersonation`. Their
-added classes are already part of `dev`'s drift and are covered by **§8 item 0**, not by a lane action.
+**Already merged into `dev` — no action required by the rule above.** Roughly 70 local branches are
+ancestors of `dev`; the ones a reader is most likely to look for are `codex/dpa-wave3-3c`,
+`codex/dpa-wave3-3d`, `codex/country-defaults-phase-a`, `codex/sv-stage1`,
+`codex/pos-receipts-2026-08-12`, `codex/accounting-gaps-cghi` and `codex/tenant-impersonation`. **That
+is an illustrative subset, not an exhaustive list** — the exhaustive statement is the rule itself
+(`git merge-base --is-ancestor <branch> dev` → no action). Their added classes are already part of
+`dev`'s drift and are covered by **§8 item 0**, not by a lane action.
 
 > **`codex/enforcement-p1-dpa-guard` adds no Feature classes of its own.** An earlier version credited
 > it with 23 (the same set as `dpa-wave3-3d`) because that measurement was taken against P2's base and
