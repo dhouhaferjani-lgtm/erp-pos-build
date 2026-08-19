@@ -139,7 +139,7 @@ final class DeliveryNoteToBillQueueTest extends TestCase
             ->assertJsonPath('summary.grand_count', 2)
             ->assertJsonPath('summary.currency', 'TND');
 
-        $this->assertSame($oldest->id, $oldest->fresh()->id);
+        $this->assertDatabaseHas('documents', ['id' => $oldest->id]);
         $this->assertSame([
             ['bucket' => '0_30', 'count' => 1, 'total' => '25.000'],
             ['bucket' => '31_60', 'count' => 0, 'total' => '0.000'],
@@ -235,6 +235,9 @@ final class DeliveryNoteToBillQueueTest extends TestCase
             ->assertUnprocessable();
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     */
     private function deliveryNote(
         Partner $partner,
         Location $location,

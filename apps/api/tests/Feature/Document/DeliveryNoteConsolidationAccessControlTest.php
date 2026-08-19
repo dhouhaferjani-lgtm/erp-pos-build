@@ -25,7 +25,6 @@ use App\Services\CompanyConfigService;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
-use Mockery;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
 
@@ -282,8 +281,15 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
             compatibleExtras: [],
             allEnabledModules: [],
         );
-        $service = Mockery::mock(CompanyConfigService::class);
-        $service->shouldReceive('getConfigForTenant')->andReturn($config);
+        $service = new class($config) extends CompanyConfigService
+        {
+            public function __construct(private readonly CompanyConfig $config) {}
+
+            public function getConfigForTenant(Tenant $tenant): CompanyConfig
+            {
+                return $this->config;
+            }
+        };
 
         $this->app->instance(CompanyConfigService::class, $service);
     }
