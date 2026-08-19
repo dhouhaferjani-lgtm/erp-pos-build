@@ -86,18 +86,21 @@ milestones:
     review_lenses: [tenancy-authz, frontend-conventions, general]
     # UNBLOCKED by the parent M5 ruling of 2026-08-19 (recorded verbatim under `blockers:`).
     # Implemented commits, in order: 77257bf88 (T4), 3608a8b1d (T15), a6dc879b8 (authorised
-    # manifests-only M5 sync). `commit:` carries the last of the three; the M5 bridge review
-    # has NOT been run yet - it is the parent's to run.
-    status: review
-    updated: a6dc879b8
+    # manifests-only M5 sync). The M5 bridge ran as TWO lens-scoped registers (both round 1,
+    # both ACCEPT, zero fix rounds): tenancy-authz 901982d89 and frontend-conventions 9b46e8d52.
+    # `commit:` carries the last register commit; `verdict:` lists both register paths.
+    status: passed
+    updated: 9b46e8d52
     fix_rounds: 0
-    commit: a6dc879b8
-    verdict: null
-    last_verdict: null
+    commit: 9b46e8d52
+    verdict:
+      - docs/handoff/reviews/ui-wave0/M5-round1-tenancy-authz.md
+      - docs/handoff/reviews/ui-wave0/M5-round1-frontend-conventions.md
+    last_verdict: ACCEPT   # both lenses: tenancy-authz ACCEPT, frontend-conventions ACCEPT
   - id: M6
     title: "T5 (UI-12 voucher filter chips - both ternary branches empty), T7 (UI-40 partial: the C6 detector regex fix + the colorClasses migration/baseline PLAN only - do not remove the carve-outs, do not migrate the 52 importers; T7's C1-C5 rule is commit-local), T8's T8-c claim only (dead-code sweep; T8-b stays a non-executable BLOCKED record, touchOptimized stays unassigned per F-2b), T14 (OQ-1 app name as a config value, incl. the seeded-product render test on TenantSupportAccessPage and the renderWithProviders/ProductConfigProvider wrapper fix)."
     review_lenses: [frontend-conventions, general]
-    status: pending
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -186,10 +189,11 @@ findings:
   - "M5 T4 diagnostic proof: with the union in place and the two new map rows temporarily removed (i.e. the exact pre-fix state the brief specifies), pnpm typecheck failed on EXACTLY the five enumerated production occurrences and no sixth - Sidebar.tsx:182 (goods-receipt.create-standalone), Sidebar.tsx:215 (inventory.view), routes/index.tsx:1428 and :1440 (parts_catalog), routes/index.tsx:2747 (partners). Line numbers differ from the brief's 1431/1443/2777 only because the M3 deletions shifted routes/index.tsx; the keys, sites and count match. Four further diagnostics appeared in the NEW red-first test file src/hooks/__tests__/usePermissions.moduleAccess.test.tsx (lines 58, 64, 69, 73), which asserts the not-yet-added map rows; those are TDD artifacts of the test author's own file, not a sixth production site. After the four keys were resolved, pnpm typecheck is clean."
   - "M5 T4 resolutions as tabulated: rows 1-2 added as self-mapped MODULE_PERMISSIONS entries ('goods-receipt.create-standalone', 'inventory.view'); row 3 deleted both RequirePermission moduleKey=\"parts_catalog\" wrappers at routes/index.tsx while KEEPING <ModuleGuard module=\"PlatformIntegration\"> on both routes; row 4 replaced moduleKey=\"partners\" with permission=\"partners.view\" at /crm/companies and left the route in place (dedup is UI-35, Wave 4)."
   - "M5 T4 red-first evidence: the three new/extended test files failed 6 tests / 46 passed before the implementation - usePermissions.moduleAccess.test.tsx (unknown key returned true; the two new map rows undefined; goods-receipt.create-standalone open to a purchases role), RequirePermission.moduleKey.test.tsx (children rendered under an unknown moduleKey), and Sidebar.test.tsx (newGoodsReceipt visible to a purchases role). All green after."
-  - "M5 T4 test-harness note: Sidebar.test.tsx stubs usePermissions wholesale, which cannot express role-level gating. The mock now delegates to the REAL hook via importOriginal behind a `useRealModuleAccess` flag that only the new T4/T15 describe block sets; the 43 pre-existing Sidebar tests keep the stub and are otherwise unmodified."
+  - "M5 T4 test-harness note: Sidebar.test.tsx stubs usePermissions wholesale, which cannot express role-level gating. The mock now delegates to the REAL hook via importOriginal behind a `useRealModuleAccess` flag that only the new T4/T15 describe block sets; the 41 pre-existing Sidebar tests keep the stub and are otherwise unmodified. (Corrected from 43 per M5 frontend-conventions review P3: 41 is the pre-existing `it(` count at acf5dc6bd; 43 is the post-T4 total.)"
   - "M5 T15 commit 3608a8b1d: Sidebar.tsx:280 permission 'treasury' -> 'expenses'. One line of production code plus tests; the payments/repositories/instruments treasury siblings, the /expenses route guard and MODULE_PERMISSIONS are untouched. Red-first: the cashier case failed before the change while the negative case (a role holding neither permission) passed both before and after, as it must. T4 landed first on this branch; both orders leave the assertions true because 'treasury' and 'expenses' are both long-standing valid keys, so neither reading depended on the fail-open behaviour. REPORT-ONLY constraint carried forward: the bankingAndPayments group carries module: 'Treasury' (Sidebar.tsx:272), so the item stays hidden for tenants without the Treasury backend module regardless of role."
   - "M5 USER-VISIBLE navigation changes, stated plainly (F-3 and F-5): T4 REMOVES the 'newGoodsReceipt' entry from every role except admin/manager and makes 'stockByLocation' a real inventory.view check; T15 ADDS the /expenses entry for cashier, operator and viewer. Both are intended repairs, not refactors."
   - "M5 manifest sync commit a6dc879b8 (authorised by the parent ruling): `node scripts/factory/gen-route-manifest.mjs` changed exactly one entry - /crm/companies module_gate partners -> null, permission null -> partners.view - and nothing else. The parts-catalog routes produce no delta because module_gate records the ModuleGuard, which wins over moduleKey (gen-route-manifest.mjs:12-13); T15 produced zero manifest delta; routes-pos.yaml unchanged. `bash scripts/factory/check-manifest-drift.sh` exits 0 after the commit. The branch now carries exactly two manifest commits: 00366d151 (T3(a)) and a6dc879b8 (M5 sync)."
   - "M5 verification: pnpm typecheck clean; pnpm lint exit 0 (0 errors, 6513 pre-existing warnings; Gate C 0/0/0; design-system 736 acknowledged / 0 new / 0 stale; audit-quantity 0/0/0; all three ESLint RuleTester suites pass). Deterministic `pnpm test -- --maxWorkers=1` at the T15 tree: 4,215 total / 4,205 passed / 6 failed / 1 skipped / 3 todo. Five of the six failures are the three reviewed M0b exception files (arLocaleCoverage x3, offset-pagination-meta-consolidation, SharedSingletons.tenantScope). The sixth, TaxSettingsPage 'renders exactly one h1 via PageHeader', is a 5000ms-timeout load flake of the class M0b already documented: re-run in isolation it passes 5/5. An earlier whole-suite run made while focused runs were executing concurrently produced three such timeouts (RepositoryDetailPage, RepositoryListPage, partnerDelete); all three pass 20/20 in isolation."
   - "M5 React Doctor: changed-scope scans report 'No issues found' for both source commits (--scope changed --base acf5dc6bd for T4, --base 77257bf88 for T15). The repo pre-commit hook prints 'React Doctor found staged regressions' on both commits; the hook is advisory (it does not exit non-zero) and the staged whole-file scan attributes exactly one pre-existing warning, react-doctor/js-combine-iterations at Sidebar.tsx:444 (a filter().map() chain in filteredNavigation that neither task touched)."
-  - "M5 open for the parent: the bridge review for M5 (lenses tenancy-authz, frontend-conventions, general) has NOT been run - milestone status is `review`, verdict null. UI E2E was not run for M5 (it is the M8 whole-branch item). No push was made."
+  - "M5 open for the parent (SUPERSEDED by the two-lens bridge result recorded below): at the time of the M5 handover the bridge had not been run. UI E2E was not run for M5 (it is the M8 whole-branch item). No push was made."
+  - "M5 bridge RESULT: run as two lens-scoped registers, both round 1, both ACCEPT, zero fix rounds - docs/handoff/reviews/ui-wave0/M5-round1-tenancy-authz.md (commit 901982d89) and docs/handoff/reviews/ui-wave0/M5-round1-frontend-conventions.md (commit 9b46e8d52). M5 status set to `passed`. The frontend-conventions register's only actionable item was a P3 YAML wording correction (the pre-existing Sidebar test count is 41, not 43), applied at the M6 opening commit."
