@@ -180,11 +180,11 @@ milestones:
     title: "Scanner + per-table reference rules (docblocked, gate-reviewed) + the FULL write-mechanism fixture/tamper matrix (TDD: fixtures first). Vocabulary per brief §2 deliverables 1+6 (gate-r1 H-4): Eloquent create / firstOrCreate / updateOrCreate / update / save / delete / increment / decrement, DB::table() query-builder writes, raw SQL — one positive + one negative fixture per mechanism per applicable table, explicitly covering the live StockLevel::firstOrCreate (StockAdjustmentService.php:1574-1590) and BatchStock::firstOrCreate (StockAdjustmentService.php:1838-1863; BatchStockService.php:88-105,322-335) mechanisms. Handback carries the mechanism-by-table coverage table."
     review_lenses: [stock-gl-interaction, inventory-costing]
     status: review
-    fix_rounds: 0
-    commit: b07fd1de142f15737f0a78bd164d789eb7e2695c
-    verdict: null
-    last_verdict: null
-    updated: b07fd1de1
+    fix_rounds: 1
+    commit: a1c8f61b6a73188fb3afe1c45a814d49911a58b3
+    verdict: docs/handoff/reviews/enforcement-p1/M1-round1.md
+    last_verdict: CHANGES-REQUIRED
+    updated: a1c8f61b6
   - id: M2
     title: "Baseline generation via the TWO-PHASE PINNED protocol (gate-r2 R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4; --write-baseline bootstrap ONLY, in a DEDICATED SEED COMMIT; sorted, stable, line-number-free keys). ORDER INSIDE THIS MILESTONE: commit 1 = seed commit; commit 2 = mirror pins (dpa_baseline_seed_commit + dpa_baseline_protected_blob + the PRE-ALLOCATED dpa_baseline_pin_tag NAME, gate-r5 R5-C-2) + checker metadata; ONLY THEN the bridge review, whose verdict covers both commits (seed reviewed against the scanner output + register cross-check); a seed-changing fix round RECREATES the same two-step topology (seed-revision commit, then a distinct metadata commit, then BOTH re-reviewed — gate-r4 R4-H-3; a single self-identifying fix commit is forbidden). THREE-direction ratchet: growth FAILS, stale FAILS, and the ANTI-GROWTH check — the CI checker compares PARSED KEY SETS of the working baseline against the blob named by the OWNER-SET repository variable DPA_BASELINE_PROTECTED_BLOB (git cat-file blob \"$DPA_BASELINE_PROTECTED_BLOB\"; never the YAML, never a branch name), FAILING on any ADDED key, so 'new violation + regenerated matching baseline entry in one change' cannot pass; FAIL CLOSED on unset variable / unfetchable blob / YAML-mirror drift; the before-state IS the variable-held blob (PR-vs-push ambiguity moot); bootstrap + re-pins are owner variable writes at promotion (brief §6 F-8). Tamper case 5 (plant violation + matching baseline key together -> FAIL against the variable-held comparison; plus mirror-drift -> FAIL, unset variable -> FAIL via isolated env -u subshell) demonstrated. LOCAL green runs use the authority setup export (derive the reviewed seed blob, assert == mirror, export under the checker's env name — gate-r4 R4-H-4); the CI step maps ${{ vars.DPA_BASELINE_PROTECTED_BLOB }} into the checker env and fetches the durable pin tag explicitly before resolving the blob (gate-r4 R4-H-2). Plus the baseline<->DPA-register cross-check table: every register violator the scan misses is investigated and dispositioned."
     review_lenses: [stock-gl-interaction, inventory-costing]
