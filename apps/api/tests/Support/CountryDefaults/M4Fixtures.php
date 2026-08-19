@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Support\CountryDefaults;
 
 use App\Models\SuperAdmin;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\CountryDefaults\Application\Services\TemplateAssignmentService;
 use App\Modules\CountryDefaults\Application\Services\TemplatePublishingService;
 use App\Modules\CountryDefaults\Domain\Enums\TemplateDomain;
@@ -41,6 +42,27 @@ trait M4Fixtures
             $row = json_decode($line, true, 512, JSON_THROW_ON_ERROR);
             $rows[] = $row;
         }
+
+        $frenchPlan = in_array($country, ['tn', 'fr'], true);
+        $nextOrder = max(array_column($rows, 'sort_order')) + 1;
+        $rows[] = [
+            'code' => '6586',
+            'name' => $frenchPlan ? "Écarts d'inventaire — manquants et pertes" : 'Inventory Shrinkage Expense',
+            'type' => 'expense',
+            'parent_code' => $frenchPlan ? '65' : '6000',
+            'system_purpose' => SystemAccountPurpose::InventoryShrinkageExpense->value,
+            'is_system' => true,
+            'sort_order' => $nextOrder,
+        ];
+        $rows[] = [
+            'code' => '7586',
+            'name' => $frenchPlan ? "Écarts d'inventaire — excédents" : 'Inventory Count Gain',
+            'type' => 'revenue',
+            'parent_code' => $frenchPlan ? '75' : '7000',
+            'system_purpose' => SystemAccountPurpose::InventoryGainIncome->value,
+            'is_system' => true,
+            'sort_order' => $nextOrder + 1,
+        ];
 
         return $rows;
     }
@@ -91,7 +113,7 @@ trait M4Fixtures
 
         return app(TemplatePublishingService::class)->publish(
             $template->id,
-            'Legacy certified v1',
+            'Option A certified v2',
             [$assignmentCountry],
             $actor,
         );

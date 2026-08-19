@@ -11,6 +11,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
@@ -58,6 +59,90 @@ final class BackfillInventoryShrinkagePurposesCommandTest extends TestCase
 
         self::assertSame($holder, DB::table('accounts')->where('company_id', $company->id)->where('system_purpose', SystemAccountPurpose::InventoryShrinkageExpense->value)->value('id'));
         self::assertFalse(DB::table('accounts')->where('company_id', $company->id)->where('code', '6586')->exists());
+    }
+
+    public function test_an_unpurposed_approved_code_is_promoted_without_replacing_it(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $expenseParent = $this->account($tenant->id, $company->id, '65', 'expense');
+        $this->account($tenant->id, $company->id, '75', 'revenue');
+        $approved = $this->account($tenant->id, $company->id, '6586', 'expense', $expenseParent);
+        DB::table('accounts')->where('id', $approved)->update(['is_system' => false]);
+
+        $this->artisan('accounting:backfill-inventory-shrinkage-purposes')->assertSuccessful();
+
+        $promoted = DB::table('accounts')->where('id', $approved)->first();
+        self::assertSame(SystemAccountPurpose::InventoryShrinkageExpense->value, $promoted?->system_purpose);
+        self::assertTrue((bool) $promoted?->is_system);
+        self::assertSame(1, DB::table('accounts')->where('company_id', $company->id)->where('code', '6586')->count());
+    }
+
+    public function test_a_claimed_approved_code_reports_repurpose_refusal_before_secondary_shape_errors(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $this->account($tenant->id, $company->id, '65', 'expense');
+        $this->account($tenant->id, $company->id, '75', 'revenue');
+        $this->account(
+            $tenant->id,
+            $company->id,
+            '6586',
+            'revenue',
+            purpose: SystemAccountPurpose::OfficeExpense->value,
+        );
+
+        $this->artisan('accounting:backfill-inventory-shrinkage-purposes')
+            ->expectsOutputToContain('already carries system_purpose office_expense; refusing to repurpose it')
+            ->assertFailed();
+    }
+
+    public function test_a_missing_parent_fails_that_definition_without_inventing_the_hierarchy(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $this->account($tenant->id, $company->id, '75', 'revenue');
+
+        $this->artisan('accounting:backfill-inventory-shrinkage-purposes')
+            ->expectsOutputToContain('is missing parent account 65')
+            ->expectsOutputToContain(BackfillInventoryShrinkagePurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->assertFailed();
+
+        self::assertFalse(DB::table('accounts')->where('company_id', $company->id)->where('code', '6586')->exists());
+        self::assertTrue(DB::table('accounts')->where('company_id', $company->id)->where('code', '7586')->exists());
+    }
+
+    public function test_dry_run_reports_both_create_and_promote_without_writing(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $company = Company::factory()->tunisia()->create(['tenant_id' => $tenant->id]);
+        $expenseParent = $this->account($tenant->id, $company->id, '65', 'expense');
+        $this->account($tenant->id, $company->id, '75', 'revenue');
+        $approved = $this->account($tenant->id, $company->id, '6586', 'expense', $expenseParent);
+        DB::table('accounts')->where('id', $approved)->update(['is_system' => false]);
+
+        $this->artisan('accounting:backfill-inventory-shrinkage-purposes', ['--dry-run' => true])
+            ->expectsOutputToContain('[DRY-RUN] Inventory variance purpose backfill: 1 created; 1 promoted; 0 already satisfied; 0 failed.')
+            ->assertSuccessful();
+
+        self::assertNull(DB::table('accounts')->where('id', $approved)->value('system_purpose'));
+        self::assertFalse((bool) DB::table('accounts')->where('id', $approved)->value('is_system'));
+        self::assertFalse(DB::table('accounts')->where('company_id', $company->id)->where('code', '7586')->exists());
+    }
+
+    public function test_schema_guard_still_emits_the_warning_level_summary_token(): void
+    {
+        Schema::shouldReceive('hasTable')->once()->with('companies')->andReturn(true);
+        Schema::shouldReceive('hasTable')->once()->with('accounts')->andReturn(false);
+        Log::spy();
+
+        $this->artisan('accounting:backfill-inventory-shrinkage-purposes')
+            ->expectsOutputToContain(BackfillInventoryShrinkagePurposesCommand::SUMMARY_TOKEN_PREFIX.' 1')
+            ->assertFailed();
+
+        Log::shouldHaveReceived('warning')
+            ->once()
+            ->with(BackfillInventoryShrinkagePurposesCommand::SUMMARY_TOKEN_PREFIX.' 1');
     }
 
     #[DataProvider('nonTunisianMaps')]
