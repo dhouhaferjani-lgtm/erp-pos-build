@@ -1582,3 +1582,89 @@ re-run the acceptance evidence rather than carry these bytes forward.
 **Checker liveness suite: 35 cases**, including the empirical nonzero-selection assertion over every
 declared lane. Every bypass across five rounds fails closed; four positive cases pin the
 false-positive shapes green.
+
+---
+
+## M2 round 6 — STOP condition A (`blocked_review`). Fix rounds exhausted.
+
+**Tally, counted from the full register first:** 0 P1, **3 P2 (N-1…N-3)**, 3 P3 (N-4…N-6).
+`fix_rounds` is **5 of `max_fix_rounds: 5`**, and M2 carries no override, so another fix round exceeds
+the cap — harness STOP condition A. The reviewer records the same conclusion and correctly declines to
+rule on it.
+
+**I have NOT applied the round-6 fixes.** Committing unreviewed work past the cap would misrepresent
+the round-6 register as covering it. The tree is exactly what round 6 reviewed.
+
+### (68) What round 6 confirmed as SOUND
+
+Worth stating, because it bounds what is actually outstanding: the manifest is exhaustive and
+slack-free (all 71 ceilings equal their true counts), **both halves** of the brief's H-6 negative proof
+fire, anchoring is provably coverage-neutral by a second independent method (112→112, 16→16), every
+round-5 fix is live, and the tenancy-authz substance — the Security suite onto PR→dev — is a verified
+net gain that passes (93 tests, 305 assertions, green under the pinned serviceless env). The reviewer
+could not break the deliverable from the outside.
+
+### (69) The surviving family: **the guard does not apply to itself the analysis it applies to everything else**
+
+Three P2s, one coherent cause:
+
+- **N-1 — the workflow's TRIGGER SET is never checked.** The checker verifies job `if:`, step `if:`,
+  `continue-on-error`, shell-soft forms and the transitive `needs` chain — but never `on:`. Changing
+  `on.pull_request.branches` from `[main, dev]` to `[main]` removes **the entire workflow** from
+  PR→dev — including the parent-ruled `security-regression` job — while all 35 liveness cases and the
+  manifest keep asserting PR→dev coverage. **~4 lines:** when any lane declares `runs_on_pr_dev: true`,
+  assert `dev ∈ on.pull_request.branches`.
+- **N-2 — the checker's own host job and steps are exempt from all five gating analyses.** Four
+  demonstrated bypasses, each `EXIT=0`: a job `if:`, job `continue-on-error`, a gated `needs:`, and a
+  step-level `continue-on-error` on the checker's own step (plus deleting both steps outright).
+  **The failure scenario is not hypothetical and this wave recorded it:** `backend-architecture`'s
+  deptrac ratchet is RED at `base_sha`, and gating or softening that job is the obvious remediation
+  someone reaches for — which would silently remove the 2(b) checker *and its liveness suite* from
+  PR→dev with every check still reporting OK. Asymmetric in the wrong direction: 43 s of security
+  tests are protected against five disabling doors; the package's whole backend guard surface against
+  none. **~10 lines**, reusing the `ifs`/`jobSoft`/`stepIf`/`stepSoft`/`needs`-BFS machinery already in
+  the file.
+- **N-3 — my "closed EMPIRICALLY" claim in §(63) is FALSE, and it is in the acceptance evidence.**
+  The liveness case executes `$lane['selector']` — the manifest's declared string — not the workflow's
+  actual `run:` line. Nothing appended to a lane's run line can change its outcome, so the
+  empty-selection family is closed **lexically only**, by the same hand-maintained flag list whose
+  maintenance produced the round-4 `-c` defect. I stated the opposite in the decision doc and the test
+  docblock. **Fix:** resolve the run line from the parsed workflow (the checker already does this) and
+  execute *that*.
+
+**This one matters most.** It is a false statement in the acceptance evidence that M4 would carry into
+the handback and that P3's `p2_landed_sha` precondition would certify — the exact class of defect this
+package exists to end, and the third time in this milestone that my own record overstated what was
+verified (round 2 and round 3 tallies, §(56) and §(59)).
+
+### (70) P3 residuals — recorded, not fixed
+
+- **N-4** the anchoring lint reads only `ci.yml` `run:` blocks; relocating an allowlist into a shell
+  script or a second workflow removes it from the scan. Contained today. **Belongs in the M3
+  checklist** so P3-M2 does not wire its country-chart entry into a list outside the lint's view.
+- **N-5** the `-c` ban covers a *substituted* config; the *default* `phpunit.xml` can still gut a
+  certified lane by adding one `<groups><exclude>` entry. Partial exclusion is caught by nothing.
+- **N-6** residual drift: one prose line still says "1 707 classes" (shipped output prints 1708), and
+  `ci.yml:196` still says "Seven cases" when the suite has 35. Round 5's H-5 was closed in the
+  transcript half only — and the second instance is inside a shipped workflow file.
+
+### (71) What the parent must decide
+
+The three P2 fixes total **~20 lines** and reuse machinery already in the file; N-6 is a two-line
+correction. The options are the same shape as the M1 ruling:
+
+- **raise `max_fix_rounds` for M2 only** (as was done for M1) and let the executor apply N-1…N-3 + N-6
+  and run round 7; or
+- **apply them as a parent-authorized scoped continuation** and re-run the M2 bridge; or
+- **accept with the findings recorded** — which I do not recommend: N-3 is a false claim in the
+  acceptance evidence, and N-2 leaves the package's own backend guard removable by the very
+  remediation the recorded red deptrac gate invites.
+
+**Honest assessment of the trajectory, since the parent is deciding on more rounds:** six rounds have
+produced real, demonstrated bypasses every time, and each fix has been genuine hardening — but the
+attack surface (ways to make a CI job not gate while a manifest says it does) has no natural closure,
+and rounds 4–6 each introduced at least one defect while fixing another (`-c` in the allowlist, the
+`always()` false positive, the pnpm false negative, the false "empirically closed" claim). The
+converging move is N-3's: **replace lexical checks with empirical ones** wherever possible. N-1 and
+N-2 are genuinely bounded, mechanical, and worth doing; beyond those I would expect the next round to
+find another door rather than a fixed point.

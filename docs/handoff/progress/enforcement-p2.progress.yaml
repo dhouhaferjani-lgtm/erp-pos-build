@@ -224,12 +224,12 @@ milestones:
   - id: M2
     title: "2(b) Feature-suite strategy: decision doc + implementation of the chosen option. LOCAL timing measurement only (no push — gate-r1 H-7); if material -> F-2 fires (blocked_owner). Kill the unanchored --filter substring mechanism (anchor survivors ^...Test$ + exactly-one-match lint). MANDATORY (gate-r1 H-6): the mechanically-checked class-to-lane/exclusion manifest covering EVERY tests/Feature class (script/test fails on any unassigned class) + the planted-new-Feature-class negative proof in a previously-UNCOVERED directory (selected automatically or loud failure; revert; both outputs pasted). Pointing at already-covered Treasury/Accounting (ci.yml:833-851) does not satisfy it. RECIPROCAL NOTE (gate-r2 R2-H-6; hardened gate-r3 R3-H-2/R3-H-3): P3 dispatches only after the WHOLE P2 package lands (p2_landed_sha is a P3-M0 dispatch precondition — P3's base contains this milestone's outcome by construction; there is no mid-wave pin); P3-M2 wires its country-chart completeness test into the lane this milestone selects; any later P2 restructuring of the Feature lanes/allowlist must reconcile against that landed P3 wiring — never silently drop the landed P3 test."
     review_lenses: [frontend-conventions, tenancy-authz]
-    status: review
+    status: blocked_review
     fix_rounds: 5
     commit: 990e3ae269ad8c648da3ec8dccf017153cd4005b
-    verdict: docs/handoff/reviews/enforcement-p2/M2-round5.md
+    verdict: docs/handoff/reviews/enforcement-p2/M2-round6.md
     last_verdict: CHANGES-REQUIRED   # F-1 (P1) closed by the parent F-2 ruling of 2026-08-19
-    updated: 990e3ae26
+    updated: 82ee2b6c3
   - id: M3
     title: "2(a) per the M0 ownership snapshot: verify-only (no `if:` + all-checks-pass `needs` membership, gate-r1 H-9) OR implement per the T3(b) spec (only on recorded relinquish/complete-without-artifact) — never regenerate manifests unless T2's KeyedByRouteId fix is on base. Plus the aggregate PR->dev proposal (owner knob, proposal only) and the MERGE-ANNOUNCEMENT CHECKLIST for the parent: every open lane, one 'what you must rebase for' line each, incl. the OpenAPI merge-order/reconciliation line and the M1 frontend-lint step-addition contract change (r4/R0-3). The checklist is the INPUT to the parent's FINAL announcement, SENT after M3/M4 acceptance and before promotion; merge_announcement_ack records the sent fact in the POST-promotion admin commit (gate-r2 R2-H-1; gate-r3 R3-C-2 — nothing is committed to the accepted candidate between ACCEPT and merge); it is not the M0 preliminary notice and the executor never sends it."
     review_lenses: [frontend-conventions]
@@ -247,8 +247,45 @@ milestones:
     verdict: null
     last_verdict: null
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: blocked_review   # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers:
+  - milestone: M2
+    condition: "STOP condition A — fix rounds exhausted (fix_rounds 5 == max_fix_rounds 5; no M2 override). Six review rounds run."
+    register: docs/handoff/reviews/enforcement-p2/M2-round6.md
+    tally: "0 P1, 3 P2 (N-1..N-3), 3 P3 (N-4..N-6). Counted from the full register."
+    surviving_family: >-
+      ONE coherent cause: the guard does not apply to itself the analysis it applies to everything
+      else. N-1 the workflow TRIGGER SET (`on:`) is never checked, so changing on.pull_request.branches
+      from [main, dev] to [main] removes the WHOLE workflow from PR->dev — including the parent-ruled
+      security-regression job — with all 35 liveness cases still asserting coverage. N-2 the checker's
+      own host job and steps are exempt from all five gating analyses (four demonstrated bypasses:
+      job if:, job continue-on-error, gated needs:, step continue-on-error) — and this wave already
+      records backend-architecture as RED at base, so gating/softening it is the obvious remediation,
+      which would silently remove the 2(b) checker AND its liveness suite. N-3 the "closed
+      EMPIRICALLY" claim in DECISION §(63) is FALSE: the liveness case executes the manifest's
+      declared selector string, not the workflow's actual run line, so the empty-selection family is
+      closed lexically only — and the false claim sits in the acceptance evidence M4 would carry into
+      the handback.
+    remedy: >-
+      ~20 lines total, all reusing machinery already in the file: N-1 assert dev is in
+      on.pull_request.branches whenever any lane claims runs_on_pr_dev (~4 lines); N-2 run the existing
+      if/jobSoft/stepIf/stepSoft/needs-BFS analysis over backend-architecture and the two checker steps
+      (~10 lines); N-3 resolve each lane's run line from the parsed workflow (the checker already does
+      this at the lane-resolution step) and execute THAT with --list-tests. Plus N-6, a two-line
+      correction of drifted prose ("1707" -> 1708; ci.yml's "Seven cases" -> 35).
+    parent_decision_required: >-
+      Raise max_fix_rounds for M2 only (as ruled for M1) and let the executor apply N-1..N-3 + N-6 and
+      run round 7; OR apply them as a parent-authorized scoped continuation and re-run the bridge; OR
+      accept with the findings recorded — NOT recommended, because N-3 is a false claim in the
+      acceptance evidence and N-2 leaves the package's own backend guard removable by exactly the
+      remediation the recorded red deptrac gate invites.
+    trajectory_note: >-
+      Six rounds produced demonstrated bypasses every time and each fix was genuine hardening, but the
+      attack surface has no natural closure and rounds 4-6 each introduced a defect while fixing
+      another (-c in the allowlist, the always() false positive, the pnpm false negative, the false
+      "empirically closed" claim). The converging move is N-3's: replace lexical checks with empirical
+      ones. N-1 and N-2 are bounded and worth doing; beyond those, expect another door rather than a
+      fixed point.
   - milestone: "(wave-level, NOT owned by P2)"
     condition: "THREE inherited CI gates are RED at base_sha, which blocks the mandatory pre-promotion workflow_dispatch (brief §5 item 4 / LEDGER S-14)."
     detail: >-
