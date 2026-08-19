@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Architecture\DocumentPerActionFixtures;
 
+use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\JournalEntry;
 use Illuminate\Support\Facades\DB;
 
@@ -124,7 +125,7 @@ final class FixtureJournalEntryWrites
     public function saveLifecycleOnly(string $entryId): void
     {
         $entry = JournalEntry::query()->findOrFail($entryId);
-        $entry->status = 'posted';
+        $entry->status = JournalEntryStatus::Posted;
         $entry->save();
     }
 

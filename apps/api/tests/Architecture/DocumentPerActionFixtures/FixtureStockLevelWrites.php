@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Architecture\DocumentPerActionFixtures;
 
+use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
@@ -22,6 +23,10 @@ use Illuminate\Support\Facades\DB;
  */
 final class FixtureStockLevelWrites
 {
+    public function __construct(
+        private readonly StockAdjustmentService $stockAdjustmentService,
+    ) {}
+
     // --- create -----------------------------------------------------------
 
     public function createBypassingMovement(string $productId, string $locationId): void
@@ -110,11 +115,18 @@ final class FixtureStockLevelWrites
     }
 
     /**
-     * The `recordMovement` chokepoint arm of the pairing predicate.
+     * The chokepoint arm of the pairing predicate: a call to one of
+     * StockAdjustmentService's derived movement-recording entry points.
      */
     public function updateQuantityWithRecordedMovement(string $levelId): void
     {
-        $this->recordMovement($levelId);
+        $this->stockAdjustmentService->adjust(
+            productId: $levelId,
+            locationId: $levelId,
+            newQuantity: '1.0000',
+            reason: 'fixture',
+            userId: $levelId,
+        );
 
         StockLevel::query()->whereKey($levelId)->update(['quantity' => '12.0000']);
     }
@@ -179,7 +191,13 @@ final class FixtureStockLevelWrites
 
     public function incrementQuantityWithRecordedMovement(string $levelId): void
     {
-        $this->recordMovement($levelId);
+        $this->stockAdjustmentService->adjust(
+            productId: $levelId,
+            locationId: $levelId,
+            newQuantity: '1.0000',
+            reason: 'fixture',
+            userId: $levelId,
+        );
 
         StockLevel::query()->whereKey($levelId)->increment('quantity', 2);
     }
@@ -191,7 +209,13 @@ final class FixtureStockLevelWrites
 
     public function decrementQuantityWithRecordedMovement(string $levelId): void
     {
-        $this->recordMovement($levelId);
+        $this->stockAdjustmentService->adjust(
+            productId: $levelId,
+            locationId: $levelId,
+            newQuantity: '1.0000',
+            reason: 'fixture',
+            userId: $levelId,
+        );
 
         StockLevel::query()->whereKey($levelId)->decrement('quantity', 2);
     }
@@ -229,14 +253,40 @@ final class FixtureStockLevelWrites
 
     // --- helper -----------------------------------------------------------
 
+    // --- the bare-name bypass, refused (finding 3) ------------------------
+
     /**
-     * Stands in for the S0 chokepoint call. The predicate matches on the call
-     * NAME, exactly as it does for StockAdjustmentService::recordMovement.
+     * A LOCAL method merely NAMED `recordMovement` must not credit the pairing
+     * predicate: otherwise any new violator could ship an unlinked level write
+     * green by declaring an empty stub. The call must reach the real chokepoint.
      */
-    private function recordMovement(string $levelId): void
+    public function updateQuantityWithLocalRecordMovementStub(string $levelId): void
     {
-        // Intentionally empty: the fixture proves the pairing predicate, not
-        // the chokepoint's own behaviour.
-        unset($levelId);
+        $levelId = $this->recordMovement($levelId);
+
+        StockLevel::query()->whereKey($levelId)->update(['quantity' => '12.0000']);
+    }
+
+    /**
+     * The stub the cell above proves is worthless: it records nothing.
+     */
+    private function recordMovement(string $levelId): string
+    {
+        return $levelId;
+    }
+
+    // --- non-soft-hold column (finding 1) ---------------------------------
+
+    /**
+     * Re-keying a level row onto another grain moves on-hand stock between
+     * rows with no movement. It is NOT a soft hold, and the exemption is a
+     * POSITIVE allowlist precisely so this cannot slip through.
+     */
+    public function updateVariantGrainOnly(string $levelId, string $variantId): void
+    {
+        StockLevel::query()->whereKey($levelId)->update([
+            'variant_id' => $variantId,
+            'updated_at' => '2026-01-01 00:00:00',
+        ]);
     }
 }

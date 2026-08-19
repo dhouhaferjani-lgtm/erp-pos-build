@@ -23,9 +23,11 @@ use SplFileInfo;
  * principle governs, and classifies each site as LINKED (a justifying document
  * reference is present per the per-table rule) or VIOLATION.
  *
- * The engine is deliberately fail-closed: whenever a payload or a receiver type
- * cannot be resolved statically at a site that is IN CONTRACT, the site is
- * reported as a violation rather than waved through. Sites the contract does
+ * The engine is fail-closed ON EVERY SITE IT SEES: once a write site is
+ * identified, an unresolvable payload is reported as a violation rather than
+ * waved through. It is NOT, and cannot be, fail-closed about sites it cannot
+ * see at all — see KNOWN BLIND SPOTS at the bottom of this docblock, which is
+ * the honest list M2's baseline cross-check inherits. Sites the contract does
  * not govern are classified `not_applicable` and never reported (see the
  * per-table rules below for exactly which ones, and why).
  *
@@ -51,7 +53,10 @@ use SplFileInfo;
  *    (`JournalEntry::$fillable`; note `journal_entries(source_type,source_id)`
  *    is NOT globally unique, so the check is PRESENCE, never uniqueness).
  *    - CREATE : LINKED iff the payload statically carries BOTH `source_type`
- *               and `source_id` with non-null values. Unresolvable payload
+ *               and `source_id` with PROVABLY non-null values (see
+ *               provablyNonNull(): a nullable-typed parameter, a null default,
+ *               a nullsafe read or a literal null does NOT prove linkage — the
+ *               row can be written unlinked on any call). Unresolvable payload
  *               (variable, spread, dynamic key) => VIOLATION (fail closed).
  *    - DELETE : always VIOLATION. A posted journal entry is removed by a
  *               reversal document, never by a row delete (DPA lane V1).
@@ -61,15 +66,26 @@ use SplFileInfo;
  *               Otherwise NOT IN CONTRACT: `journal_entries` carries no
  *               monetary amount (debit/credit live on `journal_entry_lines`,
  *               outside this package's four-table contract), so a lifecycle
- *               update (status, posted_at, fiscal_hash, reversal_*) mutates a
- *               row whose justification was fixed at creation. Recorded scope
- *               boundary, not an oversight.
+ *               update (status, posted_at, reversal_*) mutates a row whose
+ *               justification was fixed at creation. Recorded scope boundary,
+ *               not an oversight. STATED PLAINLY so nobody mistakes it for
+ *               more than it is: this exemption also covers rewrites of
+ *               `fiscal_hash`, `previous_hash`, `chain_sequence`, `entry_date`
+ *               and `journal_code`. This guard is a DOCUMENT-justification
+ *               guard, NOT hash-chain coverage; chain integrity is enforced
+ *               elsewhere and is out of P1's scope.
  *
  * 2. `stock_movements` — reference columns `reference_type` + `reference_id`,
  *    PAIRED (the S0 seam: StockAdjustmentService::recordMovement asserts
  *    `assertReferenceLinkagePaired`).
  *    - CREATE : LINKED iff the payload statically carries BOTH `reference_type`
- *               and `reference_id` with non-null values; unresolvable => VIOLATION.
+ *               and `reference_id` with PROVABLY non-null values; unresolvable
+ *               => VIOLATION. Note the consequence, which is deliberate: the S0
+ *               chokepoint's own create (`recordMovement`, whose reference
+ *               parameters are `?…= null` and whose `assertReferenceLinkagePaired`
+ *               explicitly permits null/null) is a BASELINE ENTRY, not a
+ *               linked site. Crediting it would make this table's coverage
+ *               near-vacuous, since nearly every movement flows through it.
  *    - MUTATE : always VIOLATION — the movement ledger is append-only; a
  *               correction is a new (reversing) movement, never an edit.
  *    - DELETE : always VIOLATION, same reason.
@@ -80,12 +96,19 @@ use SplFileInfo;
  *    StockLevel writes that bypass the movement chokepoint)". Operative,
  *    checkable form — the MOVEMENT-PAIRING PREDICATE:
  *      LINKED iff the enclosing function body ALSO contains either
- *        (a) a call named `recordMovement` (the S0 chokepoint), or
- *        (b) a CREATE-class write to `stock_movements`.
- *      Every other write site bypasses the chokepoint => VIOLATION.
- *    This is deliberately NOT a class allowlist: an allowlist would let a new
- *    violator be waved through by adding its class name, whereas the pairing
- *    predicate has to be satisfied by the code at the site itself.
+ *        (a) a call that reaches the movement CHOKEPOINT itself — either
+ *            `$this->recordMovement(...)` inside StockAdjustmentService, or one
+ *            of that class's movement-recording entry points (derived from the
+ *            AST by transitive closure over `$this->` calls, never hardcoded)
+ *            invoked through a receiver DECLARED as that class; or
+ *        (b) a CREATE-class write to `stock_movements` that is ITSELF classified
+ *            `linked` — pairing a level write with an unlinked movement
+ *            justifies nothing.
+ *      Every other write site bypasses the chokepoint => VIOLATION. A local
+ *      method merely NAMED `recordMovement` credits nothing (fixture-pinned).
+ *    This is deliberately NOT a bypass allowlist: the one class named here is
+ *    the architectural chokepoint itself, and satisfying the predicate requires
+ *    the code at the site to actually reach it.
  *    SCOPE of the predicate: only writes that can move the ON-HAND `quantity`
  *    column. A MUTATE-class write whose payload is statically resolvable and
  *    touches only `reserved`/`reserved_quantity`/`min_quantity`/`max_quantity`
@@ -105,6 +128,38 @@ use SplFileInfo;
  *    no LINKED form by rule. This is a contract decision, not a scanner
  *    limitation: it is why the raw-SQL row of the fixture matrix has no
  *    negative case.
+ *
+ * ---------------------------------------------------------------------------
+ * KNOWN BLIND SPOTS (read before trusting a clean run)
+ * ---------------------------------------------------------------------------
+ *
+ * A. RECEIVER RESOLUTION IS NOT TOTAL. A write is only classified once the
+ *    scanner knows the receiver's table. It resolves: static calls on the four
+ *    models (and any class extending one of them), `$this` inside those models,
+ *    typed parameters and typed/promoted properties, `@var` docblock hints,
+ *    variables assigned from any of the above, `foreach` values, relation
+ *    methods declared with `hasMany`/`hasOne`/`morphMany`/`morphOne` on a target
+ *    model, `$this->helper()` return types, `$this->collaborator->method()` /
+ *    `$typedParam->method()` return types indexed tree-wide, `DB::table('…')`
+ *    (static and via `connection()`), and raw SQL naming a target table. It does
+ *    NOT resolve a receiver whose origin is untyped, `mixed`, an array element,
+ *    a container `make()`, a closure parameter without a type, or a return type
+ *    declared only in a docblock. Such a write emits NO SITE — it is invisible,
+ *    not baselined. Adding a resolution path is the way to shrink this list;
+ *    every path above was added because a real write was found hiding behind it.
+ * B. THE PAIRING PREDICATE IS FUNCTION-SCOPED, not flow-sensitive. A movement
+ *    recorded anywhere in the same function credits every level write in it,
+ *    including one inside an unrelated `if` branch, and regardless of order
+ *    (deliberate: both orders are legitimate inside one transaction). A function
+ *    that records one movement and writes two unrelated levels is credited for
+ *    both.
+ * C. BASELINE KEYS CARRY A POSITIONAL ORDINAL within (file, class, function,
+ *    table, mechanism). Inserting a second same-mechanism write earlier in the
+ *    same function renumbers the later ones, so the ratchet reports one `stale`
+ *    plus one `new` instead of a clean addition. It fails SAFE (still red), but
+ *    the message misleads; read the file:line in the report, not just the key.
+ * D. RAW SQL is matched by table name plus an INSERT/UPDATE/DELETE keyword in a
+ *    statically-resolvable string. SQL assembled from variables is not matched.
  *
  * A per-site key is line-number-free and stable under reformatting:
  *   `<relative file>::<class>::<function>::<table>::<mechanism>#<ordinal>`
@@ -139,20 +194,31 @@ final class DocumentPerActionWriteScanner
     ];
 
     /**
-     * The on-hand quantity column on both level tables. A MUTATE-class write
-     * that provably touches none of it (only `reserved`/`reserved_quantity`/
-     * `min_quantity`/`max_quantity`) is a soft hold or a threshold setting: no
-     * stock leaves or enters the company, nothing posts to the ledger, so the
-     * document-per-action contract does not govern it. Unresolvable payloads
-     * are never credited with this exemption (fail closed).
+     * The POSITIVE allowlist of columns a level-table MUTATE may touch without
+     * a justifying movement. Stated as an allowlist, never as "does not mention
+     * `quantity`": a negative test silently exempts a re-keying write such as
+     * `update(['variant_id' => …])`, which moves on-hand stock from one grain to
+     * another with no movement at all (gate-r1 M1 finding 1).
+     *
+     * @var list<string>
      */
-    private const ON_HAND_COLUMN = 'quantity';
+    private const SOFT_HOLD_COLUMNS = ['reserved', 'reserved_quantity', 'min_quantity', 'max_quantity'];
 
     /**
      * `inventory_batch_movements` — the join row whose NOT-NULL `movement_id`
      * FK ties a batch-stock change to an aggregate `stock_movements` row.
      */
     private const BATCH_MOVEMENT_MODEL = 'App\\Modules\\BatchExpiry\\Domain\\Entities\\BatchMovement';
+
+    /**
+     * The movement chokepoint — the ONE class that owns `recordMovement` and the
+     * S0 reference-linkage assertion. The pairing predicate credits a
+     * `recordMovement` call only when it is this class calling its own method,
+     * or a caller invoking one of this class's movement-recording entry points
+     * (derived from the AST, not hardcoded). A bare name match anywhere would be
+     * satisfiable by an empty local stub (gate-r1 M1 finding 3).
+     */
+    private const MOVEMENT_CHOKEPOINT = 'App\\Modules\\Inventory\\Domain\\Services\\StockAdjustmentService';
 
     /**
      * Eloquent/builder write method => [mechanism bucket, write class].
@@ -242,6 +308,43 @@ final class DocumentPerActionWriteScanner
     /** @var array<string, string> relation method name => model FQCN (unambiguous ones only) */
     private array $relationMap = [];
 
+    /**
+     * Repository-wide map of methods that RETURN one of the target models:
+     * class FQCN => method name => model FQCN. Without it the scanner misses
+     * `$this->stockAdjustmentService->issue(...)->save()` — a service hands back
+     * a StockMovement and the caller mutates it (the live
+     * ReturnScrapWriteOffService shape).
+     *
+     * @var array<string, array<string, string>>
+     */
+    private array $modelReturningMethods = [];
+
+    /** @var array<string, string> property name => declared class FQCN (any class), for the file being scanned */
+    private array $propertyClasses = [];
+
+    /** @var array<string, string> variable name => declared class FQCN (any class), for the function being scanned */
+    private array $varClasses = [];
+
+    /**
+     * Methods of MOVEMENT_CHOKEPOINT whose body calls `$this->recordMovement(...)`,
+     * derived from the AST during the pre-pass.
+     *
+     * @var array<string, true>
+     */
+    private array $chokepointEntryPoints = [];
+
+    /** @var array<string, true> parameter names of the function being scanned whose declared type is nullable or which default to null */
+    private array $nullableVars = [];
+
+    /**
+     * Subclass FQCN => target-model FQCN. A class extending one of the four
+     * models writes the same table, so `$this->update([...])` inside it is the
+     * same contract event.
+     *
+     * @var array<string, string>
+     */
+    private array $modelSubclasses = [];
+
     private NodeFinder $finder;
 
     private Parser $parser;
@@ -255,13 +358,25 @@ final class DocumentPerActionWriteScanner
     /**
      * Scan a set of absolute roots and return every write site found.
      *
-     * @param  list<string>  $roots  absolute directory (or file) paths
+     * @param  list<string>  $roots  absolute directory (or file) paths whose sites are REPORTED
      * @param  string  $relativeTo  absolute prefix stripped from reported paths
+     * @param  list<string>  $contextRoots  extra paths read ONLY to build the
+     *                                      resolution maps (relations, model
+     *                                      inheritance, return types, chokepoint
+     *                                      entry points). Their own write sites
+     *                                      are not reported. The fixture suite
+     *                                      passes the production tree here so a
+     *                                      fixture resolves exactly as live code
+     *                                      does.
      * @return list<array{key: string, file: string, line: int, class: string, function: string, table: string, mechanism: string, write_class: string, classification: string, reason: string}>
      */
-    public function scan(array $roots, string $relativeTo): array
+    public function scan(array $roots, string $relativeTo, array $contextRoots = []): array
     {
-        $this->relationMap = $this->buildRelationMap($roots);
+        $mapRoots = [...$roots, ...$contextRoots];
+        $this->relationMap = $this->buildRelationMap($mapRoots);
+        $this->modelReturningMethods = $this->buildModelReturningMethods($mapRoots);
+        $this->chokepointEntryPoints = $this->buildChokepointEntryPoints($mapRoots);
+        $this->modelSubclasses = $this->buildModelSubclasses($mapRoots);
 
         $sites = [];
         foreach ($this->files($roots) as $path) {
@@ -298,6 +413,7 @@ final class DocumentPerActionWriteScanner
             $this->currentClass = $classLike['name'];
             $this->propertyTypes = $this->buildPropertyTypes($classLike['node']);
             $this->methodReturnTypes = $this->buildMethodReturnTypes($classLike['node']);
+            $this->propertyClasses = $this->buildPropertyClasses($classLike['node']);
 
             foreach ($this->functionLikes($classLike['node']) as $fn) {
                 foreach ($this->scanFunction($fn['node'], $relative, $fn['name']) as $site) {
@@ -311,6 +427,7 @@ final class DocumentPerActionWriteScanner
         $this->currentClass = '';
         $this->propertyTypes = [];
         $this->methodReturnTypes = [];
+        $this->propertyClasses = [];
         foreach ($this->topLevelFunctionLikes($stmts) as $fn) {
             foreach ($this->scanFunction($fn['node'], $relative, $fn['name']) as $site) {
                 $sites[] = $site;
@@ -418,7 +535,7 @@ final class DocumentPerActionWriteScanner
             // stock_levels / inventory_batch_stock — movement-pairing predicate,
             // applied only to writes that can move the ON-HAND quantity.
             if ($writeClass === 'MUTATE' && $payload['resolved'] && $payload['keys'] !== []
-                && ! array_key_exists(self::ON_HAND_COLUMN, $payload['keys'])) {
+                && array_diff(array_keys($payload['keys']), self::SOFT_HOLD_COLUMNS) === []) {
                 return ['not_applicable', 'mutates only reservation/threshold columns ('.implode(', ', array_keys($payload['keys'])).') — a soft hold with no on-hand or ledger effect'];
             }
 
@@ -624,7 +741,7 @@ final class DocumentPerActionWriteScanner
 
         // Walk the chain down to its base, checking each hop.
         $cursor = $receiver;
-        while ($cursor !== null) {
+        while (true) {
             if ($cursor instanceof Expr\MethodCall || $cursor instanceof Expr\NullsafeMethodCall) {
                 if ($cursor->name instanceof Node\Identifier) {
                     $relation = $this->relationMap[$cursor->name->toString()] ?? null;
@@ -667,6 +784,11 @@ final class DocumentPerActionWriteScanner
             }
 
             if ($cursor instanceof Expr\Variable && is_string($cursor->name)) {
+                // `$this->update([...])` / `$this->save()` INSIDE one of the four
+                // models is a write to that model's own table (finding 2).
+                if ($cursor->name === 'this') {
+                    return $this->tableForModel($this->currentClass);
+                }
                 $type = $this->varTypes[$cursor->name] ?? null;
 
                 return $type === null ? null : $this->tableForModel($type);
@@ -684,8 +806,6 @@ final class DocumentPerActionWriteScanner
 
             return null;
         }
-
-        return null;
     }
 
     /**
@@ -744,13 +864,68 @@ final class DocumentPerActionWriteScanner
             }
         }
 
+        $inherited = $this->modelSubclasses[$fqcn] ?? null;
+        if ($inherited !== null) {
+            return array_search($inherited, self::TABLE_MODELS, true) ?: null;
+        }
+
         return null;
+    }
+
+    /**
+     * Transitive `extends` closure onto the four models.
+     *
+     * @param  list<string>  $roots
+     * @return array<string, string>
+     */
+    private function buildModelSubclasses(array $roots): array
+    {
+        $parents = [];
+
+        foreach ($this->files($roots) as $path) {
+            $code = (string) file_get_contents($path);
+            if (! str_contains($code, 'extends')) {
+                continue;
+            }
+            $stmts = $this->parser->parse($code);
+            if ($stmts === null) {
+                continue;
+            }
+            $namespace = $this->firstNamespace($stmts);
+            $useMap = $this->buildUseMap($stmts);
+
+            foreach ($this->finder->findInstanceOf($stmts, Stmt\Class_::class) as $class) {
+                /** @var Stmt\Class_ $class */
+                if ($class->name === null || $class->extends === null) {
+                    continue;
+                }
+                $fqcn = $namespace === '' ? $class->name->toString() : $namespace.'\\'.$class->name->toString();
+                $parents[$fqcn] = $this->resolveNameWith($class->extends, $namespace, $useMap);
+            }
+        }
+
+        $models = array_values(self::TABLE_MODELS);
+        $map = [];
+        foreach ($parents as $child => $parent) {
+            $seen = [];
+            $cursor = $parent;
+            while ($cursor !== null && ! isset($seen[$cursor])) {
+                if (in_array($cursor, $models, true)) {
+                    $map[$child] = $cursor;
+                    break;
+                }
+                $seen[$cursor] = true;
+                $cursor = $parents[$cursor] ?? null;
+            }
+        }
+
+        return $map;
     }
 
     /**
      * @return array{resolved: bool, keys: array<string, bool>} key => value is non-null
      */
-    private function extractPayload(Node $node, string $method): array
+    private function extractPayload(Expr\CallLike $node, string $method): array
     {
         // increment('column', …) / decrement('column', …) name the touched
         // column in argument 0; incrementEach(['col' => n]) uses an array.
@@ -764,7 +939,7 @@ final class DocumentPerActionWriteScanner
                 $keys = [];
                 $resolved = true;
                 foreach ($first->items as $item) {
-                    $key = $item?->key === null ? null : $this->stringValue($item->key);
+                    $key = $item->key === null ? null : $this->stringValue($item->key);
                     if ($key === null) {
                         $resolved = false;
 
@@ -806,7 +981,7 @@ final class DocumentPerActionWriteScanner
             }
             $seenArray = true;
             foreach ($value->items as $item) {
-                if ($item === null || $item->key === null || $item->unpack) {
+                if ($item->key === null || $item->unpack) {
                     $resolved = false;
 
                     continue;
@@ -817,8 +992,7 @@ final class DocumentPerActionWriteScanner
 
                     continue;
                 }
-                $isNonNull = ! ($item->value instanceof Expr\ConstFetch
-                    && $item->value->name->toLowerString() === 'null');
+                $isNonNull = $this->provablyNonNull($item->value);
                 // A key seen non-null anywhere wins; a null-only key stays false.
                 $keys[$key] = ($keys[$key] ?? false) || $isNonNull;
             }
@@ -829,6 +1003,43 @@ final class DocumentPerActionWriteScanner
         }
 
         return ['resolved' => $resolved, 'keys' => $keys];
+    }
+
+    /**
+     * Is this value expression PROVABLY non-null at the write site?
+     *
+     * A literal `null` obviously is not. Neither is `$referenceType?->value`
+     * (nullsafe short-circuits to null) nor a variable whose declared parameter
+     * type is nullable or whose default is null — which is exactly the S0
+     * chokepoint's own shape: `recordMovement(?StockMovementReferenceType
+     * $referenceType = null, ?string $referenceId = null)` writes
+     * `'reference_type' => $referenceType?->value` and
+     * `assertReferenceLinkagePaired` explicitly PERMITS null/null. Crediting
+     * that as linkage made the guard near-vacuous on the one path almost every
+     * movement flows through (finding 4); the chokepoint now enters the
+     * baseline as a deliberate, visible entry.
+     */
+    private function provablyNonNull(Expr $value): bool
+    {
+        if ($value instanceof Expr\ConstFetch && $value->name->toLowerString() === 'null') {
+            return false;
+        }
+        if ($value instanceof Expr\NullsafePropertyFetch || $value instanceof Expr\NullsafeMethodCall) {
+            return false;
+        }
+        if ($value instanceof Expr\Variable && is_string($value->name)) {
+            return ! isset($this->nullableVars[$value->name]);
+        }
+        if ($value instanceof Expr\Ternary) {
+            $ifTrue = $value->if ?? $value->cond;
+
+            return $this->provablyNonNull($ifTrue) && $this->provablyNonNull($value->else);
+        }
+        if ($value instanceof Expr\BinaryOp\Coalesce) {
+            return $this->provablyNonNull($value->right);
+        }
+
+        return true;
     }
 
     /**
@@ -860,14 +1071,27 @@ final class DocumentPerActionWriteScanner
             if (! $call->name instanceof Node\Identifier) {
                 continue;
             }
-            if ($call->name->toString() === 'recordMovement') {
+            if ($this->isChokepointMovementCall($call)) {
                 $result['movement'] = true;
 
                 continue;
             }
             $hit = $this->classifyCall($call);
             if ($hit !== null && $hit['table'] === 'stock_movements' && $hit['write_class'] === 'CREATE') {
-                $result['movement'] = true;
+                // Arm (b) credits ONLY a movement create that is itself LINKED:
+                // pairing a level write with an UNLINKED movement justifies
+                // nothing (finding 3).
+                [$movementClass] = $this->classifySite(
+                    'stock_movements',
+                    'CREATE',
+                    $hit['mechanism'],
+                    $hit['payload'],
+                    ['movement' => false, 'batch_movement' => false],
+                    false,
+                );
+                if ($movementClass === 'linked') {
+                    $result['movement'] = true;
+                }
 
                 continue;
             }
@@ -913,6 +1137,46 @@ final class DocumentPerActionWriteScanner
         }
 
         return $out;
+    }
+
+    /**
+     * Arm (a) of the pairing predicate, bound to the real chokepoint:
+     *   - `$this->recordMovement(...)` INSIDE StockAdjustmentService, or
+     *   - `<receiver declared as StockAdjustmentService>->entryPoint(...)` where
+     *     entryPoint is a method of that class whose own body calls
+     *     `$this->recordMovement(...)` (derived from the AST at scan time, so it
+     *     cannot rot into a hardcoded list).
+     * An empty local `recordMovement()` stub no longer credits anything.
+     */
+    private function isChokepointMovementCall(Node $call): bool
+    {
+        if (! $call instanceof Expr\MethodCall && ! $call instanceof Expr\NullsafeMethodCall) {
+            return false;
+        }
+        if (! $call->name instanceof Node\Identifier) {
+            return false;
+        }
+        $method = $call->name->toString();
+
+        if ($call->var instanceof Expr\Variable && $call->var->name === 'this') {
+            return $method === 'recordMovement' && $this->currentClass === self::MOVEMENT_CHOKEPOINT;
+        }
+
+        $receiverClass = null;
+        if ($call->var instanceof Expr\PropertyFetch
+            && $call->var->var instanceof Expr\Variable
+            && $call->var->var->name === 'this'
+            && $call->var->name instanceof Node\Identifier) {
+            $receiverClass = $this->propertyClasses[$call->var->name->toString()] ?? null;
+        } elseif ($call->var instanceof Expr\Variable && is_string($call->var->name)) {
+            $receiverClass = $this->varClasses[$call->var->name] ?? null;
+        }
+
+        if ($receiverClass !== self::MOVEMENT_CHOKEPOINT) {
+            return false;
+        }
+
+        return isset($this->chokepointEntryPoints[$method]);
     }
 
     private function isLinkedBatchMovementCreate(Node $call): bool
@@ -1028,7 +1292,7 @@ final class DocumentPerActionWriteScanner
     }
 
     /**
-     * @param  list<Node>  $stmts
+     * @param  array<int, Node>  $stmts
      */
     private function firstNamespace(array $stmts): string
     {
@@ -1040,7 +1304,7 @@ final class DocumentPerActionWriteScanner
     }
 
     /**
-     * @param  list<Node>  $stmts
+     * @param  array<int, Node>  $stmts
      * @return array<string, string>
      */
     private function buildUseMap(array $stmts): array
@@ -1066,7 +1330,7 @@ final class DocumentPerActionWriteScanner
     }
 
     /**
-     * @param  list<Node>  $stmts
+     * @param  array<int, Node>  $stmts
      * @return list<array{name: string, node: Node}>
      */
     private function classLikes(array $stmts): array
@@ -1102,7 +1366,7 @@ final class DocumentPerActionWriteScanner
     }
 
     /**
-     * @param  list<Node>  $stmts
+     * @param  array<int, Node>  $stmts
      * @return list<array{name: string, node: Node}>
      */
     private function topLevelFunctionLikes(array $stmts): array
@@ -1130,11 +1394,214 @@ final class DocumentPerActionWriteScanner
         if (! $call->name instanceof Node\Identifier) {
             return null;
         }
-        if (! $call->var instanceof Expr\Variable || $call->var->name !== 'this') {
+        $method = $call->name->toString();
+
+        // (a) `$this->helper()` — same class.
+        if ($call->var instanceof Expr\Variable && $call->var->name === 'this') {
+            return $this->methodReturnTypes[$method] ?? null;
+        }
+
+        // (b) `$this->someService->issue()` / `$service->issue()` — a collaborator
+        //     whose declared class has a method returning one of the four models.
+        $receiverClass = null;
+        if ($call->var instanceof Expr\PropertyFetch
+            && $call->var->var instanceof Expr\Variable
+            && $call->var->var->name === 'this'
+            && $call->var->name instanceof Node\Identifier) {
+            $receiverClass = $this->propertyClasses[$call->var->name->toString()] ?? null;
+        } elseif ($call->var instanceof Expr\Variable && is_string($call->var->name)) {
+            $receiverClass = $this->varClasses[$call->var->name] ?? null;
+        }
+
+        if ($receiverClass === null) {
             return null;
         }
 
-        return $this->methodReturnTypes[$call->name->toString()] ?? null;
+        return $this->modelReturningMethods[$receiverClass][$method] ?? null;
+    }
+
+    /**
+     * The chokepoint's own movement-recording entry points: every method of
+     * MOVEMENT_CHOKEPOINT whose body contains a `$this->recordMovement(...)`
+     * call. Derived, never hardcoded.
+     *
+     * @param  list<string>  $roots
+     * @return array<string, true>
+     */
+    private function buildChokepointEntryPoints(array $roots): array
+    {
+        $short = substr((string) strrchr(self::MOVEMENT_CHOKEPOINT, '\\'), 1);
+        $entryPoints = [];
+
+        foreach ($this->files($roots) as $path) {
+            if (basename($path) !== $short.'.php') {
+                continue;
+            }
+            $stmts = $this->parser->parse((string) file_get_contents($path));
+            if ($stmts === null) {
+                continue;
+            }
+            $namespace = $this->firstNamespace($stmts);
+
+            foreach ($this->finder->findInstanceOf($stmts, Stmt\ClassLike::class) as $classLike) {
+                /** @var Stmt\ClassLike $classLike */
+                $name = $classLike->name?->toString();
+                if ($name === null) {
+                    continue;
+                }
+                if (($namespace === '' ? $name : $namespace.'\\'.$name) !== self::MOVEMENT_CHOKEPOINT) {
+                    continue;
+                }
+                $direct = [];
+                $selfCalls = [];
+
+                foreach ($this->finder->findInstanceOf($classLike, Stmt\ClassMethod::class) as $method) {
+                    /** @var Stmt\ClassMethod $method */
+                    $name = $method->name->toString();
+                    foreach ($this->finder->find($method, static fn (Node $n): bool => $n instanceof Expr\MethodCall) as $call) {
+                        /** @var Expr\MethodCall $call */
+                        if (! $call->name instanceof Node\Identifier
+                            || ! $call->var instanceof Expr\Variable
+                            || $call->var->name !== 'this') {
+                            continue;
+                        }
+                        $callee = $call->name->toString();
+                        if ($callee === 'recordMovement') {
+                            $direct[$name] = true;
+                        }
+                        $selfCalls[$name][$callee] = true;
+                    }
+                }
+
+                // Transitive closure INSIDE the chokepoint: `adjust()` records a
+                // movement through `postAdjustmentWithinLock()`, so it is just as
+                // much an entry point as `issue()`.
+                $entryPoints += $direct;
+                do {
+                    $grew = false;
+                    foreach ($selfCalls as $caller => $callees) {
+                        if (isset($entryPoints[$caller])) {
+                            continue;
+                        }
+                        foreach (array_keys($callees) as $callee) {
+                            if (isset($entryPoints[$callee])) {
+                                $entryPoints[$caller] = true;
+                                $grew = true;
+                                break;
+                            }
+                        }
+                    }
+                } while ($grew);
+            }
+        }
+
+        return $entryPoints;
+    }
+
+    /**
+     * class FQCN => method => target-model FQCN, over the whole scanned tree.
+     *
+     * @param  list<string>  $roots
+     * @return array<string, array<string, string>>
+     */
+    private function buildModelReturningMethods(array $roots): array
+    {
+        $map = [];
+
+        foreach ($this->files($roots) as $path) {
+            $code = (string) file_get_contents($path);
+            $stmts = $this->parser->parse($code);
+            if ($stmts === null) {
+                continue;
+            }
+            $namespace = $this->firstNamespace($stmts);
+            $useMap = $this->buildUseMap($stmts);
+
+            foreach ($this->finder->findInstanceOf($stmts, Stmt\ClassLike::class) as $classLike) {
+                /** @var Stmt\ClassLike $classLike */
+                $name = $classLike->name?->toString();
+                if ($name === null) {
+                    continue;
+                }
+                $fqcn = $namespace === '' ? $name : $namespace.'\\'.$name;
+
+                foreach ($this->finder->findInstanceOf($classLike, Stmt\ClassMethod::class) as $method) {
+                    /** @var Stmt\ClassMethod $method */
+                    $returns = $this->typeToModelWith($method->returnType, $namespace, $useMap);
+                    if ($returns !== null) {
+                        $map[$fqcn][$method->name->toString()] = $returns;
+                    }
+                }
+            }
+        }
+
+        return $map;
+    }
+
+    /**
+     * Declared class of every property (and promoted constructor property),
+     * regardless of whether it is a target model.
+     *
+     * @return array<string, string>
+     */
+    private function buildPropertyClasses(Node $classLike): array
+    {
+        $classes = [];
+
+        foreach ($this->finder->findInstanceOf($classLike, Stmt\Property::class) as $property) {
+            /** @var Stmt\Property $property */
+            $fqcn = $this->typeToClass($property->type);
+            if ($fqcn === null) {
+                continue;
+            }
+            foreach ($property->props as $prop) {
+                $classes[$prop->name->toString()] = $fqcn;
+            }
+        }
+
+        foreach ($this->finder->findInstanceOf($classLike, Node\Param::class) as $param) {
+            /** @var Node\Param $param */
+            if ($param->flags === 0) {
+                continue;
+            }
+            $fqcn = $this->typeToClass($param->type);
+            if ($fqcn !== null && $param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                $classes[$param->var->name] = $fqcn;
+            }
+        }
+
+        return $classes;
+    }
+
+    /**
+     * The declared class name of a type node, or null for scalars/unions with
+     * no single class.
+     */
+    private function unionAdmitsNull(Node\UnionType $type): bool
+    {
+        foreach ($type->types as $inner) {
+            if ($inner instanceof Node\Identifier && $inner->toLowerString() === 'null') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function typeToClass(?Node $type): ?string
+    {
+        if ($type instanceof Node\NullableType) {
+            return $this->typeToClass($type->type);
+        }
+        if (! $type instanceof Node\Name) {
+            return null;
+        }
+        $name = $type->toString();
+        if (in_array(strtolower($name), ['string', 'int', 'float', 'bool', 'array', 'mixed', 'callable', 'iterable', 'object', 'void', 'never', 'null'], true)) {
+            return null;
+        }
+
+        return $this->resolveName($type);
     }
 
     /**
@@ -1195,8 +1662,24 @@ final class DocumentPerActionWriteScanner
     {
         $types = [];
 
+        $this->varClasses = [];
+        $this->nullableVars = [];
         foreach ($this->finder->findInstanceOf($fn, Node\Param::class) as $param) {
             /** @var Node\Param $param */
+            if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                $nullable = $param->type instanceof Node\NullableType
+                    || ($param->default instanceof Expr\ConstFetch && $param->default->name->toLowerString() === 'null')
+                    || ($param->type instanceof Node\UnionType && $this->unionAdmitsNull($param->type));
+                if ($nullable) {
+                    $this->nullableVars[$param->var->name] = true;
+                }
+            }
+            if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
+                $declared = $this->typeToClass($param->type);
+                if ($declared !== null) {
+                    $this->varClasses[$param->var->name] = $declared;
+                }
+            }
             $fqcn = $this->typeToModel($param->type);
             if ($fqcn !== null && $param->var instanceof Expr\Variable && is_string($param->var->name)) {
                 $types[$param->var->name] = $fqcn;
@@ -1263,7 +1746,7 @@ final class DocumentPerActionWriteScanner
     private function expressionModel(Expr $expr, array $known): ?string
     {
         $cursor = $expr;
-        while ($cursor !== null) {
+        while (true) {
             if ($cursor instanceof Expr\New_ && $cursor->class instanceof Node\Name) {
                 $fqcn = $this->resolveName($cursor->class);
 
@@ -1293,6 +1776,10 @@ final class DocumentPerActionWriteScanner
                 continue;
             }
             if ($cursor instanceof Expr\Variable && is_string($cursor->name)) {
+                if ($cursor->name === 'this' && $this->tableForModel($this->currentClass) !== null) {
+                    return $this->currentClass;
+                }
+
                 return $known[$cursor->name] ?? null;
             }
             if ($cursor instanceof Expr\PropertyFetch && $cursor->name instanceof Node\Identifier) {
@@ -1301,8 +1788,32 @@ final class DocumentPerActionWriteScanner
 
             return null;
         }
+    }
 
-        return null;
+    /**
+     * @param  array<string, string>  $useMap
+     */
+    private function typeToModelWith(?Node $type, string $namespace, array $useMap): ?string
+    {
+        if ($type instanceof Node\NullableType) {
+            return $this->typeToModelWith($type->type, $namespace, $useMap);
+        }
+        if ($type instanceof Node\UnionType || $type instanceof Node\IntersectionType) {
+            foreach ($type->types as $inner) {
+                $fqcn = $this->typeToModelWith($inner, $namespace, $useMap);
+                if ($fqcn !== null) {
+                    return $fqcn;
+                }
+            }
+
+            return null;
+        }
+        if (! $type instanceof Node\Name) {
+            return null;
+        }
+        $fqcn = $this->resolveNameWith($type, $namespace, $useMap);
+
+        return $this->tableForModel($fqcn) === null ? null : $fqcn;
     }
 
     private function typeToModel(?Node $type): ?string

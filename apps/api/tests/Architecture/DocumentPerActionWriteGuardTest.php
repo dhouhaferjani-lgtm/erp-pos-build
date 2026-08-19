@@ -130,6 +130,21 @@ final class DocumentPerActionWriteGuardTest extends TestCase
             ['mechanism' => 'query_builder', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelWrites', 'method' => 'queryBuilderUpdateBypassingMovement', 'expected' => 'violation', 'note' => 'the live StockThresholdService/FEFO shape'],
             ['mechanism' => 'query_builder', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelWrites', 'method' => 'queryBuilderUpdateWithMovement', 'expected' => 'linked', 'note' => ''],
             ['mechanism' => 'raw_sql', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelWrites', 'method' => 'rawSqlUpdate', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule'],
+            ['mechanism' => 'update', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelWrites', 'method' => 'updateVariantGrainOnly', 'expected' => 'violation', 'note' => 'finding 1: re-keying a level row is NOT a soft hold — the exemption is a positive allowlist'],
+            ['mechanism' => 'update', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelWrites', 'method' => 'updateQuantityWithLocalRecordMovementStub', 'expected' => 'violation', 'note' => 'finding 3: a locally-named recordMovement() stub credits nothing'],
+
+            // ---------------- proven-vs-nullable linkage (finding 4) --------
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithProvenLinkage', 'expected' => 'linked', 'note' => 'non-nullable parameters'],
+            ['mechanism' => 'create', 'table' => 'journal_entries', 'class' => 'FixtureLinkageProofWrites', 'method' => 'journalEntryWithNullableLinkage', 'expected' => 'violation', 'note' => 'keys present, values nullable — linkage is not proven'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureLinkageProofWrites', 'method' => 'movementWithNullsafeLinkage', 'expected' => 'violation', 'note' => 'the S0 chokepoint shape: nullsafe read off a nullable enum'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureLinkageProofWrites', 'method' => 'movementWithCoalescedLinkage', 'expected' => 'linked', 'note' => 'null-coalesced onto a non-nullable fallback IS proven'],
+
+            // ---------------- relation-mediated + model-internal (findings 2, 5)
+            ['mechanism' => 'create', 'table' => 'stock_levels', 'class' => 'FixtureRelationAndInheritanceWrites', 'method' => 'relationCreateBypassingMovement', 'expected' => 'violation', 'note' => 'relation-mediated write, no movement'],
+            ['mechanism' => 'create', 'table' => 'stock_levels', 'class' => 'FixtureRelationAndInheritanceWrites', 'method' => 'relationCreateWithMovement', 'expected' => 'linked', 'note' => 'relation-mediated write paired with a linked movement'],
+            ['mechanism' => 'update', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelSubclass', 'method' => 'setOnHandQuantity', 'expected' => 'violation', 'note' => 'model-internal $this->update() through the extends chain'],
+            ['mechanism' => 'update', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelSubclass', 'method' => 'setReservedQuantity', 'expected' => 'not_applicable', 'note' => 'model-internal soft hold'],
+            ['mechanism' => 'save', 'table' => 'stock_levels', 'class' => 'FixtureStockLevelSubclass', 'method' => 'persistOnHand', 'expected' => 'violation', 'note' => 'model-internal $this->save()'],
 
             // ---------------- inventory_batch_stock ----------------
             ['mechanism' => 'create', 'table' => 'inventory_batch_stock', 'class' => 'FixtureBatchStockWrites', 'method' => 'createBypassingMovement', 'expected' => 'violation', 'note' => ''],
@@ -251,7 +266,7 @@ final class DocumentPerActionWriteGuardTest extends TestCase
         $missing = [];
         foreach (array_keys(DocumentPerActionWriteScanner::TABLE_MODELS) as $table) {
             foreach (self::MECHANISMS as $mechanism) {
-                if (in_array($mechanism, $positiveOnly[$table] ?? [], true)) {
+                if (in_array($mechanism, $positiveOnly[$table], true)) {
                     continue;
                 }
                 $expectations = $covered[$table][$mechanism] ?? [];
@@ -273,19 +288,33 @@ final class DocumentPerActionWriteGuardTest extends TestCase
         $root = __DIR__.'/DocumentPerActionFixtures';
         $scanner = new DocumentPerActionWriteScanner;
 
+        // The production tree is passed as CONTEXT (maps only, no sites
+        // reported from it) so a fixture resolves through exactly the same
+        // relation / inheritance / return-type / chokepoint indexes as live
+        // code — a fixture that passes in a vacuum proves nothing.
         $indexed = [];
-        foreach ($scanner->scan([$root], __DIR__.'/') as $site) {
+        foreach ($scanner->scan([$root], __DIR__.'/', [base_path().'/app']) as $site) {
             $indexed[$site['key']] = $site;
         }
 
         return $indexed;
     }
 
+    /**
+     * Fixture classes that do not live in a file of their own.
+     *
+     * @var array<string, string>
+     */
+    private const FIXTURE_FILES = [
+        'FixtureRelationHost' => 'FixtureRelationAndInheritanceWrites',
+        'FixtureStockLevelSubclass' => 'FixtureRelationAndInheritanceWrites',
+    ];
+
     private function fixtureKey(string $class, string $method, string $table, string $mechanism): string
     {
         return sprintf(
             'DocumentPerActionFixtures/%s.php::%s\%s::%s::%s::%s#1',
-            $class,
+            self::FIXTURE_FILES[$class] ?? $class,
             self::FIXTURE_NAMESPACE,
             $class,
             $method,
