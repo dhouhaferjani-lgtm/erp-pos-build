@@ -719,5 +719,38 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
         '/purchases/receipts/new',
       )
     })
+
+    /**
+     * T15 (UI-07): the /expenses nav item was gated on the `treasury` module
+     * key (treasury.view = accountant/admin/manager) while the route itself
+     * admits everyone holding `expenses.view` — cashier, operator and viewer
+     * could reach /expenses only by typing the URL. The gate is now
+     * `expenses`, matching its `expenseAnalytics` sibling.
+     *
+     * Ordering note: T4 (fail-closed union) landed first on this branch, so
+     * these assertions run under the strict contract. Both orders leave them
+     * true — `treasury` and `expenses` are both long-standing valid keys, so
+     * neither reading of the gate depends on the fail-open behaviour.
+     */
+    it('shows the expenses nav item to a cashier who holds expenses.view but not treasury.view', async () => {
+      seedAuth({ roles: ['cashier'] })
+      renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', { name: /navigation\.expenses$/i })).toHaveAttribute(
+        'href',
+        '/expenses',
+      )
+    })
+
+    it('still hides the expenses nav item from a role holding neither expenses.view nor treasury.view', async () => {
+      seedAuth({ roles: ['purchases'] })
+      renderSidebar(mechanicFullConfig)
+
+      // Positive control: this role does render navigation (its Purchases
+      // entries are visible), so the absence below is the item's own gate and
+      // not an empty sidebar.
+      expect(await screen.findByRole('link', { name: /navigation\.goodsReceipts/i })).toBeInTheDocument()
+      expect(screen.queryByRole('link', { name: /navigation\.expenses$/i })).not.toBeInTheDocument()
+    })
   })
 })

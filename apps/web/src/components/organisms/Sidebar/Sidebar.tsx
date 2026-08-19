@@ -277,7 +277,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         { key: 'instruments', href: '/treasury/instruments', icon: FileText, permission: 'treasury' },
         { key: 'remittances', href: '/treasury/remittances', icon: FileStack, permission: 'remittances' },
         { key: 'bankReconciliation', href: '/treasury/statements', icon: ArrowLeftRight, permission: 'bank-statements' },
-        { key: 'expenses', href: '/expenses', icon: Receipt, permission: 'treasury' },
+        { key: 'expenses', href: '/expenses', icon: Receipt, permission: 'expenses' },
         { key: 'expenseAnalytics', href: '/expenses/analytics', icon: BarChart3, permission: 'expenses' },
         { key: 'recurringExpenses', href: '/expenses/recurring', icon: CalendarClock, permission: 'expense-recurrences' },
         { key: 'withholdingCertificates', href: '/treasury/withholding-certificates', icon: FileCheck, permission: 'withholding' },
