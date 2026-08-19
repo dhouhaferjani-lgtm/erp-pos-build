@@ -343,3 +343,73 @@ describe('i18n baseline pin tag — ci.yml and the progress YAML must agree', ()
     expect(ci).toContain(`git fetch origin tag ${pinned[1]}`);
   });
 });
+
+describe('audit-i18n-completeness — provenance classifier ignores comments', () => {
+  // A COMMENT is prose, not wiring. The classifier scans the assignment text for
+  // locale-prefixed identifiers, so reading comments lets a single trailing
+  // `// TODO: swap to arAlpha` reclassify an English-aliased namespace as
+  // `english-spread` — the audit then trusts the locale file, the whole-namespace
+  // `aliased` entry drops into `stale`, and `stale` is a console note, never a
+  // failure. The loss of the H-5 invariant would be reported as burn-down PROGRESS.
+  //
+  // Verified against the pre-fix scanner at 29b6043bd on this exact fixture:
+  //   kind ar.alpha = english-spread ; ar|alpha findings: []
+  const TAMPER_ROOT = path.join(
+    __dirname,
+    '..',
+    '__fixtures__',
+    'i18n-completeness',
+    'comment-tamper',
+  );
+
+  it('the fixture differs from prod-shaped by exactly one comment', () => {
+    const tampered = readFileSync(path.join(TAMPER_ROOT, 'lib', 'i18n.ts'), 'utf8');
+    expect(tampered).toContain('alpha: enAlpha, // TODO: swap to arAlpha once the bundle lands');
+    // Nothing is actually wired — `arAlpha` is never imported or referenced in code.
+    expect(tampered).not.toMatch(/import\s+arAlpha/);
+  });
+
+  it('still classifies the namespace as en-aliased and keeps the aliased finding', () => {
+    const { wiring, findings } = auditRoot(TAMPER_ROOT);
+    expect(wiring.assignments.ar.alpha.kind).toBe('en-aliased');
+    expect(findings.map(entryKey)).toContain('ar|alpha|aliased|*');
+  });
+
+  it('classifies on comment-stripped code, and keeps the raw text for diagnostics', () => {
+    const { wiring } = auditRoot(TAMPER_ROOT);
+    expect(wiring.assignments.ar.alpha.raw).toContain('// TODO');
+    expect(wiring.assignments.ar.alpha.code).not.toContain('// TODO');
+  });
+});
+
+describe('audit-i18n-completeness — edge cases the pinned surface cannot see', () => {
+  const EDGE_ROOT = path.join(__dirname, '..', '__fixtures__', 'i18n-completeness', 'edge-cases');
+  const { structural, findings } = auditRoot(EDGE_ROOT);
+  const keys = findings.map(entryKey);
+
+  it('flags an English locale file with no namespace in the `ns` array', () => {
+    // missingScannedSurface cannot catch this: a namespace holding no PINNED
+    // finding has nothing to be missed. The 12 fully-translated production
+    // namespaces are exactly the exposed ones — the files the gate most wants
+    // to protect. The English locale directory is the backstop.
+    expect(structural.join('\n')).toContain('locales/en/orphan.json has no namespace');
+  });
+
+  it('does NOT treat ordinary keys that merely end in a category name as plurals', () => {
+    // `step_one` + `step_two` has two category suffixes and no `_other`; a lane
+    // adding it would otherwise be told to author six Arabic forms, with no
+    // escape short of an owner re-pin.
+    expect(keys.filter((k) => k.includes('|step_'))).toEqual([]);
+    expect(keys.filter((k) => k.includes('|tier_'))).toEqual([]);
+  });
+
+  it('DOES treat a `{{count}}` family with a single authored form as a plural', () => {
+    // `files_one` interpolates {{count}} — real i18next plural evidence.
+    expect(keys).toContain('en|gamma|plural|files_other');
+    expect(keys).toContain('fr|gamma|plural|files_many');
+  });
+
+  it('DOES treat an `_one`/`_other` pair as a plural family', () => {
+    expect(keys).toContain('fr|gamma|plural|items_many');
+  });
+});

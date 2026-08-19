@@ -1,0 +1,8 @@
+{
+  "step_one": "Choisissez une formule",
+  "step_two": "Saisissez vos informations",
+  "tier_two": "Formule standard",
+  "items_one": "{{count}} article",
+  "items_other": "{{count}} articles",
+  "files_one": "{{count}} fichier"
+}

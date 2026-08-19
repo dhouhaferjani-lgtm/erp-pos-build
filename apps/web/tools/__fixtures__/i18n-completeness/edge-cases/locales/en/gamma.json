@@ -1,0 +1,8 @@
+{
+  "step_one": "Choose a plan",
+  "step_two": "Enter details",
+  "tier_two": "Standard tier",
+  "items_one": "{{count}} item",
+  "items_other": "{{count}} items",
+  "files_one": "{{count}} file"
+}

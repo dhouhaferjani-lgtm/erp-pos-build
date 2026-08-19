@@ -486,3 +486,97 @@ topology** the protocol requires for a seed-changing fix round (gate-r4 R4-H-3):
 commit containing only the baseline, then a distinct metadata commit updating
 `i18n_baseline_seed_commit` / `i18n_baseline_protected_blob`. A single self-identifying fix commit is
 forbidden. Both are re-reviewed at round 2.
+
+---
+
+## M1 fix round 2 — response to `docs/handoff/reviews/enforcement-p2/M1-round2.md`
+
+Verdict at round 2: **CHANGES-REQUIRED** — but with **0 P1**, and all five round-1 findings verified
+CLOSED against the code (the reviewer re-ran the probes rather than reading my report). One P2 and two
+P3 remain. **All three fixes are BASELINE-NEUTRAL** — the regenerated baseline is byte-identical to
+the pinned one (2 917 entries, `git diff` empty), so this round does **not** re-create the two-commit
+seed topology and the pins stay at `cb618c12c` / `da151bbc5…` / `ci-pin/enforcement-p2-r1`.
+
+### (27) ⚠️ R2-1 (P2) — the classifier read COMMENTS, so one comment could neuter the H-5 invariant
+
+Confirmed, and the sharpest finding of the wave. `parseI18nWiring` captured the whole remainder of the
+assignment line into `raw` — comments included — and `classifyAssignment` scanned that text for
+locale-prefixed identifiers. So a **comment** counted as wiring:
+
+```ts
+alpha: enAlpha, // TODO: swap to arAlpha once the bundle lands
+```
+
+flips `ar.alpha` from `en-aliased` to `english-spread`. The audit then trusts the locale file, the
+whole-namespace `aliased` entry falls into `stale` — and `stale` is a `console.log`, never a failure —
+so **the loss of the invariant is announced as burn-down progress**. That is byte-for-byte the failure
+mode `missingScannedSurface` was added to prevent, arriving through the one door it does not watch: it
+verifies the `locale|ns` pair is still *scanned*, never that its *kind* is still honest.
+
+Live blast radius: at HEAD `ar/catalog.json` holds 261 of 283 keys, so the same comment on
+`i18n.ts:397` still leaves 22 fresh `missing` findings — **production is protected today only by an
+incomplete translation file, not by the detector**. Author those last 22 Arabic keys (an ordinary,
+wanted deliverable) and the comment clears the whole `catalog` namespace while `i18n.ts` still serves
+`enCatalog` to every Arabic user. The likely real-world arrival is a revert comment
+(`catalog: enCatalog, // reverted from arCatalog, RTL layout broken`).
+
+Fixed: `stripComments()` removes `//…` and `/*…*/` before classification. `raw` is retained for
+diagnostics; a new `code` field carries the stripped text and is what the classifier reads.
+**Baseline-neutral by measurement:** zero production assignments contain a comment today
+(`assignments containing comments: 0` across 3 locales × 56 namespaces).
+
+**Red-first**, against the pre-fix scanner at `29b6043bd` on the new `comment-tamper` fixture — which
+differs from `prod-shaped` by exactly one trailing comment:
+
+```
+=== RED-FIRST: pre-fix scanner (29b6043bd) on the comment-tamper fixture ===
+kind ar.alpha = english-spread
+ar|alpha findings: []
+  ^ the aliased entry is GONE — one comment neutered the H-5 invariant
+
+=== GREEN: fixed scanner on the same fixture ===
+kind ar.alpha = en-aliased
+ar|alpha findings: ["ar|alpha|aliased|*"]
+```
+
+### (28) R2-2 (P3) — the pinned surface cannot protect a namespace that has no pinned findings
+
+Confirmed. `missingScannedSurface` derives the expected surface from the protected baseline's entries,
+so a namespace with **no** pinned finding has nothing to be missed; and the `en`-block structural check
+is escaped by removing the namespace from that block too. The 12 exposed namespaces are precisely the
+fully-translated ones — `validation, expenses, income, workshop-work-orders, scheduling,
+vehicle-ownership, pickers, vouchers, channels, replenishment, admin, notifications` — i.e. the ones
+whose regression the gate most wants to catch.
+
+Closed with the reviewer's suggested backstop: every `locales/en/<x>.json` must have a namespace in the
+`ns` array, or be listed in `KNOWN_UNWIRED_LOCALE_FILES` with a reason.
+
+**This immediately found a real orphan.** `users.json` exists in `en` and `fr` (4 keys) and is
+**completely dead**: not in the `ns` array, imported by nothing (`grep -rn 'users.json' src/` → no
+hits), and with no `t('users:…')` or `useTranslation('users')` callsite anywhere. Deleting translation
+files is not this package's remit (guard-only), so it is recorded as the single documented exception
+rather than removed. **🎫 Owed elsewhere: delete `src/locales/{en,fr}/users.json` and its
+`KNOWN_UNWIRED_LOCALE_FILES` entry together.**
+
+### (29) R2-3 (P3) — a key ending in a CLDR category name is not automatically a plural
+
+Confirmed as PLAUSIBLE with no live instance, and closed in code rather than only in the announcement,
+because the failure mode is a hard CI failure for an innocent lane with **no escape short of an owner
+re-pin**: a new `wizard.step_one` would demand `step_other` in `en`, `_many` in `fr` and six forms in
+`ar`.
+
+A family now qualifies only on real i18next evidence — **`{{count}}` in an authored value, OR an
+`_other` form plus at least one other category**. Both signals are needed, and the production tree
+proves why:
+
+| Case | Evidence | Verdict |
+|---|---|---|
+| `fr` `partners.countLabels.customer_one`/`_other` | no `{{count}}` (the number renders separately) | family, via the `_other` rule |
+| `en` `batches.batchCount_other` | only ONE suffixed form | family, via `{{count}}` |
+| `wizard.step_one` + `step_two` | two categories, **no `_other`**, no `{{count}}` | **not** a family |
+| `tier_two` alone | one category, no `{{count}}` | **not** a family |
+
+A `{{count}}`-only rule was tried first and **rejected**: it silently dropped the three genuine
+`fr|sales|plural|partners.countLabels.*_many` findings. The shipped rule regenerates a baseline
+**byte-identical** to the pinned one, so it removes a false-positive class without weakening any live
+detection. New `edge-cases` fixture pins all four rows.

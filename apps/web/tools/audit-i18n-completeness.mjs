@@ -95,6 +95,22 @@ export const PROTECTED_BLOB_ENV = 'I18N_BASELINE_PROTECTED_BLOB';
 /** Every CLDR plural category name a key suffix may carry. */
 export const PLURAL_CATEGORIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
 
+/**
+ * Translation files that exist on disk with no namespace in the `ns` array.
+ *
+ * Each entry is a deliberate, reasoned exception — not a place to silence the
+ * structural check. Anything not listed here FAILS, which is what stops a
+ * fully-translated namespace being quietly unwired.
+ *
+ *   users — DEAD FILE, verified at the enforcement-p2 base: 4 keys, present in
+ *           `en` and `fr`, imported by nothing (`grep -rn 'users.json' src/` →
+ *           no hits), no `ns` entry, no `t('users:…')` or
+ *           `useTranslation('users')` callsite anywhere. Deleting translation
+ *           files is not this package's scope (guard-only), so it is recorded
+ *           rather than removed.
+ */
+export const KNOWN_UNWIRED_LOCALE_FILES = new Set(['users']);
+
 /* ------------------------------------------------------------------ parsing */
 
 /** Flatten a translation object to sorted dotted leaf paths. */
@@ -104,6 +120,16 @@ export function flattenKeys(obj, prefix = '') {
     const p = prefix ? `${prefix}.${k}` : k;
     if (v && typeof v === 'object' && !Array.isArray(v)) out.push(...flattenKeys(v, p));
     else out.push(p);
+  }
+  return out;
+}
+
+/** Flatten a translation object to a Map of dotted leaf path -> leaf value. */
+export function flattenEntries(obj, prefix = '', out = new Map()) {
+  for (const [k, v] of Object.entries(obj ?? {})) {
+    const p = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === 'object' && !Array.isArray(v)) flattenEntries(v, p, out);
+    else out.set(p, v);
   }
   return out;
 }
@@ -166,7 +192,11 @@ export function parseI18nWiring(root) {
         raw += `\n${lines[i]}`;
         depth += countBraces(lines[i]);
       }
-      assignments[locale][ns] = { raw, kind: classifyAssignment(locale, raw) };
+      assignments[locale][ns] = {
+        raw,
+        code: stripComments(raw),
+        kind: classifyAssignment(locale, stripComments(raw)),
+      };
       i += 1;
     }
   }
@@ -181,6 +211,22 @@ function countBraces(s) {
     else if (ch === '}') d -= 1;
   }
   return d;
+}
+
+/**
+ * Remove `//…` and block comments before provenance classification.
+ *
+ * The classifier looks for locale-prefixed identifiers in the assignment text.
+ * Reading comments makes a PROSE mention count as a wiring reference, so
+ * `alpha: enAlpha, // TODO: swap to arAlpha once the bundle lands` reclassifies
+ * an English-aliased namespace as `english-spread` — the audit then trusts the
+ * locale file, the whole-namespace `aliased` entry drops into `stale`, and the
+ * loss of the H-5 invariant is reported as burn-down PROGRESS. The realistic
+ * arrival is a revert comment (`catalog: enCatalog, // reverted, RTL broken`),
+ * after which the regression is invisible to the gate forever.
+ */
+function stripComments(raw) {
+  return raw.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/[^\n]*/g, ' ');
 }
 
 function classifyAssignment(locale, raw) {
@@ -209,15 +255,47 @@ function readNsFile(root, locale, ns) {
   }
 }
 
-/** Group a locale's authored keys into plural families: base -> Set(category). */
-function pluralFamilies(keys) {
-  const fams = new Map();
-  for (const k of keys) {
-    const m = k.match(new RegExp(`^(.*)_(${PLURAL_CATEGORIES.join('|')})$`));
+/**
+ * Group a locale's authored keys into i18next plural families: base -> Set(category).
+ *
+ * A trailing `_one` / `_two` / `_few` … is NOT sufficient evidence on its own —
+ * ordinary keys like `wizard.step_one` or `tier_two` end that way and are not
+ * plurals. Demanding the full CLDR set for them would hard-fail CI for the lane
+ * that adds one, with no escape short of an owner re-pin. A family therefore
+ * qualifies only on real i18next evidence:
+ *
+ *   * at least one of its authored values interpolates `{{count}}` (the marker
+ *     i18next itself keys plural resolution on), OR
+ *   * the locale authors an `_other` form PLUS at least one other category.
+ *     `_other` is i18next's mandatory fallback form for every plural key, so its
+ *     presence alongside a sibling is real evidence; `step_one` + `step_two`
+ *     (two categories, no `_other`) is not, and neither is a lone `tier_two`.
+ *
+ * Both signals are needed. `fr/sales.json` `partners.countLabels.customer_one` /
+ * `_other` is a genuine family that never interpolates `{{count}}` (the number is
+ * rendered separately), and `en/batches.json` `batchCount_other` is a genuine
+ * family with only ONE suffixed form — each is caught by the other rule.
+ * Verified against the seed baseline: byte-identical, so this removes a
+ * false-positive class without weakening any live detection.
+ *
+ * @param {Map<string,string>} entries authored key -> value
+ */
+function pluralFamilies(entries) {
+  const candidates = new Map();
+  for (const [key, value] of entries) {
+    const m = key.match(new RegExp(`^(.*)_(${PLURAL_CATEGORIES.join('|')})$`));
     if (!m) continue;
-    if (!fams.has(m[1])) fams.set(m[1], new Set());
-    fams.get(m[1]).add(m[2]);
+    if (!candidates.has(m[1])) candidates.set(m[1], { cats: new Set(), count: false });
+    const fam = candidates.get(m[1]);
+    fam.cats.add(m[2]);
+    if (typeof value === 'string' && value.includes('{{count}}')) fam.count = true;
   }
+
+  const fams = new Map();
+  for (const [base, fam] of candidates) {
+    if (fam.count || (fam.cats.has('other') && fam.cats.size >= 2)) fams.set(base, fam.cats);
+  }
+
   return fams;
 }
 
@@ -275,6 +353,27 @@ export function auditRoot(root) {
     }
   }
 
+  // …and the same escape from the other side: dropping a namespace from the `ns`
+  // array AND from the `resources` blocks leaves its translation files on disk,
+  // unscanned, with nothing to complain. `missingScannedSurface` cannot see it
+  // either when the namespace holds no pinned findings — which is exactly the
+  // case for the fully-translated namespaces, i.e. the ones whose regression the
+  // gate most wants to catch. The English locale directory is the backstop.
+  const enLocaleDir = path.join(root, 'locales', 'en');
+  if (fs.existsSync(enLocaleDir)) {
+    for (const file of fs.readdirSync(enLocaleDir)) {
+      if (!file.endsWith('.json')) continue;
+      const ns = file.slice(0, -'.json'.length);
+      if (wiring.namespaces.includes(ns)) continue;
+      if (KNOWN_UNWIRED_LOCALE_FILES.has(ns)) continue;
+      structural.push(
+        `locale file locales/en/${file} has no namespace in the \`ns\` array — either wire it up, ` +
+          'delete it, or record it in KNOWN_UNWIRED_LOCALE_FILES with a reason. An unscanned ' +
+          'translation file is a namespace the gate cannot protect.',
+      );
+    }
+  }
+
   for (const ns of wiring.namespaces) {
     for (const locale of wiring.locales) {
       if (!wiring.assignments[locale] || !(ns in wiring.assignments[locale])) {
@@ -306,7 +405,8 @@ export function auditRoot(root) {
         structural.push(err.message);
         continue;
       }
-      const authored = tree === null ? [] : flattenKeys(tree);
+      const authoredEntries = tree === null ? new Map() : flattenEntries(tree);
+      const authored = [...authoredEntries.keys()];
       if (locale !== 'en') stats.keysPerLocale[locale] += authored.length;
       const authoredSet = new Set(authored);
 
@@ -339,7 +439,7 @@ export function auditRoot(root) {
 
       // Per-locale CLDR plural completeness over the families this locale authors.
       const required = pluralCategoriesFor(locale);
-      for (const [base, cats] of pluralFamilies(authored)) {
+      for (const [base, cats] of pluralFamilies(authoredEntries)) {
         for (const cat of required) {
           if (!cats.has(cat)) {
             findings.push({ locale, ns, type: 'plural', key: `${base}_${cat}` });
