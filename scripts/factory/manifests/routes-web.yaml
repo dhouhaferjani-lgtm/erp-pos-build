@@ -47,6 +47,10 @@ routes:
     component: AdminMonitoringPage
     module_gate: null
     permission: null
+  - path: /admin/support-access
+    component: AdminSupportAccessPage
+    module_gate: null
+    permission: null
   - path: /admin/tenants
     component: TenantsPage
     module_gate: null
@@ -187,26 +191,22 @@ routes:
     component: RecurringExpensesPage
     module_gate: null
     permission: expense-recurrences.view
-  - path: /finance
-    component: FinanceHubPage
-    module_gate: finance
-    permission: null
   - path: /finance/aged-payables
     component: AgedPayablesPage
     module_gate: null
-    permission: accounts.view
+    permission: reports.operational
   - path: /finance/aged-receivables
     component: AgedReceivablesPage
     module_gate: null
-    permission: accounts.view
+    permission: reports.operational
   - path: /finance/balance-sheet
     component: BalanceSheetPage
     module_gate: null
-    permission: accounts.view
+    permission: reports.financial
   - path: /finance/cash-movements
     component: CashMovementsReportPage
     module_gate: null
-    permission: reports.view
+    permission: reports.operational
   - path: /finance/chart-of-accounts
     component: ChartOfAccountsPage
     module_gate: null
@@ -223,22 +223,26 @@ routes:
     component: JournalEntryForm
     module_gate: null
     permission: journal.create
+  - path: /finance/lane-separation
+    component: LaneSeparationReportPage
+    module_gate: null
+    permission: reports.financial
   - path: /finance/ledger
     component: GeneralLedgerPage
     module_gate: null
-    permission: journal.view
+    permission: ledger.view
   - path: /finance/overview
     component: TreasuryOverviewPage
     module_gate: null
-    permission: reports.view
+    permission: reports.operational
   - path: /finance/profit-loss
     component: ProfitLossPage
     module_gate: null
-    permission: accounts.view
+    permission: reports.financial
   - path: /finance/trial-balance
     component: TrialBalancePage
     module_gate: null
-    permission: accounts.view
+    permission: reports.financial
   - path: /finance/vat-periods
     component: VatPeriodsPage
     module_gate: reports
@@ -395,6 +399,18 @@ routes:
     component: StockLevelsPage
     module_gate: inventory
     permission: null
+  - path: /inventory/stock-adjustments
+    component: StockAdjustmentListPage
+    module_gate: null
+    permission: inventory.adjustments.view
+  - path: /inventory/stock-adjustments/:id
+    component: StockAdjustmentDetailPage
+    module_gate: null
+    permission: inventory.adjustments.view
+  - path: /inventory/stock-adjustments/new
+    component: CreateStockAdjustmentPage
+    module_gate: null
+    permission: inventory.adjustments.create
   - path: /inventory/stock-by-location
     component: StockByLocationPage
     module_gate: null
@@ -413,10 +429,6 @@ routes:
     permission: inventory.transfers.create
   - path: /login
     component: LoginPage
-    module_gate: null
-    permission: null
-  - path: /marketing
-    component: MarketingHubPage
     module_gate: null
     permission: null
   - path: /parapharmacy/certifications
@@ -553,10 +565,6 @@ routes:
     permission: promotions.manage
   - path: /pos/shift-history
     component: ShiftHistoryPage
-    module_gate: null
-    permission: pos.manage_shifts
-  - path: /pos/shifts
-    component: POSShiftsPage
     module_gate: null
     permission: pos.manage_shifts
   - path: /pos/tables
@@ -847,10 +855,6 @@ routes:
     component: CustomerHistoryAuditPage
     module_gate: null
     permission: pos.search_customer_full_history
-  - path: /settings/chart-of-accounts
-    component: ChartOfAccountsPage
-    module_gate: null
-    permission: accounts.view
   - path: /settings/company
     component: CompanyPage
     module_gate: settings
@@ -909,8 +913,12 @@ routes:
     permission: null
   - path: /settings/setup
     component: SetupChecklistPage
-    module_gate: null
+    module_gate: settings
     permission: null
+  - path: /settings/support-access
+    component: TenantSupportAccessPage
+    module_gate: null
+    permission: support-access.view
   - path: /settings/tax
     component: TaxSettingsPage
     module_gate: settings
