@@ -238,3 +238,8 @@ Pint on round-3 production + test paths:      pass
 PHPStan level 8 on round-3 production paths: [OK] No errors
 deptrac tip:                                  174 violations, RESULT: FAIL (inherited)
 ```
+
+Round-3 revert-replay removed `ad9909716` while test commit `266d37bc1` remained. The six focused
+PostgreSQL guards all failed for their intended reasons: required-purpose membership, detector output,
+pre-policy template completion, template rollback, preview count parity, and missing-parent wording.
+Aborting the revert restored the committed tip and the same six tests passed with 17 assertions.
