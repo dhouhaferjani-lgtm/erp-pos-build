@@ -31,8 +31,8 @@ max_fix_rounds: 5
 # P1 is NEVER folded into the running 3C session (gate-r1 H-1 ruling): this wave runs only as a FRESH
 # worktree/branch created from base_sha after 3C is accepted and merged.
 base_sha: null
-dpa_3c_merge_sha: null
-dpa_3c_reviewed_sha: null
+dpa_3c_merge_sha: 1e8c0fa03adacd9d7b210ea41092c8f8538d515c
+dpa_3c_reviewed_sha: d07868ccaf7f395bb50744a767c56aa4ab945983  # wave3-3c-3d M3.commit (ACCEPT M3-round7); reviewed->merge->base ancestry verified by parent at dispatch
 
 # TWO-PHASE PINNED-BASELINE PROTOCOL — NON-AUTHORITATIVE MIRROR pins (gate-r2 R2-C-1; authority moved
 # gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4). The AUTHORITY the CI checker reads is the OWNER-SET
@@ -107,19 +107,19 @@ branch: null
 
 # F-1: parent writes the `Phase <major.minor.patch>` series here BEFORE dispatch (AGENTS.md:16).
 # Still null at M0 = blocked_precondition — do not invent a phase number.
-commit_series: null
+commit_series: "Phase 4.<milestone>.<seq>"
 
 # TRUST-MODEL ACK (gate-r5 R5-H-1; brief §6 F-8): PARENT-owned, written BEFORE dispatch — the dated,
 # commit-stamped enumeration of repository write-access principals + the owner's assertion that none
 # of them authors this candidate (or a pointer to that record). Null at M0 = blocked_precondition.
 # Re-confirmed at promotion if access changed; final state lands in the closing receipt.
-ratchet_trust_model_ack: null
+ratchet_trust_model_ack: "2026-08-19, at dev e4dcf09362e1f19e8e455e9c0fef4877f7b0c571: repository write-access principals per GitHub collaborators API = otospexsolutions (owner), PolyGlotJerbi, Btounsi2025, dhouhaferjani-lgtm. Owner assertion (relayed via in-session directive): none of the non-owner principals authors this candidate — authored by the parent orchestrator's implementation subagents under the owner's account. Trust anchor = OWNER-SET repo variable DPA_BASELINE_PROTECTED_BLOB per brief §6 F-8."
 # CONTROL MANIFEST pin (gate-r8 R8-C-1/R8-H-1; STRUCTURED gate-r10 R10-H-2; PARENT fills at
 # dispatch): {path: <canonical absolute manifest path>, sha256: <hex>} matching the PARENT DISPATCH
 # RECEIPT (gate-r10 R10-C-1) — the final gate's sole source for lenses/max_fix_rounds/control hashes;
 # the bridge field-checks this pin against the receipt. Null at M0 = blocked_precondition. On the
 # control-file preflight list: no package may touch it; manifest surrogates in base..A are rejected.
-control_manifest: null
+control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 709b6fe9a81cf5bbc5578aa297a44035a75e578708bd40155671c654094b217a}
 
 owner_gates:
   # informational — NO milestone below carries an `owner_gate:` field. The harness treats a populated
