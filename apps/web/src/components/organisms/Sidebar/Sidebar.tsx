@@ -297,6 +297,7 @@ function buildNavigation(isAutomotiveVertical: boolean): NavModule[] {
         // to /dashboard on click. Aligned 1:1 to the route's permission.
         { key: 'treasuryOverview', labelKey: 'finance:hub.cards.treasuryOverview.title', href: '/finance/overview', icon: Wallet, permission: 'reports.operational' },
         { key: 'cashMovements', labelKey: 'finance:cashMovements.navTitle', href: '/finance/cash-movements', icon: ArrowLeftRight, permission: 'reports.operational' },
+        { key: 'laneSeparation', labelKey: 'finance:laneSeparation.navTitle', href: '/finance/lane-separation', icon: Scale, permission: 'reports.financial' },
         { key: 'chartOfAccounts', href: '/finance/chart-of-accounts', icon: BookOpen, permission: 'accounts' },
         { key: 'generalLedger', href: '/finance/ledger', icon: FileSpreadsheet, permission: 'ledger.view' },
         { key: 'journalEntries', href: '/finance/journal-entries', icon: FileSpreadsheet, permission: 'accounts' },

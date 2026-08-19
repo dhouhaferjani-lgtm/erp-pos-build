@@ -176,6 +176,25 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
         name: /finance:cashMovements\.navTitle/i,
       })).not.toBeInTheDocument()
     })
+
+    it('aligns the lane-separation entry one-to-one with reports.financial', async () => {
+      const allowed = renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', {
+        name: /finance:laneSeparation\.navTitle/i,
+      })).toHaveAttribute('href', '/finance/lane-separation')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('reports.financial')
+
+      allowed.unmount()
+      mockCanAccessModule.mockImplementation(
+        (permission: string) => permission !== 'reports.financial',
+      )
+      renderSidebar(mechanicFullConfig)
+
+      expect(screen.queryByRole('link', {
+        name: /finance:laneSeparation\.navTitle/i,
+      })).not.toBeInTheDocument()
+    })
   })
 
   describe('Pharmacy Vertical', () => {

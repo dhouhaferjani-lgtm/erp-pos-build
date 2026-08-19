@@ -429,6 +429,7 @@
     }
   },
   "laneSeparation": {
+    "navTitle": "Goods vs invoices",
     "title": "Goods vs invoices",
     "description": "Documents where the goods lane and the money lane disagree. Nothing on this page posts anything.",
     "policyInForce": "Policy in force: {{policy}} ({{source}})",

@@ -429,6 +429,7 @@
     }
   },
   "laneSeparation": {
+    "navTitle": "Marchandises et factures",
     "title": "Marchandises et factures",
     "description": "Documents pour lesquels le flux marchandises et le flux monétaire divergent. Aucune écriture n'est générée depuis cette page.",
     "policyInForce": "Règle en vigueur : {{policy}} ({{source}})",
