@@ -107,9 +107,10 @@ milestones:
     fix_rounds: 0
     commit: null
     proposal: docs/handoff/reviews/wave3-3c-3d/M4-account-map-proposal.md
-    proposal_commit: pending
+    proposal_commit: 3ed96bc7c4c9c565a4606366c42209980f62c320
     verdict: null
     last_verdict: null
+    updated: 3ed96bc7c
   - id: M5
     title: "3D listener: T21, T22. Whole-branch gate: re-run full accumulated evidence + every lens over the integrated branch."
     review_lenses: [inventory-costing, fiscal-pos, treasury]
