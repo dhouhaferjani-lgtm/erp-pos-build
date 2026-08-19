@@ -1,4 +1,4 @@
-# UI Wave 0 implementer report — M2 accepted, M3 final review pending
+# UI Wave 0 implementer report — M3 accepted, M4 in progress
 
 ## Header
 
@@ -8,7 +8,7 @@
 - Archived pre-repin evidence branch: `codex/ui-wave0-2026-08-11-pre-repin` at `89d83c6c4a56ce7bc6e351867e90451f0f35c218`
 - Commit series: M0 uses `Phase 0.0.<seq>`; M0b uses `Phase 0.0b.<seq>`; T1 uses `Phase 0.1.<seq>`.
 - M0b authority record: `docs/handoff/reviews/ui-wave0/OWNER-RULING-2026-08-18-M0b.md`
-- Wave status: M0b, M1, and M2 passed; M3 round-4 findings are repaired and verified, with round 5 pending.
+- Wave status: M0b through M3 passed; M4 is in progress.
 
 ## M0 repin
 
@@ -417,3 +417,5 @@ Owner/terminal ruling remains required before merge for `/finance`: the delivere
 M3 bridge round 3 (`docs/handoff/reviews/ui-wave0/M3-round3.md`) ended in another blank review-tool error with no findings or parseable verdict. It is preserved and treated as `CHANGES-REQUIRED` fail-closed; no source change is indicated, and round 4 retries the read-only gate.
 
 M3 bridge round 4 (`docs/handoff/reviews/ui-wave0/M3-round4.md`) returned `CHANGES-REQUIRED`. Its P1 identified the 15 orphan locale leaves now removed by `eb4ea4fe0`; the complete per-key proof is pasted above. Its T12/T13 P3 evidence gap is also closed above with the captured red output. The retained POS documents remain brief-compliant historical records with dated supersession notices, and the empty deletion directories contain no files and cannot enter Git. Post-fix verification: focused route/i18n/sidebar/POS tests 69/69; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with failures only in the three M0b exceptions; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale. React Doctor found no changed React source files in this locale-only fix.
+
+M3 bridge round 5 (`docs/handoff/reviews/ui-wave0/M3-round5.md`) returned `ACCEPT`. It independently re-derived all 57 translation keys used by the two deleted POS components, confirmed zero consumers for every removed key and live consumers for every retained key, and reproduced the focused static/test gates. No P1 remains. The accepted register carries the `/finance` blank-pane owner decision as a hard pre-merge gate plus ticketable P3 notes for orphan-key tooling, route-guard string-form robustness, historical-doc discoverability, and an untracked empty directory.

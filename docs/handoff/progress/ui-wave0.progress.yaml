@@ -66,16 +66,16 @@ milestones:
   - id: M3
     title: "T10, T11, T12, T13 - the four owner-ruled deletions (/pos/shifts + POSShiftsDashboard; /marketing + MarketingHubPage; /finance + FinanceHubPage OUTRIGHT with no redirect, preserving finance:hub.cards.treasuryOverview.title and applying the three-row disposition table; the duplicate /settings/chart-of-accounts mount), each against the six-point deletion checklist in §3, one commit per task, source only. EXPECTED AND PERMITTED: these commits leave scripts/factory/manifests/ drifted and check-manifest-drift.sh exiting 1 in the intermediate state (§2 exception 2) - the reviewer must not treat that as a defect at this milestone. T10 hand-removes exactly the two baseline lines (baseline.json:202, :717); --write-baseline is forbidden. Each commit still green on typecheck/lint/test."
     review_lenses: [frontend-conventions, general]
-    status: review
-    fix_rounds: 4
-    updated: eb4ea4fe0
+    status: passed
+    fix_rounds: 5
+    updated: 4446b7f62
     commit: eb4ea4fe0c6e6f3668e8343fa5401c1ee9f11c11
-    verdict: docs/handoff/reviews/ui-wave0/M3-round4.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/ui-wave0/M3-round5.md
+    last_verdict: ACCEPT
   - id: M4
     title: "T3 (UI-10) - two authorised commits: T3(a) regenerate scripts/factory/manifests/ (manifests and nothing else) so the manifest reflects T2 plus the four deletions, then T3(b) the standalone manifest drift CI job. check-manifest-drift.sh must exit 0 at this point."
     review_lenses: [frontend-conventions, general]
-    status: pending
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -161,3 +161,4 @@ findings:
   - "M3 bridge round 3 produced a blank review-tool error and no verdict/findings; the harness treats it as CHANGES-REQUIRED. The round-2 repairs remain verified, no source change is indicated, and round 4 retries the read-only gate."
   - "M3 bridge round 4 found 15 en/fr POS locale leaves whose sole consumers were the deleted shift console. Commit eb4ea4fe0 removes those leaves, preserves the seven live Z-report detail leaves, and the handback now pastes zero-consumer/null-locale proof for every removed key plus the captured T12/T13 red output."
   - "M3 round-4 post-fix verification: focused route/i18n/sidebar/POS tests 69/69; deterministic full suite 4,202 total / 4,193 passed / 5 failed / 1 skipped / 3 todo with only the three reviewed M0b exception files; typecheck and lint pass; design audit 736 acknowledged / 0 new / 0 stale; React Doctor skipped because the locale-only fix changed no React source files."
+  - "M3 bridge round 5 ACCEPTED: the reviewer independently re-derived all 57 deleted-component translation keys, confirmed every removed key has zero consumers and every retained key has a live consumer, reproduced the focused gates, and found no remaining P1. The /finance blank-pane contradiction remains a correctly disclosed parent/owner pre-merge gate; the remaining P3 notes are ticketable."
