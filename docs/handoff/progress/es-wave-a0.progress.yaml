@@ -70,18 +70,25 @@ milestones:
     review_lenses: [fiscal-pos, treasury]
     # Fix round 1 delivered 2026-08-19 under the STOP C ruling
     # (docs/handoff/reviews/es-wave-a0/ORCHESTRATOR-RULING-2026-08-19-m2-stop-c.md,
-    # commit bd4139ec3). Findings 1, 2, 3, 4 closed; 5 recorded; 6 is an
+    # commit bd4139ec3). Round-1 findings 1, 2, 3, 4 closed; 5 recorded; 6 is an
     # inherited residual with an open owning-lane question for the parent.
-    # Awaiting the M2 round-2 review.
-    status: review
-    fix_rounds: 2
-    commit: bc692820a19e64cf8c66af370b7299edce51e91a
-    verdict: docs/handoff/reviews/es-wave-a0/M2-round1.md
-    last_verdict: CHANGES-REQUIRED
+    # M2 round 2 (2026-08-19) = ACCEPT over the fix-round slice 4fea617e0..b8b3c52f6.
+    # Four P3 residuals (round-2 findings 7, 8, 9, 10) were SWEPT INTO M3's diff,
+    # exactly as the round-2 disposition asked.
+    status: passed
+    fix_rounds: 1
+    commit: b8b3c52f6
+    verdict: docs/handoff/reviews/es-wave-a0/M2-round2.md
+    last_verdict: ACCEPT
+    updated: 325499fe3
   - id: M3
     title: "ES-06 DETECTION half only (divergence on sealed rows detectable + demonstrated red; second-approver/correcting-event workflow is owner-gated D-8 -> blocked_owner if reached) + the ES-16/ES-17 straggler contract PROPOSALS as a COMMITTED artifact at docs/handoff/reviews/es-wave-a0/M3-straggler-contracts.md (the harness reviews a committed range, so the proposal must be IN the diff the reviewer inspects). This milestone's bridge review approves/rejects THAT artifact. NO straggler implementation here."
     review_lenses: [fiscal-pos, treasury]
-    status: pending
+    # M3 also SWEEPS the four P3 residuals the M2 round-2 register left open
+    # (M2-round2.md findings 7, 8, 9, 10) — its disposition assigned them to
+    # "M3's diff or the wave's close-out". They are reporting-honesty items;
+    # none of them changes a verdict.
+    status: in_progress
     fix_rounds: 0
     commit: null
     verdict: null
@@ -121,8 +128,10 @@ status: in_progress      # pending | in_progress | blocked_owner | blocked_revie
 
 # TAKEOVER, 2026-08-19. The Codex executor's quota was exhausted mid-STOP-C.
 # The parent orchestrator's implementation agent took over in this same
-# worktree/branch and delivered M2 fix round 1. Same rules: no push, no stash,
-# no full PHPUnit suite, tests by path.
+# worktree/branch, delivered M2 fix round 1 (ACCEPTed at round 2,
+# M2-round2.md, register commit 325499fe3) and continues with M3. Same rules:
+# no push, no stash, no full PHPUnit suite, tests by path, PG recipe
+# (apps/api/phpunit-pgsql.xml). Commits continue the Phase 0.1.<seq> series.
 
 blockers:
   # RESOLVED 2026-08-19 — STOP C RULED by the parent orchestrator.
