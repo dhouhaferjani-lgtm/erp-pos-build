@@ -10,9 +10,11 @@
 > already merged into `dev`**, impact counted as **added** files against **`dev`**
 > (`git diff --diff-filter=A --name-only dev...<branch>`).
 >
-> *Three earlier methods were retracted during review and must not be re-used: `--name-only`
-> without `--diff-filter=A` (counts changed files, not added classes), `<p2-base>...` (47 commits
-> stale), and enumerating `.worktrees/*` or `codex/*` (both incomplete).*
+> *Three earlier methods were retracted during review and must not be re-used **for Feature
+> classes**: `--name-only` without `--diff-filter=A` (counts changed files, not added classes),
+> `<p2-base>...` (47 commits stale), and enumerating `.worktrees/*` or `codex/*` (both
+> incomplete). **Locale impact is the exception and is counted as CHANGED files on purpose** —
+> see §3.*
 
 ---
 
@@ -37,11 +39,20 @@ laneless hole must not grow silently — and the remedy is one number, in the sa
 | `feat/owner-dashboard-demo` | `Seeders` **+1** | 26 | raise `Seeders` **and** `debt_ceiling` by 1 |
 
 > **Two different debt numbers appear in this package — they measure different things.** The gate
-> prints `⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es)` = every class in a group **no lane runs as a
-> whole** (and `debt_ceiling: 1114` matches it). The `ci.yml` census comment says **990** = classes
-> reachable by **no CI job at all**, which subtracts the ~124 individually named in the two `--filter`
-> allowlists. Neither is wrong; 1114 is the one the ceilings enforce, so **1114 is the number to act
-> on**.
+> prints `⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es)` = every class in a group **no lane runs as
+> a whole** (and `debt_ceiling: 1114` matches it). The `ci.yml` census comment says **990** =
+> classes reachable by **no CI job at all**. The full decomposition, all four figures re-derived:
+>
+> | measure | files | distinct names |
+> |---|---|---|
+> | all of `tests/Feature` | 1329 | 1316 |
+> | in groups no lane runs as a whole (**what `debt_ceiling` enforces**) | **1114** | 1102 |
+> | minus those individually named in the two `--filter` allowlists (111 of the 124 entries — the
+> other 13 sit in **laned** groups and were never in the 1114) | 1003 | **991** ≈ the census's 990 |
+>
+> *An earlier version said "subtracts the ~124", which lands on 990 only because a files-vs-distinct
+> error and an over-subtraction nearly cancel.* **1114 is the number the ceilings enforce and the
+> number to act on.**
 >
 > **The "ceiling now" column shows P2-base values.** §8 item 0 re-baselines `Inventory` → 106,
 > `CountryDefaults` → 28 and `debt_ceiling` → 1116 in the first commit on `dev` after the merge, so
@@ -123,7 +134,11 @@ one new job, `security-regression`, was **added** to that list — the aggregate
 `pos`, `sales`, `inventory`, `settings`, `finance`, `treasury`, `compliance`, `notifications`,
 `locations`, `products`, `expenses`, `import` are all in the **33**.
 
-**Lanes touching `apps/web/src/locales` — SEVEN, not two** (counts from §10, same measurement):
+**Lanes touching `apps/web/src/locales` — SEVEN, not two.** *Counted as **changed** files
+(`git diff --name-only dev...<branch>`), deliberately: adding a translation key **modifies** an
+existing bundle, so `--diff-filter=A` returns **0 for every lane** and would say nobody is affected.
+The added-file rule in §10 applies to **Feature classes**, where a new test is a new file. Two
+measures, two questions.*
 `codex/ui-wave0-2026-08-11` (16), `codex/dn-consolidation-2026-08-12` (4),
 `fix/r2f2-cancel-flow-prompt` (3), `feat/scan-vat-configuration` (3), `feat/rafiq-skin-experiment` (3),
 `l6-integration-verify` (2), `feat/dpa-v8-supplier-goods-return` (2). **If your lane is in that list,

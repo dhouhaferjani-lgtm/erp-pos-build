@@ -1900,7 +1900,7 @@ individual jobs.
 
 **Why it cannot simply be widened.** The aggregate `needs` **thirteen** jobs; on PR→dev, **three** of
 them are `if:`-gated off — `backend-test`, `frontend-test`, `frontend-build`. A `needs` entry whose job
-comes back `skipped` fails or skips the aggregate — the workflow's own comment at `:1136-1143`
+comes back `skipped` fails or skips the aggregate — the workflow's own comment at `ci.yml:1240-1247` on the candidate (`:1096-1103` at `base_sha`)
 documents that exact reasoning for `treasury-spine-pgsql`. Dropping the aggregate's `if:` as-is would
 make it permanently skipped/failed on PR→dev.
 
@@ -1949,8 +1949,8 @@ to the parent's final announcement — sent after M3/M4 acceptance and before pr
 never sends it.
 
 Contents — the method is stated in the file itself so a reader can falsify it (all local branches, minus
-those merged into `dev`, impact as **added** files against `dev`): the ceiling remediation for the
-**eleven** lanes that actually add Feature classes; the **six-lane** `ci.yml` reconciliation with its
+those merged into `dev`; Feature-class impact as **added** files against `dev`, locale impact as **changed** files because adding a key modifies an existing bundle): the ceiling remediation for the
+**eleven** lanes that add Feature classes — of which **ten** need an edit, since `feat/r2f4-correcting-documents` adds only to `Accounting`, a **laned** group carrying no ceiling (the check fires only for `deferred`/`excluded` groups); the **six-lane** `ci.yml` reconciliation with its
 **four-way** `needs:` order (P2, `ui-wave0`, `openapi-contract-a-to-z`, `enforcement-p1-dpa-guard`);
 the two behaviour changes (en+fr+ar for the 33 wired namespaces, and Security now gating PR→dev); the
 open owner line for F-2 execution scope with the corrected **~2–3 min** figure; the owner prerequisites
@@ -2199,3 +2199,64 @@ heading or motivating sentence left behind by a table that was re-measured under
 across four rounds (§(89) roster filter, §(94) §(82), §(96) ×2, §(97)). The tables have been correct
 since round 2; what keeps failing is the prose *about* them. Recorded so the parent reads the tables as
 authoritative and treats any remaining prose count as suspect.
+
+---
+
+## M3 round 5 — response to `docs/handoff/reviews/enforcement-p2/M3-round5.md`
+
+**Tally, from the full register:** 0 P1, 1 P2, 3 P3. `fix_rounds` 4 → 5 — the last this milestone can
+take without a parent ruling. All four fixed; every number below re-derived, not accepted.
+
+### (99) P2-1 — the locale counts are CHANGED-file counts, and I had just asserted they were not
+
+The file states the added-file rule three times and explicitly retracts `--name-only` as one of "three
+methods that must not be re-used" — and round 4's fix then wrote that the seven locale counts came from
+"§10, **same measurement**". Executed:
+`git diff --diff-filter=A --name-only dev...<branch> | grep -c '^apps/web/src/locales/'` returns **0
+for all 20 roster branches**. The 16/4/3/3/3/2/2 counts reproduce only under `git diff --name-only`.
+
+**The counts and the roster are right; the claim about how they were obtained was wrong** — and the
+consequence is sharp: a lane taking the file at its word, running the printed `--diff-filter=A` command
+to confirm its own row, gets **0**, concludes the i18n gate is not for it, skips the reproduce-locally
+block, and reddens `frontend-lint`.
+
+Fixed by naming the two measures and why they differ: **locale impact is counted as changed files on
+purpose**, because adding a translation key *modifies* an existing bundle — `--diff-filter=A` would
+report that no lane is affected. The added-file rule applies to **Feature classes**, where a new test
+is a new file. The methodology header's retraction is now scoped to Feature classes and points at §3
+for the exception.
+
+### (100) P3-2 — the 990-vs-1114 reconciliation was arithmetically lucky
+
+My round-4 sentence said 990 = 1114 minus "the ~124 individually named in the allowlists". Re-derived:
+the allowlists hold exactly **124** distinct names, but only **111** live in deferred groups — the
+other **13** sit in *laned* groups and were never part of the 1114. And 1114 is a **file** count while
+the census's 990 is a **distinct-name** count.
+
+| measure | files | distinct |
+|---|---|---|
+| all of `tests/Feature` | 1329 | 1316 |
+| in groups no lane runs as a whole (**what `debt_ceiling` enforces**) | **1114** | 1102 |
+| minus the 111 allowlisted names inside them | 1003 | **991** ≈ the census's 990 |
+
+`1114 − 124 = 990` lands on the right number only because the files-vs-distinct error (+12) and the
+over-subtraction (+13) nearly cancel. The full table is now in §1, with **1114** named as the number to
+act on. A reader doing what the paragraph invites now gets a decomposition that reconciles.
+
+### (101) P3-3 and P3-4 — the durable record, again
+
+- **§(82) said "eleven lanes"** where the corrected announcement headline says **ten**. Both are true —
+  eleven lanes add Feature classes; `feat/r2f4-correcting-documents` needs no edit because `Accounting`
+  is **laned** and carries no ceiling (verified: the check fires only for `deferred || excluded`) — but
+  nothing connected them, in the paragraph round 3 already had to correct for exactly this. Now states
+  both numbers and the reason.
+- **§(81) cited `ci.yml:1136-1143`** for the skipped-`needs` reasoning. That range exists in neither
+  the candidate (`:1240-1247`) nor the base (`:1096-1103`; the base file is 1111 lines). The reasoning
+  is correct and load-bearing for the owner proposal; only the pointer was wrong. Both ranges now given.
+
+**Five rounds, one failure mode.** Every M3 finding has been prose about a table rather than the table:
+a stale headline, an unstated filter, a method claim that does not reproduce, a citation that never
+existed. The tables and the shipped guards have held under independent re-derivation since round 2. If
+a sixth round finds another, the honest reading is that this document is long enough that its prose
+cannot be kept in sync by hand — and the parent should weigh trimming it to the tables plus the stated
+rules, rather than continuing to patch sentences.
