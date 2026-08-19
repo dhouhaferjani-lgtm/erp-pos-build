@@ -16,12 +16,25 @@ P2 adds a **non-growth ceiling** per `tests/Feature` group that no CI lane runs.
 to such a group now **hard-fails** `backend-architecture`. This is the intended behaviour — the
 990-class hole must not grow silently — and the remedy is one number, in the same commit.
 
-| Lane | Feature dirs it touches | Ceiling status | What you must do |
+| Lane | groups it **adds classes to** | ceiling now | what you must do |
 |---|---|---|---|
-| **dn-consolidation** | `Document` (65), `Partner` (20) | both **DEFERRED** | bump `classes` in `apps/api/tests/feature-lane-manifest.json` for each group you add a class to |
-| **es-wave-a0** | `Fiscal` (73), `POS` (143) | both **DEFERRED** | same |
-| **dpa-wave3-3d** | `Fiscal`, `POS`, `Inventory` (105), `BatchExpiry` (16), `CountryDefaults` (27) | all **DEFERRED** | same |
-| dpa-wave3-3d | `Accounting` | **laned** (`treasury-spine-pgsql`) | nothing — laned groups have no ceiling |
+| `codex/dn-consolidation-2026-08-12` | `Document` **+9** | 65 | raise `Document` to ≥74 **and** `debt_ceiling` by 9 |
+| `codex/es-wave-a0` | `Fiscal` **+6** | 73 | raise `Fiscal` to ≥79 **and** `debt_ceiling` by 6 |
+| `codex/openapi-contract-a-to-z` | **new group `OpenApi` +6** | — | **§1a — disposition the group**, then raise `debt_ceiling` by 6 if deferred |
+| `l6-integration-verify` | `Http` **+2**, `Modules` **+4**, `Tenant` **+2** | 2 / 53 / 29 | raise all three **and** `debt_ceiling` by 8 |
+| `fix/r2d-bcmath-hardening` | `Modules` **+2** | 53 | raise `Modules` **and** `debt_ceiling` by 2 |
+| `feat/dpa-v8-supplier-goods-return` | `Inventory` **+2** | 105 | raise `Inventory` **and** `debt_ceiling` by 2 |
+| `feat/r2f4-correcting-documents` | `Accounting` **+2** | — | **nothing** — `Accounting` is laned, no ceiling |
+| `feat/scan-vat-configuration` | `Taxation` **+1** | 31 | raise `Taxation` **and** `debt_ceiling` by 1 |
+| `feat/supplier-invoice-ocr` | `Inventory` **+1** | 105 | raise `Inventory` **and** `debt_ceiling` by 1 |
+| `fix/r2f2-cancel-flow-prompt` | `Document` **+1** | 65 | raise `Document` **and** `debt_ceiling` by 1 |
+| `feat/owner-dashboard-demo` | `Seeders` **+1** | 26 | raise `Seeders` **and** `debt_ceiling` by 1 |
+
+> **Counted as ADDED classes (`git diff --diff-filter=A dev...<branch>`), not changed files.** An
+> earlier version counted changed files and told `dn-consolidation` to raise `Partner` and `es-wave-a0`
+> to raise `POS` — groups neither lane adds a class to. **Do not raise a ceiling you do not need:** the
+> checker only fails on `count > ceiling`, so an over-raised ceiling is permanent, unreported slack —
+> exactly what §8 item 0 and the round-8 "no slack" verification exist to prevent.
 
 The failure message names the group and both numbers:
 
@@ -113,12 +126,19 @@ kill-switch, you will now find out on the dev PR instead of at the main merge. C
 
 ## 4. Merge-order and reconciliation — **SIX** lanes write `ci.yml`; **FOUR** rewrite the same `needs:` line
 
-| Lane | `ci.yml` change | Reconciliation |
-|---|---|---|
-| **P2** (this package) | 6 steps + 1 job + `all-checks-pass` `needs` | — |
-| **ui-wave0** | 1 — the `route-manifest-drift` job **and** an `all-checks-pass` `needs` entry | Both P2 and UI edit the same `needs` list. **Whichever lands second rebases and re-verifies that BOTH entries survive.** P2 deliberately did not author the drift job (F-3 ownership); UI's T7 C6 regex fix is likewise still UI's. |
-| **dn-consolidation** | 1 | Same rule — rebase and re-verify aggregate `needs`. |
-| **OpenAPI lane** | none at P2's base (`grep -rni 'openapi' .github/workflows/` → nothing) | Owns CI drift/coverage wiring for its layer. No conflict today, but it is the *last* `ci.yml` writer: rebase onto P2 and add your own jobs to `all-checks-pass` `needs` yourself. |
+| Lane (branch) | `ci.yml` change | rewrites `needs:` | Reconciliation |
+|---|---|---|---|
+| **P2** (this package) | 6 steps + 1 job (`security-regression`) | ✅ | — |
+| **`codex/ui-wave0-2026-08-11`** | the `route-manifest-drift` job | ✅ | Both P2 and UI edit the same `needs:` line. Whoever lands last re-verifies **both** entries survive. P2 deliberately did not author the drift job (F-3 ownership); UI's T7 C6 regex fix is likewise still UI's. |
+| **`codex/openapi-contract-a-to-z`** | adds `backend-openapi-contract` | ✅ | Measured from the **branch**: the "no OpenAPI CI wiring" reading came from grepping P2's *base*, and this lane has no worktree. It is the **last** `ci.yml` writer, so it inherits the four-way `needs:` reconciliation. **See §1a — it also adds a brand-new `tests/Feature/OpenApi/` group, which hard-fails until dispositioned.** |
+| **`codex/enforcement-p1-dpa-guard`** | adds the DPA guard job | ✅ | Sibling enforcement package; the brief allows P1 and P2 to run in parallel. **Coordinate the aggregate edit directly with P2.** Adds **no** Feature classes of its own (§10). |
+| **`codex/dn-consolidation-2026-08-12`** | 1 | — | Rebase and re-verify the aggregate `needs:` survived. Also §1 — 9 added `Document` classes. |
+| **`codex/es-wave-a0`** | adds an Architecture-ratchet step | — | Rebase; your step must survive P2's edits. Also §1 — 6 added `Fiscal` classes. |
+
+**Four-way `needs:` reconciliation.** P2, `ui-wave0`, `openapi-contract-a-to-z` and
+`enforcement-p1-dpa-guard` all rewrite `all-checks-pass.needs` (`ci.yml:1249`). Whoever lands last must
+confirm every earlier lane's job is still listed — `route-manifest-drift`, `security-regression`,
+`backend-openapi-contract`, and P1's DPA guard job.
 
 **Pin-tag lockstep (for whoever re-pins the i18n baseline later):** `ci.yml` fetches the tag by
 literal name (`git fetch origin tag ci-pin/enforcement-p2-r1`). Tags are never reused, so a re-pin
@@ -237,33 +257,44 @@ N-4, N-5, R8-1, R8-2, R8-3. Two matter to other lanes:
 
 ---
 
-## 10. Complete open-lane roster — every lane gets a line, including "nothing to do"
+## 10. Open-lane roster — inclusion rule stated, merge state shown
 
-Derived from **branches**, not worktrees (`git branch --format='%(refname:short)'`), after the
-worktree-only enumeration missed the OpenAPI lane entirely. Impact measured per branch with
-`git diff --name-only <p2-base>...<branch>`, so it is that lane's **own** changes.
+**Inclusion rule, stated rather than implied** (this section has been wrong twice for exactly this
+reason — first a worktree-only sweep, then an unstated `codex/*` filter):
 
-| lane / branch | web files | locale files | Feature tests | `ci.yml` | rewrites `needs:` | **what you must do** |
-|---|---|---|---|---|---|---|
-| `codex/ui-wave0-2026-08-11` | 78 | 16 | 0 | ✅ | ✅ | §3(a) i18n for the 33 wired ns; §4 three-way `needs:` reconciliation; your `route-manifest-drift` job must survive P2's edits |
-| `codex/dn-consolidation-2026-08-12` | 35 | 4 | 13 (`Document`, `Partner`) | ✅ | — | §1 **raise both ceilings**; §3(a) i18n; §4 rebase `ci.yml` |
-| `codex/es-wave-a0` | 0 | 0 | 16 (`Fiscal`, `POS`) | ✅ | — | §1 **raise both ceilings**; §4 rebase `ci.yml` (adds an Architecture-ratchet step) |
-| `codex/dpa-wave3-3d` | 0 | 0 | 23 (`Accounting`†, `BatchExpiry`, `CountryDefaults`, `Fiscal`, `Inventory`, `POS`) | — | — | §1 **raise five ceilings** (†`Accounting` is laned — no ceiling) |
-| `codex/openapi-contract-a-to-z` | 0 | 0 | 6 (**new group `OpenApi`**) | ✅ | ✅ | §1a **disposition the new group — hard fail otherwise**; §4 you are the last `ci.yml` writer |
-| `codex/enforcement-p1-dpa-guard` | 0 | 0 | 23 (same set as 3D) | ✅ | ✅ | §1 **raise five ceilings**; §4 `needs:` reconciliation. Sibling enforcement package — the brief allows P1 and P2 in parallel, so coordinate the aggregate edit |
-| `codex/dpa-wave3-3c` | 0 | 0 | 0 | — | — | **Nothing to do.** |
-| `codex/country-defaults-phase-a` | 0 | 0 | 0 | — | — | **Nothing to do.** |
-| `codex/sv-stage1` | 0 | 0 | 0 | — | — | **Nothing to do.** |
-| `codex/pos-receipts-2026-08-12` | 0 | 0 | 0 | — | — | **Nothing to do** *today* — but receipts work adds user-facing strings, so §3(a) applies the moment it does. |
-| `codex/accounting-gaps-cghi` | 0 | 0 | 0 | — | — | **Nothing to do.** |
-| `codex/pos-clean-workbench` | 0 | 0 | 0 | — | — | **Nothing to do.** |
-| `codex/tenant-impersonation` | 0 | 0 | 0 | — | — | **Nothing to do.** |
+- enumerate **all** local branches, `git branch --format='%(refname:short)'` — no prefix filter;
+- **drop branches already merged into `dev`** (`git merge-base --is-ancestor <b> dev`) — a landed lane
+  cannot perform a rebase action, and its classes are already `dev`'s drift, handled by §8 item 0;
+- drop snapshot/backup refs that are not lanes: `*-pre-repin*`, `*-pre-rewrite`, `backup/*`,
+  `triage/*`, `worktree-agent-*`;
+- measure impact as **added** files against `dev` (`git diff --diff-filter=A dev...<branch>`), not
+  changed files against P2's base.
 
-**"Nothing to do" is stated explicitly on purpose.** Silence is indistinguishable from "overlooked",
-and being overlooked is exactly the mechanism that produced the two P1s this checklist was corrected
-for — the OpenAPI lane's new group and its `ci.yml` edit were both missed by a worktree-only sweep.
+| lane (branch) | added Feature classes | locale files | `ci.yml` | `needs:` | action |
+|---|---|---|---|---|---|
+| `codex/ui-wave0-2026-08-11` | — | 16 | ✅ | ✅ | §3(a) i18n; §4 four-way `needs:` |
+| `codex/dn-consolidation-2026-08-12` | `Document` +9 | 4 | ✅ | — | §1 ceilings; §3(a) i18n; §4 rebase |
+| `codex/es-wave-a0` | `Fiscal` +6 | — | ✅ | — | §1 ceilings; §4 rebase |
+| `codex/openapi-contract-a-to-z` | **new `OpenApi` +6** | — | ✅ | ✅ | **§1a disposition**; §4 four-way `needs:` |
+| `codex/enforcement-p1-dpa-guard` | **none** | — | ✅ | ✅ | §4 four-way `needs:` **only** |
+| `l6-integration-verify` | `Http` +2, `Modules` +4, `Tenant` +2 | 2 | — | — | §1 ceilings; §3(a) i18n |
+| `feat/scan-vat-configuration` | `Taxation` +1 | 3 | — | — | §1 ceiling; §3(a) i18n |
+| `feat/dpa-v8-supplier-goods-return` | `Inventory` +2 | 2 | — | — | §1 ceiling; §3(a) i18n |
+| `fix/r2f2-cancel-flow-prompt` | `Document` +1 | 3 | — | — | §1 ceiling; §3(a) i18n |
+| `fix/r2d-bcmath-hardening` | `Modules` +2 | — | — | — | §1 ceiling |
+| `feat/supplier-invoice-ocr` | `Inventory` +1 | — | — | — | §1 ceiling |
+| `feat/owner-dashboard-demo` | `Seeders` +1 | — | — | — | §1 ceiling |
+| `feat/r2f4-correcting-documents` | `Accounting` +2 | — | — | — | **Nothing** — `Accounting` is laned |
+| `feat/rafiq-skin-experiment` | — | 3 | — | — | §3(a) i18n only |
+| `codex/pos-clean-workbench` | — | — | — | — | **Nothing to do.** |
+| `factory/board`, `feat/accounting-gl-go-live`, `feat/db-per-tenant-deploy`, `feat/demo-pharmacy-account`, `feat/pos-prepaid-drawdown` | — | — | — | — | **Nothing to do.** |
 
-**`needs:` reconciliation is FOUR-way**, not two: P2, `ui-wave0`, `openapi-contract-a-to-z` and
-`enforcement-p1-dpa-guard` all rewrite `all-checks-pass.needs`. Whoever lands last must confirm every
-earlier lane's job is still in the list — `route-manifest-drift`, `security-regression`,
-`backend-openapi-contract`, and P1's DPA guard job.
+**Already merged into `dev` — no action, listed so their absence is not read as an oversight:**
+`codex/dpa-wave3-3c`, `codex/dpa-wave3-3d`, `codex/country-defaults-phase-a`, `codex/sv-stage1`,
+`codex/pos-receipts-2026-08-12`, `codex/accounting-gaps-cghi`, `codex/tenant-impersonation`. Their
+added classes are already part of `dev`'s drift and are covered by **§8 item 0**, not by a lane action.
+
+> **`codex/enforcement-p1-dpa-guard` adds no Feature classes of its own.** An earlier version credited
+> it with 23 (the same set as `dpa-wave3-3d`) because that measurement was taken against P2's base and
+> `dpa-wave3-3d` has since merged into `dev` — so P1 *inherited* them through `dev`. Following that row
+> would have raised five ceilings for classes it never authored and double-raised against §8 item 0.

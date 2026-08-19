@@ -1879,11 +1879,13 @@ UI Wave 0 still owns it, and authoring it here would still be the duplicate F-3 
 motion does change is **urgency of the merge-order line** — UI Wave 0 is closer to landing than it was,
 so the reconciliation in §4 of the announcement is more likely to be exercised soon, not less.
 
-**The dependency, carried into the announcement (§4):** P2, UI Wave 0 **and dn-consolidation** all
-edit `.github/workflows/ci.yml`, and P2 and UI Wave 0 both edit the `all-checks-pass` `needs` list.
-Whichever lands second rebases and re-verifies that **both** entries survive. The OpenAPI lane has
-zero CI wiring at base and is the last writer; it rebases onto P2 and adds its own jobs to the
-aggregate itself.
+**The dependency, carried into the announcement (§4)** — corrected at M3 rounds 1 and 2: **six** lanes
+write `.github/workflows/ci.yml` (P2, `ui-wave0`, `dn-consolidation`, `es-wave-a0`,
+`openapi-contract-a-to-z`, `enforcement-p1-dpa-guard`) and **four** rewrite the `all-checks-pass`
+`needs:` line (P2, `ui-wave0`, `openapi`, `enforcement-p1`). Whoever lands last re-verifies that every
+earlier lane's job is still in the list. The OpenAPI lane already adds `backend-openapi-contract` **and**
+rewrites `needs:` on its branch — the "no CI wiring" reading came from grepping P2's base rather than
+that branch.
 
 ### (81) The `all-checks-pass` PR→dev question — a PROPOSAL, not a change
 
@@ -1915,9 +1917,21 @@ make it permanently skipped/failed on PR→dev.
 
 **Proposal (owner's call, three options, cheapest first):**
 
-1. **A second, PR→dev-shaped aggregate** — `all-checks-pass-dev`, no `if:`, `needs` exactly the **ten**
-   jobs above that genuinely run on PR→dev. One required check for `dev`; no existing behaviour
-   changes. **Recommended.**
+1. **A second, PR→dev-shaped aggregate** — `all-checks-pass-dev`, no `if:`, `needs` = **every job that
+   runs on PR→dev**, which is **twelve**: the ten aggregate members above **plus `chokepoint-gate` and
+   `t6-phase0b-pgsql`**, neither of which is a member of the existing aggregate today. One required
+   check for `dev`; no existing behaviour changes. **Recommended.**
+
+   > **Corrected at M3 round 2 — the derivation, not just the list.** My first version said "the ten
+   > jobs above", taking the universe to be *members of the existing aggregate that run on PR→dev*.
+   > That is the wrong derivation for a **new** aggregate: `chokepoint-gate` (`ci.yml:60`, no `if:`)
+   > carries the §14.3 `SALE_RECEIPT`/`ACCOUNT_CHARGE` chokepoint gates and the Pass-2B sequencing
+   > sentinel, and `t6-phase0b-pgsql` carries the database-per-tenant flip gates — both run on PR→dev
+   > and both sit outside `all-checks-pass`. An owner adopting the ten-job list as *the* required check
+   > for `dev` and retiring the hand-maintained list would have silently stopped both from gating.
+   > The reviewer caught `chokepoint-gate`; re-deriving mechanically found `t6-phase0b-pgsql` as well.
+   > **The rule for a new aggregate is "every job that runs on the event", never "every current member
+   > that runs on the event".**
 2. **Make the existing aggregate event-aware** — keep one job, compute the required set with
    `if: always()` plus per-need result checks. Fewer moving parts, but `always()` aggregates are easy
    to get subtly wrong and would need their own liveness test.
@@ -2018,3 +2032,64 @@ a table.
 `ANNOUNCE §2` claimed `pnpm test:tools` = "7 files / 145 tests". The file count is right; the test
 count was carried from an older run. Replaced with "7 files" — a number a lane may quote should either
 be current or absent.
+
+---
+
+## M3 round 2 — response to `docs/handoff/reviews/enforcement-p2/M3-round2.md`
+
+**Tally, from the full register:** 1 P1, 4 P2, 1 P3. `fix_rounds` 1 → 2.
+
+### (89) ⚠️ P1 — the "complete" roster was silently filtered to `codex/*`. Third instance of one habit.
+
+Round 1's P1-2 was an unstated enumeration filter (worktrees). My fix swapped worktrees for branches
+— **and applied a second unstated filter**: every one of the 13 rows was a `codex/*` branch. Eight
+unmerged lanes with live worktrees and real impact had no line, in a section whose header promised
+completeness. `feat/scan-vat-configuration` — a recorded, dispatch-pending lane — would have rebased
+onto the landed P2 and hit `COVERAGE DEBT GREW: group "Taxation" now holds 32, ceiling is 31`, having
+received no warning from the document written to prevent exactly that.
+
+**This is the same error three times** (worktree-only sweep → `codex/*`-only sweep → each time
+asserting completeness). The fix is not another sweep; it is to **state the inclusion rule in the
+artifact and defend it**. §10 now opens with the rule: all local branches, no prefix filter; drop
+branches already merged into `dev`; drop snapshot refs (`*-pre-repin*`, `*-pre-rewrite`, `backup/*`,
+`triage/*`, `worktree-agent-*`); measure **added** files against `dev`. A reader can now check the rule
+rather than trust the list.
+
+### (90) P2-3 and P2-4 — I was counting changed files and measuring against a stale base
+
+Both corrected by re-measuring with `--diff-filter=A` against **`dev`**:
+
+- **`dn-consolidation` adds 9 `Document` and 0 `Partner`; `es-wave-a0` adds 6 `Fiscal` and 0 `POS`.**
+  My rows told both lanes to raise ceilings for groups they never grow. Since the checker only fails on
+  `count > ceiling`, an over-raised ceiling is **permanent, unreported slack** — precisely what §8
+  item 0 and round 8's "no slack" verification exist to prevent. §1 now carries an explicit
+  *"do not raise a ceiling you do not need"* warning.
+- **`enforcement-p1-dpa-guard` adds ZERO Feature classes of its own.** Its "23 (same set as 3D)" was
+  `dpa-wave3-3d`'s work, inherited through `dev` after 3D merged. Following that row would have raised
+  five ceilings for classes it never authored **and double-raised against §8 item 0** (`Inventory` →
+  107 against an actual 106).
+- **Seven of the 13 rows were already ancestors of `dev`** — landed lanes cannot perform a rebase
+  action. They are now listed separately as "already merged, no action", so their absence is not read
+  as an oversight (P3-6's merge-state column, addressed at the same time).
+
+### (91) P2-5 — the owner proposal was still certified-by-omission, and re-deriving found a second job
+
+Round 1 fixed the omission *inside* the aggregate; the derivation was still wrong. Option 1 said
+"`needs` exactly the ten jobs above", taking the universe to be *current aggregate members that run on
+PR→dev*. **`chokepoint-gate` (no `if:`) runs on PR→dev and is not an aggregate member** — it carries
+the §14.3 `SALE_RECEIPT`/`ACCOUNT_CHARGE` chokepoint gates and the Pass-2B sequencing sentinel. An
+owner adopting the ten-job list as the single required check for `dev` and retiring the hand-maintained
+list would have silently stopped it gating.
+
+Re-deriving mechanically ("every job whose `if:` admits PR→dev") found **twelve**, not ten: the
+reviewer's `chokepoint-gate` **and `t6-phase0b-pgsql`**, which carries the database-per-tenant flip
+gates. Option 1 now reads twelve and states the rule: **for a new aggregate the universe is "every job
+that runs on the event", never "every current member that runs on the event".**
+
+### (92) The habit, named
+
+Three rounds, three instances of the same shape: a measurement taken over a convenient subset
+(worktrees, `codex/*`, current aggregate members) and then reported as complete. Each was caught by the
+reviewer, not by me. The countermeasure now in the artifacts is not a bigger sweep but a **stated
+inclusion rule next to every enumeration** — §10's four bullets, and §(91)'s "every job that runs on
+the event" — so the next reader can falsify the list instead of trusting it.
