@@ -13,8 +13,11 @@ use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
@@ -64,24 +67,8 @@ class UninvoicedDeliveryNoteService
         /** @var Company $company */
         $company = Company::query()->findOrFail($companyId);
 
-        $query = Document::query()
-            // The explicit predicate protects shared-DB compatibility mode; in
-            // DB-per-tenant mode Stancl has already switched this query to the
-            // active tenant connection.
-            ->forTenant($company->tenant_id)
-            ->where('company_id', $company->id)
-            ->where('type', DocumentType::DeliveryNote)
-            ->where('status', DocumentStatus::Confirmed)
-            ->whereDeliveryNoteUninvoiced()
+        $query = $this->baseUninvoicedQuery($company, $fromDate, $toDate)
             ->with('partner:id,name');
-
-        if ($fromDate !== null) {
-            $query->where('document_date', '>=', $fromDate->startOfDay());
-        }
-
-        if ($toDate !== null) {
-            $query->where('document_date', '<=', $toDate->endOfDay());
-        }
 
         return $query
             ->orderBy('document_date')
@@ -106,6 +93,288 @@ class UninvoicedDeliveryNoteService
                 ];
             })
             ->all();
+    }
+
+    /**
+     * Build the partner-grouped, company-currency work queue.
+     *
+     * Pagination is deliberately applied after grouping: one page unit is one
+     * complete partner group, never an arbitrary slice of delivery notes.
+     *
+     * @return array{
+     *   data: list<array{partner_id: string, partner_name: string, partner_code: string|null, delivery_note_count: int, total: numeric-string, currency: string, oldest_document_date: string, aging_bucket: string, is_periodic: bool}>,
+     *   meta: array{current_page: int, last_page: int, total: int, per_page: int},
+     *   summary: array{buckets: list<array{bucket: string, count: int, total: numeric-string}>, grand_total: numeric-string, grand_count: int, currency: string}
+     * }
+     */
+    public function getToBillSummary(
+        string $companyId,
+        ?string $locationId,
+        ?Carbon $fromDate,
+        ?Carbon $toDate,
+        ?string $partnerSearch,
+        bool $periodicOnly,
+        int $page,
+        int $perPage,
+    ): array {
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($companyId);
+        $scale = $this->scaleResolver->getScale($company->currency);
+
+        $groupRows = $this->queueQuery(
+            $company,
+            $locationId,
+            $fromDate,
+            $toDate,
+            $partnerSearch,
+            $periodicOnly,
+        )
+            ->select('documents.partner_id')
+            ->selectRaw('COUNT(documents.id) as delivery_note_count')
+            ->selectRaw('SUM(documents.total) as aggregate_total')
+            ->selectRaw('MIN(documents.document_date) as oldest_document_date')
+            ->groupBy('documents.partner_id')
+            ->orderByRaw('MIN(documents.document_date) ASC')
+            ->orderBy('documents.partner_id')
+            ->get();
+        $partners = Partner::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereIn('id', $groupRows->pluck('partner_id')->all())
+            ->get(['id', 'name', 'code', 'invoice_consolidation'])
+            ->keyBy('id');
+
+        $groups = $groupRows
+            ->map(function (Document $group) use ($company, $partners, $scale): array {
+                $partner = $partners->get((string) $group->getAttribute('partner_id'));
+                if (! $partner instanceof Partner) {
+                    throw new \LogicException('A to-bill group must resolve its customer partner.');
+                }
+                $oldestDate = Carbon::parse((string) $group->getAttribute('oldest_document_date'));
+                $total = CurrencyScale::bcformatStrict(
+                    (string) ($group->getAttribute('aggregate_total') ?? '0'),
+                    $scale,
+                );
+
+                return [
+                    'partner_id' => (string) $group->getAttribute('partner_id'),
+                    'partner_name' => $partner->name,
+                    'partner_code' => $partner->code !== null
+                        ? $partner->code
+                        : null,
+                    'delivery_note_count' => (int) $group->getAttribute('delivery_note_count'),
+                    'total' => $total,
+                    'currency' => $company->currency,
+                    'oldest_document_date' => $oldestDate->toDateString(),
+                    'aging_bucket' => $this->agingBucket($oldestDate, $company->timezone),
+                    'is_periodic' => $partner->invoice_consolidation,
+                ];
+            })
+            ->values();
+
+        $emptyTotal = CurrencyScale::bcformatStrict('0', $scale);
+        /** @var array{'0_30': array{count: int, total: numeric-string}, '31_60': array{count: int, total: numeric-string}, '61_90': array{count: int, total: numeric-string}, '90_plus': array{count: int, total: numeric-string}} $bucketTotals */
+        $bucketTotals = [
+            '0_30' => ['count' => 0, 'total' => $emptyTotal],
+            '31_60' => ['count' => 0, 'total' => $emptyTotal],
+            '61_90' => ['count' => 0, 'total' => $emptyTotal],
+            '90_plus' => ['count' => 0, 'total' => $emptyTotal],
+        ];
+        $grandTotal = $emptyTotal;
+
+        foreach ($groups as $group) {
+            $bucket = $group['aging_bucket'];
+            $bucketTotals[$bucket]['count']++;
+            $bucketTotals[$bucket]['total'] = bcadd($bucketTotals[$bucket]['total'], $group['total'], $scale);
+            $grandTotal = bcadd($grandTotal, $group['total'], $scale);
+        }
+
+        $totalGroups = $groups->count();
+        $lastPage = max(1, (int) ceil($totalGroups / $perPage));
+        $pageData = array_values($groups->slice(($page - 1) * $perPage, $perPage)->values()->all());
+        $buckets = [];
+        foreach ($bucketTotals as $bucket => $totals) {
+            $buckets[] = [
+                'bucket' => $bucket,
+                'count' => $totals['count'],
+                'total' => CurrencyScale::bcformatStrict($totals['total'], $scale),
+            ];
+        }
+
+        return [
+            'data' => $pageData,
+            'meta' => [
+                'current_page' => $page,
+                'last_page' => $lastPage,
+                'total' => $totalGroups,
+                'per_page' => $perPage,
+            ],
+            'summary' => [
+                'buckets' => $buckets,
+                'grand_total' => CurrencyScale::bcformatStrict($grandTotal, $scale),
+                'grand_count' => $totalGroups,
+                'currency' => $company->currency,
+            ],
+        ];
+    }
+
+    /**
+     * Return the lazily expanded rows for one queue group.
+     *
+     * @return array{
+     *   data: list<array{id: string, document_number: string, document_date: string, partner_id: string, partner_name: string, subtotal: string, tax_amount: string, total: string, currency: string}>,
+     *   meta: array{current_page: int, last_page: int, total: int, per_page: int},
+     *   summary: array{count: int, total: numeric-string, currency: string}
+     * }
+     */
+    public function getToBillPartnerRows(
+        string $companyId,
+        string $partnerId,
+        ?string $locationId,
+        ?Carbon $fromDate,
+        ?Carbon $toDate,
+        ?string $partnerSearch,
+        bool $periodicOnly,
+        int $page,
+        int $perPage,
+    ): array {
+        /** @var Company $company */
+        $company = Company::query()->findOrFail($companyId);
+        $scale = $this->scaleResolver->getScale($company->currency);
+        $query = $this->queueQuery(
+            $company,
+            $locationId,
+            $fromDate,
+            $toDate,
+            $partnerSearch,
+            $periodicOnly,
+        )->where('partner_id', $partnerId);
+
+        $count = (clone $query)->count();
+        $total = CurrencyScale::bcformatStrict((string) (clone $query)->sum('total'), $scale);
+        $paginator = $query
+            ->with('partner:id,name')
+            ->orderBy('document_date')
+            ->orderBy('id')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        $data = array_values($paginator->getCollection()->map(function (Document $dn): array {
+            /** @var numeric-string $subtotal */
+            $subtotal = $dn->subtotal ?? '0.00';
+            /** @var numeric-string $taxAmount */
+            $taxAmount = $dn->tax_amount ?? '0.00';
+            /** @var numeric-string $total */
+            $total = $dn->total ?? '0.00';
+
+            return [
+                'id' => $dn->id,
+                'document_number' => $dn->document_number,
+                'document_date' => $dn->document_date->toDateString(),
+                'partner_id' => $dn->partner_id,
+                'partner_name' => $dn->partner->name ?? '',
+                'subtotal' => $subtotal,
+                'tax_amount' => $taxAmount,
+                'total' => $total,
+                'currency' => $dn->currency,
+            ];
+        })->all());
+
+        return [
+            'data' => $data,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+            ],
+            'summary' => [
+                'count' => $count,
+                'total' => $total,
+                'currency' => $company->currency,
+            ],
+        ];
+    }
+
+    /**
+     * @return Builder<Document>
+     */
+    private function queueQuery(
+        Company $company,
+        ?string $locationId,
+        ?Carbon $fromDate,
+        ?Carbon $toDate,
+        ?string $partnerSearch,
+        bool $periodicOnly,
+    ): Builder {
+        $query = $this->baseUninvoicedQuery($company, $fromDate, $toDate)
+            ->where('documents.currency', $company->currency)
+            ->whereHas('partner', function ($partnerQuery) use ($company, $partnerSearch, $periodicOnly): void {
+                $partnerQuery
+                    ->whereRaw('partners.tenant_id = ?', [$company->tenant_id])
+                    ->whereRaw('partners.company_id = ?', [$company->id])
+                    ->whereRaw('partners.type IN (?, ?)', ['customer', 'both']);
+
+                if ($partnerSearch !== null) {
+                    $needle = '%'.mb_strtolower($partnerSearch).'%';
+                    $partnerQuery->where(function ($searchQuery) use ($needle): void {
+                        $searchQuery
+                            ->whereRaw('LOWER(name) LIKE ?', [$needle])
+                            ->orWhereRaw('LOWER(code) LIKE ?', [$needle]);
+                    });
+                }
+
+                if ($periodicOnly) {
+                    $partnerQuery->whereRaw('partners.invoice_consolidation = ?', [true]);
+                }
+            });
+
+        if ($locationId !== null) {
+            $query->where('documents.location_id', $locationId);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return Builder<Document>
+     */
+    private function baseUninvoicedQuery(
+        Company $company,
+        ?Carbon $fromDate,
+        ?Carbon $toDate,
+    ): Builder {
+        $query = Document::query()
+            // The explicit predicate protects shared-DB compatibility mode; in
+            // DB-per-tenant mode Stancl has already switched this query to the
+            // active tenant connection.
+            ->forTenant($company->tenant_id)
+            ->where('documents.company_id', $company->id)
+            ->where('documents.type', DocumentType::DeliveryNote)
+            ->where('documents.status', DocumentStatus::Confirmed)
+            ->whereDeliveryNoteUninvoiced();
+
+        if ($fromDate !== null) {
+            $query->where('documents.document_date', '>=', $fromDate->copy()->startOfDay());
+        }
+
+        if ($toDate !== null) {
+            $query->where('documents.document_date', '<=', $toDate->copy()->endOfDay());
+        }
+
+        return $query;
+    }
+
+    /** @return '0_30'|'31_60'|'61_90'|'90_plus' */
+    private function agingBucket(Carbon $oldestDate, string $timezone): string
+    {
+        $ageInDays = (int) $oldestDate->copy()->startOfDay()->diffInDays(Carbon::now($timezone)->startOfDay());
+
+        return match (true) {
+            $ageInDays <= 30 => '0_30',
+            $ageInDays <= 60 => '31_60',
+            $ageInDays <= 90 => '61_90',
+            default => '90_plus',
+        };
     }
 
     /**

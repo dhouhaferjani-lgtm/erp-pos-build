@@ -84,6 +84,10 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
                 ->assertOk()
                 ->assertJsonStructure(['data']);
 
+            $this->actingAs($actor)->getJson("/api/v1/delivery-notes/uninvoiced/{$this->partner->id}")
+                ->assertOk()
+                ->assertJsonStructure(['data', 'meta', 'summary']);
+
             $response = $this->actingAs($actor)->postJson('/api/v1/delivery-notes/consolidate-to-invoice', [
                 'delivery_note_ids' => [$this->confirmedDeliveryNote('DN-'.$role)->id],
             ]);
@@ -103,6 +107,8 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
 
         $this->actingAs($actor)->getJson('/api/v1/delivery-notes/uninvoiced')
             ->assertForbidden();
+        $this->actingAs($actor)->getJson("/api/v1/delivery-notes/uninvoiced/{$this->partner->id}")
+            ->assertForbidden();
     }
 
     public function test_uninvoiced_endpoint_is_forbidden_without_delivery_read_permission_when_sales_is_enabled(): void
@@ -111,12 +117,14 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
 
         $this->actingAs($actor)->getJson('/api/v1/delivery-notes/uninvoiced')
             ->assertForbidden();
+        $this->actingAs($actor)->getJson("/api/v1/delivery-notes/uninvoiced/{$this->partner->id}")
+            ->assertForbidden();
     }
 
     public function test_uninvoiced_endpoint_returns_only_confirmed_delivery_notes_from_the_existing_read_path(): void
     {
         $actor = $this->actorWithRole('viewer');
-        $eligible = $this->confirmedDeliveryNote('DN-ELIGIBLE');
+        $this->confirmedDeliveryNote('DN-ELIGIBLE');
         Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -131,7 +139,8 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
         $this->actingAs($actor)->getJson('/api/v1/delivery-notes/uninvoiced')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $eligible->id);
+            ->assertJsonPath('data.0.partner_id', $this->partner->id)
+            ->assertJsonPath('data.0.delivery_note_count', 1);
     }
 
     public function test_consolidation_is_forbidden_when_sales_is_disabled_despite_invoice_creation_permission(): void
@@ -147,7 +156,7 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
     public function test_uninvoiced_endpoint_excludes_delivery_notes_from_a_foreign_tenant_and_company(): void
     {
         $actor = $this->actorWithRole('viewer');
-        $eligible = $this->confirmedDeliveryNote('DN-LOCAL');
+        $this->confirmedDeliveryNote('DN-LOCAL');
         $foreignTenant = Tenant::create([
             'name' => 'Foreign delivery-note tenant',
             'slug' => 'foreign-delivery-note-'.Str::random(8),
@@ -187,7 +196,8 @@ final class DeliveryNoteConsolidationAccessControlTest extends TestCase
         $this->actingAs($actor)->getJson('/api/v1/delivery-notes/uninvoiced')
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $eligible->id);
+            ->assertJsonPath('data.0.partner_id', $this->partner->id)
+            ->assertJsonPath('data.0.delivery_note_count', 1);
     }
 
     private function actorWithRole(string $role): User

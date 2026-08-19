@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Compliance\Services\UninvoicedDeliveryNoteService;
@@ -21,17 +23,21 @@ use App\Modules\Document\Presentation\Controllers\Concerns\HandlesDocuments;
 use App\Modules\Document\Presentation\Requests\CreateDocumentRequest;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Inventory\Application\Services\InventoryGlPostingBuffer;
+use App\Modules\Partner\Domain\Enums\PartnerType;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Modules\Vehicle\Application\Services\VehicleContextBuilder;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Domain\CurrencyScale;
 use App\Support\Traits\PaginatesResults;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Controller for Delivery Note document operations.
@@ -157,13 +163,116 @@ class DeliveryNoteController extends Controller
      *
      * GET /api/v1/delivery-notes/uninvoiced
      */
-    public function uninvoiced(): JsonResponse
+    public function uninvoiced(Request $request): JsonResponse
     {
         $company = $this->companyContext->requireCompany();
+        $filters = $this->toBillFilters($request, $company);
 
-        return response()->json([
-            'data' => $this->uninvoicedDeliveryNoteService->getUninvoicedDeliveryNotes($company->id),
+        return response()->json($this->uninvoicedDeliveryNoteService->getToBillSummary(
+            $company->id,
+            $filters['location_id'],
+            $filters['date_from'],
+            $filters['date_to'],
+            $filters['partner_search'],
+            $filters['periodic_only'],
+            $filters['page'],
+            $filters['per_page'],
+        ));
+    }
+
+    /**
+     * Lazily expand one partner group from the global to-bill queue.
+     *
+     * GET /api/v1/delivery-notes/uninvoiced/{partner}
+     */
+    public function uninvoicedForPartner(Request $request, string $partner): JsonResponse
+    {
+        $company = $this->companyContext->requireCompany();
+        $filters = $this->toBillFilters($request, $company);
+
+        Partner::query()
+            ->where('tenant_id', $company->tenant_id)
+            ->where('company_id', $company->id)
+            ->whereIn('type', [PartnerType::Customer, PartnerType::Both])
+            ->findOrFail($partner);
+
+        return response()->json($this->uninvoicedDeliveryNoteService->getToBillPartnerRows(
+            $company->id,
+            $partner,
+            $filters['location_id'],
+            $filters['date_from'],
+            $filters['date_to'],
+            $filters['partner_search'],
+            $filters['periodic_only'],
+            $filters['page'],
+            $filters['per_page'],
+        ));
+    }
+
+    /**
+     * @return array{
+     *   location_id: string|null,
+     *   date_from: Carbon|null,
+     *   date_to: Carbon|null,
+     *   partner_search: string|null,
+     *   periodic_only: bool,
+     *   page: int,
+     *   per_page: int
+     * }
+     */
+    private function toBillFilters(Request $request, Company $company): array
+    {
+        $partnerSearch = $request->query('partner_search');
+        if (is_string($partnerSearch)) {
+            $request->merge(['partner_search' => trim($partnerSearch)]);
+        }
+
+        $validated = $request->validate([
+            'location_id' => ['nullable', 'string'],
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'partner_search' => ['nullable', 'string', 'min:2', 'max:120'],
+            'periodic_only' => ['nullable', 'boolean'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+
+        $requestedLocation = isset($validated['location_id'])
+            ? (string) $validated['location_id']
+            : null;
+        $locationId = null;
+
+        if ($requestedLocation === 'all') {
+            if ($this->locationContext->getAllowedLocationIds($company->id) !== null) {
+                throw ValidationException::withMessages([
+                    'location_id' => ['All locations is outside your allowed scope.'],
+                ]);
+            }
+        } else {
+            $locationId = $this->locationContext->resolveLocationId($requestedLocation, $company->id);
+            if ($locationId !== null) {
+                $belongsToCompany = Location::query()
+                    ->where('id', $locationId)
+                    ->where('company_id', $company->id)
+                    ->exists();
+
+                if (! $belongsToCompany || ! $this->locationContext->canAccessLocation($locationId, $company->id)) {
+                    throw ValidationException::withMessages([
+                        'location_id' => ['The selected location is invalid or outside your allowed scope.'],
+                    ]);
+                }
+            }
+        }
+
+        return [
+            'location_id' => $locationId,
+            'date_from' => isset($validated['date_from']) ? Carbon::createFromFormat('Y-m-d', (string) $validated['date_from']) : null,
+            'date_to' => isset($validated['date_to']) ? Carbon::createFromFormat('Y-m-d', (string) $validated['date_to']) : null,
+            'partner_search' => isset($validated['partner_search']) ? (string) $validated['partner_search'] : null,
+            'periodic_only' => $request->boolean('periodic_only'),
+            'page' => isset($validated['page']) ? (int) $validated['page'] : 1,
+            'per_page' => isset($validated['per_page']) ? (int) $validated['per_page'] : 25,
+        ];
     }
 
     /**

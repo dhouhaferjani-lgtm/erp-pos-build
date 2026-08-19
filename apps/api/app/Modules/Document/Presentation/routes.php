@@ -275,6 +275,11 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware(['module:Sales', 'can:deliveries.view'])
         ->name('delivery-notes.uninvoiced');
 
+    Route::get('/delivery-notes/uninvoiced/{partner}', [DeliveryNoteController::class, 'uninvoicedForPartner'])
+        ->whereUuid('partner')
+        ->middleware(['module:Sales', 'can:deliveries.view'])
+        ->name('delivery-notes.uninvoiced.partner');
+
     Route::get('/delivery-notes/{deliveryNote}', [DeliveryNoteController::class, 'show'])
         ->whereUuid('deliveryNote')
         ->middleware('can:deliveries.view')
