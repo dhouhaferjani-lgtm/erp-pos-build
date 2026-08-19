@@ -1296,3 +1296,72 @@ second one this package makes, so it goes into the M3 announcement.
 carries into the M3 announcement checklist as an **open owner line**. It does not block M3/M4: the
 choice is additive and revisitable under this package's own protocol, and every structural guarantee
 already holds at B-as-shipped.
+
+---
+
+## M2 round 2 — response to `docs/handoff/reviews/enforcement-p2/M2-round2.md`
+
+Verdict: **CHANGES-REQUIRED** — 0 P1, 3 P2, 3 P3. F-1 confirmed properly closed; F-2…F-5 confirmed
+fixed with every round-1 bypass re-run against the new script and failing closed. The three new P2s
+are **the same family the fix round was closing, one level down** — and the reviewer bypassed all
+three. `fix_rounds` 2 of 5.
+
+### (52) N-1 (P2) — a **step-level** `if:` defeated the invariant the parent ruling had just installed
+
+`runsOnPrDev` was derived from the **job's** `if:` only. The reviewer left `security-regression`
+ungated and put `if: github.base_ref == 'main'` on the *step* — checker `EXIT=0`, still certifying
+`runs_on_pr_dev: true`. GitHub skips that step on PR→dev exactly as a job guard would, and **both**
+liveness cases I had just written stayed green: one tests only the job-level form, the other asserts
+the step's `run:` string but never that the step has no `if:`.
+
+Fixed: step `if:` expressions are collected and folded into `runsOnPrDev` — **conservatively, any
+`if:` on a lane's own step means PR→dev coverage is not certified**. New case
+`test_it_fires_when_the_security_STEP_is_gated_off_pr_dev`.
+
+### (53) N-2 (P2) — the `--filter` scanner hard-failed on `pnpm --filter`, the repo's own prescribed command
+
+My F-2 fix generalised from "PHPUnit filters" to "every `--filter` token in every `run:` script". This
+is a **pnpm workspace**: `pnpm --filter @autoerp/web …` is the standard form, prescribed in `AGENTS.md`
+and used by the repo's own reviewer agents. The reviewer added `run: pnpm --filter @autoerp/web build`
+and got `UNANCHORED --filter` + `DEAD --filter entry "@autoerp/web"`, `EXIT=1` — in
+`backend-architecture`, a job with **no `if:` guard**, so it would have blocked **every PR** with an
+error telling the author to rewrite their pnpm selector as a PHPUnit regex.
+
+This is the worst kind of guard defect: a false positive that blocks everyone, produced by
+over-generalising a real fix. Fixed by scoping the scan to scripts that actually invoke
+`phpunit`/`artisan test`, and skipping any `--filter` on a line invoking `pnpm`/`npm`/`yarn`/`turbo`.
+Fail-closed behaviour **inside** test-runner scripts is unchanged. New case
+`test_it_does_not_flag_a_pnpm_workspace_filter`.
+
+### (54) N-3 (P2) — the whole 1 114-class debt was erasable by a one-word edit
+
+A group's `lane` value was validated only for **existence in `lanes`**, never that the named lane
+actually runs that group's directory. The reviewer rewrote all 71 `deferred` groups to
+`"lane": "treasury-spine-pgsql/feature-treasury"` → `EXIT=0`, *"every group has a disposition; every
+declared lane is present in ci.yml"*, and **the entire `⚠ COVERAGE DEBT` block disappeared**. The lane
+was real; it just did not run the group — the F-3 failure class one level down, and it would have
+converted the honest census this milestone exists to produce into a clean all-clear by
+search-and-replace.
+
+Fixed: a `lane` disposition must name a **whole-directory selector ending in that group's directory**;
+anything else must carry a `deferred`/`excluded` reason and a ceiling instead. Two new cases — the
+single-group form and `test_the_whole_debt_cannot_be_erased_by_relabelling_groups`, which replays the
+reviewer's exact mass rewrite.
+
+*(Caught a bug in my own first attempt: the anchor required `^` or `/` before `tests/`, so the real
+selectors — which have a **space** before the path — all failed. Fixed before commit.)*
+
+### (55) N-4 … N-6 (P3)
+
+- **N-4 — `needs:` on a gated job** skips `security-regression` while the manifest still certifies
+  PR→dev (the reviewer bypassed it with `needs: [backend-test]`). Fixed in the same predicate: each
+  needed job must also run on PR→dev. New case `test_it_fires_when_the_security_job_needs_a_gated_job`.
+- **N-5 — the scanner sees only inline `run:` text in `ci.yml`.** A `--filter` inside a shell script a
+  step invokes, or in `smoke-test.yml`/`sonarcloud.yml`/`react-doctor.yml`, is invisible. No
+  test-running `--filter` lives outside `ci.yml` today (verified). Recorded, not fixed.
+- **N-6 — `runs_on_pr_dev` is a substring heuristic.** An `if:` like
+  `event_name == 'push' && base_ref == 'dev'` contains the substring but can never be true on PR→dev.
+  Not reachable with today's three `if:` expressions (verified). Recorded; a correct fix needs a real
+  expression evaluator, which is disproportionate here.
+
+**Checker liveness suite: 14 cases.** Every bypass the reviewer ran across both rounds now fails closed.

@@ -245,4 +245,103 @@ final class FeatureLaneManifestCheckerTest extends TestCase
             self::assertStringNotContainsString('tests/Feature/Security', (string) ($step['run'] ?? ''));
         }
     }
+
+    /**
+     * N-1: a STEP-level `if:` skips the step exactly as a job guard would, and the
+     * round-2 reviewer bypassed the PR->dev guarantee with two words on the step
+     * while both existing liveness cases stayed green.
+     */
+    public function test_it_fires_when_the_security_STEP_is_gated_off_pr_dev(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "      - name: Security regression suite (module gating + kill-switches)\n"
+            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            "      - name: Security regression suite (module gating + kill-switches)\n"
+            . "        if: github.base_ref == 'main'\n"
+            . "        run: ./vendor/bin/phpunit tests/Feature/Security",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('runs_on_pr_dev', $out);
+        self::assertStringContainsString('STEP carries', $out);
+    }
+
+    /**
+     * N-4: GitHub skips a job whose dependency was skipped, so a `needs:` on a
+     * gated job removes the lane from PR->dev through a second door.
+     */
+    public function test_it_fires_when_the_security_job_needs_a_gated_job(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n",
+            "  security-regression:\n    name: Security Regression (module gating + kill-switches)\n    runs-on: ubuntu-latest\n"
+            . "    needs: [backend-test]\n",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('runs_on_pr_dev', $out);
+        self::assertStringContainsString('needs', $out);
+    }
+
+    /**
+     * N-2: `--filter` is not a PHPUnit-only token. This is a pnpm workspace and
+     * `pnpm --filter @autoerp/web …` is the prescribed form (AGENTS.md); scanning
+     * every `--filter` made that normal command hard-fail an ungated job.
+     */
+    public function test_it_does_not_flag_a_pnpm_workspace_filter(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '      - name: Check tests/Feature CI-lane manifest',
+            "      - name: Zzz pnpm workspace build\n"
+            . "        run: pnpm --filter @autoerp/web build\n\n"
+            . '      - name: Check tests/Feature CI-lane manifest',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(0, $exit, $out);
+        self::assertStringNotContainsString('@autoerp/web', $out);
+    }
+
+    /**
+     * N-3: validating only that a lane EXISTS let all 71 deferred groups be
+     * rewritten to a real lane by search-and-replace — the checker reported OK and
+     * the entire COVERAGE DEBT block disappeared. A lane must actually run the group.
+     */
+    public function test_it_fires_when_a_group_claims_a_lane_that_does_not_run_it(): void
+    {
+        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $manifest['groups']['Admin'] = ['lane' => 'treasury-spine-pgsql/feature-treasury'];
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('does not run tests/Feature/Admin', $out);
+    }
+
+    public function test_the_whole_debt_cannot_be_erased_by_relabelling_groups(): void
+    {
+        $manifestPath = $this->sandbox . '/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($manifest['groups'] as $group => $entry) {
+            if (($entry['deferred'] ?? false) === true) {
+                $manifest['groups'][$group] = ['lane' => 'treasury-spine-pgsql/feature-treasury'];
+            }
+        }
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('does not run tests/Feature/', $out);
+    }
 }

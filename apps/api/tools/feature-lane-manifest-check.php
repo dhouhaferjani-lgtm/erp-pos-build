@@ -107,19 +107,34 @@ function collectWorkflowRuns(array $workflowYaml): array
 {
     $runs = [];
     $ifs = [];
+    $needs = [];
     $stepJob = [];
+    $stepIf = [];
     foreach (($workflowYaml['jobs'] ?? []) as $jobId => $job) {
         $ifs[$jobId] = (string) ($job['if'] ?? '');
+        $jobNeeds = $job['needs'] ?? [];
+        $needs[$jobId] = is_array($jobNeeds) ? $jobNeeds : [(string) $jobNeeds];
         foreach (($job['steps'] ?? []) as $step) {
             if (! isset($step['run'])) {
                 continue;
             }
-            $runs[] = (string) $step['run'];
-            $stepJob[(string) $step['run']] = (string) $jobId;
+            $run = (string) $step['run'];
+            $runs[] = $run;
+            $stepJob[$run] = (string) $jobId;
+            // A STEP-level `if:` gates just as effectively as a job-level one —
+            // GitHub skips the step. Deriving coverage from the job guard alone
+            // let two words on the step silently remove a lane from PR->dev.
+            $stepIf[$run] = (string) ($step['if'] ?? '');
         }
     }
 
-    return ['runs' => $runs, 'ifs' => $ifs, 'stepJob' => $stepJob];
+    return [
+        'runs' => $runs,
+        'ifs' => $ifs,
+        'needs' => $needs,
+        'stepJob' => $stepJob,
+        'stepIf' => $stepIf,
+    ];
 }
 
 $wf = collectWorkflowRuns($workflowYaml);
@@ -183,6 +198,30 @@ foreach ($byGroup as $group => $members) {
 
     if ($hasLane && ! isset($lanes[$entry['lane']])) {
         $errors[] = sprintf('GROUP "%s" names lane "%s", which is not declared in `lanes`.', $group, $entry['lane']);
+    } elseif ($hasLane) {
+        // THE LANE MUST ACTUALLY RUN THIS GROUP. Validating only that the lane
+        // exists let every one of the 71 deferred groups be rewritten to a real
+        // lane by search-and-replace: the checker said "every group has a
+        // disposition; every declared lane is present in ci.yml" and the entire
+        // COVERAGE DEBT block vanished. The lane was real — it just did not run
+        // the group. Same failure class as a fictional lane, one level down.
+        $laneSelector = (string) ($lanes[$entry['lane']]['selector'] ?? '');
+        $coversGroup = $laneSelector !== ''
+            && preg_match(
+                '#(^|[\s/])tests/Feature/' . preg_quote($group, '#') . '/?$#',
+                trim($laneSelector),
+            ) === 1;
+        if (! $coversGroup) {
+            $errors[] = sprintf(
+                'GROUP "%s" claims lane "%s", but that lane\'s selector (%s) does not run '
+                . 'tests/Feature/%s. A lane disposition must name a WHOLE-DIRECTORY selector for this '
+                . 'group; anything else must carry a `deferred`/`excluded` reason and a ceiling instead.',
+                $group,
+                $entry['lane'],
+                var_export($laneSelector, true),
+                $group,
+            );
+        }
     }
     if (($isExcluded || $isDeferred) && empty($entry['reason'])) {
         $errors[] = sprintf('GROUP "%s" is %s with no `reason` string.', $group, $isExcluded ? 'excluded' : 'deferred');
@@ -275,14 +314,46 @@ foreach ($lanes as $laneId => $lane) {
     $claimsPrDev = $lane['runs_on_pr_dev'] === true;
     $jobIf = $wf['ifs'][$owningJob] ?? '';
     $runsOnPrDev = $jobIf === '' || str_contains($jobIf, "base_ref == 'dev'");
+
+    // A step-level `if:` skips the step on PR->dev exactly as a job guard would.
+    // Conservative by design: ANY `if:` on a lane's own step means we do not
+    // certify PR->dev coverage.
+    $selectorStepIf = '';
+    foreach ($wf['stepIf'] as $run => $stepIf) {
+        if (str_contains($run, $selector)) {
+            $selectorStepIf = $stepIf;
+            break;
+        }
+    }
+    if ($selectorStepIf !== '') {
+        $runsOnPrDev = false;
+    }
+
+    // …and GitHub skips a job whose dependency was skipped, so a `needs:` on a
+    // gated job removes the lane from PR->dev through a second door.
+    $skippedNeed = null;
+    foreach (($wf['needs'][$owningJob] ?? []) as $needed) {
+        $neededIf = $wf['ifs'][(string) $needed] ?? '';
+        if ($neededIf !== '' && ! str_contains($neededIf, "base_ref == 'dev'")) {
+            $skippedNeed = (string) $needed;
+            $runsOnPrDev = false;
+            break;
+        }
+    }
     if ($claimsPrDev !== $runsOnPrDev) {
+        $why = $jobIf === '' ? 'no job if: guard (always runs)' : 'job if: ' . $jobIf;
+        if ($selectorStepIf !== '') {
+            $why .= '; the lane STEP carries `if: ' . $selectorStepIf . '`, which skips it';
+        }
+        if ($skippedNeed !== null) {
+            $why .= '; the job `needs: ' . $skippedNeed . '`, which is itself gated off PR->dev';
+        }
         $errors[] = sprintf(
-            'LANE "%s" claims runs_on_pr_dev=%s but job "%s" `if:` says %s. (`if:` = %s)',
+            'LANE "%s" claims runs_on_pr_dev=%s but the workflow says %s. (%s)',
             $laneId,
             $claimsPrDev ? 'true' : 'false',
-            $owningJob,
             $runsOnPrDev ? 'true' : 'false',
-            $jobIf === '' ? 'no if: guard (always runs)' : $jobIf,
+            $why,
         );
     }
 }
@@ -302,8 +373,28 @@ $basenameCounts = array_count_values($basenames);
 // failure rather than a silent skip.
 $filterValues = [];
 foreach ($wf['runs'] as $run) {
+    // SCOPE THE SCAN. `--filter` is not a PHPUnit-only token: this is a pnpm
+    // workspace, where `pnpm --filter @autoerp/web …` is the prescribed form
+    // (AGENTS.md). Scanning every `--filter` in every script turned that normal
+    // command into a hard failure of `backend-architecture` — a job with no `if:`
+    // guard, so it blocked every PR — with an error telling the author to rewrite
+    // their pnpm selector as a PHPUnit regex. Only test-runner scripts are scanned;
+    // inside them the check still fails closed.
+    if (preg_match('/\bphpunit\b|\bartisan\s+test\b/', $run) !== 1) {
+        continue;
+    }
     $offset = 0;
     while (($pos = strpos($run, '--filter', $offset)) !== false) {
+        // …and even inside a test-runner script, a `pnpm`/`turbo` invocation on
+        // the same command line owns its own `--filter`.
+        $lineStart = strrpos(substr($run, 0, $pos), "\n");
+        $lineStart = $lineStart === false ? 0 : $lineStart + 1;
+        $before = substr($run, $lineStart, $pos - $lineStart);
+        if (preg_match('/\b(pnpm|npm|yarn|turbo)\b/', $before) === 1) {
+            $offset = $pos + 8;
+
+            continue;
+        }
         $offset = $pos + 8;
         $rest = substr($run, $offset);
         if (preg_match('/^(?:=|[ \t]+)(?:"([^"]*)"|\x27([^\x27]*)\x27|([^\s]+))/s', $rest, $m) !== 1) {
