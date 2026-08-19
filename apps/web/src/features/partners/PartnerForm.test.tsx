@@ -311,7 +311,7 @@ describe('PartnerForm — scan-to-document prefill (Task 2)', () => {
   it('does not expose a consolidation-frequency selector when periodic billing is selected', () => {
     renderPartnerForm(['/sales/customers/new'], '/sales/customers/new', 'customer')
     fireEvent.change(screen.getByLabelText(/customer category/i), { target: { value: 'business' } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /billed periodically|enable invoice consolidation/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Billed periodically' }))
 
     expect(screen.queryByRole('combobox', { name: /consolidation frequency/i })).not.toBeInTheDocument()
   })

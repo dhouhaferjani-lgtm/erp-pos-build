@@ -192,7 +192,7 @@ export function B2BFieldsSection({ control, register, watch, setValue, partnerId
           </div>
         </div>
 
-        {/* Invoice Consolidation */}
+        {/* Periodic billing classification */}
         <div className="sm:col-span-2">
           <div className="flex items-center gap-3">
             <input
