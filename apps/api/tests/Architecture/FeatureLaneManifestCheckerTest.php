@@ -601,8 +601,9 @@ final class FeatureLaneManifestCheckerTest extends TestCase
      * and the brief's R2-H-7 requirement (an asserted NONZERO selected-test count;
      * `phpunit.xml` sets no `failOnEmptyTestSuite`, so exit code alone proves nothing).
      *
-     * Every declared lane's run line is executed with `--list-tests` appended and
-     * must select at least one test. This closes `-c`/`--configuration`, `--group`,
+     * Every declared lane's ACTUAL ci.yml `run:` line — resolved from the parsed
+     * workflow, never the manifest's declared selector string — is executed with
+     * `--list-tests` appended and must select at least one test. This closes `-c`/`--configuration`, `--group`,
      * `--list-tests`, a narrower path and the whole empty-selection family by
      * OBSERVATION, not by maintaining a flag list.
      */
@@ -614,15 +615,44 @@ final class FeatureLaneManifestCheckerTest extends TestCase
             512,
             JSON_THROW_ON_ERROR,
         );
+        $workflow = \Symfony\Component\Yaml\Yaml::parse(
+            (string) file_get_contents($this->apiRoot . '/../../.github/workflows/ci.yml'),
+        );
+
+        // Collect every LIVE `run:` script, exactly as the checker does.
+        $runs = [];
+        foreach (($workflow['jobs'] ?? []) as $job) {
+            foreach (($job['steps'] ?? []) as $step) {
+                if (isset($step['run'])) {
+                    $runs[] = (string) $step['run'];
+                }
+            }
+        }
 
         self::assertNotEmpty($manifest['lanes']);
 
         foreach ($manifest['lanes'] as $laneId => $lane) {
             $selector = (string) $lane['selector'];
+
+            // THE ACTUAL RUN LINE from the parsed workflow — not the manifest's
+            // declared selector string. Executing the selector would test the
+            // manifest against itself: nothing appended to the workflow's run line
+            // could change the outcome, so `-c evil.xml`, `--group nonexistent`,
+            // `--list-tests` or a narrower path would all stay green and the
+            // empty-selection family would be closed lexically only.
+            $laneRun = null;
+            foreach ($runs as $run) {
+                if (str_starts_with(trim($run), $selector)) {
+                    $laneRun = trim($run);
+                    break;
+                }
+            }
+            self::assertNotNull($laneRun, "lane {$laneId}: selector not found in any live ci.yml run: block");
+
             $output = [];
             $exit = 0;
             exec(
-                'cd ' . escapeshellarg($this->apiRoot) . ' && ' . $selector . ' --list-tests 2>&1',
+                'cd ' . escapeshellarg($this->apiRoot) . ' && ' . $laneRun . ' --list-tests 2>&1',
                 $output,
                 $exit,
             );
@@ -631,7 +661,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
             self::assertSame(0, $exit, "lane {$laneId}: --list-tests failed\n" . implode("\n", $output));
             self::assertNotEmpty(
                 $listed,
-                "lane {$laneId} selects ZERO tests — it cannot gate anything. Run line: {$selector}",
+                "lane {$laneId} selects ZERO tests — it cannot gate anything. Run line: {$laneRun}",
             );
         }
     }
@@ -701,5 +731,131 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
         self::assertSame(1, $exit, $out);
         self::assertStringContainsString('UNANCHORED --filter', $out);
+    }
+
+    /** N-1: the trigger set is the root of the event graph and was never checked. */
+    public function test_it_fires_when_the_workflow_stops_running_on_pr_dev(): void
+    {
+        $this->writeWorkflow(str_replace(
+            'branches: [main, dev]',
+            'branches: [main]',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('TRIGGER SET', $out);
+    }
+
+    /** N-2: the checker's own job, gated. */
+    public function test_it_fires_when_its_own_host_job_is_gated(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n",
+            "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n"
+            . "    if: github.base_ref == 'main'\n",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('SELF-CHECK', $out);
+    }
+
+    /** N-2: the checker's own job, softened. */
+    public function test_it_fires_when_its_own_host_job_is_continue_on_error(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n",
+            "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n"
+            . "    continue-on-error: true\n",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('continue-on-error', $out);
+    }
+
+    /** N-2: the checker's own job, made to depend on a gated job. */
+    public function test_it_fires_when_its_own_host_job_needs_a_gated_job(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n",
+            "  backend-architecture:\n    name: Backend Architecture Boundary (Deptrac ratchet)\n    runs-on: ubuntu-latest\n"
+            . "    needs: [backend-test]\n",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('SELF-CHECK', $out);
+    }
+
+    /** N-2: the checker's own STEP, softened. */
+    public function test_it_fires_when_its_own_step_is_continue_on_error(): void
+    {
+        $this->writeWorkflow(str_replace(
+            "        run: php tools/feature-lane-manifest-check.php",
+            "        continue-on-error: true\n        run: php tools/feature-lane-manifest-check.php",
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('SELF-CHECK', $out);
+    }
+
+    /** N-2: deleting the liveness step outright must not be silent. */
+    public function test_it_fires_when_its_own_liveness_step_is_deleted(): void
+    {
+        $this->writeWorkflow(str_replace(
+            '        run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php',
+            '        run: echo removed',
+            $this->workflow(),
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('SELF-CHECK', $out);
+    }
+
+    /**
+     * N-3 guard. `test_every_lane_actually_selects_tests` is the empirical backstop
+     * for the whole empty-selection family; it is only a backstop if it executes
+     * the WORKFLOW's run line rather than the manifest's declared selector string
+     * (which would be testing the manifest against itself — nothing appended to
+     * ci.yml could change its outcome).
+     *
+     * This assertion is lexical, and says so: it pins the method to resolving its
+     * command from the parsed workflow. The behavioural proof that the resolution
+     * works is `test_it_fires_when_a_lane_carries_a_configuration_flag` plus the
+     * checker's own run-line resolution, which share the same `str_starts_with`
+     * contract.
+     */
+    public function test_the_selection_assertion_resolves_from_the_workflow(): void
+    {
+        $src = (string) file_get_contents(__DIR__ . '/FeatureLaneManifestCheckerTest.php');
+        $method = substr(
+            $src,
+            strpos($src, 'public function test_every_lane_actually_selects_tests') ?: 0,
+            2600,
+        );
+
+        self::assertStringContainsString('ci.yml', $method, 'must read the workflow');
+        self::assertStringContainsString('$laneRun', $method, 'must execute the resolved run line');
+        // Single-quoted on purpose: a double-quoted needle would interpolate
+        // $selector and silently match the wrong thing.
+        self::assertStringNotContainsString(
+            '\' && \' . $selector',
+            $method,
+            'must NOT execute the manifest selector string directly',
+        );
     }
 }

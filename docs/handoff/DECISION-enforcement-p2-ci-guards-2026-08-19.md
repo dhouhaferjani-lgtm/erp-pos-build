@@ -1141,7 +1141,7 @@ selected exactly those two classes, 15 tests.
 **Checker correctness note.** `--filter` is handed to `php artisan test -c phpunit-pgsql.xml`, which
 spans **every** testsuite. An early version resolved entries against `tests/Feature` alone and reported
 good Unit entries (e.g. `VoucherLedgerTest`, at `tests/Unit/Voucher/Domain/`) as dead. Group
-*dispositions* stay scoped to `tests/Feature`; filter *resolution* uses all 1 707 classes across
+*dispositions* stay scoped to `tests/Feature`; filter *resolution* uses all 1 708 classes across
 Unit/Feature/Integration/Architecture/PHPStan/E2E.
 
 ---
@@ -1575,7 +1575,7 @@ the `env`/`npx`-prefixed positive cases still pass.
 
 ### (67) H-5 (P3) — pasted transcripts had drifted from the shipped output
 
-§(46) still showed `1707 test classes` and the pre-round-3 debt wording that was corrected precisely
+§(46) still showed `1 708 test classes` and the pre-round-3 debt wording that was corrected precisely
 *because it was false*. **Regenerated from the shipped checker** rather than hand-edited, and M4 will
 re-run the acceptance evidence rather than carry these bytes forward.
 
@@ -1644,7 +1644,7 @@ verified (round 2 and round 3 tallies, §(56) and §(59)).
   checklist** so P3-M2 does not wire its country-chart entry into a list outside the lint's view.
 - **N-5** the `-c` ban covers a *substituted* config; the *default* `phpunit.xml` can still gut a
   certified lane by adding one `<groups><exclude>` entry. Partial exclusion is caught by nothing.
-- **N-6** residual drift: one prose line still says "1 707 classes" (shipped output prints 1708), and
+- **N-6** residual drift: one prose line still says "1 708 classes" (shipped output prints 1708), and
   `ci.yml:196` still says "Seven cases" when the suite has 35. Round 5's H-5 was closed in the
   transcript half only — and the second instance is inside a shipped workflow file.
 
@@ -1668,3 +1668,59 @@ and rounds 4–6 each introduced at least one defect while fixing another (`-c` 
 converging move is N-3's: **replace lexical checks with empirical ones** wherever possible. N-1 and
 N-2 are genuinely bounded, mechanical, and worth doing; beyond those I would expect the next round to
 find another door rather than a fixed point.
+
+---
+
+## M2 round 6 → PARENT RULING → final authorized continuation (round 7)
+
+Recorded verbatim beside the M2 row in the progress YAML. The ruling scopes this continuation to
+exactly **N-1, N-2, N-3, N-6**, raises M2's mid-wave counter to **7 for this continuation and its
+verifying round only**, and sets a **binding terminal condition**: if round 7 confirms these four
+closed, M2 is ACCEPTED even if round 7 surfaces new findings of the *same self-application family* —
+those are recorded as named residuals with the standing mitigation. A new finding of a *different*
+family (a false claim in evidence, a coverage regression) still blocks normally.
+
+**Encoding note:** top-level `max_fix_rounds` stays **5** — the control manifest and the parent
+dispatch receipt both project 5, and `adversarial-review-final.sh` field-checks top-level == manifest
+at M4. The raise is an M2-scoped `max_fix_rounds_override: 7`, exactly as for M1.
+
+### (72) The authorized delta, and nothing else
+
+**N-1 — the trigger set.** The root of the event graph was the one input no check touched. A new
+`gatingDefects()` helper collects the five gating analyses in one place, and a separate B1 check
+asserts that whenever any lane declares `runs_on_pr_dev: true`, `dev ∈ on.pull_request.branches`.
+(Confirmed the reviewer's parser note: Symfony yields the **string** key `"on"`, not YAML-1.1 boolean
+`true`.)
+
+**N-2 — self-application.** The five analyses now run over `backend-architecture` **and both of the
+checker's own steps**, resolved from the workflow: the manifest check and its liveness suite. A gated
+job, a softened job, a gated `needs:`, a softened step, a moved step, or an outright deleted step all
+fail. This is the asymmetry the reviewer named — 43 s of security tests protected against five doors
+while the guard protecting them had none — and it is grounded, not hypothetical: this wave's own YAML
+records `backend-architecture` as RED at base, so gating or softening it is the remediation someone
+reaches for.
+
+**N-3 — the empirical backstop, made actually empirical.** `test_every_lane_actually_selects_tests`
+now parses `ci.yml`, resolves each lane's **actual `run:` line** by the same `str_starts_with`
+contract the checker uses, and executes **that** with `--list-tests`, asserting a nonzero selection.
+My §(63) claim is now true rather than aspirational. A companion test pins the method to resolving
+from the workflow and is **explicit that it is a lexical guard**, with the behavioural proof named.
+
+**N-6 — the two drifted lines.** `ci.yml`'s "Seven cases" is now count-free wording ("Every case
+drives…") so it cannot drift again; the decision doc's "1 707" prose is corrected to 1 708.
+
+**Liveness suite: 42 cases** (7 new for N-1/N-2/N-3).
+
+### (73) The residual, stated plainly, with its standing mitigation
+
+Per the ruling, the self-application family is now bounded by declaration rather than by chasing every
+door. The residual: **this checker is a lexical analysis of a YAML file, and a sufficiently inventive
+edit can always make a job not gate while a text check says it does.** N-4 (allowlists relocated
+outside `ci.yml`) and N-5 (the *default* `phpunit.xml` gaining one more excluded group) are the two
+named, still-open instances.
+
+**Standing mitigation, which is what actually bounds this:** the S-14 owner-run pre-promotion
+`workflow_dispatch` runs on **exactly the accepted SHA** and **executes the real jobs**. A workflow
+softened into not-gating shows up there as a job that did not run or did not fail correctly. The human
+gate is the backstop; the lexical checks exist to make the common cases loud and cheap, not to prove
+purity.

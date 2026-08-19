@@ -193,7 +193,7 @@ jobs:
       - name: Feature-lane checker liveness test
         # docs/conventions/08-DETECTOR-LIVENESS.md: every detector ships with a
         # test proving it FIRES on a planted violation, IN THE SAME CI LANE as the
-        # detector. Seven cases drive COPIES of the tree in a temp dir — unanchored
+        # detector. Every case drives COPIES of the tree in a temp dir — unanchored
         # filter, unquoted filter, commented-out lane selector, unassigned group,
         # coverage-debt growth, a lane misreporting its PR->dev coverage, and the
         # happy path. Deliberately a single FILE and not `tests/Architecture`: that

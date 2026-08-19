@@ -41,6 +41,62 @@ declare(strict_types=1);
  * Usage: php tools/feature-lane-manifest-check.php
  */
 
+/**
+ * The five ways a job/step stops gating on PR->dev, in one place so the checker can
+ * apply them to ITSELF as well as to the lanes it certifies.
+ *
+ * @return list<string> human-readable reasons; empty means "genuinely gates on PR->dev"
+ */
+function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
+{
+    $reasons = [];
+    if ($jobId === null) {
+        return ['could not be resolved to a job in the workflow'];
+    }
+
+    // 1. job-level `if:`
+    $jobIf = (string) ($wf['ifs'][$jobId] ?? '');
+    if ($jobIf !== '' && ! str_contains($jobIf, "base_ref == 'dev'")) {
+        $reasons[] = 'job `if: ' . $jobIf . '` excludes PR->dev';
+    }
+
+    // 2. step-level `if:` (always-true forms excepted — they skip nothing)
+    $alwaysTrue = ['always()', 'success()', '!cancelled()', '! cancelled()'];
+    $stepIf = trim((string) ($wf['stepIf'][$stepRun] ?? ''));
+    if ($stepRun !== null && $stepIf !== '' && ! in_array($stepIf, $alwaysTrue, true)) {
+        $reasons[] = 'the step carries `if: ' . $stepIf . '`, which cannot be proven true on PR->dev';
+    }
+
+    // 3 + 4. continue-on-error on the job or the step
+    if (($wf['jobSoft'][$jobId] ?? false) === true) {
+        $reasons[] = 'the job sets `continue-on-error`, so failures cannot block the merge';
+    }
+    if ($stepRun !== null && ($wf['stepSoft'][$stepRun] ?? false) === true) {
+        $reasons[] = 'the step sets `continue-on-error`, so failures cannot block the merge';
+    }
+
+    // 5. transitive `needs` on a job that is itself gated off PR->dev
+    $queue = $wf['needs'][$jobId] ?? [];
+    $seen = [];
+    while ($queue !== []) {
+        $needed = (string) array_shift($queue);
+        if (isset($seen[$needed])) {
+            continue;
+        }
+        $seen[$needed] = true;
+        $neededIf = (string) ($wf['ifs'][$needed] ?? '');
+        if ($neededIf !== '' && ! str_contains($neededIf, "base_ref == 'dev'")) {
+            $reasons[] = 'the job depends (transitively) on `' . $needed . '`, itself gated off PR->dev';
+            break;
+        }
+        foreach (($wf['needs'][$needed] ?? []) as $next) {
+            $queue[] = $next;
+        }
+    }
+
+    return $reasons;
+}
+
 $apiRoot = dirname(__DIR__);
 $repoRoot = dirname($apiRoot, 2);
 $manifestPath = $apiRoot . '/tests/feature-lane-manifest.json';
@@ -493,6 +549,32 @@ foreach ($lanes as $laneId => $lane) {
     }
 }
 
+// ---- B1. THE TRIGGER SET ----------------------------------------------------
+// The root of the event graph, and the one input every `runs_on_pr_dev: true`
+// claim rests on. Everything else here verifies job/step guards; none of it means
+// anything if the workflow does not start on PR->dev at all. One token
+// (`branches: [main, dev]` -> `[main]`) removes the entire workflow — including
+// the parent-ruled security-regression job — while every other check still passes.
+$anyLaneClaimsPrDev = false;
+foreach ($lanes as $lane) {
+    if (($lane['runs_on_pr_dev'] ?? false) === true) {
+        $anyLaneClaimsPrDev = true;
+        break;
+    }
+}
+if ($anyLaneClaimsPrDev) {
+    // Symfony's parser yields the STRING key "on" here, not the YAML-1.1 boolean.
+    $prBranches = $workflowYaml['on']['pull_request']['branches'] ?? null;
+    if (! is_array($prBranches) || ! in_array('dev', $prBranches, true)) {
+        $errors[] = sprintf(
+            'TRIGGER SET: a lane declares runs_on_pr_dev=true, but the workflow does not start on '
+            . 'PR->dev. `on.pull_request.branches` = %s. No job guard can rescue a workflow that never '
+            . 'runs.',
+            var_export($prBranches, true),
+        );
+    }
+}
+
 // ---- B2. aggregate membership (brief H-9), for EVERY lane's job -------------
 // Asserting this from one PHPUnit case, for one lane, left `backend-architecture`
 // (the job carrying this very checker) and `treasury-spine-pgsql` unpinned.
@@ -509,6 +591,46 @@ foreach (array_unique($mustBeInAggregate) as $jobId) {
             . 'membership a package-wide obligation: a gate outside the aggregate does not gate.',
             $jobId,
         );
+    }
+}
+
+// ---- B3. SELF-APPLICATION --------------------------------------------------
+// Everything above protects the lanes. This protects the checker itself. Without
+// it the package's entire backend guard surface is removable by exactly the
+// remediation an unrelated lane reaches for when `backend-architecture` goes red
+// — gate it, soften it, or make it depend on a gated job — while every check here
+// still reports OK. 43 s of security tests were protected against five doors; the
+// guard that protects them was protected against none.
+$selfJob = 'backend-architecture';
+$selfSteps = [
+    'php tools/feature-lane-manifest-check.php',
+    './vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php',
+];
+foreach ($selfSteps as $selfStep) {
+    $selfRun = null;
+    foreach ($wf['runs'] as $run) {
+        if (str_starts_with(trim($run), $selfStep)) {
+            $selfRun = $run;
+            break;
+        }
+    }
+    if ($selfRun === null) {
+        $errors[] = sprintf(
+            'SELF-CHECK: the step `%s` is not present in any live `run:` block of ci.yml. The checker '
+            . 'and its liveness suite must both actually run.',
+            $selfStep,
+        );
+
+        continue;
+    }
+    $owner = $wf['stepJob'][$selfRun] ?? null;
+    if ($owner !== $selfJob) {
+        $errors[] = sprintf('SELF-CHECK: the step `%s` has moved out of the `%s` job.', $selfStep, $selfJob);
+
+        continue;
+    }
+    foreach (gatingDefects($wf, $owner, $selfRun) as $reason) {
+        $errors[] = sprintf('SELF-CHECK: `%s` no longer gates PR->dev — %s.', $selfStep, $reason);
     }
 }
 
