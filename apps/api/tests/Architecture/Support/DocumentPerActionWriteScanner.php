@@ -180,6 +180,11 @@ use SplFileInfo;
  *    same function renumbers the later ones, so the ratchet reports one `stale`
  *    plus one `new` instead of a clean addition. It fails SAFE (still red), but
  *    the message misleads; read the file:line in the report, not just the key.
+ *    ⚠️ Since M2 added the anti-growth direction this is no longer merely
+ *    noisy: a renumbered key reads as an ADDED key, which only an OWNER re-pin
+ *    can authorise, so a legitimate remediation can produce a red that NO
+ *    contributor-side edit clears. See the RE-PIN TRIGGER block in
+ *    DocumentPerActionBaselineRatchetTest's docblock.
  *    Methods of a nested anonymous class are attributed to that anonymous class
  *    only (they used to be double-counted onto the enclosing class as well).
  *    Anonymous classes are numbered `(anonymous#N)` in FILE order, which is a
@@ -187,17 +192,6 @@ use SplFileInfo;
  *    earlier in a file renumbers every later one.
  * D. RAW SQL is matched by table name plus an INSERT/UPDATE/DELETE keyword in a
  *    statically-resolvable string. SQL assembled from variables is not matched.
- * G. THE SCAN ROOT IS `app/` ONLY, and that is a RULING with live consequences.
- *    `database/seeders/**`, `database/migrations/**` and `tests/**` are not
- *    scanned, so real four-table writes there are neither baselined nor
- *    guarded — e.g. `database/seeders/CoffeeShopSeeder.php` (`StockLevel::create`,
- *    and a `JournalEntry::create` with no `source_id`),
- *    `DemoPharmacySeeder.php`, `ParapharmacySeeder.php`,
- *    `StockLevelSeeder.php`. The justification is that seeders and migrations
- *    are provisioning surfaces with no justifying document by construction; the
- *    consequence is that a future DATA-BACKFILL migration writing
- *    `journal_entries` would be outside this guard by construction. Raised as a
- *    parent ticket, not decided here.
  * D2. `upsert()` can never classify as LINKED: its argument 0 is a LIST of row
  *    arrays and argument 1 is a positional column list, so payload extraction
  *    always resolves to `false` and the site fails closed to `violation` even
@@ -223,6 +217,25 @@ use SplFileInfo;
  *    `linked` classification on a level write means "traceable to a movement",
  *    NOT "a justifying document exists". Read it that way in the baseline
  *    cross-check.
+ * G. THE SCAN ROOT IS `app/` ONLY, and that is a RULING with live consequences.
+ *    `database/seeders/**`, `database/migrations/**` and `tests/**` are not
+ *    scanned, so real four-table writes there are neither baselined nor
+ *    guarded — e.g. `database/seeders/CoffeeShopSeeder.php` (`StockLevel::create`,
+ *    and a `JournalEntry::create` with no `source_id`),
+ *    `DemoPharmacySeeder.php`, `ParapharmacySeeder.php`,
+ *    `StockLevelSeeder.php`. The justification is that seeders and migrations
+ *    are provisioning surfaces with no justifying document by construction; the
+ *    consequence is that a future DATA-BACKFILL migration writing
+ *    `journal_entries` would be outside this guard by construction. Raised as a
+ *    parent ticket, not decided here.
+ * H. A BASELINE KEY IS A SLOT, NOT A WRITE. The key identifies
+ *    (file, class, function, table, mechanism, ordinal) — not the write's
+ *    content. So REMOVING a baselined violation and ADDING a different unlinked
+ *    write in the same bucket of the same function is CI-green: the key set is
+ *    unchanged, so growth, stale and anti-growth all pass, while the tree now
+ *    contains a violation nobody reviewed. The ratchet counts slots; only code
+ *    review sees which write occupies one. This is the sharpest limit of the
+ *    key-set design and it is named here rather than left implicit.
  *
  * A per-site key is line-number-free and stable under reformatting:
  *   `<relative file>::<class>::<function>::<table>::<mechanism>#<ordinal>`

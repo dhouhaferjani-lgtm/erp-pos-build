@@ -177,6 +177,89 @@ jobs:
         # docs/architecture/deptrac-baseline-2026-05-14.md.
         run: php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json
 
+  backend-dpa-guard:
+    name: Backend Document-per-Action Guard (DPA cementing ratchet)
+    runs-on: ubuntu-latest
+    # Static-analysis-only gate (~15 s): no database, no Redis, no app boot.
+    #
+    # NO `if:` guard — it runs on every event that actually starts this
+    # workflow, and the true event graph is PR→main, PR→dev, push→main and
+    # workflow_dispatch ONLY (see `on:` at the top of this file). A direct push
+    # to `dev` never starts the workflow at all, so the promotion-path guarantee
+    # is the owner's mandatory pre-promotion workflow_dispatch run on exactly
+    # the accepted candidate SHA (docs/handoff/LEDGER.md §2 row S-14).
+    #
+    # The two DPA classes run BY PATH rather than via `--testsuite=Architecture`:
+    # that suite is RED at this base for four unrelated, pre-existing failures
+    # (AuthLifecycleTest, ConsoleCommandTenantContextTest,
+    # ControllerTenantContextTest, QueueJobTenantContextTest), so wiring the
+    # whole suite here would land a gate that is red on arrival. Widening this
+    # job to the full suite is a follow-up for whoever closes those four.
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history: the anti-growth ratchet resolves the owner-pinned
+          # baseline blob out of the object store, and fetches the pin tag.
+          fetch-depth: 0
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl
+          coverage: none
+          # Measured peak is ~443 MB and app/ only grows; pinned explicitly so a
+          # future OOM cannot present as an undiagnosable red on the default.
+          ini-values: memory_limit=1G
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Fetch the durable baseline pin tag
+        working-directory: .
+        run: |
+          PIN_TAG="$(sed -n 's/^dpa_baseline_pin_tag:[[:space:]]*//p' docs/handoff/progress/enforcement-p1.progress.yaml | head -1 | awk '{print $1}' | tr -d '"'\'')"
+          if [ -z "$PIN_TAG" ] || [ "$PIN_TAG" = "null" ]; then
+            echo "::error::dpa_baseline_pin_tag is not recorded in the progress YAML — the owner-pinned baseline blob would have no durable ref. Failing closed."
+            exit 1
+          fi
+          echo "Fetching pin tag: $PIN_TAG"
+          git fetch --no-tags origin "refs/tags/${PIN_TAG}:refs/tags/${PIN_TAG}"
+
+      - name: Document-per-action write guard (fixture matrix + liveness)
+        run: |
+          set -o pipefail
+          ./vendor/bin/phpunit tests/Architecture/DocumentPerActionWriteGuardTest.php | tee guard.out
+          grep -qE 'OK \([1-9][0-9]* test' guard.out || {
+            echo "::error::the guard selected zero tests — phpunit exits 0 on an empty selection (phpunit.xml sets no failOnEmptyTestSuite), so this is asserted explicitly";
+            exit 1; }
+
+      - name: Document-per-action baseline ratchet (growth / stale / anti-growth)
+        env:
+          # OWNER-SET repository variable — the anti-growth ceiling, deliberately
+          # outside every candidate diff. Unset => the ratchet fails closed,
+          # which is the designed forcing function for the owner bootstrap.
+          DPA_BASELINE_PROTECTED_BLOB: ${{ vars.DPA_BASELINE_PROTECTED_BLOB }}
+        run: |
+          set -o pipefail
+          ./vendor/bin/phpunit tests/Architecture/DocumentPerActionBaselineRatchetTest.php | tee ratchet.out
+          grep -qE 'OK \([1-9][0-9]* test' ratchet.out || {
+            echo "::error::the ratchet selected zero tests"; exit 1; }
+
   backend-test:
     name: Backend Tests (PHPUnit)
     runs-on: ubuntu-latest
@@ -1189,7 +1272,15 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     # route-manifest-drift has no `if:` guard, so it always runs and can never
     # enter this aggregate gate as a skipped dependency.
-    needs: [backend-lint, backend-analyse, backend-architecture, backend-test, backend-test-pgsql, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
+    #
+    # backend-dpa-guard is included below on exactly the same reasoning: it
+    # carries NO `if:` at all, so on every event that starts this workflow it
+    # ALWAYS RUNS and can never come back `skipped`. A `needs` entry whose job is
+    # skipped would fail/skip this aggregate spuriously — an unconditional job
+    # cannot, so adding it is safe by the same argument already made above for
+    # treasury-spine-pgsql. A guard visible in CI but absent from this list is
+    # not merge-gating.
+    needs: [backend-lint, backend-analyse, backend-architecture, backend-dpa-guard, backend-test, backend-test-pgsql, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
     steps:
       - name: All checks passed
         run: echo "All CI checks have passed!"
