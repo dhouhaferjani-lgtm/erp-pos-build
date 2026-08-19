@@ -6,7 +6,7 @@
  */
 
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { FileText, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 import {
@@ -20,8 +20,61 @@ import { getErrorMessage } from '@/lib/api'
 import { useCompany } from '@/hooks/useCompany'
 import { usePermissions } from '@/hooks/usePermissions'
 import { useCompanyConfig } from '@/contexts'
-import { colorClasses } from '@/lib/designTokens'
+import { colorClasses, semanticColorTokens } from '@/lib/designTokens'
 import { DataTable } from '@/components/molecules/DataTable/DataTable'
+import { Button } from '@/components/atoms/Button/Button'
+
+interface BillingRefusalDocument {
+  id: string
+  document_number: string
+  invoice_id: string | null
+  invoice_number: string | null
+  invoice_date: string | null
+  invoiced_via: string | null
+}
+
+interface BillingRefusal {
+  documents: BillingRefusalDocument[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function parseBillingRefusal(error: unknown): BillingRefusal | null {
+  if (!isRecord(error)) return null
+  const response = error['response']
+  if (!isRecord(response) || response['status'] !== 422) return null
+  const data = response['data']
+  if (!isRecord(data)) return null
+  const envelope = data['error']
+  if (!isRecord(envelope) || envelope['code'] !== 'DELIVERY_NOTE_ALREADY_INVOICED') return null
+  const details = envelope['details']
+  if (!isRecord(details) || !Array.isArray(details['documents'])) return null
+
+  const documents = new Map<string, BillingRefusalDocument>()
+  for (const candidate of details['documents']) {
+    if (!isRecord(candidate)) continue
+    const id = nullableString(candidate['id'])
+    const documentNumber = nullableString(candidate['document_number'])
+    if (id === null || documentNumber === null) continue
+
+    documents.set(id, {
+      id,
+      document_number: documentNumber,
+      invoice_id: nullableString(candidate['invoice_id']),
+      invoice_number: nullableString(candidate['invoice_number']),
+      invoice_date: nullableString(candidate['invoice_date']),
+      invoiced_via: nullableString(candidate['invoiced_via']),
+    })
+  }
+
+  return documents.size > 0 ? { documents: Array.from(documents.values()) } : null
+}
 
 interface DeliveryNoteConsolidationProps {
   /**
@@ -52,6 +105,7 @@ export function DeliveryNoteConsolidation({
   const { hasPermission } = usePermissions()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [error, setError] = useState<string | null>(null)
+  const [billingRefusal, setBillingRefusal] = useState<BillingRefusal | null>(null)
 
   // Fetch invoiceable delivery notes
   const {
@@ -151,14 +205,30 @@ export function DeliveryNoteConsolidation({
       const response = await consolidateMutation.mutateAsync(
         Array.from(selectedIds)
       )
+      setBillingRefusal(null)
       if (onSuccess) {
         onSuccess(response.data.id)
       } else {
         navigate(`/sales/invoices/${response.data.id}`)
       }
     } catch (err) {
-      setError(getErrorMessage(err))
+      const refusal = parseBillingRefusal(err)
+      if (refusal === null) {
+        setBillingRefusal(null)
+        setError(getErrorMessage(err))
+      } else {
+        setError(null)
+        setBillingRefusal(refusal)
+      }
     }
+  }
+
+  const removeRefusedDeliveryNotes = () => {
+    if (billingRefusal === null) return
+    const refusedIds = new Set(billingRefusal.documents.map((document) => document.id))
+    setSelectedIds((current) => new Set(Array.from(current).filter((id) => !refusedIds.has(id))))
+    setBillingRefusal(null)
+    setError(null)
   }
 
   // Format currency
@@ -228,6 +298,89 @@ export function DeliveryNoteConsolidation({
           <AlertCircle className="h-5 w-5 flex-shrink-0" />
           <span>{error}</span>
         </div>
+      )}
+
+      {billingRefusal !== null && (
+        <section
+          role="alert"
+          aria-labelledby="consolidation-billing-refusal-title"
+          className={`rounded-lg border ${semanticColorTokens.intent.danger.borderSubtle} ${semanticColorTokens.intent.danger.bgSubtle} p-4`}
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle
+              aria-hidden="true"
+              className={`mt-0.5 h-5 w-5 shrink-0 ${semanticColorTokens.intent.danger.text}`}
+            />
+            <div className="min-w-0 flex-1">
+              <h3
+                id="consolidation-billing-refusal-title"
+                className={`font-semibold ${semanticColorTokens.intent.danger.textStronger}`}
+              >
+                {t('sales:deliveryNotes.consolidation.billingRefusal.title')}
+              </h3>
+              <p className={`mt-1 text-sm ${semanticColorTokens.intent.danger.textStronger}`}>
+                {t('sales:deliveryNotes.consolidation.billingRefusal.guarantee')}
+              </p>
+              <ul className="mt-4 space-y-3">
+                {billingRefusal.documents.map((document) => {
+                  const laneLabel = document.invoiced_via === null
+                    ? t('sales:deliveryNotes.consolidation.billingRefusal.billedBy.unknown')
+                    : t(
+                        `sales:deliveryNotes.consolidation.billingRefusal.billedBy.${document.invoiced_via}`,
+                        {
+                          defaultValue: t('sales:deliveryNotes.consolidation.billingRefusal.billedBy.unknown'),
+                        },
+                      )
+
+                  return (
+                    <li
+                      key={document.id}
+                      className={`rounded-md border ${semanticColorTokens.intent.danger.borderSubtle} ${semanticColorTokens.surface.base} p-3`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className={`font-medium ${semanticColorTokens.text.primary}`}>
+                            {document.document_number}
+                          </p>
+                          <p className={`mt-1 text-sm ${semanticColorTokens.text.muted}`}>
+                            {document.invoice_date ?? '—'}
+                            {' · '}
+                            {laneLabel}
+                          </p>
+                        </div>
+                        {document.invoice_id !== null && document.invoice_number !== null ? (
+                          <Link
+                            to={`/sales/invoices/${document.invoice_id}`}
+                            className={`text-sm font-medium ${semanticColorTokens.intent.primary.text} hover:underline`}
+                          >
+                            {t('sales:deliveryNotes.consolidation.billingRefusal.openInvoice', {
+                              number: document.invoice_number,
+                            })}
+                          </Link>
+                        ) : (
+                          <span className={`text-sm ${semanticColorTokens.text.muted}`}>
+                            {document.invoice_number
+                              ?? t('sales:deliveryNotes.consolidation.billingRefusal.invoiceUnavailable')}
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+              <Button
+                type="button"
+                variant="secondary"
+                className="mt-4"
+                onClick={removeRefusedDeliveryNotes}
+              >
+                {t('sales:deliveryNotes.consolidation.billingRefusal.removeAndRetry', {
+                  count: billingRefusal.documents.length,
+                })}
+              </Button>
+            </div>
+          </div>
+        </section>
       )}
 
       {/* Validation warning */}

@@ -616,6 +616,20 @@
       "selected": "sélectionné(s)",
       "invoiceTotal": "Total de la facture",
       "createInvoice": "Créer la facture",
+      "billingRefusal": {
+        "title": "Certains bons de livraison n’ont pas pu être facturés",
+        "guarantee": "Aucune facture n’a été créée. Aucun numéro de facture n’a été utilisé.",
+        "billedBy": {
+          "consolidation": "Facturé par consolidation",
+          "order_conversion": "Facturé depuis la commande client",
+          "pre_post_delivery": "Facturé lors de la livraison guidée",
+          "legacy_unknown": "Facturé (origine non enregistrée)",
+          "unknown": "Origine de facturation indisponible"
+        },
+        "openInvoice": "Ouvrir {{number}}",
+        "invoiceUnavailable": "Facture associée indisponible",
+        "removeAndRetry": "Retirer ces {{count}} éléments et réessayer"
+      },
       "errors": {
         "differentPartners": "Tous les bons de livraison sélectionnés doivent appartenir au même partenaire",
         "differentCurrencies": "Tous les bons de livraison sélectionnés doivent utiliser la même devise",

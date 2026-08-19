@@ -616,6 +616,20 @@
       "selected": "selected",
       "invoiceTotal": "Invoice Total",
       "createInvoice": "Create Invoice",
+      "billingRefusal": {
+        "title": "Some delivery notes could not be invoiced",
+        "guarantee": "No invoice was created. No invoice number was used.",
+        "billedBy": {
+          "consolidation": "Billed by consolidation",
+          "order_conversion": "Billed from sales order",
+          "pre_post_delivery": "Billed during guided delivery",
+          "legacy_unknown": "Billed (source not recorded)",
+          "unknown": "Billing source unavailable"
+        },
+        "openInvoice": "Open {{number}}",
+        "invoiceUnavailable": "Taking invoice unavailable",
+        "removeAndRetry": "Remove these {{count}} and retry"
+      },
       "errors": {
         "differentPartners": "All selected delivery notes must belong to the same partner",
         "differentCurrencies": "All selected delivery notes must use the same currency",
