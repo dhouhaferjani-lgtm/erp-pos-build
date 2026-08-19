@@ -304,20 +304,24 @@ final class DocumentPerActionWriteGuardTest extends TestCase
     /**
      * `linkedFormExists()` is consulted by the negative-control gate, but it is
      * a restatement of the rules rather than a derivation from them, so the two
-     * can drift. This ties them together over every cell the matrix exercises:
-     * a cell may only expect `linked` where the rule surface says a linked form
-     * exists, and a cell the rule surface calls linkable must never be pinned
-     * as violation-only across the whole matrix.
+     * can drift. This gate ties them together in ONE direction: a cell may only
+     * expect `linked` where the rule surface says a linked form exists.
+     *
+     * The converse — a cell the rule surface calls linkable must actually pin a
+     * negative control — is NOT checked here; it is enforced by
+     * every_cell_with_a_linked_form_pins_a_negative_case(), which reads the same
+     * `linkedFormExists()` to decide which cells owe one. Stated explicitly
+     * because an earlier version of this docblock promised both directions
+     * while the body implemented one, which is exactly the
+     * documentation-overstates-code pattern this package's own gates blocked on
+     * three times.
      */
     #[Test]
     public function the_rule_surface_agrees_with_the_pinned_classifications(): void
     {
         $mismatches = [];
-        $expectationsByCell = [];
 
         foreach (self::fixtureMatrix() as $case) {
-            $expectationsByCell[$case['table']][$case['mechanism']][] = $case['expected'];
-
             if ($case['expected'] === 'linked'
                 && ! DocumentPerActionWriteScanner::linkedFormExists($case['table'], $case['mechanism'])) {
                 $mismatches[] = sprintf(
