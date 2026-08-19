@@ -8,8 +8,8 @@
 - Pre-re-pin blocker record: `codex/dn-consolidation-2026-08-12-pre-repin`.
 - Current M1 implementation SHA: `c517635cb` (bridge round 3 accepted at `95ac2f22a`).
 - Current M2 implementation SHA: `3b1af7fbc` (bridge round 2 accepted through `52aae14b7`).
-- Current M3 implementation SHA: `2de9df339` (round-1 fix complete; differential gate at `2a983c621`).
-- Milestone being handed back: M3 fix round 1 complete; bridge round 2 pending.
+- Current M3 implementation SHA: `2de9df339` (bridge round 2 accepted through `872e2a8e0`).
+- Milestone being handed back: M3 passed; M4 retirement and frequency work is next.
 - No push, merge, or deployment was performed.
 
 M1 commit list:
@@ -442,7 +442,7 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 
 ## M3 — Global to-bill work queue
 
-**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — scoped fix round 1 complete; round 2 pending.**
+**Status: PASSED — bridge round 2 ACCEPT.**
 
 Bridge round 1 reviewed `60df88a01..87f4b75db` through frontend-conventions, tenancy-authz,
 treasury, and general. It found two P1s: `apiGet` stripped the queue's top-level `meta`/`summary`
@@ -459,6 +459,14 @@ company context renders a named empty state rather than a blank region. The regi
 in-memory group pagination and unbounded remaining-page fan-out are recorded, not widened into a
 queue redesign.
 
+Bridge round 2 reviewed `60df88a01..872e2a8e0`, independently reran the focused M3 gates, and
+returned `ACCEPT`. It confirmed all six blocking round-1 findings closed. Its eleven new notes are
+P3 and recorded rather than expanded into M4: live-query page fan-out/offset races, stale
+confirmation totals, cross-location invoice location attribution, stale refusal state after a
+generic error, raw/UTC-sensitive dates, a narrow all-location recovery trap, sidebar test hygiene,
+the no-active-location membership edge, untranslated location validation, and a missing-partner
+read-path exception.
+
 M3 commit sequence:
 
 - `aed019e3b Phase 2.3.1: Specify delivery note to-bill queue`
@@ -474,6 +482,7 @@ M3 commit sequence:
 - `47d982037 Phase 2.3.11: Reproduce remaining M3 bridge findings`
 - `2de9df339 Phase 2.3.12: Close remaining M3 bridge findings`
 - `2a983c621 Phase 2.3.13: Tighten to-bill transport assertion`
+- `872e2a8e0 Phase 2.3.14: Record M3 bridge fix round`
 
 ### Failing-test-first evidence
 

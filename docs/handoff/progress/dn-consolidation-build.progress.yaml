@@ -106,11 +106,11 @@ milestones:
   - id: M3
     title: "M3 - View B: roll-up shape + GET /delivery-notes/uninvoiced/{partner} lazy expansion (M1 owns the endpoint's existence, authorization and module gate; M3 owns its roll-up shape, lazy expansion and UI), location scoping and filters, /sales/to-bill, sidebar entry, the 30/60/90/90+ aging strip, periodic-billing chip, coexistence helper text. §6.3 green AND the /finance/lane-separation regression green."
     review_lenses: [frontend-conventions, tenancy-authz, treasury, general]
-    status: review
+    status: passed
     fix_rounds: 1
     commit: 2de9df339
-    verdict: docs/handoff/reviews/dn-consolidation-build/M3-round1.md
-    last_verdict: CHANGES-REQUIRED
+    verdict: docs/handoff/reviews/dn-consolidation-build/M3-round2.md
+    last_verdict: ACCEPT
   - id: M4
     title: "M4 - Retirement + frequency (runs strictly AFTER both M2 and M3 have passed): delete /inventory/delivery-notes/consolidate (route + page + component + barrel export); retire the consolidation_frequency selector and relax CreatePartnerRequest ONLY; re-label invoice_consolidation (en + fr). Grep proves zero remaining references; the diff contains NO partner migration."
     review_lenses: [frontend-conventions, general]
@@ -150,3 +150,4 @@ findings:
   - "M3 bridge round 1 at 87f4b75db returned CHANGES-REQUIRED. Blocking fixes: preserve the queue's top-level data/meta/summary envelope, implement OI-8 attributed refusal and explicit remainder recovery on View B, suppress invalid one-character search requests, label group counts as groups, validate malformed location UUIDs before PostgreSQL, and make location/company-currency exclusions explicit with a reachable all-locations scope for entitled users."
   - "M3 fix round 1 is RED 19e0332bc + 47d982037 and GREEN 91468b98d + 2de9df339, with assertion cleanup 2a983c621: real Axios-to-page envelope coverage, attributed OI-8 refusal and explicit remainder retry, debounced min-2 search, customer-group labels, UUID-before-query validation, server-described location/currency scope, entitled all-location access, and a no-company empty state. The register's P3 unbounded fan-out and in-memory group pagination remain recorded rather than expanded into a redesign."
   - "M3 fix-round differential preflight passed at 2a983c621: focused frontend 82/82 and backend 18/127 are green; stable exact frontend 729/731 has only the two inherited finance reds; exact backend is unchanged at 1068 passed/32 skipped/2 inherited SQLite reds with its PostgreSQL control green; PHPStan and route-manifest residual sets are unchanged."
+  - "M3 bridge round 2 at 872e2a8e0 returned ACCEPT. Eleven non-blocking P3 notes remain recorded in the handback/register, including live-query pagination/fan-out, stale confirmation totals, cross-location invoice attribution, stale refusal state, date localization, all-location recovery, and no-active-location scope edge cases."
