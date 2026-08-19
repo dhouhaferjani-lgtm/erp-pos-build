@@ -109,8 +109,8 @@ milestones:
     status: review
     fix_rounds: 0
     commit: c0c0c8273
-    verdict: null
-    last_verdict: null
+    verdict: docs/handoff/reviews/dn-consolidation-build/M3-round1.md
+    last_verdict: CHANGES-REQUIRED
   - id: M4
     title: "M4 - Retirement + frequency (runs strictly AFTER both M2 and M3 have passed): delete /inventory/delivery-notes/consolidate (route + page + component + barrel export); retire the consolidation_frequency selector and relax CreatePartnerRequest ONLY; re-label invoice_consolidation (en + fr). Grep proves zero remaining references; the diff contains NO partner migration."
     review_lenses: [frontend-conventions, general]
@@ -147,3 +147,4 @@ findings:
   - "M2 bridge round 2 at 52aae14b7 returned ACCEPT. The close-before-merge P2 is assigned to M3/M5: View A must prevent mixed-currency invalid batches or widen inline attribution for CONSOLIDATION_VALIDATION_FAILED. P3 tickets recorded in the handback cover confirmed-only All semantics, silent A2 errors, raw refusal dates, the currency-bearing count string, shared FilterTabs ARIA, missing invoiced/all request-shape tests, and inert viewer-only selection."
   - "M3 at c0c0c8273 delivers the location-scoped customer-only to-bill roll-up and lazy partner rows, aging/filter/group UI, independent Sales/deliveries.view route gates, invoices.create group actions, sidebar and route-manifest entries, generated-DTO row typing, and the View A mixed-currency selection guard assigned by M2 round 2. Seeder and generated permissions map remain untouched."
   - "M3 amended differential preflight passed before review: focused frontend 74/74 and backend 18/120 are green; exact frontend 721/723 has only the two inherited finance reds; exact backend 1068 passed/32 skipped has only the two inherited SQLite fixture reds, which pass 2/2 on PostgreSQL; whole PHPStan has only locked C-3 lines 309-310; whole lint/audits reproduce no new failure."
+  - "M3 bridge round 1 at 87f4b75db returned CHANGES-REQUIRED. Blocking fixes: preserve the queue's top-level data/meta/summary envelope, implement OI-8 attributed refusal and explicit remainder recovery on View B, suppress invalid one-character search requests, label group counts as groups, validate malformed location UUIDs before PostgreSQL, and make location/company-currency exclusions explicit with a reachable all-locations scope for entitled users."

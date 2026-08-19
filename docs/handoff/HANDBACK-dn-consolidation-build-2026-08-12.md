@@ -442,7 +442,14 @@ M2 introduces no new failure and does not modify any inherited-failure owner sur
 
 ## M3 — Global to-bill work queue
 
-**Status: IMPLEMENTATION COMPLETE — bridge round 1 pending.**
+**Status: BRIDGE ROUND 1 CHANGES-REQUIRED — scoped fix round 1 in progress.**
+
+Bridge round 1 reviewed `60df88a01..87f4b75db` through frontend-conventions, tenancy-authz,
+treasury, and general. It found two P1s: `apiGet` stripped the queue's top-level `meta`/`summary`
+envelope, and View B suppressed attributed 422 toasts without supplying the required inline OI-8
+recovery. Four P2s cover one-character search requests, partner-group counts mislabeled as delivery
+notes, malformed PostgreSQL UUID input, and silent/unreachable location/currency scope. Fix round 1
+is limited to those findings plus directly related P3 test hardening.
 
 M3 commit sequence:
 
