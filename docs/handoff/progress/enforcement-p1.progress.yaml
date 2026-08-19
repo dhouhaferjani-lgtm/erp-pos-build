@@ -30,7 +30,7 @@ max_fix_rounds: 5
 #   Any failure: status blocked_precondition, STOP. Do NOT edit the pins.
 # P1 is NEVER folded into the running 3C session (gate-r1 H-1 ruling): this wave runs only as a FRESH
 # worktree/branch created from base_sha after 3C is accepted and merged.
-base_sha: null
+base_sha: 41fb478c21ae010568036aa66ffaef726ec63f09
 dpa_3c_merge_sha: 1e8c0fa03adacd9d7b210ea41092c8f8538d515c
 dpa_3c_reviewed_sha: d07868ccaf7f395bb50744a767c56aa4ab945983  # wave3-3c-3d M3.commit (ACCEPT M3-round7); reviewed->merge->base ancestry verified by parent at dispatch
 
@@ -103,7 +103,10 @@ closing_receipt: null
 # NOT merged, NOT pushed — and the executor NEVER pushes (gate-r1 H-7): remote-CI proof of the ci.yml
 # change is the owner's PRE-promotion workflow_dispatch gate (pre_promotion_ci_dispatch above; LEDGER
 # §2 row S-14, gate-r2 R2-C-2/R2-H-2). The parent promotes only after that run is green.
-branch: null
+branch: codex/enforcement-p1-dpa-guard   # worktree .worktrees/enforcement-p1, created from base_sha.
+# NOTE (deviation, recorded at M0): the YAML comment above and brief §5 suggest the branch NAME
+# `codex/enforcement-p1-cementing-guard`; the parent's dispatch instruction of record specified
+# `codex/enforcement-p1-dpa-guard`, which is what was created. Name-only; no contract effect.
 
 # F-1: parent writes the `Phase <major.minor.patch>` series here BEFORE dispatch (AGENTS.md:16).
 # Still null at M0 = blocked_precondition — do not invent a phase number.
@@ -152,11 +155,27 @@ milestones:
   - id: M0
     title: "Preconditions (SETUP-ONLY, no bridge review): (1) base_sha + dpa_3c_merge_sha non-null, dpa_3c_merge_sha verified an ANCESTOR of base_sha (git merge-base --is-ancestor); (2) ACCEPTED-3C proof (gate-r2 R2-H-4; equality hardened gate-r3 R3-H-1): docs/handoff/progress/wave3-3c-3d.progress.yaml M3 reads status: passed, its verdict: path resolves to a parseable ACCEPT verdict artifact, and its recorded commit EQUALS dpa_3c_merge_sha — or, when dpa_3c_reviewed_sha is set, its recorded commit EQUALS dpa_3c_reviewed_sha (exact equality — an arbitrary ancestor can never stand in for the reviewed tip) AND reviewed-tip -> merge-commit -> base_sha ancestry holds (both hops, git merge-base --is-ancestor); ancestry+seam alone is NOT sufficient (an intermediate/rejected 3C commit also carries the seam); (3) S0 seam re-verified at the EXACT dpa_3c_merge_sha AND at base_sha (recordMovement signature with ?StockMovementReferenceType $referenceType / ?string $referenceId + the assertReferenceLinkagePaired call — git show <sha>:apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php); (4) fresh worktree/branch created from base_sha — this run is NOT the 3C session (gate-r1 H-1); (5) commit_series non-null; (6) ratchet_trust_model_ack non-null (gate-r5 R5-H-1 — the F-8 principal enumeration + non-authorship assertion is an M0 artifact, not prose); (7) control_manifest non-null and the manifest file present at base with a matching sha256 (gate-r8 R8-H-1). Any failure: status blocked_precondition, STOP. Completion = status passed with the pins echoed into the handback header; no adversarial register is produced."
     review_lenses: []
-    status: pending
+    status: passed
     fix_rounds: 0
     commit: null
-    verdict: null
+    verdict: null            # SETUP-ONLY milestone: no adversarial register is produced (title).
     last_verdict: null
+    updated: 41fb478c2
+    m0_evidence:
+      base_sha_verified: "git rev-parse --verify 41fb478c21ae010568036aa66ffaef726ec63f09 -> OK"
+      merge_sha_verified: "git rev-parse --verify 1e8c0fa03adacd9d7b210ea41092c8f8538d515c -> OK"
+      reviewed_sha_verified: "git rev-parse --verify d07868ccaf7f395bb50744a767c56aa4ab945983 -> OK"
+      ancestry_merge_to_base: "git merge-base --is-ancestor 1e8c0fa03 41fb478c2 -> exit 0"
+      ancestry_reviewed_to_merge: "git merge-base --is-ancestor d07868cca 1e8c0fa03 -> exit 0"
+      ancestry_reviewed_to_base: "git merge-base --is-ancestor d07868cca 41fb478c2 -> exit 0"
+      accepted_3c_proof: "wave3-3c-3d.progress.yaml M3 (:123-131) status: passed; commit: d07868ccaf7f395bb50744a767c56aa4ab945983 == dpa_3c_reviewed_sha (exact equality); verdict: docs/handoff/reviews/wave3-3c-3d/M3-round7.md exists, exactly one 'VERDICT: ACCEPT' line (:61) which is also the final non-empty line; wave top-level status: complete"
+      s0_seam_at_merge_sha: "git show 1e8c0fa03:apps/api/app/Modules/Inventory/Domain/Services/StockAdjustmentService.php -> recordMovement(:1700) carries ?StockMovementReferenceType $referenceType = null (:1715) + ?string $referenceId = null (:1716) and calls assertReferenceLinkagePaired (:1719)"
+      s0_seam_at_base_sha: "same file at 41fb478c2 -> recordMovement(:1769), ?StockMovementReferenceType $referenceType (:1784), ?string $referenceId (:1785), assertReferenceLinkagePaired (:1788)"
+      fresh_worktree: "git worktree add .worktrees/enforcement-p1 -b codex/enforcement-p1-dpa-guard 41fb478c2 — NOT the 3C session (gate-r1 H-1)"
+      commit_series_non_null: "Phase 4.<milestone>.<seq>"
+      ratchet_trust_model_ack_non_null: true
+      control_manifest_verified: "docs/handoff/enforcement-control-manifest.yaml present at base; sha256 709b6fe9a81cf5bbc5578aa297a44035a75e578708bd40155671c654094b217a == control_manifest.sha256 pin"
+
   - id: M1
     title: "Scanner + per-table reference rules (docblocked, gate-reviewed) + the FULL write-mechanism fixture/tamper matrix (TDD: fixtures first). Vocabulary per brief §2 deliverables 1+6 (gate-r1 H-4): Eloquent create / firstOrCreate / updateOrCreate / update / save / delete / increment / decrement, DB::table() query-builder writes, raw SQL — one positive + one negative fixture per mechanism per applicable table, explicitly covering the live StockLevel::firstOrCreate (StockAdjustmentService.php:1574-1590) and BatchStock::firstOrCreate (StockAdjustmentService.php:1838-1863; BatchStockService.php:88-105,322-335) mechanisms. Handback carries the mechanism-by-table coverage table."
     review_lenses: [stock-gl-interaction, inventory-costing]
