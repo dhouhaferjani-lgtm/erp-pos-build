@@ -24,6 +24,9 @@ use Database\Seeders\CountryDefaultsChartOfAccountsSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Mockery;
+use Mockery\LegacyMockInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\Support\CountryDefaults\M4Fixtures;
 use Tests\TestCase;
@@ -154,6 +157,60 @@ final class ProvisioningFlagMatrixTest extends TestCase
             Account::query()->whereKey($gain->parent_id)->value('code'),
             'the overlay must use the French-plan parent present in the assigned chart',
         );
+    }
+
+    public function test_template_variance_overlay_warns_and_skips_optional_gain_without_a_compatible_parent(): void
+    {
+        $actor = $this->m4Actor();
+        $draft = $this->m4Draft('generic');
+        $draft->accounts()
+            ->where('system_purpose', SystemAccountPurpose::InventoryGainIncome->value)
+            ->delete();
+        $draft->accounts()->create([
+            'code' => '9000',
+            'name' => 'Third-plan revenue root',
+            'type' => 'revenue',
+            'parent_code' => null,
+            'system_purpose' => null,
+            'is_system' => false,
+            'sort_order' => (int) $draft->accounts()->max('sort_order') + 1,
+        ]);
+        $draft->accounts()->where('parent_code', '7000')->update(['parent_code' => '9000']);
+        $draft->accounts()->where('code', '7000')->delete();
+        $template = app(TemplatePublishingService::class)->publish(
+            $draft->id,
+            'Third plan without an optional variance-gain parent',
+            ['GB'],
+            $actor,
+        );
+        $this->m4Assign('GB', $template, $actor);
+        config(['country_defaults.provisioning_enabled' => true]);
+        [$tenant, $company] = $this->tenantCompanyUser('GB', 'template-third-plan');
+        $logSpy = Log::spy();
+
+        app(ChartOfAccountsService::class)->seedForCompany($company);
+
+        self::assertTrue(
+            Account::query()
+                ->where('company_id', $company->id)
+                ->where('system_purpose', SystemAccountPurpose::InventoryShrinkageExpense->value)
+                ->exists(),
+        );
+        self::assertFalse(
+            Account::query()
+                ->where('company_id', $company->id)
+                ->where('system_purpose', SystemAccountPurpose::InventoryGainIncome->value)
+                ->exists(),
+        );
+        self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
+        $logSpy->shouldHaveReceived('warning', [
+            'INVENTORY-VARIANCE-TEMPLATE-OVERLAY skipped optional gain: no compatible revenue parent.',
+            Mockery::on(static fn (array $context): bool => $context === [
+                'tenant_id' => $tenant->id,
+                'company_id' => $company->id,
+                'country_code' => 'GB',
+            ]),
+        ])->once();
     }
 
     public function test_country_parameterized_contract_consumer_uses_template_path(): void
