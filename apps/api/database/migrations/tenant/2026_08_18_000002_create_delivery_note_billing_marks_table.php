@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -81,6 +82,11 @@ return new class extends Migration
                         continue;
                     }
 
+                    $invoicedAt = $this->safeInvoicedAt($payload, $counts);
+                    if ($invoicedAt === null) {
+                        continue;
+                    }
+
                     $invoicedVia = $this->billingLane($payload, $counts);
                     $invoiceId = $this->safeInvoiceId($payload, (string) $deliveryNote->company_id, $counts);
 
@@ -92,7 +98,7 @@ return new class extends Migration
                         'delivery_note_id' => $deliveryNote->id,
                         'invoice_id' => $invoiceId,
                         'invoiced_via' => $invoicedVia,
-                        'invoiced_at' => $payload['invoiced_at'],
+                        'invoiced_at' => $invoicedAt,
                         'company_id' => $deliveryNote->company_id,
                     ]);
                     $counts['rows_written']++;
@@ -146,6 +152,43 @@ return new class extends Migration
 
         return DeliveryNoteBillingLane::tryFrom($payload['invoiced_via'])?->value
             ?? DeliveryNoteBillingLane::LegacyUnknown->value;
+    }
+
+    /**
+     * Validate `payload.invoiced_at` before it reaches a NOT NULL timestamptz column.
+     *
+     * Every other legacy shape in this backfill is validated and counted; `invoiced_at`
+     * alone went in raw, so a truthy-but-unparseable value (`true`, `"yes"`, a blank
+     * string, an object) raised 22007/22P02 and ABORTED the migration — contradicting the
+     * backfill's own contract that dirty rows are neutralised rather than fatal, and doing
+     * so during `tenants:migrate`, which this repository auto-runs on every push to
+     * origin/dev. Count and skip instead, exactly like `unparseable_invoice_id`.
+     *
+     * The original string is returned unchanged when it parses, so well-formed values keep
+     * their offset and nothing about the existing backfill's output changes.
+     * (M5-terminal treasury F-6.)
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, int>  $counts
+     */
+    private function safeInvoicedAt(array $payload, array &$counts): ?string
+    {
+        $invoicedAt = $payload['invoiced_at'];
+        if (! is_string($invoicedAt) || trim($invoicedAt) === '') {
+            $counts['unparseable_invoiced_at']++;
+
+            return null;
+        }
+
+        try {
+            CarbonImmutable::parse($invoicedAt);
+        } catch (Throwable) {
+            $counts['unparseable_invoiced_at']++;
+
+            return null;
+        }
+
+        return $invoicedAt;
     }
 
     /** @param array<string, mixed> $payload @param array<string, int> $counts */
@@ -256,6 +299,7 @@ return new class extends Migration
             'cross_company_invoice_id' => 0,
             'non_invoice_document_id' => 0,
             'missing_invoiced_via' => 0,
+            'unparseable_invoiced_at' => 0,
         ];
     }
 

@@ -11,6 +11,8 @@ use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimNotFinalisedException;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimRequiresTransactionException;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
@@ -79,6 +81,14 @@ class DocumentConversionController extends Controller
                 'data' => $invoice->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Sales order converted to invoice successfully',
             ], 201);
+        } catch (DeliveryNoteClaimNotFinalisedException|DeliveryNoteClaimRequiresTransactionException $e) {
+            // Integrity alarms, not customer-data refusals: a broken billed-once invariant
+            // must reach the error reporter as a 500-class alert. Re-parenting them onto
+            // RuntimeException clears the `catch (\DomainException)` arm below, but this
+            // method also has a catch-all `catch (\Exception)` that would still flatten them
+            // into a 422 — so they are rethrown explicitly here.
+            // (M5-terminal treasury F-7.)
+            throw $e;
         } catch (DeliveryNoteBatchValidationException $e) {
             $containsAlreadyInvoiced = $e->containsAlreadyInvoiced();
 

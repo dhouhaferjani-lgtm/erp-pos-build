@@ -114,6 +114,33 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
             'invoice_id' => $validInvoice->id,
         ]));
 
+        // M5-terminal treasury F-6 — `invoiced_at` was the ONE dirty shape the backfill did
+        // not validate: it went raw into a NOT NULL timestamptz, so a truthy-but-unparseable
+        // legacy value raised 22007/22P02 and ABORTED the whole migration, contradicting the
+        // backfill's own contract that dirty rows are counted, never fatal. That abort would
+        // land during `tenants:migrate`, which this repository auto-runs on every push to
+        // origin/dev. These four shapes must be counted and skipped, like every other.
+        $invoicedAtTrue = $this->deliveryNote('DN-INVOICED-AT-TRUE', [
+            'invoiced_at' => true,
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+        $invoicedAtWord = $this->deliveryNote('DN-INVOICED-AT-WORD', [
+            'invoiced_at' => 'yes',
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+        $invoicedAtBlank = $this->deliveryNote('DN-INVOICED-AT-BLANK', [
+            'invoiced_at' => '   ',
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+        $invoicedAtArray = $this->deliveryNote('DN-INVOICED-AT-ARRAY', [
+            'invoiced_at' => ['not' => 'a timestamp'],
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+
         $this->assertFalse(Schema::hasTable('delivery_note_billing_marks'));
         Log::spy();
         $this->runMigration();
@@ -137,6 +164,11 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
         $this->assertSame(DeliveryNoteBillingLane::LegacyUnknown->value, $this->marker($noLane)->invoiced_via);
         $this->assertNull($this->marker($unstamped));
 
+        // F-6: skipped, counted, and above all NOT fatal to the migration.
+        foreach ([$invoicedAtTrue, $invoicedAtWord, $invoicedAtBlank, $invoicedAtArray] as $undatedDeliveryNote) {
+            $this->assertNull($this->marker($undatedDeliveryNote));
+        }
+
         $tenantId = $this->tenant->id;
         Log::shouldHaveReceived('info')
             ->withArgs(static fn (string $message, array $context): bool => $message === 'delivery_note_billing_marks.backfill'
@@ -150,6 +182,7 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
                     'cross_company_invoice_id' => 1,
                     'non_invoice_document_id' => 1,
                     'missing_invoiced_via' => 2,
+                    'unparseable_invoiced_at' => 4,
                 ])
             ->once();
 
@@ -276,6 +309,7 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
                     'cross_company_invoice_id' => 0,
                     'non_invoice_document_id' => 0,
                     'missing_invoiced_via' => 0,
+                    'unparseable_invoiced_at' => 0,
                 ])
             ->once();
     }

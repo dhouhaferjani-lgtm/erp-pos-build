@@ -19,6 +19,7 @@ use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\DocumentConverted;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
 use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteClaimNotFinalisedException;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
@@ -633,6 +634,51 @@ final class SalesOrderBillingClaimTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('error.code', 'QUOTE_NOT_CONFIRMED')
             ->assertJsonMissingPath('error.details.documents');
+    }
+
+    /**
+     * M5-terminal treasury F-7 — the integrity alarm must not render as a routine 422.
+     *
+     * DeliveryNoteClaimNotFinalisedException is the wave's ONLY detector for a broken
+     * billed-once invariant; the claim service's own docblock says a committed runtime-lane
+     * marker with a null invoice id is a DEFECT. While it extended DomainException it fell
+     * through the generic `catch (\DomainException)` handlers and shipped as HTTP 422 under
+     * a validation error code — indistinguishable from a customer-data refusal, producing no
+     * 500, no alert, and an operator-facing message reading "Delivery-note payload
+     * finalisation affected 0 rows; expected 1." It must surface as a 500-class alert.
+     */
+    public function test_a_broken_billed_once_invariant_surfaces_as_a_server_error_not_a_validation_refusal(): void
+    {
+        $order = $this->createOrder();
+        $this->createDeliveryNoteFrom($order);
+
+        $connection = DB::connection();
+        $shortFinalise = new class($connection) extends DeliveryNoteBillingClaimService
+        {
+            public function __construct(ConnectionInterface $db)
+            {
+                parent::__construct($db);
+            }
+
+            public function claim(DeliveryNoteClaimRequest $request, Closure $createInvoice): DeliveryNoteClaimSet
+            {
+                throw DeliveryNoteClaimNotFinalisedException::forPayloadCount(1, 0);
+            }
+        };
+        $this->app->instance(DeliveryNoteBillingClaimService::class, $shortFinalise);
+        $this->forgetConverters();
+
+        $response = $this->actingAs($this->user)
+            ->postJson("/api/v1/orders/{$order->id}/convert-to-invoice");
+
+        $this->assertGreaterThanOrEqual(
+            500,
+            $response->getStatusCode(),
+            'A broken billed-once invariant must raise a 500-class alert, never a routine 422.',
+        );
+
+        $this->app->forgetInstance(DeliveryNoteBillingClaimService::class);
+        $this->forgetConverters();
     }
 
     /**
