@@ -311,6 +311,20 @@ paragraph asserted the error direction was one-way and "conservative". It is not
   but this is the direction that loses coverage silently. Fix shape if it ever becomes live: resolve
   the dispatched symbol through the file's `use` map and require it to land under
   `Domain\Events\` / `Shared\Events\`.
+- **Under-report, second vector — STRING LITERALS are not stripped (recorded at M5 round 2, N-8).**
+  `sourceWithoutComments()` drops `T_COMMENT` / `T_DOC_COMMENT` but leaves
+  `T_CONSTANT_ENCAPSED_STRING` / `T_ENCAPSED_AND_WHITESPACE` in the haystack, so a string containing
+  `event(new …)` — a log line, an exception message, a code sample in a heredoc — would read as an
+  emission and silently retire a baseline entry. **There is already a near-miss in the very file the
+  F-4 probe used:** `ZReportProjection.php:326` contains the text `event(s)` inside a
+  `missingDependency` message (`'pos_receipts rows for %d verified v%d+ SALE_RECEIPT event(s) on
+  terminal %s …'`). It is harmless today only because pattern 1 is `/\bevent\s*\(\s*new\s+/` and
+  requires the `new`. **Recorded as a known detector limitation rather than fixed**, per the
+  round-2 disposition ("optional") and the parent's instruction: a second token-class change to the
+  detector in a terminal documentation round would re-open the exit statement's code anchor for a
+  vector that is not live. Fix shape when someone next opens this file: add
+  `|| $token[0] === T_CONSTANT_ENCAPSED_STRING || $token[0] === T_ENCAPSED_AND_WHITESPACE` to the
+  strip condition, and extend the negative fixture with a string-literal line.
 
 **Comments are now stripped before matching, and that was a real hole, not a nicety.** The round-1
 reviewer appended one line to `ZReportProjection.php`:
@@ -327,9 +341,18 @@ regex-stripping is deliberate: a regex that skips comments has to understand str
 escaping, and getting that subtly wrong is the same silent-miss class the ratchet exists to prevent.
 
 Pinned by a new test, `test_a_commented_out_emission_does_not_count_as_emitting`, with two fixtures
-under `tests/Architecture/ProjectorEmissionFixtures/` — one whose only emissions are inside `//`,
-`#` and `/* */` comments and a doc-block (must read as NOT emitting) and one positive control with a
+under `tests/Architecture/ProjectorEmissionFixtures/` — one whose only emissions are inside two `//`
+lines, a `/* */` block and a doc-block (must read as NOT emitting) and one positive control with a
 real `event(new …)` (must read as emitting, so the stripping cannot blind the detector wholesale).
+
+> **Corrected at M5 round 2, N-5.** The first version of this sentence also claimed a `#` comment in
+> the negative fixture. There is none — `grep -c '#'` on the fixture returns 0. A `#` line WAS
+> written and `pint`'s `single_line_comment_style` fixer rewrote it to `//` when the fix round ran
+> `pint` (that rewrite is visible in the round-1 verification output). So a `#` control cannot be
+> kept in this codebase at all, and the sentence is corrected rather than the fixture. Behaviour is
+> unaffected either way: `#` lexes as `T_COMMENT`, which is exactly what the detector strips —
+> round 2 verified that independently. Describing a control that does not exist is the small end of
+> the F-3 class, which is why it is corrected rather than waved off.
 
 **Controls, run and reverted:**
 
@@ -463,17 +486,37 @@ not merely within the milestone that promised it.
 > that does not exist**. An empty numstat against a non-existent path proves nothing about the file
 > it claims to measure, which is exactly the unfalsifiable-assertion class M4-F-2 faulted, published
 > here as the proof of R-1 — the most repeated constraint in this wave. The real path has no
-> `Fiscal/V3/` segment. **The gate genuinely holds:** re-measured against the real path (by the
-> round-1 reviewer independently, and again here), `git diff --numstat a5520f23c..HEAD --
+> `Fiscal/V3/` segment. (The directory `app/Modules/POS/Domain/Services/Fiscal/V3/` **does** exist —
+> it holds `CanonicalJsonEncoder.php` and `CanonicalPayloadBuilder.php` — which is why the wrong path
+> looked plausible for three milestones.) **The gate genuinely holds:** re-measured against the real
+> path (by the round-1 reviewer independently, by the round-2 reviewer, and again here),
+> `git diff --numstat a5520f23c..HEAD --
 > apps/api/app/Modules/POS/Domain/Services/ZReportHashService.php` returns no entry and the file is
 > present.
+>
+> **INHERITED — the bogus path is older than M5, and three FROZEN registers still publish it
+> (recorded at M5 round 2, N-2).** It did not originate here. The same non-existent path is
+> published as proof of the R-1 zero-line gate at:
+>
+> - `docs/handoff/reviews/es-wave-a0/M3b-implementation-evidence.md:43`
+> - `docs/handoff/reviews/es-wave-a0/M3b-round1.md:45`
+> - `docs/handoff/reviews/es-wave-a0/M4-round1.md:31`
+>
+> Two of those three are **review** registers — i.e. the record of a reviewer confirming the gate —
+> so the unfalsifiable green was independently re-published rather than merely copied. **Those files
+> are FROZEN and are deliberately left unedited**: a review register is the record of what a
+> reviewer actually wrote, and rewriting one to be correct destroys exactly the evidence it exists to
+> preserve. The correction lives here and in the ledger's F-3 entry instead. Anyone reading M3b or M4
+> and relying on that line for R-1 should re-measure against
+> `apps/api/app/Modules/POS/Domain/Services/ZReportHashService.php`; the gate holds, the published
+> proof of it did not.
 
 ### 4.1 Every test file this lane touched, re-run on PostgreSQL by path
 
 | File | Result |
 |---|---|
 | `tests/Architecture/OrphanedEventRatchetTest` | 4 passed (4 assertions) |
-| `tests/Architecture/ProjectorEmissionRatchetTest` | 3 passed (3 assertions) |
+| `tests/Architecture/ProjectorEmissionRatchetTest` | 4 passed (5 assertions) — corrected at round 2, N-1 |
 | `tests/Feature/Fiscal/FiscalEventIngestionEndpointTest` | 14 passed (69 assertions) |
 | `tests/Feature/Fiscal/FiscalEventQuarantineResolutionTest` | 12 passed (74 assertions) |
 | `tests/Feature/Fiscal/ImmutabilityTriggerPresenceTest` | 5 passed (10 assertions) |
@@ -491,9 +534,19 @@ not merely within the milestone that promised it.
 | `tests/Feature/Fiscal/Task33FiscalFullFlowVerificationTest` | **1 failed (14 assertions)** — inherited, §4.3 |
 | `tests/Feature/POS/ReceiptReturnRefactorV3Test` | **9 passed (345 assertions)** — GREEN; the previously recorded red was a PG-session-timezone artifact, §4.3 |
 
-Every count that a milestone register recorded reproduces exactly, with one deliberate exception:
+Every count that a milestone register recorded reproduces exactly, with two deliberate exceptions:
 `FiscalEventIngestionEndpointTest` is 69 assertions rather than M4's 66, because of the three F-7
-attribution assertions added in `75f978674`.
+attribution assertions added in `75f978674`; and `ProjectorEmissionRatchetTest` is 4/5 rather than
+the 3/3 it shipped at, because fix round 1 added
+`test_a_commented_out_emission_does_not_count_as_emitting` (F-4).
+
+> **Corrected at M5 round 2, N-1.** This table published the projector ratchet at its **pre-fix**
+> 3/3 after the fix round had already taken it to 4/5 — contradicting §2 of this same document,
+> which prints 4/5 twice, and the fix commit's own message, which says "up from 7/7". The stale
+> number sat in the published per-file record a reviewer diffs against, on the **one file that round
+> changed**, and it was a count mismatch on a *ratchet* — which manufactures precisely the tamper
+> alarm the ratchet exists to make meaningful. Same class as F-1 and F-3: the artifact wrong about
+> the thing the round was for.
 
 **Note on `VerifyEventChainFleetCommandDbPerTenantTest`:** it first ran `1 failed (0 assertions)` on
 a `FATAL: database "iziposcentral" does not exist`. That is the harness, not the code — `.env` pins
@@ -529,9 +582,13 @@ been found.
 Re-run at HEAD on the same scratch database, varying one thing:
 
 ```text
-default scratch session  ->  Tests: 2 failed, 7 passed (253 assertions)   [x3, deterministic]
-PGTZ=UTC                 ->  Tests: 9 passed (345 assertions)             [matches the reviewer]
+default session on 127.0.0.1:5432  ->  Tests: 2 failed, 7 passed (253 assertions)   [x3, deterministic]
+PGTZ=UTC          on the same host ->  Tests: 9 passed (345 assertions)             [matches the reviewer]
 ```
+
+*("Default session" is qualified by the instance — see the N-6 note below. The round-2 reviewer
+additionally reproduced the historical red on demand with `PGTZ=Africa/Tunis`: `Tests: 9,
+Assertions: 253, Failures: 2`, both at `:778`, i.e. the mechanism reproduces in both directions.)*
 
 Diagnosed rather than guessed. Instrumenting the failing assertion (added, dumped, reverted) shows
 the aggregate window and the rows are **exactly one hour apart**:
@@ -553,6 +610,47 @@ PostgreSQL server reports `show timezone` → **`Africa/Tunis`** (UTC+1), so eve
 hour outside the window, all three drop out, `$independentNet` becomes `0.000`, and
 `bccomp('0.000','10.000')` is `-1` at `:779`. Nothing about the code under test is involved.
 
+##### Which "scratch server" — the discriminating variable is the INSTANCE, not the client (M5 round 2, N-6)
+
+Round 2 could not reproduce the "default session is red" half and proposed that the non-UTC session
+came from the **client's `PGTZ`** while the server GUC was UTC. Re-measured here with `PGTZ`
+explicitly unset (`env -u PGTZ`), that is not what this machine reports. **There are TWO local
+PostgreSQL instances, and both host a database named `autoerp_es_wave_a0_test`:**
+
+```text
+env -u PGTZ, same database name, both instances:
+
+port 5432  (Homebrew postgresql@15, data_directory /opt/homebrew/var/postgresql@15)
+    select setting, reset_val, source from pg_settings where name='TimeZone'
+    ->  Africa/Tunis | reset_val=Africa/Tunis | source=configuration file
+    psql  show timezone            -> Africa/Tunis
+    PDO   show timezone (no PGTZ)  -> Africa/Tunis
+    select count(*) from pg_db_role_setting -> 0        (no per-db / per-role override)
+
+port 5433  (the containerised instance)
+    ->  UTC | reset_val=UTC | source=configuration file
+```
+
+`source = configuration file` and `reset_val = Africa/Tunis` are the marks of a **server GUC set in
+`postgresql.conf`**, not of a client-supplied value — a client `PGTZ` would show `source = client`
+and leave `reset_val` at the server default. So on port **5432** the non-UTC session is the server's,
+and `PGTZ=UTC` is the client *overriding* it; on port **5433** the server is already UTC and no
+override is needed.
+
+That reconciles both measurements without either being wrong: this lane's runs used **5432** (the
+`.env`-adjacent host all M0–M5 evidence was produced against), the round-2 reviewer's used an
+instance reporting UTC. Round 2's proposed clause — "the server's `timezone` GUC is UTC, so the
+default session is environment-dependent" — is **not adopted**, because writing it would put a
+statement into the terminal exit evidence that this machine contradicts. What IS adopted is round
+2's real point, and it is the stronger one: **"the scratch server" was never a sufficient
+identifier.**
+
+**Carry-forward rule, strengthened accordingly — pin the instance AND assert the session:**
+run this lane's PG suites against a **UTC session**, and do not assume you have one. Either pin
+`DB_PORT=5433`, or set `PGTZ=UTC`, and in either case verify with
+`select setting, reset_val, source from pg_settings where name='TimeZone'` before trusting a red.
+A non-UTC session manufactures red in every window-based aggregate test in this suite.
+
 **Consequences, stated plainly:**
 
 - The suite is **GREEN at HEAD** on a UTC session. There is no inherited code red here and nothing
@@ -565,11 +663,14 @@ hour outside the window, all three drop out, `$independentNet` becomes `0.000`, 
   suite"* — is **withdrawn**. On a UTC session the test runs to completion and reaches that
   assertion.
 - The `blockers:` entry asking the parent to assign ownership is **removed** from the ledger.
-- **Carry-forward for anyone reproducing this lane:** run the PG suites with a **UTC session**
-  (`PGTZ=UTC`, or a server whose `timezone` GUC is `UTC`). A non-UTC session manufactures red in
-  window-based aggregate tests. This is the same failure class the M4 register already recorded for
-  `DepositReceiptAppendTest` ("a one-hour local-TZ artifact"); it is now understood as a harness
-  property, not a per-test quirk.
+- **Carry-forward for anyone reproducing this lane:** run the PG suites with a **UTC session** —
+  pin the instance (`DB_PORT=5433`) *or* set `PGTZ=UTC`, and verify with
+  `select setting, reset_val, source from pg_settings where name='TimeZone'` before trusting a red.
+  A non-UTC session manufactures red in window-based aggregate tests. **Note (round 2, N-3):** the
+  M4 register's "one-hour local-TZ artifact" note on `DepositReceiptAppendTest` is a *different*
+  defect and does not belong to this class — measured, that failure is a payload key-order
+  `assertSame` with no timezone component (see the characterisation below). Round 1 grouped the two
+  together; they are unrelated.
 
 #### The four that are real
 
@@ -599,12 +700,20 @@ Identical to the HEAD runs, test for test and assertion for assertion. Restored 
 HEAD -- apps/api/app apps/api/tests`; `git status --porcelain` empty and `git diff --stat HEAD`
 empty afterwards.
 
-> **Caveat on the control's method — M5 round 1, F-6.** `git checkout <base> -- apps/api/app
-> apps/api/tests` restores files that exist at the base; it does **not delete** files this lane
-> CREATED (`ServerAuthoredChainPlacementVerifier.php`, `QuarantineIncidentResolutionService` /
-> `Controller`, the two new exceptions, the two ratchets, `tests/Traits/ReadsCanonicalBytes.php`).
-> So the control is "base content plus this lane's new, unreferenced classes", not a clean base
-> checkout. It is adequate — with `FiscalServiceProvider.php` and `routes.php` reverted those
+> **Caveat on the control's method — M5 round 1, F-6; residue enumerated at round 2, N-4.**
+> `git checkout <base> -- apps/api/app apps/api/tests` restores files that exist at the base; it does
+> **not delete** files this lane CREATED. The exact residue is
+> `git diff --diff-filter=A --name-only a5520f23c..HEAD -- apps/api` → **20 files (9 production, 11
+> test)**, *including* `ServerAuthoredChainPlacementVerifier.php`,
+> `QuarantineIncidentResolutionService` / `Controller`, **three** new exceptions
+> (`ServerAuthoredChainPlacementException.php` as well as the two quarantine ones), two new console
+> commands (`AuthorizedFiscalChainCommand.php`, `VerifyEventChainFleetCommand.php`),
+> `ReceiptChainArmVerificationResult.php`, six added feature tests, the two ratchets, the two new
+> fixtures and `tests/Traits/ReadsCanonicalBytes.php`. Round 1 published a seven-item parenthetical
+> that read as exhaustive and understated the residue by roughly two-thirds (it said "two new
+> exceptions"; there are three) — which blunts the very finding the caveat exists to close. Run the
+> command rather than trusting any list. So the control is "base content plus this lane's 20 new,
+> unreferenced files", not a clean base checkout. It is adequate — with `FiscalServiceProvider.php` and `routes.php` reverted those
 > classes are not wired into anything — but the description "re-running the merge-base" was looser
 > than the method. The round-1 reviewer also hit a practical edge reproducing it: the first
 > post-checkout run can error inside `RefreshDatabase` bootstrap before settling on the second run,
@@ -616,9 +725,20 @@ Characterisations of the four:
 - `TreasuryDepositBridgeTest` (9) — `TreasuryDepositBridge::__construct` arity mismatch in the
   test's own wiring.
 - `AccountStatusChangedServerOnlyTest` (1) — array key ORDER in an `assertSame`.
-- `DepositReceiptAppendTest` (1) — a one-hour local-timezone artifact (and now understood as the
-  same harness property that produced the `ReceiptReturnRefactorV3Test` false red, though this one
-  does **not** clear under `PGTZ=UTC` and so has a second cause).
+- `DepositReceiptAppendTest` (1) — **an `assertSame` on the payload KEY LIST**: the test's "16-key
+  lean server contract" expects the keys **lexicographically sorted** (`:73-74`) while the payload
+  arrives in **insertion order**, so the diff is `'actor_name', 'actor_user_id', 'business_date', …`
+  against `'notes', 'payment', 'customer', …`. Failure reported at
+  `DepositReceiptAppendTest.php:74`. **No timezone component at all** — same shape as
+  `AccountStatusChangedServerOnlyTest` above.
+
+  > **Corrected at M5 round 2, N-3.** Fix round 1 wrote this as *"a one-hour local-timezone artifact
+  > … though this one does not clear under `PGTZ=UTC` and so has a second cause"* — a cause carried
+  > over from an inherited M4 note and reconciled by inventing a "second cause", rather than read off
+  > the failure output. That is F-2's failure mode in miniature, **added by the very commit that
+  > rewrote this section because an inherited causal note had turned out to be false.** The count (1)
+  > and the inventory (12-across-4) were never affected; only the stated cause was wrong. The cause
+  > above is copied from the run.
 - `Task33FiscalFullFlowVerificationTest` (1) — a PG `bytea` stream-handle `assertSame` in the test
   itself; all 14 assertions before it pass, i.e. the POST through the ES-42-gated route succeeds and
   the ingested row is read back.
@@ -664,8 +784,8 @@ phpstan level 8  <18 changed production files>   [OK] No errors
 ## 5. 🚨 THE A0 EXIT STATEMENT (R-11)
 
 > **As of `c533f005ae2c9a80302089f9d92b1f6542fc2f21` on branch `codex/es-wave-a0` — the last commit
-> in this lane that touches executable code; everything after it is documentation and the ledger —
-> the AutoERP fiscal verifiers
+> in this lane that touches VERIFIER code; no production file has changed since — the AutoERP fiscal
+> verifiers
 > `fiscal:verify-event-chain` (with its manifest-driven fleet driver) and `pos:verify-chains` have
 > been demonstrated to FAIL on the following tamper shapes, each with a green control on the clean
 > equivalent, every run on PostgreSQL:**
@@ -696,6 +816,19 @@ phpstan level 8  <18 changed production files>   [OK] No errors
 >
 > **Downstream lanes may now cite these two commands as evidence of correctness — within the
 > boundaries in §5.2.**
+
+> **⚠️ The SHA above anchors the VERIFIERS, not the ratchets (recorded at M5 round 2, N-7).** The
+> two are on different clocks and conflating them sends a reader to the wrong commit:
+>
+> - **Verifiers** — `fiscal:verify-event-chain`, its fleet driver and `pos:verify-chains`. No
+>   production file has changed since `c533f005a` (the M5 commits after it change comments, tests,
+>   docs and the ledger only, measured by `numstat`), so the seven tamper shapes reproduce at that
+>   SHA and at every later one.
+> - **Ratchets** — `OrphanedEventRatchetTest` and `ProjectorEmissionRatchetTest`. The projector
+>   ratchet's DETECTOR changed at `413166120` (fix round 1, F-4: comments are now stripped before
+>   matching). At `c533f005a` the detector still has the hole — the round-2 reviewer ran the pre-fix
+>   detector against the comment probe and it went red, dropping `ZReportProjection`. **Re-run either
+>   ratchet at the BRANCH TIP, never at a milestone SHA.**
 
 ### 5.1 What A0 also delivered
 

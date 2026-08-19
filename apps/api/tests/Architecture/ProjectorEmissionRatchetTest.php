@@ -92,6 +92,21 @@ use Tests\TestCase;
  *     the one to fix first if it ever becomes live. The fix shape: resolve the
  *     dispatched symbol through the file's `use` map and require it to land
  *     under a `Domain\Events\` / `Shared\Events\` namespace.
+ *   - **Under-report, second vector: STRING LITERALS are not stripped.**
+ *     {@see self::sourceWithoutComments()} drops `T_COMMENT` / `T_DOC_COMMENT`
+ *     but leaves `T_CONSTANT_ENCAPSED_STRING` / `T_ENCAPSED_AND_WHITESPACE`, so
+ *     a string containing `event(new …)` — a log line, an exception message, a
+ *     heredoc code sample — would read as an emission and silently retire a
+ *     baseline entry. There is already a NEAR-MISS in one of the baselined
+ *     files: `ZReportProjection.php:326` carries the text `event(s)` inside its
+ *     `missingDependency` message. Harmless today only because pattern 1
+ *     requires `new` after the parenthesis. Recorded at M5 round 2 (N-8) as a
+ *     known limitation rather than fixed. **Fix shape:** add
+ *     `|| $token[0] === T_CONSTANT_ENCAPSED_STRING || $token[0] === T_ENCAPSED_AND_WHITESPACE`
+ *     to the strip condition and extend
+ *     {@see FixtureProjectorWithCommentedEmission}
+ *     with a string-literal line, so the widening is pinned the way the comment
+ *     stripping is.
  *   - **Over-report (reads as non-emitting when it emits).** A projector that
  *     emits by delegating to a collaborator service reads as silent here. A fix
  *     in that shape will make this test RED for the right list and the wrong
