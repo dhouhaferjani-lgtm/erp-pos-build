@@ -2260,3 +2260,53 @@ existed. The tables and the shipped guards have held under independent re-deriva
 a sixth round finds another, the honest reading is that this document is long enough that its prose
 cannot be kept in sync by hand — and the parent should weigh trimming it to the tables plus the stated
 rules, rather than continuing to patch sentences.
+
+---
+
+## M3 round 6 — **ACCEPT**, with one close-before-merge obligation
+
+`docs/handoff/reviews/enforcement-p2/M3-round6.md`. Tally: 0 P1, 1 P2, 3 P3. Fifth consecutive round in
+which **every table reproduces exactly** against the tree; the reviewer confirms all four round-5
+findings closed under independent re-derivation.
+
+### (102) The P2 is a different family, and it is not closable by an executor commit
+
+Not prose drifting from a table — **the tables' operand moving under them**. `dev` advanced *during the
+review*: `41fb478c2` → `3d66be352` (`merge codex/es-wave-a0`), which changed `Fiscal` 73 → 79 and
+`debt_ceiling` 1114 → 1122, so §8 item 0's enumerated list was already wrong. **And it moved a third
+time, to `47fdc72b9`, while I was writing this correction.** Three advances across one review round and
+one edit.
+
+The reviewer's judgement is right on both counts: no number an executor writes can be correct at
+promotion time, and under `SELF-REVIEW-HARNESS.md:73` that is a **close-before-merge** obligation on
+the parent rather than a milestone blocker.
+
+**What I changed anyway** — the reviewer said it would have asked for this had rounds remained:
+
+- **§8 item 0 is now regenerate-first.** The ordered instruction is merge → regenerate the manifest
+  against the merged tree → confirm `php tools/feature-lane-manifest-check.php` exits 0 **on `dev`**
+  before any other lane opens a PR. The number table is explicitly demoted to *"an illustration of the
+  shape of the drift, not a list to apply"*.
+- **Every measurement in the announcement is stamped `dev = 3d66be352`**, with the third move recorded
+  in-line as the evidence for why stamping matters more than the values.
+- **`Fiscal` 79 and `debt_ceiling` 1122 are named** so the parent has the then-current figures, flagged
+  as already-stale by construction.
+
+Note the live consequence the reviewer surfaced: **`codex/es-wave-a0` has landed**, so §1's row telling
+it to "raise `Fiscal` by 6" would now **double-raise** against the re-baseline — the exact permanent
+slack §1's own warning is about. The regenerate-first ordering removes that failure mode entirely,
+which is why it is the right fix rather than another number.
+
+### (103) The two P3s
+
+- **§10's own inclusion-rule bullet** still stated the added-files rule unqualified while introducing a
+  table whose locale column is a changed-file count. Round 5 scoped the header and §3 and missed the
+  bullet — the same "fixed what was pointed at, missed the neighbour" shape, now at its fourth
+  instance. The bullet now states both measures inline.
+- **"the other 13 sit in laned groups"** over-claimed by one: 12 are in laned `tests/Feature` groups and
+  **`VoucherLedgerTest` has no `tests/Feature` class at all**, resolving to `tests/Unit/Voucher/Domain/`
+  — which the lane's `php artisan test -c phpunit-pgsql.xml` does run, so it is a legitimate entry and
+  the arithmetic is unchanged. Corrected precisely.
+
+The third P3 ratified the 2(a) disposition and recorded that the branch taken matches none of the
+brief's four bullets exactly — which is what §M0 flagged prominently at the time.

@@ -6,7 +6,8 @@
 > executor never sends it.
 >
 > Lane impact below is **measured**, and the method is stated so you can falsify it — see §10 for
-> the full inclusion rule. In short: **all local branches** (no prefix filter), **minus those
+> the full inclusion rule. **All measurements in this file are stamped `dev` = `3d66be352`** and go
+> stale as `dev` moves — re-derive before acting. In short: **all local branches** (no prefix filter), **minus those
 > already merged into `dev`**, impact counted as **added** files against **`dev`**
 > (`git diff --diff-filter=A --name-only dev...<branch>`).
 >
@@ -48,7 +49,7 @@ laneless hole must not grow silently — and the remedy is one number, in the sa
 > | all of `tests/Feature` | 1329 | 1316 |
 > | in groups no lane runs as a whole (**what `debt_ceiling` enforces**) | **1114** | 1102 |
 > | minus those individually named in the two `--filter` allowlists (111 of the 124 entries — the
-> other 13 sit in **laned** groups and were never in the 1114) | 1003 | **991** ≈ the census's 990 |
+> other 13 were never in the 1114 — 12 sit in **laned** `tests/Feature` groups and 1 (`VoucherLedgerTest`) has no `tests/Feature` class at all, resolving to `tests/Unit/Voucher/Domain/`, which the lane's `php artisan test -c phpunit-pgsql.xml` does run) | 1003 | **991** ≈ the census's 990 |
 >
 > *An earlier version said "subtracts the ~124", which lands on 990 only because a files-vs-distinct
 > error and an over-subtraction nearly cancel.* **1114 is the number the ceilings enforce and the
@@ -231,15 +232,32 @@ Neither has ever executed on a real runner (the executor never pushes), so the p
 
 ## 8. Owed at promotion — for the parent, not the lanes
 
-0. ⚠️ **RE-BASELINE THE CEILINGS IMMEDIATELY AFTER THE MERGE — otherwise P2 breaks `dev` for every
-   lane.** P2's `base_sha` is **47 commits behind `dev`**, and two deferred groups have grown on `dev`
-   since:
+0. ⚠️ **RE-BASELINE THE CEILINGS IMMEDIATELY AFTER THE MERGE — regenerate, do not copy the numbers
+   below.** ⚠️ **`dev` MOVES.** During the M3 round-6 review alone it advanced twice
+   (`41fb478c2` → `3d66be352`, the second being `merge codex/es-wave-a0`), which changed `Fiscal`
+   73 → 79 and `debt_ceiling` 1114 → 1122 — **and moved a third time, to `47fdc72b9`, while this
+   very correction was being written.** That is three advances across one review round and one
+   edit. **No number written in this candidate can be correct at promotion time**, which is why
+   the instruction is *regenerate*, not *apply the table*.
 
-   | group | ceiling frozen at P2's base | on `dev` today |
+   **Do this, in order:**
+   1. merge P2;
+   2. regenerate the manifest against the **merged tree**;
+   3. confirm `php tools/feature-lane-manifest-check.php` exits 0 **on `dev`** before any other lane
+      opens a PR.
+
+   The table below is an *illustration of the shape of the drift*, **stamped `dev` = `3d66be352`** —
+   not a list to apply:
+
+   | group | ceiling frozen at P2's base | on `dev` @ `3d66be352` |
    |---|---|---|
-   | `Inventory` | 105 | **106** (`CountCorrectionGlPostingTest.php`) |
-   | `CountryDefaults` | 27 | **28** (`ChartOfAccountsParityTest.php`) |
-   | `debt_ceiling` | 1114 | **1116** |
+   | `Inventory` | 105 | 106 |
+   | `CountryDefaults` | 27 | 28 |
+   | `Fiscal` | 73 | **79** (landed mid-review) |
+   | `debt_ceiling` | 1114 | **1122** |
+
+   **RE-BASELINE THE CEILINGS AFTER THE MERGE — otherwise P2 breaks `dev` for every lane.**
+   P2's `base_sha` is **47 commits behind `dev`** and the gap keeps widening.
 
    The promotion protocol merges the accepted SHA **unchanged**, so the moment P2 lands, the next
    PR→dev from *any* lane fails `backend-architecture` with
@@ -303,8 +321,10 @@ reason — first a worktree-only sweep, then an unstated `codex/*` filter):
   cannot perform a rebase action, and its classes are already `dev`'s drift, handled by §8 item 0;
 - drop snapshot/backup refs that are not lanes: `*-pre-repin*`, `*-pre-rewrite`, `backup/*`,
   `triage/*`, `worktree-agent-*`;
-- measure impact as **added** files against `dev` (`git diff --diff-filter=A dev...<branch>`), not
-  changed files against P2's base;
+- measure **Feature-class** impact as **added** files against `dev`
+  (`git diff --diff-filter=A dev...<branch>`), not changed files against P2's base — **but the
+  "locale files" column below is deliberately a CHANGED-file count** (`git diff --name-only`), because
+  adding a translation key modifies an existing bundle and `--diff-filter=A` returns 0 for every lane;
 - drop **this package's own branch** (`codex/enforcement-p2-ci-guards`) — it is the thing being
   announced, not a lane to notify.
 
