@@ -91,7 +91,24 @@ dpa_baseline_seed_commit: 9cab548f86d10037822eec38eb08035f2a8a8eb2   # re-pointe
 # This is therefore a POINTER correction, NOT a re-seed and NOT a re-pin: the protected blob and the
 # pre-allocated tag name are unchanged, so the owner-set repository variable does not move.
 dpa_baseline_protected_blob: 1381983d463e6c546535be907d4aa1c7ca94c597
-dpa_baseline_pin_tag: ci-pin/enforcement-p1-r1   # PRE-ALLOCATED: no ci-pin/enforcement-p1-* tag exists locally or on origin, so n = 1
+dpa_baseline_pin_tag: ci-pin/enforcement-p1-r2
+# REALLOCATED at round 13 (the gate's operative finding). The original allocation, r1, was made when
+# `git tag -l 'ci-pin/enforcement-p1-*'` and `git ls-remote --tags origin` both returned ZERO, so n was 1.
+# That name is now CONSUMED: under the round-12 ACCEPT the owner ran the ceremony and pushed the annotated
+# tag ci-pin/enforcement-p1-r1 at the then-accepted SHA d65244fe2 (annotation: accepted_sha d65244fe2 +
+# register/handback digests + control_sha256 manifest=c57416b8d0...). The pre-promotion dispatch on that
+# SHA then came back RED on three unrelated invisible-red gates (see red_run_regate_2026_08_20), which
+# forced the red-run re-gate; the two rebases that followed rewrote every candidate commit, so d65244fe2 is
+# no longer an ancestor of this tip and the ACCEPTED SHA HAS MOVED.
+# Two rules meet here and neither bends: pin tags are NEVER deleted and NEVER reused (gate-r5 R5-C-1/R5-C-2),
+# and the closing tag must resolve to the accepted A. The r1 tag therefore STAYS EXACTLY AS IT IS — it
+# remains a TRUE record of the round-12 acceptance of d65244fe2, not an error to be cleaned up — and the
+# ceremony for the new A uses the next free ordinal. Allocation re-derived live at this tip:
+#   git tag -l 'ci-pin/enforcement-p1-*'            -> ci-pin/enforcement-p1-r1   (1 tag)
+#   git ls-remote --tags origin 'refs/tags/ci-pin/*' -> ci-pin/enforcement-p1-r1 -> d65244fe2
+#   highest existing ordinal = 1, so n = 2 -> ci-pin/enforcement-p1-r2
+# This is the runbook's foreseen ORDINAL-RE-PIN class, arriving for the reason the runbook predicted: a
+# ceremony that starts before the accepted SHA is final consumes an ordinal per attempt.
 
 # PRE-PROMOTION CI DISPATCH receipt (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2 — a receipt
 # committed into the candidate changes the SHA it attests). The GATE is procedural (brief §5 item 4):
@@ -230,7 +247,7 @@ milestones:
     m2_evidence:
       seed_commit: "9cab548f86d10037822eec38eb08035f2a8a8eb2 — commit 1, contains exactly one file: the generated baseline (34 keys, sorted, unique, line-number-free)"
       pins_commit: "6ced0d514 — commit 2: mirror pins + the ratchet checker + the scan parse cache; the M2 bridge review covers BOTH commits"
-      pin_tag_allocation: "git tag -l 'ci-pin/enforcement-p1-*' -> 0; git ls-remote --tags origin 'refs/tags/ci-pin/*' -> 0; therefore n = 1 -> ci-pin/enforcement-p1-r1"
+      pin_tag_allocation: "AT M2 (historical, and true when made): git tag -l 'ci-pin/enforcement-p1-*' -> 0; git ls-remote --tags origin 'refs/tags/ci-pin/*' -> 0; therefore n = 1 -> ci-pin/enforcement-p1-r1. RE-DERIVED AT ROUND 13 after that ordinal was CONSUMED by the owner ceremony at d65244fe2 under the round-12 ACCEPT: git tag -l 'ci-pin/enforcement-p1-*' -> ci-pin/enforcement-p1-r1 (1); git ls-remote --tags origin 'refs/tags/ci-pin/*' -> the same tag, resolving to d65244fe2; highest existing ordinal = 1, so n = 2 -> ci-pin/enforcement-p1-r2. The r1 tag is neither deleted nor moved nor reused; it stands as the record of what was accepted then. See dpa_baseline_pin_tag for the full reasoning."
       seed_unmoved_by_cache: "regenerating with the parse-cached scanner is byte-identical to the seed commit (git diff --exit-code clean)"
       tamper_cases: "1 plant -> FAIL; 2 revert -> OK; 3 delete a baseline entry -> FAIL (unexpected-new); 4 bogus entry -> FAIL TWICE (stale AND anti-growth: a bogus key is both unmatched by the tree and absent from the protected blob — 2 failures, 115 assertions); 5 ANTI-GROWTH new violation + matching regenerated key -> FAIL against the variable-held blob"
       fail_closed: "mirror drift -> FAIL (40 assertions); variable unset (isolated env -u) -> FAIL, exit non-zero, export survived; unfetchable blob -> FAIL (41 assertions, anchored at the git cat-file assert, 'exit 128' surfaced) — the first attempt at this case left the mirror on the real hash and never reached that branch; corrected and repasted (M2 gate round 1 finding 1)"
@@ -302,7 +319,7 @@ milestones:
     m3_evidence:
       ci_job_id: backend-dpa-guard
       dispatch_must_show: "job backend-dpa-guard executed and green, with steps 'Document-per-action write guard (fixture matrix + liveness)' and 'Document-per-action baseline ratchet (growth / stale / anti-growth)'"
-      owner_prerequisites: "before dispatching, the owner must set DPA_BASELINE_PROTECTED_BLOB=1381983d463e6c546535be907d4aa1c7ca94c597 and push the annotated pin tag ci-pin/enforcement-p1-r1 at A — otherwise the ratchet fails closed by design"
+      owner_prerequisites: "before dispatching, the owner must set DPA_BASELINE_PROTECTED_BLOB=1381983d463e6c546535be907d4aa1c7ca94c597 and push the annotated pin tag ci-pin/enforcement-p1-r2 at the NEW A — otherwise the ratchet fails closed by design. The ordinal changed at round 13: r1 was consumed by the ceremony at d65244fe2 under the round-12 ACCEPT and is never reused (see dpa_baseline_pin_tag). The variable value is UNCHANGED - the protected blob never moved across any of the six rebases - so if the owner already set it during the earlier ceremony, that half needs no action; only the tag ordinal does."
       aggregate_membership: "grep -n backend-dpa-guard .github/workflows/ci.yml at the handover tip -> job definition at :180, the skipped-job-semantics comment at :1281, and the all-checks-pass needs list at :1288. Line numbers moved from the pre-rebase :180/:1192/:1198 because dev added jobs above and the rebase merged both rationales into one comment block; re-derived at the tip, not carried over."
       no_if_guard: true
       event_graph: "PR->main, PR->dev, push->main, workflow_dispatch ONLY; a direct push to dev never starts the workflow, so promotion is gated on the owner's pre-promotion dispatch (LEDGER S-14)"
