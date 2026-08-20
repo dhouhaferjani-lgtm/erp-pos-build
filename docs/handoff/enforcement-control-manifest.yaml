@@ -41,7 +41,14 @@ packages:
     # continuations rider. The stale-A rebase path consumed rounds on record repair (SHAs,
     # anchors, pasted counts — all three now mechanically swept); runbook: budget +2 rounds
     # for any future stale-A re-gate.
-    max_fix_rounds: "6"
+    # Raised 6 -> 8 on the OWNER'S RE-SCOPE ruling (2026-08-20): P1 parked blocked_review at
+    # round 9 under the hard rider when the gate found a REAL detector hole (create-by-save on
+    # journal_entries classifies not_applicable). Owner authorized a FRESH bounded budget of 2
+    # rounds scoped to: (a) close the hole per the register's option (a) with the four probe
+    # shapes pinned; (b) the manifest-digest attestation Minor + fourth sweep class. New
+    # substance (detector improvement), not record repair. Codex CLI authorized as a second
+    # adversarial reviewer alongside the parent bridge.
+    max_fix_rounds: "8"
   p2:
     progress_path: docs/handoff/progress/enforcement-p2.progress.yaml
     final_milestone: M4
