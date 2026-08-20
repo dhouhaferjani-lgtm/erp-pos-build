@@ -5,6 +5,15 @@
 `apps/api/tests/Architecture/baselines/document-per-action-baseline.json` from its 34 seed entries.
 **Raised by:** the P1 final-gate rounds 9–10 (parent bridge) and the Codex second reviewer.
 
+**Why this file lives in `docs/handoff/` and not in the house ticket directory:** it was first written to
+`docs/superpowers/tickets/2026-08-20-dpa-scanner-depth-burndown.md`, which is the repo's normal home for
+tickets but sits OUTSIDE the P1 dispatch brief's binding path allowlist (`apps/api/tests/Architecture/**` ·
+`.github/workflows/ci.yml` · `docs/handoff/**`), where any other path is a scope FAIL rather than a footnote.
+Final gate round 11 caught the widening; the owner ruled the out-of-allowlist path a PARENT instruction error
+and directed the file be moved inside the allowlist rather than the allowlist be widened for it. When the
+burn-down is picked up, relocating this ticket to `docs/superpowers/tickets/` is a free move outside the P1
+package's scope.
+
 ## Why this exists
 
 P1 shipped a static guard whose blind spots are **named in the scanner docblock (A–J)** rather than argued

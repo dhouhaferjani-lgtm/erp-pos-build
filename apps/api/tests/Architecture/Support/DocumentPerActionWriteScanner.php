@@ -277,7 +277,7 @@ use SplFileInfo;
  *    ZERO live instances in `app/` at the reviewed tip, which is why this is
  *    disclosed rather than fixed inside the final gate — it is a real analysis
  *    project (argument-position receivers and clone-provenance), tracked in
- *    docs/superpowers/tickets/2026-08-20-dpa-scanner-depth-burndown.md.
+ *    docs/handoff/TICKET-dpa-scanner-depth-burndown-2026-08-20.md.
  * J. PAIRING REACHABILITY IS NOT FLOW-SENSITIVE ACROSS CLOSURES (Codex #4).
  *    Blind spot B already states the pairing predicate is function-scoped. The
  *    sharper form: the scope is the whole function BODY including closures that
