@@ -330,7 +330,7 @@ describe('TemplateEditorPage', () => {
   it('has exhaustive generated purpose labels in English and French', () => {
     const enLabels = enCountryDefaults.purposes satisfies Record<SystemAccountPurpose, string>
     const frLabels = frCountryDefaults.purposes satisfies Record<SystemAccountPurpose, string>
-    expect(Object.keys(enLabels)).toHaveLength(41)
+    expect(Object.keys(enLabels)).toHaveLength(43) // 41 + the two 3C count-correction purposes (merged 2026-08-19)
     expect(Object.keys(frLabels).sort()).toEqual(Object.keys(enLabels).sort())
     expect(Object.values(enLabels)).not.toContain('supplier_payable')
     expect(Object.values(frLabels)).not.toContain('supplier_payable')

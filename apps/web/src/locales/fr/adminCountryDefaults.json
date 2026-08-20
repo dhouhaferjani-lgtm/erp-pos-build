@@ -26,6 +26,8 @@
     "product_revenue": "Ventes de produits",
     "service_revenue": "Prestations de services",
     "cost_of_goods_sold": "Coût des marchandises vendues",
+    "inventory_shrinkage_expense": "Charges de démarque inconnue",
+    "inventory_gain_income": "Produits d’écarts d’inventaire",
     "purchase_expenses": "Frais d’achat",
     "office_expense": "Frais de bureau",
     "travel_expense": "Frais de déplacement",

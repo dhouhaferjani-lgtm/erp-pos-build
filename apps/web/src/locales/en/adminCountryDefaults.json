@@ -26,6 +26,8 @@
     "product_revenue": "Product sales revenue",
     "service_revenue": "Service revenue",
     "cost_of_goods_sold": "Cost of goods sold",
+    "inventory_shrinkage_expense": "Inventory shrinkage expense",
+    "inventory_gain_income": "Inventory count gain income",
     "purchase_expenses": "Purchase expenses",
     "office_expense": "Office expense",
     "travel_expense": "Travel expense",
