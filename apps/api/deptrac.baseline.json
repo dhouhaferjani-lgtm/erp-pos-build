@@ -1,6 +1,16 @@
 {
-    "generated_at": "2026-08-03",
+    "generated_at": "2026-08-20",
     "note": "Regenerate with: php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json --update-baseline",
+    "total": 176,
+    "categories": {
+        "ModuleApplication on ModuleInfrastructure": 68,
+        "ModuleDomain on ModuleApplication": 54,
+        "ModuleInfrastructure on ModulePresentation": 1,
+        "SharedContracts on ModuleApplication": 18,
+        "SharedContracts on ModuleDomain": 29,
+        "SharedDomain on ModuleDomain": 4,
+        "SharedInfrastructure on ModuleDomain": 2
+    },
     "waivers": [
         {
             "lane": "DPA G3 — shift-close cash variance GL",
@@ -10,15 +20,14 @@
             "line": "app/Shared/Contracts/Treasury/RepositoryAdjustmentServiceInterface.php — post(RepositoryAdjustmentIntent)",
             "why": "The V3 gate RECORDED this contract's target shape as a blocking G3 precondition, so the interface must exist under Shared/Contracts and must be typed. Its parameter DTO carries MovementDirection and MovementReasonCode; hosting the DTO in Shared merely relocates the violation to SharedContracts-on-ModuleDomain, and hosting the ENUMS in Shared is a 76-file / 17-file cross-cutting move that CLAUDE.md rule 4 forbids inside this lane. Exact precedent already at baseline: TreasuryMovementServiceInterface. Reduced from +7 to +1 during gate fix round 1 by removing the Domain exception imports (throws are described in prose) and by hosting the pure-scalar RepositoryAdjustmentResult in Shared/Contracts/Treasury/DTOs alongside OutboundInstrumentIssueResult. Measured: 6d117b511 base = 106, first G3 cut = 113, after restructure = 107.",
             "not_absorbed": "The pre-existing regressions on this branch's base — 'ModuleDomain on ModuleApplication' 35 -> 36 (BLOCKER) and 'SharedContracts on ModuleDomain' 22 -> 29 — are deliberately NOT bumped here. They predate this lane and belong to the erp.deptrac-rebaseline lane; laundering them from a feature branch would hide another lane's regression."
+        },
+        {
+            "lane": "RED-GATE RECONCILIATION (owner-acked re-baseline)",
+            "date": "2026-08-20",
+            "category": "ALL (total 99 -> 176)",
+            "delta": 77,
+            "why": "Owner ack recorded 2026-08-20 in the parent orchestration session (de182ed3): the checked-in baseline (99) had drifted 77 below reality across the merged waves (3C/3D, country-defaults, receipts, sv-stage1, es-A0, ui-wave0, DN) — enforcement-P2 measured 174 at its base BEFORE the final two merges; every S-14 promotion dispatch fails on the stale number. Re-baselined at the measured 176 so CI is honest; the debt is NOT waived — see burn_down.",
+            "burn_down": "docs/superpowers/tickets/2026-08-20-deptrac-burndown-176.md — ModuleDomain on ModuleApplication 35->54 (+19, BLOCKER class); ModuleApplication on ModuleInfrastructure 21->68 (+47); SharedContracts on ModuleDomain 22->29 (+7); SharedDomain on ModuleDomain 0->4 (+4). Burn-down as-you-go alongside first-tenant stabilization, per owner sequencing."
         }
-    ],
-    "total": 99,
-    "categories": {
-        "ModuleApplication on ModuleInfrastructure": 21,
-        "ModuleDomain on ModuleApplication": 35,
-        "ModuleInfrastructure on ModulePresentation": 1,
-        "SharedContracts on ModuleApplication": 18,
-        "SharedContracts on ModuleDomain": 22,
-        "SharedInfrastructure on ModuleDomain": 2
-    }
+    ]
 }
