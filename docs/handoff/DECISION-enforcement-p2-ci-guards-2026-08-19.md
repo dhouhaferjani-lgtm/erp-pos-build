@@ -185,26 +185,51 @@ stock-adjustments, adminCountryDefaults`; the 12 spread-merged ones are `sales, 
 finance, expenses, import, settings, products, pos, compliance, notifications, locations`.
 
 **A scanner importing `resources` would report ZERO Arabic gaps across all 35 of those namespaces.**
-The authored-provenance scanner reports **4 594**.
+The authored-provenance scanner reports, at the **pinned seed `cb618c12c`** (re-derived at the accepted
+tip):
 
-### (2) Baseline statistics at the seed
+| basis | value | what it counts |
+|---|---|---|
+| **baseline entries** | **2 638** | what the baseline file actually holds for those 35 namespaces — 23 `aliased` + 2 610 `missing` + 5 `plural` |
+| **key-level gaps** | **4 613** | 2 615 per-key findings + the **1 998** English keys standing behind the 23 whole-namespace `aliased` entries |
+
+*(Supersedes “4 594”, which was the key-level figure at the **first seed `96b7fd0e8`** — discarded and
+replaced by the seed revision `cb618c12c` at M1 fix round 1, when the `aliased` finding type changed
+what is counted. It reproduces at no revision in this candidate.)*
+
+### (2) Baseline statistics at the PINNED seed (`cb618c12c`, blob `da151bbc5…`)
+
+Re-derived at the accepted tip; the working baseline file hashes to the pinned seed blob, so these are
+the numbers the ratchet actually enforces.
 
 | Metric | Value |
 |---|---|
 | Namespaces in the `ns` array | **56** |
 | Authored leaf keys — **en** | **9 242** |
 | Authored leaf keys — **fr** | **9 258** |
-| Authored leaf keys — **ar** | **4 702** |
+| Authored leaf keys — **ar** | **4 702** (of which **1 998** sit behind whole-namespace aliases) |
 | Locale source files present | en 57, fr 57, **ar 34** |
-| **Total baseline entries** | **4 631** |
-| — `ar` `missing` | 4 585 |
+| **Total baseline entries** | **2 917** |
+| — `ar` `aliased` | **23** |
+| — `ar` `missing` | **2 848** |
 | — `ar` `plural` | 9 |
 | — `fr` `plural` | 29 |
 | — `en` `plural` | 8 |
 | Structural failures | **0** |
 
-Largest Arabic gaps by namespace: `pos` 683, `sales` 569, `inventory` 418, `settings` 274,
-`finance` 268, `adminCountryDefaults` 192, `withholding` 181, `loyalty` 178.
+Largest Arabic gaps by namespace, on the **`ar|missing` basis** (per-key gaps in namespaces Arabic is
+actually wired into — the 23 aliased namespaces contribute one whole-namespace entry each and so do not
+appear here): `pos` **683**, `sales` **569**, `inventory` **418**, `settings` **274**, `finance`
+**263**, `import` **170**, `compliance` **157**, `common` **125**.
+
+> ⚠️ **SUPERSEDED — first-seed figures, kept for history only.** Before M1 fix round 1 this table read
+> *"Total baseline entries 4 631 · `ar` `missing` 4 585"* with a top-8 ending
+> *"`finance` 268, `adminCountryDefaults` 192, `withholding` 181, `loyalty` 178"*. Those reproduce
+> **only at the discarded first seed `96b7fd0e8`**. The `aliased` finding type (§M1(10)) then collapsed
+> 1 737 per-key entries in the 23 unwired namespaces into 23 whole-namespace entries, which is why the
+> total fell to 2 917 and why `adminCountryDefaults`/`withholding`/`loyalty` left the top-8 entirely —
+> they are `en-aliased` and now carry one entry each. `finance` moved 268 → 263 because the earlier
+> figure counted its 5 `ar|plural` entries alongside the `missing` ones.
 
 `fr` authors 16 more leaf keys than `en` (9 258 vs 9 242) — French-only orphans. **Not flagged and
 not baselined:** the brief's contract is "missing key = failure"; orphan detection is not in scope and
@@ -218,7 +243,8 @@ treatment `fr` and `en` gaps get. It is NOT exempted, and it is NOT held to imme
 
 Reasons, in order of weight:
 
-1. **A full-parity gate would land cold and red.** 4 594 Arabic findings would fail `frontend-lint`
+1. **A full-parity gate would land cold and red.** **4 613** Arabic key-level gaps (2 880 baseline
+   entries) would fail `frontend-lint`
    on every event that starts the workflow, on every open lane, from the merge onward. The brief's own
    sequencing rule is explicit: *"New gates land observe-first or baselined, never cold."* A gate
    nobody can pass gets disabled, which is how detectors die.
