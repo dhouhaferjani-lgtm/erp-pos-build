@@ -140,6 +140,60 @@ final class FixtureJournalEntryWrites
         $entry->save();
     }
 
+    // --- create-by-save (M3 final gate round 9) ----------------------------
+
+    /**
+     * `save()` on a model that was never persisted is an INSERT. There is no
+     * prior creation at which a justification could have been fixed, so the
+     * lifecycle exemption's premise is false for exactly this shape.
+     */
+    public function p5_new_then_save(string $companyId): void
+    {
+        $entry = new JournalEntry;
+        $entry->company_id = $companyId;
+        $entry->entry_number = 'JE-S1';
+        $entry->save();
+    }
+
+    /**
+     * The same insert reached by assigning properties one at a time.
+     */
+    public function q1_property_assign_then_save(string $companyId, string $number): void
+    {
+        $entry = new JournalEntry;
+        $entry->company_id = $companyId;
+        $entry->entry_number = $number;
+        $entry->description = 'no linkage anywhere';
+        $entry->save();
+    }
+
+    /**
+     * `fill()` on a fresh model, then `save()` — mass assignment into an INSERT.
+     * The payload deliberately carries NO linkage column, so the erasure rule
+     * does not fire and this cell isolates the create-by-save semantics.
+     */
+    public function q2_fill_then_save(string $companyId): void
+    {
+        $entry = new JournalEntry;
+        $entry->fill([
+            'company_id' => $companyId,
+            'entry_number' => 'JE-S2',
+        ]);
+        $entry->save();
+    }
+
+    /**
+     * `make()` builds an unpersisted model exactly as `new` does.
+     */
+    public function q3_make_then_save(string $companyId): void
+    {
+        $entry = JournalEntry::make([
+            'company_id' => $companyId,
+            'entry_number' => 'JE-S3',
+        ]);
+        $entry->save();
+    }
+
     // --- delete -----------------------------------------------------------
 
     public function deleteEntry(string $entryId): void

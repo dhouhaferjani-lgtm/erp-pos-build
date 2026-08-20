@@ -80,6 +80,11 @@ final class DocumentPerActionWriteGuardTest extends TestCase
             ['mechanism' => 'update', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'updateLifecycleOnly', 'expected' => 'not_applicable', 'note' => 'status/posted_at only; no amount on this table'],
             ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'saveLifecycleOnly', 'expected' => 'not_applicable', 'note' => 'lifecycle save; justification fixed at creation'],
             ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'saveErasesLinkage', 'expected' => 'violation', 'note' => 'property assignment nulls source_id before save()'],
+            // round-9 create-by-save: save() on an UNPERSISTED model is an INSERT
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'p5_new_then_save', 'expected' => 'violation', 'note' => 'round 9: new JournalEntry then save() is a CREATE'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'q1_property_assign_then_save', 'expected' => 'violation', 'note' => 'round 9: property assignment then save()'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'q2_fill_then_save', 'expected' => 'violation', 'note' => 'round 9: fill() on a fresh model then save()'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'q3_make_then_save', 'expected' => 'violation', 'note' => 'round 9: make() then save()'],
             ['mechanism' => 'delete', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'deleteEntry', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule: a JE is reversed, never deleted'],
             ['mechanism' => 'increment', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'incrementChainSequence', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule'],
             ['mechanism' => 'decrement', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'decrementChainSequence', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule'],
@@ -335,6 +340,45 @@ final class DocumentPerActionWriteGuardTest extends TestCase
         }
 
         $this->assertSame([], $mismatches, "The rule surface and the pinned classifications disagree:\n".implode("\n", $mismatches));
+    }
+
+    /**
+     * PER-SEMANTICS coverage, not merely per (table, mechanism).
+     *
+     * The other completeness gates ask "is every (table, mechanism) cell
+     * pinned?". `journal_entries × save` passed that question for eight gate
+     * rounds while its INSERT half was unguarded: `save()` on an unpersisted
+     * model is an INSERT, but the cell was pinned only by an erasure positive
+     * and a lifecycle negative, both of which load an already-persisted row.
+     * A mechanism whose semantics fork on receiver state needs a pin per FORK,
+     * which is what this gate enforces (M3 final gate round 9).
+     */
+    #[Test]
+    public function journal_entries_save_pins_both_semantics(): void
+    {
+        $sites = $this->scanFixtures();
+
+        $insert = [];
+        $mutate = [];
+        foreach (self::fixtureMatrix() as $case) {
+            if ($case['table'] !== 'journal_entries' || $case['mechanism'] !== 'save') {
+                continue;
+            }
+            $site = $sites[$this->fixtureKey($case['class'], $case['method'], $case['table'], $case['mechanism'])] ?? null;
+            if ($site === null) {
+                continue;
+            }
+            // The insert fork is the one the scanner reclassified to CREATE; the
+            // reason string is the discriminator the rule itself produces.
+            if (str_contains($site['reason'], 'cannot prove source_type/source_id linkage')) {
+                $insert[] = $case['method'];
+            } elseif (str_contains($site['reason'], 'ALREADY-PERSISTED')) {
+                $mutate[] = $case['method'];
+            }
+        }
+
+        $this->assertNotSame([], $insert, 'journal_entries × save has NO pinned create-by-save (INSERT) case — the fork that was unguarded until final gate round 9.');
+        $this->assertNotSame([], $mutate, 'journal_entries × save has NO pinned lifecycle (MUTATE) case, so the exemption itself is unpinned.');
     }
 
     /**

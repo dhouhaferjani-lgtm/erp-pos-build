@@ -68,8 +68,22 @@ use SplFileInfo;
  *               excluded because it never carries an inspectable payload and is
  *               covered by the property-assignment erasure rule instead), when
  *               the payload sets either linkage column to a null-admitting value
- *               (linkage erasure), or when the mechanism is increment/decrement
- *               (numeric mutation of a fiscal row). The property-assignment
+ *               (linkage erasure), when the mechanism is increment/decrement
+ *               (numeric mutation of a fiscal row), or when the write is a
+ *               CREATE-BY-SAVE: `save()`/`saveQuietly()`/`push()` on a receiver
+ *               that is statically an UNPERSISTED model (`new JournalEntry` or
+ *               `JournalEntry::make(...)` in the same scope) is an INSERT, so
+ *               it is reclassified CREATE-class and must satisfy the linkage
+ *               rule like any other create. The lifecycle exemption below
+ *               applies ONLY to an already-persisted row — its premise is that
+ *               the justification was fixed at creation, which is false when
+ *               this IS the creation. Same reasoning as `updateOrInsert`.
+ *               Scoped to `journal_entries` because it is the only table the
+ *               exemption exposes: `stock_movements` MUTATE is unconditionally
+ *               a violation and the level tables are governed by the
+ *               movement-pairing predicate regardless of write class, so the
+ *               identical shape on those three already classifies `violation`
+ *               (verified by probe, fixture-pinned). The property-assignment
  *               erasure path (`$entry->source_id = …; $entry->save();`) is
  *               `$this`-SCOPED on the value side: it refuses the shapes
  *               nullAdmitting() can decide, so an erasure through a
@@ -456,6 +470,15 @@ final class DocumentPerActionWriteScanner
     /** @var array<string, true> local variables assigned `null` anywhere in the function being scanned */
     private array $nullAssignedVars = [];
 
+    /**
+     * Local variables holding an UNPERSISTED model — assigned from `new <Model>`
+     * or `<Model>::make(...)` in the function being scanned. `save()` on one of
+     * these is an INSERT, not a lifecycle update (M3 final gate round 9).
+     *
+     * @var array<string, true>
+     */
+    private array $unpersistedVars = [];
+
     /** @var array<string, true> properties of the class being scanned whose declared type is nullable */
     private array $nullableProperties = [];
 
@@ -799,7 +822,7 @@ final class DocumentPerActionWriteScanner
             return ['violation', sprintf('the enclosing function assigns null to %s/%s before persisting — linkage erasure', $typeColumn, $idColumn)];
         }
 
-        return ['not_applicable', 'journal_entries lifecycle mutation: this table carries no monetary amount (amounts live on journal_entry_lines, outside the P1 contract) and the row\'s justification was fixed at creation'];
+        return ['not_applicable', 'journal_entries lifecycle mutation of an ALREADY-PERSISTED row (the receiver is not a `new`/`make()` model in this scope, so this is not an insert): this table carries no monetary amount — amounts live on journal_entry_lines, outside the P1 contract — and the row\'s justification was fixed when it was created'];
     }
 
     /**
@@ -826,6 +849,23 @@ final class DocumentPerActionWriteScanner
             return null;
         }
 
+        // CREATE-BY-SAVE (M3 final gate round 9). `save()` on a model that was
+        // never persisted is an INSERT, so the `journal_entries` lifecycle
+        // exemption — whose whole premise is "the row's justification was fixed
+        // at creation" — is false for it: there IS no prior creation. Same
+        // reasoning already applied to `updateOrInsert` above.
+        //
+        // Scoped to `journal_entries` because that is the only table the
+        // exemption exposes: `stock_movements` MUTATE is unconditionally a
+        // violation, and the two level tables are governed by the
+        // movement-pairing predicate regardless of write class — so the same
+        // shape on those three already classifies `violation` (fixture-pinned).
+        if ($table === 'journal_entries'
+            && in_array($method, ['save', 'saveQuietly', 'push'], true)
+            && $this->receiverIsUnpersistedModel($node)) {
+            $writeClass = 'CREATE';
+        }
+
         if ($this->isQueryBuilderChain($node)) {
             $mechanism = 'query_builder';
         }
@@ -837,6 +877,31 @@ final class DocumentPerActionWriteScanner
             'write_class' => $writeClass,
             'payload' => $this->extractPayload($node, $method),
         ];
+    }
+
+    /**
+     * Is the receiver of this call a model this function created and has not
+     * persisted — `$e = new JournalEntry;` / `$e = JournalEntry::make([...]);`?
+     */
+    private function receiverIsUnpersistedModel(Node $node): bool
+    {
+        if (! $node instanceof Expr\MethodCall && ! $node instanceof Expr\NullsafeMethodCall) {
+            return false;
+        }
+
+        // `$e->save()` and `$e->fill([...])->save()` alike: walk to the base var.
+        $cursor = $node->var;
+        while ($cursor instanceof Expr\MethodCall || $cursor instanceof Expr\NullsafeMethodCall) {
+            $cursor = $cursor->var;
+        }
+
+        if ($cursor instanceof Expr\New_) {
+            return true;
+        }
+
+        return $cursor instanceof Expr\Variable
+            && is_string($cursor->name)
+            && isset($this->unpersistedVars[$cursor->name]);
     }
 
     /**
@@ -2177,6 +2242,26 @@ final class DocumentPerActionWriteScanner
         $this->varClasses = [];
         $this->nullableVars = [];
         $this->nullAssignedVars = [];
+        $this->unpersistedVars = [];
+        foreach ($this->finder->findInstanceOf($fn, Expr\Assign::class) as $assign) {
+            /** @var Expr\Assign $assign */
+            if (! $assign->var instanceof Expr\Variable || ! is_string($assign->var->name)) {
+                continue;
+            }
+            $rhs = $assign->expr;
+            $fresh = false;
+            if ($rhs instanceof Expr\New_ && $rhs->class instanceof Node\Name) {
+                $fresh = $this->tableForModel($this->resolveName($rhs->class)) !== null;
+            } elseif ($rhs instanceof Expr\StaticCall
+                && $rhs->class instanceof Node\Name
+                && $rhs->name instanceof Node\Identifier
+                && $rhs->name->toString() === 'make') {
+                $fresh = $this->tableForModel($this->resolveName($rhs->class)) !== null;
+            }
+            if ($fresh) {
+                $this->unpersistedVars[$assign->var->name] = true;
+            }
+        }
         foreach ($this->finder->findInstanceOf($fn, Node\Param::class) as $param) {
             /** @var Node\Param $param */
             if ($param->var instanceof Expr\Variable && is_string($param->var->name)) {
