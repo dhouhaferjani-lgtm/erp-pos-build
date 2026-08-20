@@ -5,7 +5,13 @@ harness: docs/handoff/SELF-REVIEW-HARNESS.md
 # (r21 of the brief applies all 17 gate-r1 findings, round-0 R0-3/R0-4 + r7-R0-1 + r9-R0-1 + r11-R0-1 + r13-R0-1 + r17-R0-1 + r20-R0-1, the 11 gate-r2 findings, the 6 gate-r3 findings, the 7 gate-r4 findings, the 7 gate-r5 findings, the 6 gate-r6 findings, the 4 gate-r7 findings, the 5 gate-r8 findings, the 6 gate-r9 findings, the 7 gate-r10 findings, and the 3 gate-r11 findings; re-gate before dispatch). Per-milestone registers land here:
 review_register: docs/handoff/reviews/enforcement-p1/
 reviewer_model: opus
-max_fix_rounds: 5
+max_fix_rounds: 6   # raised 5 -> 6 on the STOP-A OWNER RULING (2026-08-20, verbatim:
+# "Authorize continuation i.e. 1"), recorded in full as stop_a_owner_ruling on the M3
+# milestone below. This mirrors the AUTHORITY, which is the control manifest's p1
+# projection — raised owner-side in fd934ffac on the main checkout, outside this
+# candidate's range (the manifest is a control file this package may not touch).
+# The bridge field-checks top-level max_fix_rounds == the manifest projection, so this
+# mirror is required for the round-9 gate to run at all.
 
 # PIN AT DISPATCH (parent writes the SHAs; do NOT invent any):
 #   base_sha        = local-dev tip AFTER the accepted DPA 3C merge (P1 branches from here).
@@ -128,7 +134,13 @@ ratchet_trust_model_ack: "2026-08-19, at dev e4dcf09362e1f19e8e455e9c0fef4877f7b
 # RECEIPT (gate-r10 R10-C-1) — the final gate's sole source for lenses/max_fix_rounds/control hashes;
 # the bridge field-checks this pin against the receipt. Null at M0 = blocked_precondition. On the
 # control-file preflight list: no package may touch it; manifest surrogates in base..A are rejected.
-control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 709b6fe9a81cf5bbc5578aa297a44035a75e578708bd40155671c654094b217a}
+# sha256 re-pinned 2026-08-20 to the manifest as raised owner-side by fd934ffac on the main
+# checkout, outside this candidate's range (p1 max_fix_rounds 5 -> 6
+# on the owner's STOP-A ruling); the parent re-pinned the dispatch receipt's manifest_sha256 to
+# the same value. The bridge field-checks control_manifest {path, sha256} == the receipt, so
+# leaving the old 709b6fe9a8... here would have failed the round-9 gate closed even with
+# max_fix_rounds corrected — both mirrors move together or neither is any use.
+control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 7d8fbb550fe3cc28b773b670f23cae2a389e11c4415767ca56d50cf7fb15ad50}
 
 owner_gates:
   # informational — NO milestone below carries an `owner_gate:` field. The harness treats a populated
