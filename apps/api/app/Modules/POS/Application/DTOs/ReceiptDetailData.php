@@ -53,7 +53,7 @@ final class ReceiptDetailData extends Data
         public readonly ?string $voided_at,
         public readonly string $fiscal_hash,
         public readonly ?string $previous_hash,
-        public readonly int $chain_sequence,
+        public readonly ?int $chain_sequence, // nullable since 2026_05_01_000001 — the model annotation was corrected by es-A0 M2 (the 'Sequence #0' fix); this DTO now follows
         public readonly int $receipt_year,
         public readonly ?string $fiscal_event_id,
         public readonly ?string $synced_at,

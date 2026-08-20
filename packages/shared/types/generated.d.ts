@@ -1622,7 +1622,7 @@ is_voided: boolean;
 voided_at: string | null;
 fiscal_hash: string;
 previous_hash: string | null;
-chain_sequence: number;
+chain_sequence: number | null;
 receipt_year: number;
 fiscal_event_id: string | null;
 synced_at: string | null;
