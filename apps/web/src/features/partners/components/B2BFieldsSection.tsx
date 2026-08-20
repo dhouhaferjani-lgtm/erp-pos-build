@@ -21,7 +21,6 @@ export function B2BFieldsSection({ control, register, watch, setValue, partnerId
   const currency = currentCompany?.currency ?? 'EUR'
   const { t } = useTranslation('sales')
   const paymentTerms = watch('payment_terms')
-  const invoiceConsolidation = watch('invoice_consolidation')
   const bankCountry = watch('country_code')
   const taxIdValidation = useTaxIdValidation()
 
@@ -193,7 +192,7 @@ export function B2BFieldsSection({ control, register, watch, setValue, partnerId
           </div>
         </div>
 
-        {/* Invoice Consolidation */}
+        {/* Periodic billing classification */}
         <div className="sm:col-span-2">
           <div className="flex items-center gap-3">
             <input
@@ -209,28 +208,10 @@ export function B2BFieldsSection({ control, register, watch, setValue, partnerId
               {t('partners.b2b.invoiceConsolidation')}
             </label>
           </div>
+          <p className={`mt-1 text-sm ${colorTokens.text.subtle}`}>
+            {t('partners.b2b.invoiceConsolidationHelp')}
+          </p>
         </div>
-
-        {/* Consolidation Frequency */}
-        {invoiceConsolidation && (
-          <div>
-            <label
-              htmlFor="consolidation_frequency"
-              className={`block text-sm font-medium ${colorTokens.text.secondary}`}
-            >
-              {t('partners.b2b.consolidationFrequency')}
-            </label>
-            <select
-              id="consolidation_frequency"
-              {...register('consolidation_frequency')}
-              className={`mt-1 block w-full rounded-lg border ${colorTokens.border.default} px-3 py-2 shadow-sm ${colorTokens.focus.primaryBorder} focus:outline-none focus:ring-1 ${colorTokens.focus.primaryRing}`}
-            >
-              <option value="">{t('partners.b2b.selectFrequency')}</option>
-              <option value="weekly">{t('partners.consolidation.weekly')}</option>
-              <option value="monthly">{t('partners.consolidation.monthly')}</option>
-            </select>
-          </div>
-        )}
 
         <div className="sm:col-span-2">
           <PartnerBankAccountsSection

@@ -126,6 +126,21 @@ class B2BPartnerTest extends TestCase
             ->assertJsonPath('data.invoice_consolidation', false);
     }
 
+    public function test_can_classify_partner_for_periodic_billing_without_frequency(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/v1/partners', [
+                'name' => 'Periodic Billing Customer',
+                'type' => 'customer',
+                'customer_category' => 'business',
+                'invoice_consolidation' => true,
+            ]);
+
+        $response->assertCreated()
+            ->assertJsonPath('data.invoice_consolidation', true)
+            ->assertJsonPath('data.consolidation_frequency', null);
+    }
+
     public function test_b2b_fields_are_nullable_for_business_customers(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
@@ -256,6 +271,28 @@ class B2BPartnerTest extends TestCase
             ->assertJsonPath('data.payment_terms', 'net_60')
             ->assertJsonPath('data.invoice_consolidation', true)
             ->assertJsonPath('data.consolidation_frequency', 'weekly');
+    }
+
+    public function test_update_keeps_consolidation_frequency_optional_and_nullable(): void
+    {
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Periodic Customer',
+            'type' => 'customer',
+            'customer_category' => 'business',
+            'consolidation_frequency' => 'weekly',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->patchJson("/api/v1/partners/{$partner->id}", [
+                'invoice_consolidation' => true,
+                'consolidation_frequency' => null,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.invoice_consolidation', true)
+            ->assertJsonPath('data.consolidation_frequency', null);
     }
 
     public function test_can_clear_b2b_fields_on_update(): void

@@ -663,6 +663,33 @@ jobs:
           php artisan test -c phpunit-pgsql.xml \
             --filter="VoucherLedgerTest|VoucherLedgerAppendOnlyTest|VoucherSchemaTest|FiscalHardeningE2ETest|FiscalEventsTableTest|FiscalEventsImmutabilityTest|FiscalEventProjectionsTableTest|FiscalEventQuarantineTableTest|PosReceiptsCanonicalBytesTest|PaymentsOriginColumnsTest|OutboxIngestorTest|FiscalEventIngestionEndpointTest|PosCoreReceiptProjectionTest|AccountChargeProjectionTest|TreasuryAccountChargeBridgeTest|DocumentAccountChargeFactureBridgeTest|TaskPhase3AccountChargeFullFlowTest|TreasuryReceiptBridgeTest|PaymentOriginWriterInventoryTest|ParseFailureResumeTest|TerminalRegistrySnapshotTest|VerifyEventChainCommandTest|NewSaleServerAuthoringDispositionTest|ChokepointCompletenessTest|ReceiptChainRebuildTest|DeviceLossIncidentTest|VirtualAdminTerminalResolverTest|PaymentAllocationPrecisionTest|PartnerMoneyPrecisionTest|WacSerializationConcurrencyTest|ZReportImmutabilityTest|ZReportProjectionTest|GenerateZReportWithCountsTest|AnalyticsTest|ZReportListTest|ProcurementPolicyCheckConstraintTest|StockRebalanceEndpointTest|StockMovementLocationFilterTest|StockMatrixEndpointTest|StockThresholdTest|GoodsReceiptDestinationTest|PaymentRepositoryLocationTest|PosBridgeLocationAttributionTest|BackfillLocationAttributionTest|LocationReconciliationTest|CashPositionEndpointTest|MaturingInstrumentsTest|UpcomingPaymentsTest|ExpenseAnalyticsTest|ZReportCashRoundingSummaryTest|PosReceiptsCashRoundingCheckTest|PosCoreReceiptProjectionCashRoundingTest|TreasuryReceiptBridgeNettingTest|TreasuryReceiptBridgeRoundingGlTest|SaleReceiptV3PayloadConstraintTest|ConfigureCashRoundingCommandTest|BackfillTolerancePurposesCommandTest|BackfillChartPurposesMigrationTest|CountryPaymentSettingsCashRoundingTest|PosPaymentPolicyEndpointTest|TenantLaunchContractTest|PosCoreReceiptProjectionRefundQuantityCapTest|PosCoreReceiptProjectionRefundQuantityCapMixedLegacyTest|PosReceiptImmutabilityTriggerSealedHashAlgorithmTest|PosCoreReceiptProjectionOriginalLineTrustTest|PosCoreReceiptProjectionConcurrentRedeliveryTest|ReceiptReturnRefactorV3Test|FiscalPayloadConstraintValidatorTest|ApplyFiscalEventProjectionJobNonRetryableTest|RefundCompensationControllerTest|BackfillSealedHashAlgorithmCommandTest|DeadLetteredProjectionsControllerTest|Nf525VerifyChainParityTest|ReceiptHashServiceVerifyLegacyArmV4Test|LegacyCorrectionGuardTest|EnableV4RefundAuthoringCommandTest|DisableV4RefundAuthoringCommandTest|PosCoreReceiptProjectionApprovalEvidenceTest|PosCoreReceiptProjectionRefundDispositionStockTest|PosCoreReceiptProjectionRefundPolicyAlertTest|PosCoreReceiptProjectionTrainingRefundRefusedTest|PosCoreReceiptProjectionVoucherRefundNoRedemptionTest|TerminalResourcePolicyTest|BatchChainE2ETest|SupportAccessPostgresEndToEndTest|ReturnPeriodBackdatingGuardTest|ReturnNoteConfirmSealAndPeriodTest|DeliveredQuantityResolverTest|GuidedCancelFlowTest|GuidedCancelFlowTupleSplitTest|CanCancelReturnDecisionReadModelTest|GuidedCancelFlowMultiLineAndNettingTest|GuidedCancelFlowAuthorizationTest|PosReceiptsIndexMigrationStructureTest|AccountantReceiptPermissionsTest|ReceiptAggregateIntegrityTest|ReceiptAuthorizationTest|ReceiptFilterDateBoundaryTest|ReceiptFilterOptionsTest|ReceiptIndexArchivedTerminalTest|ReceiptIndexEnvelopeTest|ReceiptIndexFiscalStatusFilterTest|ReceiptIndexLocationScopeTest|ReceiptIndexTrainingExclusionTest|ReceiptIndexTypeFilterTest|ReceiptLocationScopeAuthorizationTest|ReceiptPdfPrintAuditTest|ReceiptResourceNoCanonicalBytesRecursiveTest|ReceiptShowRefundLineageTest|ReceiptShowResourceTest|RefundRegisterPaginationTest|RefundReportingFieldsTest"
 
+          # dn-consolidation wave — the PostgreSQL-only lane for delivery-note
+          # billing. Paths, not --filter, so every test in each file is gated.
+          #
+          # DeliveryNoteBillingProjectionTest and DeliveryNoteBillingClaimServiceTest
+          # + DeliveryNoteBillingMarkerMigrationTest (M5-terminal tenancy F-R3-2): its
+          # backfill regressions (year-zero, offset-displacement, dirty-shape counters)
+          # are PG-only — SQLite accepts what timestamptz rejects, so without this lane
+          # the migration guards are certified by a driver that cannot falsify them.
+          # were added by the M5-terminal r2 register (treasury R2-2). Before that
+          # they ran on SQLite ONLY, where all three of the round-1 fixes are
+          # UNFALSIFIABLE — i.e. each test passed with or without its fix:
+          #   - the payload.invoice_id / payload.invoiced_at guards: SQLite has no
+          #     `uuid` type, so binding a dirty value simply matches nothing instead
+          #     of raising 22P02;
+          #   - postgresPayloadObjectSql(): the SQLite branch uses `json_patch`,
+          #     which already replaces a non-object base;
+          #   - assertMatchingFinalisedPairs's `::text` cast: PostgreSQL-only by
+          #     construction.
+          # This wave has already seen the unguarded-uuid class recur four times
+          # (M3-r1 finding 5, M4-r1 finding 2, F-1, F-T2), so the guards need a gate
+          # that can actually go red, not just a manual run recorded in a handback.
+          php artisan test -c phpunit-pgsql.xml \
+            tests/Feature/Document/DeliveryNoteConsolidationConcurrencyTest.php \
+            tests/Feature/Document/DeliveryNoteBillingProjectionTest.php \
+            tests/Feature/Document/DeliveryNoteBillingClaimServiceTest.php \
+            tests/Feature/Document/DeliveryNoteBillingMarkerMigrationTest.php
+
   t6-phase0b-pgsql:
     name: T6 Phase 0b — database-per-tenant flip (PHPUnit + PostgreSQL)
     runs-on: ubuntu-latest

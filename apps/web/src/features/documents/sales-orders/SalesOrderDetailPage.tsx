@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
+import { AlertTriangle, Calendar, Building2, FileText, Car, Truck } from 'lucide-react'
 import { api, apiPost, getErrorMessage } from '../../../lib/api'
 import { tenantScopedKey } from '../../../lib/tenantScopedKey'
 import { formatCurrency } from '../../../lib/format'
@@ -25,11 +25,12 @@ import { DocumentActionBar } from '../components/DocumentActionBar'
 import { RecordPaymentModal } from '../../../components/organisms/RecordPaymentModal'
 import { Modal } from '../../../components/organisms/Modal/Modal'
 import { Button } from '../../../components/atoms/Button/Button'
+import { Checkbox } from '../../../components/atoms/Checkbox/Checkbox'
 import { Input } from '../../../components/atoms/Input/Input'
 import { StatusBadge, type StatusTone } from '../../../components/atoms/StatusBadge/StatusBadge'
 import { Textarea } from '../../../components/atoms/Textarea/Textarea'
 import { EntityLink } from '../../../components/molecules/EntityLink'
-import { tokens } from '../../../lib/designTokens'
+import { semanticColorTokens, tokens } from '../../../lib/designTokens'
 import { useCompany } from '../../../hooks/useCompany'
 import { useAuthStore } from '../../../stores/authStore'
 import { useCompanyStore } from '../../../stores/companyStore'
@@ -40,10 +41,83 @@ import { DataTable } from '@/components/molecules/DataTable/DataTable'
 type ConfirmAction = 'confirm' | 'convertToInvoice' | 'convertToDelivery' | 'revert' | null
 type ActiveTab = 'related' | 'attachments' | 'payments'
 
+interface BillingRefusalDocument {
+  id: string
+  document_number: string
+  reason: 'claim_lost' | 'already_invoiced'
+  invoice_id: string | null
+  invoice_number: string | null
+  invoice_date: string | null
+  invoiced_via: string | null
+}
+
+interface BillingRefusal {
+  documents: BillingRefusalDocument[]
+  billed_order_line_ids?: string[]
+}
+
+interface InvoiceConversionOptions {
+  partial?: true
+  line_ids?: string[]
+}
+
 const deliveryStatusTones: Record<string, StatusTone> = {
   not_delivered: 'neutral',
   partially_delivered: 'warning',
   fully_delivered: 'success',
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function parseBillingRefusal(error: unknown): BillingRefusal | null {
+  if (!isRecord(error)) return null
+  const response = error['response']
+  if (!isRecord(response) || response['status'] !== 422) return null
+  const data = response['data']
+  if (!isRecord(data)) return null
+  const envelope = data['error']
+  if (!isRecord(envelope) || envelope['code'] !== 'DELIVERY_NOTE_ALREADY_INVOICED') return null
+  const details = envelope['details']
+  if (!isRecord(details) || !Array.isArray(details['documents'])) return null
+
+  const documents: BillingRefusalDocument[] = []
+  for (const candidate of details['documents']) {
+    if (!isRecord(candidate)) continue
+    const id = nullableString(candidate['id'])
+    const documentNumber = nullableString(candidate['document_number'])
+    const reason = candidate['reason']
+    if (id === null || documentNumber === null || (reason !== 'claim_lost' && reason !== 'already_invoiced')) {
+      continue
+    }
+
+    documents.push({
+      id,
+      document_number: documentNumber,
+      reason,
+      invoice_id: nullableString(candidate['invoice_id']),
+      invoice_number: nullableString(candidate['invoice_number']),
+      invoice_date: nullableString(candidate['invoice_date']),
+      invoiced_via: nullableString(candidate['invoiced_via']),
+    })
+  }
+
+  const rawBilledOrderLineIds = details['billed_order_line_ids']
+  const billedOrderLineIds = Array.isArray(rawBilledOrderLineIds)
+    ? rawBilledOrderLineIds.filter((lineId): lineId is string => typeof lineId === 'string' && lineId.length > 0)
+    : undefined
+
+  return documents.length > 0
+    ? {
+        documents,
+        ...(billedOrderLineIds === undefined ? {} : { billed_order_line_ids: billedOrderLineIds }),
+      }
+    : null
 }
 
 function scopedNamespacePredicate(
@@ -75,6 +149,9 @@ export function SalesOrderDetailPage() {
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [activeTab, setActiveTab] = useState<ActiveTab>('related')
   const [showEmailModal, setShowEmailModal] = useState(false)
+  const [billingRefusal, setBillingRefusal] = useState<BillingRefusal | null>(null)
+  const [showRemainingLinePicker, setShowRemainingLinePicker] = useState(false)
+  const [selectedRemainingLineIds, setSelectedRemainingLineIds] = useState<Set<string>>(new Set())
   const [emailForm, setEmailForm] = useState({
     recipientEmail: '',
     subject: '',
@@ -118,8 +195,10 @@ export function SalesOrderDetailPage() {
 
   // Convert to invoice mutation
   const convertToInvoiceMutation = useMutation({
-    mutationFn: () => apiPost<Document>(`/orders/${id}/convert-to-invoice`, {}),
+    mutationFn: (options: InvoiceConversionOptions = {}) => apiPost<Document>(`/orders/${id}/convert-to-invoice`, options),
     onSuccess: async (data) => {
+      setBillingRefusal(null)
+      setShowRemainingLinePicker(false)
       await Promise.all([
         queryClient.invalidateQueries({
           predicate: scopedNamespacePredicate('documents', tenantId, companyId),
@@ -130,8 +209,13 @@ export function SalesOrderDetailPage() {
         void navigate(`/sales/invoices/${data.id}`)
       }
     },
-    onError: async (error: Error) => {
-      toast.error(error.message || t('documents.conversionError'))
+    onError: async (error: unknown) => {
+      const refusal = parseBillingRefusal(error)
+      if (refusal !== null) {
+        setBillingRefusal(refusal)
+      } else {
+        toast.error(getErrorMessage(error) || t('documents.conversionError'))
+      }
       await queryClient.invalidateQueries({ queryKey: ['document', 'sales_order', id] })
     },
   })
@@ -165,7 +249,7 @@ export function SalesOrderDetailPage() {
   }
 
   const handleConvertToInvoice = () => {
-    convertToInvoiceMutation.mutate()
+    convertToInvoiceMutation.mutate({})
     setConfirmAction(null)
   }
 
@@ -232,6 +316,33 @@ export function SalesOrderDetailPage() {
         predicate: scopedNamespacePredicate('payments', tenantId, companyId),
       }),
     ])
+  }
+
+  const billedSourceLineIds = new Set(
+    billingRefusal?.billed_order_line_ids ?? [],
+  )
+  const canDetermineRemainingLines = billingRefusal?.billed_order_line_ids !== undefined
+  const remainingLines = (order?.lines ?? []).filter((line) => !billedSourceLineIds.has(line.id))
+
+  const openRemainingLinePicker = () => {
+    setSelectedRemainingLineIds(new Set(remainingLines.map((line) => line.id)))
+    setShowRemainingLinePicker(true)
+  }
+
+  const toggleRemainingLine = (lineId: string) => {
+    setSelectedRemainingLineIds((current) => {
+      const next = new Set(current)
+      if (next.has(lineId)) next.delete(lineId)
+      else next.add(lineId)
+      return next
+    })
+  }
+
+  const confirmRemainingLines = () => {
+    convertToInvoiceMutation.mutate({
+      partial: true,
+      line_ids: Array.from(selectedRemainingLineIds),
+    })
   }
 
   if (isLoading) {
@@ -319,6 +430,77 @@ export function SalesOrderDetailPage() {
           )}
         </DocumentHeader>
       </div>
+
+      {billingRefusal !== null && (
+        <section
+          role="alert"
+          aria-labelledby="billing-refusal-title"
+          className={`mb-6 rounded-lg border ${semanticColorTokens.intent.danger.borderSubtle} ${semanticColorTokens.intent.danger.bgSubtle} p-4`}
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle aria-hidden="true" className={`mt-0.5 h-5 w-5 shrink-0 ${semanticColorTokens.intent.danger.text}`} />
+            <div className="min-w-0 flex-1">
+              <h2 id="billing-refusal-title" className={`font-semibold ${semanticColorTokens.intent.danger.textStronger}`}>
+                {t('orders.billingRefusal.title')}
+              </h2>
+              <p className={`mt-1 text-sm ${semanticColorTokens.intent.danger.textStronger}`}>
+                {t('orders.billingRefusal.guarantee')}
+              </p>
+              <ul className="mt-4 space-y-3">
+                {billingRefusal.documents.map((document) => (
+                  <li key={document.id} className={`rounded-md border ${semanticColorTokens.intent.danger.borderSubtle} ${semanticColorTokens.surface.base} p-3`}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className={`font-medium ${semanticColorTokens.text.primary}`}>{document.document_number}</p>
+                        <p className={`mt-1 text-sm ${semanticColorTokens.text.muted}`}>
+                          {document.invoice_date ?? '—'}
+                          {' · '}
+                          {document.invoiced_via === null
+                            ? t('orders.billingRefusal.billedBy.unknown')
+                            : t(`orders.billingRefusal.billedBy.${document.invoiced_via}`, {
+                                // The parser types `invoiced_via` as an unconstrained
+                                // `string | null` (deliveryNoteBillingRefusal.ts), not the four
+                                // lane cases, so any lane the server adds without a locale key
+                                // would render the raw key string in en and fr. Matches the two
+                                // sibling surfaces, ToBillPage.tsx:85 and
+                                // PartnerDeliveryNotesTab.tsx:225. (M5-terminal FE E1.)
+                                defaultValue: t('orders.billingRefusal.billedBy.unknown'),
+                              })}
+                        </p>
+                      </div>
+                      {document.invoice_id !== null && document.invoice_number !== null && (
+                        <Link
+                          to={`/sales/invoices/${document.invoice_id}`}
+                          className={`text-sm font-medium ${semanticColorTokens.intent.primary.text} hover:underline`}
+                        >
+                          {t('orders.billingRefusal.openInvoice', { number: document.invoice_number })}
+                        </Link>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {canDetermineRemainingLines && remainingLines.length > 0 && (
+                <div className="mt-4">
+                  <Button type="button" onClick={openRemainingLinePicker}>
+                    {t('orders.billingRefusal.invoiceRemaining')}
+                  </Button>
+                </div>
+              )}
+              {canDetermineRemainingLines && remainingLines.length === 0 && (
+                <p className={`mt-4 text-sm ${semanticColorTokens.text.secondary}`}>
+                  {t('orders.billingRefusal.noRemaining')}
+                </p>
+              )}
+              {!canDetermineRemainingLines && (
+                <p className={`mt-4 text-sm ${semanticColorTokens.text.secondary}`}>
+                  {t('orders.billingRefusal.remainingUnavailable')}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Main Content */}
       <div className="bg-white shadow overflow-hidden sm:rounded-lg">
@@ -526,6 +708,42 @@ export function SalesOrderDetailPage() {
         confirmText={t('common:confirm')}
         isLoading={confirmMutation.isPending}
       />
+
+      <Modal
+        isOpen={showRemainingLinePicker}
+        onClose={() => { setShowRemainingLinePicker(false); }}
+        title={t('orders.billingRefusal.remainingTitle')}
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            {remainingLines.map((line) => (
+              <label
+                key={line.id}
+                className={`flex cursor-pointer items-start gap-3 rounded-md border ${semanticColorTokens.border.subtle} p-3`}
+              >
+                <Checkbox
+                  checked={selectedRemainingLineIds.has(line.id)}
+                  onChange={() => { toggleRemainingLine(line.id); }}
+                  className="mt-1"
+                />
+                <span className={`text-sm ${semanticColorTokens.text.primary}`}>{line.description}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="secondary" onClick={() => { setShowRemainingLinePicker(false); }}>
+              {t('common:cancel')}
+            </Button>
+            <Button
+              onClick={confirmRemainingLines}
+              disabled={selectedRemainingLineIds.size === 0 || convertToInvoiceMutation.isPending}
+            >
+              {t('orders.billingRefusal.confirmRemaining')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <ConfirmDialog
         isOpen={confirmAction === 'convertToInvoice'}

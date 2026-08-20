@@ -114,9 +114,8 @@
       "paymentTermsDays": "Délai de paiement (jours)",
       "creditLimit": "Plafond de crédit",
       "discountPercentage": "Pourcentage de remise",
-      "invoiceConsolidation": "Activer la consolidation des factures",
-      "consolidationFrequency": "Fréquence de consolidation",
-      "selectFrequency": "Sélectionner la fréquence",
+      "invoiceConsolidation": "Facturé périodiquement",
+      "invoiceConsolidationHelp": "Ce client est facturé périodiquement.",
       "validateTaxId": "Valider",
       "taxIdValid": "Valide",
       "taxIdInvalid": "Invalide",
@@ -149,10 +148,6 @@
       "net_60": "Net 60",
       "net_90": "Net 90",
       "custom": "Personnalisé"
-    },
-    "consolidation": {
-      "weekly": "Hebdomadaire",
-      "monthly": "Mensuel"
     },
     "contacts": {
       "title": "Personnes de contact",
@@ -370,6 +365,23 @@
       "not_delivered": "Non livré",
       "partially_delivered": "Partiellement livré",
       "fully_delivered": "Entièrement livré"
+    },
+    "billingRefusal": {
+      "title": "Des bons de livraison ont déjà été facturés",
+      "guarantee": "Aucune facture n’a été créée. Aucun numéro de facture n’a été utilisé.",
+      "billedBy": {
+        "consolidation": "Facturé par consolidation",
+        "order_conversion": "Facturé depuis la commande client",
+        "pre_post_delivery": "Facturé lors de la livraison guidée",
+        "legacy_unknown": "Facturé (origine non enregistrée)",
+        "unknown": "Origine de facturation indisponible"
+      },
+      "openInvoice": "Ouvrir {{number}}",
+      "invoiceRemaining": "Facturer les lignes restantes…",
+      "noRemaining": "Toutes les lignes de la commande sont déjà couvertes par les factures ci-dessus.",
+      "remainingUnavailable": "Les lignes restantes ne peuvent pas être identifiées de manière fiable. Vérifiez les factures ci-dessus avant de continuer.",
+      "remainingTitle": "Facturer les lignes restantes",
+      "confirmRemaining": "Créer la facture"
     }
   },
   "purchaseOrders": {
@@ -591,18 +603,62 @@
     "searchPlaceholder": "Rechercher par numéro de bon de livraison ou partenaire…",
     "noResults": "Aucun bon de livraison trouvé",
     "noConfirmed": "Aucun bon de livraison confirmé disponible",
+    "partnerTab": {
+      "title": "Bons de livraison",
+      "filters": {
+        "uninvoiced": "Non facturés",
+        "invoiced": "Facturés",
+        "all": "Tous"
+      },
+      "columns": {
+        "number": "Bon de livraison",
+        "date": "Date",
+        "total": "Total",
+        "billingState": "État de facturation"
+      },
+      "billingState": {
+        "uninvoiced": "Non facturé",
+        "refused": "Déjà facturé"
+      },
+      "invoicedVia": {
+        "consolidation": "Facturé par consolidation",
+        "orderConversion": "Facturé depuis la commande client",
+        "prePostDelivery": "Facturé lors de la livraison guidée",
+        "legacyUnknown": "Facturé (origine non enregistrée)",
+        "unknown": "Facturé"
+      },
+      "createInvoice": "Créer une facture à partir de la sélection ({{count}})",
+      "created": "Facture créée à partir des bons de livraison",
+      "summaryLabel": "Total des bons de livraison",
+      "coexistence": "Un bon de livraison n’est facturé qu’une fois, par le premier parcours qui l’atteint.\nFacturez depuis la commande client lorsque toute la commande est expédiée et facturée en une seule opération.\nFacturez depuis les bons de livraison lorsque les livraisons sont répétées dans le cadre d’un accord permanent et que la période est facturée.\nUne fois qu’un bon de livraison figure sur une facture, il quitte la liste des éléments non facturés et indique la facture qui l’a pris.",
+      "selectRow": "Sélectionner {{number}}",
+      "selectAll": "Sélectionner tous les bons de livraison",
+      "tableLabel": "Bons de livraison de ce client",
+      "detailBillingLabel": "Facturé sur",
+      "empty": {
+        "title": "Aucun bon de livraison",
+        "description": "Aucun bon de livraison ne correspond à ce filtre de facturation."
+      },
+      "unbilledLine": {
+        "label": "Livré, pas encore facturé",
+        "count_one": "({{count}} bon de livraison en {{currency}})",
+        "count_other": "({{count}} bons de livraison en {{currency}})"
+      }
+    },
     "consolidation": {
-      "title": "Regrouper les bons de livraison",
-      "description": "Sélectionnez les bons de livraison confirmés à regrouper en une seule facture. Tous les bons sélectionnés doivent appartenir au même partenaire et utiliser la même devise.",
-      "noDeliveryNotes": "Aucun bon de livraison disponible",
-      "noDeliveryNotesDescription": "Il n'y a aucun bon de livraison confirmé en attente de facturation.",
-      "selected": "sélectionné(s)",
-      "invoiceTotal": "Total de la facture",
-      "createInvoice": "Créer la facture",
-      "errors": {
-        "differentPartners": "Tous les bons de livraison sélectionnés doivent appartenir au même partenaire",
-        "differentCurrencies": "Tous les bons de livraison sélectionnés doivent utiliser la même devise",
-        "invalidSelection": "Veuillez sélectionner au moins un bon de livraison"
+      "billingRefusal": {
+        "title": "Certains bons de livraison n’ont pas pu être facturés",
+        "guarantee": "Aucune facture n’a été créée. Aucun numéro de facture n’a été utilisé.",
+        "billedBy": {
+          "consolidation": "Facturé par consolidation",
+          "order_conversion": "Facturé depuis la commande client",
+          "pre_post_delivery": "Facturé lors de la livraison guidée",
+          "legacy_unknown": "Facturé (origine non enregistrée)",
+          "unknown": "Origine de facturation indisponible"
+        },
+        "openInvoice": "Ouvrir {{number}}",
+        "invoiceUnavailable": "Facture associée indisponible",
+        "removeAndRetry": "Retirer ces {{count}} éléments et réessayer"
       }
     },
     "confirmed": "Bon de livraison confirmé",
@@ -610,6 +666,65 @@
     "emailSubject": "Bon de livraison",
     "confirmTitle": "Confirmer le bon de livraison",
     "confirmMessage": "Êtes-vous sûr de vouloir confirmer ce bon de livraison ? Le stock sera sorti de l'inventaire. Cette action est irréversible."
+  },
+  "toBill": {
+    "navTitle": "À facturer",
+    "title": "À facturer",
+    "subtitle": "Bons de livraison non facturés, regroupés par client et classés par livraison la plus ancienne.",
+    "agingLabel": "Ancienneté des bons de livraison non facturés",
+    "aging": {
+      "0_30": "0–30 jours",
+      "31_60": "31–60 jours",
+      "61_90": "61–90 jours",
+      "90_plus": "90+ jours"
+    },
+    "grandTotal": "Total restant à facturer",
+    "groupLabel": "Groupe de facturation de {{partner}}",
+    "groupCount_one": "{{count}} bon de livraison",
+    "groupCount_other": "{{count}} bons de livraison",
+    "summaryGroupCount_one": "{{count}} groupe client",
+    "summaryGroupCount_other": "{{count}} groupes clients",
+    "oldest": "Plus ancien : {{date}}",
+    "periodic": "Facturé périodiquement",
+    "noPartnerCode": "Aucun code client",
+    "expand": "Développer {{partner}}",
+    "collapse": "Réduire {{partner}}",
+    "createInvoice": "Créer une facture",
+    "reconciliation_one": "{{count}} bon de livraison · {{total}}",
+    "reconciliation_other": "{{count}} bons de livraison · {{total}}",
+    "rowsLabel": "Bons de livraison non facturés de {{partner}}",
+    "columns": {
+      "number": "Bon de livraison",
+      "date": "Date",
+      "total": "Total"
+    },
+    "filters": {
+      "search": "Rechercher des clients",
+      "dateFrom": "Date de début",
+      "dateTo": "Date de fin",
+      "periodicOnly": "Facturés périodiquement uniquement"
+    },
+    "scope": {
+      "allLocations": "Tous les emplacements",
+      "unnamedLocation": "l'emplacement actif",
+      "currentDisclosure": "Affichage de {{location}} uniquement. Les bons de livraison sans emplacement sont exclus, et seuls les bons en {{currency}} sont comptés.",
+      "allDisclosure": "Affichage de tous les emplacements, y compris les bons de livraison sans emplacement. Seuls les bons en {{currency}} sont comptés ; les bons dans une autre devise sont exclus."
+    },
+    "noScope": {
+      "title": "Aucune société active",
+      "description": "La file à facturer nécessite une société active. Choisissez une société pour voir ce qu'il reste à facturer."
+    },
+    "confirm": {
+      "title": "Créer une facture pour {{partner}} ?",
+      "message_one": "Créer une facture à partir de {{count}} bon de livraison pour un total de {{total}}.",
+      "message_other": "Créer une facture à partir de {{count}} bons de livraison pour un total de {{total}}."
+    },
+    "empty": {
+      "title": "Plus rien à facturer",
+      "description": "Aucun bon de livraison confirmé ne correspond à cet emplacement et à ces filtres."
+    },
+    "loadError": "Impossible de charger la file des éléments à facturer",
+    "rowsLoadError": "Impossible de charger les bons de livraison de ce client"
   },
   "relatedDocuments": {
     "title": "Documents liés",

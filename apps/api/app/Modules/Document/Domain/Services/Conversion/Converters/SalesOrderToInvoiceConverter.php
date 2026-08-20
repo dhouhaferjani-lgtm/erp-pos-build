@@ -8,9 +8,17 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DeliveryStatus;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteAlreadyClaimedException;
+use App\Modules\Document\Domain\Exceptions\DeliveryNoteBatchValidationException;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingClaimService;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteBillingConcurrencyRetrier;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
+use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
 use App\Modules\Document\Domain\Services\Conversion\Concerns\CopiesDocumentData;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\Conversion\StripSubToleranceDiscountsService;
@@ -20,6 +28,7 @@ use App\Modules\Product\Domain\Product;
 use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Treasury\Domain\PaymentAllocation;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -50,8 +59,13 @@ use Illuminate\Support\Facades\Log;
  * - Copies vehicle context if present
  * - Transfers prepayments from order to invoice
  * - Updates order payload with invoice_ids
- * - Marks associated delivery notes as invoiced
+ * - Claims associated delivery notes before numbering or creating the invoice
  * - Dispatches DocumentConverted event
+ *
+ * Claim-bearing conversions own one outer transaction. The source order header
+ * is locked first, followed by any auto-created DN work, then every claimed DN
+ * in ascending id order, and only then the invoice-number sequence. No invoice
+ * or invoice number can exist before all delivery-note claims reserve.
  */
 final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
 {
@@ -65,6 +79,8 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         protected readonly TaxCalculationService $taxCalculationService,
         private readonly StripSubToleranceDiscountsService $discountStripper,
         private readonly DeliveryNoteFromDocumentFactory $deliveryNoteFactory,
+        private readonly DeliveryNoteBillingClaimService $billingClaimService,
+        private readonly DeliveryNoteBillingConcurrencyRetrier $billingConcurrencyRetrier,
     ) {}
 
     public function sourceType(): DocumentType
@@ -129,97 +145,240 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
     {
         /** @var bool $partial */
         $partial = $options['partial'] ?? false;
-        /** @var array<int, string>|null $lineIds */
-        $lineIds = $options['line_ids'] ?? null;
+        /** @var list<string>|null $lineIds */
+        $lineIds = isset($options['line_ids']) && is_array($options['line_ids'])
+            ? array_values(array_map('strval', $options['line_ids']))
+            : null;
         /** @var string|null $actorUserId */
         $actorUserId = $options['actor_user_id'] ?? null;
 
-        if ($source->type !== DocumentType::SalesOrder) {
-            throw new \InvalidArgumentException('Source document must be a sales order');
-        }
+        $payload = $source->payload ?? [];
+        $knownDeliveryNoteIds = is_array($payload['delivery_note_ids'] ?? null)
+            ? array_values(array_map('strval', $payload['delivery_note_ids']))
+            : [];
+        $usedOrderFallbackAttribution = $knownDeliveryNoteIds === [];
+        $attributedId = $knownDeliveryNoteIds[0] ?? $source->id;
+        /** @var array{id: string, document_number: string}|null $attemptedDeliveryNote */
+        $attemptedDeliveryNote = null;
 
-        if ($source->status === DocumentStatus::Cancelled) {
-            throw new \RuntimeException('Cannot convert cancelled sales order');
-        }
+        try {
+            return $this->billingConcurrencyRetrier->run($attributedId, function () use ($source, $partial, $lineIds, $actorUserId, &$attemptedDeliveryNote): Document {
+                $attemptedDeliveryNote = null;
 
-        if ($source->status === DocumentStatus::Draft) {
-            throw new \DomainException('Sales order must be confirmed before conversion', 422);
-        }
+                // Global SO lock order, Layer 0b step 2: immediately after BEGIN,
+                // serialize the same order before scenario detection can take the
+                // delivery-note sequence row or mutate source lines/payload.
+                $order = Document::query()
+                    ->where('tenant_id', $source->tenant_id)
+                    ->where('company_id', $source->company_id)
+                    ->where('id', $source->id)
+                    ->where('type', DocumentType::SalesOrder->value)
+                    ->lockForUpdate()
+                    ->with(['lines', 'partner', 'vehicleContext'])
+                    ->first();
 
-        // Prevent duplicate invoicing - check if order is already fully invoiced
-        if (! $partial && $this->isOrderFullyInvoiced($source)) {
-            throw new \RuntimeException('Sales order has already been fully invoiced');
-        }
+                if (! $order instanceof Document) {
+                    throw new \InvalidArgumentException('Source document must be a sales order');
+                }
 
-        // Tunisia fiscal compliance: auto-create delivery note if physical items exist without delivery notes
-        $scenario = $this->detectOrderScenario($source, $lineIds);
-        $autoCreatedDeliveryNote = null;
+                if ($order->status === DocumentStatus::Cancelled) {
+                    throw new \RuntimeException('Cannot convert cancelled sales order');
+                }
 
-        if ($scenario === 'products_only' || $scenario === 'mixed') {
-            if (! $this->hasDeliveryNotesForPhysicalItems($source)) {
-                // Auto-create delivery note (confirmed but not delivered)
-                // User can mark it as delivered when they post the invoice
-                $autoCreatedDeliveryNote = $this->createDeliveryNoteForOrder($source);
+                if ($order->status === DocumentStatus::Draft) {
+                    throw new \DomainException('Sales order must be confirmed before conversion', 422);
+                }
+
+                if (! $partial && $this->isOrderFullyInvoiced($order)) {
+                    throw new \RuntimeException('Sales order has already been fully invoiced');
+                }
+
+                $scenario = $this->detectOrderScenario($order, $lineIds);
+                $autoCreatedDeliveryNote = null;
+
+                if (($scenario === 'products_only' || $scenario === 'mixed')
+                    && ! $this->hasDeliveryNotesForPhysicalItems($order)) {
+                    // The shared factory remains authoritative and unchanged. Its
+                    // DN number, rows, source-line stamps and payload linkage now
+                    // share this conversion's outer rollback boundary.
+                    $autoCreatedDeliveryNote = $this->createDeliveryNoteForOrder($order);
+                    $attemptedDeliveryNote = [
+                        'id' => $autoCreatedDeliveryNote->id,
+                        'document_number' => $autoCreatedDeliveryNote->document_number,
+                    ];
+                }
+
+                $deliveryNoteIds = $this->lockCompleteDeliveryNoteSet($order, $partial, $lineIds);
+                if ($deliveryNoteIds !== []) {
+                    $firstDeliveryNote = $autoCreatedDeliveryNote?->id === $deliveryNoteIds[0]
+                        ? $autoCreatedDeliveryNote
+                        : Document::query()
+                            ->where('tenant_id', $order->tenant_id)
+                            ->where('company_id', $order->company_id)
+                            ->where('type', DocumentType::DeliveryNote->value)
+                            ->find($deliveryNoteIds[0], ['id', 'document_number']);
+                    if ($firstDeliveryNote instanceof Document) {
+                        $attemptedDeliveryNote = [
+                            'id' => $firstDeliveryNote->id,
+                            'document_number' => $firstDeliveryNote->document_number,
+                        ];
+                    }
+                }
+                $invoice = null;
+
+                $createInvoice = function (?DeliveryNoteClaimSet $_set = null) use (
+                    $order,
+                    $partial,
+                    $lineIds,
+                    $autoCreatedDeliveryNote,
+                    $actorUserId,
+                    &$invoice,
+                ): string {
+                    $invoice = $this->createTargetDocument($order, DocumentType::Invoice, [
+                        'due_date' => now()->addDays(30),
+                    ]);
+
+                    // Copy lines (all or partial)
+                    $this->copyOrderLinesWithProvenance(
+                        $order,
+                        $invoice,
+                        $partial ? $lineIds : null,
+                    );
+
+                    // Strip sub-tolerance discounts BEFORE recalculateTotals so the
+                    // resulting invoice's subtotal/tax/total correctly reflect the
+                    // post-strip state. Defense-in-depth at the conversion stage
+                    // catches anything the request validator missed (e.g. a sales
+                    // order created before Phase 4 was deployed).
+                    $this->discountStripper->stripFromConvertedDocument($order, $invoice);
+
+                    // Recalculate totals
+                    $this->recalculateTotals($invoice);
+
+                    // Copy vehicle context if present
+                    $this->copyVehicleContext($order, $invoice);
+
+                    // Transfer any prepayments from the order to the invoice
+                    $this->transferPrepayments($order, $invoice, $actorUserId);
+
+                    // Update order payload
+                    $additionalPayload = [];
+                    if (! $partial) {
+                        $additionalPayload['fully_invoiced'] = true;
+                        $additionalPayload['fully_invoiced_at'] = now()->toDateTimeString();
+                    }
+                    $this->appendToSourcePayload($order, $invoice, 'invoice_ids', $additionalPayload);
+
+                    // Store metadata about auto-created delivery note in invoice payload
+                    if ($autoCreatedDeliveryNote !== null) {
+                        $invoicePayload = $invoice->payload ?? [];
+                        $invoicePayload['auto_created_delivery_note'] = [
+                            'id' => $autoCreatedDeliveryNote->id,
+                            'number' => $autoCreatedDeliveryNote->document_number,
+                            'created_at' => $autoCreatedDeliveryNote->created_at?->toDateTimeString(),
+                            'status' => 'draft_auto_created', // Draft status - requires confirmation before posting
+                        ];
+                        $invoice->update(['payload' => $invoicePayload]);
+                    }
+
+                    return $invoice->id;
+                };
+
+                if ($deliveryNoteIds === []) {
+                    $createInvoice();
+                } else {
+                    $this->billingClaimService->claim(
+                        new DeliveryNoteClaimRequest(
+                            $deliveryNoteIds,
+                            $order->company_id,
+                            DeliveryNoteBillingLane::OrderConversion,
+                        ),
+                        $createInvoice,
+                    );
+                }
+
+                if (! $invoice instanceof Document) {
+                    throw new \LogicException('Sales-order conversion did not create an invoice.');
+                }
+
+                // Emit only after claim finalisation. The event remains inside the
+                // outer transaction, so a later failure still rolls it back.
+                $this->dispatchConversionEvent($order, $invoice, $partial);
+
+                $freshInvoice = $invoice->fresh(['lines']);
+                if (! $freshInvoice instanceof Document) {
+                    throw new \LogicException('Created invoice could not be reloaded.');
+                }
+
+                return $freshInvoice;
+            });
+        } catch (DeliveryNoteAlreadyClaimedException $exception) {
+            $previous = $exception->getPrevious();
+            if ($previous === null) {
+                throw $exception;
             }
+
+            $candidateId = $usedOrderFallbackAttribution
+                ? ($attemptedDeliveryNote['id'] ?? null)
+                : $exception->deliveryNoteId;
+            if ($candidateId === null) {
+                throw $previous;
+            }
+
+            $durableWinner = $this->durableDeliveryNoteWinner($source, $candidateId);
+            if ($durableWinner === null) {
+                throw $previous;
+            }
+
+            throw new DeliveryNoteAlreadyClaimedException(
+                $durableWinner['id'],
+                $previous,
+                $durableWinner['document_number'],
+            );
         }
-        // scenario === 'services_only': allow direct invoicing
+    }
 
-        return DB::transaction(function () use ($source, $partial, $lineIds, $autoCreatedDeliveryNote, $actorUserId): Document {
-            $invoice = $this->createTargetDocument($source, DocumentType::Invoice, [
-                'due_date' => now()->addDays(30),
-            ]);
+    /** @return array{id: string, document_number: string}|null */
+    private function durableDeliveryNoteWinner(Document $source, string $deliveryNoteId): ?array
+    {
+        $winner = DB::table('documents as delivery_note')
+            ->join('delivery_note_billing_marks as mark', 'mark.delivery_note_id', '=', 'delivery_note.id')
+            ->join('documents as invoice', 'invoice.id', '=', 'mark.invoice_id')
+            ->where('delivery_note.tenant_id', $source->tenant_id)
+            ->where('delivery_note.company_id', $source->company_id)
+            ->where('delivery_note.type', DocumentType::DeliveryNote->value)
+            ->where('delivery_note.id', $deliveryNoteId)
+            ->whereColumn('mark.company_id', 'delivery_note.company_id')
+            ->where('invoice.tenant_id', $source->tenant_id)
+            ->where('invoice.company_id', $source->company_id)
+            ->where('invoice.type', DocumentType::Invoice->value)
+            ->select([
+                'delivery_note.id',
+                'delivery_note.document_number',
+                'delivery_note.payload',
+                'mark.invoice_id as winner_invoice_id',
+                'mark.invoiced_via as winner_lane',
+            ])
+            ->first();
 
-            // Copy lines (all or partial)
-            if ($partial && $lineIds !== null) {
-                $this->copyPartialLines($source, $invoice, $lineIds);
-            } else {
-                $this->copyLines($source, $invoice);
-            }
+        if ($winner === null) {
+            return null;
+        }
 
-            // Strip sub-tolerance discounts BEFORE recalculateTotals so the
-            // resulting invoice's subtotal/tax/total correctly reflect the
-            // post-strip state. Defense-in-depth at the conversion stage
-            // catches anything the request validator missed (e.g. a sales
-            // order created before Phase 4 was deployed).
-            $this->discountStripper->stripFromConvertedDocument($source, $invoice);
+        $payload = is_string($winner->payload)
+            ? json_decode($winner->payload, true)
+            : $winner->payload;
+        if (! is_array($payload)
+            || (string) ($payload['invoice_id'] ?? '') !== (string) $winner->winner_invoice_id
+            || (string) ($payload['invoiced_via'] ?? '') !== (string) $winner->winner_lane
+            || empty($payload['invoiced_at'])) {
+            return null;
+        }
 
-            // Recalculate totals
-            $this->recalculateTotals($invoice);
-
-            // Copy vehicle context if present
-            $this->copyVehicleContext($source, $invoice);
-
-            // Transfer any prepayments from the order to the invoice
-            $this->transferPrepayments($source, $invoice, $actorUserId);
-
-            // Update order payload
-            $additionalPayload = [];
-            if (! $partial) {
-                $additionalPayload['fully_invoiced'] = true;
-                $additionalPayload['fully_invoiced_at'] = now()->toDateTimeString();
-            }
-            $this->appendToSourcePayload($source, $invoice, 'invoice_ids', $additionalPayload);
-
-            // Mark associated delivery notes as invoiced
-            $this->markDeliveryNotesAsInvoiced($source, $invoice);
-
-            // Store metadata about auto-created delivery note in invoice payload
-            if ($autoCreatedDeliveryNote !== null) {
-                $invoicePayload = $invoice->payload ?? [];
-                $invoicePayload['auto_created_delivery_note'] = [
-                    'id' => $autoCreatedDeliveryNote->id,
-                    'number' => $autoCreatedDeliveryNote->document_number,
-                    'created_at' => $autoCreatedDeliveryNote->created_at?->toDateTimeString(),
-                    'status' => 'draft_auto_created', // Draft status - requires confirmation before posting
-                ];
-                $invoice->update(['payload' => $invoicePayload]);
-            }
-
-            // Dispatch conversion event for audit trail
-            $this->dispatchConversionEvent($source, $invoice, $partial);
-
-            return $invoice;
-        });
+        return [
+            'id' => (string) $winner->id,
+            'document_number' => (string) $winner->document_number,
+        ];
     }
 
     /**
@@ -230,6 +389,25 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
         $payload = $order->payload ?? [];
 
         return $payload['fully_invoiced'] ?? false;
+    }
+
+    /**
+     * Copy the same full or selected line set while retaining exact SO origin.
+     *
+     * @param  list<string>|null  $lineIds
+     */
+    private function copyOrderLinesWithProvenance(
+        Document $order,
+        Document $invoice,
+        ?array $lineIds,
+    ): void {
+        $lines = $lineIds === null
+            ? $order->lines
+            : $order->lines()->whereIn('id', $lineIds)->get();
+
+        foreach ($lines as $line) {
+            $this->copyLine($line, $invoice, linkSource: true);
+        }
     }
 
     /**
@@ -429,37 +607,102 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
     }
 
     /**
-     * Mark delivery notes associated with an order as invoiced.
+     * Resolve and lock the complete order payload set in the global order.
+     *
+     * @param  list<string>|null  $lineIds
+     * @return list<string>
      */
-    private function markDeliveryNotesAsInvoiced(Document $order, Document $invoice): void
+    private function lockCompleteDeliveryNoteSet(Document $order, bool $partial, ?array $lineIds): array
     {
-        // Get delivery note IDs from order payload
-        $orderPayload = $order->payload ?? [];
-        $deliveryNoteIds = $orderPayload['delivery_note_ids'] ?? [];
+        $payload = $order->payload ?? [];
+        $rawIds = $payload['delivery_note_ids'] ?? [];
+        $deliveryNoteIds = is_array($rawIds)
+            ? array_values(array_unique(array_map('strval', $rawIds)))
+            : [];
+        sort($deliveryNoteIds, SORT_STRING);
 
-        if (empty($deliveryNoteIds)) {
-            return; // No delivery notes to update
+        if ($deliveryNoteIds === []) {
+            return [];
         }
 
-        // Mark each delivery note as invoiced
-        $deliveryNotes = Document::whereIn('id', $deliveryNoteIds)
-            ->where('type', DocumentType::DeliveryNote)
-            ->get();
+        $query = Document::query()
+            ->where('tenant_id', $order->tenant_id)
+            ->where('company_id', $order->company_id)
+            ->where('type', DocumentType::DeliveryNote->value)
+            ->whereIn('id', $deliveryNoteIds);
 
-        foreach ($deliveryNotes as $dn) {
-            $dnPayload = $dn->payload ?? [];
+        // OI-8 condition 4 reuses the existing whole-line partial conversion
+        // contract. For that operation, the complete claim set is the subset
+        // attributable to selected SO lines through the factory's source_line_id
+        // link. Full conversion still claims every id in the order payload.
+        if ($partial && $lineIds !== null) {
+            $query->whereHas('lines', static function (Builder $lineQuery) use ($lineIds): void {
+                $lineQuery->whereNotNull('source_line_id')->whereIn('source_line_id', $lineIds);
+            })->with('lines');
+        }
 
-            // Skip if already invoiced (should not happen, but be safe)
-            if (! empty($dnPayload['invoiced_at'])) {
-                continue;
+        $lockedDeliveryNotes = $query
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id', 'document_number', 'payload']);
+        $lockedIds = array_values($lockedDeliveryNotes
+            ->pluck('id')
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->values()
+            ->all());
+
+        if (! $partial && $lockedIds !== $deliveryNoteIds) {
+            throw new \DomainException('One or more delivery notes were not found in the sales order company.', 422);
+        }
+
+        $markedIds = DB::table('delivery_note_billing_marks')
+            ->where('company_id', $order->company_id)
+            ->whereIn('delivery_note_id', $lockedIds)
+            ->pluck('delivery_note_id')
+            ->map(static fn (mixed $id): string => (string) $id)
+            ->flip();
+        $alreadyInvoiced = array_values($lockedDeliveryNotes
+            ->filter(static fn (Document $deliveryNote): bool => ! empty(($deliveryNote->payload ?? [])['invoiced_at'])
+                || $markedIds->has($deliveryNote->id))
+            ->map(static fn (Document $deliveryNote): array => [
+                'id' => $deliveryNote->id,
+                'document_number' => $deliveryNote->document_number,
+                'reason' => 'already_invoiced',
+            ])
+            ->values()
+            ->all());
+
+        if ($alreadyInvoiced !== []) {
+            throw new DeliveryNoteBatchValidationException($alreadyInvoiced);
+        }
+
+        if ($partial && $lineIds !== null) {
+            $selectedLineIds = collect($lineIds)->flip();
+            $orderLineIds = $order->lines
+                ->pluck('id')
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->flip();
+            $incompleteSelections = array_values($lockedDeliveryNotes
+                ->filter(static fn (Document $deliveryNote): bool => $deliveryNote->lines->isEmpty()
+                    || ! $deliveryNote->lines->every(
+                        static fn (DocumentLine $line): bool => $line->source_line_id !== null
+                            && $orderLineIds->has((string) $line->source_line_id)
+                            && $selectedLineIds->has((string) $line->source_line_id),
+                    ))
+                ->map(static fn (Document $deliveryNote): array => [
+                    'id' => $deliveryNote->id,
+                    'document_number' => $deliveryNote->document_number,
+                    'reason' => 'partial_selection_incomplete',
+                ])
+                ->values()
+                ->all());
+
+            if ($incompleteSelections !== []) {
+                throw new DeliveryNoteBatchValidationException($incompleteSelections);
             }
-
-            $dnPayload['invoiced_at'] = now()->toDateTimeString();
-            $dnPayload['invoice_id'] = $invoice->id;
-            $dnPayload['invoiced_via'] = 'order_conversion'; // Distinguish from DN consolidation
-
-            $dn->update(['payload' => $dnPayload]);
         }
+
+        return $lockedIds;
     }
 
     /**

@@ -46,6 +46,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->name('documents.revert');
 
     Route::get('/documents/{document}', [DocumentController::class, 'showAny'])
+        ->whereUuid('document')
         ->middleware('can:documents.view')
         ->name('documents.show');
 
@@ -271,7 +272,17 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
         ->middleware('can:deliveries.view')
         ->name('delivery-notes.index');
 
+    Route::get('/delivery-notes/uninvoiced', [DeliveryNoteController::class, 'uninvoiced'])
+        ->middleware(['module:Sales', 'can:deliveries.view'])
+        ->name('delivery-notes.uninvoiced');
+
+    Route::get('/delivery-notes/uninvoiced/{partner}', [DeliveryNoteController::class, 'uninvoicedForPartner'])
+        ->whereUuid('partner')
+        ->middleware(['module:Sales', 'can:deliveries.view'])
+        ->name('delivery-notes.uninvoiced.partner');
+
     Route::get('/delivery-notes/{deliveryNote}', [DeliveryNoteController::class, 'show'])
+        ->whereUuid('deliveryNote')
         ->middleware('can:deliveries.view')
         ->name('delivery-notes.show');
 
@@ -285,7 +296,7 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
 
     // Delivery Note Consolidation (Tunisia model) - Create invoice from multiple delivery notes
     Route::post('/delivery-notes/consolidate-to-invoice', [DocumentConversionController::class, 'createInvoiceFromDeliveryNotes'])
-        ->middleware('can:invoices.create')
+        ->middleware(['module:Sales', 'can:invoices.create'])
         ->name('delivery-notes.consolidate-to-invoice');
 
     // Return Notes

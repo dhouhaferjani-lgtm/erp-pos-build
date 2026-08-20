@@ -24,6 +24,7 @@ export function FilterTabs<T extends string>({
         <button
           key={tab.value}
           type="button"
+          aria-pressed={value === tab.value}
           onClick={() => {
             onChange(tab.value)
           }}

@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
 import { useCompanyStore } from '@/stores/companyStore'
+import enSales from '@/locales/en/sales.json'
+import frSales from '@/locales/fr/sales.json'
 
 import { SalesOrderDetailPage } from '../SalesOrderDetailPage'
 
@@ -15,6 +17,7 @@ const mockApiPost = vi.hoisted(() => vi.fn())
 const mockRouteId = vi.hoisted(() => ({ current: 'order-1' }))
 const mockNavigate = vi.hoisted(() => vi.fn())
 const mockTranslate = vi.hoisted(() => vi.fn((key: string) => key))
+const mockToastError = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -30,7 +33,7 @@ vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
   return {
     ...actual,
-    Link: ({ children }: { children: ReactNode }) => <a href="/test">{children}</a>,
+    Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
     useNavigate: () => mockNavigate,
     useParams: () => ({ id: mockRouteId.current }),
   }
@@ -42,7 +45,7 @@ vi.mock('react-i18next', () => ({
   }),
 }))
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }))
+vi.mock('sonner', () => ({ toast: { error: mockToastError, success: vi.fn() } }))
 
 vi.mock('@/hooks/useCompany', () => ({
   useCompany: () => ({ currentCompany: { id: 'company-1', currency: 'TND' } }),
@@ -223,6 +226,11 @@ function Probe({ queryKey, queryFn }: { queryKey: readonly unknown[]; queryFn: (
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockApiGet.mockReset()
+  mockApiPost.mockReset()
+  mockNavigate.mockReset()
+  mockTranslate.mockReset()
+  mockTranslate.mockImplementation((key: string) => key)
   mockRouteId.current = 'order-1'
   setTenant('tenant-A', 'company-1')
   mockOrderResponses()
@@ -375,5 +383,137 @@ describe('SalesOrderDetailPage tenant scope', () => {
       expect(paymentCalls).toBe(2)
     })
     expect(queryClient.getQueryData(['payments', 'tenant-B', 'company-1'])).toEqual({ marker: 'tenant-B-payments' })
+  })
+})
+
+describe('SalesOrderDetailPage atomic billing refusal', () => {
+  const translations: Record<string, string> = {
+    'orders.billingRefusal.title': 'Delivery notes were already invoiced',
+    'orders.billingRefusal.guarantee': 'No invoice was created. No invoice number was used.',
+    'orders.billingRefusal.billedBy.consolidation': 'Billed by consolidation',
+    'orders.billingRefusal.billedBy.order_conversion': 'Billed from sales order',
+    'orders.billingRefusal.openInvoice': 'Open {{number}}',
+    'orders.billingRefusal.invoiceRemaining': 'Invoice remaining lines…',
+    'orders.billingRefusal.noRemaining': 'Every order line is already covered by the invoices above.',
+    'orders.billingRefusal.remainingUnavailable': 'Remaining lines cannot be determined safely for these delivery notes.',
+    'orders.billingRefusal.remainingTitle': 'Invoice remaining lines',
+    'orders.billingRefusal.confirmRemaining': 'Create invoice',
+  }
+
+  function translate(key: string, options?: Record<string, unknown>): string {
+    const template = translations[key] ?? key
+    return Object.entries(options ?? {}).reduce(
+      (value, [name, replacement]) => value.replace(`{{${name}}}`, String(replacement)),
+      template,
+    )
+  }
+
+  function claimLossError(billedOrderLineIds?: string[]) {
+    return {
+      response: {
+        status: 422,
+        data: {
+          error: {
+            code: 'DELIVERY_NOTE_ALREADY_INVOICED',
+            message: 'Delivery notes were already invoiced',
+            details: {
+              ...(billedOrderLineIds === undefined ? {} : { billed_order_line_ids: billedOrderLineIds }),
+              documents: [
+                {
+                  id: 'dn-1',
+                  document_number: 'DN-1001',
+                  reason: 'claim_lost',
+                  invoice_id: 'invoice-1',
+                  invoice_number: 'INV-1001',
+                  invoice_date: '2026-08-17',
+                  invoiced_via: 'consolidation',
+                },
+                {
+                  id: 'dn-2',
+                  document_number: 'DN-1002',
+                  reason: 'already_invoiced',
+                  invoice_id: 'invoice-2',
+                  invoice_number: 'INV-1002',
+                  invoice_date: '2026-08-18',
+                  invoiced_via: 'order_conversion',
+                },
+              ],
+            },
+          },
+        },
+      },
+    }
+  }
+
+  it('keeps every attributed lost claim inline across rerender and requires confirmation for pre-excluded remaining lines', async () => {
+    mockTranslate.mockImplementation(translate)
+    mockApiPost.mockRejectedValueOnce(claimLossError(['line-1'])).mockResolvedValueOnce({ id: 'invoice-3' })
+    const queryClient = createClient()
+    const view = render(<SalesOrderDetailPage />, { wrapper: wrapper(queryClient) })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'convert-invoice' }))
+    await userEvent.click(screen.getByRole('button', { name: 'orders.convertToInvoiceTitle' }))
+
+    const refusal = await screen.findByRole('alert')
+    expect(within(refusal).getByText('No invoice was created. No invoice number was used.')).toBeInTheDocument()
+    expect(within(refusal).getByText('DN-1001')).toBeInTheDocument()
+    expect(within(refusal).getByText('DN-1002')).toBeInTheDocument()
+    expect(refusal).toHaveTextContent('2026-08-17')
+    expect(refusal).toHaveTextContent('2026-08-18')
+    expect(refusal).toHaveTextContent('Billed by consolidation')
+    expect(refusal).toHaveTextContent('Billed from sales order')
+    expect(within(refusal).getByRole('link', { name: 'Open INV-1001' })).toHaveAttribute('href', '/sales/invoices/invoice-1')
+    expect(within(refusal).getByRole('link', { name: 'Open INV-1002' })).toHaveAttribute('href', '/sales/invoices/invoice-2')
+    expect(within(refusal).queryByRole('button', { name: /retry/i })).not.toBeInTheDocument()
+    expect(mockToastError).not.toHaveBeenCalled()
+
+    view.rerender(<SalesOrderDetailPage />)
+    expect(screen.getByText('No invoice was created. No invoice number was used.')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Invoice remaining lines…' }))
+    const picker = screen.getByRole('dialog')
+    expect(within(picker).queryByText('Whole item')).not.toBeInTheDocument()
+    expect(within(picker).getByText('Fractional item')).toBeInTheDocument()
+    expect(mockApiPost).toHaveBeenCalledTimes(1)
+
+    await userEvent.click(within(picker).getByRole('button', { name: 'Create invoice' }))
+    await waitFor(() => {
+      expect(mockApiPost).toHaveBeenLastCalledWith('/orders/order-1/convert-to-invoice', {
+        partial: true,
+        line_ids: ['line-2'],
+      })
+    })
+  })
+
+  it('keeps invoice links and explains when no order lines remain', async () => {
+    mockTranslate.mockImplementation(translate)
+    mockApiPost.mockRejectedValueOnce(claimLossError(['line-1', 'line-2']))
+    render(<SalesOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'convert-invoice' }))
+    await userEvent.click(screen.getByRole('button', { name: 'orders.convertToInvoiceTitle' }))
+
+    const refusal = await screen.findByRole('alert')
+    expect(within(refusal).getByText('Every order line is already covered by the invoices above.')).toBeInTheDocument()
+    expect(within(refusal).getByRole('link', { name: 'Open INV-1001' })).toBeInTheDocument()
+    expect(within(refusal).queryByRole('button', { name: 'Invoice remaining lines…' })).not.toBeInTheDocument()
+  })
+
+  it('does not offer remaining-line billing when complete order-level provenance is unavailable', async () => {
+    mockTranslate.mockImplementation(translate)
+    mockApiPost.mockRejectedValueOnce(claimLossError())
+    render(<SalesOrderDetailPage />, { wrapper: wrapper(createClient()) })
+
+    await userEvent.click(await screen.findByRole('button', { name: 'convert-invoice' }))
+    await userEvent.click(screen.getByRole('button', { name: 'orders.convertToInvoiceTitle' }))
+
+    const refusal = await screen.findByRole('alert')
+    expect(within(refusal).getByText('Remaining lines cannot be determined safely for these delivery notes.')).toBeInTheDocument()
+    expect(within(refusal).queryByRole('button', { name: 'Invoice remaining lines…' })).not.toBeInTheDocument()
+  })
+
+  it('ships the atomic-refusal guarantee in English and French', () => {
+    expect(enSales.orders.billingRefusal.guarantee).toBe('No invoice was created. No invoice number was used.')
+    expect(frSales.orders.billingRefusal.guarantee).toBe("Aucune facture n’a été créée. Aucun numéro de facture n’a été utilisé.")
   })
 })

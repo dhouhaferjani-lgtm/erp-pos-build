@@ -114,9 +114,8 @@
       "paymentTermsDays": "Payment Terms (Days)",
       "creditLimit": "Credit Limit",
       "discountPercentage": "Discount Percentage",
-      "invoiceConsolidation": "Enable Invoice Consolidation",
-      "consolidationFrequency": "Consolidation Frequency",
-      "selectFrequency": "Select frequency",
+      "invoiceConsolidation": "Billed periodically",
+      "invoiceConsolidationHelp": "This customer is billed periodically.",
       "validateTaxId": "Validate",
       "taxIdValid": "Valid",
       "taxIdInvalid": "Invalid",
@@ -149,10 +148,6 @@
       "net_60": "Net 60",
       "net_90": "Net 90",
       "custom": "Custom"
-    },
-    "consolidation": {
-      "weekly": "Weekly",
-      "monthly": "Monthly"
     },
     "contacts": {
       "title": "Contact Persons",
@@ -370,6 +365,23 @@
       "not_delivered": "Not Delivered",
       "partially_delivered": "Partially Delivered",
       "fully_delivered": "Fully Delivered"
+    },
+    "billingRefusal": {
+      "title": "Delivery notes were already invoiced",
+      "guarantee": "No invoice was created. No invoice number was used.",
+      "billedBy": {
+        "consolidation": "Billed by consolidation",
+        "order_conversion": "Billed from sales order",
+        "pre_post_delivery": "Billed during guided delivery",
+        "legacy_unknown": "Billed (source not recorded)",
+        "unknown": "Billing source unavailable"
+      },
+      "openInvoice": "Open {{number}}",
+      "invoiceRemaining": "Invoice remaining lines…",
+      "noRemaining": "Every order line is already covered by the invoices above.",
+      "remainingUnavailable": "The remaining lines cannot be identified safely. Review the invoices above before continuing.",
+      "remainingTitle": "Invoice remaining lines",
+      "confirmRemaining": "Create invoice"
     }
   },
   "purchaseOrders": {
@@ -591,18 +603,62 @@
     "searchPlaceholder": "Search by delivery note number or partner…",
     "noResults": "No delivery notes found",
     "noConfirmed": "No confirmed delivery notes available",
+    "partnerTab": {
+      "title": "Delivery notes",
+      "filters": {
+        "uninvoiced": "Un-invoiced",
+        "invoiced": "Invoiced",
+        "all": "All"
+      },
+      "columns": {
+        "number": "Delivery note",
+        "date": "Date",
+        "total": "Total",
+        "billingState": "Billing state"
+      },
+      "billingState": {
+        "uninvoiced": "Not invoiced",
+        "refused": "Already invoiced"
+      },
+      "invoicedVia": {
+        "consolidation": "Billed by consolidation",
+        "orderConversion": "Billed from sales order",
+        "prePostDelivery": "Billed during guided delivery",
+        "legacyUnknown": "Invoiced (source not recorded)",
+        "unknown": "Invoiced"
+      },
+      "createInvoice": "Create invoice from selected ({{count}})",
+      "created": "Invoice created from delivery notes",
+      "summaryLabel": "Delivery-note total",
+      "coexistence": "A delivery note is billed once, by whichever route reaches it first.\nBill from the sales order when the whole order goes out and gets invoiced as one job.\nBill from delivery notes when you deliver repeatedly against a standing arrangement and invoice the period.\nOnce a delivery note is on an invoice it leaves the un-invoiced list and shows which invoice took it.",
+      "selectRow": "Select {{number}}",
+      "selectAll": "Select all delivery notes",
+      "tableLabel": "Delivery notes for this customer",
+      "detailBillingLabel": "Invoiced on",
+      "empty": {
+        "title": "No delivery notes",
+        "description": "No delivery notes match this billing filter."
+      },
+      "unbilledLine": {
+        "label": "Delivered, not yet invoiced",
+        "count_one": "({{count}} delivery note in {{currency}})",
+        "count_other": "({{count}} delivery notes in {{currency}})"
+      }
+    },
     "consolidation": {
-      "title": "Consolidate Delivery Notes",
-      "description": "Select confirmed delivery notes to combine into a single invoice. All selected notes must belong to the same partner and use the same currency.",
-      "noDeliveryNotes": "No delivery notes available",
-      "noDeliveryNotesDescription": "There are no confirmed delivery notes waiting to be invoiced.",
-      "selected": "selected",
-      "invoiceTotal": "Invoice Total",
-      "createInvoice": "Create Invoice",
-      "errors": {
-        "differentPartners": "All selected delivery notes must belong to the same partner",
-        "differentCurrencies": "All selected delivery notes must use the same currency",
-        "invalidSelection": "Please select at least one delivery note"
+      "billingRefusal": {
+        "title": "Some delivery notes could not be invoiced",
+        "guarantee": "No invoice was created. No invoice number was used.",
+        "billedBy": {
+          "consolidation": "Billed by consolidation",
+          "order_conversion": "Billed from sales order",
+          "pre_post_delivery": "Billed during guided delivery",
+          "legacy_unknown": "Billed (source not recorded)",
+          "unknown": "Billing source unavailable"
+        },
+        "openInvoice": "Open {{number}}",
+        "invoiceUnavailable": "Taking invoice unavailable",
+        "removeAndRetry": "Remove these {{count}} and retry"
       }
     },
     "confirmed": "Delivery note confirmed",
@@ -610,6 +666,65 @@
     "emailSubject": "Delivery Note",
     "confirmTitle": "Confirm Delivery Note",
     "confirmMessage": "Are you sure you want to confirm this delivery note? Stock will be issued from inventory. This action cannot be undone."
+  },
+  "toBill": {
+    "navTitle": "To bill",
+    "title": "To bill",
+    "subtitle": "Un-invoiced delivery notes, grouped by customer and ordered by the oldest delivery.",
+    "agingLabel": "Un-invoiced delivery note aging",
+    "aging": {
+      "0_30": "0–30 days",
+      "31_60": "31–60 days",
+      "61_90": "61–90 days",
+      "90_plus": "90+ days"
+    },
+    "grandTotal": "Total left to bill",
+    "groupLabel": "{{partner}} billing group",
+    "groupCount_one": "{{count}} delivery note",
+    "groupCount_other": "{{count}} delivery notes",
+    "summaryGroupCount_one": "{{count}} customer group",
+    "summaryGroupCount_other": "{{count}} customer groups",
+    "oldest": "Oldest: {{date}}",
+    "periodic": "Billed periodically",
+    "noPartnerCode": "No customer code",
+    "expand": "Expand {{partner}}",
+    "collapse": "Collapse {{partner}}",
+    "createInvoice": "Create invoice",
+    "reconciliation_one": "{{count}} delivery note · {{total}}",
+    "reconciliation_other": "{{count}} delivery notes · {{total}}",
+    "rowsLabel": "Un-invoiced delivery notes for {{partner}}",
+    "columns": {
+      "number": "Delivery note",
+      "date": "Date",
+      "total": "Total"
+    },
+    "filters": {
+      "search": "Search partners",
+      "dateFrom": "From date",
+      "dateTo": "To date",
+      "periodicOnly": "Billed periodically only"
+    },
+    "scope": {
+      "allLocations": "All locations",
+      "unnamedLocation": "the active location",
+      "currentDisclosure": "Showing {{location}} only. Delivery notes with no location are excluded, and only {{currency}} delivery notes are counted.",
+      "allDisclosure": "Showing every location, including delivery notes with no location. Only {{currency}} delivery notes are counted; notes in another currency are excluded."
+    },
+    "noScope": {
+      "title": "No active company scope",
+      "description": "The to-bill queue needs an active company. Pick a company to see what is left to bill."
+    },
+    "confirm": {
+      "title": "Create invoice for {{partner}}?",
+      "message_one": "Create one invoice from {{count}} delivery note totalling {{total}}.",
+      "message_other": "Create one invoice from {{count}} delivery notes totalling {{total}}."
+    },
+    "empty": {
+      "title": "Nothing left to bill",
+      "description": "No confirmed delivery notes match this location and filter set."
+    },
+    "loadError": "Unable to load the to-bill queue",
+    "rowsLoadError": "Unable to load this customer's delivery notes"
   },
   "relatedDocuments": {
     "title": "Related Documents",

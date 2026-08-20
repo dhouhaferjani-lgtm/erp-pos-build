@@ -31,6 +31,7 @@ parameters:
         processTimeout: 300.0
 
 rules:
+    - App\PHPStan\Rules\DeliveryNoteBillingWritesOnlyViaClaimService
     - App\PHPStan\Rules\WorkOrderStatusWriteOnlyViaTransitionService
     - App\PHPStan\Rules\ForbidHardcodedBcmathScale
     - App\PHPStan\Rules\ForbidFixedScaleQuantityLiteralRule

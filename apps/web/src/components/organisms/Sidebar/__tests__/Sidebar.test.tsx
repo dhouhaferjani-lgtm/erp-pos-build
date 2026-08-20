@@ -142,6 +142,17 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       expect(bankingButton).toBeInTheDocument()
     })
 
+    it('places the deliveries.view-gated to-bill queue after delivery notes', async () => {
+      renderSidebar(mechanicFullConfig)
+
+      const deliveryNotes = await screen.findByRole('link', { name: /navigation\.deliveryNotes/i })
+      const toBill = screen.getByRole('link', { name: /sales:toBill\.navTitle/i })
+
+      expect(toBill).toHaveAttribute('href', '/sales/to-bill')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('deliveries.view')
+      expect(deliveryNotes.compareDocumentPosition(toBill) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    })
+
     it('shows placement management under Inventory', async () => {
       renderSidebar(mechanicFullConfig)
 
@@ -192,6 +203,25 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
 
       expect(screen.queryByRole('link', {
         name: /finance:cashMovements\.navTitle/i,
+      })).not.toBeInTheDocument()
+    })
+
+    it('aligns the lane-separation entry one-to-one with reports.financial', async () => {
+      const allowed = renderSidebar(mechanicFullConfig)
+
+      expect(await screen.findByRole('link', {
+        name: /finance:laneSeparation\.navTitle/i,
+      })).toHaveAttribute('href', '/finance/lane-separation')
+      expect(mockCanAccessModule).toHaveBeenCalledWith('reports.financial')
+
+      allowed.unmount()
+      mockCanAccessModule.mockImplementation(
+        (permission: string) => permission !== 'reports.financial',
+      )
+      renderSidebar(mechanicFullConfig)
+
+      expect(screen.queryByRole('link', {
+        name: /finance:laneSeparation\.navTitle/i,
       })).not.toBeInTheDocument()
     })
   })
