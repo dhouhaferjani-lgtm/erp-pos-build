@@ -52,7 +52,13 @@ packages:
     # r11's four record items incl. relocating the parent-misplaced ticket into the
     # allowlist; round 12 accepts-with-notes for the self-referential record class,
     # parks permanently on any different family.
-    max_fix_rounds: "9"
+    # 9 -> 10: PARENT ruling under the owner's blanket delegation (2026-08-20, "You have the
+    # freedom to drive whatever needs to be done until everything checks", given on departure):
+    # r13's operative finding — pin tag r1 was CONSUMED by the owner ceremony at d65244fe2
+    # (round-12 ACCEPT era) before the red-run re-gate moved the accepted SHA; never-reuse
+    # requires allocating ci-pin/enforcement-p1-r2 inside A. The runbook's ordinal-re-pin
+    # trigger class, foreseen. Values recorded for owner review.
+    max_fix_rounds: "10"
   p2:
     progress_path: docs/handoff/progress/enforcement-p2.progress.yaml
     final_milestone: M4
