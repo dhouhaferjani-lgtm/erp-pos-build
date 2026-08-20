@@ -8,55 +8,67 @@ routes:
     module_gate: null
     permission: null
   - path: /admin
-    component: Navigate
+    component: AdminIndexRedirect
     module_gate: null
     permission: null
-  - path: /admin/audit-logs
-    component: AuditLogsPage
+  - path: /admin/adminRoutePolicies.auditLogs.path
+    component: RequireAdminRole
     module_gate: null
     permission: null
-  - path: /admin/billing
-    component: BillingDashboardPage
+  - path: /admin/adminRoutePolicies.billing.path
+    component: RequireAdminRole
     module_gate: null
     permission: null
-  - path: /admin/billing/invoices
-    component: AdminInvoicesPage
+  - path: /admin/adminRoutePolicies.companyOwners.path
+    component: RequireAdminRole
     module_gate: null
     permission: null
-  - path: /admin/billing/payments
-    component: AdminPaymentsPage
+  - path: /admin/adminRoutePolicies.countryDefaultAssignments.path
+    component: RequireAdminRole
     module_gate: null
     permission: null
-  - path: /admin/billing/subscriptions
-    component: AdminSubscriptionsPage
+  - path: /admin/adminRoutePolicies.countryDefaults.path
+    component: RequireAdminRole
     module_gate: null
     permission: null
-  - path: /admin/company-owners
-    component: CompanyOwnersPage
+  - path: /admin/adminRoutePolicies.countryDefaultsTemplate.path
+    component: RequireAdminRole
     module_gate: null
     permission: null
-  - path: /admin/dashboard
-    component: AdminDashboardPage
+  - path: /admin/adminRoutePolicies.dashboard.path
+    component: RequireAdminRole
+    module_gate: null
+    permission: null
+  - path: /admin/adminRoutePolicies.invoices.path
+    component: RequireAdminRole
+    module_gate: null
+    permission: null
+  - path: /admin/adminRoutePolicies.monitoring.path
+    component: RequireAdminRole
+    module_gate: null
+    permission: null
+  - path: /admin/adminRoutePolicies.payments.path
+    component: RequireAdminRole
+    module_gate: null
+    permission: null
+  - path: /admin/adminRoutePolicies.subscriptions.path
+    component: RequireAdminRole
+    module_gate: null
+    permission: null
+  - path: /admin/adminRoutePolicies.supportAccess.path
+    component: RequireAdminRole
+    module_gate: null
+    permission: null
+  - path: /admin/adminRoutePolicies.tenants.path
+    component: RequireAdminRole
+    module_gate: null
+    permission: null
+  - path: /admin/adminRoutePolicies.verticals.path
+    component: RequireAdminRole
     module_gate: null
     permission: null
   - path: /admin/login
     component: AdminLoginPage
-    module_gate: null
-    permission: null
-  - path: /admin/monitoring
-    component: AdminMonitoringPage
-    module_gate: null
-    permission: null
-  - path: /admin/support-access
-    component: AdminSupportAccessPage
-    module_gate: null
-    permission: null
-  - path: /admin/tenants
-    component: TenantsPage
-    module_gate: null
-    permission: null
-  - path: /admin/verticals
-    component: AdminVerticalsPage
     module_gate: null
     permission: null
   - path: /catalog/attributes
@@ -559,6 +571,18 @@ routes:
     component: PromotionFormPage
     module_gate: null
     permission: promotions.manage
+  - path: /pos/receipts
+    component: ReceiptListPage
+    module_gate: null
+    permission: pos.view_receipts
+  - path: /pos/receipts/:id
+    component: ReceiptDetailPage
+    module_gate: null
+    permission: pos.view_receipts
+  - path: /pos/receipts/refunds
+    component: RefundReceiptListPage
+    module_gate: null
+    permission: pos.view_receipts
   - path: /pos/shift-history
     component: ShiftHistoryPage
     module_gate: null
@@ -861,16 +885,16 @@ routes:
     permission: null
   - path: /settings/compliance/export
     component: ComplianceExportPage
-    module_gate: pos
+    module_gate: null
     permission: null
   - path: /settings/compliance/fraud-alerts
     component: FraudAlertsPage
-    module_gate: settings
-    permission: null
+    module_gate: null
+    permission: fraud-alerts.view
   - path: /settings/compliance/fraud-settings
     component: FraudSettingsPage
-    module_gate: settings
-    permission: null
+    module_gate: null
+    permission: fraud-settings.view
   - path: /settings/compliance/quarantine-resolution
     component: QuarantineResolveAssistPage
     module_gate: null

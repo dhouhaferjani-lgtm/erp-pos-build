@@ -35,7 +35,7 @@ final class PendingSealMigrationTest extends TestCase
         $this->assertSame('YES', $row->is_nullable);
     }
 
-    public function test_pos_terminals_has_fiscal_schema_version_default_2(): void
+    public function test_pos_terminals_has_fiscal_schema_version_default_3(): void
     {
         if (DB::connection()->getDriverName() !== 'pgsql') {
             $this->markTestSkipped('information_schema.columns is Postgres-specific');
@@ -50,7 +50,10 @@ final class PendingSealMigrationTest extends TestCase
         // quoted + cast suffix). Extract the numeric value rather than matching
         // the raw default expression.
         $this->assertSame(1, preg_match('/(\d+)/', (string) $row->column_default, $matches));
-        $this->assertSame('2', $matches[1]);
+        // Default deliberately moved 2 -> 3 by 2026_07_31_000001_default_pos_terminals_
+        // fiscal_schema_version_3 (Lane D1 task 2b); this test asserted the superseded
+        // value and was invisible-red until the first workflow_dispatch (event-graph class).
+        $this->assertSame('3', $matches[1]);
     }
 
     public function test_fiscal_status_check_constraint_includes_pending_seal(): void

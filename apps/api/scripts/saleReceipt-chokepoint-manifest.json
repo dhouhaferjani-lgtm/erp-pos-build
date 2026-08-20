@@ -41,13 +41,13 @@
     },
     {
       "file": "apps/api/app/Modules/Inventory/Presentation/Controllers/InventoryCountingController.php",
-      "line_anchor": "$this->countingService->finalize($counting, $user);",
+      "line_anchor": "$this->countingService->finalize(",
       "calling_class": "App\\Modules\\Inventory\\Presentation\\Controllers\\InventoryCountingController",
       "calling_method": "finalize",
       "receiver_type": "App\\Modules\\Inventory\\Application\\Services\\InventoryCountingService",
       "chokepoint": "unrelated",
       "live": true,
-      "note": "Inventory counting; NOT a fiscal chokepoint. Explicit unrelated allowlist — same method name, unrelated receiver type."
+      "note": "Inventory counting; NOT a fiscal chokepoint. Explicit unrelated allowlist — same method name, unrelated receiver type. Anchor shortened 2026-08-20: the call went multiline (now :462), the old single-line anchor drifted dead and the gate went red — invisible until the first workflow_dispatch because dev pushes trigger no CI (the §event-graph blindness class)."
     },
     {
       "file": "apps/api/app/Modules/POS/Application/Services/ExchangeService.php",
