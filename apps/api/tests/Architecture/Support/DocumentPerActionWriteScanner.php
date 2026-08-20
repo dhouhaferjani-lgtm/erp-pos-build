@@ -191,7 +191,17 @@ use SplFileInfo;
  *    second churn axis on the same footing: inserting an anonymous class
  *    earlier in a file renumbers every later one.
  * D. RAW SQL is matched by table name plus an INSERT/UPDATE/DELETE keyword in a
- *    statically-resolvable string. SQL assembled from variables is not matched.
+ *    statically-resolvable string, and only when the receiver is the `DB` FACADE
+ *    (`DB::statement(...)`, `DB::update(...)`, `DB::connection(...)->update(...)`).
+ *    SQL assembled from variables is not matched. Nor is raw SQL executed through
+ *    an INJECTED connection — `$this->db->update('UPDATE …')`, where `$db` is a
+ *    constructor-injected `ConnectionInterface`. That shape is live in the tree
+ *    as of the 2026-08-20 rebase (`DeliveryNoteBillingClaimService`), though it
+ *    targets `documents`/`delivery_note_billing_marks` and NOT one of the four
+ *    contract tables, so it changes no classification today. Named here because
+ *    an injected-connection raw write against a contract table WOULD be
+ *    invisible; closing it is a scanner change and therefore a re-seed event,
+ *    deliberately not taken during the final gate.
  * D2. `upsert()` can never classify as LINKED: its argument 0 is a LIST of row
  *    arrays and argument 1 is a positional column list, so payload extraction
  *    always resolves to `false` and the site fails closed to `violation` even
