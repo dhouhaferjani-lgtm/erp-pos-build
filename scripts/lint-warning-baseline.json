@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-06-13",
+  "generated_at": "2026-08-20",
   "note": "Regenerate with: node scripts/lint-ratchet.mjs --update-baseline",
-  "baseline_bump_justification": "2026-06-13 EN/FR i18n sweep COMPLETE for all customer-facing surfaces. The local/no-untranslated-literal rule was promoted to ERROR for src/components, src/pages and 21 cleaned feature dirs (see the i18n-clean override block in apps/web/eslint.config.js); those dirs now carry ZERO untranslated user-facing literals and cannot regress. The internal super-admin panel (src/features/admin, ~335 literals) is DEFERRED and stays WARN-ratcheted. Net effect vs the prior i18n bump: web 12375 -> 11739 (-636) and pos 101 -> 40 (-61) as ~270 literals were translated to EN+FR and the rule stopped counting test files. PRIOR bumps: 2026-06-12 introduced the rule at WARN (web 11662->12375, pos 40->101); 2026-05-30 Phase-11 precision-guard (web 11343->11662).",
   "apps": {
     "@autoerp/web": {
       "errors": 0,
-      "warnings": 11739
+      "warnings": 6449
     },
     "@autoerp/pos": {
       "errors": 0,
-      "warnings": 40
+      "warnings": 84
     }
-  }
+  },
+  "owner_ack_2026_08_20": "POS ratchet re-baselined 40->84 (owner-acked, parent session de182ed3): inherited drift across merged waves; every S-14 dispatch failed on the stale number. Burn-down ticket: docs/superpowers/tickets/2026-08-20-pos-lint-burndown-84.md. Web fell 11739->6449 in the same window — the ratchet works when lanes run it."
 }
