@@ -261,6 +261,35 @@ use SplFileInfo;
  *    review sees which write occupies one. This is the sharpest limit of the
  *    key-set design and it is named here rather than left implicit.
  *
+ * I. OTHER UNPERSISTED-MODEL PATHS ARE NOT RECOGNISED AS CREATES (Codex #2).
+ *    The create-by-save rule recognises `new <Model>` and `<Model>::make(...)` —
+ *    directly, chained, or through a copy alias. It does NOT recognise:
+ *      - `$entry->replicate()` and `clone $entry` (both yield an unpersisted
+ *        copy whose `save()` is an INSERT; `clone` emits no site at all);
+ *      - `<Model>::firstOrNew(...)` / `firstOrCreate`-adjacent shapes that
+ *        return an unpersisted model when nothing matches;
+ *      - relation-mediated creates that pass the model as an ARGUMENT rather
+ *        than a receiver — `$owner->journalEntries()->save(new JournalEntry)`,
+ *        `->saveMany([...])`, `->make(...)` — which classify as an
+ *        already-persisted lifecycle mutation.
+ *    Consequence: an unlinked `journal_entries` INSERT reached by one of those
+ *    shapes reads as `not_applicable` and does not enter the baseline. Verified
+ *    ZERO live instances in `app/` at the reviewed tip, which is why this is
+ *    disclosed rather than fixed inside the final gate — it is a real analysis
+ *    project (argument-position receivers and clone-provenance), tracked in
+ *    docs/superpowers/tickets/2026-08-20-dpa-scanner-depth-burndown.md.
+ * J. PAIRING REACHABILITY IS NOT FLOW-SENSITIVE ACROSS CLOSURES (Codex #4).
+ *    Blind spot B already states the pairing predicate is function-scoped. The
+ *    sharper form: the scope is the whole function BODY including closures that
+ *    are never invoked and callbacks that run later. A linked
+ *    `StockMovement::create(...)` inside an uncalled closure — or inside a
+ *    `DB::afterCommit(...)` callback — credits a `stock_levels` write that sits
+ *    OUTSIDE that closure, because both are in the same syntactic scope. The
+ *    movement may never be written, or may be written after the level change.
+ *    Same-file, same-function scope is the limit of this analysis; proving
+ *    reachability needs a call graph. Verified zero live instances of the
+ *    exploit shape; tracked in the same burn-down ticket.
+ *
  * A per-site key is line-number-free and stable under reformatting:
  *   `<relative file>::<class>::<function>::<table>::<mechanism>#<ordinal>`
  * where <ordinal> disambiguates repeated identical mechanisms inside one
@@ -375,6 +404,17 @@ final class DocumentPerActionWriteScanner
         // CREATE-class write, not a MUTATE (M1 gate round 3, finding 2).
         'updateOrInsert' => ['updateOrCreate', 'CREATE'],
         'save' => ['save', 'MUTATE'],
+        // Round 10 / Codex #3: the verb surface was incomplete. Each of these
+        // maps to its EXISTING semantic bucket — saveOrFail follows save (and so
+        // inherits the create-by-save discrimination), the *OrFail/*Quietly
+        // variants follow their base verbs, forceDestroy follows destroy.
+        'saveOrFail' => ['save', 'MUTATE'],
+        'pushQuietly' => ['save', 'MUTATE'],
+        'restoreQuietly' => ['save', 'MUTATE'],
+        'updateOrFail' => ['update', 'MUTATE'],
+        'deleteOrFail' => ['delete', 'DELETE'],
+        'forceDeleteQuietly' => ['delete', 'DELETE'],
+        'forceDestroy' => ['delete', 'DELETE'],
         'saveQuietly' => ['save', 'MUTATE'],
         'saveMany' => ['save', 'MUTATE'],
         'push' => ['save', 'MUTATE'],
@@ -822,7 +862,7 @@ final class DocumentPerActionWriteScanner
             return ['violation', sprintf('the enclosing function assigns null to %s/%s before persisting — linkage erasure', $typeColumn, $idColumn)];
         }
 
-        return ['not_applicable', 'journal_entries lifecycle mutation of an ALREADY-PERSISTED row (the receiver is not a `new`/`make()` model in this scope, so this is not an insert): this table carries no monetary amount — amounts live on journal_entry_lines, outside the P1 contract — and the row\'s justification was fixed when it was created'];
+        return ['not_applicable', 'journal_entries lifecycle mutation of an ALREADY-PERSISTED row (the receiver is not a `new`/`make()` model — directly, chained, or aliased — anywhere in this scope, so this write is not an insert; see blind spot I for the unpersisted shapes that are NOT recognised): this table carries no monetary amount — amounts live on journal_entry_lines, outside the P1 contract — and the row\'s justification was fixed when it was created'];
     }
 
     /**
@@ -861,7 +901,7 @@ final class DocumentPerActionWriteScanner
         // movement-pairing predicate regardless of write class — so the same
         // shape on those three already classifies `violation` (fixture-pinned).
         if ($table === 'journal_entries'
-            && in_array($method, ['save', 'saveQuietly', 'push'], true)
+            && in_array($method, ['save', 'saveQuietly', 'saveOrFail', 'push', 'pushQuietly'], true)
             && $this->receiverIsUnpersistedModel($node)) {
             $writeClass = 'CREATE';
         }
@@ -889,19 +929,49 @@ final class DocumentPerActionWriteScanner
             return false;
         }
 
-        // `$e->save()` and `$e->fill([...])->save()` alike: walk to the base var.
+        // `$e->save()`, `$e->fill([...])->save()` and `Model::make(...)->save()`
+        // alike: walk the chain down to its base.
         $cursor = $node->var;
         while ($cursor instanceof Expr\MethodCall || $cursor instanceof Expr\NullsafeMethodCall) {
             $cursor = $cursor->var;
         }
 
-        if ($cursor instanceof Expr\New_) {
+        // A CHAINED factory call is the base itself — it is never bound to a
+        // variable, so the $unpersistedVars arm alone missed it (final gate
+        // round 10 / Codex #1). Uses the SAME predicate buildVarTypes() applies,
+        // so the two cannot drift apart again.
+        if ($this->isFreshModelExpr($cursor)) {
             return true;
         }
 
         return $cursor instanceof Expr\Variable
             && is_string($cursor->name)
             && isset($this->unpersistedVars[$cursor->name]);
+    }
+
+    /**
+     * Does this expression PRODUCE an unpersisted model of one of the four
+     * tables — `new <Model>(...)` or `<Model>::make(...)`?
+     *
+     * Single source of truth, shared by receiverIsUnpersistedModel() (chained
+     * receivers) and buildVarTypes() (assignment right-hand sides). They were
+     * two separate inline predicates until round 10, and the chained arm was
+     * missing from one of them.
+     */
+    private function isFreshModelExpr(?Node $expr): bool
+    {
+        if ($expr instanceof Expr\New_ && $expr->class instanceof Node\Name) {
+            return $this->tableForModel($this->resolveName($expr->class)) !== null;
+        }
+
+        if ($expr instanceof Expr\StaticCall
+            && $expr->class instanceof Node\Name
+            && $expr->name instanceof Node\Identifier
+            && $expr->name->toString() === 'make') {
+            return $this->tableForModel($this->resolveName($expr->class)) !== null;
+        }
+
+        return false;
     }
 
     /**
@@ -2248,18 +2318,36 @@ final class DocumentPerActionWriteScanner
             if (! $assign->var instanceof Expr\Variable || ! is_string($assign->var->name)) {
                 continue;
             }
-            $rhs = $assign->expr;
-            $fresh = false;
-            if ($rhs instanceof Expr\New_ && $rhs->class instanceof Node\Name) {
-                $fresh = $this->tableForModel($this->resolveName($rhs->class)) !== null;
-            } elseif ($rhs instanceof Expr\StaticCall
-                && $rhs->class instanceof Node\Name
-                && $rhs->name instanceof Node\Identifier
-                && $rhs->name->toString() === 'make') {
-                $fresh = $this->tableForModel($this->resolveName($rhs->class)) !== null;
-            }
-            if ($fresh) {
+            if ($this->isFreshModelExpr($assign->expr)) {
                 $this->unpersistedVars[$assign->var->name] = true;
+            }
+        }
+
+        // Fresh-model state PROPAGATES through plain copy assignments, to a
+        // fixpoint: `$b = $a;` where `$a` holds an unpersisted model leaves `$b`
+        // unpersisted too, so `$b->save()` is still an INSERT (final gate round
+        // 10 / Codex #1, second half). Same shape as the null-admittance
+        // fixpoint above; bounded, since each pass can only add variables.
+        for ($pass = 0; $pass < 8; $pass++) {
+            $grew = false;
+            foreach ($this->finder->findInstanceOf($fn, Expr\Assign::class) as $assign) {
+                /** @var Expr\Assign $assign */
+                if (! $assign->var instanceof Expr\Variable || ! is_string($assign->var->name)) {
+                    continue;
+                }
+                $name = $assign->var->name;
+                if (isset($this->unpersistedVars[$name])) {
+                    continue;
+                }
+                if ($assign->expr instanceof Expr\Variable
+                    && is_string($assign->expr->name)
+                    && isset($this->unpersistedVars[$assign->expr->name])) {
+                    $this->unpersistedVars[$name] = true;
+                    $grew = true;
+                }
+            }
+            if (! $grew) {
+                break;
             }
         }
         foreach ($this->finder->findInstanceOf($fn, Node\Param::class) as $param) {

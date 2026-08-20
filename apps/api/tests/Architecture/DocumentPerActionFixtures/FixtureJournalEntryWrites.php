@@ -194,6 +194,42 @@ final class FixtureJournalEntryWrites
         $entry->save();
     }
 
+    /**
+     * CHAINED `make()` — the receiver is the static call itself, never bound to
+     * a variable. Round 9's fix only recognised `new`/`make` on an assignment
+     * RHS, so this INSERT read as a lifecycle mutation (final gate round 10 /
+     * Codex #1).
+     */
+    public function a_chained_make_then_save(string $companyId): void
+    {
+        JournalEntry::make([
+            'company_id' => $companyId,
+            'entry_number' => 'JE-S4',
+        ])->save();
+    }
+
+    /**
+     * The same chain with a `fill()` hop in the middle.
+     */
+    public function d_chained_make_fill_save(string $companyId): void
+    {
+        JournalEntry::make(['entry_number' => 'JE-S5'])
+            ->fill(['company_id' => $companyId])
+            ->save();
+    }
+
+    /**
+     * Fresh-model state must survive a plain copy assignment: `$b = $a;`
+     * (Codex #1, second half).
+     */
+    public function e_aliased_fresh_then_save(string $companyId): void
+    {
+        $first = JournalEntry::make(['entry_number' => 'JE-S6']);
+        $second = $first;
+        $second->company_id = $companyId;
+        $second->save();
+    }
+
     // --- delete -----------------------------------------------------------
 
     public function deleteEntry(string $entryId): void

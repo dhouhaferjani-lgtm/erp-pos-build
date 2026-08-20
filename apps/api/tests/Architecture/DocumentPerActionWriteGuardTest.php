@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Architecture;
 
+use FilesystemIterator;
+use PhpParser\Node\Stmt\Namespace_;
+use PhpParser\NodeFinder;
+use PhpParser\ParserFactory;
 use PHPUnit\Framework\Attributes\Test;
+use RecursiveDirectoryIterator;
+use RecursiveIteratorIterator;
+use SplFileInfo;
 use Tests\Architecture\Support\DocumentPerActionWriteScanner;
 use Tests\TestCase;
 
@@ -85,6 +92,9 @@ final class DocumentPerActionWriteGuardTest extends TestCase
             ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'q1_property_assign_then_save', 'expected' => 'violation', 'note' => 'round 9: property assignment then save()'],
             ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'q2_fill_then_save', 'expected' => 'violation', 'note' => 'round 9: fill() on a fresh model then save()'],
             ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'q3_make_then_save', 'expected' => 'violation', 'note' => 'round 9: make() then save()'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'a_chained_make_then_save', 'expected' => 'violation', 'note' => 'round 10: CHAINED make()->save(), receiver never bound to a variable'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'd_chained_make_fill_save', 'expected' => 'violation', 'note' => 'round 10: chained make()->fill()->save()'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'e_aliased_fresh_then_save', 'expected' => 'violation', 'note' => 'round 10: fresh-model state through a plain copy assignment'],
             ['mechanism' => 'delete', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'deleteEntry', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule: a JE is reversed, never deleted'],
             ['mechanism' => 'increment', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'incrementChainSequence', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule'],
             ['mechanism' => 'decrement', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'decrementChainSequence', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule'],
@@ -94,6 +104,19 @@ final class DocumentPerActionWriteGuardTest extends TestCase
             ['mechanism' => 'raw_sql', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'rawSqlInsert', 'expected' => 'violation', 'note' => 'POSITIVE-ONLY by rule: raw SQL is never credited'],
             ['mechanism' => 'raw_sql', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'rawSqlUpdate', 'expected' => 'violation', 'note' => 'raw UPDATE can erase linkage invisibly'],
             ['mechanism' => 'raw_sql', 'table' => 'journal_entries', 'class' => 'FixtureJournalEntryWrites', 'method' => 'rawSqlDelete', 'expected' => 'violation', 'note' => ''],
+
+            // ---------------- exact per-VERB pins (round 10 / Codex #3) -------
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'saveOrFailOnFreshEntry', 'expected' => 'violation', 'note' => 'saveOrFail follows save, incl. create-by-save'],
+            ['mechanism' => 'save', 'table' => 'journal_entries', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'pushQuietlyOnFreshEntry', 'expected' => 'violation', 'note' => 'pushQuietly follows push'],
+            ['mechanism' => 'update', 'table' => 'journal_entries', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'updateOrFailErasesLinkage', 'expected' => 'violation', 'note' => 'updateOrFail follows update'],
+            ['mechanism' => 'update', 'table' => 'journal_entries', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'updateQuietlyErasesLinkage', 'expected' => 'violation', 'note' => 'recognised but previously unpinned'],
+            ['mechanism' => 'delete', 'table' => 'stock_movements', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'deleteOrFailMovement', 'expected' => 'violation', 'note' => 'deleteOrFail follows delete'],
+            ['mechanism' => 'delete', 'table' => 'stock_movements', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'forceDeleteQuietlyMovement', 'expected' => 'violation', 'note' => 'forceDeleteQuietly follows forceDelete'],
+            ['mechanism' => 'delete', 'table' => 'stock_movements', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'forceDestroyMovement', 'expected' => 'violation', 'note' => 'forceDestroy follows destroy'],
+            ['mechanism' => 'delete', 'table' => 'stock_movements', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'forceDeleteMovement', 'expected' => 'violation', 'note' => 'recognised but previously unpinned'],
+            ['mechanism' => 'save', 'table' => 'stock_movements', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'restoreQuietlyMovement', 'expected' => 'violation', 'note' => 'restoreQuietly follows restore'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'upsertMovements', 'expected' => 'violation', 'note' => 'recognised but previously unpinned (blind spot D2: upsert has no linked form)'],
+            ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureVerbSurfaceWrites', 'method' => 'insertOrIgnoreUnlinkedMovement', 'expected' => 'violation', 'note' => 'recognised but previously unpinned'],
 
             // ---------------- stock_movements ----------------
             ['mechanism' => 'create', 'table' => 'stock_movements', 'class' => 'FixtureStockMovementWrites', 'method' => 'createUnlinked', 'expected' => 'violation', 'note' => ''],
@@ -369,7 +392,9 @@ final class DocumentPerActionWriteGuardTest extends TestCase
                 continue;
             }
             // The insert fork is the one the scanner reclassified to CREATE; the
-            // reason string is the discriminator the rule itself produces.
+            // reason string is the discriminator the rule itself produces. Both
+            // tokens below are load-bearing — round 10 changed the MUTATE reason
+            // text and this gate caught it immediately, which is the point.
             if (str_contains($site['reason'], 'cannot prove source_type/source_id linkage')) {
                 $insert[] = $case['method'];
             } elseif (str_contains($site['reason'], 'ALREADY-PERSISTED')) {
@@ -379,6 +404,63 @@ final class DocumentPerActionWriteGuardTest extends TestCase
 
         $this->assertNotSame([], $insert, 'journal_entries × save has NO pinned create-by-save (INSERT) case — the fork that was unguarded until final gate round 9.');
         $this->assertNotSame([], $mutate, 'journal_entries × save has NO pinned lifecycle (MUTATE) case, so the exemption itself is unpinned.');
+    }
+
+    /**
+     * IMPOSSIBILITY GUARD for the duplicate-baseline-key collision
+     * (final gate round 10 / Codex #5).
+     *
+     * The scanner attributes every class in a file to the file's FIRST
+     * namespace (`firstNamespace()`), so two classes of the same short name in
+     * two different namespaces INSIDE ONE FILE would produce one identical
+     * baseline key — and the ratchet, which indexes by key, would let a second
+     * violation occupy an already-baselined slot. That is a real defect in the
+     * attribution, and fixing it properly means threading a per-class-like
+     * namespace through class resolution — five call sites, late in the gate.
+     *
+     * Instead the precondition is made STRUCTURALLY UNREACHABLE and checked:
+     * PSR-4 already requires one namespace per file, and this asserts it holds
+     * for every file the scanner actually scans. While it passes, the collision
+     * cannot occur; if it ever fails, this test names the reason and the
+     * attribution must be fixed before the offending file merges.
+     */
+    #[Test]
+    public function no_scanned_file_declares_more_than_one_namespace(): void
+    {
+        $parser = (new ParserFactory)->createForNewestSupportedVersion();
+        $finder = new NodeFinder;
+        $offenders = [];
+
+        $iterator = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator(base_path('app'), FilesystemIterator::SKIP_DOTS),
+        );
+
+        $scanned = 0;
+        foreach ($iterator as $entry) {
+            if (! $entry instanceof SplFileInfo || $entry->getExtension() !== 'php') {
+                continue;
+            }
+            $stmts = $parser->parse((string) file_get_contents($entry->getPathname()));
+            if ($stmts === null) {
+                continue;
+            }
+            $scanned++;
+            $namespaces = $finder->findInstanceOf($stmts, Namespace_::class);
+            if (count($namespaces) > 1) {
+                $offenders[] = $entry->getPathname().' declares '.count($namespaces).' namespaces';
+            }
+        }
+
+        $this->assertGreaterThan(0, $scanned, 'the namespace guard scanned nothing — it would pass vacuously');
+        $this->assertSame(
+            [],
+            $offenders,
+            "A file under app/ declares more than one namespace. The scanner attributes every class in a file\n"
+            ."to the FIRST namespace, so same-short-name classes in different namespaces of one file collapse to\n"
+            ."ONE baseline key and a second violation can occupy an already-baselined slot (Codex #5). Either\n"
+            ."split the file (PSR-4) or fix per-class-like namespace attribution in the scanner:\n"
+            .implode("\n", $offenders),
+        );
     }
 
     /**
