@@ -46,6 +46,7 @@ use Symfony\Component\Yaml\Yaml;
  * The five ways a job/step stops gating on PR->dev, in one place so the checker can
  * apply them to ITSELF as well as to the lanes it certifies.
  *
+ * @param  array{runs: list<string>, ifs: array<string,string>, needs: array<string,list<string>>, jobSoft: array<string,bool>, stepJob: array<string,string>, stepIf: array<string,string>, stepSoft: array<string,bool>}  $wf
  * @return list<string> human-readable reasons; empty means "genuinely gates on PR->dev"
  */
 function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
@@ -172,7 +173,8 @@ try {
  * step still matches a raw `str_contains`, so a lane could be "verified" against
  * a step that no longer executes.
  *
- * @return array{runs: list<string>, ifs: array<string,string>, stepJob: array<string,string>}
+ * @param  array<string,mixed>  $workflowYaml
+ * @return array{runs: list<string>, ifs: array<string,string>, needs: array<string,list<string>>, jobSoft: array<string,bool>, stepJob: array<string,string>, stepIf: array<string,string>, stepSoft: array<string,bool>}
  */
 function collectWorkflowRuns(array $workflowYaml): array
 {
@@ -187,7 +189,10 @@ function collectWorkflowRuns(array $workflowYaml): array
         $ifs[$jobId] = (string) ($job['if'] ?? '');
         $jobSoft[$jobId] = ($job['continue-on-error'] ?? false) === true;
         $jobNeeds = $job['needs'] ?? [];
-        $needs[$jobId] = is_array($jobNeeds) ? $jobNeeds : [(string) $jobNeeds];
+        $needs[$jobId] = array_values(array_map(
+            static fn ($n): string => (string) $n,
+            is_array($jobNeeds) ? $jobNeeds : [$jobNeeds],
+        ));
         foreach (($job['steps'] ?? []) as $step) {
             if (! isset($step['run'])) {
                 continue;
@@ -646,7 +651,7 @@ foreach ($wf['runs'] as $run) {
     // Split on `&&`, `||`, `;` and newlines ONLY — never on a bare `|`. A single
     // pipe is also the alternation separator INSIDE an anchored filter value
     // (`/\\(A|B|C)::/`), so splitting on it shreds the very value being checked.
-    foreach (preg_split('/(?:&&|\|\||;|\n)/', $run) as $segment) {
+    foreach (preg_split('/(?:&&|\|\||;|\n)/', $run) ?: [$run] as $segment) {
         // Skip env/wrapper prefixes before deciding which binary owns the flags:
         // `env CI=1 pnpm …`, `npx pnpm …`, `corepack pnpm …`, `sudo -E pnpm …` all
         // otherwise fell through and produced a false positive on an ungated job.
@@ -705,6 +710,7 @@ foreach ($wf['runs'] as $run) {
 
                 continue;
             }
+            /** @var array<int,string> $m */
             if (($m[1] ?? '') !== '') {
                 $filterValues[] = $m[1];
             } elseif (($m[2] ?? '') !== '') {

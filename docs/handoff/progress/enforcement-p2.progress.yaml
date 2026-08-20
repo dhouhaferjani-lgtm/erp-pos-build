@@ -275,13 +275,16 @@ blockers:
   - milestone: "(wave-level, NOT owned by P2)"
     condition: "THREE inherited CI gates are RED at base_sha, which blocks the mandatory pre-promotion workflow_dispatch (brief §5 item 4 / LEDGER S-14)."
     detail: >-
-      P2 changed ZERO PHP files, so all three pre-date this branch. backend-analyse (phpstan
+      P2 changed ZERO PHP files, so all FOUR pre-date this branch. backend-analyse (phpstan
       --level=8) exits 1 with 2 errors at CopiesDocumentData.php:309-310 — already LEDGER row C-3,
       OPEN. backend-architecture (deptrac ratchet) exits 1: violations rose 99 -> 174 including a
       BLOCKER category (ModuleDomain on ModuleApplication +17) — UNRECORDED anywhere, reproduced
       identically from an independent worktree. frontend-lint's `pnpm lint:ratchet` step exits 1:
       @autoerp/pos warnings rose 40 -> 84 — UNRECORDED; apps/pos at this base is byte-identical to
-      dev (tree dde81dde7). All three jobs have no `if:` guard, so all three run on the dispatch.
+      dev (tree dde81dde7). FOURTH, found at M4: types-drift fails — the PHP enum MovementGlKind
+      exists at base_sha but is absent from packages/shared/types/generated.d.ts at base_sha, and
+      P2 touched neither a PHP enum nor the generated file. All FOUR jobs have no `if:` guard, so
+      all four run on the dispatch.
     parent_decision_required: >-
       Remediate, re-baseline with owner approval, or record explicit inherited-red waivers — and open
       LEDGER rows for the deptrac and pos-ratchet regressions, which have none. Until then P2 cannot

@@ -288,11 +288,16 @@ Neither has ever executed on a real runner (the executor never pushes), so the p
      and the suite is green locally, but a latent service dependency would not surface on a developer
      box with a running stack, and the executor never pushes. This dispatch run is its first real
      execution.
-3. **Inherited red gates at `base_sha` — PARENT-OWNED, not P2's** (recorded in the progress YAML
+3. **FOUR inherited red gates at `base_sha` — PARENT-OWNED, not P2's** (recorded in the progress YAML
    `blockers`): `backend-analyse` (PHPStan, LEDGER C-3), `backend-architecture` (deptrac, 99 → 174,
    **unrecorded**), and `frontend-lint`'s `lint:ratchet` step (`@autoerp/pos` 40 → 84, **unrecorded**).
-   P2 changed zero PHP files; all three predate this branch. All three run on the dispatch, so they
-   block promotion until remediated, re-baselined, or explicitly waived.
+   …and **`types-drift`** (found at M4): the PHP enum `MovementGlKind` exists at `base_sha` but is
+   absent from `packages/shared/types/generated.d.ts` at `base_sha`. P2 touched neither a PHP enum
+   nor the generated file.
+
+   P2 changed zero PHP files; all four predate this branch, and **none of the four jobs has an
+   `if:` guard**, so all four run on the pre-promotion dispatch and block promotion until
+   remediated, re-baselined, or explicitly waived.
 
 ## 9. Named residuals the lanes should know about
 
