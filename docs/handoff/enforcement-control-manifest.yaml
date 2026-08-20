@@ -48,7 +48,11 @@ packages:
     # shapes pinned; (b) the manifest-digest attestation Minor + fourth sweep class. New
     # substance (detector improvement), not record repair. Codex CLI authorized as a second
     # adversarial reviewer alongside the parent bridge.
-    max_fix_rounds: "8"
+    # 8 -> 9: owner FINAL continuation + terminal condition (2026-08-20, "authorized") —
+    # r11's four record items incl. relocating the parent-misplaced ticket into the
+    # allowlist; round 12 accepts-with-notes for the self-referential record class,
+    # parks permanently on any different family.
+    max_fix_rounds: "9"
   p2:
     progress_path: docs/handoff/progress/enforcement-p2.progress.yaml
     final_milestone: M4
