@@ -172,13 +172,21 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
         // The year bound in safeInvoicedAt() counts them as unparseable instead of
         // aborting tenants:migrate. (M5-terminal tenancy F-R3-1 — the reviewer
         // falsified the pre-fix absolute claim by direct INSERT probes.)
-        $invoicedAtYearZero = $this->deliveryNote('DN-INVOICED-AT-YEAR-ZERO', [
+        $this->deliveryNote('DN-INVOICED-AT-YEAR-ZERO', [
             'invoiced_at' => '0000-00-00',
             'invoice_id' => $validInvoice->id,
             'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
         ]);
-        $invoicedAtYearZeroIso = $this->deliveryNote('DN-INVOICED-AT-YEAR-ZERO-ISO', [
+        $this->deliveryNote('DN-INVOICED-AT-YEAR-ZERO-ISO', [
             'invoiced_at' => '0000-01-01',
+            'invoice_id' => $validInvoice->id,
+            'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
+        ]);
+        // Offset-displacement shape (M5-terminal r4, R4-2): Carbon parses ±16:00…±23:59
+        // offsets that PostgreSQL rejects with 22009 — outside every enumerated
+        // validator, caught only by the per-row structural QueryException guard.
+        $this->deliveryNote('DN-INVOICED-AT-BIG-OFFSET', [
+            'invoiced_at' => '2026-01-01T00:00:00+20:00',
             'invoice_id' => $validInvoice->id,
             'invoiced_via' => DeliveryNoteBillingLane::Consolidation->value,
         ]);
@@ -241,7 +249,7 @@ final class DeliveryNoteBillingMarkerMigrationTest extends TestCase
                     'cross_company_invoice_id' => 1,
                     'non_invoice_document_id' => 1,
                     'missing_invoiced_via' => 2,
-                    'unparseable_invoiced_at' => 6, // +2 year-zero shapes (M5-terminal tenancy F-R3-1)
+                    'unparseable_invoiced_at' => 7, // +2 year-zero shapes (F-R3-1) +1 offset shape via the structural guard (R4-2)
                 ])
             ->once();
 

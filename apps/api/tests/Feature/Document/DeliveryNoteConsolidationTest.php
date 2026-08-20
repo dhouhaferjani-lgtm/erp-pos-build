@@ -783,7 +783,7 @@ class DeliveryNoteConsolidationTest extends TestCase
             ->assertJsonPath('error.code', 'CONSOLIDATION_VALIDATION_FAILED')
             ->assertJsonPath('error.details.documents.0.id', $deliveryNote->id)
             ->assertJsonPath('error.details.documents.0.reason', 'no_lines');
-        $this->assertSame(0, Document::query()->where('type', DocumentType::Invoice)->count());
+        $this->assertSame(0, Document::query()->where('type', DocumentType::Invoice)->where('company_id', $this->company->id)->count()); // company-scoped (R4-5)
         $this->assertDatabaseMissing('delivery_note_billing_marks', [
             'delivery_note_id' => $deliveryNote->id,
         ]);

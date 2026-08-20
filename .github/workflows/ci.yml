@@ -636,6 +636,10 @@ jobs:
           # billing. Paths, not --filter, so every test in each file is gated.
           #
           # DeliveryNoteBillingProjectionTest and DeliveryNoteBillingClaimServiceTest
+          # + DeliveryNoteBillingMarkerMigrationTest (M5-terminal tenancy F-R3-2): its
+          # backfill regressions (year-zero, offset-displacement, dirty-shape counters)
+          # are PG-only — SQLite accepts what timestamptz rejects, so without this lane
+          # the migration guards are certified by a driver that cannot falsify them.
           # were added by the M5-terminal r2 register (treasury R2-2). Before that
           # they ran on SQLite ONLY, where all three of the round-1 fixes are
           # UNFALSIFIABLE — i.e. each test passed with or without its fix:

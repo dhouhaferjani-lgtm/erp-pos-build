@@ -193,7 +193,7 @@ final class DocumentData extends Data
         // payload untouched.
         //
         // This is the FORMAT half of the migration's contract, not the whole of it.
-        // `safeInvoiceId():204` guards `is_string()` FIRST and only then `trim`/`Str::isUuid`;
+        // `safeInvoiceId()` guards `is_string()` FIRST and only then `trim`/`Str::isUuid`;
         // the `is_string()` half lives one layer up, in
         // `DeliveryNoteBillingState::fromPayload()`, because a non-string value 500s in
         // the CAST before it could ever reach this line. Neither layer reproduces the

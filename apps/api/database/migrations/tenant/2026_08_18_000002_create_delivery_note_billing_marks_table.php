@@ -6,6 +6,7 @@ use App\Modules\Document\Domain\Enums\DeliveryNoteBillingLane;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -94,13 +95,34 @@ return new class extends Migration
                         $invoicedVia = DeliveryNoteBillingLane::LegacyUnknown->value;
                     }
 
-                    DB::table('delivery_note_billing_marks')->insert([
-                        'delivery_note_id' => $deliveryNote->id,
-                        'invoice_id' => $invoiceId,
-                        'invoiced_via' => $invoicedVia,
-                        'invoiced_at' => $invoicedAt,
-                        'company_id' => $deliveryNote->company_id,
-                    ]);
+                    // STRUCTURAL fail-safe (M5-terminal r4, R4-2): the validators above
+                    // enumerate KNOWN Carbon-accepts/PG-rejects shapes (raw-string grammar,
+                    // then the year range) — but the residual set is open-ended: measured
+                    // example, offset displacements ±16:00…±23:59 pass Carbon's parser and
+                    // PG rejects them with 22009. A dirty row must NEVER abort
+                    // tenants:migrate on the auto-deploying branch, so the per-row insert is
+                    // itself the last validator. The nested transaction is a SAVEPOINT under
+                    // PostgreSQL — without it the failed INSERT poisons the outer
+                    // transaction (25P02) and aborts the tenant anyway. `invoiced_at` is the
+                    // only raw-derived value left at this point (invoice_id is uuid-verified,
+                    // ids come from the model), so the count attribution is sound; the
+                    // disposition mirrors the enumerated unparseable path exactly:
+                    // counted, NO marker row (the column is NOT NULL by design).
+                    try {
+                        DB::transaction(function () use ($deliveryNote, $invoiceId, $invoicedVia, $invoicedAt): void {
+                            DB::table('delivery_note_billing_marks')->insert([
+                                'delivery_note_id' => $deliveryNote->id,
+                                'invoice_id' => $invoiceId,
+                                'invoiced_via' => $invoicedVia,
+                                'invoiced_at' => $invoicedAt,
+                                'company_id' => $deliveryNote->company_id,
+                            ]);
+                        });
+                    } catch (QueryException) {
+                        $counts['unparseable_invoiced_at']++;
+
+                        continue;
+                    }
                     $counts['rows_written']++;
                 }
             }, 'id');
@@ -156,6 +178,14 @@ return new class extends Migration
 
     /**
      * Validate `payload.invoiced_at` before it reaches a NOT NULL timestamptz column.
+     *
+     * HONESTY NOTE (M5-terminal r4, R4-2): this validator is an ENUMERATION, not a proof —
+     * the year bound rejects more than PG does (PG reaches 294276 AD / 4713 BC; the bound
+     * stops at 9999 because `toIso8601String()`'s 4-digit year is the only shape asserted
+     * here), and it cannot see shapes like ±16:00…±23:59 offset displacements that Carbon
+     * accepts and PG rejects (22009). The CLOSURE is structural: the per-row insert is
+     * wrapped in a savepoint with a QueryException catch that counts-and-skips, so no
+     * residual shape can abort tenants:migrate.
      *
      * Every other legacy shape in this backfill is validated and counted; `invoiced_at`
      * alone went in raw, so a truthy-but-unparseable value (`true`, `"yes"`, a blank

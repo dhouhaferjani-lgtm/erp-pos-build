@@ -291,9 +291,12 @@ final class DeliveryNoteToBillQueueTest extends TestCase
         $this->actingAs($this->user)->getJson('/api/v1/delivery-notes/uninvoiced')
             ->assertUnprocessable()
             ->assertJsonPath('error.code', 'VALIDATION_ERROR')
-            // Pin the translated refusal string, not just the code — the en key was
-            // hardcoded English until M5-terminal r2/F-R2-2; this assertion keeps the
-            // key resolving (a raw-key render would fail it). (treasury r3 minor)
+            // Pin the response body against the framework's own resolution of the key
+            // (the en key was hardcoded English until M5-terminal r2/F-R2-2). This
+            // catches a CONTROLLER-side key typo — the test's __() resolves the real
+            // key while the response carries the typo'd one. It does NOT catch the two
+            // sides typo'd identically, nor a missing translation (both sides would
+            // then agree on the raw key). (r4/R4-6 honesty correction)
             ->assertJsonPath('error.errors.location_id.0', __('documents.to_bill_queue.no_active_location_in_scope'));
 
         // A user who may view all locations is unaffected by the new refusal.

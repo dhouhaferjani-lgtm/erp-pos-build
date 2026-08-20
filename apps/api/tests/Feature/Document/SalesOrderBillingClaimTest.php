@@ -26,6 +26,7 @@ use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimRequest;
 use App\Modules\Document\Domain\Services\Billing\DeliveryNoteClaimSet;
 use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToDeliveryNoteConverter;
 use App\Modules\Document\Domain\Services\Conversion\Converters\SalesOrderToInvoiceConverter;
+use App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface;
 use App\Modules\Document\Domain\Services\Conversion\DocumentConverterRegistry;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
@@ -890,7 +891,7 @@ final class SalesOrderBillingClaimTest extends TestCase
     {
         $order = $this->createOrder();
         $this->user->givePermissionTo('deliveries.create');
-        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         // Swap the registry with one whose delivery conversion raises the lock alarm.
         // This pins the CONTROLLER DISPOSITION — the rethrow arm in
@@ -926,7 +927,7 @@ final class SalesOrderBillingClaimTest extends TestCase
     {
         $order = $this->createOrder();
         $this->user->givePermissionTo('deliveries.create');
-        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         // Control for the rethrow arm: a bare RuntimeException is the routine-refusal
         // type this lane throws for customer-data problems — it must keep its 422
@@ -955,11 +956,9 @@ final class SalesOrderBillingClaimTest extends TestCase
     private function registryWithDeliveryConverterThrowing(Closure $thrower): DocumentConverterRegistry
     {
         $registry = new DocumentConverterRegistry;
-        $registry->register(new class($thrower) implements \App\Modules\Document\Domain\Services\Conversion\DocumentConverterInterface
+        $registry->register(new class($thrower) implements DocumentConverterInterface
         {
-            public function __construct(private readonly Closure $thrower)
-            {
-            }
+            public function __construct(private readonly Closure $thrower) {}
 
             public function sourceType(): DocumentType
             {

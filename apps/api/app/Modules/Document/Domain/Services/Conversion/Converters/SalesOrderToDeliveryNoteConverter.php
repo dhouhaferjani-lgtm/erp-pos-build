@@ -189,8 +189,8 @@ final class SalesOrderToDeliveryNoteConverter implements DocumentConverterInterf
      * SalesOrderHeaderLockException is a DEDICATED type that the controller's
      * convertOrderToDelivery rethrow arm carries past its catch-all to a 500-class
      * alert (bare RuntimeException could not be used — the controller lane throws it
-     * for routine 422 refusals), the same disposition F-7 established. Pinned over
-     * HTTP by DocumentConversionIntegrityDispositionTest. (M5-terminal treasury r3.)
+     * for routine 422 refusals), the same disposition F-7 established. Pinned over HTTP by
+     * SalesOrderBillingClaimTest::test_a_lock_order_violation_surfaces_as_a_500_class_alert_over_http. (M5-terminal treasury r3.)
      * (M5-terminal r2: treasury `R2-6` == tenancy `F-R2-3`.)
      *
      * (M5-terminal treasury F-5; total order per M5-evidence.md section 2.3.)

@@ -29,8 +29,8 @@ final class DeliveryNoteBillingState
      * `['not' => 'a UUID']` and `['not' => 'a timestamp']` as fixtures.
      *
      * The migration's guard ORDER is `is_string()` FIRST and only then the format
-     * check (`safeInvoicedAt():176` — `is_string` then `trim` then `CarbonImmutable::parse`;
-     * `safeInvoiceId():204` — `is_string` then `trim` then `Str::isUuid`). This DTO owns
+     * check (`safeInvoicedAt()` — `is_string` then `trim` then `CarbonImmutable::parse`;
+     * `safeInvoiceId()` — `is_string` then `trim` then `Str::isUuid`). This DTO owns
      * the `is_string` half for both keys; the format half lives at the consumer
      * (`DocumentData::fromModel()` runs `Str::isUuid()` before the `documents.id` lookup).
      * Together the two layers reproduce the migration's contract; NEITHER layer
