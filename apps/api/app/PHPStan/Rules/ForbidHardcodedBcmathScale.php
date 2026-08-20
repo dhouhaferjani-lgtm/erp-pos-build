@@ -148,7 +148,12 @@ final class ForbidHardcodedBcmathScale implements Rule
         }
 
         // 2. Raw-source scan for a trailing or preceding same-call comment.
-        $lines = $this->fileLines($scope->getFile());
+        // For TRAIT code analyzed in a consuming class's context, getFile() returns the
+        // CONSUMER file — so this scan was silently reading the wrong file's lines and the
+        // exemption never fired for any trait. Resolve the trait's own file when present.
+        // (Root-caused 2026-08-20 by the Codex second-reviewer probe.)
+        $sourceFile = $scope->getTraitReflection()?->getFileName() ?? $scope->getFile();
+        $lines = $this->fileLines($sourceFile);
 
         if ($lines === []) {
             return false;
