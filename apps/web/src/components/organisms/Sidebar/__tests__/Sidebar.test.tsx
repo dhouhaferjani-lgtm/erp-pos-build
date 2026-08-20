@@ -780,6 +780,8 @@ describe('Sidebar - Vertical-Based Navigation Filtering', () => {
       renderSidebar(mechanicFullConfig)
 
       expect(screen.queryByRole('button', { name: /navigation\.automotive/i })).not.toBeInTheDocument()
+    })
+  })
 
   /**
    * T4 (UI-01): role-level gating through the REAL `canAccessModule`.

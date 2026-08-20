@@ -1,0 +1,18 @@
+# DN-consolidation spec — delta gate round 6
+
+## 1. Gate verdict: FAIL
+
+Three of the four round-5 defects are genuinely closed, and the visible r6 edits are confined to those corrections plus revision/provenance bookkeeping. R5-ND-1 remains open: the covered-form table promises several method variants for which §6.1 does not require a positive rule fixture, despite saying every covered form has one. That leaves the replacement PHPStan guarantee less mechanically verified than the round-5 gate required. The source spec and r5 review are untracked, so Git cannot supply a byte-for-byte r5→r6 diff; confinement was checked against the r5 findings and every r6/GATE5-tagged site instead.
+
+## 2. Four-item verification
+
+| Round-5 defect | Verdict | Verification and assessment |
+|---|---|---|
+| **R5-ND-1 — narrowed PHPStan enforcement** | **NOT CLOSED** | The factual correction is sound: `WorkOrderStatusWriteOnlyViaTransitionService` is `Rule<Assign>` (`:31`), returns `Assign::class` (`:39-42`), immediately returns for a non-`PropertyFetch` target (`:46-48`), and narrows by exact FQCN (`:63`); `phpstan.neon:5-8` analyses only `app/`. The spec now limits the guarantee to enumerated literal forms under `app/`, gives a covered-form table and four-item cannot-see list, and explicitly exempts migrations by path (`SPEC:469,472-489`). But its binding fixture list is incomplete (`SPEC:813`): the table covers `fill`/`forceFill`; `DB::table(...)->insertOrIgnore`/`upsert`/`delete`; marker-model `create`/`insert`/`save`/`update`; and facade `DB::insert`/`update`/`delete` (`SPEC:477-480`), while §6.1 names fixtures only for model `update`/`create`, `DB::table` `insert`/`update`, one unspecified marker-model write, and `DB::statement`. Because the same row says an unfixtured covered form is treated as not covered, the advertised envelope and its required mechanical proof still disagree. |
+| **R5-ND-2 — SO acquisition order** | **CLOSED** | Layer 0b now makes step 2 authoritative and consistently publishes `own source header → document_sequences[delivery_note] → own source lines → claimed DNs → document_sequences[invoice]` (`SPEC:338`). The former prose justification is corrected to own-source disjointness (`SPEC:355`), and both the acyclicity account and auto-create inventory row are header-first (`SPEC:387,395`); the review counter-check matches them (`SPEC:928`). No contrary first-acquisition statement remains in the r6 delta. |
+| **R5-ND-3 — OI-14 surviving state** | **CLOSED** | Layer 0b and OI-14 now identify a surviving, order-linked, still-unconfirmed draft DN and explicitly call the state worse, not milder (`SPEC:350,977`). Source supports it: `createDeliveryNoteForOrder` runs at `SalesOrderToInvoiceConverter.php:162` before `DB::transaction` at `:167`; the factory writes `DocumentStatus::Draft` at `DeliveryNoteFromDocumentFactory.php:79`; the order link is persisted at `SalesOrderToInvoiceConverter.php:533`; and source-line stamps occur at `DeliveryNoteFromDocumentFactory.php:173`. |
+| **R5-ND-4 — escaped table pipes** | **CLOSED** | The two defective literals are escaped in place: `nullable\|in:<enum>` (`SPEC:786`) and `COALESCE(payload,'{}') \|\| patch` (`SPEC:1079`). GFM rendering preserves the intended text and produces no inconsistent row widths. A column-zero scan reports the claimed 30 tables; a full GFM render also recognizes the two indented tables at `SPEC:343-346` and `:570-574`, for 32 rendered tables total, and all 32 have consistent column counts. No other unescaped literal pipe in a table code span was found in this spec. |
+
+## 3. New defects
+
+None. The failure is the still-open R5-ND-1 fixture-coverage defect above.

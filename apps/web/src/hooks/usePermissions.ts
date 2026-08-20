@@ -88,6 +88,12 @@ export const MODULE_PERMISSIONS = {
   // "newGoodsReceipt" nav item already referenced as a module key. Self-mapped
   // like 'inventory.transfers.view' / 'replenishment.view' above.
   'goods-receipt.create-standalone': ['goods-receipt.create-standalone'],
+  // Self-mapped (merge reconciliation 2026-08-20): the DN-consolidation lane's
+  // /sales/to-bill nav entry gates on the deliveries.view PERMISSION through the
+  // nav `permission` field, which feeds canAccessModule as a module key. Built
+  // pre-T4 it "worked" fail-open; under the typed fail-closed contract the raw
+  // string is a compile error — and would hide the entry from every role.
+  'deliveries.view': ['deliveries.view'],
   // UI-01 row 2: same shape, for the "stockByLocation" nav item.
   'inventory.view': ['inventory.view'],
 } as const satisfies Record<string, readonly Permission[]>

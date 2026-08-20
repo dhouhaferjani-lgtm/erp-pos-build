@@ -1,17 +1,10 @@
 import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
-import { StatusBadge, type StatusTone } from '@/components/atoms/StatusBadge'
+import { StatusBadge, statusTone } from '@/components/atoms/StatusBadge'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import type { DeliveryNote } from '../api/deliveryNotes'
-
-const laneTones: Record<string, StatusTone> = {
-  consolidation: 'info',
-  order_conversion: 'success',
-  pre_post_delivery: 'info',
-  legacy_unknown: 'neutral',
-}
 
 function billingLaneKey(lane: string | null): string {
   switch (lane) {
@@ -41,7 +34,22 @@ export function DeliveryNoteBillingAttribution({
 }: DeliveryNoteBillingAttributionProps) {
   const { t } = useTranslation('sales')
   const badge = (
-    <StatusBadge tone={lane === null ? 'neutral' : (laneTones[lane] ?? 'neutral')}>
+    <StatusBadge
+      tone={
+        lane === null
+          ? 'neutral'
+          : statusTone(lane, {
+              // Bespoke lane→tone map retired into the canonical helper (C6, merged-tree
+              // audit 2026-08-20). order_conversion=success is recorded as DN terminal
+              // FE finding E4 (lane attribution is not a success axis) — a carried
+              // follow-on, unchanged here.
+              consolidation: 'info',
+              order_conversion: 'success',
+              pre_post_delivery: 'info',
+              legacy_unknown: 'neutral',
+            })
+      }
+    >
       {t(`deliveryNotes.partnerTab.invoicedVia.${billingLaneKey(lane)}`)}
     </StatusBadge>
   )

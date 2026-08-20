@@ -1,0 +1,30 @@
+# Wave 0 dispatch brief — adversarial gate round 2
+
+## 1. Gate verdict: FAIL
+
+The r2 rewrite correctly applies D1, D2, and D4–D12 and faithfully carries the F-1/F-2 outcomes, but D3 is not fully corrected. T12 correctly separates the three non-production consumer categories, yet its acceptance contract and whole-branch gate say there are only **three** intentional `/finance` literals in `HubCard.test.tsx`; the verified base contains **seven**. The same undercount makes the D3 revision-log entry overstate the actual correction. Amend those references to enumerate all seven literals before dispatch.
+
+## 2. Per-defect verification
+
+| Item | Verification | Revision-log match | Evidence |
+|---|---|---|---|
+| D1 | **VERIFIED** | **YES** | T10 owns hand-removal of exactly the C2 `ShiftDashboardPage` and C3 `POSShiftsDashboard` baseline entries and forbids `--write-baseline`; §4 permits C6 growth, C2 −1, C3 −1, and freezes C1/C4/C5. The source baseline contains the claimed entries at lines 202 and 717; the conditional T8-b cost is also recorded. |
+| D2 | **VERIFIED** | **YES** | §2 binds `T2 → {T10…T13} → T3(a) → T3(b) → T9` and `T1 → T9`, gives T3 sole manifest ownership, splits T3 into two commits, and explicitly permits intermediate deletion drift. T3 and T10–T13 repeat that model without conflicting regeneration requirements. |
+| D3 | **NOT FULLY VERIFIED** | **NO** | The three-row disposition table is correct: delete `MTP-GL-28`, delete the audit-shot entry, and retain `HubCard.test.tsx`. The production-only grep and no-redirect grep are also present. However, T12 and §4 require enumeration of “the three” retained fixture literals, while `HubCard.test.tsx` has seven `to="/finance"` literals at lines 12, 22, 35, 54, 63, 87, and 103. The revision log claims mandatory enumeration without disclosing this undercount. |
+| D4 | **VERIFIED** | **YES** | T10 includes both POS markdown files, makes the barrel doc-comment correction mandatory, assigns the two baseline removals, and provides separate code/documentation/baseline greps with an explicit historical-document option. Source inspection confirms the cited current-tense references and baseline entries exist. |
+| D5 | **VERIFIED** | **YES** | A mechanical source census confirms 42 map keys and exactly four invalid keys across five occurrences: Sidebar lines 182/215 and routes lines 1431/1443/2777. T4 now includes the sixth surface, `CashPositionWidget`, and requires both `hasAnyPermission` and `hasAllPermissions` to accept `readonly Permission[]` before the exact five-diagnostic check. |
+| D6 | **VERIFIED** | **YES** | T12 separates the contracts accurately: `i18nRawKeyCoverage.test.tsx` asserts the en/fr/ar values, while `Sidebar.test.tsx` only protects key/href wiring because its `t` mock returns the key unchanged. The current tests confirm those descriptions. |
+| D7 | **VERIFIED** | **YES** | UI-07 is dispatched as T15; `touchOptimized` is recorded as unresolved F-2b with three parent options; and §1, T8, §5, and §6 prohibit reporting Wave 0 or UI-43 complete. The rev-5 closes-list does assign split UI-43 and UI-07 to Wave 0. |
+| D8 | **VERIFIED** | **YES** | T14 requires separate failing-first seeded render tests for `PrivacyPolicyPage` and `TenantSupportAccessPage`, plus the support test-wrapper repair via `renderWithProviders` or `ProductConfigProvider`. Source inspection confirms the tenant page currently omits interpolation, its current wrapper lacks the provider, and `useProductConfig` throws without one. |
+| D9 | **VERIFIED** | **YES** | Conventional-commit examples are withdrawn in favor of `Phase <major.minor.patch>: <imperative summary>`; F-6 requests the missing phase assignment/exception. The required web E2E command and skipped-spec screenshot rule appear in both working rules and whole-branch gate item 6. |
+| D10 | **VERIFIED** | **YES** | §1 and §2 classify T6 and T8-b as non-executable escalation records producing no commit and enumerate fourteen implementable tasks plus those two records. The handback contract preserves both as blocked records. |
+| D11 | **VERIFIED** | **YES** | T12 makes pruning mandatory, names the sole exception, requires per-key usage evidence, and permits another key to survive only with a named `file:line` consumer. The global deletion checklist is aligned. |
+| D12 | **VERIFIED** | **YES** | The brief specifies plain `./scripts/preflight.sh`, default path scope, no `PREFLIGHT_TEST_PATHS`, the expected PHPUnit `INCOMPLETE` skip banner, and the exact qualified reporting form. This matches `scripts/preflight.sh`: PHPUnit is skipped while the other stages continue, and the final summary says the run is not a full green. |
+| F-1 | **VERIFIED** | **YES** | The r1 merge-risk assessment is incorporated faithfully: source deletions are described as separable, the generated baseline as the shared-file risk, authorization and baseline reconciliation are recommended, and both targets remain explicitly BLOCKED. |
+| F-2 | **VERIFIED** | **YES** | T15 applies the source-backed one-line resolution at `Sidebar.tsx:280` (`treasury` → `expenses`), includes positive and negative visibility tests, preserves the real treasury siblings and route guard, and records the parent `Treasury` module constraint. Live source confirms the nav mismatch, `expenses.view` role set, and `/expenses` route guard. |
+
+## 3. New defects
+
+| ID | Severity | Defect | Required correction |
+|---|---|---|---|
+| N1 | P2 | T12 conflates **three consumer rows** with **seven retained fixture literals**. The incorrect “three intentional literals/sites” wording appears in T12 acceptance and §4 item 4, so the prescribed evidence would omit four known retained occurrences. This is also the sole mismatch between §7's D3 revision-log claim and the applied text. | Keep the three-row disposition table, but replace every fixture-literal count with seven and require exact enumeration of `HubCard.test.tsx:12,22,35,54,63,87,103`. Update the D3 revision-log row to state that seven retained literals are enumerated. |
