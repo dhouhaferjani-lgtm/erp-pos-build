@@ -306,8 +306,8 @@ trait CopiesDocumentData
             $subtotal = bcadd($subtotal, $lineTotal, $scale);
 
             // Calculate tax for this line if tax_rate is set
-            if ($line->tax_rate !== null && bccomp((string) $line->tax_rate, '0', 4) !== 0) {
-                $lineTax = bcmul($lineTotal, bcdiv((string) $line->tax_rate, '100', 4), $scale);
+            if ($line->tax_rate !== null && bccomp((string) $line->tax_rate, '0', 4) !== 0) { // precision-ok: tax_rate is a PERCENTAGE — not currency-scaled per rule 19; 4dp covers the <=2dp storage with headroom
+                $lineTax = bcmul($lineTotal, bcdiv((string) $line->tax_rate, '100', 4), $scale); // precision-ok: percent-to-fraction division; the currency-scaled result uses the resolver's $scale on this same line
                 $lineTaxAmount = bcadd($lineTaxAmount, $lineTax, $scale);
             }
         }
