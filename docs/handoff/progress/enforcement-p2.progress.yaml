@@ -215,6 +215,8 @@ milestones:
     # scripts/adversarial-review-final.sh field-checks top-level == manifest at
     # M4. The raise is therefore recorded as an M1-scoped override below, not as
     # a top-level edit that would fail the final gate's field check.
+    # AUTHORITY: the parent ruling quoted verbatim ABOVE, not this line. A candidate cannot
+    # authorise its own override; this field only records what that ruling decided.
     max_fix_rounds_override: 6      # M1 ONLY, by the parent ruling above
     fix_rounds: 5
     commit: c9ac654b75d7c95f7b0bd245d4c43b2977e96d57
@@ -246,6 +248,7 @@ milestones:
     # ENCODING NOTE: top-level `max_fix_rounds` stays 5 — the control manifest and
     # the parent dispatch receipt both project 5, and adversarial-review-final.sh
     # field-checks top-level == manifest at M4.
+    # AUTHORITY: the parent ruling quoted verbatim ABOVE, not this line.
     max_fix_rounds_override: 7      # M2 ONLY, this continuation + its verifying round
     fix_rounds: 7
     commit: 2c0689f24462cec4c77ace2acb9c08e2bdce5883
@@ -284,8 +287,14 @@ blockers:
       @autoerp/pos warnings rose 40 -> 84 — UNRECORDED; apps/pos at this base is byte-identical to
       dev (tree dde81dde7). FOURTH, found at M4: types-drift fails — the PHP enum MovementGlKind
       exists at base_sha but is absent from packages/shared/types/generated.d.ts at base_sha, and
-      P2 touched neither a PHP enum nor the generated file. All FOUR jobs have no `if:` guard, so
-      all four run on the dispatch.
+      P2 touched neither a PHP enum nor the generated file. That statement is true BY
+      CONSTRUCTION: running preflight at M4 regenerated generated.d.ts as a side effect and it was
+      swept into a commit; the final gate caught it and the PARENT RULED REVERT (final-gate round 1,
+      2026-08-19), so packages/shared/types/generated.d.ts is byte-identical to its base blob
+      (0c652f34a3f58f959ff21564643e8b40019a1fd4) at the accepted tip. The types-drift red therefore
+      stays GENUINELY INHERITED and parent-owned — it belongs to the parent's red-gate
+      reconciliation ledger as the 3C generated-artifact overlap, not to P2. All FOUR jobs have no
+      `if:` guard, so all four run on the dispatch.
     parent_decision_required: >-
       Remediate, re-baseline with owner approval, or record explicit inherited-red waivers — and open
       LEDGER rows for the deptrac and pos-ratchet regressions, which have none. Until then P2 cannot

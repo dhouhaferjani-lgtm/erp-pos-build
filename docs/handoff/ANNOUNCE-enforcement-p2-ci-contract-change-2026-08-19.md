@@ -292,8 +292,13 @@ Neither has ever executed on a real runner (the executor never pushes), so the p
    `blockers`): `backend-analyse` (PHPStan, LEDGER C-3), `backend-architecture` (deptrac, 99 → 174,
    **unrecorded**), and `frontend-lint`'s `lint:ratchet` step (`@autoerp/pos` 40 → 84, **unrecorded**).
    …and **`types-drift`** (found at M4): the PHP enum `MovementGlKind` exists at `base_sha` but is
-   absent from `packages/shared/types/generated.d.ts` at `base_sha`. P2 touched neither a PHP enum
-   nor the generated file.
+   absent from `packages/shared/types/generated.d.ts` at `base_sha`. **P2 touched neither a PHP enum
+   nor the generated file** — true by construction, and deliberately so: running preflight at M4
+   regenerated `generated.d.ts` as a side effect and it was swept into a commit; the final gate
+   caught it and the **parent ruled REVERT**, so that file is byte-identical to its base blob
+   (`0c652f34a…`) at the accepted tip. **P2 does not regenerate it**, so the red stays attributable
+   to its true source — the parent's red-gate reconciliation ledger, as the 3C generated-artifact
+   overlap.
 
    P2 changed zero PHP files; all four predate this branch, and **none of the four jobs has an
    `if:` guard**, so all four run on the pre-promotion dispatch and block promotion until
