@@ -49,7 +49,7 @@ Still open elsewhere: Dokploy deploy pipeline (yours) · staging owes S-1..S-13 
 | Lane | Branch | Merged at | Local verification |
 |---|---|---|---|
 | G-4 VAT refund netting | `fix/g4-vat-pos-refund-netting` | `efa2282dd` | treasury gate r1 (revert-probe red-proof) + fix round (probe-verified CI token, voided-return pin); PG 7/31 + sqlite 7/31 by path; manifest checker exit 0 re-run on MERGED dev; actionlint OWED (not installed) at next CI-sighted window |
-| Arabic backfill (161 keys + 9 plurals) | `fix/ar-locale-coverage` | `176d2e932` | conventions gate r1 (exhaustive 161/161 placeholder check, empirical tsc causation repro, pure-shrink 1:1 proof) + fix round (3 wording P2s, ar appName guard row); post-merge on dev: i18n suite 51/51, audit:i18n:local exit 0, baseline 2763 held |
+| Arabic backfill (161 keys + 9 plurals) | `fix/ar-locale-coverage` | `176d2e932` | conventions gate r1 (exhaustive 161/161 placeholder check, empirical tsc causation repro, pure-shrink 1:1 proof) + fix round (3 wording P2s, ar appName guard row); post-merge on dev: i18n suite 51/51, audit:i18n:local exit 0, baseline 2763 held; PLAYWRIGHT live-verified on the local stack (ar locale: RTL + lang=ar through login→dashboard→/treasury/remittances; page h1 AND sidebar both render the corrected حافظات التحصيل, old term absent) |
 | _(rows appended at each merge)_ | | | |
 
 ## D. Session log pointers
