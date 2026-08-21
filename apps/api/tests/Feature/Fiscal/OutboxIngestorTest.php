@@ -17,6 +17,7 @@ use App\Modules\Fiscal\Domain\Models\FiscalEvent;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
+use App\Shared\Domain\ByteaBinding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -1039,13 +1040,7 @@ final class OutboxIngestorTest extends TestCase
      */
     private function readBytea(mixed $value): string
     {
-        if (is_resource($value)) {
-            $contents = stream_get_contents($value);
-
-            return $contents === false ? '' : $contents;
-        }
-
-        return is_string($value) ? $value : '';
+        return ByteaBinding::read($value);
     }
 
     /**

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Domain;
 
 use App\Modules\Identity\Domain\User;
+use App\Shared\Domain\Concerns\BindsBinaryColumns;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
@@ -43,6 +44,12 @@ use Illuminate\Support\Carbon;
  */
 class ZReport extends Model
 {
+    /**
+     * `canonical_bytes` mirrors the Z_REPORT fiscal event's canonical encoding
+     * into a `bytea` column — bind it as `PDO::PARAM_LOB`, never as a string.
+     */
+    use BindsBinaryColumns;
+
     use HasUuids;
 
     /**
@@ -102,6 +109,14 @@ class ZReport extends Model
         }
 
         return (string) $value;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function binaryColumns(): array
+    {
+        return ['canonical_bytes'];
     }
 
     /**

@@ -24,6 +24,7 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
 use App\Shared\Contracts\Fiscal\ModuleActivationResolver;
+use App\Shared\Domain\ByteaBinding;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -192,6 +193,38 @@ final class TerminalRegistrySnapshotTest extends TestCase
         $this->assertArrayHasKey('code', $entry);
         $this->assertArrayHasKey('genesis_seed', $entry);
         $this->assertArrayHasKey('is_active', $entry);
+    }
+
+    /**
+     * The terminal NAME is carried verbatim into `payload.terminals[].name` and
+     * therefore into the canonical bytes, where RFC 8785 escapes a double quote
+     * as `\"`. Bound as `PDO::PARAM_STR` those bytes are parsed by PostgreSQL
+     * with the bytea *escape* input rules and the append dies with
+     * `SQLSTATE[22P02] invalid input syntax for type bytea`.
+     */
+    public function test_terminal_name_with_quote_and_backslash_is_snapshotted_byte_identically(): void
+    {
+        Terminal::query()->whereKey($this->terminalId)
+            ->update(['name' => 'Caisse "Principale" \\ N°1 — C:\\POS\\01']);
+
+        $svc = $this->app->make(TerminalRegistrySnapshotService::class);
+        $event = $svc->emitInitialSnapshot(
+            $this->tenantId,
+            $this->companyId,
+            $this->terminalId,
+            $this->operatorId,
+        );
+
+        $bytes = $event->canonical_bytes;
+        $this->assertStringContainsString('\\"', $bytes);
+        $this->assertStringContainsString('\\\\', $bytes);
+        $this->assertStringContainsString('°', $bytes);
+
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $stored = ByteaBinding::read($row->canonical_bytes);
+        $this->assertSame($bytes, $stored);
+        $this->assertSame($event->current_hash, hash('sha256', $stored));
     }
 
     public function test_snapshot_hash_is_sha256_of_canonical_terminals_list(): void

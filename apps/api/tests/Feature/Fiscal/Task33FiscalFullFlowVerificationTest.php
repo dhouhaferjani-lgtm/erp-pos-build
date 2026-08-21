@@ -23,6 +23,7 @@ use App\Modules\Treasury\Domain\Enums\PaymentOrigin;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
+use App\Shared\Domain\ByteaBinding;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -389,12 +390,6 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
      */
     private function readBytea(mixed $value): string
     {
-        if (is_resource($value)) {
-            $contents = stream_get_contents($value);
-
-            return $contents === false ? '' : $contents;
-        }
-
-        return is_string($value) ? $value : '';
+        return ByteaBinding::read($value);
     }
 }

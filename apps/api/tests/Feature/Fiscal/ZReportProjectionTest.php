@@ -24,8 +24,10 @@ use App\Modules\POS\Domain\Terminal;
 use App\Modules\POS\Domain\ZReport;
 use App\Modules\POS\Domain\ZSessionEvent;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\ByteaBinding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -91,6 +93,41 @@ final class ZReportProjectionTest extends TestCase
         $this->assertSame(3, $report->z_number);
         $this->assertSame('Z0003', $report->report_data['canonical_z_report']['formatted_z_number']);
         $this->assertSame('550.000', $report->grand_totals['cumulative_sales']);
+    }
+
+    /**
+     * `pos_z_reports.canonical_bytes` is a BINARY column too, and the projector
+     * mirrors the event's bytes into it via `ZReport::create()`. With the bytes
+     * carrying RFC 8785 `\"` / `\\` escapes, a `PDO::PARAM_STR` bind dies with
+     * `SQLSTATE[22P02] invalid input syntax for type bytea` — on the
+     * `FiscalEvent::create()` in the fixture AND again on the ZReport mirror.
+     */
+    public function test_z_report_mirror_preserves_canonical_bytes_with_backslash_escapes(): void
+    {
+        $payload = $this->zReportPayload();
+        $payload['operator_name'] = 'Caissier "Chef" \\ équipe A';
+        $payload['terminal_label'] = 'T001 \\ "Comptoir"';
+
+        $event = $this->storeZReportFiscalEvent([
+            'payload' => $payload,
+            'canonical_bytes' => $this->canonicalEncode($payload),
+            'current_hash' => hash('sha256', $this->canonicalEncode($payload)),
+        ]);
+
+        $bytes = $event->canonical_bytes;
+        $this->assertStringContainsString('\\"', $bytes);
+        $this->assertStringContainsString('\\\\', $bytes);
+        // This class's encoder does NOT pass JSON_UNESCAPED_UNICODE, so the
+        // accent arrives as a `\uXXXX` escape — another lone-backslash sequence
+        // PG's bytea escape parser rejects under a PARAM_STR bind.
+        $this->assertStringContainsString('\\u00e9', $bytes);
+
+        $this->app->make(ZReportProjection::class)->apply($event);
+
+        $mirrored = DB::table('pos_z_reports')->where('fiscal_event_id', $event->id)->first();
+        $this->assertNotNull($mirrored);
+        $this->assertSame($bytes, ByteaBinding::read($mirrored->canonical_bytes));
+        $this->assertSame(hash('sha256', $bytes), $mirrored->canonical_bytes_hash);
     }
 
     public function test_z_report_projection_is_idempotent_by_fiscal_event_id(): void

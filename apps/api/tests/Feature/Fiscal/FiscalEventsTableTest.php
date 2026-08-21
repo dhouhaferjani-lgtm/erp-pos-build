@@ -4,6 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Fiscal;
 
+use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
+use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
+use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
+use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Modules\Fiscal\Domain\Models\FiscalEvent;
+use App\Shared\Domain\ByteaBinding;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +30,19 @@ use Tests\TestCase;
 final class FiscalEventsTableTest extends TestCase
 {
     use RefreshDatabase;
+
+    /**
+     * Fixed identifiers for the binary-column round-trip pin. `fiscal_events`
+     * carries no FK to tenants/companies/terminals, so literal UUIDs are enough
+     * and keep the three rows the pin writes inside one chain slot family.
+     */
+    private const PIN_TENANT_ID = '9f2b1c44-0000-4000-8000-0000000000a1';
+
+    private const PIN_COMPANY_ID = '9f2b1c44-0000-4000-8000-0000000000b2';
+
+    private const PIN_TERMINAL_ID = '9f2b1c44-0000-4000-8000-0000000000c3';
+
+    private const PIN_OPERATOR_ID = '9f2b1c44-0000-4000-8000-0000000000d4';
 
     public function test_table_has_all_chain_and_integrity_columns(): void
     {
@@ -66,6 +85,63 @@ final class FiscalEventsTableTest extends TestCase
 
         $this->assertSame(2, DB::table('fiscal_events')->count());
         $this->assertTrue(DB::table('fiscal_events')->where('id', $id)->exists());
+    }
+
+    /**
+     * DESIGN PIN for the `canonical_bytes` binary-column binding.
+     *
+     * `canonical_bytes` must be bound as `PDO::PARAM_LOB` (a stream) or
+     * PostgreSQL parses it with the bytea *escape* input rules and rejects the
+     * RFC 8785 `\"` / `\\` escapes that canonical JSON emits for free text.
+     *
+     * The obvious fix — a `setCanonicalBytesAttribute` mutator that stores a
+     * stream in the model's attribute bag — is WRONG, and this test is what
+     * rejects it: a stream is consumed by the first `execute()`, so
+     *   (1) reading the attribute back in the same request yields '' , and
+     *   (2) re-saving those in-memory attributes writes an EMPTY column.
+     * The binding must therefore happen AFTER the attributes leave the model,
+     * which is what `BindsBinaryColumns::getAttributesForInsert()` does — the
+     * attribute bag keeps the plain string at all times.
+     *
+     * Runs on both drivers: SQLite proves the stream bind stays byte-identical
+     * there too.
+     */
+    public function test_canonical_bytes_survive_create_read_and_resave_in_one_request(): void
+    {
+        $bytes = json_encode(
+            ['name' => 'Café "Déluxe" \\ C:\\PARTS\\OIL', 'note' => 'dit « 5" »'],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+        );
+        $this->assertStringContainsString('\\"', $bytes);
+        $this->assertStringContainsString('\\\\', $bytes);
+
+        $event = FiscalEvent::query()->create($this->eventAttributes(['canonical_bytes' => $bytes]));
+
+        // (1) In-memory read in the SAME request — a consumed stream returns ''.
+        $this->assertSame($bytes, $event->canonical_bytes, 'attribute must survive the write');
+
+        // (2) Re-saving the in-memory attributes must write the same bytes.
+        $replica = $event->replicate();
+        $replica->id = Str::uuid()->toString();
+        $replica->sequence_number = 2;
+        $replica->save();
+
+        // (3) A third row authored from the accessor's value.
+        $third = FiscalEvent::query()->create($this->eventAttributes([
+            'canonical_bytes' => $event->canonical_bytes,
+            'id' => Str::uuid()->toString(),
+            'sequence_number' => 3,
+        ]));
+
+        // All three rows are byte-identical in the DATABASE.
+        foreach ([$event->id, $replica->id, $third->id] as $id) {
+            $row = DB::table('fiscal_events')->where('id', $id)->first();
+            $this->assertNotNull($row);
+            $this->assertSame($bytes, ByteaBinding::read($row->canonical_bytes), "row {$id} bytes");
+        }
+
+        // And byte-identical when re-read through Eloquent.
+        $this->assertSame($bytes, FiscalEvent::query()->findOrFail($event->id)->canonical_bytes);
     }
 
     public function test_hash_format_check_constraint(): void
@@ -139,6 +215,38 @@ final class FiscalEventsTableTest extends TestCase
         DB::table('fiscal_events')->insert($row);
 
         return (string) $row['id'];
+    }
+
+    /**
+     * Eloquent-shaped attributes for the binary-column round-trip pin. Uses the
+     * same sticky tenant/company/terminal as `insertEvent()` so the composite
+     * UNIQUE slot behaves predictably across the rows one test writes.
+     *
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private function eventAttributes(array $overrides = []): array
+    {
+        return array_merge([
+            'id' => Str::uuid()->toString(),
+            'tenant_id' => self::PIN_TENANT_ID,
+            'company_id' => self::PIN_COMPANY_ID,
+            'terminal_id' => self::PIN_TERMINAL_ID,
+            'operator_id' => self::PIN_OPERATOR_ID,
+            'event_type' => FiscalEventType::SALE_RECEIPT,
+            'event_version' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'sequence_number' => 1,
+            'event_time_device' => now()->toDateTimeString(),
+            'business_date' => now()->toDateString(),
+            'chain_context' => 'operational',
+            'server_received_at' => now()->toDateTimeString(),
+            'previous_hash' => str_repeat('0', 64),
+            'current_hash' => str_repeat('a', 64),
+            'signature_status' => SignatureStatus::NotRequired,
+            'integrity_status' => IntegrityStatus::Verified,
+            'payload_parse_status' => PayloadParseStatus::Parsed,
+        ], $overrides);
     }
 
     private function skipUnlessPostgres(): void

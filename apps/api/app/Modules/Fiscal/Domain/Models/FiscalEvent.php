@@ -8,6 +8,7 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Shared\Domain\Concerns\BindsBinaryColumns;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -65,6 +66,14 @@ use Illuminate\Support\Carbon;
  */
 final class FiscalEvent extends Model
 {
+    /**
+     * `canonical_bytes` is `bytea` on PostgreSQL — it MUST be bound as
+     * `PDO::PARAM_LOB`, or the RFC 8785 `\"` / `\\` escapes that canonical JSON
+     * emits for free text hit PG's bytea *escape* input parser and the write
+     * fails with `SQLSTATE[22P02]`.
+     */
+    use BindsBinaryColumns;
+
     /** @var string */
     protected $table = 'fiscal_events';
 
@@ -133,6 +142,14 @@ final class FiscalEvent extends Model
         'payload',
         'payload_parse_status',
     ];
+
+    /**
+     * @return list<string>
+     */
+    protected function binaryColumns(): array
+    {
+        return ['canonical_bytes'];
+    }
 
     public function getCanonicalBytesAttribute(mixed $value): string
     {

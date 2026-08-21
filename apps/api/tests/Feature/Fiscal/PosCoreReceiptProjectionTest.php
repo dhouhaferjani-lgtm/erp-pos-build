@@ -33,6 +33,7 @@ use App\Modules\Voucher\Domain\Enums\VoucherEvent;
 use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
+use App\Shared\Domain\ByteaBinding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -179,6 +180,37 @@ final class PosCoreReceiptProjectionTest extends TestCase
             ? stream_get_contents($receipt->canonical_bytes)
             : (string) $receipt->canonical_bytes;
         $this->assertSame($event->canonical_bytes, $bytes);
+    }
+
+    /**
+     * `pos_receipts.canonical_bytes` is a BINARY column, written by the raw
+     * `INSERT ... ON CONFLICT DO NOTHING` in `insertReceiptOnConflictDoNothing`.
+     * A product name carrying a quote or a backslash makes the canonical bytes
+     * contain RFC 8785 `\"` / `\\`, which a `PDO::PARAM_STR` bind hands to
+     * PostgreSQL's bytea *escape* parser — `SQLSTATE[22P02]`.
+     */
+    public function test_receipt_mirror_preserves_canonical_bytes_with_backslash_escapes(): void
+    {
+        $event = $this->storeSaleReceiptFiscalEvent(lines: [[
+            'sku' => 'X',
+            'product_name' => 'Filtre à huile 5" "Prémium" \\ réf C:\\PARTS\\OIL',
+            'unit_price' => '10.00',
+            'line_total' => '10.00',
+            'quantity' => '1',
+            'tax_rate' => '0',
+            'tax_amount' => '0.00',
+        ]]);
+
+        $bytes = $event->canonical_bytes;
+        $this->assertStringContainsString('\\"', $bytes);
+        $this->assertStringContainsString('\\\\', $bytes);
+        $this->assertStringContainsString('à', $bytes);
+
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $receipt = DB::table('pos_receipts')->where('fiscal_event_id', $event->id)->first();
+        $this->assertNotNull($receipt);
+        $this->assertSame($bytes, ByteaBinding::read($receipt->canonical_bytes));
     }
 
     public function test_apply_links_pos_receipt_to_the_fiscal_event(): void

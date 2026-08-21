@@ -52,6 +52,7 @@ use App\Modules\Voucher\Application\Services\VoucherRedemptionService;
 use App\Shared\Contracts\Fiscal\PaymentMethodResolver;
 use App\Shared\Contracts\Loyalty\LoyaltyEarningContract;
 use App\Shared\Contracts\Loyalty\SaleEarnContext;
+use App\Shared\Domain\ByteaBinding;
 use App\Shared\Domain\CashRoundingCutover;
 use App\Shared\Domain\ConcurrencyFault;
 use Carbon\CarbonInterface;
@@ -529,6 +530,11 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
         $columns = array_keys($row);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
         $columnList = implode(', ', array_map(fn (string $c): string => '"'.$c.'"', $columns));
+
+        // `pos_receipts.canonical_bytes` is BINARY — bind it as PDO::PARAM_LOB
+        // or PostgreSQL parses the RFC 8785 `\"` / `\\` escapes with its bytea
+        // *escape* input rules and rejects the row (SQLSTATE 22P02).
+        [$row, $streams] = ByteaBinding::prepareRow($row, ['canonical_bytes']);
         $bindings = array_values($row);
 
         if ($driver === 'pgsql') {
@@ -549,7 +555,11 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             );
         }
 
-        $rows = DB::select($sql, $bindings);
+        try {
+            $rows = DB::select($sql, $bindings);
+        } finally {
+            ByteaBinding::closeAll($streams);
+        }
 
         if ($rows === []) {
             return null;

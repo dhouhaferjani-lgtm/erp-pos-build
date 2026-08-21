@@ -18,7 +18,9 @@ use App\Modules\Partner\Domain\Partner;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\ByteaBinding;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class AccountStatusChangedServerOnlyTest extends TestCase
@@ -80,6 +82,49 @@ final class AccountStatusChangedServerOnlyTest extends TestCase
             'terminal_id' => $terminal->id,
             'training_flag' => false,
         ], $event->payload);
+    }
+
+    /**
+     * The partner NAME is carried verbatim into `payload.partner_snapshot.name`
+     * and therefore into the canonical bytes. RFC 8785 canonical JSON escapes a
+     * double quote as `\"`, so a partner called `Café "Le Bon" \ SARL` produces
+     * canonical bytes containing `\"` and `\\` — the exact byte sequences
+     * PostgreSQL's bytea *escape* input parser rejects when the value is bound
+     * as `PDO::PARAM_STR`. Before the binding fix this threw
+     * `SQLSTATE[22P02] invalid input syntax for type bytea`.
+     */
+    public function test_partner_name_with_quote_and_backslash_is_appended_byte_identically(): void
+    {
+        [$tenant, $company, $actor, $partner] = $this->fixtureWithLocation();
+
+        $partner->forceFill(['name' => 'Café "Le Bon" \\ SARL — réf C:\\CLIENTS\\42'])->save();
+
+        app(CustomerAccountStatusService::class)->transition(
+            tenantId: $tenant->id,
+            companyId: $company->id,
+            partnerId: $partner->id,
+            newStatus: CustomerAccountStatus::Suspended,
+            actorUserId: $actor->id,
+            reason: 'Credit control hold',
+        );
+
+        $event = FiscalEvent::query()
+            ->where('event_type', FiscalEventType::ACCOUNT_STATUS_CHANGED)
+            ->where('partner_id', $partner->id)
+            ->sole();
+
+        $bytes = $event->canonical_bytes;
+        $this->assertStringContainsString('\\"', $bytes);
+        $this->assertStringContainsString('\\\\', $bytes);
+        $this->assertStringContainsString('é', $bytes);
+
+        // The persisted bytes must match what was hashed — read the raw column
+        // (PG hands a bytea back as a stream) and re-derive the chain hash.
+        $row = DB::table('fiscal_events')->where('id', $event->id)->first();
+        $this->assertNotNull($row);
+        $stored = ByteaBinding::read($row->canonical_bytes);
+        $this->assertSame($bytes, $stored);
+        $this->assertSame($event->current_hash, hash('sha256', $stored));
     }
 
     /**
