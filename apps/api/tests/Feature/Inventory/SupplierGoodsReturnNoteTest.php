@@ -1022,14 +1022,22 @@ final class SupplierGoodsReturnNoteTest extends TestCase
      * `EntryExitNoteController::sourceType()` emits the enum's backing value
      * verbatim for every seam-written reference type, and the FE renders it via
      * `entryExitNotes.sourceTypes.<code>`. An unmapped code is shown raw to the
-     * user (CLAUDE rule 11), so minting an enum case without both locale keys is
+     * user (CLAUDE rule 11), so minting an enum case without the locale keys is
      * a user-visible bug that no other test would catch.
+     *
+     * `ar` is covered too, as of the 2026-08-21 rebase onto dev. The i18n gate
+     * that landed while this branch was out of tree wires `inventory` for Arabic
+     * as an english-spread namespace, i.e. under FULL per-key enforcement rather
+     * than the single "aliased" finding that covers the 22 namespaces Arabic does
+     * not author. Its ratchet baseline is removal-only, so a new `en` key with no
+     * `ar` sibling is a hard failure that the baseline cannot absorb — `ar` is
+     * therefore a real requirement of minting a case here, not a nicety.
      */
-    public function test_the_new_reference_type_has_a_translation_in_both_locales(): void
+    public function test_the_new_reference_type_has_a_translation_in_every_authored_locale(): void
     {
         $code = StockMovementReferenceType::SupplierGoodsReturnNote->value;
 
-        foreach (['en', 'fr'] as $locale) {
+        foreach (['en', 'fr', 'ar'] as $locale) {
             $path = base_path("../web/src/locales/{$locale}/inventory.json");
             $this->assertFileExists($path);
 
