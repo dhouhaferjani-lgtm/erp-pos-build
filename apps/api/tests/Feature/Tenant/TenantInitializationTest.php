@@ -15,8 +15,12 @@ use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\CountriesSeeder;
+use Database\Seeders\PlansSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
+use Mockery;
+use Mockery\LegacyMockInterface;
 use Tests\TestCase;
 
 class TenantInitializationTest extends TestCase
@@ -168,6 +172,60 @@ class TenantInitializationTest extends TestCase
             'country_code' => 'TN',
             'default_tax_rate' => '19.00',
         ]);
+    }
+
+    /**
+     * Register G-11. When the central `plans` table has no `trial` row the
+     * tenant is initialized WITHOUT any subscription and nothing anywhere says
+     * so — the tenant simply has no billing state, discovered much later. The
+     * absence must stay non-fatal (provisioning must not fail for it) but must
+     * be loud in the log, under a stable grep token, naming the remedy.
+     */
+    public function test_absent_trial_plan_is_logged_with_a_stable_grep_token(): void
+    {
+        $this->assertDatabaseMissing('plans', ['code' => 'trial']);
+
+        [$tenant, $company, $user] = $this->createTenantCompanyUser('TN', 'TND');
+
+        $logSpy = Log::spy();
+
+        $this->service->initializeForNewRegistration($tenant, $company, $user);
+
+        self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
+        $logSpy->shouldHaveReceived('warning', [
+            // The grep token is the contract: operators search logs for it, so
+            // it must survive any rewording of the surrounding sentence.
+            Mockery::on(static fn (string $message): bool => str_contains($message, 'TENANT-INIT TRIAL-PLAN-ABSENT')
+                && str_contains($message, 'PlansSeeder')),
+            Mockery::on(fn (array $context): bool => ($context['tenant_id'] ?? null) === $tenant->id),
+        ]);
+
+        // Non-fatal: initialization completed, it just produced no subscription.
+        $this->assertDatabaseMissing('tenant_subscriptions', ['tenant_id' => $tenant->id]);
+        $this->assertTrue($user->fresh()?->hasRole('admin'));
+    }
+
+    /**
+     * Register G-11: the warning is a real signal, not noise — it must be
+     * silent on the healthy path.
+     */
+    public function test_no_trial_plan_warning_when_plans_are_seeded(): void
+    {
+        $this->seed(PlansSeeder::class);
+
+        [$tenant, $company, $user] = $this->createTenantCompanyUser('TN', 'TND');
+
+        $logSpy = Log::spy();
+
+        $this->service->initializeForNewRegistration($tenant, $company, $user);
+
+        self::assertInstanceOf(LegacyMockInterface::class, $logSpy);
+        $logSpy->shouldNotHaveReceived('warning', [
+            Mockery::on(static fn (string $message): bool => str_contains($message, 'TENANT-INIT TRIAL-PLAN-ABSENT')),
+            Mockery::any(),
+        ]);
+
+        $this->assertDatabaseHas('tenant_subscriptions', ['tenant_id' => $tenant->id]);
     }
 
     /**

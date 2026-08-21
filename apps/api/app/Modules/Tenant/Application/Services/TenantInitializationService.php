@@ -25,6 +25,7 @@ use Database\Seeders\PaymentMethodSeeder;
 use Database\Seeders\PaymentRepositorySeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Service responsible for initializing a new tenant with required data.
@@ -125,8 +126,27 @@ class TenantInitializationService
         $trialPlan = Plan::where('code', 'trial')->first();
 
         if ($trialPlan === null) {
-            // Fallback: if no trial plan exists, skip subscription creation
-            // This allows the system to work even without plans being seeded
+            // Register G-11. Skipping is deliberate — a missing plans catalogue
+            // must not fail provisioning, and the tenant is otherwise perfectly
+            // usable. But it used to skip in complete silence, so a tenant
+            // provisioned against an unseeded central `plans` table ended up
+            // with NO subscription row and nothing anywhere recorded it; the
+            // gap surfaced only when someone later asked what the tenant was
+            // paying for. Warn under a STABLE grep token so this is findable in
+            // the logs, and name the remedy.
+            Log::warning(
+                'TENANT-INIT TRIAL-PLAN-ABSENT tenant='.$tenant->id
+                .' — no plan with code=trial exists, so this tenant was initialized WITHOUT a subscription.'
+                .' Remedy: seed the central plans catalogue (php artisan db:seed --class=Database\\Seeders\\PlansSeeder)'
+                .' and backfill the subscription for this tenant.',
+                [
+                    'tenant_id' => $tenant->id,
+                    'tenant_slug' => $tenant->slug,
+                    'missing_plan_code' => 'trial',
+                    'remedy' => 'php artisan db:seed --class=Database\\Seeders\\PlansSeeder',
+                ]
+            );
+
             return;
         }
 
