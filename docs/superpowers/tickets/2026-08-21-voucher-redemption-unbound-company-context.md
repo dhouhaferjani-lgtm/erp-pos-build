@@ -3,7 +3,7 @@
 - **Opened:** 2026-08-21
 - **Severity:** P1 — live NON-training path, breaks the whole SALE_RECEIPT projection
 - **Owner lane:** treasury / accounting (GL scale resolution)
-- **Status:** OPEN — deliberately not fixed in the G-3 wave
+- **Status:** FIXED — `fix/c5-voucher-projection-context` (LEDGER row C-5)
 - **Raised by:** LEDGER gate G-3 (`fix/g3-training-receipt-containment`), discovered
   while building the control arm of `TrainingVoucherRedemptionContainmentTest`
 
@@ -53,9 +53,14 @@ called with no currency code and no CompanyContext bound. ... See audit finding 
 .../app/Modules/POS/Application/Projections/PosCoreReceiptProjection.php:493
 ```
 
-That test currently binds `CompanyContext` in the control arm **on purpose**, with
-an inline comment pointing at this ticket, so the arm can still prove the fixture
-is redemption-capable. **When this ticket lands, delete the bind and the note.**
+That test bound `CompanyContext` in the control arm **on purpose**, with an
+inline comment pointing at this ticket, so the arm could still prove the fixture
+was redemption-capable.
+
+> **Superseded — see Resolution below.** The instruction that stood here
+> ("delete the bind and the note") was wrong: `setUp()` binds the context too,
+> so deleting the arm's own bind alone changes nothing. The arm was instead
+> routed through the `project()` helper, which clears.
 
 ## Why it was not fixed in the G-3 wave
 
@@ -80,3 +85,37 @@ Both have GL-wide blast radius and belong to a treasury/accounting reviewer.
 This is arguably more severe than the gate G-3 closed: it affects ordinary
 customer transactions, not rehearsals. Recommend it is triaged before the
 first-tenant launch if store vouchers are enabled for that tenant.
+
+---
+
+## Resolution (2026-08-21, branch `fix/c5-voucher-projection-context`)
+
+**Fix.** `GeneralLedgerService::createVoucherLedgerEntry()` resolves its bcmath
+scale via `getScale($currencyCode)`, with the currency taken from the
+`VoucherLedger` row (the denomination of the movement itself) and falling back
+to `$voucher->currency`. An empty result now throws rather than limping on —
+`CurrencyScale::for()` returns `DEFAULT_SCALE` for an unknown code, so an empty
+string would otherwise silently pick a scale. The two posting calls at the end
+of the method use the same resolved value instead of re-casting the raw column.
+
+The same change also repairs the `RoundingAdjustment` leg
+(`VoucherRedemptionService:253`), which went through the identical broken path.
+
+**Sweep.** Every other `$this->scale()` site in the file was checked for
+queued/projection reachability and found unreachable: `createFromInvoice()`
+(seeder-only, binds context first), `createSupplierInvoiceJournalEntry()` (no
+production caller), `clearCustomerAdvanceToReceivable()` (HTTP-only), and
+`createInventoryWriteOffEntry()` (bare branch needs a null currency; both
+callers pass non-null). None were changed.
+
+**Tests.** `tests/Feature/Treasury/VoucherRedemptionProjectionWorkerContextTest`
+— three arms, all with `CompanyContext` CLEARED. Mutation-verified: the original
+bare `$this->scale()`, `$scale = 2`, `$scale = 3`, and a company-sourced
+currency each fail at least one arm.
+
+**G-3 control arm converted.** `TrainingVoucherRedemptionContainmentTest`'s
+control arm no longer binds `CompanyContext` — note that deleting the arm's own
+bind would have been a no-op, since `setUp()` binds too; it now runs through the
+`project()` helper, which clears. It is therefore an independent C-5 regression
+guard: with the fix reverted, that arm is the ONLY failure in the file, and it
+fails with the original trace.

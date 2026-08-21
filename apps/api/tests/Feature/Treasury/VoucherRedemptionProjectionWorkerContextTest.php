@@ -228,6 +228,9 @@ final class VoucherRedemptionProjectionWorkerContextTest extends TestCase
     // Assertions
     // =================================================================
 
+    /**
+     * @param  numeric-string  $expectedAmount  the GL leg both sides must carry
+     */
     private function assertGlPair(string $expectedAmount, int $scale): void
     {
         /** @var JournalEntry|null $entry */

@@ -2622,9 +2622,34 @@ final class GeneralLedgerService
         // posting calls at the end of this method already use; the voucher's
         // own currency is the authoritative fallback for a row whose currency
         // was never populated.
+        //
+        // NOTE (mirrors the same tradeoff at `createInventoryWriteOffEntry()`
+        // :4794-4799): this is not strictly behaviour-identical for the three
+        // request-context callers (`VoucherIssuanceService`,
+        // `VoucherLookupService`, `VoucherCascadeService`) — `getScale($code)`
+        // reads the static ISO 4217 map, while the no-arg path read the
+        // company country's `currency_decimal_places` column, so a country row
+        // that overrides the ISO scale now resolves differently here. The only
+        // use is the sign test and magnitude flip below, so the observable
+        // difference is confined to sub-minor-unit amounts.
+        //
+        // P3-5: refuse an empty denomination rather than limping on. Both
+        // `CurrencyScale::for()` and therefore `getScale()` fall back to
+        // DEFAULT_SCALE for an unknown code (`CurrencyScale:64`), so an empty
+        // string would silently pick a scale instead of failing — the exact
+        // silent-wrong-scale the precision contract exists to prevent. Fail the
+        // way `currencyCodeForCompany()` above does.
         $currencyCode = (string) $ledgerRow->currency !== ''
             ? (string) $ledgerRow->currency
             : (string) $voucher->currency;
+
+        if ($currencyCode === '') {
+            throw new \RuntimeException(
+                "Cannot resolve currency for voucher {$voucher->id}: "
+                .'neither the ledger row nor the voucher carries one.'
+            );
+        }
+
         $scale = $this->scaleResolver->getScale($currencyCode);
 
         $entry = DB::transaction(function () use ($ledgerRow, $voucher, $scale): JournalEntry {

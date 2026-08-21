@@ -132,13 +132,13 @@ final class RecordingCurrencyScaleResolver implements CurrencyScaleResolverInter
      */
     private function caller(): string
     {
+        // Frame 0 is caller(), frame 1 is getScale()/getScaleSafe() on this
+        // class, so frame 2 is the production method we want to attribute to.
+        // A frame's `function` key always exists and is always a string, so the
+        // only case to guard is the stack being shallower than three frames
+        // (a resolver called straight from top-level code).
         $frames = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 3);
-        $frame = $frames[2] ?? null;
 
-        if (! is_array($frame) || ! isset($frame['function']) || ! is_string($frame['function'])) {
-            return '<unknown>';
-        }
-
-        return $frame['function'];
+        return $frames[2]['function'] ?? '<unknown>';
     }
 }
