@@ -14,7 +14,7 @@ vi.mock('react-i18next', () => ({
         'reports.todaySales': "Today's Sales",
         'reports.netSalesExclRefunds': 'Net sales (excl. refunds)',
         'reports.receiptCount': 'Receipts',
-        'reports.avgTicket': 'Avg Ticket',
+        'reports.avgSaleTicket': 'Avg sale ticket',
         'reports.returns': 'Returns',
         'reports.noReceipts': 'No receipts yet this shift',
         'reports.reprint': 'Reprint',
@@ -46,8 +46,11 @@ vi.mock('@/lib/printing', () => ({
   printReceiptAsPdf: vi.fn().mockResolvedValue(undefined),
 }));
 
+// `decimals: 2` exercises the real scale threading: intermediates run at
+// decimals + 1 and the headline is rounded ONCE at the presentation boundary,
+// so a correct implementation renders '105.00', not a stray '105.000'.
 vi.mock('@/lib/currency', () => ({
-  useCurrency: () => ({ format: (v: number) => String(v) }),
+  useCurrency: () => ({ format: (v: string) => String(v), decimals: 2 }),
 }));
 
 // ── Dynamic mocks ─────────────────────────────────────────────────────────────
@@ -228,10 +231,10 @@ describe('TodaySalesPage', () => {
   it('renders the headline as sales minus returns under the net label', async () => {
     renderPage();
 
-    // 50.00 + 75.00 sales − 20.00 return = 105.000 (bcsum/bcsub default scale 3).
+    // 50.00 + 75.00 sales − 20.00 return = 105.00 at the currency scale.
     expect(await screen.findByText('Net sales (excl. refunds)')).toBeInTheDocument();
-    expect(await screen.findByText('105.000')).toBeInTheDocument();
-    expect(screen.queryByText('125.000')).not.toBeInTheDocument();
+    expect(await screen.findByText('105.00')).toBeInTheDocument();
+    expect(screen.queryByText('125.00')).not.toBeInTheDocument();
   });
 
   // Legacy returns stored a NEGATIVE total; v4 refund authoring stores a POSITIVE
@@ -248,9 +251,74 @@ describe('TodaySalesPage', () => {
 
     renderPage();
 
-    expect(await screen.findByText('105.000')).toBeInTheDocument();
-    // The un-normalised form would report 145.000 (125 − −20).
-    expect(screen.queryByText('145.000')).not.toBeInTheDocument();
+    expect(await screen.findByText('105.00')).toBeInTheDocument();
+    // The un-normalised form would report 145.00 (125 − −20).
+    expect(screen.queryByText('145.00')).not.toBeInTheDocument();
+  });
+
+  // Mixed-era shift: ONE legacy return (negative stored total) and ONE v4 refund
+  // (positive stored total), both 20.00 in magnitude. Any form that sums the raw
+  // totals lets the two eras cancel (−20 + 20 = 0) and deducts nothing at all.
+  it('deducts both refund eras in one shift instead of letting them cancel', async () => {
+    mockFetchShiftReceipts.mockResolvedValue([
+      sampleReceipts[0],
+      sampleReceipts[1],
+      { ...sampleReceipts[2], id: 'r-3a', receipt_number: 'REC-003', total: '-20.00' },
+      { ...sampleReceipts[2], id: 'r-3b', receipt_number: 'REC-004', total: '20.00' },
+    ]);
+
+    renderPage();
+
+    // 125 − (20 + 20) = 85.00. The cancelling form reports 125.00.
+    expect(await screen.findByText('85.00')).toBeInTheDocument();
+    expect(screen.queryByText('125.00')).not.toBeInTheDocument();
+  });
+
+  // P2-2: a VOIDED refund never moved money, so it must not deduct. The sale arm
+  // already filtered `!is_voided`; the return arm did not, so voiding a refund
+  // *reduced* the headline a second time.
+  it('ignores a voided refund', async () => {
+    mockFetchShiftReceipts.mockResolvedValue([
+      sampleReceipts[0],
+      sampleReceipts[1],
+      { ...sampleReceipts[2], is_voided: true },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText('125.00')).toBeInTheDocument();
+    expect(screen.queryByText('105.00')).not.toBeInTheDocument();
+  });
+
+  // P2-3: training receipts are excluded from every fiscal aggregate server-side
+  // (`training_flag = false` in OwnerSalesSummaryService / SalesReportService), but
+  // `ShiftController::receipts` applies no such filter, so the device received them
+  // and folded them into the headline.
+  it('excludes a training sale from the headline', async () => {
+    mockFetchShiftReceipts.mockResolvedValue([
+      sampleReceipts[0],
+      sampleReceipts[1],
+      { ...sampleReceipts[0], id: 'r-train', receipt_number: 'REC-900', total: '999.00', is_training: true },
+      sampleReceipts[2],
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText('105.00')).toBeInTheDocument();
+    expect(screen.queryByText('1104.00')).not.toBeInTheDocument();
+  });
+
+  it('excludes a training refund from the deduction', async () => {
+    mockFetchShiftReceipts.mockResolvedValue([
+      sampleReceipts[0],
+      sampleReceipts[1],
+      { ...sampleReceipts[2], id: 'r-train-ret', receipt_number: 'REC-901', is_training: true },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText('125.00')).toBeInTheDocument();
+    expect(screen.queryByText('105.00')).not.toBeInTheDocument();
   });
 
   it('shows reprint button for each receipt', async () => {

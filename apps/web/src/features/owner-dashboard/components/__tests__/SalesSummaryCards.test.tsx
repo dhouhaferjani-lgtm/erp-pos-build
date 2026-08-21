@@ -10,7 +10,7 @@ const data = {
   salesCount: 2, returnsCount: 1, itemsSold: '5.0000', averageBasket: '150.00',
   delta: {
     grossSalesAbs: '150.00', grossSalesPct: '100.00',
-    netSalesAbs: '100.00', netSalesPct: '66.67',
+    netSalesPct: '66.67',
     salesCountAbs: 1, salesCountPct: '50.00',
   },
 }

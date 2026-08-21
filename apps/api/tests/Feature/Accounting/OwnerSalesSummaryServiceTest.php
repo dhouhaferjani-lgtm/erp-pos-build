@@ -79,7 +79,6 @@ final class OwnerSalesSummaryServiceTest extends TestCase
         $this->assertSame('100.00', $summary->delta->grossSalesAbs);
         $this->assertSame('50.00', $summary->delta->grossSalesPct);
         // net: (250-150)/150*100 = 66.666… → 66.67 (round half away from zero)
-        $this->assertSame('100.00', $summary->delta->netSalesAbs);
         $this->assertSame('66.67', $summary->delta->netSalesPct);
     }
 
@@ -109,6 +108,34 @@ final class OwnerSalesSummaryServiceTest extends TestCase
         $this->assertSame('100.00', $summary->returnsAmount);
         $this->assertSame('200.00', $summary->netSales);
         $this->assertSame(2, $summary->returnsCount);
+    }
+
+    /**
+     * O-28 / P2-5 — dividing by a NEGATIVE baseline inverts the sign of the trend.
+     *
+     * A prior window whose refunds exceeded its sales has a negative net. With the
+     * old `bccomp($pre, '0') === 0` guard the division still ran:
+     * (250 − −50) / −50 × 100 = −600.00 — a catastrophic-looking red badge on what
+     * is in fact a full recovery. The repo already ruled this exact case on the
+     * dashboard revenue tile (`DashboardController::stats`, AMENDED ruling
+     * 2026-08-03 gate M2): a baseline <= 0 has no meaningful percentage, so emit
+     * null and let the tile render no badge at all.
+     */
+    public function test_negative_prior_net_yields_a_null_percentage_rather_than_an_inverted_one(): void
+    {
+        // prior window (2026-06-01..06-08): no sales, one 50.00 return → net −50.00
+        $seed = $this->seedReceipt($this->locationA, $this->terminalA, '2026-05-20 10:00:00', '10.00');
+        $this->seedReturn($this->locationA, $this->terminalA, '2026-06-05 10:00:00', '-50.00', $seed);
+        // current window: one 250.00 sale → net 250.00
+        $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '250.00');
+
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [$this->company->id], [$this->locationA->id],
+        );
+
+        $this->assertSame('250.00', $summary->netSales);
+        // The inverted form returns '-600.00' here.
+        $this->assertNull($summary->delta->netSalesPct);
     }
 
     public function test_zero_previous_period_yields_null_percentages(): void
@@ -175,7 +202,6 @@ final class OwnerSalesSummaryServiceTest extends TestCase
         $this->assertNull($summary->averageBasket);
         $this->assertSame('0.000', $summary->delta->grossSalesAbs);
         $this->assertNull($summary->delta->grossSalesPct);
-        $this->assertSame('0.000', $summary->delta->netSalesAbs);
         $this->assertNull($summary->delta->netSalesPct);
     }
 }

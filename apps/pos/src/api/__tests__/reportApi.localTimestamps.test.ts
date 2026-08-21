@@ -13,6 +13,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/api', () => ({
   apiGet: vi.fn(),
+  // `fetchShiftReceipts` reads the PAGINATED envelope via apiGetRaw (O-28 P1-1).
+  apiGetRaw: vi.fn(),
   apiPost: vi.fn(),
 }));
 
@@ -63,7 +65,7 @@ vi.mock('@/stores/connectivityStore', () => ({
 }));
 
 import { generateXReport, fetchShiftReceipts } from '../reportApi';
-import { apiGet } from '@/lib/api';
+import { apiGet, apiGetRaw } from '@/lib/api';
 import { queryAll } from '@/lib/db';
 import type { OfflineReceipt } from '@/lib/db/repositories/offlineReceiptRepository';
 
@@ -77,6 +79,7 @@ beforeEach(() => {
   vi.mocked(queryAll).mockClear();
   vi.mocked(queryAll).mockResolvedValue([]);
   vi.mocked(apiGet).mockReset();
+  vi.mocked(apiGetRaw).mockReset();
   mockIsOnline = false;
 });
 
@@ -93,7 +96,7 @@ describe('generateXReport (local path)', () => {
 
 describe('fetchShiftReceipts (offline fallback)', () => {
   it('normalizes the ISO shift opened_at to SQLite UTC format in the receipts window', async () => {
-    vi.mocked(apiGet).mockRejectedValue(new Error('network down'));
+    vi.mocked(apiGetRaw).mockRejectedValue(new Error('network down'));
 
     await fetchShiftReceipts('shift-1');
 
@@ -108,7 +111,7 @@ describe('fetchShiftReceipts (offline fallback)', () => {
     // projection syncs. Until then GET /pos/shifts/{id}/receipts 404s. The device's
     // own receipts live in local SQLite, so the panel must read them, not error.
     mockIsOnline = true;
-    vi.mocked(apiGet).mockRejectedValue(
+    vi.mocked(apiGetRaw).mockRejectedValue(
       Object.assign(new Error('Request failed (404)'), { status: 404 }),
     );
 
@@ -174,7 +177,7 @@ describe('fetchShiftReceipts (offline fallback)', () => {
       retry_count: 0,
     };
 
-    vi.mocked(apiGet).mockRejectedValue(new Error('network down'));
+    vi.mocked(apiGetRaw).mockRejectedValue(new Error('network down'));
     vi.mocked(queryAll)
       .mockResolvedValueOnce([offlineReceipt])
       .mockResolvedValueOnce([{ id: 'product-scale-3', quantity_decimals: 3 }]);
@@ -192,7 +195,7 @@ describe('fetchShiftReceipts (offline fallback)', () => {
 
   it('rethrows a non-404 server error while online so genuine failures surface', async () => {
     mockIsOnline = true;
-    vi.mocked(apiGet).mockRejectedValue(
+    vi.mocked(apiGetRaw).mockRejectedValue(
       Object.assign(new Error('Request failed (500)'), { status: 500 }),
     );
 

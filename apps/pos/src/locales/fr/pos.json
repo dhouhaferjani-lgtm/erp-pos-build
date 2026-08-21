@@ -414,7 +414,7 @@
     "noReceipts": "Aucun ticket pour ce service",
     "netSalesExclRefunds": "Ventes nettes (hors remboursements)",
     "receiptCount": "Tickets",
-    "avgTicket": "Ticket moyen",
+    "avgSaleTicket": "Ticket de vente moyen",
     "returns": "Retours",
     "receiptNo": "Ticket #",
     "time": "Heure",

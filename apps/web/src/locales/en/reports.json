@@ -66,7 +66,7 @@
       "locations": "Locations"
     },
     "salesTrend": {
-      "title": "Sales over time",
+      "title": "Sales over time (gross)",
       "today": "Today",
       "sameWeekdayLastWeek": "Same day last week",
       "seriesMode": {
@@ -76,7 +76,7 @@
       }
     },
     "salesByLocation": {
-      "title": "Sales by Location",
+      "title": "Sales by Location (gross)",
       "axis": "Sales"
     },
     "topSkus": {
@@ -92,7 +92,7 @@
       "items": "{{count}} items"
     },
     "branchLeaderboard": {
-      "title": "Branch leaderboard",
+      "title": "Branch leaderboard (gross sales)",
       "active": "Open shift active",
       "inactive": "No open shift"
     },

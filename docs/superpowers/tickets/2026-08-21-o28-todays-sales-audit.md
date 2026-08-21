@@ -1,0 +1,129 @@
+# O-28 — "Today's Sales" is NET, EXCLUDING REFUNDS: surface census and scope decision
+
+**Status:** audit COMPLETE; headline fixes LANDED on `fix/o28-todays-sales-net-labeled`.
+**Ruling:** LEDGER row O-28 (owner, 2026-08-21) — *every "Today's Sales" headline figure is
+NET, EXCLUDING REFUNDS, and must be LABELED accordingly.*
+**Blind-count precondition:** ticket `2026-08-17-today-sales-blind-count-derivation.md`
+resolved to **option 4** (accept the cross-navigation residual risk). Today's Sales is
+therefore NOT a concealed surface, and none of the labelling below leaks a concealed figure.
+Verified in code: `TodaySalesPanel.tsx` has no blind-count coupling, and
+`docs/handoff/reviews/sv-stage1/M4-sv10-leak-audit.md` classifies `/sales` as an accepted
+sibling path rather than a sealed one.
+
+---
+
+## 1. Surface census
+
+Every surface that presents a "today's sales"-type headline, with derivation verdict and
+label. Line numbers are as of `08e68ab41` unless the row says otherwise.
+
+| # | Surface | Derivation | Verdict | Label |
+|---|---|---|---|---|
+| 1 | **POS `/sales` headline** — `apps/pos/src/components/pos/TodaySalesPanel.tsx` | client reduce over `fetchShiftReceipts` | ❌ **GROSS — FIXED**: now `gross − Σ\|return\|`, both arms filtered `!is_voided && !is_training`, intermediates at `decimals + 1` | `pos:reports.totalSales` "Total Sales" → `pos:reports.netSalesExclRefunds` "Net sales (excl. refunds)" (en+fr; the device has no ar tree) |
+| 2 | **Owner dashboard headline KPI** — `apps/web/src/features/owner-dashboard/components/SalesSummaryCards.tsx` | bound `data.grossSales` + `delta.grossSalesPct` while the service's correct `netSales` went unused | ❌ **GROSS by presentation — FIXED**: binds `netSales` and a new `delta.netSalesPct` | `reports:ownerDashboard.kpi.totalSales` → `kpi.netSales` (en+fr+ar; the `reports` ar bundle is a straight swap, so the ar string is authored, not aliased) |
+| 3 | `OwnerSalesSummaryService.php` (feeds #2) | `SUM(CASE receipt_type='sale' THEN total)`; returns via per-row `ABS()` **inside** the SUM; `netSales = gross − returns` | ✅ already correct — **extended** with `delta.netSalesPct` | — |
+| 4 | Branch leaderboard today rows — `BranchLeaderboard.tsx` → `SalesReportService::salesByLocation` | `SUM(pos_receipts.total)` under a `receipt_type='sale'` filter | ⚠️ **GROSS BY SCOPE DECISION** (§2) — derivation unchanged, now **labelled** | `branchLeaderboard.title` → "Branch leaderboard (gross sales)" |
+| 5 | Sales-trend chart "Today" series — `SalesTrendChart.tsx` | same `by-location` data as #4 | ⚠️ same | `salesTrend.title` → "Sales over time (gross)" |
+| 6 | Sales-by-location chart — `SalesByLocationChart.tsx` | same `by-location` data as #4 | ⚠️ same | `salesByLocation.title` → "Sales by Location (gross)" |
+| 7 | Top SKUs / revenue-by-category / owner payment breakdown — `SalesReportService` | sign-blind `SUM` + `receipt_type='sale'` filter | ⚠️ same class; **not** today-scoped headlines, left unlabelled | period-generic titles |
+| 8 | POS Analytics Gross/Net cards — `features/pos/organisms/Analytics/SalesSummaryCards.tsx` → `PosAnalyticsService::getSalesSummary` | full `netOfReturns()` per-row `-ABS` helper | ✅ net of refunds; default range is **MTD, not today** | "Gross Sales" / "Net Sales" — but see O-28-c |
+| 9 | Generic Dashboard "Revenue" — `features/dashboard/Dashboard.tsx` → `DashboardController::stats` | `SUM(documents.total)` over posted/paid invoices, **month-to-date**; never touches `pos_receipts` | N/A — not a POS today figure | `common:dashboard.revenue` |
+| 10 | Live sales feed — `LiveSalesReportService` | row-level, `receipt_type='sale'` filtered, no aggregate | N/A | — |
+| 11 | Cash across stores — `CashAcrossStoresWidget.tsx` | `/treasury/cash-position` | N/A (cash, not sales) | — |
+| 12 | POS X-Report / EOD preview / Z list — `reportApi.ts`, `endOfDayPreview.ts`, `zReportService.ts`, `ZReportListPage.tsx` | sale-only gross; refunds tracked separately as a positive `refunds_amount` | shift/fiscal reports, **already explicitly labelled "Gross Sales"** → correct as-is | unchanged |
+| 13 | `apps/pos/src/pages/ReportsPage.tsx`, `ShiftClosurePage.tsx` | **hardcoded money literals**, no derivation at all | 🚫 owned by the pos-screens lane — see §3 | `reports.dashboard.sales` "Sales (period)" |
+
+`erp-mobile` is **not present in this repository** (`apps/` = `api`, `pos`, `web`).
+
+---
+
+## 2. Scope decision: the headline is net, the breakdowns stay gross
+
+The F-5 comment in `SalesReportService` originally justified sale-only breakdowns as
+*"keeps the drill-downs consistent with the headline KPIs"*. O-28 makes that statement
+false — the headline is now net and the breakdowns are gross. The comment has been amended
+at all four sites to record the reasons that actually survive:
+
+- a refund carries no location / SKU / category attribution that is safe to net against an
+  arbitrary grouping key; and
+- a sale-only sum is sign-era-proof without any `ABS` handling.
+
+Because the two definitions now genuinely disagree, the three surfaces rendering
+`by-location` data are labelled gross (rows 4–6). This is a **scope decision, not a
+derivation ruling** — see O-28-a.
+
+---
+
+## 3. Cross-lane records
+
+**pos-screens lane** (worktree `.worktrees/pos-real-screens`, branch
+`fix/pos-mocked-manager-screens`) — `ReportsPage.tsx` and `ShiftClosurePage.tsx` render
+**fabricated money literals** under `reports.dashboard.sales` "Sales (period)", and their
+`today | shift | week` segment is inert. Both are manager-facing nav-rail destinations.
+When they become real, the period headline must be net-excl-refunds and reuse the O-28
+wording (`reports.netSalesExclRefunds`).
+
+**C-2 lane** (worktree `.worktrees/z-sale-decomposition`) — two records:
+
+1. *No new defect at the three C-2 defect sites.* `reportApi.ts:~490`,
+   `endOfDayPreview.ts:~300` and `zReportService.ts:~905` are sale-only gross and are
+   **correctly labelled "Gross Sales"**; no O-28 fix is owed there.
+2. *`fetchShiftReceipts` was edited by this lane* (`apps/pos/src/api/reportApi.ts`). The
+   edit is confined to that one function plus the `ShiftReceipt` interface — it does **not**
+   touch any of the three C-2 sites. Flagged here for the C-2 lane's M4 boundary check.
+3. *Open gap in `fetchLocalShiftReceipts`* (C-2-owned): the offline mapper hardcodes
+   `is_voided: false` and emits no `is_training`, and its query filters on neither, even
+   though `offline_receipts` HAS both columns (`is_training` on the `OfflineReceipt`
+   interface; `voided` added by migration `add_voided_to_offline_receipts`). Offline,
+   therefore, `/sales` still cannot exclude a training receipt or a voided one. The panel's
+   client-side filter is correct and complete for whatever the source emits — closing the
+   remainder needs two lines in the mapper (surface `voided` and `is_training`) plus a
+   `voided` entry on the `OfflineReceipt` interface. Deliberately **not** done here: the
+   coordinator fenced the offline query for this lane.
+
+---
+
+## 4. Open questions
+
+**O-28-a — do the breakdowns follow the headline?** Branch leaderboard, trend chart,
+sales-by-location, top SKUs, revenue-by-category and the owner payment breakdown all report
+sale-only gross. They are labelled gross rather than converted. Converting them to net is a
+separate lane (DTO + 4 endpoints + 3 chart consumers) and reverses a recorded ruling (F-5),
+so it needs the owner, not an implementer.
+
+**O-28-b — "Net Sales" is overloaded.** X-Report, EOD preview and Z-report already use
+"Net Sales" to mean *net of VAT* (`netSales += receipt.subtotal`). The O-28 label carries
+the explicit "(excl. refunds)" parenthetical so it self-disambiguates, and the fiscal
+screens were left alone. Recommend they become "Net sales (excl. VAT)" in a follow-up so
+the two senses are never adjacent without qualification.
+
+**O-28-c — inverted naming in POS Analytics.** `PosAnalyticsService::getSalesSummary` maps
+`gross_sales ← SUM(subtotal)` (VAT-**exclusive**) and `net_sales ← SUM(total)`
+(VAT-**inclusive**). Both are correctly net of refunds, so this is not an O-28 derivation
+defect, but the two analytics cards are labelled backwards.
+
+**O-28-d — "Today's Sales" is shift-scoped, not day-scoped.** Both the server endpoint
+(`ShiftController::receipts`, windowed on `posted_at >= shift.opened_at`) and the offline
+query window on the CURRENT SHIFT, not the calendar day. On a two-shift day the second
+cashier's "Today's Sales" excludes the morning entirely. Either the title is wrong or the
+window is — an owner call. The page title key is `pos:reports.todaySales`.
+
+**O-28-e — the "Receipts" count tile still counts everything.** `receipts.length` includes
+training and voided rows, which the money tiles now exclude. Left as-is because the table
+below it also lists every row, so the count matches what the operator can see; flagged so
+the inconsistency is a decision rather than an oversight.
+
+**O-28-f — `grossSalesAbs` is dead payload.** `SalesSummaryDeltaData.grossSalesAbs` and
+`salesCountAbs` are read by nothing (`StatCard`'s trend contract is a percentage plus a
+label). This lane deliberately added **no** `netSalesAbs` companion for that reason, but did
+not remove the pre-existing fields — that is a published-contract change for the OpenAPI
+lane, not a side effect of O-28.
+
+---
+
+## 5. Related tickets
+
+- `2026-08-17-today-sales-blind-count-derivation.md` — the option-4 precondition.
+- `2026-08-01-positive-refund-total-consumers.md` — the `-ABS` per-row idiom reused here.
+- LEDGER §G-1 evidence block — the verified-safe consumer sweep this audit builds on.
+- LEDGER row C-2 — device Z/X/EOD SALE-branch decomposition.

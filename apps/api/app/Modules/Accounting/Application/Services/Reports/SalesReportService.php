@@ -66,9 +66,18 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
-            // Breakdowns report SALES only; returns are a separate metric
-            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
-            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            // Breakdowns report SALES only — i.e. GROSS; returns are a separate metric
+            // (OwnerSalesSummaryService). (F-5, AMENDED 2026-08-21 by O-28.)
+            //
+            // The original F-5 rationale — "keeps the drill-downs consistent with the
+            // headline KPIs" — is now FALSE: the owner ruled the Today's-Sales headline
+            // is NET, EXCLUDING REFUNDS, so headline and breakdowns differ BY SCOPE
+            // DECISION, not by accident. What still justifies gross here is that a
+            // refund carries no location/SKU/category attribution safe to net against an
+            // arbitrary grouping key, and that gross is sign-era-proof without ABS
+            // handling. Because the two now disagree, every surface rendering this data
+            // is LABELLED gross. Revisiting is open question O-28-a in
+            // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupByRaw($periodExpression)
@@ -116,9 +125,18 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
-            // Breakdowns report SALES only; returns are a separate metric
-            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
-            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            // Breakdowns report SALES only — i.e. GROSS; returns are a separate metric
+            // (OwnerSalesSummaryService). (F-5, AMENDED 2026-08-21 by O-28.)
+            //
+            // The original F-5 rationale — "keeps the drill-downs consistent with the
+            // headline KPIs" — is now FALSE: the owner ruled the Today's-Sales headline
+            // is NET, EXCLUDING REFUNDS, so headline and breakdowns differ BY SCOPE
+            // DECISION, not by accident. What still justifies gross here is that a
+            // refund carries no location/SKU/category attribution safe to net against an
+            // arbitrary grouping key, and that gross is sign-era-proof without ABS
+            // handling. Because the two now disagree, every surface rendering this data
+            // is LABELLED gross. Revisiting is open question O-28-a in
+            // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupBy('pos_receipt_lines.product_id', 'pos_receipt_lines.product_name', 'products.sku', 'units.decimal_places')
@@ -168,9 +186,18 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
-            // Breakdowns report SALES only; returns are a separate metric
-            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
-            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            // Breakdowns report SALES only — i.e. GROSS; returns are a separate metric
+            // (OwnerSalesSummaryService). (F-5, AMENDED 2026-08-21 by O-28.)
+            //
+            // The original F-5 rationale — "keeps the drill-downs consistent with the
+            // headline KPIs" — is now FALSE: the owner ruled the Today's-Sales headline
+            // is NET, EXCLUDING REFUNDS, so headline and breakdowns differ BY SCOPE
+            // DECISION, not by accident. What still justifies gross here is that a
+            // refund carries no location/SKU/category attribution safe to net against an
+            // arbitrary grouping key, and that gross is sign-era-proof without ABS
+            // handling. Because the two now disagree, every surface rendering this data
+            // is LABELLED gross. Revisiting is open question O-28-a in
+            // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupBy('categories.id', 'categories.name')
@@ -227,9 +254,18 @@ final class SalesReportService
             ->whereIn('pos_receipts.location_id', $locationIds)
             ->where('pos_receipts.is_voided', false)
             ->where('pos_receipts.training_flag', false)
-            // Breakdowns report SALES only; returns are a separate metric
-            // (OwnerSalesSummaryService). Excluding them keeps the drill-downs
-            // consistent with the headline KPIs regardless of return-total sign. (F-5)
+            // Breakdowns report SALES only — i.e. GROSS; returns are a separate metric
+            // (OwnerSalesSummaryService). (F-5, AMENDED 2026-08-21 by O-28.)
+            //
+            // The original F-5 rationale — "keeps the drill-downs consistent with the
+            // headline KPIs" — is now FALSE: the owner ruled the Today's-Sales headline
+            // is NET, EXCLUDING REFUNDS, so headline and breakdowns differ BY SCOPE
+            // DECISION, not by accident. What still justifies gross here is that a
+            // refund carries no location/SKU/category attribution safe to net against an
+            // arbitrary grouping key, and that gross is sign-era-proof without ABS
+            // handling. Because the two now disagree, every surface rendering this data
+            // is LABELLED gross. Revisiting is open question O-28-a in
+            // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
             ->groupBy('pos_receipt_payments.payment_type', 'payment_methods.name')

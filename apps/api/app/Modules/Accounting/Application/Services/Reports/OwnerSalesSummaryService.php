@@ -70,7 +70,6 @@ final class OwnerSalesSummaryService
             delta: new SalesSummaryDeltaData(
                 grossSalesAbs: CurrencyScale::bcformatStrict(bcsub($current['gross'], $prior['gross'], $scale + 1), $scale),
                 grossSalesPct: $this->pct($current['gross'], $prior['gross']),
-                netSalesAbs: CurrencyScale::bcformatStrict(bcsub($currentNet, $priorNet, $scale + 1), $scale),
                 netSalesPct: $this->pct($currentNet, $priorNet),
                 salesCountAbs: $current['saleCount'] - $prior['saleCount'],
                 salesCountPct: $this->pct((string) $current['saleCount'], (string) $prior['saleCount']),
@@ -153,8 +152,16 @@ final class OwnerSalesSummaryService
         $cur = CurrencyScale::bcformatStrict($current, self::INTERMEDIATE_SCALE);
         $pre = CurrencyScale::bcformatStrict($prior, self::INTERMEDIATE_SCALE);
 
+        // `<= 0`, not `=== 0` (O-28 / P2-5). Net sales can be NEGATIVE — a window whose
+        // refunds exceeded its sales — and dividing by a negative baseline INVERTS the
+        // sign: a recovery from −50 to +250 rendered as −600.00, a red badge on a good
+        // period. A non-positive baseline has no meaningful percentage. Same cutoff and
+        // reasoning as the dashboard revenue tile (`DashboardController::stats`, AMENDED
+        // ruling 2026-08-03 gate M2) and `ExpenseAnalyticsService::generate()`; the
+        // consuming StatCard renders no badge on null.
+        //
         // precision-ok: percentage comparisons use a fixed guard scale (6 dp) — not currency-scaled.
-        if (bccomp($pre, '0', 6) === 0) {
+        if (bccomp($pre, '0', 6) <= 0) {
             return null;
         }
 
@@ -178,7 +185,7 @@ final class OwnerSalesSummaryService
             returnsCount: 0,
             itemsSold: CurrencyScale::bcformatStrict('0', self::QTY_SCALE),
             averageBasket: null,
-            delta: new SalesSummaryDeltaData($zero, null, $zero, null, 0, null),
+            delta: new SalesSummaryDeltaData($zero, null, null, 0, null),
         );
     }
 }

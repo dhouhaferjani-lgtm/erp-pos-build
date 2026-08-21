@@ -66,7 +66,7 @@
       "locations": "Sites"
     },
     "salesTrend": {
-      "title": "Évolution des ventes",
+      "title": "Évolution des ventes (brut)",
       "today": "Aujourd'hui",
       "sameWeekdayLastWeek": "Même jour sem. dernière",
       "seriesMode": {
@@ -76,7 +76,7 @@
       }
     },
     "salesByLocation": {
-      "title": "Ventes par Site",
+      "title": "Ventes par Site (brut)",
       "axis": "Ventes"
     },
     "topSkus": {
@@ -92,7 +92,7 @@
       "items": "{{count}} articles"
     },
     "branchLeaderboard": {
-      "title": "Classement des agences",
+      "title": "Classement des agences (ventes brutes)",
       "active": "Caisse ouverte",
       "inactive": "Aucune caisse ouverte"
     },

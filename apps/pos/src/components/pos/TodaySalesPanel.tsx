@@ -21,6 +21,19 @@ function getLineSummary(line: ShiftReceipt['lines'][number]): string {
   return `${formatQuantity(String(line.quantity), line.quantity_decimals)}× ${getLineName(line)}`;
 }
 
+/**
+ * The counted population for the money tiles. Both filters must be applied HERE,
+ * on BOTH receipt types, because neither source guarantees them:
+ * `ShiftController::receipts` filters on neither `is_voided` nor `is_training`
+ * (unlike every server-side fiscal aggregate, which carries
+ * `training_flag = false`), and the offline mapper hardcodes `is_voided: false`
+ * and emits no training flag at all — hence `!== true` rather than trusting a
+ * default. A voided refund never moved money; a training receipt is not a sale.
+ */
+function isCounted(receipt: ShiftReceipt): boolean {
+  return !receipt.is_voided && receipt.is_training !== true;
+}
+
 function getPaymentLabel(receipt: ShiftReceipt): string {
   if (!receipt.payments || receipt.payments.length === 0) return '—';
   return receipt.payments.map((p) => p.payment_type).join(' + ');
@@ -82,20 +95,27 @@ export function TodaySalesPage() {
     }
   };
 
-  const saleReceipts = receipts.filter((r) => r.receipt_type === 'sale' && !r.is_voided);
-  const returnReceipts = receipts.filter((r) => r.receipt_type === 'return');
+  const saleReceipts = receipts.filter((r) => r.receipt_type === 'sale' && isCounted(r));
+  const returnReceipts = receipts.filter((r) => r.receipt_type === 'return' && isCounted(r));
   const voidedCount = receipts.filter((r) => r.is_voided).length;
-  const grossSales = bcsum(saleReceipts.map((r) => r.total), decimals);
+
+  // Precision contract rule 19: intermediates at scale + 1, rounded ONCE at the
+  // presentation boundary below.
+  const intermediateScale = decimals + 1;
+  const grossSales = bcsum(saleReceipts.map((r) => r.total), intermediateScale);
   // Per-row magnitude, never a raw sum of the stored totals. Legacy returns stored
   // a NEGATIVE total and v4 refund authoring stores a POSITIVE one (v3-refund-chain
-  // spec §7.7), so a shift spanning the cutover would otherwise ADD a legacy return
-  // back into the headline and cancel one era against the other. Same reasoning as
-  // the backend `-ABS(col)` CASE (ticket 2026-08-01-positive-refund-total-consumers).
-  const totalReturns = bcsum(returnReceipts.map((r) => bcabs(r.total, decimals)), decimals);
+  // spec §7.7), so summing raw totals lets a mixed-era shift CANCEL one era against
+  // the other and deduct nothing. Same reasoning as the backend `-ABS(col)` CASE
+  // (ticket 2026-08-01-positive-refund-total-consumers).
+  const totalReturns = bcsum(
+    returnReceipts.map((r) => bcabs(r.total, intermediateScale)),
+    intermediateScale,
+  );
   // O-28 (owner ruling 2026-08-21): the headline figure is NET, EXCLUDING REFUNDS.
   // Gross stays available for the per-sale average below, where a return is not a
   // member of the population being averaged.
-  const netSales = bcsub(grossSales, totalReturns, decimals);
+  const netSales = bcformat(bcsub(grossSales, totalReturns, intermediateScale), decimals);
   const avgTicket =
     saleReceipts.length > 0
       ? bcdiv(grossSales, String(saleReceipts.length), decimals)
@@ -134,7 +154,7 @@ export function TodaySalesPage() {
               <p className="mt-1 text-2xl font-bold text-ink">{receipts.length}</p>
             </div>
             <div className="rounded-card bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
-              <p className="text-xs font-medium text-ink-muted">{t('reports.avgTicket')}</p>
+              <p className="text-xs font-medium text-ink-muted">{t('reports.avgSaleTicket')}</p>
               <p className="mt-1 text-2xl font-bold text-ink">{format(avgTicket)}</p>
             </div>
             <div className="rounded-card bg-danger-surface p-4">

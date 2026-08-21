@@ -1,5 +1,5 @@
 import Big from 'big.js';
-import { apiGet, apiPost } from '@/lib/api';
+import { apiGet, apiGetRaw, apiPost } from '@/lib/api';
 import { getDatabase } from '@/lib/db';
 import { queryAll } from '@/lib/db';
 import { toSqliteUtc } from '@/lib/db/sqliteTime';
@@ -129,6 +129,16 @@ export interface ShiftReceipt {
   subtotal: string;
   tax_amount: string;
   is_voided: boolean;
+  /**
+   * Present on the ONLINE path only. `Receipt` has no `$hidden`, casts
+   * `is_training` to boolean and lists it in `$fillable`, and
+   * `ShiftController::receipts` serialises the raw models — so the server
+   * already sends it and no API-resource change was needed. The offline mapper
+   * in `fetchLocalShiftReceipts` does NOT emit it (nor a real `is_voided`);
+   * consumers must treat `undefined` as "not known to be training", which is
+   * why the panel tests `!== true` rather than trusting a default.
+   */
+  is_training?: boolean;
   voided_at?: string | null;
   posted_at: string;
   created_at?: string;
@@ -315,9 +325,50 @@ function isNotFound(err: unknown): boolean {
   );
 }
 
+/** Server default is 20; a shift routinely exceeds that in a single hour. */
+const SHIFT_RECEIPTS_PAGE_SIZE = 200;
+
+/**
+ * Safety stop for the pagination loop — 40 × 200 = 8000 receipts in one shift.
+ * A `last_page` that never terminates means the server contract changed; fail
+ * loudly rather than spin forever or silently truncate.
+ */
+const SHIFT_RECEIPTS_MAX_PAGES = 40;
+
+interface PaginatedEnvelope<T> {
+  data: T[];
+  meta?: { current_page?: number; last_page?: number; per_page?: number; total?: number };
+}
+
 export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[]> {
   try {
-    return await apiGet<ShiftReceipt[]>(`/pos/shifts/${shiftId}/receipts`);
+    // `GET /pos/shifts/{id}/receipts` PAGINATES (ShiftController::receipts ends in
+    // `->paginate($request->input('per_page', 20))`, ordered `posted_at DESC`).
+    // `apiGet` unwraps `json.data` and DROPS `meta`, so it returned page 1 only —
+    // the 20 most recent receipts. Because the order is DESC, the rows dropped are
+    // the EARLIEST, so an opening-of-shift refund stopped being deducted from the
+    // net headline once 20 later receipts existed. `apiGetRaw` preserves the
+    // envelope; see its docblock in `lib/api.ts`.
+    const all: ShiftReceipt[] = [];
+
+    for (let page = 1; page <= SHIFT_RECEIPTS_MAX_PAGES; page++) {
+      const envelope = await apiGetRaw<PaginatedEnvelope<ShiftReceipt>>(
+        `/pos/shifts/${shiftId}/receipts`,
+        { page, per_page: SHIFT_RECEIPTS_PAGE_SIZE },
+      );
+
+      all.push(...envelope.data);
+
+      // A server that answers without `meta` is treated as single-page rather
+      // than looped against forever.
+      if (page >= (envelope.meta?.last_page ?? page)) {
+        return all;
+      }
+    }
+
+    throw new Error(
+      `fetchShiftReceipts: shift ${shiftId} exceeded ${String(SHIFT_RECEIPTS_MAX_PAGES)} pages`,
+    );
   } catch (err) {
     const { useConnectivityStore } = await import('@/stores/connectivityStore');
     const offline = !useConnectivityStore.getState().isOnline;
