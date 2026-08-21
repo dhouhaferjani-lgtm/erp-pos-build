@@ -461,7 +461,7 @@
     "cashReconciliation": "Cash Reconciliation",
     "loading": "Generating report...",
     "dashboard": {
-      "sales": "Sales (period)",
+      "salesExclRefunds": "Sales (excl. refunds)",
       "transactions": "Transactions",
       "averageBasket": "Average basket",
       "paymentBreakdown": "Payment breakdown",
@@ -472,10 +472,13 @@
       "searchPlaceholder": "Ticket or customer...",
       "ticket": "Ticket",
       "date": "Date",
-      "customer": "Customer",
       "items": "Items",
       "payment": "Payment",
-      "total": "Total"
+      "total": "Total",
+      "cashier": "Cashier",
+      "refunds": "Refunds",
+      "empty": "No tickets for this period.",
+      "error": "Could not read tickets from this device."
     },
     "payment": {
       "all": "All",
@@ -1153,20 +1156,22 @@
   },
   "shiftClosure": {
     "serviceNumber": "Service #{{number}}",
-    "openedMeta": "Opened at 08:00 · Register 1 · Yasmine B.",
+    "openedMetaLive": "Opened at {{time}} · {{terminal}} · {{cashier}}",
     "inProgress": "In progress",
     "xReportTitle": "X report · service reading",
     "paymentTotals": "Takings by method",
-    "printX": "Print X report",
     "zCloseTitle": "Cash closure · Z",
     "zCloseDesc": "Count the drawer, then validate the closure.",
-    "countedCash": "Cash counted in drawer",
     "openingFloat": "Opening float",
     "cashSales": "Cash sales",
     "expectedCash": "Expected cash",
-    "variance": "Variance",
-    "varianceOk": "Balanced",
-    "closeShift": "Close service"
+    "drawerMovements": "Deposits / payouts",
+    "closeShift": "Close service",
+    "zHistory": "Z report history",
+    "blindConcealedHint": "Blind cash count is on. Drawer figures are revealed inside the closure, once the count is committed.",
+    "noOpenShift": "No shift is open on this terminal.",
+    "noOpenShiftHint": "Open a shift from the sales screen to see the live service reading.",
+    "loadError": "Could not read this service's figures from the device."
   },
   "loyalty": {
     "points": "{{amount}} pts",

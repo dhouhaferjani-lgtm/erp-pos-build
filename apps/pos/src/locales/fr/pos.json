@@ -461,7 +461,7 @@
     "cashReconciliation": "Réconciliation de caisse",
     "loading": "Génération du rapport...",
     "dashboard": {
-      "sales": "Ventes (période)",
+      "salesExclRefunds": "Ventes (hors remboursements)",
       "transactions": "Transactions",
       "averageBasket": "Panier moyen",
       "paymentBreakdown": "Répartition par paiement",
@@ -472,10 +472,13 @@
       "searchPlaceholder": "Ticket ou client...",
       "ticket": "Ticket",
       "date": "Date",
-      "customer": "Client",
       "items": "Articles",
       "payment": "Paiement",
-      "total": "Total"
+      "total": "Total",
+      "cashier": "Caissier",
+      "refunds": "Remboursements",
+      "empty": "Aucun ticket pour cette période.",
+      "error": "Impossible de lire les tickets depuis cet appareil."
     },
     "payment": {
       "all": "Tous",
@@ -1153,20 +1156,22 @@
   },
   "shiftClosure": {
     "serviceNumber": "Service #{{number}}",
-    "openedMeta": "Ouvert à 08:00 · Caisse 1 · Yasmine B.",
+    "openedMetaLive": "Ouvert à {{time}} · {{terminal}} · {{cashier}}",
     "inProgress": "En cours",
     "xReportTitle": "Rapport X · lecture du service",
     "paymentTotals": "Encaissements par moyen",
-    "printX": "Imprimer le rapport X",
     "zCloseTitle": "Clôture de caisse · Z",
     "zCloseDesc": "Comptez le tiroir puis validez la clôture.",
-    "countedCash": "Espèces comptées dans le tiroir",
     "openingFloat": "Fond d'ouverture",
     "cashSales": "Ventes espèces",
     "expectedCash": "Espèces attendues",
-    "variance": "Écart",
-    "varianceOk": "Équilibré",
-    "closeShift": "Clôturer le service"
+    "drawerMovements": "Apports / prélèvements",
+    "closeShift": "Clôturer le service",
+    "zHistory": "Historique des rapports Z",
+    "blindConcealedHint": "Le comptage à l'aveugle est activé. Les montants du tiroir sont révélés dans la clôture, une fois le comptage validé.",
+    "noOpenShift": "Aucun service ouvert sur cette caisse.",
+    "noOpenShiftHint": "Ouvrez un service depuis l'écran de vente pour voir la lecture en direct.",
+    "loadError": "Impossible de lire les montants de ce service depuis l'appareil."
   },
   "loyalty": {
     "points": "{{amount}} pts",

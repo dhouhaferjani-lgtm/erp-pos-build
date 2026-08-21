@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeftRight, BarChart3, Lock, Minimize2, RotateCw, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { useTerminalStore, fiscalShiftIdForReceipt } from '@/stores/terminalStore';
+import { useShiftActionsStore } from '@/stores/shiftActionsStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { applyFullscreen } from '@/lib/fullscreen';
 import { useOperatorStore } from '@/stores/operatorStore';
@@ -245,7 +246,7 @@ export function Header() {
     };
   }, [showEndOfDay, terminal, companyId]);
 
-  const handleOpenEndOfDay = () => {
+  const handleOpenEndOfDay = useCallback(() => {
     // Fail closed on every open. This prevents a first-load null or a stale
     // false policy from mounting a disclosure path while the refresh is in flight.
     setFraudSettingsValue(null);
@@ -254,7 +255,20 @@ export function Header() {
     setAuthorizedManagersTerminal(null);
     setCashCountPolicyTerminal(null);
     setShowEndOfDay(true);
-  };
+  }, []);
+
+  // Other screens (e.g. the `/shift` service reading) ask for the ONE real
+  // closure flow rather than standing up a second cash-count path. The request
+  // is a monotonic id, so it routes through the same fail-closed
+  // `handleOpenEndOfDay` above every time — including repeat requests.
+  const endOfDayRequestId = useShiftActionsStore((s) => s.endOfDayRequestId);
+  const lastEndOfDayRequestRef = useRef(endOfDayRequestId);
+  useEffect(() => {
+    if (endOfDayRequestId === lastEndOfDayRequestRef.current) return;
+    lastEndOfDayRequestRef.current = endOfDayRequestId;
+    if (!shift) return;
+    handleOpenEndOfDay();
+  }, [endOfDayRequestId, shift, handleOpenEndOfDay]);
 
   // B7: above-hard-variance close manager approval is now OFFLINE-CAPABLE,
   // reusing the audited operator-approval verifier (online-first → anti-downgrade
