@@ -63,7 +63,13 @@ packages:
     progress_path: docs/handoff/progress/enforcement-p2.progress.yaml
     final_milestone: M4
     lenses: frontend-conventions,tenancy-authz
-    max_fix_rounds: "5"
+    # 5 → 7 (parent continuation ruling 2026-08-21 under the owner's 2026-08-20 blanket delegation,
+    # recorded for owner review): rounds 3-5 were consumed by the stale-A re-base's documentation
+    # reconciliation (the accepted implementation is unchanged and round-5's §C verifies it in full);
+    # round-5 surfaced two NEW lane-facing doc gaps (the event-ratchet fold-in announced only in the
+    # addendum; §1 billing two now-merged lanes for shipped raises). +2 rounds per the P1 runbook
+    # note (budget +2 for the stale-A path). Same foreseen trigger class as P1's raises.
+    max_fix_rounds: "7"
   p3:
     progress_path: docs/handoff/progress/enforcement-p3.progress.yaml
     final_milestone: M3
