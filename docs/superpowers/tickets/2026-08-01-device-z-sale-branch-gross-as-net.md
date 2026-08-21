@@ -10,8 +10,14 @@ amount per taxed line). Existing sale fixtures author `line_total` as NET — th
 not matching the real writer (same masking pattern the refund-side finding called out).
 
 Interim asymmetry (accepted by orchestrator ruling 2026-08-01): the refund branch is now correct,
-so a fully-refunded taxed sale leaves a +VAT/-0 residue in the Z buckets (e.g. +2.00 net / +2.00
-VAT on a 12.00 gross / 2.00 VAT line) instead of netting to zero.
+so a fully-refunded taxed sale leaves a residue in the Z buckets (e.g. +2.00 net / +2.00
+GROSS on a 12.00 gross / 2.00 VAT line — VAT is the one column that cancels; the original "+2.00
+VAT" label here was wrong, corrected 2026-08-21 per the C-2 wave's M3 reproduction) instead of
+netting to zero.
+
+**STATUS 2026-08-21: FIXED on local dev** — C-2 wave complete (Option B in-place correction, ruled;
+all three consumers + SESSION_CLOSE in lockstep; real-writer E2E incl. net-to-zero). Ships with the
+device build stack (LEDGER D-1/D-3); the ruling's reversal window closes at DEVICE BUILD ROLLOUT.
 
 Why not fixed in the wave: the fix changes SIGNED Z_REPORT bytes for ordinary sale-only shifts —
 it needs its own fiscal review gate, a sealing/versioning strategy decision (new event_version or
