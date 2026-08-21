@@ -77,7 +77,7 @@ max_fix_rounds: 5
 #      Checking M1 alone is INSUFFICIENT — a partial cherry-pick can carry the manifest + an M1-passed
 #      YAML snapshot without the lane having passed M7 or merged.
 #   Any failure: status blocked_precondition, STOP. Do NOT edit the pins.
-base_sha: null   # P1/P2 convention: the RECEIPT carries the true base (= the pre-dispatch pin commit); the executor fills this field on the branch at M0
+base_sha: 0ca7bbb091863b160383d630e6062c820cada9b1   # == the pre-dispatch pin commit; filled at M0 per convention, equals the receipt base
 p1_landed_sha: e55a1c8aee706237a3222485b74f72e71b274423   # accepted A, ff-merged 2026-08-21; C=e26412f0e; tags ci-pin/enforcement-p1-r2 + ci-close/enforcement-p1-r1
 country_defaults_landed_sha: 132dd50496099853d9e2d4038f7ae4dfc2752607   # merge: country-defaults Phase A — pre-verified: M7 passed (98f7dd53d, M7-round3 ACCEPT), ancestry chain OK
 p2_landed_sha: d8a631133db1153c24b0e4c0211fc5c43969a7ec   # accepted A, ff-merged 2026-08-21; C=c68ad6f47; tags ci-pin/enforcement-p2-r1 + ci-close/enforcement-p2-r1
@@ -164,10 +164,10 @@ milestones:
   - id: M0
     title: "Preconditions (SETUP-ONLY, no bridge review): (1) P1 WHOLE-PACKAGE precondition (hardened gate-r4 R4-H-5, symmetric with P2/country-defaults): p1_landed_sha non-null + ancestor of base_sha; enforcement-p1.progress.yaml at base reads TOP-LEVEL status: complete with M3 status: passed + a parseable ACCEPT verdict artifact + a recorded commit; ancestry M3.commit -> p1_landed_sha -> base_sha (each hop git merge-base --is-ancestor) — an ancestor + top-level status ALONE IS INSUFFICIENT — PLUS the TWO-PREDICATE EVIDENCE BINDING (gate-r11 R11-H-1, per header checks 1d1/1d2): d1 = P1's PIN TAG at A (resolves to p1_landed_sha; accepted_sha; exactly one manifest_sha256 matching the dispatch manifest; landed register/handback digests; control-name set incl. harness) AND d2 = P1's CLOSE TAG at C (C = first-parent child of p1_landed_sha, conforming diff-tree, base blobs == C's blobs, tag resolves to C, annotation EXACTLY {closing_commit, closing_check == pass, accepted_sha} — no manifest/control lines); (2) P2 WHOLE-PACKAGE precondition (gate-r3 R3-H-2/R3-H-3 — dispatch-time, superseding the r6 M2-time p2_m2_landed_sha pin): p2_landed_sha non-null + ancestor of base_sha; enforcement-p2.progress.yaml at base reads TOP-LEVEL status: complete with M4 status: passed + a parseable ACCEPT verdict artifact + a recorded commit; ancestry M2.commit -> M4.commit -> p2_landed_sha -> base_sha (each hop git merge-base --is-ancestor) — an M2-passed snapshot ALONE IS INSUFFICIENT — PLUS the same TWO-PREDICATE EVIDENCE BINDING via P2's PIN tag at A and CLOSE tag at C (gate-r11 R11-H-1, per header checks 2d1/2d2); (3) country-defaults WHOLE-LANE precondition (gate-r1 C-3, hardened gate-r2 R2-H-5): ProvisioningRequiredPurposesV1 present at base (git cat-file -e) + country_defaults_landed_sha non-null and an ancestor of base_sha + country-defaults-phase-a.progress.yaml reading TOP-LEVEL status: complete with M7 status: passed, a parseable ACCEPT verdict artifact and a recorded commit + ancestry accepted-country-tip -> country_defaults_landed_sha -> base_sha (both hops) — M1-passed ALONE IS INSUFFICIENT (a partial cherry-pick can carry the manifest + an M1 snapshot without M7 or the merge); required BEFORE M2 may run; absent = blocked_precondition, never proceed on prose; (4) commit_series non-null; (5) fresh worktree/branch off base_sha; (6) control_manifest non-null and the manifest file present at base with a matching sha256 (gate-r8 R8-H-1). Any failure: blocked_precondition, STOP. No adversarial register is produced."
     review_lenses: []
-    status: pending
+    status: passed          # all 28 machine checks PASS 2026-08-21 (parent-as-executor); transcript in the M0 note below
     fix_rounds: 0
-    commit: null
-    verdict: null
+    commit: 0ca7bbb091863b160383d630e6062c820cada9b1   # the base pin commit — the tree state M0 verified (a YAML commit cannot carry its own SHA)
+    verdict: setup-only (no adversarial register per the milestone contract)
     last_verdict: null
   - id: M1
     title: "3(a) RESCOPED (gate-r1 C-2): the GL chokepoint (GeneralLedgerService::sealAndPersistEntry, :3480-3510; postEntry :2874 / postEntryNow :3450 funnel into it) ALREADY balance-validates. Work = (i) semantic classification of every journal_entries creator from P1's census: draft-only (e.g. createPOSChargeEntry :4072 — who posts the draft, through what guard?) / posted-through-chokepoint (characterize, NO new validator, NO new test presented as evidence) / bypassing (the genuine gaps); (ii) close ONLY the genuine gaps — route through the chokepoint where possible, else constructor-injected DoubleEntryValidator; never a second balance algorithm in the chokepoint; (iii) RED-FIRST PROOF MANDATORY per targeted path — a green-at-base test DISQUALIFIES the target (reclassify as guarded); (iv) optional scoped chokepoint failure-mode normalization for queued contexts (loud fail, retry/dead-letter); (v) rule 19/20 in every touched queued path. One unbalanced-guard test PER class-(c) census row in its OWN module — the acceptance command list is DERIVED from the census (gate-r2 R2-H-7, superseding the gate-r1 H-11 fixed Treasury/BatchExpiry/Accounting trio): per class-(c) row, a named test path + anchored --filter with an asserted NONZERO selected-test count (parse the PHPUnit summary; apps/api/phpunit.xml sets no failOnEmptyTestSuite, so an empty selection exits 0 — exit code alone proves nothing) + preserved red-first evidence; modules with ZERO class-(c) rows submit the reviewed census evidence only, NO placeholder green command. The -19.000 item is LEDGER §2 row S-15 — pointer only (gate-r1 H-10)."
@@ -196,3 +196,16 @@ milestones:
 
 status: pending          # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
+
+# ── M0 EXECUTION RECORD (2026-08-21, parent-as-executor under the owner recorded delegation) ──
+# All 28 machine checks PASS: P1 (ancestor · top-level complete · M3 passed · r14 ACCEPT artifact ·
+# pin tag at A with register/handback digests == landed bytes · C^==A · close tag {C, pass, A} ·
+# base blob == C blob) · P2 (same 11-check battery incl. M2.commit→A ancestry) · country-defaults
+# (manifest class at base · 98f7dd53d→132dd5049→base ancestry · top-level complete · M7 ACCEPT) ·
+# commit_series/worktree/control-manifest pins.
+# RECORDED DEVIATION (M0-D1): the landed P1/P2 pin-tag annotations carry the binding data in the
+# r19-era field shapes ("register_sha256: <hex>" without the <path>= prefix; the manifest digest on
+# a "control_sha256: manifest=<hex>" line rather than a standalone "manifest_sha256:" line). The r12
+# schema-literal parse would miss them; M0 verified the SUBSTANCE of every binding (digest equality
+# against landed bytes, A equality, manifest digest presence) instead. Tags are immutable by
+# protocol, so the shapes cannot be retrofitted; P3-M3 and any future consumer must parse both.
