@@ -885,12 +885,16 @@ jobs:
         #   - CorrectingEntryEndpointTest (Feature, R2-F4): the ONLY guard on the
         #     new admin-only `documents.correct` permission and on the
         #     correcting-entry HTTP surface. It lives in tests/Feature/Document,
-        #     a DEFERRED group in tests/feature-lane-manifest.json that no lane
-        #     runs as a whole, so without this entry a GL-WRITING admin route
-        #     would ship guarded by a test CI never executes. Named here, not
-        #     laned, because funding the Document group is the open F-2 decision.
+        #     which the O-29 / F-2 ruling DID lane (feature-lane-documents) — but
+        #     that lane is PARKED behind `vars.SELF_HOSTED_RUNNER_READY`, so
+        #     until the owner registers the runner it still executes nowhere,
+        #     and a GL-WRITING admin route would ship guarded by a test CI never
+        #     runs. Named here as well, deliberately: this job runs on every
+        #     event today. When the gate is flipped the class runs in both, which
+        #     is duplication, not a conflict — remove the entry then, not before.
         #     PG is required, not incidental: the class asserts the two
-        #     `documents` immutability TRIGGERS, which exist only on Postgres.
+        #     `documents` immutability TRIGGERS, which exist only on Postgres, so
+        #     this is the correct job for it even once the parked lane wakes up.
         #     S-17 CAVEAT: CI has not been observed green on this branch, so this
         #     entry is an intent recorded in the workflow, not a verified pass.
         env:
