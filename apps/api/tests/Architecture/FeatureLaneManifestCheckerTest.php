@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Architecture;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use Symfony\Component\Yaml\Yaml;
 
@@ -536,35 +537,54 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     }
 
     /**
-     * gate-r2 R2-2 — the round-1 bypass transliterated into index syntax. The
-     * one-variable rule censused `vars\.NAME` with a regex, so `vars['NEVER_FIRES']`
-     * walked straight past it with the manifest updated to match.
+     * gate-r2 R2-2 + gate-r4 R4-1 — THE WHOLE FAMILY, pinned as a family.
+     *
+     * Each row is a second, permanently-false condition prepended to every gated
+     * lane's `if:` AND to the manifest's declared gate, so canonical equality is
+     * satisfied and only the free-variable rule can fire. The history here is the
+     * argument for the data provider: round 1 was bypassed by a second `vars.X`,
+     * round 2 by writing it `vars['X']` and by `needs.*.outputs.*`, and round 3 by
+     * simply SHOUTING the context name — GitHub expression contexts are
+     * case-insensitive and the pattern was not. Three rounds, one defect, three
+     * spellings; the rows below are that defect's family.
+     *
+     * @return array<string,array{0:string,1:string}> [extra condition, expected snippet]
      */
-    public function test_it_fires_on_a_second_variable_written_in_index_syntax(): void
+    public static function secondSwitchSpellings(): array
     {
-        [$exit, $out] = $this->plantSecondGateCondition("vars['NEVER_FIRES'] == 'true' &&");
+        return [
+            'index syntax' => ["vars['NEVER_FIRES'] == 'true' &&", "vars['NEVER_FIRES']"],
+            'index syntax, mis-cased context' => ["VARS['NEVER_FIRES'] == 'true' &&", "VARS['NEVER_FIRES']"],
+            'index syntax, double quotes' => ['vars["NEVER_FIRES"] == \'true\' &&', 'vars["NEVER_FIRES"]'],
+            'computed key' => ["vars[format('X_{0}', github.ref)] == 'true' &&", 'vars['],
+            'needs outputs' => ["needs.backend-lint.outputs.enable_lanes == 'yes' &&", 'needs.backend-lint'],
+            'needs outputs, mis-cased context' => ["Needs.backend-lint.outputs.enable_lanes == 'yes' &&", 'Needs.backend-lint'],
+            'env context' => ["env.ENABLE_LANES == 'yes' &&", 'env.ENABLE_LANES'],
+            'env context, mis-cased' => ["ENV.ENABLE_LANES == 'yes' &&", 'ENV.ENABLE_LANES'],
+        ];
+    }
+
+    #[DataProvider('secondSwitchSpellings')]
+    public function test_it_fires_on_any_spelling_of_a_second_switch(string $condition, string $snippet): void
+    {
+        [$exit, $out] = $this->plantSecondGateCondition($condition);
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString("vars['NEVER_FIRES']", $out);
+        self::assertStringContainsString($snippet, $out);
         self::assertStringContainsString('at most one `vars.NAME` in dot form', $out);
     }
 
-    /** …and a second switch that is not a `vars` reference at all. */
-    public function test_it_fires_on_a_needs_outputs_condition_used_as_a_second_switch(): void
+    /**
+     * The other half of gate-r4 R4-1: making the scan case-insensitive must not
+     * start REJECTING the event context written in another case. `github.*` is
+     * allowed however it is spelled, so a mis-cased event arm stays green.
+     */
+    public function test_a_mis_cased_event_context_is_still_allowed(): void
     {
-        [$exit, $out] = $this->plantSecondGateCondition("needs.backend-lint.outputs.enable_lanes == 'yes' &&");
+        [$exit, $out] = $this->plantSecondGateCondition("GITHUB.event_name != 'nonexistent' &&");
 
-        self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('needs.backend-lint', $out);
-    }
-
-    /** …and a computed key, which no name-based census can resolve at all. */
-    public function test_it_fires_on_a_computed_variable_key(): void
-    {
-        [$exit, $out] = $this->plantSecondGateCondition("vars[format('X_{0}', github.ref)] == 'true' &&");
-
-        self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('at most one `vars.NAME` in dot form', $out);
+        self::assertSame(0, $exit, $out);
+        self::assertStringContainsString('lane manifest OK', $out);
     }
 
     /**

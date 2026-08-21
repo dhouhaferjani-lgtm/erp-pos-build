@@ -157,7 +157,13 @@ function contextReferences(string $expression): array
         .'|'
         // [anything else] — a computed key, e.g. vars[format('X_{0}', …)]
         .'\[(?<expr>[^\]]*)\]'
-        .')/';
+        // gate-r4 R4-1: CASE-INSENSITIVE. GitHub expression contexts are not
+        // case-sensitive — `VARS['NEVER_FIRES']` resolves exactly as
+        // `vars['NEVER_FIRES']` does — and the reviewer walked the round-2
+        // allowlist by simply shouting the context name. The matched context is
+        // lowercased below so the rest of this checker compares one spelling;
+        // `source` keeps the author's original casing for the error message.
+        .')/i';
 
     if (preg_match_all($pattern, $expression, $matches, PREG_SET_ORDER) === false) {
         return [];
@@ -167,21 +173,21 @@ function contextReferences(string $expression): array
     foreach ($matches as $match) {
         if (($match['dot'] ?? '') !== '') {
             $references[] = [
-                'context' => $match[1],
+                'context' => strtolower($match[1]),
                 'form' => 'dot',
                 'name' => $match['dot'],
                 'source' => trim($match[0]),
             ];
         } elseif (($match['idx'] ?? '') !== '' || isset($match['idx'])) {
             $references[] = [
-                'context' => $match[1],
+                'context' => strtolower($match[1]),
                 'form' => 'index',
                 'name' => $match['idx'],
                 'source' => trim($match[0]),
             ];
         } else {
             $references[] = [
-                'context' => $match[1],
+                'context' => strtolower($match[1]),
                 'form' => 'computed',
                 'name' => null,
                 'source' => trim($match[0]),
@@ -652,7 +658,9 @@ foreach ($lanes as $laneId => $lane) {
             continue;
         }
         if ($reference['context'] === 'vars' && $reference['form'] === 'dot') {
-            $jobVars[] = 'vars.'.$reference['name'];
+            // Variable NAMES are case-insensitive too, so `vars.FOO` and `vars.foo`
+            // are one switch and must not census as two.
+            $jobVars[] = 'vars.'.strtoupper((string) $reference['name']);
 
             continue;
         }

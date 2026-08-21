@@ -443,6 +443,14 @@ The consequence, stated plainly so nobody discovers it at promotion time:
   must be in the aggregate" rule, which is a change to the aggregate's contract and outside O-29's scope.
   **For the parent to carry into the LEDGER.**
 
+* **T-2 — the lane-gate rule is a context allowlist, not an expression evaluator** (gate-r4 R4-2). A
+  constant-false or pure-function subexpression (`false &&`, `fromJSON('false') &&`, a never-populated
+  `github.event.*` property) satisfies every rule in B4 and still parks the lane. The property the checker
+  delivers is "parking requires a visible, reviewed edit to the canonical gate in both files", NOT "a lane
+  cannot be parked". Closing the gap means evaluating GitHub expressions, which is a much larger tool than
+  this one and would have to track GitHub's semantics forever. Recorded so nobody later reads B4 as a stronger
+  guarantee than it is. See §9.2. **For the parent to carry into the LEDGER.**
+
 **OPEN QUESTIONS**
 
 * **Q1 — concurrency budget.** 4 concurrent runners (≈60–70 min wall per event) or 1 (≈3 h)? Affects VPS sizing
@@ -495,7 +503,7 @@ $ php tools/feature-lane-manifest-check.php                       EXIT=0
   ⚠ COVERAGE DEBT: 1 group(s) / 1 class(es) …
 
 $ ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php
-  OK (70 tests, 406 assertions)       # 46 pre-existing + 6 round-0 + 13 gate-r1 + 5 gate-r2
+  OK (76 tests, 431 assertions)   # 46 pre-existing + 6 round-0 + 13 gate-r1 + 5 gate-r2 + 6 gate-r4
 
 $ ./vendor/bin/phpunit tests/Architecture/FeatureLaneLocalHarnessTest.php
   OK (10 tests, 52 assertions)                                  # new in gate-r2 (R2-6)
@@ -525,6 +533,18 @@ failed/cancelled/non-allowlisted-skipped with valid JSON · `vars.` gate skip se
 `AUTOERP_QUARANTINE` isolation to the eight new jobs · census math · no `permissions` grants · actionlint zero
 new.
 
+**The boundary of the free-variable rule, stated plainly** (gate-r4 R4-2). The rule constrains which *contexts*
+a gate may reference; it is not a proof that the gate can ever be true. A constant-false or pure-function
+subexpression — `false &&`, `fromJSON('false') &&`, or a comparison against a `github.event.*` property that is
+never populated for the triggering events — satisfies the allowlist as written and parks the lane just as
+effectively. Closing that would need an expression evaluator, which this checker deliberately is not.
+
+What the rule actually buys is therefore narrower than "a lane cannot be parked", and is worth stating in those
+words: **parking a lane now requires a conspicuous, reviewed edit to the canonical gate in BOTH `ci.yml` and the
+manifest** — visible in the diff, in a string whose only legitimate content is one variable and the event arm —
+rather than one token added in one file that no check reads. That is a review property, not a machine-checked
+one. Ticketed at §8 T-2.
+
 **One claim in the round-1 commit message was false and is corrected here** (gate-r2 R2-6): it said "every fix
 is pinned by a liveness case". That was true of the checker fixes and of the aggregate script, and **false of
 `run-feature-lane-local.sh`**, whose guards were verified by hand-run probes pasted into a report — which
@@ -541,8 +561,9 @@ mechanism is not a check.*
 
 | # | Sev | Defect | Fix | Pinned by |
 |---|---|---|---|---|
-| R2-1 | P1 | **Step-level `if:` bypass, producing a FALSE GREEN.** The B4 rewrite scanned only the JOB `if:`. A step-`if:` door existed in `gatingDefects()`, but its sole consequence is to set `runs_on_pr_dev=false` — inert for all 70 gated lanes, which already declare false. `if: ${{ false }}` on a lane step → EXIT=0; on flip day the job runs, the step skips, the job reports SUCCESS and the aggregate prints `ok`. | **No step in a lane job may carry `if:` at all** — hard error, independent of `runs_on_pr_dev`, setup steps included, only literally-always-true forms permitted (they skip nothing). Absolute rather than clever, because a lane's whole value is that it runs unconditionally. Verified collateral-free: no step in any of the 11 lane-owning jobs carries an `if:` today. | `…lane_step_is_made_conditional` (the reviewer's exact probe) + `…setup_step_in_a_lane_job…` |
+| R2-1 | P1 | **Step-level `if:` bypass, producing a FALSE GREEN.** The B4 rewrite scanned only the JOB `if:`. A step-`if:` door existed in `gatingDefects()`, but its sole consequence is to set `runs_on_pr_dev=false` — inert for all 70 gated lanes, which already declare false. `if: ${{ false }}` on a lane step → EXIT=0; on flip day the job runs, the step skips, the job reports SUCCESS and the aggregate prints `ok`. | **No step in a lane job may carry `if:` at all** — hard error, independent of `runs_on_pr_dev`, setup steps included, only literally-always-true forms permitted (they skip nothing). Absolute rather than clever, because a lane's whole value is that it runs unconditionally. Verified collateral-free: no step in any of the **10** lane-owning jobs carries an `if:` today (8 `feature-lane-*` + `security-regression` + `treasury-spine-pgsql`; the 11 was a transposition of the 11 LANES `feature-lane-tenancy` owns — gate-r4 R4-3). | `…lane_step_is_made_conditional` (the reviewer's exact probe) + `…setup_step_in_a_lane_job…` |
 | R2-2 | P1 | **`vars['NAME']` index syntax defeated the one-variable rule**, which censused `vars\.NAME` with a regex; `needs.<job>.outputs.*` passed as a second switch too. | Replaced the census with an **allowlist over every context reference**: the gate's only free variables may be `github.*` and exactly one `vars.NAME` in dot form. Index form, computed keys (`vars[format(…)]`), `needs.*`, `env.*`, `secrets.*`, `inputs.*`, `steps.*`, `runner.*`, `matrix.*` are each rejected by name. | `…second_variable_written_in_index_syntax`, `…needs_outputs_condition…`, `…computed_variable_key` |
+| R4-1 | P2 | **The allowlist was CASE-SENSITIVE while GitHub expression contexts are not** — `VARS['NEVER_FIRES']` with the manifest co-edited passed at EXIT=0. Third round, same defect, third spelling. | `i` flag on the pattern; the matched context lowercased and `vars` NAMES uppercased before the census, so one switch cannot count as two. `source` keeps the author's casing for the message. Verified the other direction too: a mis-cased `GITHUB.*` must stay ALLOWED, not become a new false positive. | `…any_spelling_of_a_second_switch` (8 data sets incl. `VARS['X']`, `Needs.x.outputs.y`, `ENV.X`) + `…mis_cased_event_context_is_still_allowed` |
 | R2-3 | P2 | **`DB_CENTRAL_*` family leak.** Rebuilding `DB_*` was not enough: `central` is hardcoded pgsql and reads `DB_CENTRAL_URL/HOST/PORT/DATABASE/USERNAME/PASSWORD` *in preference to* `DB_*`, so `DB_CENTRAL_HOST=<staging>` passed both guards and reached 79 `connection('central')` sites incl. `TenantProvisioningService`'s unconditional DELETEs. | Whole family unset and re-pinned to validated loopback values **in both modes** — `--sqlite` is not a safe harbour, because `central` is pgsql regardless. `LANE_DB_CENTRAL_DATABASE` override, same `autoerp_*test` rule. The header claim is now true rather than narrowed. | `…hostile_ambient_environment_is_ignored_entirely`, `…sqlite_mode_…_pins_the_central_connection`, `…throwaway_pattern` (4 data sets) |
 | R2-4 | P3 | `LANE_REDIS_HOST` had no loopback rule; `REDIS_PASSWORD`/`REDIS_CLIENT`/`REDIS_CACHE_DB` were not unset. | Same `require_loopback` helper as the DB host; the Redis family enumerated in the unset list. | `…non_loopback_redis_host` |
 | R2-5 | P3 | Aggregate dependency list unpinned for **non-lane** jobs. | **Ticketed, not fixed** — §8 T-1. Pre-existing class, and a proper fix changes the aggregate's contract. | — |
