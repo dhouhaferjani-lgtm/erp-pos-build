@@ -220,6 +220,7 @@ vi.mock('@/components/organisms/CashDrawerModal', () => ({
 }));
 
 import { Header } from '../Header';
+import { useShiftActionsStore } from '@/stores/shiftActionsStore';
 
 describe('Header (Sub-Spec B)', () => {
   beforeEach(() => {
@@ -464,6 +465,69 @@ describe('Header (Sub-Spec B)', () => {
     });
     await waitFor(() => {
       expect(screen.getByTestId('eod-policy-state')).toHaveTextContent('true:none');
+    });
+  });
+
+  // Receiving side of the /shift -> real-closure handoff (shiftActionsStore).
+  describe('end-of-day requests from other screens', () => {
+    it('opens the real closure modal EVERY time a request arrives, not just once', async () => {
+    mockTerminal = {
+      id: 'terminal-1',
+      code: 'T1',
+      fiscal_schema_version: 3,
+      is_training_mode: false,
+    };
+    mockShift = {
+      id: 'shift-1',
+      shift_number: 1,
+      opening_cash: '100.00',
+      opened_at: '2026-08-17T08:00:00Z',
+      user: { id: 'op-1', name: 'Test Manager' },
+    };
+
+      render(<Header />);
+      expect(screen.queryByTestId('eod-policy-state')).not.toBeInTheDocument();
+
+      act(() => { useShiftActionsStore.getState().requestEndOfDay(); });
+      await waitFor(() => expect(screen.getByTestId('eod-policy-state')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByText('close-eod'));
+      await waitFor(() =>
+        expect(screen.queryByTestId('eod-policy-state')).not.toBeInTheDocument(),
+      );
+
+      // A monotonic request id — not a boolean — so the second request is a
+      // distinct value and re-opens rather than being swallowed as "unchanged".
+      act(() => { useShiftActionsStore.getState().requestEndOfDay(); });
+      await waitFor(() => expect(screen.getByTestId('eod-policy-state')).toBeInTheDocument());
+    });
+
+    it('replays a request that arrived before the shift had loaded', async () => {
+      mockTerminal = {
+        id: 'terminal-1',
+        code: 'T1',
+        fiscal_schema_version: 3,
+        is_training_mode: false,
+      };
+      mockShift = null;
+
+      const view = render(<Header />);
+
+      // Request lands while the shift is still null: nothing can open yet, and
+      // the request must NOT be consumed.
+      act(() => { useShiftActionsStore.getState().requestEndOfDay(); });
+      expect(screen.queryByTestId('eod-policy-state')).not.toBeInTheDocument();
+
+      mockShift = {
+        id: 'shift-1',
+        shift_number: 1,
+        opening_cash: '100.00',
+        opened_at: '2026-08-17T08:00:00Z',
+        user: { id: 'op-1', name: 'Test Manager' },
+      };
+      view.rerender(<Header />);
+
+      await waitFor(() => expect(screen.getByTestId('eod-policy-state')).toBeInTheDocument());
     });
   });
 });

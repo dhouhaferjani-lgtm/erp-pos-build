@@ -265,8 +265,11 @@ export function Header() {
   const lastEndOfDayRequestRef = useRef(endOfDayRequestId);
   useEffect(() => {
     if (endOfDayRequestId === lastEndOfDayRequestRef.current) return;
-    lastEndOfDayRequestRef.current = endOfDayRequestId;
+    // Consume the request ONLY once it is actually served. Advancing the ref
+    // before the `shift` guard would swallow a request that arrived while the
+    // shift was still loading — it would never replay once the shift landed.
     if (!shift) return;
+    lastEndOfDayRequestRef.current = endOfDayRequestId;
     handleOpenEndOfDay();
   }, [endOfDayRequestId, shift, handleOpenEndOfDay]);
 

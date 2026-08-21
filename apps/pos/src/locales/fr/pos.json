@@ -413,6 +413,7 @@
     "reprint": "Réimprimer",
     "noReceipts": "Aucun ticket pour ce service",
     "totalSales": "Ventes totales",
+    "netSalesExclRefunds": "Ventes nettes (hors remboursements)",
     "receiptCount": "Tickets",
     "avgTicket": "Ticket moyen",
     "returns": "Retours",
@@ -461,7 +462,6 @@
     "cashReconciliation": "Réconciliation de caisse",
     "loading": "Génération du rapport...",
     "dashboard": {
-      "salesExclRefunds": "Ventes (hors remboursements)",
       "transactions": "Transactions",
       "averageBasket": "Panier moyen",
       "paymentBreakdown": "Répartition par paiement",
@@ -469,22 +469,20 @@
       "currentShift": "Service",
       "week": "Semaine",
       "search": "Rechercher les tickets",
-      "searchPlaceholder": "Ticket ou client...",
+      "searchPlaceholder": "Ticket ou caissier...",
       "ticket": "Ticket",
-      "date": "Date",
       "items": "Articles",
       "payment": "Paiement",
       "total": "Total",
       "cashier": "Caissier",
       "refunds": "Remboursements",
       "empty": "Aucun ticket pour cette période.",
-      "error": "Impossible de lire les tickets depuis cet appareil."
+      "error": "Impossible de lire les tickets depuis cet appareil.",
+      "cashConcealed": "Les encaissements espèces sont masqués tant qu'un service est ouvert et que le comptage à l'aveugle est actif.",
+      "loading": "Chargement des tickets…"
     },
     "payment": {
       "all": "Tous",
-      "cash": "Espèces",
-      "card": "Carte",
-      "voucher": "Bon",
       "mixed": "Mixte"
     },
     "noOpenShift": "Aucun service ouvert. Ouvrez un service pour générer un rapport.",

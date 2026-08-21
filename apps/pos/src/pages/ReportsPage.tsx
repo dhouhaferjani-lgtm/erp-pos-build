@@ -1,26 +1,39 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
 import { bcabs, bcadd, bcdiv, bcformat } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
+import { sqliteUtcToDate } from '@/lib/db/sqliteTime';
 import { buildEndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import {
   MIXED_METHOD,
+  combineRefundTotals,
   filterTickets,
+  loadLegacyRefundTotalsForPeriod,
   loadSalesHistoryTickets,
+  netOfRefunds,
   paymentSharePercent,
   periodStartIso,
-  sqliteUtcToDate,
   summarizeRefunds,
 } from '@/lib/offline/salesHistory';
+import type { RefundTotals } from '@/lib/offline/salesHistory';
+import { resolveCashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
+import type { CashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
 import type { SalesHistoryTicket, SalesPeriod } from '@/lib/offline/salesHistory';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
 
 const BAR_FILLS = ['bg-accent', 'bg-action', 'bg-ink-muted'] as const;
+
+/** Rendered in place of any figure that is not yet known, or is concealed. */
+const PENDING = '—';
+
+/** Stable identity so an empty read never invalidates a downstream memo. */
+const EMPTY_TICKETS: SalesHistoryTicket[] = [];
 
 /**
  * Manager sales report (`/reports`) over the device's own receipt store.
@@ -31,10 +44,23 @@ const BAR_FILLS = ['bg-accent', 'bg-action', 'bg-ink-muted'] as const;
  * expectation). That keeps the change-netted CASH figure, the refund signing and
  * the sale-only totals identical to the Z rather than re-derived here.
  *
- * Owner ruling O-28: the headline is the SALE-ONLY figure and is labelled as
- * excluding refunds; refunds are surfaced as their own counter-figure instead of
- * being netted silently into it.
+ * Owner ruling O-28: the headline is NET, EXCLUDING REFUNDS, and is labelled as
+ * such; refunds are ALSO surfaced as their own counter-figure so the deduction
+ * is visible rather than silent.
  */
+
+/** One atomic read: the four values always resolve, and fail, together. */
+interface ReportData {
+  preview: EndOfDayPreview;
+  tickets: SalesHistoryTicket[];
+  legacyRefunds: RefundTotals;
+  disclosure: CashDisclosure;
+}
+
+type LoadState =
+  | { status: 'loading' }
+  | { status: 'ready'; data: ReportData }
+  | { status: 'failed' };
 export function ReportsPage() {
   const { t } = useTranslation('pos');
   const { currency, decimals, format } = useCurrency();
@@ -47,10 +73,7 @@ export function ReportsPage() {
   const [method, setMethod] = useState('all');
   const [search, setSearch] = useState('');
 
-  const [preview, setPreview] = useState<EndOfDayPreview | null>(null);
-  const [tickets, setTickets] = useState<SalesHistoryTicket[]>([]);
-  const [failed, setFailed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [state, setState] = useState<LoadState>({ status: 'loading' });
 
   const terminalId = terminal?.id ?? null;
   const shiftOpenedAt = shift?.opened_at ?? null;
@@ -71,37 +94,74 @@ export function ReportsPage() {
     void (async () => {
       try {
         const db = await getDatabase(companyId);
-        const [built, rows] = await Promise.all([
+        const [built, rows, legacy, policy] = await Promise.all([
           // No shift id and a zero float: this is a sales report, not a drawer
           // reconciliation — `expected_cash` is deliberately not consumed.
           buildEndOfDayPreview(db, terminalId, since, '0', currency),
           loadSalesHistoryTickets(db, terminalId, since),
+          loadLegacyRefundTotalsForPeriod(db, terminalId, since, decimals),
+          resolveCashDisclosure(db, companyId),
         ]);
         if (cancelled) return;
-        setPreview(built);
-        setTickets(rows);
-        setFailed(false);
-        setLoaded(true);
+        setState({
+          status: 'ready',
+          data: { preview: built, tickets: rows, legacyRefunds: legacy, disclosure: policy },
+        });
       } catch {
         if (cancelled) return;
-        setPreview(null);
-        setTickets([]);
-        setFailed(true);
-        setLoaded(true);
+        // Never fall back to a plausible-looking number — say the read failed.
+        setState({ status: 'failed' });
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [terminalId, companyId, since, currency]);
+  }, [terminalId, companyId, since, currency, decimals]);
 
-  const refunds = useMemo(() => summarizeRefunds(tickets, decimals), [tickets, decimals]);
+  const data = state.status === 'ready' ? state.data : null;
+  const preview = data?.preview ?? null;
+  const failed = state.status === 'failed';
+  const loaded = state.status !== 'loading';
+  // Fail closed: conceal until the policy is positively read as "not blind".
+  const disclosure: CashDisclosure = data?.disclosure ?? 'conceal';
+
+  const tickets: SalesHistoryTicket[] = useMemo(() => data?.tickets ?? EMPTY_TICKETS, [data]);
+
+  /**
+   * v4 refund receipt rows + legacy `local_refund_records`. The two sources are
+   * disjoint by construction, so this is an additive fold — the same shape the
+   * signed Z uses.
+   */
+  const refunds = useMemo(() => {
+    if (!data) return { count: 0, amount: bcformat('0', decimals) };
+    return combineRefundTotals(
+      summarizeRefunds(data.tickets, decimals),
+      data.legacyRefunds,
+      decimals,
+    );
+  }, [data, decimals]);
+
+  /** O-28: the headline is NET, excluding refunds, and labelled as such. */
+  const netSales = useMemo(
+    () => (preview ? netOfRefunds(preview.gross_sales, refunds.amount, decimals) : null),
+    [preview, refunds.amount, decimals],
+  );
 
   const averageBasket = useMemo(() => {
+    // GROSS numerator on purpose: a refund is not a member of the per-sale
+    // population being averaged (matches the /sales lane's basis).
     if (!preview || preview.sales_count === 0) return bcformat('0', decimals);
     return bcdiv(preview.gross_sales, String(preview.sales_count), decimals);
   }, [preview, decimals]);
+
+  /**
+   * Blind cash count (SV-10): while a shift is OPEN, this period's physical
+   * tender takings are the raw material for the drawer expectation the counter
+   * must not see. With no open shift there is nothing being counted, so the
+   * figures are disclosed.
+   */
+  const concealCash = disclosure === 'conceal' && shift !== null;
 
   const tenders = useMemo(() => {
     if (!preview) return [];
@@ -116,8 +176,9 @@ export function ReportsPage() {
       amount: m.total_amount,
       percent: paymentSharePercent(m.total_amount, totalAbs),
       fill: BAR_FILLS[index % BAR_FILLS.length],
+      concealed: concealCash && m.is_physical,
     }));
-  }, [preview, decimals]);
+  }, [preview, decimals, concealCash]);
 
   /** Tender filter options come from the tenders actually present in the period. */
   const methodOptions = useMemo(() => {
@@ -138,6 +199,9 @@ export function ReportsPage() {
 
   const rows = useMemo(() => filterTickets(tickets, method, search), [tickets, method, search]);
 
+  /** A KPI may only show a number once a read has actually resolved. */
+  const ready = loaded && !failed;
+
   const periodOptions: [SalesPeriod, string][] = [
     ['today', t('reports.dashboard.today')],
     ...(shiftOpenedAt
@@ -150,10 +214,11 @@ export function ReportsPage() {
     <div data-testid="reports-screen" className="flex h-full min-h-0 flex-col gap-3 bg-surface-canvas p-3">
       <div className="grid shrink-0 grid-cols-[repeat(3,minmax(0,1fr))_1.7fr] gap-3">
         <Kpi
-          label={t('reports.dashboard.salesExclRefunds')}
-          value={format(preview?.gross_sales ?? bcformat('0', decimals))}
+          label={t('reports.netSalesExclRefunds')}
+          // Never a confident zero while the first read is still in flight.
+          value={ready && netSales !== null ? format(netSales) : PENDING}
           footer={
-            refunds.count > 0 ? (
+            ready && refunds.count > 0 ? (
               <span className="mt-1 flex items-center gap-2 text-xs text-ink-muted">
                 <span>{t('reports.dashboard.refunds')}</span>
                 <span className="font-mono tabular-nums">{refunds.count}</span>
@@ -164,8 +229,14 @@ export function ReportsPage() {
             ) : null
           }
         />
-        <Kpi label={t('reports.dashboard.transactions')} value={String(preview?.sales_count ?? 0)} />
-        <Kpi label={t('reports.dashboard.averageBasket')} value={format(averageBasket)} />
+        <Kpi
+          label={t('reports.dashboard.transactions')}
+          value={ready && preview ? String(preview.sales_count) : PENDING}
+        />
+        <Kpi
+          label={t('reports.dashboard.averageBasket')}
+          value={ready && preview ? format(averageBasket) : PENDING}
+        />
         <section className="rounded-card border border-border-subtle bg-surface-raised px-4 py-3">
           <h2 className="mb-3 text-sm text-ink-muted">{t('reports.dashboard.paymentBreakdown')}</h2>
           <div className="flex flex-col gap-2">
@@ -175,18 +246,21 @@ export function ReportsPage() {
                 <div className="h-2 flex-1 overflow-hidden rounded-pill bg-surface-sunken">
                   <div
                     className={cn('h-full rounded-pill', row.fill)}
-                    style={{ width: `${row.percent}%` }}
+                    style={{ width: row.concealed ? '0%' : `${row.percent}%` }}
                   />
                 </div>
                 <span className="w-28 shrink-0 text-right font-mono text-sm font-semibold tabular-nums text-ink-strong">
-                  {format(row.amount)}
+                  {row.concealed ? PENDING : format(row.amount)}
                 </span>
                 <span className="w-10 shrink-0 text-right text-xs text-ink-faint">
-                  {`${row.percent}%`}
+                  {row.concealed ? PENDING : `${row.percent}%`}
                 </span>
               </div>
             ))}
           </div>
+          {concealCash && (
+            <p className="mt-2 text-xs text-ink-muted">{t('reports.dashboard.cashConcealed')}</p>
+          )}
         </section>
       </div>
 
@@ -222,6 +296,9 @@ export function ReportsPage() {
         <div className="min-h-0 flex-1 overflow-y-auto">
           {failed && (
             <p className="px-5 py-4 text-sm text-danger-strong">{t('reports.dashboard.error')}</p>
+          )}
+          {!failed && !loaded && (
+            <p className="px-5 py-4 text-sm text-ink-muted">{t('reports.dashboard.loading')}</p>
           )}
           {!failed && loaded && rows.length === 0 && (
             <p className="px-5 py-4 text-sm text-ink-muted">{t('reports.dashboard.empty')}</p>
@@ -270,7 +347,7 @@ export function ReportsPage() {
   );
 }
 
-function Kpi({ label, value, footer }: { label: string; value: string; footer?: React.ReactNode }) {
+function Kpi({ label, value, footer }: { label: string; value: string; footer?: ReactNode }) {
   return (
     <section className="rounded-card border border-border-subtle bg-surface-raised px-5 py-4">
       <div className="text-sm text-ink-muted">{label}</div>

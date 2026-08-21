@@ -75,6 +75,25 @@ describe('resolveCashDisclosure', () => {
     await expect(resolveCashDisclosure(mockDb, 'company-1')).resolves.toBe('conceal');
   });
 
+  it('FAILS CLOSED when the live response omits the flag entirely', async () => {
+    // A server build without the field, or a truncated/garbled payload, must
+    // never read as "blind counting is off". Only an explicit false discloses.
+    vi.mocked(fetchFraudSettings).mockResolvedValue(
+      { ...settings(false), requireBlindCashCount: undefined } as never,
+    );
+
+    await expect(resolveCashDisclosure(mockDb, 'company-1')).resolves.toBe('conceal');
+  });
+
+  it('FAILS CLOSED when the cached row omits the flag entirely', async () => {
+    vi.mocked(fetchFraudSettings).mockRejectedValue(new Error('offline'));
+    vi.mocked(getCompanyFraudSettings).mockResolvedValue(
+      { company_id: 'company-1' } as never,
+    );
+
+    await expect(resolveCashDisclosure(mockDb, 'company-1')).resolves.toBe('conceal');
+  });
+
   it('FAILS CLOSED to conceal when even the cache read throws', async () => {
     vi.mocked(fetchFraudSettings).mockRejectedValue(new Error('offline'));
     vi.mocked(getCompanyFraudSettings).mockRejectedValue(new Error('db gone'));

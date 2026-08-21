@@ -6,11 +6,20 @@ import { History, Lock, Wallet } from 'lucide-react';
 import { useCurrency } from '@/lib/currency';
 import { bcabs, bcadd, bcdiv, bcformat } from '@/lib/decimal';
 import { getDatabase } from '@/lib/db';
+import { sqliteUtcToDate } from '@/lib/db/sqliteTime';
 import { buildEndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import type { EndOfDayPreview } from '@/lib/offline/endOfDayPreview';
 import { resolveCashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
 import type { CashDisclosure } from '@/lib/offline/cashDisclosurePolicy';
-import { paymentSharePercent, sqliteUtcToDate } from '@/lib/offline/salesHistory';
+import {
+  combineRefundTotals,
+  loadLegacyRefundTotalsForShift,
+  loadSalesHistoryTickets,
+  netOfRefunds,
+  paymentSharePercent,
+  summarizeRefunds,
+} from '@/lib/offline/salesHistory';
+import type { RefundTotals } from '@/lib/offline/salesHistory';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useShiftActionsStore } from '@/stores/shiftActionsStore';
@@ -46,6 +55,7 @@ export function ShiftClosurePage() {
   const requestEndOfDay = useShiftActionsStore((s) => s.requestEndOfDay);
 
   const [preview, setPreview] = useState<EndOfDayPreview | null>(null);
+  const [refunds, setRefunds] = useState<RefundTotals>({ count: 0, amount: '0' });
   // Fail closed: conceal until the policy is positively read as "not blind".
   const [disclosure, setDisclosure] = useState<CashDisclosure>('conceal');
   const [failed, setFailed] = useState(false);
@@ -62,19 +72,25 @@ export function ShiftClosurePage() {
     void (async () => {
       try {
         const db = await getDatabase(companyId);
-        const [built, policy] = await Promise.all([
+        const [built, policy, tickets, legacy] = await Promise.all([
           buildEndOfDayPreview(db, terminalId, openedAt, openingCash, currency, shiftId),
           resolveCashDisclosure(db, companyId),
+          // Same refund basis as /reports, so the two manager screens cannot
+          // disagree about what "net of refunds" means for this shift.
+          loadSalesHistoryTickets(db, terminalId, openedAt),
+          loadLegacyRefundTotalsForShift(db, shiftId, decimals),
         ]);
         if (cancelled) return;
         setPreview(built);
         setDisclosure(policy);
+        setRefunds(combineRefundTotals(summarizeRefunds(tickets, decimals), legacy, decimals));
         setFailed(false);
       } catch {
         if (cancelled) return;
         // Never fall back to a plausible-looking number — say the read failed.
         setPreview(null);
         setDisclosure('conceal');
+        setRefunds({ count: 0, amount: '0' });
         setFailed(true);
       }
     })();
@@ -82,12 +98,20 @@ export function ShiftClosurePage() {
     return () => {
       cancelled = true;
     };
-  }, [shiftId, openedAt, openingCash, terminalId, companyId, currency]);
+  }, [shiftId, openedAt, openingCash, terminalId, companyId, currency, decimals]);
 
   const disclosed = disclosure === 'disclose';
   const money = (value: string) => (disclosed ? format(value) : CONCEALED);
 
+  /** O-28: the headline is NET, excluding refunds, and labelled as such. */
+  const netSales = useMemo(
+    () => (preview ? netOfRefunds(preview.gross_sales, refunds.amount, decimals) : null),
+    [preview, refunds.amount, decimals],
+  );
+
   const averageBasket = useMemo(() => {
+    // GROSS numerator on purpose — a refund is not a member of the averaged
+    // per-sale population (matches /reports and the /sales lane).
     if (!preview || preview.sales_count === 0) return bcformat('0', decimals);
     return bcdiv(preview.gross_sales, String(preview.sales_count), decimals);
   }, [preview, decimals]);
@@ -169,8 +193,19 @@ export function ShiftClosurePage() {
               <SectionTitle>{t('shiftClosure.xReportTitle')}</SectionTitle>
               <div className="grid grid-cols-3 gap-3">
                 <Kpi
-                  label={t('reports.dashboard.salesExclRefunds')}
-                  value={preview ? money(preview.gross_sales) : CONCEALED}
+                  label={t('reports.netSalesExclRefunds')}
+                  value={preview && netSales !== null ? money(netSales) : CONCEALED}
+                  footer={
+                    disclosed && refunds.count > 0 ? (
+                      <span className="mt-1 flex items-center gap-2 text-xs text-ink-muted">
+                        <span>{t('reports.dashboard.refunds')}</span>
+                        <span className="font-mono tabular-nums">{refunds.count}</span>
+                        <span className="font-mono tabular-nums text-danger-strong">
+                          {`−${format(refunds.amount)}`}
+                        </span>
+                      </span>
+                    ) : null
+                  }
                 />
                 <Kpi
                   label={t('reports.dashboard.transactions')}
@@ -276,11 +311,12 @@ function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({ label, value, footer }: { label: string; value: string; footer?: ReactNode }) {
   return (
     <div className="rounded-card border border-border-subtle bg-surface-sunken p-4">
       <div className="text-sm text-ink-muted">{label}</div>
       <div className="mt-1 font-mono text-xl font-semibold tabular-nums text-ink-strong">{value}</div>
+      {footer}
     </div>
   );
 }

@@ -29,6 +29,17 @@ vi.mock('@/lib/offline/endOfDayPreview', () => ({
   buildEndOfDayPreview: (...args: unknown[]) => mockBuildPreview(...args),
 }));
 
+const mockLoadTickets = vi.fn();
+const mockLoadLegacyForShift = vi.fn();
+vi.mock('@/lib/offline/salesHistory', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/offline/salesHistory')>();
+  return {
+    ...actual,
+    loadSalesHistoryTickets: (...a: unknown[]) => mockLoadTickets(...a),
+    loadLegacyRefundTotalsForShift: (...a: unknown[]) => mockLoadLegacyForShift(...a),
+  };
+});
+
 const mockResolveDisclosure = vi.fn();
 vi.mock('@/lib/offline/cashDisclosurePolicy', () => ({
   resolveCashDisclosure: (...args: unknown[]) => mockResolveDisclosure(...args),
@@ -112,12 +123,29 @@ const preview = {
   tolerance_auto_accept_count: null,
 };
 
+/** One v4 refund in the shift — so gross (3274.000) and net (3261.500) differ. */
+const refundTickets = [
+  {
+    id: 'r1',
+    receiptNumber: 'T-1042R',
+    createdAt: '2026-08-21 09:18:00',
+    operatorName: 'Yasmine B.',
+    itemCount: 2,
+    methodCodes: ['CASH'],
+    methodLabel: 'Espèces',
+    isRefund: true,
+    total: '-12.500',
+  },
+];
+
 describe('ShiftClosurePage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     storeState = { shift, terminal };
     mockBuildPreview.mockResolvedValue(preview);
     mockResolveDisclosure.mockResolvedValue('disclose');
+    mockLoadTickets.mockResolvedValue(refundTickets);
+    mockLoadLegacyForShift.mockResolvedValue({ count: 0, amount: '0.000' });
   });
 
   it('reads the current shift figures from the canonical end-of-day derivation', async () => {
@@ -144,12 +172,42 @@ describe('ShiftClosurePage', () => {
     expect(screen.getByText(/Register 1/)).toBeInTheDocument();
   });
 
-  it('renders real takings, transaction count and average basket', async () => {
+  it('headlines NET of refunds, on the same basis as /reports (O-28)', async () => {
     render(<ShiftClosurePage />);
 
-    expect(await screen.findByText('3274.000 DT')).toBeInTheDocument();
-    expect(screen.getByText('24')).toBeInTheDocument();
-    // 3274.000 / 24 = 136.41666… → 136.417 at currency scale 3.
+    expect(await screen.findByText('reports.netSalesExclRefunds')).toBeInTheDocument();
+    // 3274.000 gross − 12.500 refunded = 3261.500.
+    expect(screen.getByText('3261.500 DT')).toBeInTheDocument();
+    expect(screen.queryByText('3274.000 DT')).not.toBeInTheDocument();
+  });
+
+  it('shows the refunds counter-figure alongside the headline', async () => {
+    render(<ShiftClosurePage />);
+
+    const refundLine = (await screen.findByText('reports.dashboard.refunds')).parentElement;
+    expect(refundLine?.textContent).toContain('1');
+    expect(refundLine?.textContent).toContain('−12.500 DT');
+  });
+
+  it('folds LEGACY shift refunds in through the shift-keyed repository', async () => {
+    mockLoadLegacyForShift.mockResolvedValue({ count: 1, amount: '10.000' });
+
+    render(<ShiftClosurePage />);
+
+    await waitFor(() => expect(mockLoadLegacyForShift).toHaveBeenCalledWith(
+      expect.anything(), 'shift-1', 3,
+    ));
+    // 3274.000 − (12.500 + 10.000)
+    expect(await screen.findByText('3251.500 DT')).toBeInTheDocument();
+  });
+
+  it('renders real transaction count and average basket', async () => {
+    render(<ShiftClosurePage />);
+
+    await screen.findByText('3261.500 DT');
+    const txTile = screen.getByText('reports.dashboard.transactions').parentElement;
+    expect(txTile?.textContent).toContain('24');
+    // 3274.000 / 24 = 136.41666… → 136.417 (gross numerator).
     expect(screen.getByText('136.417 DT')).toBeInTheDocument();
   });
 
@@ -183,9 +241,10 @@ describe('ShiftClosurePage', () => {
     expect(screen.queryByText('2040.000 DT')).not.toBeInTheDocument();
     expect(screen.queryByText('1840.000 DT')).not.toBeInTheDocument();
     // The takings breakdown is part of the same disclosure surface.
-    expect(screen.queryByText('3274.000 DT')).not.toBeInTheDocument();
+    expect(screen.queryByText('3261.500 DT')).not.toBeInTheDocument();
     // Non-money counts stay visible — they leak nothing about the drawer.
-    expect(screen.getByText('24')).toBeInTheDocument();
+    const txTile = screen.getByText('reports.dashboard.transactions').parentElement;
+    expect(txTile?.textContent).toContain('24');
   });
 
   it('hands closure to the real end-of-day flow instead of closing here', async () => {

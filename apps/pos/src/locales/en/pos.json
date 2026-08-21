@@ -413,6 +413,7 @@
     "reprint": "Reprint",
     "noReceipts": "No receipts yet this shift",
     "totalSales": "Total Sales",
+    "netSalesExclRefunds": "Net sales (excl. refunds)",
     "receiptCount": "Receipts",
     "avgTicket": "Avg Ticket",
     "returns": "Returns",
@@ -461,7 +462,6 @@
     "cashReconciliation": "Cash Reconciliation",
     "loading": "Generating report...",
     "dashboard": {
-      "salesExclRefunds": "Sales (excl. refunds)",
       "transactions": "Transactions",
       "averageBasket": "Average basket",
       "paymentBreakdown": "Payment breakdown",
@@ -469,22 +469,20 @@
       "currentShift": "Shift",
       "week": "Week",
       "search": "Search tickets",
-      "searchPlaceholder": "Ticket or customer...",
+      "searchPlaceholder": "Ticket or cashier...",
       "ticket": "Ticket",
-      "date": "Date",
       "items": "Items",
       "payment": "Payment",
       "total": "Total",
       "cashier": "Cashier",
       "refunds": "Refunds",
       "empty": "No tickets for this period.",
-      "error": "Could not read tickets from this device."
+      "error": "Could not read tickets from this device.",
+      "cashConcealed": "Cash takings are hidden while a shift is open and blind counting is on.",
+      "loading": "Loading tickets…"
     },
     "payment": {
       "all": "All",
-      "cash": "Cash",
-      "card": "Card",
-      "voucher": "Voucher",
       "mixed": "Mixed"
     },
     "noOpenShift": "No open shift. Open a shift to generate a report.",

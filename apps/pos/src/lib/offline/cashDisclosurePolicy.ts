@@ -28,15 +28,19 @@ export async function resolveCashDisclosure(
   db: Database,
   companyId: string,
 ): Promise<CashDisclosure> {
+  // Only an EXPLICIT `false` discloses. Testing truthiness instead would read a
+  // missing/undefined flag — a server build without the field, a truncated
+  // payload, a partially-written cache row — as "blind counting is off", which
+  // is the one wrong answer this function must never give.
   try {
     const settings = await fetchFraudSettings();
-    return settings.requireBlindCashCount ? 'conceal' : 'disclose';
+    return settings.requireBlindCashCount === false ? 'disclose' : 'conceal';
   } catch {
     // Offline: read the durable cache populated at activation / last online close.
     try {
       const cached = await getCompanyFraudSettings(db, companyId);
       if (!cached) return 'conceal';
-      return cached.require_blind_cash_count ? 'conceal' : 'disclose';
+      return cached.require_blind_cash_count === false ? 'disclose' : 'conceal';
     } catch {
       return 'conceal';
     }

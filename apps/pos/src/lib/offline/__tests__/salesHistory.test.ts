@@ -6,16 +6,24 @@ vi.mock('@/lib/db', () => ({
   queryAll: vi.fn(),
 }));
 
+vi.mock('@/lib/db/repositories/localRefundRecordRepository', () => ({
+  getRefundRecordsForShift: vi.fn(),
+}));
+
 import {
+  combineRefundTotals,
   filterTickets,
+  loadLegacyRefundTotalsForPeriod,
+  loadLegacyRefundTotalsForShift,
   loadSalesHistoryTickets,
+  netOfRefunds,
   paymentSharePercent,
   periodStartIso,
-  sqliteUtcToDate,
   summarizeRefunds,
 } from '../salesHistory';
 import type { SalesHistoryTicket } from '../salesHistory';
 import { queryAll } from '@/lib/db';
+import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 
 import type Database from '@tauri-apps/plugin-sql';
 
@@ -74,23 +82,6 @@ function seedRows() {
     return [];
   });
 }
-
-describe('sqliteUtcToDate', () => {
-  it('reads a SQLite TEXT timestamp as UTC, not as device-local time', () => {
-    // 'YYYY-MM-DD HH:MM:SS' with a SPACE separator is what
-    // `DEFAULT (datetime('now'))` writes, and it is UTC. `new Date(raw)` would
-    // interpret it in the device timezone — the rule-20 hazard.
-    expect(sqliteUtcToDate('2026-08-21 10:05:00').toISOString()).toBe(
-      '2026-08-21T10:05:00.000Z',
-    );
-  });
-
-  it('accepts an already-ISO timestamp unchanged', () => {
-    expect(sqliteUtcToDate('2026-08-21T10:05:00Z').toISOString()).toBe(
-      '2026-08-21T10:05:00.000Z',
-    );
-  });
-});
 
 describe('periodStartIso', () => {
   const now = new Date('2026-08-21T15:30:00Z');
@@ -214,6 +205,75 @@ describe('summarizeRefunds', () => {
       count: 0,
       amount: '0.000',
     });
+  });
+});
+
+describe('legacy refund folding (pre-v4 refunds never write offline_receipts)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reads legacy refunds for a period by terminal and created_at, bound as SQLite UTC', async () => {
+    vi.mocked(queryAll).mockResolvedValue([{ total: '-12.500' }, { total: '-3.250' }]);
+
+    const totals = await loadLegacyRefundTotalsForPeriod(
+      mockDb,
+      'term-1',
+      '2026-08-21T06:00:00Z',
+      3,
+    );
+
+    expect(totals).toEqual({ count: 2, amount: '15.750' });
+    const [, sql, params] = vi.mocked(queryAll).mock.calls[0] as [unknown, string, unknown[]];
+    expect(sql).toContain('local_refund_records');
+    // created_at (the local write instant), NOT settled_at: settled_at is server
+    // ISO 8601 with a `T`, which cannot be compared against a SQLite UTC bound.
+    expect(sql).toContain('created_at');
+    expect(sql).not.toContain('settled_at');
+    expect(params).toEqual(['term-1', '2026-08-21 06:00:00']);
+  });
+
+  it('reads legacy refunds for a shift through the shift-keyed repository', async () => {
+    vi.mocked(getRefundRecordsForShift).mockResolvedValue([
+      { total: '-12.500' },
+      { total: '-3.250' },
+    ] as never);
+
+    await expect(loadLegacyRefundTotalsForShift(mockDb, 'shift-1', 3)).resolves.toEqual({
+      count: 2,
+      amount: '15.750',
+    });
+    expect(getRefundRecordsForShift).toHaveBeenCalledWith(mockDb, 'shift-1');
+  });
+
+  it('normalises the legacy sign convention with bcabs', async () => {
+    // Legacy rows store a NEGATIVE total; a v4 row that ever arrived positive
+    // must not add itself back into the magnitude either.
+    vi.mocked(queryAll).mockResolvedValue([{ total: '-10.000' }, { total: '4.000' }]);
+
+    await expect(
+      loadLegacyRefundTotalsForPeriod(mockDb, 'term-1', '2026-08-21T06:00:00Z', 3),
+    ).resolves.toEqual({ count: 2, amount: '14.000' });
+  });
+
+  it('combines the two disjoint refund sources additively', () => {
+    expect(
+      combineRefundTotals({ count: 1, amount: '12.500' }, { count: 2, amount: '15.750' }, 3),
+    ).toEqual({ count: 3, amount: '28.250' });
+  });
+});
+
+describe('netOfRefunds', () => {
+  it('subtracts the refund magnitude from gross to give the O-28 headline', () => {
+    expect(netOfRefunds('4820.500', '12.500', 3)).toBe('4808.000');
+  });
+
+  it('is a no-op when nothing was refunded', () => {
+    expect(netOfRefunds('4820.500', '0.000', 3)).toBe('4820.500');
+  });
+
+  it('can go negative when a period holds only refunds', () => {
+    expect(netOfRefunds('0.000', '12.500', 3)).toBe('-12.500');
   });
 });
 

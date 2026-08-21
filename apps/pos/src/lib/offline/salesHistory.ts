@@ -9,6 +9,12 @@
  * itself, its filters, and the refund counter-figures that make the
  * "excl. refunds" headline honest (owner ruling O-28).
  *
+ * Legacy (pre-v4) refunds are folded into the refund counter-figures but can
+ * never appear as ticket ROWS — see
+ * `docs/superpowers/tickets/2026-08-21-pos-manager-screens-followups.md` for
+ * that bounded claim, the `created_at`-vs-`settled_at` limit, and the unindexed
+ * `local_refund_records.terminal_id`.
+ *
  * Rule 19 — every money value stays a decimal string; bcmath only.
  * Rule 20 — every JS-supplied period boundary is bound through `toSqliteUtc`,
  *           because `offline_receipts.created_at` is `datetime('now')` TEXT
@@ -17,8 +23,9 @@
 
 import type Database from '@tauri-apps/plugin-sql';
 import { queryAll } from '@/lib/db';
-import { bcabs, bcadd, bcdiv, bccomp, bcformat, bcmul } from '@/lib/decimal';
+import { bcabs, bcadd, bcdiv, bccomp, bcformat, bcmul, bcsub } from '@/lib/decimal';
 import { toSqliteUtc } from '@/lib/db/sqliteTime';
+import { getRefundRecordsForShift } from '@/lib/db/repositories/localRefundRecordRepository';
 
 /** Periods offered by the reports screen segment control. */
 export type SalesPeriod = 'today' | 'shift' | 'week';
@@ -63,22 +70,6 @@ interface ReceiptRow {
 
 interface PaymentJsonRow {
   method_code?: string;
-}
-
-const SQLITE_UTC_FORMAT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
-
-/**
- * Read a SQLite UTC TEXT timestamp as an instant.
- *
- * `new Date('2026-08-21 10:05:00')` is interpreted in the DEVICE timezone by
- * every JS engine, which silently shifts every rendered receipt time by the
- * local UTC offset. The stored value is UTC, so say so explicitly.
- */
-export function sqliteUtcToDate(timestamp: string): Date {
-  if (SQLITE_UTC_FORMAT.test(timestamp)) {
-    return new Date(`${timestamp.replace(' ', 'T')}Z`);
-  }
-  return new Date(timestamp);
 }
 
 /**
@@ -249,4 +240,95 @@ export function paymentSharePercent(amount: string, totalAbs: string): string {
   // `bccomp('-0', '0') === 0`, so a signed zero survives a naive clamp and
   // reaches the DOM as `width: -0%`. Compare, then normalise the sign.
   return bccomp(share, '0') <= 0 ? '0' : share;
+}
+
+/**
+ * Legacy (pre-v4) refunds settled in a period, by terminal.
+ *
+ * Legacy refunds NEVER write an `offline_receipts` row — `local_refund_records`
+ * is the legacy path's sole durable trace (`offlineReceiptRepository.ts:353`,
+ * `endOfDayPreview.ts:417-419`), and the two sources are DISJOINT BY
+ * CONSTRUCTION: a v4 refund never writes `local_refund_records`, a legacy refund
+ * never writes a `receipt_kind='refund'` row (`zReportService.ts:212-215`). So
+ * this is an additive fold on top of {@link summarizeRefunds}, exactly the shape
+ * the signed Z already uses — never a SQL UNION, which cannot work here (the
+ * table has no `lines`, `payments_json`, `operator_name`, `voided` or
+ * `is_training` columns, so a legacy refund can never become a LIST row).
+ *
+ * Bounded on purpose — filters on `created_at` (the local write instant), not
+ * `settled_at` (the server `posted_at`). `settled_at` is ISO 8601 with a `T`
+ * separator and so is NOT lexicographically comparable against a
+ * `toSqliteUtc()` bound — the rule-20 hazard. The two diverge under the
+ * documented crash/rollover races; see the ticket referenced in the module
+ * docblock.
+ */
+export async function loadLegacyRefundTotalsForPeriod(
+  db: Database,
+  terminalId: string,
+  sinceIso: string,
+  scale: number,
+): Promise<RefundTotals> {
+  const rows = await queryAll<{ total: string }>(
+    db,
+    `SELECT total FROM local_refund_records
+      WHERE terminal_id = $1 AND created_at >= $2`,
+    [terminalId, toSqliteUtc(sinceIso)],
+  );
+  return foldRefundMagnitudes(rows, scale);
+}
+
+/**
+ * Legacy refunds for one shift, through the shift-keyed repository the Z uses.
+ *
+ * Preferred over {@link loadLegacyRefundTotalsForPeriod} when a shift id is in
+ * hand: `shift_id` is the table's only index, and it matches the signed Z's own
+ * attribution exactly rather than approximating it with a timestamp window.
+ */
+export async function loadLegacyRefundTotalsForShift(
+  db: Database,
+  shiftId: string,
+  scale: number,
+): Promise<RefundTotals> {
+  const records = await getRefundRecordsForShift(db, shiftId);
+  return foldRefundMagnitudes(records, scale);
+}
+
+/**
+ * Sum signed refund rows into a positive magnitude.
+ *
+ * `bcabs` per row is load-bearing: legacy rows store a NEGATIVE total while v4
+ * refund authoring elsewhere stores a POSITIVE one, so an un-normalised sum
+ * lets one convention cancel the other.
+ */
+function foldRefundMagnitudes(rows: readonly { total: string }[], scale: number): RefundTotals {
+  let amount = '0';
+  for (const row of rows) {
+    amount = bcadd(amount, bcabs(row.total, scale), scale);
+  }
+  return { count: rows.length, amount: bcformat(amount, scale) };
+}
+
+/** Add the two disjoint refund sources (v4 receipt rows + legacy records). */
+export function combineRefundTotals(
+  a: RefundTotals,
+  b: RefundTotals,
+  scale: number,
+): RefundTotals {
+  return {
+    count: a.count + b.count,
+    amount: bcformat(bcadd(a.amount, b.amount, scale), scale),
+  };
+}
+
+/**
+ * The O-28 headline: gross sales NET of refunds.
+ *
+ * Owner ruling O-28 (LEDGER, 2026-08-21) — every Today's-Sales headline is NET,
+ * EXCLUDING REFUNDS, and must be labelled accordingly. `gross` is the sale-only
+ * figure; `refundMagnitude` is the positive total from
+ * {@link combineRefundTotals}. Can legitimately go negative in a period that
+ * holds only refunds.
+ */
+export function netOfRefunds(gross: string, refundMagnitude: string, scale: number): string {
+  return bcformat(bcsub(gross, refundMagnitude, scale), scale);
 }

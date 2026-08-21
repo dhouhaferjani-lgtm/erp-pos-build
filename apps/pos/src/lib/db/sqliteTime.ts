@@ -10,7 +10,8 @@
  * datetime('now') column silently excludes every row from the same UTC day.
  *
  * Any JS-supplied timestamp used in a WHERE comparison against a
- * datetime('now') column MUST pass through {@link toSqliteUtc} first.
+ * datetime('now') column MUST pass through {@link toSqliteUtc} first, and any
+ * such column READ BACK for display MUST pass through {@link sqliteUtcToDate}.
  */
 
 const SQLITE_UTC_FORMAT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/;
@@ -29,4 +30,20 @@ export function toSqliteUtc(timestamp: string): string {
     throw new Error(`toSqliteUtc: unparseable timestamp "${timestamp}"`);
   }
   return parsed.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+/**
+ * Read a `datetime('now')` TEXT column back as an instant.
+ *
+ * The inverse of {@link toSqliteUtc}, and the same rule-20 hazard in the other
+ * direction: `new Date('2026-08-21 10:05:00')` is interpreted in the DEVICE
+ * timezone by every JS engine, so rendering a stored value without this helper
+ * silently shifts every displayed timestamp by the local UTC offset. Values
+ * already carrying an explicit offset (ISO 8601) are parsed as-is.
+ */
+export function sqliteUtcToDate(timestamp: string): Date {
+  if (SQLITE_UTC_FORMAT.test(timestamp)) {
+    return new Date(`${timestamp.replace(' ', 'T')}Z`);
+  }
+  return new Date(timestamp);
 }
