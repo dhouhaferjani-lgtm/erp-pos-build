@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Traits;
 
+use Illuminate\Support\Env;
+use ReflectionProperty;
+
 /**
  * Boots the application under test with `MARKETPLACE_ENABLED=true`.
  *
@@ -27,13 +30,34 @@ trait EnablesMarketplaceModule
 {
     protected function refreshApplication(): void
     {
+        // The Env repository is PROCESS-STATIC and its immutable writer keeps a
+        // "variables I loaded" ledger: once any EARLIER class in the same
+        // process has booted with a .env.testing that carries
+        // MARKETPLACE_ENABLED, that ledger entry licenses phpdotenv to
+        // OVERWRITE the variable on every later boot — clobbering the putenv
+        // below mid-boot and leaving the flag false. (Exactly how the
+        // security-regression CI job failed 8/93 while every single-class local
+        // run passed: CI copies .env.example → .env.testing, most laptops have
+        // no .env.testing at all.) Resetting the static repository gives this
+        // boot a writer with an empty ledger, restoring true immutability.
+        self::resetEnvRepository();
         self::setMarketplaceEnabledEnv('true');
 
         try {
             parent::refreshApplication();
         } finally {
             self::clearMarketplaceEnabledEnv();
+            // Reset again so LATER classes' boots don't inherit this boot's
+            // ledger (which now contains every .env.testing key) — the same
+            // clobber in the opposite direction.
+            self::resetEnvRepository();
         }
+    }
+
+    private static function resetEnvRepository(): void
+    {
+        $property = new ReflectionProperty(Env::class, 'repository');
+        $property->setValue(null, null);
     }
 
     private static function setMarketplaceEnabledEnv(string $value): void
