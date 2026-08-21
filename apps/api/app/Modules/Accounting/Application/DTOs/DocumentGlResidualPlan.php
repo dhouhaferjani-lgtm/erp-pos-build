@@ -33,9 +33,17 @@ final readonly class DocumentGlResidualPlan
      * @param  Account|null  $absorbingAccount  where a positive residual is booked
      * @param  GlResidualRefusal|null  $refusal  null when the document is postable
      * @param  bool  $balanceAssertable  false for a document with NO lines, whose GL
-     *                                   entry has no revenue side to balance against
-     *                                   — a pre-existing shape this lane does not
-     *                                   change. See `residualPlan()`.
+     *                                   entry has no revenue side to balance against.
+     *                                   LEGACY-ONLY since owner ruling O-26
+     *                                   (2026-08-21): posting a lineless document is
+     *                                   now refused upstream
+     *                                   ({@see GlResidualRefusal::LinelessDocument}),
+     *                                   so the only remaining consumer of a `false`
+     *                                   here is `AccountingService::reverseDocumentGl()`
+     *                                   cancelling a document posted BEFORE that
+     *                                   refusal. Delete this parameter with that
+     *                                   carve-out once the last pre-O-26 tenant
+     *                                   document is disposed. See `residualPlan()`.
      * @param  numeric-string  $stampDutyAmount  Q1 (2026-08-07 expert-comptable ruling):
      *                                           a CREDIT NOTE's own stamp duty
      *                                           (`documents.stamp_duty_amount`), peeled

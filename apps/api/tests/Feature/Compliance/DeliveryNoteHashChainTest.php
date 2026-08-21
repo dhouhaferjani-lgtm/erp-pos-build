@@ -172,9 +172,21 @@ class DeliveryNoteHashChainTest extends TestCase
             'currency' => 'TND',
             'total' => '100.00',
         ]);
+        // O-26 (owner ruling 2026-08-21) fixture correction: posting a document
+        // with NO lines is refused at the GL pre-flight. This invoice is only here
+        // to prove the INVOICE chain is separate from the delivery-note chain, so
+        // it gets one untaxed line reconciling with its 100.00 total.
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Chain-separation fixture line',
+            'quantity' => '1.0000',
+            'unit_price' => '100.000',
+            'line_total' => '100.000',
+        ]);
 
         $postingService = app(DocumentPostingService::class);
-        $postedInvoice = $postingService->post($invoice);
+        $postedInvoice = $postingService->post($invoice->fresh(['lines']));
 
         // Confirm second DN
         $dn2 = $this->createDraftDeliveryNote('DN-002');

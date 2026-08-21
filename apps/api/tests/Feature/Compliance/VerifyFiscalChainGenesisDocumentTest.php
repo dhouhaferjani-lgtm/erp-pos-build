@@ -7,6 +7,7 @@ namespace Tests\Feature\Compliance;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Events\InvoicePosted;
@@ -445,9 +446,17 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
         return [$tenant, $company, $partner];
     }
 
+    /**
+     * O-26 (owner ruling 2026-08-21) — the invoice carries ONE line reconciling
+     * with its header (100.00 net at 20% = 120.00), because posting a document
+     * with NO lines is now refused at the GL pre-flight. Fixture correction only:
+     * the fiscal hash covers document_number / posted_at / total / currency (see
+     * `serialize()` below), none of which the line touches, and every assertion in
+     * this class is about the CHAIN, never the line set.
+     */
     private function createConfirmedInvoice(Tenant $tenant, Company $company, Partner $partner, string $number): Document
     {
-        return Document::create([
+        $invoice = Document::create([
             'tenant_id' => $tenant->id,
             'company_id' => $company->id,
             'partner_id' => $partner->id,
@@ -460,6 +469,19 @@ class VerifyFiscalChainGenesisDocumentTest extends TestCase
             'tax_amount' => '20.00',
             'total' => '120.00',
         ]);
+
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Chain-verification fixture line',
+            'quantity' => '1.0000',
+            'unit_price' => '100.000',
+            'tax_rate' => '20.00',
+            'line_total' => '100.000',
+        ]);
+
+        /** @var Document */
+        return $invoice->fresh(['lines']);
     }
 
     private function serialize(Document $document): string

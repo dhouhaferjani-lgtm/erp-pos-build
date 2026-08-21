@@ -4,8 +4,11 @@
 **Related:** `docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md` (D1a),
 `docs/superpowers/reviews/2026-08-05-l1-fiscal-gate.md` (C-1, C-2, I-5, and the
 round-2 finding that corrected this ticket).
-**Status:** OPEN — the L1 lane preserves the pre-lane OUTCOME for this shape; it does
-not endorse it.
+**Status:** **RESOLVED 2026-08-22** by owner ruling O-26 (repo `docs/handoff/LEDGER.md`
+row O-26, ruled 2026-08-21) — posting a lineless document is now REFUSED upstream.
+See §Resolution at the bottom; the sections between here and there are the ORIGINAL
+2026-08-05 analysis, kept as written, including one premise the resolution lane proved
+FALSE (see §Resolution ¶2).
 
 > **Correction, 2026-08-05 (re-gate round 2).** The first version of this ticket said
 > the lane "deliberately left the behaviour UNCHANGED". That was inaccurate: the
@@ -98,3 +101,53 @@ Order of work:
   orchestrator ruling). If one is onboarded from an older chart before that changes, it
   needs an idempotent backfill command in the shape of
   `database/migrations/tenant/2026_06_30_120000_backfill_sales_stamp_duty_account.php`.
+
+---
+
+## Resolution (2026-08-22, lane `fix/o26-lineless-posting-phaseout`)
+
+**Owner ruling O-26 (2026-08-21):** PHASE OUT lineless-document posting. Block it
+UPSTREAM — a validation refusal BEFORE any fiscal/GL write — so
+`AccountingService::reverseDocumentGl()`'s lineless carve-out becomes dead code for
+everything authored from now on. Cancellability is PRESERVED, because nothing lineless
+gets posted any more; documents posted BEFORE the refusal keep the carve-out.
+One-time correcting entries for entries already sealed = owner-side, per-tenant
+disposition, explicitly NOT this lane (and per LEDGER C-8 / B-14(iii) the r2f4
+correcting-entry vehicle is prospective-only, so already-cancelled lineless mirrors are
+out of its reach regardless).
+
+**What was implemented.** `residualPlan()`'s lineless branch now returns
+`GlResidualRefusal::LinelessDocument` (`'lineless_document_unpostable'`). That refusal
+is consumed by the L1 pre-flight, `AccountingService::assertDocumentGlIsPostable()`,
+which `DocumentPostingService::post()` calls inside its own transaction BEFORE
+`postWithFiscalChain()` — so the document stays `Confirmed`, unsealed, with no chain
+sequence consumed and no journal entry, and is re-postable the moment a line is added.
+It surfaces as a 422 `POSTING_FAILED` from both `InvoiceController::post()` and
+`CreditNoteController::post()`.
+
+Nothing else about the branch changed, deliberately: `$plan->refusal` has exactly ONE
+reader (the pre-flight), so the two GL write paths and `reverseDocumentGl()` see the
+same plan they saw before — which is what keeps pre-O-26 documents cancellable. The
+carve-out therefore was NOT deleted; it is re-documented in place as legacy-only, with
+a delete-when condition, and pinned by
+`tests/Feature/Accounting/LinelessDocumentPostingRefusalTest.php`.
+
+**The ticket's "not reachable through the documented API" premise was FALSE.** A
+reachability audit run for this lane found SIX live production paths that produce a
+zero-line invoice or credit note (auto-save draft persistence, `partial=true` order→
+invoice conversion with an empty `line_ids`, an `amount: "0"` credit note, a
+full-credit of an already-lineless invoice, an all-informational-lines work order, and
+a POS account-charge draft with no line items). The refusal is therefore load-bearing
+production behaviour, not a fixture cleanup. Per the ruling's letter the refusal is at
+POSTING only; earlier (at-confirm / at-author) hardening for each of those paths is
+recorded as a follow-up, not done here.
+
+**Test census.** 6 files / 39 methods authored lineless invoices and posted them; all
+were corrected by adding ONE line reconciling with the header the fixture already
+declared, never by weakening an assertion. Four of the ten files the original ticket
+named were stale false positives. The two `InvoiceGLIntegrationTest` cases that pinned
+"the carve-out never refuses" were RE-PINNED to the new refusal while keeping their
+assertions on the unchanged legacy write shape.
+
+**Still open, unchanged by this lane:** step 4 above (disposition of lineless posted
+documents already in tenant data) and both items under §"Related, also open".

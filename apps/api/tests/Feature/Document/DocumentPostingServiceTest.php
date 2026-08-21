@@ -487,7 +487,17 @@ class DocumentPostingServiceTest extends TestCase
             'currency' => 'EUR',
             'total' => '200.00',
         ]);
-        $postedInvoice2 = $this->postingService->post($invoice2);
+        // O-26 fixture correction: the second company's invoice needs a line too,
+        // reconciling with its 200.00 total (no tax on this fixture).
+        DocumentLine::create([
+            'document_id' => $invoice2->id,
+            'line_number' => 1,
+            'description' => 'Posting fixture line',
+            'quantity' => '1.0000',
+            'unit_price' => '200.000',
+            'line_total' => '200.000',
+        ]);
+        $postedInvoice2 = $this->postingService->post($invoice2->fresh(['lines']));
 
         // Both should be first in their respective chains
         $this->assertEquals(1, $postedInvoice1->chain_sequence);
@@ -498,10 +508,22 @@ class DocumentPostingServiceTest extends TestCase
 
     /**
      * Create a confirmed document for testing.
+     *
+     * O-26 (owner ruling 2026-08-21) — an INVOICE or CREDIT NOTE gets ONE line
+     * reconciling with its header (100.00 net at 20% = 120.00 total). Before that
+     * ruling this helper authored a LINELESS document, which posted a one-legged,
+     * unbalanced, hash-chained GL entry; posting a lineless document is now
+     * refused at the GL pre-flight. The line is a fixture correction, not a change
+     * of subject: every affected test is about the fiscal HASH CHAIN, and none of
+     * them ever asserted anything about the (absent) lines.
+     *
+     * Deliberately scoped to the two fiscal types: the quote / purchase-order /
+     * sales-order fixtures used by the `revert…` tests below stay byte-identical,
+     * because those tests assert on the document's line set itself.
      */
     private function createConfirmedDocument(DocumentType $type, ?string $documentNumber = null): Document
     {
-        return Document::create([
+        $document = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
             'partner_id' => $this->partner->id,
@@ -514,6 +536,21 @@ class DocumentPostingServiceTest extends TestCase
             'tax_amount' => '20.00',
             'total' => '120.00',
         ]);
+
+        if (in_array($type, [DocumentType::Invoice, DocumentType::CreditNote], true)) {
+            DocumentLine::create([
+                'document_id' => $document->id,
+                'line_number' => 1,
+                'description' => 'Posting fixture line',
+                'quantity' => '1.0000',
+                'unit_price' => '100.000',
+                'tax_rate' => '20.00',
+                'line_total' => '100.000',
+            ]);
+        }
+
+        /** @var Document */
+        return $document->fresh(['lines']);
     }
 
     private function addLine(Document $document): DocumentLine

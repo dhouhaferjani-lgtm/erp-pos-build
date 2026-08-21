@@ -69,6 +69,28 @@ enum GlResidualRefusal: string
      */
     case NoCreditNoteStampAccount = 'no_credit_note_stamp_account';
 
+    /**
+     * O-26 (owner ruling 2026-08-21, repo LEDGER row O-26) — the document has NO
+     * LINES AT ALL, so there is no revenue side for the AR debit to balance
+     * against. Refused at the pre-flight, before anything is sealed.
+     *
+     * Not a residual verdict like the cases above: the residual of a lineless
+     * document is trivially the whole header `total`, and booking that anywhere
+     * is a misstatement rather than an absorption — on a chart with a
+     * `SalesStampDutyPayable` account the entire invoice is recorded as collected
+     * stamp duty (and inflates what the company remits to the State); on every
+     * other chart the entry is written one-legged and UNBALANCED into the hash
+     * chain. Both outcomes predate the L1 lane, which deliberately preserved them
+     * rather than sweep ~35 fixtures under a merge gate
+     * (`docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md`).
+     *
+     * The ruling phases the shape out at the door instead: nothing lineless is
+     * postable any more, which makes `AccountingService::reverseDocumentGl()`'s
+     * lineless carve-out reachable only for documents posted BEFORE this refusal
+     * — those stay cancellable, which is what the ruling preserves.
+     */
+    case LinelessDocument = 'lineless_document_unpostable';
+
     public function message(): string
     {
         return match ($this) {
@@ -77,6 +99,7 @@ enum GlResidualRefusal: string
             self::ResidualExceedsRoundingTolerance => 'The document total exceeds the sum of its lines plus their tax by more than tax rounding can explain. If the difference is a document-level charge (for example a stamp duty), assign the account that should carry it in Settings -> Chart of Accounts; otherwise correct the document totals.',
             self::LegsDoNotBalance => 'The general-ledger entry for this document does not balance.',
             self::NoCreditNoteStampAccount => 'This credit note carries its own stamp duty, which must be booked as a separate fiscal charge rather than reducing the customer balance. Assign both a stamp-duty charge account and a stamp-duty payable account in Settings -> Chart of Accounts.',
+            self::LinelessDocument => 'This document has no lines, so it has nothing to post to the general ledger and cannot be posted. Add at least one line before posting it.',
         };
     }
 }

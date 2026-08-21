@@ -725,17 +725,22 @@ class InvoiceGLIntegrationTest extends TestCase
     }
 
     /**
-     * A document with NO lines is a separate, PRE-EXISTING broken shape that this
-     * lane must not change (see
-     * `docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md`).
+     * O-26 RE-PIN (owner ruling 2026-08-21, repo LEDGER row O-26). Posting a
+     * document with NO lines is now REFUSED at the pre-flight; what this test
+     * still pins is the LEGACY WRITE shape behind that refusal, because
+     * `reverseDocumentGl()` has to mirror exactly this when a document posted
+     * BEFORE the ruling is cancelled.
      *
-     * On the Tunisian chart the pre-lane behaviour was: the whole `total` is swept
-     * into `4375` as if it were collected timbre — nonsense, but BALANCED. The
-     * first cut of the lineless carve-out returned no absorbing account at all,
-     * which downgraded that to a ONE-LEGGED, unbalanced, hash-chained entry on
-     * every chart. Strictly worse, and a regression this lane introduced.
+     * On the Tunisian chart that shape is: the whole `total` swept into `4375` as
+     * if it were collected timbre — nonsense, but BALANCED. (The first cut of the
+     * lineless carve-out returned no absorbing account at all, which downgraded
+     * that to a ONE-LEGGED, unbalanced, hash-chained entry on every chart —
+     * strictly worse, and a regression the L1 lane introduced and then fixed.)
+     * `createInvoiceGLEntries()` is called DIRECTLY here on purpose: after O-26
+     * no posting path can reach it with a lineless document.
+     * `docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md`
      */
-    public function test_a_lineless_document_still_sweeps_its_total_to_the_timbre_account_on_the_tunisian_chart(): void
+    public function test_a_lineless_document_is_refused_at_preflight_but_its_legacy_entry_still_sweeps_to_the_timbre_account(): void
     {
         [$company, $partner] = $this->tunisianFixture();
 
@@ -756,9 +761,17 @@ class InvoiceGLIntegrationTest extends TestCase
         $invoice = $invoice->fresh(['lines']);
         $this->assertCount(0, $invoice->lines);
 
-        // NEVER refuse: the carve-out must not turn a legacy shape into a 422.
-        $this->accountingService->assertDocumentGlIsPostable($invoice);
+        // O-26: the pre-flight now REFUSES this shape, on every chart — including
+        // the one where the legacy entry happened to balance.
+        try {
+            $this->accountingService->assertDocumentGlIsPostable($invoice);
+            $this->fail('O-26: a lineless document must be refused at the pre-flight.');
+        } catch (UnpostableDocumentGlException $e) {
+            $this->assertSame(GlResidualRefusal::LinelessDocument, $e->refusal);
+        }
 
+        // …and the LEGACY write shape, which only pre-O-26 data can now have, is
+        // unchanged — this is what a cancellation of such a document mirrors.
         $journalEntryId = $this->accountingService->createInvoiceGLEntries($invoice);
         $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();
 
@@ -773,13 +786,14 @@ class InvoiceGLIntegrationTest extends TestCase
     }
 
     /**
-     * The other half of the same carve-out: on a chart with NO timbre account the
-     * lineless shape keeps its pre-lane behaviour too — a one-legged entry, and
-     * NO refusal. It must not fall back to the rounding-difference account either:
-     * sweeping an entire invoice total into "écart d'arrondi" would be a silent
-     * misstatement, which is exactly what the ticket exists to fix properly.
+     * The other half of the same shape, O-26 RE-PIN: on a chart with NO timbre
+     * account the pre-flight refuses just the same, and the legacy write behind it
+     * is the lone AR leg. It must still not fall back to the rounding-difference
+     * account — sweeping an entire invoice total into "écart d'arrondi" would be a
+     * silent misstatement, and that fallback must not appear now that the shape is
+     * refused either.
      */
-    public function test_a_lineless_document_is_not_refused_and_does_not_touch_the_rounding_account(): void
+    public function test_a_lineless_document_is_refused_and_its_legacy_entry_never_touches_the_rounding_account(): void
     {
         $invoice = Document::create([
             'tenant_id' => $this->tenant->id,
@@ -797,7 +811,12 @@ class InvoiceGLIntegrationTest extends TestCase
         ]);
         $invoice = $invoice->fresh(['lines']);
 
-        $this->accountingService->assertDocumentGlIsPostable($invoice);
+        try {
+            $this->accountingService->assertDocumentGlIsPostable($invoice);
+            $this->fail('O-26: a lineless document must be refused at the pre-flight.');
+        } catch (UnpostableDocumentGlException $e) {
+            $this->assertSame(GlResidualRefusal::LinelessDocument, $e->refusal);
+        }
 
         $journalEntryId = $this->accountingService->createInvoiceGLEntries($invoice);
         $lines = JournalLine::where('journal_entry_id', $journalEntryId)->get();

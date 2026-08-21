@@ -12,6 +12,7 @@ use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Compliance\Services\FiscalHashService;
 use App\Modules\Document\Application\DTOs\DocumentData;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -105,9 +106,10 @@ class FiscalHardeningE2ETest extends TestCase
         // Step 2: Confirm the invoice
         $invoice->update(['status' => DocumentStatus::Confirmed]);
         $this->assertTrue($invoice->isConfirmed());
+        $this->addReconcilingLine($invoice);
 
         // Step 3: Post the invoice (should seal it)
-        $postedInvoice = $this->postingService->post($invoice);
+        $postedInvoice = $this->postingService->post($invoice->fresh(['lines']));
 
         // Verify fiscal sealing
         $this->assertTrue($postedInvoice->isPosted());
@@ -316,7 +318,8 @@ class FiscalHardeningE2ETest extends TestCase
         // Create and post a credit note
         $creditNote = $this->createDocument(DocumentType::CreditNote, 'CN-2025-0001');
         $creditNote->update(['status' => DocumentStatus::Confirmed]);
-        $postedCreditNote = $this->postingService->post($creditNote);
+        $this->addReconcilingLine($creditNote);
+        $postedCreditNote = $this->postingService->post($creditNote->fresh(['lines']));
 
         // Verify credit note has its own chain
         $this->assertEquals(FiscalCategory::CreditNote, $postedCreditNote->fiscal_category);
@@ -466,9 +469,12 @@ class FiscalHardeningE2ETest extends TestCase
             'balance_due' => '1190.00',
         ]);
 
+        $this->addReconcilingLine($invoice1);
+        $this->addReconcilingLine($invoice2);
+
         // Post both invoices
-        $posted1 = $this->postingService->post($invoice1);
-        $posted2 = $this->postingService->post($invoice2);
+        $posted1 = $this->postingService->post($invoice1->fresh(['lines']));
+        $posted2 = $this->postingService->post($invoice2->fresh(['lines']));
 
         // Both are genesis documents (first in their respective chains)
         $this->assertEquals(1, $posted1->chain_sequence);
@@ -520,7 +526,28 @@ class FiscalHardeningE2ETest extends TestCase
 
         $invoice = $this->createInvoice($documentNumber ?? 'INV-2025-'.str_pad((string) $counter, 4, '0', STR_PAD_LEFT));
         $invoice->update(['status' => DocumentStatus::Confirmed]);
+        $this->addReconcilingLine($invoice);
 
-        return $this->postingService->post($invoice);
+        return $this->postingService->post($invoice->fresh(['lines']));
+    }
+
+    /**
+     * O-26 (owner ruling 2026-08-21) — posting a document with NO lines is
+     * refused at the GL pre-flight, so every fixture that actually POSTS needs a
+     * line reconciling with the header this class declares: 1000.00 net at 19% =
+     * 1190.00 TND. Fixture correction only — this class asserts on fiscal hashes,
+     * chain sequences and immutability, never on the line set.
+     */
+    private function addReconcilingLine(Document $document): void
+    {
+        DocumentLine::create([
+            'document_id' => $document->id,
+            'line_number' => 1,
+            'description' => 'Fiscal hardening fixture line',
+            'quantity' => '1.0000',
+            'unit_price' => '1000.000',
+            'tax_rate' => '19.00',
+            'line_total' => '1000.000',
+        ]);
     }
 }

@@ -192,6 +192,15 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      * arithmetic inside the posting transaction turns that into a clean 422 on an
      * UNSEALED document.
      *
+     * O-26 (owner ruling 2026-08-21, repo LEDGER row O-26) — this is also where
+     * LINELESS documents are now phased out. `residualPlan()` returns
+     * `GlResidualRefusal::LinelessDocument` for a document with no lines, so a
+     * zero-line invoice or credit note is refused HERE, before `postWithFiscalChain()`
+     * and before any GL write, and stays `Confirmed` and re-postable. This is the
+     * ONLY reader of `$plan->refusal`, which is why adding that refusal changed
+     * nothing for the two GL write paths or for `reverseDocumentGl()` — the
+     * cancellability of documents posted BEFORE the ruling depends on that.
+     *
      * @throws UnpostableDocumentGlException
      */
     public function assertDocumentGlIsPostable(Document $document): void
@@ -223,6 +232,10 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      * `residual = total − Σline_total − Σ(positive per-rate recomputed VAT)`.
      *
      * Verdict (orchestrator ruling, 2026-08-05):
+     * - NO LINES AT ALL → REFUSE (`GlResidualRefusal::LinelessDocument`, owner
+     *   ruling O-26, 2026-08-21). Evaluated first, before any residual arithmetic:
+     *   a lineless document's "residual" is its whole total, which no absorbing
+     *   account can honestly carry.
      * - `residual < 0` → REFUSE. The credit side over-runs the AR debit; the header
      *   understates its own lines. Never a rounding artefact.
      * - `residual > 0` → book it to an absorbing account.
@@ -255,22 +268,29 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
         // A document with NO lines has no revenue side at all: the posting writes a
         // lone AR leg and `residual == total`, which is not a rounding artefact and
         // not the D1a defect either — it is a separate, PRE-EXISTING broken shape.
-        // It is unreachable through the documented API (`CreateDocumentRequest`
-        // requires `lines` min:1) and survives only in legacy/test fixtures, so this
-        // lane leaves its OUTCOME byte-identical to before the lane rather than
-        // change ~35 call sites under a merge gate. Ticketed:
-        // docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md
         //
-        // "Byte-identical" means resolving the absorbing account exactly as the old
-        // inline step-3b did — `SalesStampDutyPayable` ONLY, write the leg when it
-        // resolves, write nothing when it does not, and NEVER refuse:
-        //   - Tunisian chart  -> the whole total is swept into 4375. Nonsense, but
-        //                        balanced; that is what it did before.
-        //   - any other chart -> a one-legged entry, as before.
-        // It deliberately does NOT fall back to `SalesRoundingDifference*`: booking
-        // an entire invoice total as an "écart d'arrondi" would be a silent
-        // misstatement, and inventing new behaviour here is the ticket's job.
-        // `balanceAssertable = false` keeps both guards off this shape.
+        // O-26 (owner ruling 2026-08-21, repo LEDGER row O-26) — PHASED OUT. The
+        // plan now carries `GlResidualRefusal::LinelessDocument`, which the
+        // PRE-FLIGHT ({@see assertDocumentGlIsPostable()}) turns into a 422 inside
+        // `DocumentPostingService::post()`'s transaction, before anything is
+        // sealed. No new lineless document can be posted, so no new one-legged
+        // (nor timbre-swept) document GL entry can be created.
+        //
+        // Everything ELSE about this branch is unchanged, and deliberately so: the
+        // refusal is consumed by the pre-flight ALONE (it is the only reader of
+        // `$plan->refusal`), so the two GL WRITE paths and `reverseDocumentGl()`
+        // still see exactly the plan they saw before. That is what keeps documents
+        // posted BEFORE the ruling cancellable — see the carve-out note in
+        // {@see reverseDocumentGl()}. Concretely, still unchanged:
+        //   - the absorbing account resolves `SalesStampDutyPayable` ONLY, as the
+        //     old inline step-3b did: Tunisian chart -> the whole total sweeps into
+        //     4375 (nonsense, but balanced); any other chart -> a one-legged entry.
+        //     It deliberately does NOT fall back to `SalesRoundingDifference*`:
+        //     booking an entire invoice total as an "écart d'arrondi" would trade
+        //     one silent misstatement for another.
+        //   - `balanceAssertable = false` keeps {@see assertLegsBalance()} and the
+        //     reversal's own balance check off this shape.
+        // docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md
         if ($document->lines->isEmpty()) {
             /** @var numeric-string $total */
             $total = (string) ($document->total ?? '0');
@@ -279,7 +299,15 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
                 ? Account::findByPurpose($document->company_id, SystemAccountPurpose::SalesStampDutyPayable)
                 : null;
 
-            return new DocumentGlResidualPlan('0', '0', $total, [], $absorbing, null, false);
+            return new DocumentGlResidualPlan(
+                '0',
+                '0',
+                $total,
+                [],
+                $absorbing,
+                GlResidualRefusal::LinelessDocument,
+                false,
+            );
         }
 
         $isCreditNote = $document->type === DocumentType::CreditNote;
@@ -1007,13 +1035,36 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             }
         }
 
-        // The SAME carve-out the posting paths use, for the same reason: a document
-        // with NO lines posts a lone AR leg with no revenue side to balance against
-        // on any chart without a `SalesStampDutyPayable` account. That is a
-        // PRE-EXISTING broken shape which the L1 lane deliberately left
+        // ⚠️ LEGACY-ONLY CARVE-OUT — reachable only for documents posted BEFORE the
+        // O-26 refusal. New lineless posting is refused upstream
+        // (`GlResidualRefusal::LinelessDocument`, raised by `residualPlan()` and
+        // turned into a 422 by `assertDocumentGlIsPostable()` inside
+        // `DocumentPostingService::post()`'s transaction, before any seal), so no
+        // document authored after the owner ruling of 2026-08-21 (repo LEDGER row
+        // O-26) can ever arrive here lineless AND posted. DELETE THIS BRANCH WHEN
+        // THE LAST PRE-O-26 TENANT DOCUMENT IS DISPOSED — together with
+        // `DocumentGlResidualPlan::$balanceAssertable`, whose only `false` producer
+        // it is.
+        //
+        // It is kept rather than closed because the ruling PRESERVES cancellability:
+        // a document with NO lines posted a lone AR leg with no revenue side to
+        // balance against on any chart without a `SalesStampDutyPayable` account.
+        // That is a PRE-EXISTING broken shape which the L1 lane deliberately left
         // byte-identical rather than change under a merge gate
         // (`residualPlan()`, `DocumentGlResidualPlan::$balanceAssertable`,
         // docs/superpowers/tickets/2026-08-05-lineless-document-gl-posting.md).
+        // Correcting the entries such a document already sealed is an owner-side,
+        // per-tenant disposition (LEDGER O-26), NOT something this path does.
+        //
+        // One production writer still creates lineless invoices/credit notes AFTER
+        // the refusal — `ArApOpeningService::postBatch()`, which writes historical
+        // AR/AP opening documents straight to `Posted` (`is_historical = true`,
+        // `FiscalCategory::NonFiscal`) without going through
+        // `DocumentPostingService::post()` at all. Those never reach this line:
+        // their GL is written by `AccountingOpeningService` under
+        // `source_type = 'opening_balance'`, which `documentLedgerFootprint()`
+        // does not match, so the `$originals->isEmpty()` early return above fires
+        // first. They are BY DESIGN and out of O-26's scope.
         //
         // GL gate finding M-1: the mirror being "equal and opposite" does NOT
         // distinguish this case from the DOC06 refusal below — mirroring an

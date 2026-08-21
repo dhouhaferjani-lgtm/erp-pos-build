@@ -9,6 +9,7 @@ use App\Modules\Company\Domain\Enums\CompanyStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
+use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
@@ -148,6 +149,19 @@ class InvoiceDocumentTest extends TestCase
             'subtotal' => '500.00',
             'tax_amount' => '100.00',
             'total' => '600.00',
+        ]);
+        // O-26 (owner ruling 2026-08-21) fixture correction: posting a document
+        // with NO lines is refused at the GL pre-flight. The test is about the
+        // /post endpoint's NF525 response, so the line just reconciles with the
+        // header already declared — 500.00 net at 20% = 600.00.
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Post-endpoint fixture line',
+            'quantity' => '1.0000',
+            'unit_price' => '500.000',
+            'tax_rate' => '20.00',
+            'line_total' => '500.000',
         ]);
 
         $response = $this->actingAs($this->user)->postJson("/api/v1/invoices/{$invoice->id}/post");

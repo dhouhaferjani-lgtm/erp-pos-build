@@ -287,7 +287,22 @@ final class DocumentCancelConsolidationTest extends TestCase
         Event::fake([InvoicePosted::class, InvoiceCancelled::class]);
         $invoice = $this->document(DocumentType::Invoice, DocumentStatus::Confirmed);
 
-        return app(DocumentPostingService::class)->post($invoice);
+        // O-26 (owner ruling 2026-08-21) fixture correction: posting a document
+        // with NO lines is refused at the GL pre-flight. This helper only ARRANGES
+        // a posted invoice for the cancel assertions below, so it needs a line
+        // that reconciles with the header it already declares — 100.000 net at 19%
+        // = 119.000 TND. Nothing in the tests asserts on the line set.
+        DocumentLine::create([
+            'document_id' => $invoice->id,
+            'line_number' => 1,
+            'description' => 'Cancel-consolidation fixture line',
+            'quantity' => '1.0000',
+            'unit_price' => '100.000',
+            'tax_rate' => '19.00',
+            'line_total' => '100.000',
+        ]);
+
+        return app(DocumentPostingService::class)->post($invoice->fresh(['lines']));
     }
 
     private function document(DocumentType $type, DocumentStatus $status): Document
