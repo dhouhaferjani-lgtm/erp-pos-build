@@ -201,6 +201,19 @@ jobs:
         # No database, no application boot (~1 s).
         run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php
 
+      - name: Feature-lane local harness guards (destructive-run refusals)
+        # gate-r2 R2-6. scripts/run-feature-lane-local.sh runs RefreshDatabase
+        # suites, which DROP EVERY TABLE in the database they are pointed at, so its
+        # refusals are a real control: non-loopback hosts, database names outside the
+        # `autoerp_*test` throwaway pattern (including the DB_CENTRAL_* family, which
+        # the `central` connection prefers over DB_*), and clamping the shared dev
+        # postgres container. Those guards were previously verified by hand-run
+        # probes pasted into a report and nothing re-ran them — which is not a
+        # control. Every case here EXECUTES the real script with `--dry-run`, which
+        # exits after the guards and before the first side effect: no docker, no
+        # database, no application boot (~1 s).
+        run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneLocalHarnessTest.php
+
       - name: Event ratchets (orphaned events + projector emission — PR→dev lane)
         # ES wave A0's M5-r1 F-1 fold-in, ticketed to THIS package's ci.yml
         # reconciliation (parent ledger, es-A0 whole-lane F-1): the same two

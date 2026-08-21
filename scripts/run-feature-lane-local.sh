@@ -51,16 +51,23 @@
 #   scripts/run-feature-lane-local.sh feature-lane-pos --group POS
 #   scripts/run-feature-lane-local.sh feature-lane-catalog --sqlite
 #
-# The ambient environment is NOT trusted: every DB_*/REDIS_* variable is unset and
-# rebuilt here, because these are RefreshDatabase suites and they drop every table
-# in whatever database they are pointed at. Deliberate overrides use a LANE_*
-# namespace no application tooling exports, and each is validated:
+# The ambient environment is NOT trusted: every DB_*, DB_CENTRAL_* and REDIS_*
+# variable is unset and rebuilt here, because these are RefreshDatabase suites and
+# they drop every table in whatever database they are pointed at. The DB_CENTRAL_*
+# family matters independently: the `central` connection is hardcoded pgsql and
+# reads DB_CENTRAL_HOST/PORT/DATABASE/USERNAME/PASSWORD **in preference to** DB_*,
+# so it is pinned to validated loopback values in BOTH modes — `--sqlite` is not a
+# safe harbour for it. Deliberate overrides use a LANE_* namespace no application
+# tooling exports, and each is validated:
 #   LANE_DB_HOST      loopback only (127.0.0.1 / ::1 / localhost)
 #   LANE_DB_PORT      default 5433 (the docker-compose stack)
 #   LANE_DB_DATABASE  must match `autoerp_*test`; default autoerp_lane_test
-#   LANE_DB_USERNAME / LANE_DB_PASSWORD / LANE_REDIS_HOST / LANE_REDIS_PORT
+#   LANE_DB_CENTRAL_DATABASE  same pattern; defaults to LANE_DB_DATABASE
+#   LANE_REDIS_HOST   loopback only, same rule as LANE_DB_HOST
+#   LANE_DB_USERNAME / LANE_DB_PASSWORD / LANE_REDIS_PORT
 #   LANE_PG_CONTAINER the container to createdb in (and the ONLY one --docker-db-limits
-#                     will clamp — the shared autoerp_postgres is refused outright)
+#                     will clamp — the shared autoerp_postgres is refused by name AND
+#                     by resolved container id)
 #
 set -uo pipefail
 
@@ -81,6 +88,7 @@ LANE=""
 ONLY_GROUP=""
 USE_SQLITE=0
 DOCKER_DB_LIMITS=0
+DRY_RUN=0
 GROUP_TIMEOUT=${LANE_GROUP_TIMEOUT:-2400}   # seconds, per GROUP
 
 die() { echo "error: $*" >&2; exit 2; }
@@ -102,14 +110,24 @@ while [ $# -gt 0 ]; do
         --group) ONLY_GROUP="${2:-}"; shift 2 ;;
         --sqlite) USE_SQLITE=1; shift ;;
         --docker-db-limits) DOCKER_DB_LIMITS=1; shift ;;
+        --dry-run) DRY_RUN=1; shift ;;
         --timeout) GROUP_TIMEOUT="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,64p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '2,70p' "${BASH_SOURCE[0]}"; exit 0 ;;
         -*) die "unknown flag $1" ;;
         *) [ -z "$LANE" ] || die "one lane at a time (got '$LANE' and '$1')"; LANE="$1"; shift ;;
     esac
 done
 
 [ -n "$LANE" ] || { echo "usage: $(basename "$0") <lane-name> [--group G] [--sqlite]"; echo; list_lanes; exit 2; }
+
+# Refused HERE, before anything is inspected or created, so the refusal does not
+# depend on docker being reachable and can be exercised on its own (gate-r2 R2-6).
+# The stronger identity check — comparing resolved container IDs — runs later, once
+# docker is known to be available (gate-r2 R2-7).
+if [ "$DOCKER_DB_LIMITS" = 1 ] && [ "${LANE_PG_CONTAINER:-$PG_CONTAINER_DEFAULT}" = "$PG_CONTAINER_DEFAULT" ]; then
+    die "--docker-db-limits refuses to clamp the SHARED container '$PG_CONTAINER_DEFAULT', which other \
+projects use. Start a dedicated PG for lane runs and pass LANE_PG_CONTAINER=<name>."
+fi
 
 # ---- resolve the lane from the manifest, never from a list in this file ------
 # The manifest is the artifact CI verifies; duplicating the group list here is
@@ -136,7 +154,9 @@ for g in "${LANE_GROUPS[@]}"; do
 done
 
 LOG_DIR="$REPO_ROOT/docs/sessions/feature-lanes/$LANE-$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$LOG_DIR"
+# A dry run creates nothing at all — no log directory, no .env.testing, no
+# database, no test process. It exists to show the resolved targets and stop.
+[ "$DRY_RUN" = 1 ] || mkdir -p "$LOG_DIR"
 
 echo "=============================================================================="
 echo " Feature lane: $LANE"
@@ -150,7 +170,7 @@ echo "==========================================================================
 # ---- environment -------------------------------------------------------------
 # Same two steps the CI lanes run ("Copy environment file" + "Configure test
 # environment"): .env.* is gitignored, so this cannot dirty the worktree.
-if [ ! -f "$API_DIR/.env.testing" ]; then
+if [ ! -f "$API_DIR/.env.testing" ] && [ "$DRY_RUN" = 0 ]; then
     echo "-- creating apps/api/.env.testing from .env.example"
     cp "$API_DIR/.env.example" "$API_DIR/.env.testing"
     # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
@@ -172,19 +192,67 @@ fi
 # So: every connection variable is UNSET and then constructed here. Deliberate
 # overrides use a LANE_* namespace that no application tooling exports, and every
 # one of them is validated below.
-unset DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_CENTRAL_DATABASE DB_USERNAME DB_PASSWORD \
-      DB_SOCKET DB_URL REDIS_HOST REDIS_PORT REDIS_URL
+#
+# gate-r2 R2-3 — THE DB_CENTRAL_* FAMILY. Rebuilding DB_* was NOT enough. The
+# `central` connection in config/database.php is hardcoded `driver => pgsql` and
+# reads DB_CENTRAL_URL / DB_CENTRAL_HOST / DB_CENTRAL_PORT / DB_CENTRAL_DATABASE /
+# DB_CENTRAL_USERNAME / DB_CENTRAL_PASSWORD **in preference to** the DB_* values
+# this script rebuilds. A shell exporting DB_CENTRAL_HOST=<staging> therefore
+# passed both the loopback and the database-name guard, and every
+# `connection('central')` site — including TenantProvisioningService's
+# unconditional DELETEs — would have run against staging. The whole family is
+# unset here and re-pinned to validated loopback values below, in BOTH branches:
+# `central` is pgsql even when the default connection is sqlite, so "--sqlite" is
+# not a safe harbour for it.
+unset DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_USERNAME DB_PASSWORD DB_SOCKET DB_URL \
+      DB_CENTRAL_URL DB_CENTRAL_HOST DB_CENTRAL_PORT DB_CENTRAL_DATABASE \
+      DB_CENTRAL_USERNAME DB_CENTRAL_PASSWORD \
+      REDIS_URL REDIS_HOST REDIS_PORT REDIS_PASSWORD REDIS_CLIENT REDIS_DB REDIS_CACHE_DB
 
 export AUTOERP_QUARANTINE=1          # honour tests/quarantine.json, exactly as the CI lanes do
 export APP_ENV=testing
 export BROADCAST_CONNECTION=null
 export CACHE_STORE=array             # worktree gotcha: config cache resolves to the main tree otherwise
 
+# ---- destructive-run guards, as functions so every connection uses the SAME ones
+require_loopback() {
+    # $1 = host, $2 = the variable a caller would set to change it
+    case "$1" in
+        127.0.0.1|::1|localhost) ;;
+        *) die "refusing to run destructive RefreshDatabase suites against non-loopback host '$1'. \
+This script only ever talks to the local docker stack; point $2 at loopback or unset it." ;;
+    esac
+}
+require_throwaway_database() {
+    # An explicit throwaway-test-database name pattern. `autoerp`, `autoerp_dev`,
+    # `synerivia_central`, `tenant_<uuid>` and every other real database fail this
+    # by construction.
+    case "$1" in
+        autoerp_*test) ;;
+        *) die "refusing to run destructive RefreshDatabase suites against database '$1' ($2). \
+The lane database name must match 'autoerp_*test' (default: $DB_NAME_DEFAULT)." ;;
+    esac
+}
+
+# The `central` connection is pgsql in every mode, so it is pinned in every mode.
+export DB_CENTRAL_HOST=${LANE_DB_HOST:-127.0.0.1}
+export DB_CENTRAL_PORT=${LANE_DB_PORT:-$DB_PORT_DEFAULT}
+export DB_CENTRAL_DATABASE=${LANE_DB_CENTRAL_DATABASE:-${LANE_DB_DATABASE:-$DB_NAME_DEFAULT}}
+export DB_CENTRAL_USERNAME=${LANE_DB_USERNAME:-$DB_USER_DEFAULT}
+export DB_CENTRAL_PASSWORD=${LANE_DB_PASSWORD:-$DB_PASS_DEFAULT}
+require_loopback "$DB_CENTRAL_HOST" LANE_DB_HOST
+require_throwaway_database "$DB_CENTRAL_DATABASE" "the central connection"
+
 if [ "$USE_SQLITE" = 1 ]; then
     # FORCED, not merely "left alone": with the PG variables unset above, this
-    # makes the sqlite path unambiguous no matter what the caller exported.
+    # makes the sqlite path unambiguous no matter what the caller exported. The
+    # central connection keeps the validated loopback pin set above — it is pgsql
+    # regardless of this setting.
     export DB_CONNECTION=sqlite
     export DB_DATABASE=":memory:"
+    export REDIS_HOST=${LANE_REDIS_HOST:-127.0.0.1}
+    export REDIS_PORT=${LANE_REDIS_PORT:-$REDIS_PORT_DEFAULT}
+    require_loopback "$REDIS_HOST" LANE_REDIS_HOST
 else
     # Real PostgreSQL, set the same way treasury-spine-pgsql sets it: phpunit.xml
     # pins DB_CONNECTION=sqlite via <env> WITHOUT force="true", so a real
@@ -193,31 +261,34 @@ else
     export DB_HOST=${LANE_DB_HOST:-127.0.0.1}
     export DB_PORT=${LANE_DB_PORT:-$DB_PORT_DEFAULT}
     export DB_DATABASE=${LANE_DB_DATABASE:-$DB_NAME_DEFAULT}
-    export DB_CENTRAL_DATABASE=$DB_DATABASE
     export DB_USERNAME=${LANE_DB_USERNAME:-$DB_USER_DEFAULT}
     export DB_PASSWORD=${LANE_DB_PASSWORD:-$DB_PASS_DEFAULT}
     export REDIS_HOST=${LANE_REDIS_HOST:-127.0.0.1}
     export REDIS_PORT=${LANE_REDIS_PORT:-$REDIS_PORT_DEFAULT}
 
-    # ---- destructive-run guards ---------------------------------------------
-    # Loopback only. A lane run must never be able to reach a remote host, and
-    # "someone exported a staging DB_HOST" must fail loudly rather than migrate.
-    case "$DB_HOST" in
-        127.0.0.1|::1|localhost) ;;
-        *) die "refusing to run destructive RefreshDatabase suites against non-loopback host '$DB_HOST'. \
-This script only ever talks to the local docker stack; point LANE_DB_HOST at loopback or unset it." ;;
-    esac
-    # An explicit throwaway-test-database name pattern. `autoerp`, `autoerp_dev`,
-    # `tenant_<uuid>` and every other real database fail this by construction.
-    case "$DB_DATABASE" in
-        autoerp_*test) ;;
-        *) die "refusing to run destructive RefreshDatabase suites against database '$DB_DATABASE'. \
-The lane database name must match 'autoerp_*test' (default: $DB_NAME_DEFAULT)." ;;
-    esac
+    require_loopback "$DB_HOST" LANE_DB_HOST
+    require_throwaway_database "$DB_DATABASE" "the default connection"
+    require_loopback "$REDIS_HOST" LANE_REDIS_HOST
+fi
 
+# ---- resolved connection targets, printed and (optionally) nothing else ------
+# `--dry-run` exits HERE: after every guard has run, before the first side effect
+# (createdb, docker update, phpunit). That makes the neutralisation of a hostile
+# ambient environment OBSERVABLE and therefore testable — the ambient value being
+# ignored looks identical to a normal run otherwise.
+echo "-- resolved: default=$DB_CONNECTION://${DB_HOST:-}:${DB_PORT:-}/${DB_DATABASE:-}"
+echo "-- resolved: central=pgsql://$DB_CENTRAL_HOST:$DB_CENTRAL_PORT/$DB_CENTRAL_DATABASE"
+echo "-- resolved: redis=${REDIS_HOST:-}:${REDIS_PORT:-}"
+if [ "$DRY_RUN" = 1 ]; then
+    echo "-- dry run: guards passed, no database created and no test executed"
+    exit 0
+fi
+
+if [ "$USE_SQLITE" = 0 ]; then
     PG_CONTAINER=${LANE_PG_CONTAINER:-$PG_CONTAINER_DEFAULT}
     docker inspect "$PG_CONTAINER" >/dev/null 2>&1 \
         || die "postgres container '$PG_CONTAINER' is not running — start the stack with 'docker compose up -d postgres redis'"
+
     if ! docker exec -e PGPASSWORD="$DB_PASSWORD" "$PG_CONTAINER" \
             psql -U "$DB_USERNAME" -lqt 2>/dev/null | cut -d\| -f1 | grep -qw "$DB_DATABASE"; then
         echo "-- creating database $DB_DATABASE in $PG_CONTAINER"
@@ -231,9 +302,15 @@ The lane database name must match 'autoerp_*test' (default: $DB_NAME_DEFAULT)." 
         # limits back, so one lane run permanently degraded the dev stack. Two
         # changes: the shared container is refused outright, and a dedicated one is
         # restored on EVERY exit path.
-        if [ "$PG_CONTAINER" = "$PG_CONTAINER_DEFAULT" ]; then
-            die "--docker-db-limits refuses to clamp the SHARED container '$PG_CONTAINER_DEFAULT', which \
-other projects use. Start a dedicated PG for lane runs and pass LANE_PG_CONTAINER=<name>."
+        # gate-r2 R2-7: the name check (done at argument-validation time, above) is
+        # spoofable — a second name, an alias or an ID prefix can resolve to the
+        # SAME container. Compare what docker actually resolved.
+        REQUESTED_ID=$(docker inspect -f '{{.Id}}' "$PG_CONTAINER" 2>/dev/null || echo '')
+        SHARED_ID=$(docker inspect -f '{{.Id}}' "$PG_CONTAINER_DEFAULT" 2>/dev/null || echo '')
+        if [ -n "$REQUESTED_ID" ] && [ "$REQUESTED_ID" = "$SHARED_ID" ]; then
+            die "--docker-db-limits: '$PG_CONTAINER' resolves to the SAME container as the shared \
+'$PG_CONTAINER_DEFAULT' (id $(printf '%.12s' "$REQUESTED_ID")…). Naming it differently does not make it \
+a different container."
         fi
         PRIOR_NANO_CPUS=$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$PG_CONTAINER" 2>/dev/null || echo 0)
         PRIOR_MEMORY=$(docker inspect -f '{{.HostConfig.Memory}}' "$PG_CONTAINER" 2>/dev/null || echo 0)

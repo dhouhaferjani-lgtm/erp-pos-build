@@ -192,7 +192,8 @@ echo -e "\n${YELLOW}Running tests/Feature CI-lane manifest check...${NC}"
 # tests/Feature directory hard-fails CI, so it must hard-fail here first.
 ( cd "$ROOT_DIR/apps/api" && php tools/feature-lane-manifest-check.php )
 ( cd "$ROOT_DIR/apps/api" && ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php )
-echo -e "${GREEN}✓ Feature-lane manifest + checker liveness passed${NC}"
+( cd "$ROOT_DIR/apps/api" && ./vendor/bin/phpunit tests/Architecture/FeatureLaneLocalHarnessTest.php )
+echo -e "${GREEN}✓ Feature-lane manifest + checker liveness + local-harness guards passed${NC}"
 
 echo -e "\n${YELLOW}Running i18n completeness gate...${NC}"
 # Mirrors the discrete `frontend-lint` CI step. Locally the owner-set repository

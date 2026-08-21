@@ -484,6 +484,121 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         self::assertStringContainsString('vars.NEVER_FIRES', $out);
     }
 
+    /**
+     * gate-r2 R2-1 — THE REVIEWER'S EXACT PROBE, and the worst failure mode in this
+     * file: a FALSE GREEN.
+     *
+     * The round-1 fix hardened the JOB guard and left the STEP guard where it was.
+     * A step-level `if:` was known to `gatingDefects()`, but its only consequence
+     * there is to force `runs_on_pr_dev` false — inert for all 70 gated lanes, which
+     * already declare false. So `if: ${{ false }}` on a lane step passed the checker;
+     * and when the owner flips the variable the JOB runs, the STEP skips, the job
+     * reports SUCCESS, and the aggregate prints `ok` — a whole group silently out of
+     * a lane the manifest still certifies, with every signal saying it ran.
+     */
+    public function test_it_fires_when_a_lane_step_is_made_conditional(): void
+    {
+        $wf = $this->workflow();
+        $target = "      - name: Feature lane Sales & POS — tests/Feature/POS\n";
+        self::assertStringContainsString($target, $wf);
+        $this->writeWorkflow(str_replace(
+            $target,
+            $target."        if: \${{ false }}\n",
+            $wf,
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('No step in a lane job may be conditional', $out);
+    }
+
+    /** The same rule covers SETUP steps: guarding checkout removes the lane too. */
+    public function test_it_fires_when_a_setup_step_in_a_lane_job_is_made_conditional(): void
+    {
+        $wf = $this->workflow();
+        $anchor = '  feature-lane-platform-misc:';
+        $pos = strpos($wf, $anchor);
+        self::assertNotFalse($pos);
+        $stepsAt = strpos($wf, "    steps:\n      - uses: actions/checkout@v5\n", $pos);
+        self::assertNotFalse($stepsAt);
+        $checkout = "    steps:\n      - uses: actions/checkout@v5\n";
+        $this->writeWorkflow(
+            substr($wf, 0, $stepsAt)
+            .$checkout."        if: \${{ github.actor != 'nobody' }}\n"
+            .substr($wf, $stepsAt + strlen($checkout)),
+        );
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('No step in a lane job may be conditional', $out);
+    }
+
+    /**
+     * gate-r2 R2-2 — the round-1 bypass transliterated into index syntax. The
+     * one-variable rule censused `vars\.NAME` with a regex, so `vars['NEVER_FIRES']`
+     * walked straight past it with the manifest updated to match.
+     */
+    public function test_it_fires_on_a_second_variable_written_in_index_syntax(): void
+    {
+        [$exit, $out] = $this->plantSecondGateCondition("vars['NEVER_FIRES'] == 'true' &&");
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString("vars['NEVER_FIRES']", $out);
+        self::assertStringContainsString('at most one `vars.NAME` in dot form', $out);
+    }
+
+    /** …and a second switch that is not a `vars` reference at all. */
+    public function test_it_fires_on_a_needs_outputs_condition_used_as_a_second_switch(): void
+    {
+        [$exit, $out] = $this->plantSecondGateCondition("needs.backend-lint.outputs.enable_lanes == 'yes' &&");
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('needs.backend-lint', $out);
+    }
+
+    /** …and a computed key, which no name-based census can resolve at all. */
+    public function test_it_fires_on_a_computed_variable_key(): void
+    {
+        [$exit, $out] = $this->plantSecondGateCondition("vars[format('X_{0}', github.ref)] == 'true' &&");
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('at most one `vars.NAME` in dot form', $out);
+    }
+
+    /**
+     * Prepend an extra condition to every gated lane's `if:` AND to the manifest's
+     * declared gate, so the canonical-equality rule is satisfied and only the
+     * free-variable rule can fire. This is the harder half of the reviewer's probe.
+     *
+     * @return array{0:int,1:string}
+     */
+    private function plantSecondGateCondition(string $extraCondition): array
+    {
+        $canonical = "\${{ vars.SELF_HOSTED_RUNNER_READY == 'true' &&";
+        $bypass = '${{ '.$extraCondition." vars.SELF_HOSTED_RUNNER_READY == 'true' &&";
+
+        $wf = $this->workflow();
+        self::assertStringContainsString($canonical, $wf);
+        $this->writeWorkflow(str_replace($canonical, $bypass, $wf));
+
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($manifest['lanes'] as $laneId => $lane) {
+            if (isset($lane['execution_gate'])) {
+                $manifest['lanes'][$laneId]['execution_gate'] = str_replace(
+                    $canonical,
+                    $bypass,
+                    (string) $lane['execution_gate'],
+                );
+            }
+        }
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        return $this->runChecker();
+    }
+
     /** The same bypass with the manifest left alone must fail on equality alone. */
     public function test_it_fires_when_a_lane_job_if_drifts_from_the_declared_gate(): void
     {

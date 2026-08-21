@@ -46,7 +46,7 @@ use Symfony\Component\Yaml\Yaml;
  * The five ways a job/step stops gating on PR->dev, in one place so the checker can
  * apply them to ITSELF as well as to the lanes it certifies.
  *
- * @param  array{runs: list<string>, ifs: array<string,string>, needs: array<string,list<string>>, jobSoft: array<string,bool>, stepJob: array<string,string>, stepIf: array<string,string>, stepSoft: array<string,bool>}  $wf
+ * @param  array{runs: list<string>, ifs: array<string,string>, needs: array<string,list<string>>, jobSoft: array<string,bool>, stepJob: array<string,string>, stepIf: array<string,string>, stepSoft: array<string,bool>, jobSteps: array<string,list<array{label:string,if:string}>>}  $wf
  * @return list<string> human-readable reasons; empty means "genuinely gates on PR->dev"
  */
 function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
@@ -126,6 +126,72 @@ function normalizeExpression(string $expression): string
     return trim((string) preg_replace('/\s+/', ' ', $expression));
 }
 
+/**
+ * Every CONTEXT REFERENCE in a GitHub expression, in source form.
+ *
+ * gate-r2 R2-2: the previous rule censused `vars\.NAME` with a regex, and the
+ * reviewer transliterated the round-1 bypass into `vars['NEVER_FIRES']` — same
+ * second switch, different syntax, checker EXIT=0. A second probe used
+ * `needs.<job>.outputs.*`, which is not a `vars` reference at all and is just as
+ * effective a permanently-false condition.
+ *
+ * Censusing one spelling of one context can never be right. The property that
+ * matters is: THE ONLY FREE VARIABLES IN A LANE'S GATE ARE THE EVENT CONTEXT AND
+ * AT MOST ONE `vars.NAME`. So every context reference is extracted — dot form and
+ * index form, for every context GitHub defines — and anything outside that set is
+ * rejected by name.
+ *
+ * @return list<array{context: string, form: string, name: string|null, source: string}>
+ */
+function contextReferences(string $expression): array
+{
+    // Every context GitHub exposes in a job-level `if:`, plus the ones it does not
+    // (`inputs`, `steps`, `jobs`) so a mistaken one is reported rather than ignored.
+    $contexts = 'github|vars|env|secrets|needs|inputs|steps|jobs|job|runner|matrix|strategy';
+    $pattern = '/\b('.$contexts.')\s*(?:'
+        // .name  — dot access
+        .'\.\s*(?<dot>[A-Za-z_][A-Za-z0-9_\-]*)'
+        .'|'
+        // ['name'] / ["name"] — index access, literal key
+        .'\[\s*(?<qi>[\'"])(?<idx>[^\'"]*)\k<qi>\s*\]'
+        .'|'
+        // [anything else] — a computed key, e.g. vars[format('X_{0}', …)]
+        .'\[(?<expr>[^\]]*)\]'
+        .')/';
+
+    if (preg_match_all($pattern, $expression, $matches, PREG_SET_ORDER) === false) {
+        return [];
+    }
+
+    $references = [];
+    foreach ($matches as $match) {
+        if (($match['dot'] ?? '') !== '') {
+            $references[] = [
+                'context' => $match[1],
+                'form' => 'dot',
+                'name' => $match['dot'],
+                'source' => trim($match[0]),
+            ];
+        } elseif (($match['idx'] ?? '') !== '' || isset($match['idx'])) {
+            $references[] = [
+                'context' => $match[1],
+                'form' => 'index',
+                'name' => $match['idx'],
+                'source' => trim($match[0]),
+            ];
+        } else {
+            $references[] = [
+                'context' => $match[1],
+                'form' => 'computed',
+                'name' => null,
+                'source' => trim($match[0]),
+            ];
+        }
+    }
+
+    return $references;
+}
+
 $apiRoot = dirname(__DIR__);
 $repoRoot = dirname($apiRoot, 2);
 $manifestPath = $apiRoot.'/tests/feature-lane-manifest.json';
@@ -187,7 +253,7 @@ try {
  * a step that no longer executes.
  *
  * @param  array<string,mixed>  $workflowYaml
- * @return array{runs: list<string>, ifs: array<string,string>, needs: array<string,list<string>>, jobSoft: array<string,bool>, stepJob: array<string,string>, stepIf: array<string,string>, stepSoft: array<string,bool>}
+ * @return array{runs: list<string>, ifs: array<string,string>, needs: array<string,list<string>>, jobSoft: array<string,bool>, stepJob: array<string,string>, stepIf: array<string,string>, stepSoft: array<string,bool>, jobSteps: array<string,list<array{label:string,if:string}>>}
  */
 function collectWorkflowRuns(array $workflowYaml): array
 {
@@ -198,7 +264,9 @@ function collectWorkflowRuns(array $workflowYaml): array
     $stepJob = [];
     $stepIf = [];
     $stepSoft = [];
+    $jobSteps = [];
     foreach (($workflowYaml['jobs'] ?? []) as $jobId => $job) {
+        $jobSteps[$jobId] = [];
         $ifs[$jobId] = (string) ($job['if'] ?? '');
         $jobSoft[$jobId] = ($job['continue-on-error'] ?? false) === true;
         $jobNeeds = $job['needs'] ?? [];
@@ -206,7 +274,14 @@ function collectWorkflowRuns(array $workflowYaml): array
             static fn ($n): string => (string) $n,
             is_array($jobNeeds) ? $jobNeeds : [$jobNeeds],
         ));
-        foreach (($job['steps'] ?? []) as $step) {
+        foreach (($job['steps'] ?? []) as $index => $step) {
+            // EVERY step, `run:` or `uses:`, with its own `if:` — gate-r2 R2-1
+            // needs the whole list, not just the scripted ones: a guard on the
+            // checkout or setup step removes the lane just as completely.
+            $jobSteps[$jobId][] = [
+                'label' => (string) ($step['name'] ?? $step['uses'] ?? ('step #'.((int) $index + 1))),
+                'if' => trim((string) ($step['if'] ?? '')),
+            ];
             if (! isset($step['run'])) {
                 continue;
             }
@@ -232,6 +307,7 @@ function collectWorkflowRuns(array $workflowYaml): array
         'stepJob' => $stepJob,
         'stepIf' => $stepIf,
         'stepSoft' => $stepSoft,
+        'jobSteps' => $jobSteps,
     ];
 }
 
@@ -562,11 +638,37 @@ foreach ($lanes as $laneId => $lane) {
     //       distinct `vars.*`. A second repository variable is a second switch
     //       nobody is tracking, and it is the whole substance of the bypass.
     $gate = $lane['execution_gate'] ?? null;
+
+    // gate-r2 R2-2: an ALLOWLIST over every context reference, not a census of one
+    // spelling of one context. `github.*` is the event arm and is allowed; a single
+    // `vars.NAME` in dot form is the one permitted switch; EVERYTHING else — a
+    // second `vars`, `vars['NAME']`, `vars[format(…)]`, `needs.x.outputs.y`,
+    // `env.*`, `secrets.*`, `inputs.*`, `steps.*`, `runner.*`, `matrix.*` — is a
+    // free variable nobody is tracking, and each one is a way to hold the lane at
+    // false forever while every other check reports it merely awaiting one flip.
     $jobVars = [];
-    if (preg_match_all('/vars\.[A-Za-z_][A-Za-z0-9_]*/', $jobIf, $varMatches) === false) {
-        $varMatches = [[]];
+    foreach (contextReferences($jobIf) as $reference) {
+        if ($reference['context'] === 'github' && $reference['form'] === 'dot') {
+            continue;
+        }
+        if ($reference['context'] === 'vars' && $reference['form'] === 'dot') {
+            $jobVars[] = 'vars.'.$reference['name'];
+
+            continue;
+        }
+        $errors[] = sprintf(
+            'LANE "%s" lives in job "%s", whose `if:` contains the context reference `%s`. A lane gate may '
+            .'reference ONLY the event context (`github.*`) and at most one `vars.NAME` in dot form. Any '
+            .'other free variable — an index-form `vars[\'NAME\']`, a computed key, `needs.*.outputs.*`, '
+            .'`env.*`, `secrets.*` — is a second switch that can hold the lane at false permanently while '
+            .'the manifest still reports it merely waiting on the owner. Full `if:`: %s',
+            $laneId,
+            $owningJob,
+            $reference['source'],
+            var_export($jobIf, true),
+        );
     }
-    $jobVars = array_values(array_unique($varMatches[0]));
+    $jobVars = array_values(array_unique($jobVars));
     $jobIsVarGuarded = $jobVars !== [];
     if ($jobIsVarGuarded && ($gate === null || $gate === '')) {
         $errors[] = sprintf(
@@ -609,6 +711,43 @@ foreach ($lanes as $laneId => $lane) {
             $gatedLanes[$laneId] = true;
             $gatedLaneJobs[] = $owningJob;
         }
+    }
+}
+
+// ---- B4b. NO STEP IN A LANE JOB MAY CARRY AN `if:` --------------------------
+// gate-r2 R2-1. The round-1 fix hardened the JOB guard and left the STEP guard
+// exactly where it was: a step-level `if:` was known to `gatingDefects()`, but its
+// only consequence there is to force `runs_on_pr_dev` false — which is INERT for
+// all 70 gated lanes, because they already declare false. The reviewer added
+// `if: ${{ false }}` to one lane step and the checker exited 0.
+//
+// The consequence is worse than a skipped lane, because it is a false GREEN: when
+// the owner flips the variable the JOB runs, the guarded STEP skips, the job
+// reports SUCCESS, and `all-checks-pass` prints `ok` for it. A whole group drops
+// out of a lane the manifest still certifies, and every signal says the suite ran.
+//
+// A conditional cannot be evaluated by this checker, and a lane's value is that it
+// runs unconditionally, so the rule is absolute rather than clever: a job that owns
+// a lane may not carry `if:` on ANY step — setup steps included, since a guard on
+// checkout or composer removes the lane just as completely. Only literally-always-
+// true forms are permitted, and they are permitted because they skip nothing.
+// If a lane job ever genuinely needs a conditional step, that is a reviewed change
+// to this rule, made deliberately — which is the whole point.
+$alwaysTrueStepIfs = ['always()', 'success()', '!cancelled()', '! cancelled()', '${{ always() }}', '${{ success() }}'];
+foreach (array_values(array_unique($resolvedLaneJobs)) as $laneJob) {
+    foreach (($wf['jobSteps'][$laneJob] ?? []) as $step) {
+        if ($step['if'] === '' || in_array($step['if'], $alwaysTrueStepIfs, true)) {
+            continue;
+        }
+        $errors[] = sprintf(
+            'LANE JOB "%s" has a step (%s) carrying `if: %s`. No step in a lane job may be conditional: a '
+            .'guarded step SKIPS while the job still reports SUCCESS and the aggregate prints `ok`, so a '
+            .'whole group silently drops out of a lane the manifest still certifies — a false green, which '
+            .'is worse than a red. Remove the condition, or split the step into a job that owns no lane.',
+            $laneJob,
+            $step['label'],
+            $step['if'],
+        );
     }
 }
 

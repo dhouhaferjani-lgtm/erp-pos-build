@@ -430,6 +430,19 @@ The consequence, stated plainly so nobody discovers it at promotion time:
    clean skip. (§4.3, §7.1)
 5. **Discharge S-14's dispatch leg** on whatever promotion carries this branch, once quota returns. (§7.2)
 
+**TICKETS RAISED, NOT FIXED HERE**
+
+* **T-1 — `all-checks-pass`'s dependency list is unpinned for NON-lane jobs** (gate-r2 R2-5, recorded at the
+  reviewer's instruction). Three checks now cover that list: B2 asserts every *lane* job is in `needs:`, B5a
+  asserts `EXPECTED_JOBS` equals `needs:`, and the runtime step asserts the parsed context equals
+  `EXPECTED_JOBS`. Nothing asserts that a **non-lane** job — `frontend-build`, `types-drift`,
+  `route-manifest-drift` — is in the list at all, so deleting one from *both* `needs:` and `EXPECTED_JOBS`
+  silently stops the aggregate gating it. This is a **pre-existing class**, not a regression: the `needs:` list
+  has been hand-maintained since the aggregate was written, and this branch only added a second copy that must
+  match it. A proper fix is a generated or asserted "every job in this workflow that is not explicitly exempt
+  must be in the aggregate" rule, which is a change to the aggregate's contract and outside O-29's scope.
+  **For the parent to carry into the LEDGER.**
+
 **OPEN QUESTIONS**
 
 * **Q1 — concurrency budget.** 4 concurrent runners (≈60–70 min wall per event) or 1 (≈3 h)? Affects VPS sizing
@@ -469,7 +482,8 @@ The consequence, stated plainly so nobody discovers it at promotion time:
 | `apps/api/tests/Support/QuarantinedTests.php` | New. Reads the ratchet; no-op unless `AUTOERP_QUARANTINE=1`. |
 | `apps/api/tests/TestCase.php` | Three-line hook in `setUp()`, before `parent::setUp()`. |
 | `apps/api/tests/Architecture/FeatureLaneManifestCheckerTest.php` | 19 new liveness cases (6 round 0 + 13 gate-r1, incl. 8 that EXECUTE the aggregate's real shell script); 1 existing case de-brittled (its fixture group was laned by this change). |
-| `scripts/run-feature-lane-local.sh` | New. The interim execution path. |
+| `scripts/run-feature-lane-local.sh` | New. The interim execution path. Ambient `DB_*`/`DB_CENTRAL_*`/`REDIS_*` neutralised, loopback- and throwaway-name-only, shared-container clamp refused by name and by resolved id, side-effect-free `--dry-run`. |
+| `apps/api/tests/Architecture/FeatureLaneLocalHarnessTest.php` | New (gate-r2 R2-6). 10 cases executing the real harness script; wired into `backend-architecture` and `scripts/preflight.sh`. |
 | `.github/actionlint.yaml` | New. Declares the custom runner label so `actionlint` stops reporting it as unknown. |
 
 **Local verification actually run** (S-17: this is all there is until quota returns):
@@ -481,7 +495,10 @@ $ php tools/feature-lane-manifest-check.php                       EXIT=0
   ⚠ COVERAGE DEBT: 1 group(s) / 1 class(es) …
 
 $ ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php
-  OK (65 tests, 389 assertions)              # 46 pre-existing + 6 (round 0) + 13 (gate-r1)
+  OK (70 tests, 406 assertions)       # 46 pre-existing + 6 round-0 + 13 gate-r1 + 5 gate-r2
+
+$ ./vendor/bin/phpunit tests/Architecture/FeatureLaneLocalHarnessTest.php
+  OK (10 tests, 52 assertions)                                  # new in gate-r2 (R2-6)
 
 $ actionlint .github/workflows/ci.yml
   10 findings — all SC2086 `>> $GITHUB_OUTPUT`, all pre-existing (base ci.yml: 10). ZERO new.
@@ -507,5 +524,29 @@ Verified clean by the same gate and deliberately not re-touched: aggregate rejec
 failed/cancelled/non-allowlisted-skipped with valid JSON · `vars.` gate skip semantics vs GitHub docs ·
 `AUTOERP_QUARANTINE` isolation to the eight new jobs · census math · no `permissions` grants · actionlint zero
 new.
+
+**One claim in the round-1 commit message was false and is corrected here** (gate-r2 R2-6): it said "every fix
+is pinned by a liveness case". That was true of the checker fixes and of the aggregate script, and **false of
+`run-feature-lane-local.sh`**, whose guards were verified by hand-run probes pasted into a report — which
+nothing re-runs, and is therefore not a control for a script that drops every table in the database it is
+pointed at. Rather than soften the claim, the pin now exists: `tests/Architecture/FeatureLaneLocalHarnessTest.php`
+(10 cases) executes the real script and is wired as its own step in `backend-architecture` and in
+`scripts/preflight.sh`.
+
+### 9.2 gate-r2 fix round (round 2, 2026-08-21)
+
+R1-1 / R1-4 / R1-5 were verified CLOSED by execution. R1-2's defect was reinstated one level down, **twice**,
+both executed by the reviewer — the same lesson twice over: *a check that enumerates one spelling of one
+mechanism is not a check.*
+
+| # | Sev | Defect | Fix | Pinned by |
+|---|---|---|---|---|
+| R2-1 | P1 | **Step-level `if:` bypass, producing a FALSE GREEN.** The B4 rewrite scanned only the JOB `if:`. A step-`if:` door existed in `gatingDefects()`, but its sole consequence is to set `runs_on_pr_dev=false` — inert for all 70 gated lanes, which already declare false. `if: ${{ false }}` on a lane step → EXIT=0; on flip day the job runs, the step skips, the job reports SUCCESS and the aggregate prints `ok`. | **No step in a lane job may carry `if:` at all** — hard error, independent of `runs_on_pr_dev`, setup steps included, only literally-always-true forms permitted (they skip nothing). Absolute rather than clever, because a lane's whole value is that it runs unconditionally. Verified collateral-free: no step in any of the 11 lane-owning jobs carries an `if:` today. | `…lane_step_is_made_conditional` (the reviewer's exact probe) + `…setup_step_in_a_lane_job…` |
+| R2-2 | P1 | **`vars['NAME']` index syntax defeated the one-variable rule**, which censused `vars\.NAME` with a regex; `needs.<job>.outputs.*` passed as a second switch too. | Replaced the census with an **allowlist over every context reference**: the gate's only free variables may be `github.*` and exactly one `vars.NAME` in dot form. Index form, computed keys (`vars[format(…)]`), `needs.*`, `env.*`, `secrets.*`, `inputs.*`, `steps.*`, `runner.*`, `matrix.*` are each rejected by name. | `…second_variable_written_in_index_syntax`, `…needs_outputs_condition…`, `…computed_variable_key` |
+| R2-3 | P2 | **`DB_CENTRAL_*` family leak.** Rebuilding `DB_*` was not enough: `central` is hardcoded pgsql and reads `DB_CENTRAL_URL/HOST/PORT/DATABASE/USERNAME/PASSWORD` *in preference to* `DB_*`, so `DB_CENTRAL_HOST=<staging>` passed both guards and reached 79 `connection('central')` sites incl. `TenantProvisioningService`'s unconditional DELETEs. | Whole family unset and re-pinned to validated loopback values **in both modes** — `--sqlite` is not a safe harbour, because `central` is pgsql regardless. `LANE_DB_CENTRAL_DATABASE` override, same `autoerp_*test` rule. The header claim is now true rather than narrowed. | `…hostile_ambient_environment_is_ignored_entirely`, `…sqlite_mode_…_pins_the_central_connection`, `…throwaway_pattern` (4 data sets) |
+| R2-4 | P3 | `LANE_REDIS_HOST` had no loopback rule; `REDIS_PASSWORD`/`REDIS_CLIENT`/`REDIS_CACHE_DB` were not unset. | Same `require_loopback` helper as the DB host; the Redis family enumerated in the unset list. | `…non_loopback_redis_host` |
+| R2-5 | P3 | Aggregate dependency list unpinned for **non-lane** jobs. | **Ticketed, not fixed** — §8 T-1. Pre-existing class, and a proper fix changes the aggregate's contract. | — |
+| R2-6 | P3 | "Every fix is pinned by a liveness case" was **false for the shell script** (zero tests). | Made TRUE rather than softened: new `FeatureLaneLocalHarnessTest` (10 cases) executes the real script via a new side-effect-free `--dry-run`, wired into `backend-architecture` and `preflight.sh`. Chosen over bats because it needs no new toolchain and lands in the lane that already gates the sibling detector. | the file itself |
+| R2-7 | P3 | Container-ID spoof: the shared-container refusal compared **names**. | Name refusal moved to argument-validation time (pre-docker, hence testable), plus an ID comparison — `docker inspect -f '{{.Id}}'` on both sides — once docker is known available. | executed probe below |
 
 **No existing gate, ceiling, ratchet, pin tag or repository variable was weakened or removed.**
