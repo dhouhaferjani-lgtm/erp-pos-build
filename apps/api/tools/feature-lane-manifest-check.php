@@ -113,6 +113,19 @@ function gatingDefects(array $wf, ?string $jobId, ?string $stepRun): array
     return $reasons;
 }
 
+/**
+ * Whitespace-normalize a GitHub expression so `if:` strings can be compared for
+ * EQUALITY rather than containment (gate-r1 R1-2). Collapses runs of whitespace
+ * — YAML folding, indentation, a line break inside `${{ }}` — and trims. Nothing
+ * else is normalized: reordering or re-parenthesizing an expression produces a
+ * different string on purpose, because this checker does not have a GitHub
+ * expression evaluator and must not pretend to.
+ */
+function normalizeExpression(string $expression): string
+{
+    return trim((string) preg_replace('/\s+/', ' ', $expression));
+}
+
 $apiRoot = dirname(__DIR__);
 $repoRoot = dirname($apiRoot, 2);
 $manifestPath = $apiRoot.'/tests/feature-lane-manifest.json';
@@ -526,9 +539,35 @@ foreach ($lanes as $laneId => $lane) {
     // So flag-gating must be DECLARED (`execution_gate`), VERIFIED against the job
     // guard, and COUNTED out loud until the flag is flipped. Neither direction is
     // free: a job guarded by a `vars.` expression with no declaration fails, and a
-    // declaration naming a flag the job does not reference fails too.
+    // declaration that does not match the job's real guard fails too.
+    //
+    // gate-r1 R1-2: the verification used to be `str_contains($jobIf, $gate)`, and
+    // the reviewer walked straight through it. Containment can only ever prove a
+    // fragment is PRESENT; it can say nothing about what was ADDED around it. The
+    // proven bypass:
+    //
+    //     if: ${{ vars.NEVER_FIRES == 'true' && vars.SELF_HOSTED_RUNNER_READY == 'true' && (…) }}
+    //
+    // still CONTAINS the declared gate, so B4 passed, B4a counted the classes as
+    // merely "parked", B5 tolerated the skip in the aggregate — and the lane could
+    // never execute no matter what the owner flipped. Two independent rules now:
+    //
+    //   (1) `execution_gate` carries the WHOLE canonical `if:` expression and must
+    //       EQUAL the job's real `if:` after whitespace normalization. Equality
+    //       cannot be satisfied by addition. A semantically-equivalent reordering
+    //       false-blocks; that is the accepted trade — a one-line manifest edit
+    //       makes the intended expression explicit and reviewable in one place.
+    //   (2) Independently of the manifest — because rule (1) can be satisfied by
+    //       editing BOTH files — a lane job's `if:` may reference EXACTLY ONE
+    //       distinct `vars.*`. A second repository variable is a second switch
+    //       nobody is tracking, and it is the whole substance of the bypass.
     $gate = $lane['execution_gate'] ?? null;
-    $jobIsVarGuarded = str_contains($jobIf, 'vars.');
+    $jobVars = [];
+    if (preg_match_all('/vars\.[A-Za-z_][A-Za-z0-9_]*/', $jobIf, $varMatches) === false) {
+        $varMatches = [[]];
+    }
+    $jobVars = array_values(array_unique($varMatches[0]));
+    $jobIsVarGuarded = $jobVars !== [];
     if ($jobIsVarGuarded && ($gate === null || $gate === '')) {
         $errors[] = sprintf(
             'LANE "%s" lives in job "%s", whose `if:` is guarded by a repository variable (%s), but the '
@@ -540,20 +579,33 @@ foreach ($lanes as $laneId => $lane) {
             var_export($jobIf, true),
         );
     }
+    if ($jobIsVarGuarded && count($jobVars) > 1) {
+        $errors[] = sprintf(
+            'LANE "%s" lives in job "%s", whose `if:` references %d distinct repository variables (%s). A '
+            .'flag-gated lane may have EXACTLY ONE switch: a second `vars.*` is a second thing that must be '
+            .'true for the lane ever to run, and a never-enabled one parks the lane permanently while every '
+            .'other check here still reports it merely "pending the owner\'s flip".',
+            $laneId,
+            $owningJob,
+            count($jobVars),
+            implode(', ', $jobVars),
+        );
+    }
     if ($gate !== null) {
         if (! is_string($gate) || $gate === '') {
             $errors[] = sprintf('LANE "%s" declares a non-string/empty `execution_gate`.', $laneId);
-        } elseif (! str_contains($jobIf, $gate)) {
+        } elseif (normalizeExpression($gate) !== normalizeExpression($jobIf)) {
             $errors[] = sprintf(
-                'LANE "%s" declares execution_gate %s, but job "%s" `if:` (%s) does not reference it. The '
-                .'declared gate must be the REAL one, or flipping the real flag changes execution while the '
-                .'manifest still reports the lane parked.',
+                'LANE "%s" declares execution_gate %s, but job "%s" carries `if:` %s. These must be the SAME '
+                .'expression (whitespace-normalized): a containment test cannot see an ADDED condition, and '
+                .'an added condition is how a lane is parked forever while the manifest reports it merely '
+                .'waiting on one flip.',
                 $laneId,
                 var_export($gate, true),
                 $owningJob,
                 var_export($jobIf, true),
             );
-        } else {
+        } elseif (count($jobVars) === 1) {
             $gatedLanes[$laneId] = true;
             $gatedLaneJobs[] = $owningJob;
         }
@@ -627,9 +679,55 @@ if ($gatedLanes !== []) {
 // becomes "skipped-and-allowed" to a reader, while this checker still certifies
 // aggregate membership.
 $allowSkipped = null;
+$expectedJobsEnv = null;
 foreach (($workflowYaml['jobs']['all-checks-pass']['steps'] ?? []) as $aggregateStep) {
     if (isset($aggregateStep['env']['ALLOW_SKIPPED_JOBS'])) {
         $allowSkipped = (string) $aggregateStep['env']['ALLOW_SKIPPED_JOBS'];
+    }
+    if (isset($aggregateStep['env']['EXPECTED_JOBS'])) {
+        $expectedJobsEnv = (string) $aggregateStep['env']['EXPECTED_JOBS'];
+    }
+}
+
+// ---- B5a. the aggregate's EXPECTED_JOBS == its own `needs:` list ------------
+// gate-r1 R1-1: the aggregate now refuses to pass unless the `needs` context it
+// parsed contains exactly the jobs it expects — which closes "fails open on empty
+// or malformed JSON", but only if EXPECTED_JOBS itself is honest. Left unchecked
+// it is one more hand-maintained list that can silently go stale: drop a job from
+// it and from `needs` and the gate stops aggregating that job while both files
+// still look tidy. Pinning it here means the list cannot drift from `needs`, and
+// `needs` cannot drift from the lane set (B2 above).
+// Read independently of B2 below (which runs later in this file and re-reads the
+// same key): this block must not depend on statement order to be correct.
+$aggregateNeedsRaw = $workflowYaml['jobs']['all-checks-pass']['needs'] ?? [];
+$aggregateNeedsList = array_values(array_map(
+    'strval',
+    is_array($aggregateNeedsRaw) ? $aggregateNeedsRaw : [$aggregateNeedsRaw],
+));
+if ($expectedJobsEnv === null) {
+    $errors[] = 'AGGREGATE `all-checks-pass` has no `EXPECTED_JOBS` env on any step. Without it the '
+        .'result-evaluation step cannot tell "every dependency succeeded" from "the needs context was '
+        .'empty or unparseable" — the fail-open the gate proved (R1-1).';
+} else {
+    $declaredExpected = array_values(array_filter(
+        array_map('trim', explode(',', $expectedJobsEnv)),
+        static fn (string $s): bool => $s !== '',
+    ));
+    $sortedExpected = $declaredExpected;
+    $sortedNeeds = $aggregateNeedsList;
+    sort($sortedExpected);
+    sort($sortedNeeds);
+    if ($sortedExpected !== $sortedNeeds) {
+        $errors[] = sprintf(
+            'AGGREGATE EXPECTED_JOBS MISMATCH: the step declares %d job(s), `needs:` declares %d. The two '
+            .'must be identical — EXPECTED_JOBS is what proves the parsed `needs` context is complete, so a '
+            .'name missing from it is a dependency the gate silently stops aggregating. Only in needs: %s. '
+            .'Only in EXPECTED_JOBS: %s.',
+            count($declaredExpected),
+            count($aggregateNeedsList),
+            json_encode(array_values(array_diff($sortedNeeds, $sortedExpected))),
+            json_encode(array_values(array_diff($sortedExpected, $sortedNeeds))),
+        );
     }
 }
 $declaredSkippable = $allowSkipped === null
@@ -994,7 +1092,7 @@ if (is_file($quarantinePath)) {
 
                 continue;
             }
-            $class = explode('::', $target)[0];
+            [$class, $method] = array_pad(explode('::', $target), 2, null);
             $file = $apiRoot.'/'.str_replace('\\', '/', lcfirst($class)).'.php';
             if (! is_file($file)) {
                 $errors[] = sprintf(
@@ -1003,7 +1101,38 @@ if (is_file($quarantinePath)) {
                     $target,
                     $file,
                 );
+
+                continue;
             }
+
+            // gate-r1 R1-5: file existence is NOT identity. The runtime hook matches
+            // `Class::method` as a STRING, so `…FooTest::test_does_not_exist` — a
+            // method renamed months ago, or a typo — passed validation, skipped
+            // nothing, and occupied a ceiling slot forever while the lane went green
+            // on a test everyone believed was quarantined. Resolve both halves for
+            // real: the class through the autoloader, the method by reflection.
+            if (! class_exists($class)) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" does not resolve to a loadable class (file %s exists, so the '
+                    .'declared FQCN and the class it actually declares have diverged).',
+                    $target,
+                    $file,
+                );
+
+                continue;
+            }
+            if ($method !== null && ! method_exists($class, $method)) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" names a method that does not exist on %s. The runtime hook '
+                    .'matches on this exact string, so the entry skips NOTHING while still occupying the '
+                    .'ceiling — the silent rot this ratchet exists to prevent. Fix the name or delete it.',
+                    $target,
+                    $class,
+                );
+
+                continue;
+            }
+
             if (! is_array($meta) || empty($meta['reason']) || empty($meta['lane']) || empty($meta['opened'])) {
                 $errors[] = sprintf(
                     'QUARANTINE entry "%s" must carry `lane`, `reason` and `opened`.',
@@ -1012,11 +1141,38 @@ if (is_file($quarantinePath)) {
 
                 continue;
             }
-            if (! isset($lanes[(string) $meta['lane']])) {
+            $declaredLane = (string) $meta['lane'];
+            if (! isset($lanes[$declaredLane])) {
                 $errors[] = sprintf(
                     'QUARANTINE entry "%s" names lane "%s", which is not declared in `lanes`.',
                     $target,
-                    (string) $meta['lane'],
+                    $declaredLane,
+                );
+
+                continue;
+            }
+
+            // The declared lane must be the lane that actually RUNS this target.
+            // Otherwise an entry can be filed under a lane whose owner will never
+            // see it while the class is skipped in a different lane entirely.
+            $targetGroup = null;
+            if (preg_match('/^Tests\\\\Feature\\\\([A-Za-z0-9_]+)\\\\/', $class, $groupMatch) === 1) {
+                $targetGroup = $groupMatch[1];
+            }
+            if ($targetGroup === null) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" is not under a `Tests\\Feature\\<Group>` namespace, so no lane '
+                    .'owns it. Only Feature-lane targets belong in this ratchet.',
+                    $target,
+                );
+            } elseif (($groups[$targetGroup]['lane'] ?? null) !== $declaredLane) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" is filed under lane "%s", but group "%s" is run by %s. File it '
+                    .'under the lane that actually skips it, or its owner never sees the debt.',
+                    $target,
+                    $declaredLane,
+                    $targetGroup,
+                    var_export($groups[$targetGroup]['lane'] ?? '(no lane — the group is deferred/excluded)', true),
                 );
             }
         }

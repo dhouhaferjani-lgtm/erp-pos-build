@@ -51,6 +51,17 @@
 #   scripts/run-feature-lane-local.sh feature-lane-pos --group POS
 #   scripts/run-feature-lane-local.sh feature-lane-catalog --sqlite
 #
+# The ambient environment is NOT trusted: every DB_*/REDIS_* variable is unset and
+# rebuilt here, because these are RefreshDatabase suites and they drop every table
+# in whatever database they are pointed at. Deliberate overrides use a LANE_*
+# namespace no application tooling exports, and each is validated:
+#   LANE_DB_HOST      loopback only (127.0.0.1 / ::1 / localhost)
+#   LANE_DB_PORT      default 5433 (the docker-compose stack)
+#   LANE_DB_DATABASE  must match `autoerp_*test`; default autoerp_lane_test
+#   LANE_DB_USERNAME / LANE_DB_PASSWORD / LANE_REDIS_HOST / LANE_REDIS_PORT
+#   LANE_PG_CONTAINER the container to createdb in (and the ONLY one --docker-db-limits
+#                     will clamp — the shared autoerp_postgres is refused outright)
+#
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -92,7 +103,7 @@ while [ $# -gt 0 ]; do
         --sqlite) USE_SQLITE=1; shift ;;
         --docker-db-limits) DOCKER_DB_LIMITS=1; shift ;;
         --timeout) GROUP_TIMEOUT="${2:-}"; shift 2 ;;
-        -h|--help) sed -n '2,60p' "${BASH_SOURCE[0]}"; exit 0 ;;
+        -h|--help) sed -n '2,64p' "${BASH_SOURCE[0]}"; exit 0 ;;
         -*) die "unknown flag $1" ;;
         *) [ -z "$LANE" ] || die "one lane at a time (got '$LANE' and '$1')"; LANE="$1"; shift ;;
     esac
@@ -131,7 +142,7 @@ echo "==========================================================================
 echo " Feature lane: $LANE"
 echo " groups:       ${#LANE_GROUPS[@]}  (${LANE_GROUPS[*]})"
 echo " classes:      $TOTAL_CLASSES   (~$((TOTAL_CLASSES * 624 / 6000)) min at the measured 6.24 s/class on sqlite)"
-echo " engine:       $([ "$USE_SQLITE" = 1 ] && echo 'sqlite :memory: (phpunit.xml default)' || echo "postgres 127.0.0.1:${DB_PORT:-$DB_PORT_DEFAULT}")"
+echo " engine:       $([ "$USE_SQLITE" = 1 ] && echo 'sqlite :memory: (forced)' || echo "postgres ${LANE_DB_HOST:-127.0.0.1}:${LANE_DB_PORT:-$DB_PORT_DEFAULT}/${LANE_DB_DATABASE:-$DB_NAME_DEFAULT}")"
 echo " envelope:     one process, nice 19, ${GROUP_TIMEOUT}s per group, serial"
 echo " logs:         $LOG_DIR"
 echo "=============================================================================="
@@ -150,26 +161,61 @@ if [ ! -f "$API_DIR/.env.testing" ]; then
         || echo "   (key:generate failed; set APP_KEY in .env.testing by hand if the run cannot boot)"
 fi
 
+# THE AMBIENT ENVIRONMENT IS NOT TRUSTED (gate-r1 R1-3). This script runs
+# RefreshDatabase suites, which DROP EVERY TABLE in the database they are pointed
+# at. The first version defaulted each connection variable from the caller's
+# environment (`${DB_HOST:-127.0.0.1}`), so a shell that had exported DB_* for the
+# local dev database — or a staging one — silently redirected the whole lane onto
+# it. `--sqlite` did not save you either: phpunit.xml pins DB_CONNECTION=sqlite
+# via <env> WITHOUT force="true", so an inherited DB_CONNECTION=pgsql still won.
+#
+# So: every connection variable is UNSET and then constructed here. Deliberate
+# overrides use a LANE_* namespace that no application tooling exports, and every
+# one of them is validated below.
+unset DB_CONNECTION DB_HOST DB_PORT DB_DATABASE DB_CENTRAL_DATABASE DB_USERNAME DB_PASSWORD \
+      DB_SOCKET DB_URL REDIS_HOST REDIS_PORT REDIS_URL
+
 export AUTOERP_QUARANTINE=1          # honour tests/quarantine.json, exactly as the CI lanes do
 export APP_ENV=testing
 export BROADCAST_CONNECTION=null
 export CACHE_STORE=array             # worktree gotcha: config cache resolves to the main tree otherwise
 
-if [ "$USE_SQLITE" = 0 ]; then
+if [ "$USE_SQLITE" = 1 ]; then
+    # FORCED, not merely "left alone": with the PG variables unset above, this
+    # makes the sqlite path unambiguous no matter what the caller exported.
+    export DB_CONNECTION=sqlite
+    export DB_DATABASE=":memory:"
+else
     # Real PostgreSQL, set the same way treasury-spine-pgsql sets it: phpunit.xml
     # pins DB_CONNECTION=sqlite via <env> WITHOUT force="true", so a real
     # environment variable wins and the PG-only tests execute instead of skipping.
     export DB_CONNECTION=pgsql
-    export DB_HOST=${DB_HOST:-127.0.0.1}
-    export DB_PORT=${DB_PORT:-$DB_PORT_DEFAULT}
-    export DB_DATABASE=${DB_DATABASE:-$DB_NAME_DEFAULT}
-    export DB_CENTRAL_DATABASE=${DB_CENTRAL_DATABASE:-$DB_DATABASE}
-    export DB_USERNAME=${DB_USERNAME:-$DB_USER_DEFAULT}
-    export DB_PASSWORD=${DB_PASSWORD:-$DB_PASS_DEFAULT}
-    export REDIS_HOST=${REDIS_HOST:-127.0.0.1}
-    export REDIS_PORT=${REDIS_PORT:-$REDIS_PORT_DEFAULT}
+    export DB_HOST=${LANE_DB_HOST:-127.0.0.1}
+    export DB_PORT=${LANE_DB_PORT:-$DB_PORT_DEFAULT}
+    export DB_DATABASE=${LANE_DB_DATABASE:-$DB_NAME_DEFAULT}
+    export DB_CENTRAL_DATABASE=$DB_DATABASE
+    export DB_USERNAME=${LANE_DB_USERNAME:-$DB_USER_DEFAULT}
+    export DB_PASSWORD=${LANE_DB_PASSWORD:-$DB_PASS_DEFAULT}
+    export REDIS_HOST=${LANE_REDIS_HOST:-127.0.0.1}
+    export REDIS_PORT=${LANE_REDIS_PORT:-$REDIS_PORT_DEFAULT}
 
-    PG_CONTAINER=${PG_CONTAINER:-$PG_CONTAINER_DEFAULT}
+    # ---- destructive-run guards ---------------------------------------------
+    # Loopback only. A lane run must never be able to reach a remote host, and
+    # "someone exported a staging DB_HOST" must fail loudly rather than migrate.
+    case "$DB_HOST" in
+        127.0.0.1|::1|localhost) ;;
+        *) die "refusing to run destructive RefreshDatabase suites against non-loopback host '$DB_HOST'. \
+This script only ever talks to the local docker stack; point LANE_DB_HOST at loopback or unset it." ;;
+    esac
+    # An explicit throwaway-test-database name pattern. `autoerp`, `autoerp_dev`,
+    # `tenant_<uuid>` and every other real database fail this by construction.
+    case "$DB_DATABASE" in
+        autoerp_*test) ;;
+        *) die "refusing to run destructive RefreshDatabase suites against database '$DB_DATABASE'. \
+The lane database name must match 'autoerp_*test' (default: $DB_NAME_DEFAULT)." ;;
+    esac
+
+    PG_CONTAINER=${LANE_PG_CONTAINER:-$PG_CONTAINER_DEFAULT}
     docker inspect "$PG_CONTAINER" >/dev/null 2>&1 \
         || die "postgres container '$PG_CONTAINER' is not running — start the stack with 'docker compose up -d postgres redis'"
     if ! docker exec -e PGPASSWORD="$DB_PASSWORD" "$PG_CONTAINER" \
@@ -178,10 +224,31 @@ if [ "$USE_SQLITE" = 0 ]; then
         docker exec -e PGPASSWORD="$DB_PASSWORD" "$PG_CONTAINER" \
             createdb -U "$DB_USERNAME" "$DB_DATABASE" || die "could not create $DB_DATABASE"
     fi
+
     if [ "$DOCKER_DB_LIMITS" = 1 ]; then
-        echo "-- clamping $PG_CONTAINER to 2 CPUs / 2g for this run"
+        # gate-r1 R1-4: this used to clamp the SHARED autoerp_postgres — the
+        # container every other project on this machine uses — and never put the
+        # limits back, so one lane run permanently degraded the dev stack. Two
+        # changes: the shared container is refused outright, and a dedicated one is
+        # restored on EVERY exit path.
+        if [ "$PG_CONTAINER" = "$PG_CONTAINER_DEFAULT" ]; then
+            die "--docker-db-limits refuses to clamp the SHARED container '$PG_CONTAINER_DEFAULT', which \
+other projects use. Start a dedicated PG for lane runs and pass LANE_PG_CONTAINER=<name>."
+        fi
+        PRIOR_NANO_CPUS=$(docker inspect -f '{{.HostConfig.NanoCpus}}' "$PG_CONTAINER" 2>/dev/null || echo 0)
+        PRIOR_MEMORY=$(docker inspect -f '{{.HostConfig.Memory}}' "$PG_CONTAINER" 2>/dev/null || echo 0)
+        restore_db_limits() {
+            echo "-- restoring $PG_CONTAINER limits (cpus=$PRIOR_NANO_CPUS nano, memory=$PRIOR_MEMORY bytes)"
+            docker update \
+                --cpus="$(awk "BEGIN{printf \"%.3f\", $PRIOR_NANO_CPUS/1000000000}")" \
+                --memory="$PRIOR_MEMORY" --memory-swap="$PRIOR_MEMORY" \
+                "$PG_CONTAINER" >/dev/null 2>&1 \
+                || echo "   (restore failed — check 'docker inspect $PG_CONTAINER' by hand)"
+        }
+        trap restore_db_limits EXIT INT TERM
+        echo "-- clamping $PG_CONTAINER to 2 CPUs / 2g for this run (restored on exit)"
         docker update --cpus=2 --memory=2g --memory-swap=2g "$PG_CONTAINER" >/dev/null \
-            || echo "   (docker update refused; continuing without the clamp)"
+            || die "docker update refused; not continuing with an unclamped container after asking for a clamp"
     fi
 fi
 

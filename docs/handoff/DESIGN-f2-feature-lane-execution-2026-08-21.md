@@ -178,6 +178,29 @@ The event arm deliberately mirrors `all-checks-pass` exactly (dispatch / PR→ma
 cheap gate** and gains nothing from this change; `runs_on_pr_dev: false` is recorded for every new lane and
 verified by the checker against the real job `if:`.
 
+**How the gate declaration is verified — corrected after gate-r1 R1-2.** The first version of this design
+claimed the checker "verifies the declared gate against the real job `if:`", and the reviewer falsified it: the
+verification was `str_contains($jobIf, $declared_gate)`, and **containment can only prove a fragment is present,
+never that nothing was added around it.** The proven bypass was one token —
+
+```yaml
+if: ${{ vars.NEVER_FIRES == 'true' && vars.SELF_HOSTED_RUNNER_READY == 'true' && (…) }}
+```
+
+— which still *contains* the declared gate, so B4 passed, B4a counted the classes as merely "parked", and B5
+tolerated the skip in the aggregate, while the lane could never execute no matter what the owner flipped. Two
+independent rules replace it:
+
+1. **`execution_gate` now carries the WHOLE canonical `if:` expression** and must **equal** the job's real `if:`
+   after whitespace normalization. Equality cannot be satisfied by addition. A semantically-equivalent
+   reordering false-blocks — the accepted trade, since a one-line manifest edit then states the intended
+   expression explicitly, and this checker has no GitHub expression evaluator and must not pretend to.
+2. **A lane job's `if:` may reference exactly ONE distinct `vars.*`** — enforced independently of the manifest,
+   because rule 1 alone could be satisfied by editing both files. A second repository variable is a second
+   switch nobody is tracking.
+
+Both are pinned by liveness cases (`…gated_by_a_second_never_enabled_variable`, `…if_drifts_from_the_declared_gate`).
+
 ### 4.4 The aggregate had to change, and the change is a strengthening
 
 `all-checks-pass` must list every lane job (the manifest checker enforces aggregate membership — a gate outside
@@ -195,6 +218,17 @@ Skip tolerance is **enumerated, never wildcarded**: `ALLOW_SKIPPED_JOBS` names e
 jobs, any other skipped dependency is a hard failure, and the manifest checker asserts **set equality** between
 that list and the set of lanes declaring an `execution_gate`. Adding a name there to quiet a red job fails the
 checker (`test_it_fires_when_the_aggregate_tolerates_a_skip_it_should_not`).
+
+**And the script must not fail open — corrected after gate-r1 R1-1.** The first version evaluated results in a
+`while … done < <(jq …)` loop with `status=0` initialised up front. A process substitution's exit status is
+unobservable, so **an absent or malformed `needs` context produced zero iterations and a green
+"All CI checks have passed!"** — the reviewer reproduced it. The step now (a) parses with the exit code
+observed and refuses anything that is not a JSON object, (b) refuses a context that parses to zero jobs, and
+(c) requires the parsed key set to **equal `EXPECTED_JOBS`**, so a truncated or partial context cannot pass by
+simply not mentioning a failing job. `EXPECTED_JOBS` is itself pinned to the job's own `needs:` list by the
+checker (B5a) so it cannot silently go stale. Eight liveness cases now **execute the real script** lifted out of
+the workflow — happy path, allowed skips, malformed JSON, empty `{}`, absent context, missing job, missing
+`result` key, failed/non-allowlisted-skipped dependency.
 
 ---
 
@@ -215,6 +249,28 @@ scripts/run-feature-lane-local.sh feature-lane-catalog --sqlite     # fast triag
 It writes `docs/sessions/feature-lanes/<lane>-<timestamp>/` with one log per group plus `summary.tsv`
 (group, classes, result, seconds, tests, failures, errors, skipped) — which is the raw material for the §6
 baseline.
+
+**Destructive-run guards — added after gate-r1 R1-3/R1-4.** These are `RefreshDatabase` suites: they **drop
+every table in whatever database they are pointed at.** The first version defaulted each connection variable
+from the caller's environment (`${DB_HOST:-127.0.0.1}`), so a shell that had exported `DB_*` for the dev or a
+staging database silently redirected the entire lane onto it — and `--sqlite` did not save you, because
+`phpunit.xml` pins `DB_CONNECTION=sqlite` via `<env>` *without* `force="true"`, so an inherited
+`DB_CONNECTION=pgsql` still won. Now:
+
+* **The ambient environment is not trusted at all.** Every `DB_*`/`REDIS_*` variable is `unset` and rebuilt in
+  the script. Deliberate overrides use a `LANE_*` namespace that no application tooling exports.
+* **Loopback only.** A non-loopback `LANE_DB_HOST` is refused, not "defaulted away".
+* **Throwaway database names only.** The database must match `autoerp_*test`; `autoerp`, `autoerp_dev` and every
+  `tenant_<uuid>` fail by construction.
+* **`--sqlite` forces** `DB_CONNECTION=sqlite` and `:memory:` rather than relying on absence.
+* **`--docker-db-limits` refuses the shared `autoerp_postgres` outright** (it used to clamp the container every
+  other project on the machine shares, and never restore it). For a dedicated container passed via
+  `LANE_PG_CONTAINER`, the prior `NanoCpus`/`Memory` are recorded and restored from a `trap … EXIT INT TERM`.
+
+Proven by executed probes (2026-08-21): hostile `DB_HOST=10.9.9.9 DB_DATABASE=autoerp` in the ambient
+environment → the run still reports `postgres 127.0.0.1:5433/autoerp_lane_test` and passes;
+`LANE_DB_HOST=10.9.9.9` → refused; `LANE_DB_DATABASE=autoerp` → refused; `--docker-db-limits` on the shared
+container → refused; `--sqlite` under `DB_CONNECTION=pgsql` → `sqlite :memory: (forced)`, 5 s instead of 44 s.
 
 **Resource envelope, and the honest account of it.** PHPUnit runs on the host PHP under `nice -n 19`, one process
 at a time, with a per-group wall-clock alarm (`perl -e alarm`, since macOS ships no `timeout(1)`); memory is
@@ -268,7 +324,7 @@ quarantine applied.
 | **Off by default** | Nothing is skipped unless `AUTOERP_QUARANTINE=1`, which only the eight lane jobs and the local harness set. Every other suite reads the file never. |
 | **Exact targets only** | An entry is one fully-qualified class, or a class plus one method. No globs, directories or regexes — a quarantine cannot widen by accident, and a NEW failure in a quarantined class's *other* methods still fails the lane. |
 | **Shrink-only** | `ceiling` is a non-growth ceiling on the entry count, enforced by `tools/feature-lane-manifest-check.php` (which runs ungated in `backend-architecture`). Growing it is a visible, deliberate edit; `test_it_fires_when_the_quarantine_grows` proves the guard fires. |
-| **Cannot rot into fiction** | Every entry must carry a declared `lane`, a `reason` and an `opened` date, and must name a class file that still exists. A stale entry is a hard failure, not a silent no-op occupying the ceiling. |
+| **Cannot rot into fiction** | Every entry must carry a declared `lane`, a `reason` and an `opened` date. **The target is resolved for real** (gate-r1 R1-5): the class through the autoloader and, for a `::method` entry, by `method_exists` reflection — file existence is not identity, and `…FooTest::test_renamed_last_month` used to pass validation while skipping nothing and occupying a ceiling slot forever. The declared `lane` must also be the lane that actually runs the target's group, or the entry is debt filed where its owner never sees it. |
 | **Visible in the run** | A quarantined test appears as a PHPUnit **skip** in the lane's own output, and the checker prints a counted QUARANTINED line on every CI run. |
 | **Deleting the file is safe** | No file means nothing is skipped — strictly safer — so absence is not an error. There is no way to *widen* the quarantine by deleting something. |
 
@@ -407,12 +463,12 @@ The consequence, stated plainly so nobody discovers it at promotion time:
 | File | Change |
 |---|---|
 | `apps/api/tests/feature-lane-manifest.json` | 70 groups moved `deferred` → `lane`; 70 new lane entries across 8 jobs; `debt_ceiling` 1131 → **1**; new `gated_ceiling` **1130**; new per-lane `execution_gate`. |
-| `apps/api/tools/feature-lane-manifest-check.php` | **Extended, never relaxed.** B4 flag-gated-lane declaration + verification against the real job `if:`; B4a parked-lane per-group ceilings (identical strictness to `deferred`) + global `gated_ceiling`; B5 aggregate skip-tolerance set-equality; E quarantine ratchet validation; two new loud report lines. |
+| `apps/api/tools/feature-lane-manifest-check.php` | **Extended, never relaxed.** B4 flag-gated-lane declaration + canonical-equality verification against the real job `if:` and a one-`vars.*` rule (gate-r1 R1-2); B4a parked-lane per-group ceilings (identical strictness to `deferred`) + global `gated_ceiling`; B5 aggregate skip-tolerance set-equality; B5a `EXPECTED_JOBS` pinned to `needs:` (gate-r1 R1-1); E quarantine ratchet validation incl. autoloader/reflection resolution and lane ownership (gate-r1 R1-5); two new loud report lines. |
 | `.github/workflows/ci.yml` | 8 new self-hosted, flag-gated lane jobs (70 lane steps); `all-checks-pass` reworked to `always()` + explicit per-dependency result evaluation with an enumerated skip-tolerance list. |
 | `apps/api/tests/quarantine.json` | New. Empty, ceiling 0. |
 | `apps/api/tests/Support/QuarantinedTests.php` | New. Reads the ratchet; no-op unless `AUTOERP_QUARANTINE=1`. |
 | `apps/api/tests/TestCase.php` | Three-line hook in `setUp()`, before `parent::setUp()`. |
-| `apps/api/tests/Architecture/FeatureLaneManifestCheckerTest.php` | 6 new liveness cases; 1 existing case de-brittled (its fixture group was laned by this change). |
+| `apps/api/tests/Architecture/FeatureLaneManifestCheckerTest.php` | 19 new liveness cases (6 round 0 + 13 gate-r1, incl. 8 that EXECUTE the aggregate's real shell script); 1 existing case de-brittled (its fixture group was laned by this change). |
 | `scripts/run-feature-lane-local.sh` | New. The interim execution path. |
 | `.github/actionlint.yaml` | New. Declares the custom runner label so `actionlint` stops reporting it as unknown. |
 
@@ -425,7 +481,7 @@ $ php tools/feature-lane-manifest-check.php                       EXIT=0
   ⚠ COVERAGE DEBT: 1 group(s) / 1 class(es) …
 
 $ ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php
-  OK (52 tests, 347 assertions)                                   # 46 pre-existing + 6 new
+  OK (65 tests, 389 assertions)              # 46 pre-existing + 6 (round 0) + 13 (gate-r1)
 
 $ actionlint .github/workflows/ci.yml
   10 findings — all SC2086 `>> $GITHUB_OUTPUT`, all pre-existing (base ci.yml: 10). ZERO new.
@@ -433,5 +489,23 @@ $ actionlint .github/workflows/ci.yml
 $ scripts/run-feature-lane-local.sh feature-lane-platform-misc
   16 groups, 32 classes, 175 tests, 441 s — 13 PASS / 3 FAIL (§6.1)
 ```
+
+### 9.1 gate-r1 fix round (Codex adversarial gate, 2026-08-21)
+
+Five findings, all confirmed with executed probes, all accepted without pushback. Each is now pinned by a
+liveness case that fails on the pre-fix code.
+
+| # | Sev | Defect | Fix | Pinned by |
+|---|---|---|---|---|
+| R1-1 | P1 | `all-checks-pass` **failed open**: jq in an unchecked process substitution + `status=0` init → malformed `needs` JSON exited 0, green. | Parse with the exit code observed; refuse a non-object, a zero-job context, or a key set ≠ `EXPECTED_JOBS`; checker pins `EXPECTED_JOBS` to `needs:` (B5a). | 8 cases that execute the real script (§4.4) + `…expected_jobs_drifts…` |
+| R1-2 | P1 | B4 reduced `if:` semantics to substring containment → a lane gated by an **additional never-enabled** variable passed every check while never running. | Canonical whitespace-normalized **equality**, plus exactly-one-`vars.*` enforced independently. | `…second_never_enabled_variable`, `…if_drifts_from_the_declared_gate` |
+| R1-3 | P1 | Harness could run `RefreshDatabase` against an **arbitrary inherited database**; `--sqlite` did not unset an inherited `DB_CONNECTION=pgsql`. | Ambient `DB_*`/`REDIS_*` unset and rebuilt; `LANE_*` override namespace; loopback-only; `autoerp_*test`-only; `--sqlite` forces. | executed probes (§5) |
+| R1-4 | P2 | `--docker-db-limits` clamped the **shared** `autoerp_postgres` with no restore. | Refuse the shared container; record + `trap`-restore prior limits for a dedicated one. | executed probe (§5) |
+| R1-5 | P2 | Method-level quarantine entries **rotted silently** — existence checked by file only. | Resolve FQCN via autoloader + `method_exists` reflection; require the declared lane to own the target's group. | `…nonexistent_method`, `…wrong_lane` |
+
+Verified clean by the same gate and deliberately not re-touched: aggregate rejection of
+failed/cancelled/non-allowlisted-skipped with valid JSON · `vars.` gate skip semantics vs GitHub docs ·
+`AUTOERP_QUARANTINE` isolation to the eight new jobs · census math · no `permissions` grants · actionlint zero
+new.
 
 **No existing gate, ceiling, ratchet, pin tag or repository variable was weakened or removed.**

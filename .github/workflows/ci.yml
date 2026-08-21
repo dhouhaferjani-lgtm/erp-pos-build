@@ -2498,8 +2498,46 @@ jobs:
           # apps/api/tools/feature-lane-manifest-check.php (backend-architecture,
           # ungated, in this same needs list).
           ALLOW_SKIPPED_JOBS: feature-lane-catalog,feature-lane-data-console,feature-lane-documents,feature-lane-fiscal-finance,feature-lane-inventory,feature-lane-platform-misc,feature-lane-pos,feature-lane-tenancy
+          # EVERY job this gate aggregates — identical to `needs:` above, and
+          # asserted identical by the manifest checker (B5a). This is what lets the
+          # script tell "all dependencies succeeded" apart from "the needs context
+          # was empty, truncated or unparseable": without it, an absent or malformed
+          # NEEDS_JSON produced zero loop iterations and a green step (gate-r1 R1-1,
+          # reproduced by the reviewer).
+          EXPECTED_JOBS: backend-lint,backend-analyse,backend-architecture,backend-dpa-guard,backend-test,backend-test-pgsql,security-regression,treasury-spine-pgsql,feature-lane-pos,feature-lane-fiscal-finance,feature-lane-inventory,feature-lane-catalog,feature-lane-documents,feature-lane-tenancy,feature-lane-data-console,feature-lane-platform-misc,frontend-lint,frontend-typecheck,frontend-test,pos-test,frontend-build,route-manifest-drift,types-drift
         run: |
+          set -o pipefail
           status=0
+          tmp="${RUNNER_TEMP:-.}"
+
+          # 1. PARSE, WITH THE EXIT CODE OBSERVED. The previous form piped jq into a
+          #    process substitution, whose status is unobservable: a parse error just
+          #    closed the stream, the loop ran zero times, and `status` was still 0.
+          if ! printf '%s' "$NEEDS_JSON" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "::error::All Checks Pass: the \`needs\` context is absent or not a JSON object. Refusing to pass."
+            printf 'needs context was: %s\n' "${NEEDS_JSON:-<empty>}"
+            exit 1
+          fi
+          printf '%s' "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key)\t\(.value.result? // "<missing>")"' > "$tmp"/needs.tsv
+
+          # 2. THE PARSED KEY SET MUST BE EXACTLY THE JOBS WE AGGREGATE. A non-empty
+          #    but partial context (a truncated expression, a renamed job) would
+          #    otherwise pass by simply not mentioning the failure.
+          cut -f1 "$tmp"/needs.tsv | LC_ALL=C sort > "$tmp"/needs-jobs.txt
+          printf '%s' "$EXPECTED_JOBS" | tr ',' '\n' | sed '/^$/d' | LC_ALL=C sort > "$tmp"/expected-jobs.txt
+          parsed_count=$(wc -l < "$tmp"/needs-jobs.txt | tr -d ' ')
+          if [ "$parsed_count" -eq 0 ]; then
+            echo "::error::All Checks Pass: the \`needs\` context parsed to ZERO jobs. Refusing to pass."
+            exit 1
+          fi
+          if ! diff -u "$tmp"/expected-jobs.txt "$tmp"/needs-jobs.txt > "$tmp"/jobs.diff; then
+            echo "::error::All Checks Pass: the \`needs\` context does not match EXPECTED_JOBS (-expected/+actual):"
+            cat "$tmp"/jobs.diff
+            exit 1
+          fi
+          echo "aggregating $parsed_count dependencies"
+
+          # 3. EVALUATE EACH RESULT.
           allowed=",${ALLOW_SKIPPED_JOBS},"
           while IFS=$'\t' read -r job result; do
             case "$result" in
@@ -2519,7 +2557,8 @@ jobs:
                 status=1
                 ;;
             esac
-          done < <(echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key)\t\(.value.result)"')
+          done < "$tmp"/needs.tsv
+
           if [ "$status" -ne 0 ]; then
             echo "::error::All Checks Pass: at least one dependency did not succeed."
             exit 1

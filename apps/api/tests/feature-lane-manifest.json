@@ -37,7 +37,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/POS",
       "selector": "./vendor/bin/phpunit tests/Feature/POS/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group POS of the Sales & POS lane."
     },
@@ -46,7 +46,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/Cart",
       "selector": "./vendor/bin/phpunit tests/Feature/Cart/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Cart of the Sales & POS lane."
     },
@@ -55,7 +55,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/Voucher",
       "selector": "./vendor/bin/phpunit tests/Feature/Voucher/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Voucher of the Sales & POS lane."
     },
@@ -64,7 +64,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/Loyalty",
       "selector": "./vendor/bin/phpunit tests/Feature/Loyalty/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Loyalty of the Sales & POS lane."
     },
@@ -73,7 +73,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/Coupon",
       "selector": "./vendor/bin/phpunit tests/Feature/Coupon/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Coupon of the Sales & POS lane."
     },
@@ -82,7 +82,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/Promotion",
       "selector": "./vendor/bin/phpunit tests/Feature/Promotion/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Promotion of the Sales & POS lane."
     },
@@ -91,7 +91,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/Progression",
       "selector": "./vendor/bin/phpunit tests/Feature/Progression/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Progression of the Sales & POS lane."
     },
@@ -100,7 +100,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/Pricing",
       "selector": "./vendor/bin/phpunit tests/Feature/Pricing/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Pricing of the Sales & POS lane."
     },
@@ -109,7 +109,7 @@
       "step": "Feature lane Sales & POS — tests/Feature/SmartPrompts",
       "selector": "./vendor/bin/phpunit tests/Feature/SmartPrompts/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group SmartPrompts of the Sales & POS lane."
     },
@@ -118,7 +118,7 @@
       "step": "Feature lane Fiscal & Finance — tests/Feature/Fiscal",
       "selector": "./vendor/bin/phpunit tests/Feature/Fiscal/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Fiscal of the Fiscal & Finance lane."
     },
@@ -127,7 +127,7 @@
       "step": "Feature lane Fiscal & Finance — tests/Feature/Compliance",
       "selector": "./vendor/bin/phpunit tests/Feature/Compliance/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Compliance of the Fiscal & Finance lane."
     },
@@ -136,7 +136,7 @@
       "step": "Feature lane Fiscal & Finance — tests/Feature/Taxation",
       "selector": "./vendor/bin/phpunit tests/Feature/Taxation/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Taxation of the Fiscal & Finance lane."
     },
@@ -145,7 +145,7 @@
       "step": "Feature lane Fiscal & Finance — tests/Feature/Expense",
       "selector": "./vendor/bin/phpunit tests/Feature/Expense/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Expense of the Fiscal & Finance lane."
     },
@@ -154,7 +154,7 @@
       "step": "Feature lane Fiscal & Finance — tests/Feature/Income",
       "selector": "./vendor/bin/phpunit tests/Feature/Income/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Income of the Fiscal & Finance lane."
     },
@@ -163,7 +163,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/Inventory",
       "selector": "./vendor/bin/phpunit tests/Feature/Inventory/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Inventory of the Inventory & Supply lane."
     },
@@ -172,7 +172,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/BatchExpiry",
       "selector": "./vendor/bin/phpunit tests/Feature/BatchExpiry/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group BatchExpiry of the Inventory & Supply lane."
     },
@@ -181,7 +181,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/Procurement",
       "selector": "./vendor/bin/phpunit tests/Feature/Procurement/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Procurement of the Inventory & Supply lane."
     },
@@ -190,7 +190,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/Replenishment",
       "selector": "./vendor/bin/phpunit tests/Feature/Replenishment/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Replenishment of the Inventory & Supply lane."
     },
@@ -199,7 +199,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/PurchaseHub",
       "selector": "./vendor/bin/phpunit tests/Feature/PurchaseHub/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group PurchaseHub of the Inventory & Supply lane."
     },
@@ -208,7 +208,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/Uom",
       "selector": "./vendor/bin/phpunit tests/Feature/Uom/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Uom of the Inventory & Supply lane."
     },
@@ -217,7 +217,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/Location",
       "selector": "./vendor/bin/phpunit tests/Feature/Location/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Location of the Inventory & Supply lane."
     },
@@ -226,7 +226,7 @@
       "step": "Feature lane Inventory & Supply — tests/Feature/Partner",
       "selector": "./vendor/bin/phpunit tests/Feature/Partner/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Partner of the Inventory & Supply lane."
     },
@@ -235,7 +235,7 @@
       "step": "Feature lane Catalog & Product — tests/Feature/Catalog",
       "selector": "./vendor/bin/phpunit tests/Feature/Catalog/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Catalog of the Catalog & Product lane."
     },
@@ -244,7 +244,7 @@
       "step": "Feature lane Catalog & Product — tests/Feature/Product",
       "selector": "./vendor/bin/phpunit tests/Feature/Product/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Product of the Catalog & Product lane."
     },
@@ -253,7 +253,7 @@
       "step": "Feature lane Catalog & Product — tests/Feature/Channel",
       "selector": "./vendor/bin/phpunit tests/Feature/Channel/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Channel of the Catalog & Product lane."
     },
@@ -262,7 +262,7 @@
       "step": "Feature lane Catalog & Product — tests/Feature/Marketplace",
       "selector": "./vendor/bin/phpunit tests/Feature/Marketplace/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Marketplace of the Catalog & Product lane."
     },
@@ -271,7 +271,7 @@
       "step": "Feature lane Catalog & Product — tests/Feature/Vehicle",
       "selector": "./vendor/bin/phpunit tests/Feature/Vehicle/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Vehicle of the Catalog & Product lane."
     },
@@ -280,7 +280,7 @@
       "step": "Feature lane Catalog & Product — tests/Feature/Menu",
       "selector": "./vendor/bin/phpunit tests/Feature/Menu/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Menu of the Catalog & Product lane."
     },
@@ -289,7 +289,7 @@
       "step": "Feature lane Catalog & Product — tests/Feature/ModelUpdates",
       "selector": "./vendor/bin/phpunit tests/Feature/ModelUpdates/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group ModelUpdates of the Catalog & Product lane."
     },
@@ -298,7 +298,7 @@
       "step": "Feature lane Documents & Service — tests/Feature/Document",
       "selector": "./vendor/bin/phpunit tests/Feature/Document/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Document of the Documents & Service lane."
     },
@@ -307,7 +307,7 @@
       "step": "Feature lane Documents & Service — tests/Feature/DocumentIngestion",
       "selector": "./vendor/bin/phpunit tests/Feature/DocumentIngestion/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group DocumentIngestion of the Documents & Service lane."
     },
@@ -316,7 +316,7 @@
       "step": "Feature lane Documents & Service — tests/Feature/Workshop",
       "selector": "./vendor/bin/phpunit tests/Feature/Workshop/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Workshop of the Documents & Service lane."
     },
@@ -325,7 +325,7 @@
       "step": "Feature lane Documents & Service — tests/Feature/Service",
       "selector": "./vendor/bin/phpunit tests/Feature/Service/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Service of the Documents & Service lane."
     },
@@ -334,7 +334,7 @@
       "step": "Feature lane Documents & Service — tests/Feature/Services",
       "selector": "./vendor/bin/phpunit tests/Feature/Services/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Services of the Documents & Service lane."
     },
@@ -343,7 +343,7 @@
       "step": "Feature lane Documents & Service — tests/Feature/Scheduling",
       "selector": "./vendor/bin/phpunit tests/Feature/Scheduling/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Scheduling of the Documents & Service lane."
     },
@@ -352,7 +352,7 @@
       "step": "Feature lane Documents & Service — tests/Feature/Contact",
       "selector": "./vendor/bin/phpunit tests/Feature/Contact/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Contact of the Documents & Service lane."
     },
@@ -361,7 +361,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Identity",
       "selector": "./vendor/bin/phpunit tests/Feature/Identity/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Identity of the Tenancy & Identity lane."
     },
@@ -370,7 +370,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Tenant",
       "selector": "./vendor/bin/phpunit tests/Feature/Tenant/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Tenant of the Tenancy & Identity lane."
     },
@@ -379,7 +379,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Company",
       "selector": "./vendor/bin/phpunit tests/Feature/Company/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Company of the Tenancy & Identity lane."
     },
@@ -388,7 +388,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/CompanyConfig",
       "selector": "./vendor/bin/phpunit tests/Feature/CompanyConfig/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group CompanyConfig of the Tenancy & Identity lane."
     },
@@ -397,7 +397,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Admin",
       "selector": "./vendor/bin/phpunit tests/Feature/Admin/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Admin of the Tenancy & Identity lane."
     },
@@ -406,7 +406,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/SupportAccess",
       "selector": "./vendor/bin/phpunit tests/Feature/SupportAccess/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group SupportAccess of the Tenancy & Identity lane."
     },
@@ -415,7 +415,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Permissions",
       "selector": "./vendor/bin/phpunit tests/Feature/Permissions/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Permissions of the Tenancy & Identity lane."
     },
@@ -424,7 +424,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Authorization",
       "selector": "./vendor/bin/phpunit tests/Feature/Authorization/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Authorization of the Tenancy & Identity lane."
     },
@@ -433,7 +433,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Subscription",
       "selector": "./vendor/bin/phpunit tests/Feature/Subscription/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Subscription of the Tenancy & Identity lane."
     },
@@ -442,7 +442,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Billing",
       "selector": "./vendor/bin/phpunit tests/Feature/Billing/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Billing of the Tenancy & Identity lane."
     },
@@ -451,7 +451,7 @@
       "step": "Feature lane Tenancy & Identity — tests/Feature/Modules",
       "selector": "./vendor/bin/phpunit tests/Feature/Modules/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Modules of the Tenancy & Identity lane."
     },
@@ -460,7 +460,7 @@
       "step": "Feature lane Data & Console — tests/Feature/Console",
       "selector": "./vendor/bin/phpunit tests/Feature/Console/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Console of the Data & Console lane."
     },
@@ -469,7 +469,7 @@
       "step": "Feature lane Data & Console — tests/Feature/Seeders",
       "selector": "./vendor/bin/phpunit tests/Feature/Seeders/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Seeders of the Data & Console lane."
     },
@@ -478,7 +478,7 @@
       "step": "Feature lane Data & Console — tests/Feature/Import",
       "selector": "./vendor/bin/phpunit tests/Feature/Import/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Import of the Data & Console lane."
     },
@@ -487,7 +487,7 @@
       "step": "Feature lane Data & Console — tests/Feature/Migration",
       "selector": "./vendor/bin/phpunit tests/Feature/Migration/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Migration of the Data & Console lane."
     },
@@ -496,7 +496,7 @@
       "step": "Feature lane Data & Console — tests/Feature/Migrations",
       "selector": "./vendor/bin/phpunit tests/Feature/Migrations/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Migrations of the Data & Console lane."
     },
@@ -505,7 +505,7 @@
       "step": "Feature lane Data & Console — tests/Feature/Schema",
       "selector": "./vendor/bin/phpunit tests/Feature/Schema/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Schema of the Data & Console lane."
     },
@@ -514,7 +514,7 @@
       "step": "Feature lane Data & Console — tests/Feature/CountryDefaults",
       "selector": "./vendor/bin/phpunit tests/Feature/CountryDefaults/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group CountryDefaults of the Data & Console lane."
     },
@@ -523,7 +523,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/PlatformIntegration",
       "selector": "./vendor/bin/phpunit tests/Feature/PlatformIntegration/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group PlatformIntegration of the Platform & Misc lane."
     },
@@ -532,7 +532,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Api",
       "selector": "./vendor/bin/phpunit tests/Feature/Api/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Api of the Platform & Misc lane."
     },
@@ -541,7 +541,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Http",
       "selector": "./vendor/bin/phpunit tests/Feature/Http/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Http of the Platform & Misc lane."
     },
@@ -550,7 +550,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Architecture",
       "selector": "./vendor/bin/phpunit tests/Feature/Architecture/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Architecture of the Platform & Misc lane."
     },
@@ -559,7 +559,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Bootstrap",
       "selector": "./vendor/bin/phpunit tests/Feature/Bootstrap/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Bootstrap of the Platform & Misc lane."
     },
@@ -568,7 +568,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Broadcasting",
       "selector": "./vendor/bin/phpunit tests/Feature/Broadcasting/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Broadcasting of the Platform & Misc lane."
     },
@@ -577,7 +577,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Communication",
       "selector": "./vendor/bin/phpunit tests/Feature/Communication/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Communication of the Platform & Misc lane."
     },
@@ -586,7 +586,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Notification",
       "selector": "./vendor/bin/phpunit tests/Feature/Notification/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Notification of the Platform & Misc lane."
     },
@@ -595,7 +595,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Dashboard",
       "selector": "./vendor/bin/phpunit tests/Feature/Dashboard/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Dashboard of the Platform & Misc lane."
     },
@@ -604,7 +604,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/EventSourcing",
       "selector": "./vendor/bin/phpunit tests/Feature/EventSourcing/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group EventSourcing of the Platform & Misc lane."
     },
@@ -613,7 +613,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Events",
       "selector": "./vendor/bin/phpunit tests/Feature/Events/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Events of the Platform & Misc lane."
     },
@@ -622,7 +622,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Jobs",
       "selector": "./vendor/bin/phpunit tests/Feature/Jobs/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Jobs of the Platform & Misc lane."
     },
@@ -631,7 +631,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Performance",
       "selector": "./vendor/bin/phpunit tests/Feature/Performance/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Performance of the Platform & Misc lane."
     },
@@ -640,7 +640,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Precision",
       "selector": "./vendor/bin/phpunit tests/Feature/Precision/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Precision of the Platform & Misc lane."
     },
@@ -649,7 +649,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/Shared",
       "selector": "./vendor/bin/phpunit tests/Feature/Shared/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Shared of the Platform & Misc lane."
     },
@@ -658,7 +658,7 @@
       "step": "Feature lane Platform & Misc — tests/Feature/T2",
       "selector": "./vendor/bin/phpunit tests/Feature/T2/",
       "runs_on_pr_dev": false,
-      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "execution_gate": "${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}",
       "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
       "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group T2 of the Platform & Misc lane."
     }

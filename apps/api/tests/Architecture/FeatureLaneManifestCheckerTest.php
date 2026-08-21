@@ -97,6 +97,196 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         file_put_contents($this->sandbox.'/.github/workflows/ci.yml', $contents);
     }
 
+    // ---- gate-r1 R1-1: the aggregate's own result-evaluation script ----------
+    //
+    // The `all-checks-pass` step is a shell script that decides whether the whole
+    // pipeline passed, and it shipped FAILING OPEN: jq ran inside a process
+    // substitution whose status nothing observed, so malformed JSON produced zero
+    // loop iterations and a green "All CI checks have passed!". A checker cannot
+    // catch that — it is behaviour, not structure — so these cases EXECUTE the real
+    // script, lifted straight out of the workflow, against crafted `needs` contexts.
+
+    /** @return array{run: string, env: array<string,string>} */
+    private function aggregateStep(): array
+    {
+        /** @var array{jobs: array<string, array{steps?: list<array<string,mixed>>}>} $yaml */
+        $yaml = Yaml::parse((string) file_get_contents($this->sandbox.'/.github/workflows/ci.yml'));
+        foreach (($yaml['jobs']['all-checks-pass']['steps'] ?? []) as $step) {
+            if (isset($step['run']) && isset($step['env']['EXPECTED_JOBS'])) {
+                /** @var array<string,string> $env */
+                $env = array_map('strval', $step['env']);
+
+                return ['run' => (string) $step['run'], 'env' => $env];
+            }
+        }
+
+        self::fail('all-checks-pass has no result-evaluation step carrying EXPECTED_JOBS');
+    }
+
+    /** @return list<string> */
+    private function aggregateExpectedJobs(): array
+    {
+        return array_values(array_filter(
+            array_map('trim', explode(',', $this->aggregateStep()['env']['EXPECTED_JOBS'])),
+            static fn (string $s): bool => $s !== '',
+        ));
+    }
+
+    /**
+     * Run the REAL aggregate script with a crafted `needs` context.
+     *
+     * @return array{0:int,1:string}
+     */
+    private function runAggregate(string $needsJson): array
+    {
+        self::assertNotFalse(
+            shell_exec('command -v jq'),
+            'jq must be installed: the aggregate script parses the needs context with it',
+        );
+
+        $step = $this->aggregateStep();
+        $script = $this->sandbox.'/aggregate.sh';
+        // `bash -e {0}` is GitHub's default shell for a `run:` block on Linux.
+        file_put_contents($script, "#!/usr/bin/env bash\nset -e\n".$step['run']);
+
+        $env = $step['env'];
+        $env['NEEDS_JSON'] = $needsJson;
+        $env['RUNNER_TEMP'] = $this->sandbox;
+
+        $prefix = '';
+        foreach ($env as $key => $value) {
+            $prefix .= $key.'='.escapeshellarg($value).' ';
+        }
+
+        $output = [];
+        $exit = 0;
+        exec($prefix.'bash '.escapeshellarg($script).' 2>&1', $output, $exit);
+
+        return [$exit, implode("\n", $output)];
+    }
+
+    /**
+     * A `needs` context in which every expected job succeeded, with per-job
+     * overrides applied and named jobs dropped.
+     *
+     * @param  array<string,string>  $results
+     * @param  list<string>  $drop
+     * @param  array<string,string>  $add
+     */
+    private function needsContext(array $results = [], array $drop = [], array $add = []): string
+    {
+        $needs = [];
+        foreach ($this->aggregateExpectedJobs() as $job) {
+            if (in_array($job, $drop, true)) {
+                continue;
+            }
+            $needs[$job] = ['result' => $results[$job] ?? 'success'];
+        }
+        foreach ($add as $job => $result) {
+            $needs[$job] = ['result' => $result];
+        }
+
+        return (string) json_encode($needs, JSON_THROW_ON_ERROR);
+    }
+
+    public function test_the_aggregate_passes_when_every_dependency_succeeded(): void
+    {
+        [$exit, $out] = $this->runAggregate($this->needsContext());
+
+        self::assertSame(0, $exit, $out);
+        self::assertStringContainsString('All CI checks have passed!', $out);
+    }
+
+    public function test_the_aggregate_passes_when_only_flag_gated_lanes_are_skipped(): void
+    {
+        $skipped = [];
+        foreach (explode(',', $this->aggregateStep()['env']['ALLOW_SKIPPED_JOBS']) as $job) {
+            $skipped[trim($job)] = 'skipped';
+        }
+        self::assertNotSame([], $skipped);
+
+        [$exit, $out] = $this->runAggregate($this->needsContext($skipped));
+
+        self::assertSame(0, $exit, $out);
+        self::assertStringContainsString('All CI checks have passed!', $out);
+    }
+
+    /** THE BUG THE GATE PROVED: malformed JSON used to exit 0 with a green message. */
+    public function test_the_aggregate_fails_on_malformed_needs_json(): void
+    {
+        [$exit, $out] = $this->runAggregate('{"backend-lint": {"result": ');
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringNotContainsString('All CI checks have passed!', $out);
+        self::assertStringContainsString('not a JSON object', $out);
+    }
+
+    public function test_the_aggregate_fails_on_an_empty_needs_context(): void
+    {
+        [$exit, $out] = $this->runAggregate('{}');
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringNotContainsString('All CI checks have passed!', $out);
+    }
+
+    public function test_the_aggregate_fails_on_an_absent_needs_context(): void
+    {
+        [$exit, $out] = $this->runAggregate('');
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringNotContainsString('All CI checks have passed!', $out);
+    }
+
+    /** A partial context must not pass by simply not mentioning a job. */
+    public function test_the_aggregate_fails_when_a_dependency_is_missing_from_the_context(): void
+    {
+        [$exit, $out] = $this->runAggregate($this->needsContext(drop: ['security-regression']));
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('does not match EXPECTED_JOBS', $out);
+        self::assertStringNotContainsString('All CI checks have passed!', $out);
+    }
+
+    public function test_the_aggregate_fails_when_a_dependency_result_is_missing(): void
+    {
+        $needs = json_decode($this->needsContext(), true, 512, JSON_THROW_ON_ERROR);
+        $needs['backend-lint'] = [];
+        [$exit, $out] = $this->runAggregate((string) json_encode($needs, JSON_THROW_ON_ERROR));
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('<missing>', $out);
+        self::assertStringNotContainsString('All CI checks have passed!', $out);
+    }
+
+    public function test_the_aggregate_fails_on_a_failed_or_non_allowlisted_skipped_dependency(): void
+    {
+        [$failExit, $failOut] = $this->runAggregate($this->needsContext(['backend-test' => 'failure']));
+        self::assertSame(1, $failExit, $failOut);
+
+        [$skipExit, $skipOut] = $this->runAggregate($this->needsContext(['backend-test' => 'skipped']));
+        self::assertSame(1, $skipExit, $skipOut);
+        self::assertStringContainsString('not an allowed skip', $skipOut);
+    }
+
+    /**
+     * EXPECTED_JOBS is what proves the parsed context is complete, so it must not be
+     * allowed to drift from the `needs:` list it mirrors.
+     */
+    public function test_it_fires_when_expected_jobs_drifts_from_the_needs_list(): void
+    {
+        $wf = $this->workflow();
+        $this->writeWorkflow(str_replace(
+            'EXPECTED_JOBS: backend-lint,',
+            'EXPECTED_JOBS: ',
+            $wf,
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('EXPECTED_JOBS MISMATCH', $out);
+    }
+
     public function test_it_passes_on_the_real_tree(): void
     {
         [$exit, $out] = $this->runChecker();
@@ -249,7 +439,107 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         [$exit, $out] = $this->runChecker();
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('does not reference it', $out);
+        self::assertStringContainsString('must be the SAME expression', $out);
+    }
+
+    /**
+     * gate-r1 R1-2 — THE REVIEWER'S EXACT BYPASS.
+     *
+     * The gate check used to be `str_contains($jobIf, $gate)`. Containment can only
+     * prove a fragment is PRESENT; it says nothing about what was added around it.
+     * Prefixing a second, never-enabled repository variable left the declared gate
+     * intact — so B4 passed, B4a counted the classes as merely "parked", B5
+     * tolerated the skip — while the lane could never run whatever the owner
+     * flipped. Asserted here in the harder form: the manifest is edited to match the
+     * new expression too, so only the one-variable rule can catch it.
+     */
+    public function test_it_fires_when_a_lane_job_is_gated_by_a_second_never_enabled_variable(): void
+    {
+        $canonical = "\${{ vars.SELF_HOSTED_RUNNER_READY == 'true' &&";
+        $bypass = "\${{ vars.NEVER_FIRES == 'true' && vars.SELF_HOSTED_RUNNER_READY == 'true' &&";
+
+        $wf = $this->workflow();
+        self::assertStringContainsString($canonical, $wf);
+        $this->writeWorkflow(str_replace($canonical, $bypass, $wf));
+
+        // Keep the manifest honest about the new expression, so the equality rule is
+        // satisfied and ONLY the "exactly one vars.*" rule can fire.
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        foreach ($manifest['lanes'] as $laneId => $lane) {
+            if (isset($lane['execution_gate'])) {
+                $manifest['lanes'][$laneId]['execution_gate'] = str_replace(
+                    $canonical,
+                    $bypass,
+                    (string) $lane['execution_gate'],
+                );
+            }
+        }
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('distinct repository variables', $out);
+        self::assertStringContainsString('vars.NEVER_FIRES', $out);
+    }
+
+    /** The same bypass with the manifest left alone must fail on equality alone. */
+    public function test_it_fires_when_a_lane_job_if_drifts_from_the_declared_gate(): void
+    {
+        $wf = $this->workflow();
+        $this->writeWorkflow(str_replace(
+            "\${{ vars.SELF_HOSTED_RUNNER_READY == 'true' &&",
+            "\${{ vars.NEVER_FIRES == 'true' && vars.SELF_HOSTED_RUNNER_READY == 'true' &&",
+            $wf,
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('must be the SAME expression', $out);
+    }
+
+    /**
+     * gate-r1 R1-5: file existence is not identity. A method-level entry naming a
+     * method that no longer exists skips NOTHING while still occupying the ceiling —
+     * a passing checker and a quarantine that never fires.
+     */
+    public function test_it_fires_on_a_quarantine_entry_naming_a_nonexistent_method(): void
+    {
+        $quarantinePath = $this->sandbox.'/apps/api/tests/quarantine.json';
+        $quarantine = json_decode((string) file_get_contents($quarantinePath), true, 512, JSON_THROW_ON_ERROR);
+        $quarantine['ceiling'] = 1;
+        $quarantine['entries']['Tests\\Feature\\Admin\\AdminDashboardStatsTest::test_does_not_exist'] = [
+            'lane' => 'feature-lane-tenancy/Admin',
+            'reason' => 'planted by the liveness test',
+            'opened' => '2026-08-21',
+        ];
+        file_put_contents($quarantinePath, json_encode($quarantine, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('names a method that does not exist', $out);
+    }
+
+    /** An entry filed under a lane that does not run it is debt its owner never sees. */
+    public function test_it_fires_on_a_quarantine_entry_filed_under_the_wrong_lane(): void
+    {
+        $quarantinePath = $this->sandbox.'/apps/api/tests/quarantine.json';
+        $quarantine = json_decode((string) file_get_contents($quarantinePath), true, 512, JSON_THROW_ON_ERROR);
+        $quarantine['ceiling'] = 1;
+        $quarantine['entries']['Tests\\Feature\\Admin\\AdminDashboardStatsTest'] = [
+            'lane' => 'feature-lane-pos/POS',
+            'reason' => 'planted by the liveness test',
+            'opened' => '2026-08-21',
+        ];
+        file_put_contents($quarantinePath, json_encode($quarantine, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('is run by', $out);
     }
 
     /**
