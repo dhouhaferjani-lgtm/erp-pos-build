@@ -44,7 +44,11 @@
   },
   "interval": {
     "km": "كل {{count}} كم",
+    "months_zero": "كل {{count}} شهر",
     "months_one": "كل {{count}} شهر",
+    "months_two": "كل شهرين",
+    "months_few": "كل {{count}} أشهر",
+    "months_many": "كل {{count}} شهرًا",
     "months_other": "كل {{count}} شهرًا"
   },
   "applicability": {

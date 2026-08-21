@@ -21,6 +21,11 @@
       "loadError": "تعذر تحميل المدفوعات القادمة",
       "overdue": "متأخر",
       "daysUntilDue": "يستحق خلال {{count}} يوم",
+      "daysUntilDue_zero": "يستحق خلال {{count}} يوم",
+      "daysUntilDue_one": "يستحق خلال {{count}} يوم",
+      "daysUntilDue_two": "يستحق خلال يومين",
+      "daysUntilDue_few": "يستحق خلال {{count}} أيام",
+      "daysUntilDue_many": "يستحق خلال {{count}} يومًا",
       "daysUntilDue_other": "يستحق خلال {{count}} أيام",
       "buckets": {
         "overdue": "متأخر",
@@ -29,6 +34,15 @@
         "days31To60": "31-60 يوم",
         "days90Plus": "90+ يوم"
       }
+    },
+    "echeancier": {
+      "title": "جدول الاستحقاقات — الاستحقاقات القادمة",
+      "subtitle": "أدوات الدفع المستحقّة خلال الثلاثين يومًا القادمة",
+      "incoming": "واردة",
+      "outgoing": "صادرة",
+      "openRegister": "فتح السجلّ",
+      "empty": "لا توجد أدوات تستحقّ خلال هذه الفترة.",
+      "atSight": "عند الاطّلاع"
     },
     "trend": {
       "revenueVsExpenses": "إيرادات ومصاريف الفترة الحالية",
