@@ -40,7 +40,8 @@
     },
     "Accounting": {
       "lane": "treasury-spine-pgsql/feature-accounting",
-      "classes": 79
+      "classes": 81,
+      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 81 on disk at the 2026-08-21 accepted tip."
     },
     "Admin": {
       "deferred": true,

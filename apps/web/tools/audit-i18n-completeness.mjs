@@ -793,9 +793,9 @@ function main() {
   if (opts.json) {
     console.log(JSON.stringify({ stats, fresh, covered, stale, findings }, null, 2));
   } else if (!failed) {
-    // Report WIRED keys, not the raw authored count: 1998 of Arabic's authored
+    // Report WIRED keys, not the raw authored count: 1986 of Arabic's authored
     // keys sit behind whole-namespace English aliases and are never served, so
-    // a single `ar=4702` reads as coverage it does not have.
+    // a single `ar=4697` reads as coverage it does not have.
     const perLocale = Object.entries(stats.keysPerLocale)
       .map(([l, n]) => {
         const behind = stats.keysBehindAliases[l] ?? 0;

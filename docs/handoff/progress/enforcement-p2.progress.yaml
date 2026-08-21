@@ -13,7 +13,9 @@ harness: docs/handoff/SELF-REVIEW-HARNESS.md
 # (r21 of the brief applies all 17 gate-r1 findings, round-0 R0-3/R0-4 + r7-R0-1 + r9-R0-1 + r11-R0-1 + r13-R0-1 + r17-R0-1 + r20-R0-1, the 11 gate-r2 findings, the 6 gate-r3 findings, the 7 gate-r4 findings, the 7 gate-r5 findings, the 6 gate-r6 findings, the 4 gate-r7 findings, the 5 gate-r8 findings, the 6 gate-r9 findings, the 7 gate-r10 findings, and the 3 gate-r11 findings; re-gate before dispatch). Per-milestone registers land here:
 review_register: docs/handoff/reviews/enforcement-p2/
 reviewer_model: opus
-max_fix_rounds: 5
+# 5 → 7: parent continuation ruling 2026-08-21 (manifest raise, fold-in rebase onto ab94195d8) —
+# stale-A documentation rounds; authority = the manifest comment + the parent ruling it quotes.
+max_fix_rounds: 7
 
 # PIN AT DISPATCH. base_sha = the SHA the parent names for the quiet window. M0 additionally requires
 # quiet_window_ack (below) — this package edits .github/workflows/ci.yml, changing CI behaviour for
@@ -24,7 +26,9 @@ max_fix_rounds: 5
 # rebased onto the new tip (conflicts: statements/api.ts meta — resolved to this package's accepted
 # content; ci.yml aggregate needs — dev's list + this package's security-regression insertion;
 # generated.d.ts — net-zero here, dev's regenerated file kept). Receipt re-pinned to match.
-base_sha: a4a8c2293dcf7556045f44d35cfa5f734be8022b
+# 2nd RE-PIN 2026-08-21: max-raise fold-in — the p2 max_fix_rounds continuation ruling is a dev
+# commit (ab94195d8), so the series was rebased onto it (conflict-free) and base re-pinned in step.
+base_sha: ab94195d8dbd79be44c4b9ce809942250ec37009
 # Parent records here, BEFORE dispatch (gate-r2 R2-H-1 SPLIT — the final checklist does not exist until
 # M3, so M0 attests only the PRELIMINARY state): the owner-approved quiet window AND that a PRELIMINARY
 # scope notice (what will change, roughly when) was SENT to all active lanes (brief F-6).
@@ -126,7 +130,7 @@ ratchet_trust_model_ack: "2026-08-19, at dev 60df88a01b52828665caf33809486bdf0a6
 # sha256 RE-PINNED 2026-08-21 with the stale-A re-base: the manifest legitimately changed after this
 # package's dispatch (p1 max_fix_rounds raises 5→…→10, each an owner-ruled dev commit); the p2 block
 # it projects is UNCHANGED (M4 / frontend-conventions,tenancy-authz / max 5). Receipt re-pinned in step.
-control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 7d53797b1849b6adeb2fcb39789935a48fc32a6f4804a9833d4bb8a78f1aa2b7}
+control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 7c298d5fbe0b35d9cd3970f57d3c49c03fa219a6eb44976dbe1d478c7da6a811}
 
 owner_gates:
   # informational — NO milestone below carries an `owner_gate:` field. The harness treats a populated
@@ -280,7 +284,7 @@ milestones:
     title: "WHOLE-PACKAGE GATE (no new implementation, gate-r1 H-8): rerun the full accumulated evidence with EVERY lens this package used (frontend-conventions, tenancy-authz) over the integrated branch — pnpm lint / node tools/audit-i18n-completeness.mjs / pnpm test:tools (the exact CI command string — gate-r2 R2-H-3) / pnpm test:eslint-rules all green — each preceded by the LOCAL AUTHORITY SETUP export (gate-r4 R4-H-4); local workflow-change evidence per brief §5 (no executor CI links — the remote proof is the owner's PRE-promotion workflow_dispatch gate on EXACTLY the accepted SHA, receipt recorded post-promotion in pre_promotion_ci_dispatch, gate-r2 R2-C-2/R2-H-2 + gate-r3 R3-C-2; the handback names the step/job ids that run must show executed); scope proof git diff --stat <base_sha>..HEAD + allowlist. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
     review_lenses: [frontend-conventions, tenancy-authz]
     status: review
-    fix_rounds: 4
+    fix_rounds: 5
     # NOT self-recordable: the handover tip would have to contain its own SHA (the
     # same fixed point R7-C-2 describes for the closing commit). The accepted tip is
     # carried by the executor's handover report, the handback header, and the

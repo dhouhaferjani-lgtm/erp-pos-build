@@ -1162,7 +1162,7 @@ jobs:
         # Shrink-only per-locale key + CLDR-plural completeness, computed on
         # AUTHORED-LOCALE PROVENANCE (the per-locale source translation files).
         # The merged i18next `resources` object cannot be trusted: it aliases
-        # 23 whole namespaces to English for `ar` and spread-merges English
+        # 22 whole namespaces to English for `ar` and spread-merges English
         # keys underneath partial Arabic objects, so a scanner reading it
         # reports vacuous full parity.
         # DISCRETE STEP ON PURPOSE: this job does NOT run `pnpm lint` (the

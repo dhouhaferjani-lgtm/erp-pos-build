@@ -2017,15 +2017,20 @@ it**: it runs on the accepted SHA, where the tree is self-consistent and green. 
 red-on-arrival for everyone is precisely the "never land cold" prohibition this checklist exists to
 enforce, produced by the checklist's own author.
 
-**Fixed documentarily** — new **§8 item 0**, the first thing in "Owed at promotion": re-baseline
-`Inventory` → 106, `CountryDefaults` → 28, `debt_ceiling` → 1116 in the first commit on `dev` after the
-merge, or regenerate against the merged tree and confirm the checker exits 0 **on `dev`** before any
-other lane opens a PR.
+**Fixed documentarily at the round** — a §8 item 0 instructing a post-merge re-baseline (the literal
+values quoted then: `Inventory` → 106, `CountryDefaults` → 28, `debt_ceiling` → 1116).
 
-**Why not pre-raise them in the candidate** (considered, rejected, and the reviewer agrees): a ceiling
-copied from another checkout's `dev` introduces exactly the slack round 8 verified absent, and `dev`
-keeps moving — it would be stale again by merge time. The re-baseline has to happen against the merged
-tree, so it belongs in the promotion sequence, not in the candidate.
+**Why not pre-raise them in the candidate** (the round-time rationale, superseded): a ceiling copied
+from another checkout's `dev` introduces slack and would be stale by merge time.
+
+> **⚠️ SUPERSEDED 2026-08-21 (stale-A rebase).** Both halves of this ruling were overtaken when the
+> package was REBASED onto the then-current `dev` tip `a4a8c2293`: the ceilings were regenerated
+> against that merged tree IN-CANDIDATE (Phase 5.5.1 — `debt_ceiling` **1131**, checker exit 0 at A),
+> so the "pre-raise introduces slack" objection no longer applies (the raise is a regeneration on the
+> actual base, not a copy from another checkout), and the literal 1116 above must NOT be executed —
+> doing so would LOWER the shipped ceiling by 15 and red `backend-architecture` for every lane.
+> §8 item 0's only surviving instruction is regenerate-and-verify if `dev` moves again (see the
+> announcement's rewritten §8 item 0).
 
 ### (84) ⚠️ P1-2 — "No lane currently does this — verified across all worktrees" was FALSE
 
@@ -2340,3 +2345,22 @@ which is why it is the right fix rather than another number.
 
 The third P3 ratified the 2(a) disposition and recorded that the branch taken matches none of the
 brief's four bullets exactly — which is what §M0 flagged prominently at the time.
+
+### (104) Event-ratchet PR→dev fold-in — a CI-contract change added at the stale-A rebase, on a parent ticket
+
+**Decision (2026-08-21, parent-as-executor under the owner's recorded delegation):** add a third
+`backend-architecture` step running `tests/Architecture/OrphanedEventRatchetTest.php` +
+`tests/Architecture/ProjectorEmissionRatchetTest.php` by path (Phase 5.5.1).
+
+**Authority:** NOT an executor invention — the parent ledger's es-A0 whole-lane F-1 reconciliation
+item ticketed exactly this to this package: the two ratchets were wired into `backend-test`, whose
+job-level `if:` skips PR→dev, so "they gate NOTHING on dev pushes/PR→dev. True wiring = a CI-contract
+change belonging to the P2 quiet-window regime; fold into the ci.yml three-lane reconciliation at
+promotion." The es-A0 wave itself declined to do it in-wave (rule 4 — editing the job matrix from a
+fiscal-verifier wave) and left the pointer.
+
+**Shape:** named files, not the whole `tests/Architecture` directory (which carries 4 unrelated
+inherited baseline failures, named in the `backend-dpa-guard` job comment); SQLite-safe, no DB rows,
+no extra env (phpunit.xml self-carries `APP_KEY` + sqlite); the `backend-test` copy stays for
+main-boundary locality. Verified green by path at the tip: OK (8 tests, 9 assertions). Announced in
+the announcement §2 row 6 + §3(c) + both S-14 dispatch-verification lists; handback deviation 9.

@@ -19,16 +19,19 @@
 
 ---
 
-## 1. ⚠️ READ THIS FIRST — **ten** in-flight lanes will go RED without a one-line edit
+## 1. ⚠️ READ THIS FIRST — **eight** in-flight lanes will go RED without a one-line edit
 
 P2 adds a **non-growth ceiling** per `tests/Feature` group that no CI lane runs. Adding a Feature test
 to such a group now **hard-fails** `backend-architecture`. This is the intended behaviour — the
 laneless hole must not grow silently — and the remedy is one number, in the same commit.
 
+> **Dropped from this table at the 2026-08-21 stale-A rebase, by this file's own §10 inclusion
+> rule:** `codex/dn-consolidation-2026-08-12` (+9 `Document`) and `codex/es-wave-a0` (+6 `Fiscal`)
+> are now ancestors of the base — their classes are in the shipped manifest's regenerated ceilings
+> (74 / 79). **Executing their old rows would create 15 units of permanent, unreported slack.**
+
 | Lane | groups it **adds classes to** | ceiling now | what you must do |
 |---|---|---|---|
-| `codex/dn-consolidation-2026-08-12` | `Document` **+9** | 65 | raise `Document` by **9** **and** `debt_ceiling` by 9 |
-| `codex/es-wave-a0` | `Fiscal` **+6** | 73 | raise `Fiscal` by **6** **and** `debt_ceiling` by 6 |
 | `codex/openapi-contract-a-to-z` | **new group `OpenApi` +6** | — | **§1a — disposition the group**, then raise `debt_ceiling` by 6 if deferred |
 | `l6-integration-verify` | `Http` **+2**, `Modules` **+4**, `Tenant` **+2** | 2 / 53 / 29 | raise all three **and** `debt_ceiling` by 8 |
 | `fix/r2d-bcmath-hardening` | `Modules` **+2** | 53 | raise `Modules` **and** `debt_ceiling` by 2 |
@@ -107,7 +110,7 @@ The failure message names the group and both numbers:
 
 ## 2. What changes in CI
 
-**Five** new steps in existing jobs (2 in `backend-architecture`, 3 in `frontend-lint`) and **one new job**. `frontend-lint` and `backend-architecture` have **no `if:` guard**, so
+**Six** new steps in existing jobs (3 in `backend-architecture`, 3 in `frontend-lint`) and **one new job**. `frontend-lint` and `backend-architecture` have **no `if:` guard**, so
 their steps run on **every event that starts the workflow** — PR→`main`, PR→`dev`, push→`main`,
 `workflow_dispatch`. (A direct push to `dev` still starts nothing. Unchanged.)
 
@@ -115,25 +118,26 @@ their steps run on **every event that starts the workflow** — PR→`main`, PR�
 |---|---|---|---|
 | 1 | `frontend-lint` | Fetch the pinned i18n baseline revision | tag `ci-pin/enforcement-p2-r1` must exist on the remote (owner-created at promotion — nothing for a lane to do) |
 | 2 | `frontend-lint` | i18n completeness gate | a **new** missing `fr` key, a new CLDR plural gap, or any growth of `apps/web/tools/i18n-completeness-baseline.json` |
-| 3 | `frontend-lint` | Detector liveness suites | `pnpm test:eslint-rules` (6 suites, was 3) or `pnpm test:tools` (7 files) going red — **both previously ran in no workflow**, so a rule test your branch broke has been failing silently |
+| 3 | `frontend-lint` | Detector liveness suites | `pnpm test:eslint-rules` (6 suites, was 3) or `pnpm test:tools` (8 files) going red — **both previously ran in no workflow**, so a rule test your branch broke has been failing silently |
 | 4 | `backend-architecture` | Check tests/Feature CI-lane manifest | §1 above, plus: a lane whose selector is missing/narrowed/soft-failed, a job or step gated or softened, the workflow no longer starting on PR→dev, or the checker's own steps disabled |
 | 5 | `backend-architecture` | Feature-lane checker liveness test | the checker's own **46-case** suite |
-| 6 | **`security-regression` (NEW JOB)** | Security regression suite | `tests/Feature/Security` (17 classes) now runs on **PR→dev**; it previously ran only on PR→main |
+| 6 | `backend-architecture` | Event ratchets (orphaned events + projector emission — PR→dev lane) | a dispatched event with zero registered listeners beyond the 75 baselined BY NAME, or a registered `FiscalEventProjector` that writes a POS projection and emits no domain event beyond the 6 skip-listed — the es-A0 F-1 fold-in ticketed to this package (added at the 2026-08-21 stale-A rebase; the same two tests also run in `backend-test`, which PR→dev skips) |
+| 7 | **`security-regression` (NEW JOB)** | Security regression suite | `tests/Feature/Security` (17 classes) now runs on **PR→dev**; it previously ran only on PR→main |
 
-**Branch protection: no action.** Steps 1–5 sit inside jobs already in `all-checks-pass` `needs`. The
+**Branch protection: no action.** Steps 1–6 sit inside jobs already in `all-checks-pass` `needs`. The
 one new job, `security-regression`, was **added** to that list — the aggregate is main-only, so no
 `dev` protection rule changes.
 
 ---
 
-## 3. The two behaviour changes that will surprise people
+## 3. The three behaviour changes that will surprise people
 
-**(a) Adding an English string now requires French — and Arabic in 33 of 56 namespaces.**
+**(a) Adding an English string now requires French — and Arabic in 33 of 55 namespaces.**
 
 | ar namespace class | count | new English key there → |
 |---|---|---|
 | `own` or `english-spread` (Arabic is wired in) | 33 | **CI FAILS** until `ar` authors it |
-| `en-aliased` (wired to the English bundle) | 23 | **passes** — one whole-namespace `aliased` baseline entry, not per-key |
+| `en-aliased` (wired to the English bundle) | 22 | **passes** — one whole-namespace `aliased` baseline entry, not per-key |
 
 `pos`, `sales`, `inventory`, `settings`, `finance`, `treasury`, `compliance`, `notifications`,
 `locations`, `products`, `expenses`, `import` are all in the **33**.
@@ -162,23 +166,31 @@ protected blob from the reviewed seed commit.
 previously only ran on PR→main. If your branch changes route middleware, module gating, or a
 kill-switch, you will now find out on the dev PR instead of at the main merge. Cost: ~43 s of phpunit, but **~2–3 min of billed runner time** as a whole job (checkout + setup-php + composer + env).
 
+**(c) The two event-sourcing ratchets now gate PR→dev** (added at the 2026-08-21 stale-A rebase —
+the es-A0 M5-r1 F-1 fold-in the parent ledger ticketed to this package's ci.yml reconciliation).
+`OrphanedEventRatchetTest` fails your dev PR if it dispatches a NEW event with zero registered
+listeners (the existing 75 are baselined BY NAME); `ProjectorEmissionRatchetTest` fails it if a
+registered `FiscalEventProjector` writes a POS projection and emits no domain event (existing 6
+skip-listed BY NAME). Both previously ran only in `backend-test`, which PR→dev skips — the drift they
+catch could land on `dev` and surface at the `main` boundary. SQLite-safe, no DB rows, ~4 s.
+
 ---
 
-## 4. Merge-order and reconciliation — **SIX** lanes write `ci.yml`; **FOUR** rewrite the same `needs:` line
+## 4. Merge-order and reconciliation — **TWO** open lanes still write `ci.yml` (P2 + OpenAPI); four of the original six landed
 
 | Lane (branch) | `ci.yml` change | rewrites `needs:` | Reconciliation |
 |---|---|---|---|
 | **P2** (this package) | 5 steps + 1 job (`security-regression`) | ✅ | — |
-| **`codex/ui-wave0-2026-08-11`** | the `route-manifest-drift` job | ✅ | Both P2 and UI edit the same `needs:` line. Whoever lands last re-verifies **both** entries survive. P2 deliberately did not author the drift job (F-3 ownership); UI's T7 C6 regex fix is likewise still UI's. |
+| **`codex/ui-wave0-2026-08-11`** — **LANDED** (ancestor of the base) | the `route-manifest-drift` job | ✅ | Done: its job is in the shipped `needs:` line; P2's rebase reconciled both entries. |
 | **`codex/openapi-contract-a-to-z`** | adds `backend-openapi-contract` | ✅ | Measured from the **branch**: the "no OpenAPI CI wiring" reading came from grepping P2's *base*, and this lane has no worktree. It is one of the four `needs:` rewriters. (An earlier draft called it "the last `ci.yml` writer … lands after P2 with certainty" — that was a scheduling assumption, not a measurement, and nothing in the repo establishes the order. The §1a remedy is order-independent either way.) **See §1a — it also adds a brand-new `tests/Feature/OpenApi/` group, which hard-fails until dispositioned.** |
-| **`codex/enforcement-p1-dpa-guard`** | adds the DPA guard job | ✅ | Sibling enforcement package; the brief allows P1 and P2 to run in parallel. **Coordinate the aggregate edit directly with P2.** Adds **no** Feature classes of its own (§10). |
-| **`codex/dn-consolidation-2026-08-12`** | 1 | — | Rebase and re-verify the aggregate `needs:` survived. Also §1 — 9 added `Document` classes. |
-| **`codex/es-wave-a0`** | adds an Architecture-ratchet step | — | Rebase; your step must survive P2's edits. Also §1 — 6 added `Fiscal` classes. |
+| **`codex/enforcement-p1-dpa-guard`** — **LANDED** (promoted + closed 2026-08-21) | adds the DPA guard job | ✅ | Done: `backend-dpa-guard` is in the shipped `needs:` line. |
+| **`codex/dn-consolidation-2026-08-12`** — **LANDED** | 1 | — | Done: its PG path-lane step survived the rebase (the checker now parses it — comment-stripping fix, Phase 5.5.1). |
+| **`codex/es-wave-a0`** — **LANDED** | adds an Architecture-ratchet step | — | Done: its `backend-test` step survived; its PR→dev wiring gap is closed by this package's §2 step 6. |
 
-**Four-way `needs:` reconciliation.** P2, `ui-wave0`, `openapi-contract-a-to-z` and
-`enforcement-p1-dpa-guard` all rewrite `all-checks-pass.needs` (`ci.yml:1249`). Whoever lands last must
-confirm every earlier lane's job is still listed — `route-manifest-drift`, `security-regression`,
-`backend-openapi-contract`, and P1's DPA guard job.
+**`needs:` reconciliation — one rewriter left.** Of the four original rewriters, `ui-wave0` and
+`enforcement-p1-dpa-guard` have landed and P2's shipped `needs:` line (`ci.yml:1443`) carries all 15
+members including theirs. The only remaining rewriter is `codex/openapi-contract-a-to-z`: when it
+lands after P2 it must re-verify every listed job survives and add `backend-openapi-contract`.
 
 **Pin-tag lockstep (for whoever re-pins the i18n baseline later):** `ci.yml` fetches the tag by
 literal name (`git fetch origin tag ci-pin/enforcement-p2-r1`). Tags are never reused, so a re-pin
@@ -286,7 +298,7 @@ Neither has ever executed on a real runner (the executor never pushes), so the p
      (tools/audit-i18n-completeness.mjs)*, *Run detector liveness suites (ESLint RuleTester + tools
      tamper tests)*;
    - `backend-architecture` steps — *Check tests/Feature CI-lane manifest*, *Feature-lane checker
-     liveness test*;
+     liveness test*, *Event ratchets (orphaned events + projector emission — PR→dev lane)*;
    - **the `security-regression` job.** Called out specifically: its environment is a strict *subset*
      of `backend-test`'s (no postgres/redis services, `pdo_sqlite` only). The reasoning is documented
      and the suite is green locally, but a latent service dependency would not surface on a developer
@@ -355,11 +367,7 @@ reason — first a worktree-only sweep, then an unstated `codex/*` filter):
 
 | lane (branch) | added Feature classes | locale files | `ci.yml` | `needs:` | action |
 |---|---|---|---|---|---|
-| `codex/ui-wave0-2026-08-11` | — | 16 | ✅ | ✅ | §3(a) i18n; §4 four-way `needs:` |
-| `codex/dn-consolidation-2026-08-12` | `Document` +9 | 4 | ✅ | — | §1 ceilings; §3(a) i18n; §4 rebase |
-| `codex/es-wave-a0` | `Fiscal` +6 | — | ✅ | — | §1 ceilings; §4 rebase |
-| `codex/openapi-contract-a-to-z` | **new `OpenApi` +6** | — | ✅ | ✅ | **§1a disposition**; §4 four-way `needs:` |
-| `codex/enforcement-p1-dpa-guard` | **none** | — | ✅ | ✅ | §4 four-way `needs:` **only** |
+| `codex/openapi-contract-a-to-z` | **new `OpenApi` +6** | — | ✅ | ✅ | **§1a disposition**; §4 `needs:` (last rewriter standing) |
 | `l6-integration-verify` | `Http` +2, `Modules` +4, `Tenant` +2 | 2 | — | — | §1 ceilings; §3(a) i18n |
 | `feat/scan-vat-configuration` | `Taxation` +1 | 3 | — | — | §1 ceiling; §3(a) i18n |
 | `feat/dpa-v8-supplier-goods-return` | `Inventory` +2 | 2 | — | — | §1 ceiling; §3(a) i18n |
@@ -375,7 +383,11 @@ reason — first a worktree-only sweep, then an unstated `codex/*` filter):
 **Already merged into `dev` — no action required by the rule above.** Roughly 70 local branches are
 ancestors of `dev`; the ones a reader is most likely to look for are `codex/dpa-wave3-3c`,
 `codex/dpa-wave3-3d`, `codex/country-defaults-phase-a`, `codex/sv-stage1`,
-`codex/pos-receipts-2026-08-12`, `codex/accounting-gaps-cghi` and `codex/tenant-impersonation`. **That
+`codex/pos-receipts-2026-08-12`, `codex/accounting-gaps-cghi`, `codex/tenant-impersonation` — and,
+since the 2026-08-21 stale-A rebase moved this package's base to `a4a8c2293`, **four lanes earlier
+versions of this file billed as open: `codex/ui-wave0-2026-08-11`, `codex/dn-consolidation-2026-08-12`,
+`codex/es-wave-a0` and `codex/enforcement-p1-dpa-guard`** (P1 promoted + closed). Their ceiling raises
+are already in the shipped manifest (§8 item 0) — do NOT re-apply their old §1 rows. **That
 is an illustrative subset, not an exhaustive list** — the exhaustive statement is the rule itself
 (`git merge-base --is-ancestor <branch> dev` → no action). Their added classes are already part of
 `dev`'s drift and are covered by **§8 item 0**, not by a lane action.
