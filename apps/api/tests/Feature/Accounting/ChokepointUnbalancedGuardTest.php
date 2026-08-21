@@ -25,9 +25,18 @@ use Tests\TestCase;
  * The GL posting chokepoint (`GeneralLedgerService::sealAndPersistEntry`) already
  * refuses an unbalanced entry — that guard is NOT re-implemented here and this
  * test does not add a second balance algorithm. What this test pins is the
- * FAILURE MODE: the refusal must be raised as the house type
- * {@see UnbalancedJournalEntryException}, not as a bare `\InvalidArgumentException`
- * that production `catch` blocks cannot distinguish from ordinary argument noise.
+ * FAILURE MODE: the refusal must be raised as the NAMED type
+ * {@see UnbalancedJournalEntryPostException}, not as a bare
+ * `\InvalidArgumentException` that production `catch` blocks cannot distinguish
+ * from ordinary argument noise.
+ *
+ * That type is deliberately a SIBLING of {@see UnbalancedJournalEntryException}
+ * (the post-seal, document-sourced refusal from `AccountingService`), not the same
+ * class and not a subclass of it — see
+ * `test_the_two_unbalanced_types_keep_their_load_bearing_parents` below, which pins
+ * both parents and their non-relationship. The chokepoint's type stays under
+ * `\InvalidArgumentException` — the hierarchy its bare throw already had — so
+ * naming it changed no catch site anywhere.
  *
  * Census evidence: `docs/handoff/reviews/enforcement-p3/M1-census.md` §5.
  */

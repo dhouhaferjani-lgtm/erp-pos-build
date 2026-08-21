@@ -14,7 +14,8 @@
 | class **(a)** draft-only creators (return Draft, do not post themselves) | **21** |
 | class **(b)** posts through the chokepoint (self-post or caller-post) | **24** |
 | class **(c)** writes `Posted` WITHOUT `sealAndPersistEntry` — structural | **8** (6 production + 2 seeders) |
-| class **(c)** rows that are **genuine balance gaps** (unbalanced posted row reachable) | **0** |
+| class **(c)** rows needing a NEW guard **within 3(a) scope** | **0** — every one is green-at-base (§4) |
+| class **(c)** rows with a genuine, live, chained imbalance | **1** — R-4, the lineless-cancellation carve-out: **would be RED at base**, but closing it makes lineless documents uncancellable, which a prior L1 gate deliberately deferred. Reported for a parent scope ruling, NOT silently filtered out (round-2 finding 4) |
 | new balance validators added | **0** (correct — see §4) |
 | red-first unbalanced-post tests presented as class-(c) evidence | **0** (correct — every candidate is green-at-base ⇒ DISQUALIFIED per C-2) |
 | deliverable **D** (chokepoint failure-mode normalization) | **type normalization + 1 genuinely swallowed queued-context refusal fixed**, both red-first proven (§5.6, §5.7) |
@@ -56,6 +57,12 @@ closed with its residual reported (§5.6, R-8). §5.5 adds the missing catcher c
 R-10 records the pre-existing 4xx downgrades this delivery does **not** fix.
 
 ---
+
+> **Line references in this document are pinned to the M1 milestone commit** recorded in
+> `docs/handoff/progress/enforcement-p3.progress.yaml`. Several `AccountingService.php` and
+> `GeneralLedgerService.php` anchors moved twice during review because this milestone's own
+> docblock edits inserted lines into those files. Verify by SYMBOL (method or `throw` name),
+> not by line number, if reading at a later tip.
 
 ## 1. Census method + completeness proof
 
@@ -101,11 +108,11 @@ yields **exactly six** write sites plus the chokepoint:
 
 | # | site | kind |
 |---|---|---|
-| 0 | `GeneralLedgerService.php:3440` | **the chokepoint** (`sealAndPersistEntry` `$entry->update([...])`) |
+| 0 | `GeneralLedgerService.php:3450` | **the chokepoint** (`sealAndPersistEntry` `$entry->update([...])`) |
 | 1 | `AccountingOpeningService.php:268` | direct create |
-| 2 | `AccountingService.php:404` | direct create |
-| 3 | `AccountingService.php:556` | direct create |
-| 4 | `AccountingService.php:903` | direct create |
+| 2 | `AccountingService.php:425` | direct create |
+| 3 | `AccountingService.php:577` | direct create |
+| 4 | `AccountingService.php:924` | direct create |
 | 5 | `OpeningBalancePostingService.php:238` | direct create |
 | 6 | `ResetOpeningBalanceService.php:163` | direct create |
 
@@ -133,8 +140,8 @@ Reinforced by two independent facts:
 **Legend — classification**
 `(a)` draft-only creator · `(b)` posted through the chokepoint · `(c)` writes Posted without `sealAndPersistEntry`
 
-**Legend — posting route.** `postEntry` (`:2772`) → `postEntryWithOptionalActor` (`:2777`) → `sealAndPersistEntry` (`:3378`);
-`postEntryNow` (`:3348`) → `sealAndPersistEntry`. Two wrapper helpers also funnel there and are easy to miss:
+**Legend — posting route.** `postEntry` (`:2773`) → `postEntryWithOptionalActor` (`:2778`) → `sealAndPersistEntry` (`:3379`);
+`postEntryNow` (`:3349`) → `sealAndPersistEntry`. Two wrapper helpers also funnel there and are easy to miss:
 `postEntryAndDispatchPostedEvent(AfterCommit)` (`:76`/`:95`) and
 `postSystemGeneratedEntryAndDispatchPostedEvent(AfterCommit)` (`:86`/`:112`).
 
@@ -208,9 +215,9 @@ chokepoint, so **none of them can seal outside it**. Classified by who posts.
 | 41 | `JournalEntryController.php:97` | `store` | (a) | separate operator action `POST /journal-entries/{id}/post` → `postEntry` (`JournalEntryController.php:177`) | (a)→(b); **additionally** pre-validated by the injected `DoubleEntryValidator->isBalanced()` at `:76` before the Draft is even created |
 | 42 | `UninvoicedDeliveryNoteService.php:530` | `generateYearEndAdjustment` | (a) | **no production call site** | N/A — dead code, corroborated by `ProvisioningRequiredPurposesV1.php:78` → finding R-3 |
 | 43 | `UninvoicedDeliveryNoteService.php:591` | `generateReversalEntry` | (a) | **no production call site** | N/A — dead code → finding R-3 |
-| 44 | `AccountingService.php:398` | `createInvoiceGLEntries` | **(c)** | direct `Posted` create, hash set at `:507` | **already guarded** — `assertLegsBalance()` at `:503` → `DoubleEntryValidator::isSumBalanced($lines,$scale)` (`:333`). Green-at-base ⇒ **DISQUALIFIED as a target** |
-| 45 | `AccountingService.php:550` | `createCreditNoteGLEntries` | **(c)** | direct `Posted` create | **already guarded** — `assertLegsBalance()` at `:716`. Green-at-base ⇒ **DISQUALIFIED** |
-| 46 | `AccountingService.php:894` | `reverseDocumentGl` | **(c)** | direct `Posted` create | **already guarded** — pre-flight balance refusal at `:881` (`UnreversibleDocumentGlException`) **and** `assertLegsBalance()` at `:929`. Green-at-base ⇒ **DISQUALIFIED**. Documented lineless carve-out → finding R-4 |
+| 44 | `AccountingService.php:419` | `createInvoiceGLEntries` | **(c)** | direct `Posted` create, hash set at `:527` | **already guarded** — `assertLegsBalance()` at `:524` → `DoubleEntryValidator::isSumBalanced($lines,$scale)` (`:354`). Green-at-base ⇒ **DISQUALIFIED as a target** |
+| 45 | `AccountingService.php:571` | `createCreditNoteGLEntries` | **(c)** | direct `Posted` create | **already guarded** — `assertLegsBalance()` at `:737`. Green-at-base ⇒ **DISQUALIFIED** |
+| 46 | `AccountingService.php:915` | `reverseDocumentGl` | **(c)** | direct `Posted` create | **already guarded** — pre-flight balance refusal at `:903` (`UnreversibleDocumentGlException`) **and** `assertLegsBalance()` at `:950`. Green-at-base ⇒ **DISQUALIFIED**. Documented lineless carve-out → **R-4**, which WOULD be red at base and is deferred by a prior gate ruling, not out of balance scope |
 | 47 | `AccountingOpeningService.php:262` | `postBatch` | **(c)** | direct `Posted` create, `is_historical=true` (off-chain) | **balanced by construction** — the OBE plug at `:316-334` computes `difference = ΣDr − ΣCr` and writes the offsetting leg, so Σ always nets. Additionally scale-clamped upstream (see §4.1). Green-at-base ⇒ **DISQUALIFIED** |
 | 48 | `OpeningBalancePostingService.php:232` | `post` | **(c)** | direct `Posted` create, `is_historical` | **balanced by construction** — exactly two legs, both the *same* variable `$totalInventoryValue` (`:250`/`:260`), each written through `CurrencyScale::bcformatStrict`. Green-at-base ⇒ **DISQUALIFIED** |
 | 49 | `ResetOpeningBalanceService.php:157` | `reset` | **(c)** | direct `Posted` create, `is_historical` | **balanced by construction** — two legs, same `$totalValue` (`:172`/`:182`), both `bcformatStrict`. Green-at-base ⇒ **DISQUALIFIED** |
@@ -304,7 +311,7 @@ SQLite and PG ⇒ disqualified.**
 `DoubleEntryValidator::isSumBalanced($lines, $scale)` (`:333`) — the house
 validator, injected per rule 13 at `AccountingService.php:54`. It is invoked on the
 freshly re-read persisted lines *before* the hash is computed, on all three paths
-(`:503`, `:716`, `:929`). A deliberately-unbalanced-post test on any of them is
+(`:524`, `:737`, `:950`). A deliberately-unbalanced-post test on any of them is
 green at base. **Disqualified; characterised as already-guarded.**
 
 ---
@@ -331,7 +338,7 @@ diverges from the house throw+alert pattern and an unbalanced post could be
   (`:350`). Its own docblock states the contract: *"the auto-posting paths fail
   CLOSED on imbalance."*
 - **The chokepoint diverged.** `sealAndPersistEntry` instead threw a **bare
-  `\InvalidArgumentException`** (`GeneralLedgerService.php:3406-3409`) —
+  `\InvalidArgumentException`** (`GeneralLedgerService.php:3416-3418`) —
   indistinguishable from ordinary argument-validation noise, so no caller could
   single it out.
 
@@ -351,7 +358,7 @@ transaction (`SalesOrderToInvoiceConverter.php:165` →
 always holds when `clearCustomerAdvanceToReceivable` reaches its post. That post goes
 through `postEntryAndDispatchPostedEventAfterCommit`, which **defers via
 `DB::afterCommit` whenever the level is > 0** and posts synchronously only at level 0
-(`GeneralLedgerService.php:96-110`). The refusal is therefore always raised after the
+(`GeneralLedgerService.php:97-111`). The refusal is therefore always raised after the
 `try` frame has returned.
 
 **Proof of non-discrimination, run for this round:** with the new catch block deleted
@@ -409,7 +416,7 @@ silently changed from `500 {code: CONFIGURATION_ERROR, message: <detail>}` to th
 generic `500 {code: INTERNAL_ERROR}` envelope (`bootstrap/app.php:938-957`). It also
 made the type a `\LogicException`, exposing it to the `catch (\InvalidArgumentException)`
 blocks that render 400/422 — the exact downgrade the type's own docblock forbids
-(`AccountingService.php:304-306`, `UnpostableDocumentGlException.php:26-27`:
+(`AccountingService.php:304-318`, `UnpostableDocumentGlException.php:26-27`:
 *"stays an unmapped `RuntimeException` (a 500 + alert), never a 422"*).
 
 **Attempt 2 (round 1, first pass) — revert the parent to `\RuntimeException`. ALSO
@@ -533,7 +540,7 @@ try, so it lands there anyway with the data already written.
 
 **Method.** Type-resolved reverse call graph over all ~1,300 `app/` PHP files
 (promoted-constructor property types + `use`-map + interface→implementor edges), seeded
-at both throw sites (`GeneralLedgerService.php:3418`, `AccountingService.php:362`) →
+at both throw sites (`GeneralLedgerService.php:3418`, `AccountingService.php:371`) →
 246 reachable `(file, method)` nodes; then every `try` in `app/` whose body contains a
 reachable method and whose `catch` lists a matching type. Cross-checked against a raw
 grep of **every** narrow catcher in `app/` (60 `\RuntimeException`, 54
@@ -550,7 +557,7 @@ Round 0's much weaker 60-line lexical sweep is exactly what produced the false
 
 `PostShiftCashVarianceAdjustment::handle()` calls `adjustmentService->post(...)` (`:310`)
 → `createRepositoryAdjustmentJournalEntry`, which posts via **`postEntryNow`**
-(`GeneralLedgerService.php:1307`) — **no `afterCommit` deferral**. The chokepoint's
+(`GeneralLedgerService.php:1308`) — **no `afterCommit` deferral**. The chokepoint's
 refusal is therefore raised *inside* the listener's `try` and was caught by
 `catch (Throwable)` at `:210`, becoming `refuse($event, 'exception', …, level: 'error')`.
 
@@ -619,7 +626,16 @@ Tests: 1, Assertions: 2, Failures: 1.
 
 **GREEN — after the listener change:** `OK (1 test, 5 assertions)`.
 
-**RED — the chokepoint type normalization (round 0, still valid).** Run at base:
+**RED — the chokepoint type normalization (round 0, still valid).** Run at base.
+
+> The line numbers and the expected class name inside this paste are **as captured at
+> the base tree** and are deliberately NOT renumbered — it is a verbatim transcript,
+> and editing it would falsify the evidence. At base the throw was at
+> `GeneralLedgerService.php:3406` (HEAD: `:3418`) and the test then expected
+> `UnbalancedJournalEntryException`; the type it expects is now
+> `UnbalancedJournalEntryPostException` (§5.3). What the paste proves is unchanged
+> and is the only thing claimed for it: at base the chokepoint threw a **bare
+> `InvalidArgumentException`** with no distinguishing type.
 
 ```
 $ ./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php \
@@ -636,15 +652,15 @@ FAILURES!
 Tests: 1, Assertions: 1, Failures: 1.
 ```
 
-**GREEN — after:** `OK (2 tests, 4 assertions)`.
+**GREEN — after:** `OK (2 tests, 7 assertions)` at HEAD. (Round 0 recorded 4 assertions here; the count rose when the hierarchy test was broadened to pin both types' parents in §5.3.)
 
 **Regression — every test touching this exception path, all green after the revert:**
 
 | test path | result |
 |---|---|
-| `tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php` | `OK (2 tests, 4 assertions)` |
-| `tests/Feature/Accounting/GeneralLedgerPostEntryScaleTest.php` (type updated, message preserved) | `OK (2 tests, 3 assertions)` |
-| `tests/Feature/Accounting/GLIntegrationTest.php` (type updated, message preserved) | `OK (29 tests, 120 assertions)` |
+| `tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php` | `OK (2 tests, 7 assertions)` |
+| `tests/Feature/Accounting/GeneralLedgerPostEntryScaleTest.php` — **UNMODIFIED at base** (the split reverted round 1's edit; absent from `git diff --stat 0ca7bbb09..HEAD`) | `OK (2 tests, 3 assertions)` |
+| `tests/Feature/Accounting/GLIntegrationTest.php` — **UNMODIFIED at base**, still catching the refusal as `\InvalidArgumentException` | `OK (29 tests, 120 assertions)` |
 | `tests/Feature/Accounting/InvoiceGLIntegrationTest.php` | `OK (15 tests, 68 assertions)` |
 | `tests/Feature/Accounting/CreditNoteGLIntegrationTest.php` | `OK (13 tests, 84 assertions)` |
 | `tests/Unit/Accounting/DoubleEntryValidationTest.php` | `OK (9 tests, 10 assertions)` |
@@ -704,11 +720,11 @@ only, so touched test files are outside its scope by configuration).
 | **R-1** | **Live `journal_entries` DELETE.** `RepositoryTransferService.php:105` performs an unconditional `$draft->delete()` on a `journal_entries` row. It is safe *today* only because the row is an unchained Draft inside the caller's own transaction and the replay path rolls back to a savepoint first. Two residual weaknesses: (i) `JournalEntryObserver::deleting()`'s `isChained()` guard reads the **stale in-memory** `$draft`, not the instance `postEntryNow` mutated, so the guard is not load-bearing; (ii) there is **no DB-level append-only trigger** on `journal_entries`. | `RepositoryTransferService.php:103-106`; `TreasuryMovementService.php:296-298,341-348,394-401`; `JournalEntryObserver.php:43-48`; `JournalEntry.php:127-130` | Append-only violation, **not a balance-guard gap** — the deleted row is a Draft and never passed the chokepoint. Fixing the DELETE is outside 3(a). Recorded as instructed by the parent ledger lead. |
 | **R-2** | **Orphan-draft surface.** Drafts reachable from production that are **never posted**: `treasury_transfer` (`GLS:1413`, unconditional), `pos_account_charge` (`GLS:3999`, unconditional — the bridge *asserts* Draft at `TreasuryAccountChargeBridge.php:189`), `payment_tolerance` (`GLS:1583` when `PaymentAllocationService.php:228` supplies a non-`User` actor), `prepayment_application` (`GLS:1711` when `SalesOrderToInvoiceConverter.php:152-153` has no `actor_user_id`), `manual` (until an operator hits the post endpoint). | as cited | Unposted drafts never seal, so they are not a balance-guard gap. But an AR charge that never posts means revenue/AR is never recognised — a real fiscal-completeness issue for the parent. |
 | **R-3** | **Dead GL creators.** No production call site: `createFromInvoice` (`:146`), `createFromCreditNote` (`:230`), `createPaymentEntry` (`:353`), and both `UninvoicedDeliveryNoteService` creators (`:530`, `:591`). The last is independently corroborated by `ProvisioningRequiredPurposesV1.php:78`. Note `createPaymentEntry` is P1 baseline index 1 and `UninvoicedDeliveryNoteService` is index 10 — i.e. **two of P1's four `journal_entries` violation rows sit on dead code.** | as cited | Dead-code removal is out of scope; but it materially changes how P1's violation partition should be read. |
-| **R-4** | **Knowingly-sealed unbalanced entry.** `AccountingService::reverseDocumentGl` deliberately skips the balance assertion for **lineless** documents, sealing a one-legged (unbalanced) entry — accepted in-code as "the lesser evil" so a lineless document remains cancellable. | `AccountingService.php:860-881` (GL gate finding M-1) | A pre-existing, documented, deliberate acceptance from an earlier gate. Re-litigating it is not 3(a)'s call. |
+| **R-4** ⚠️ | **Knowingly-sealed unbalanced entry — DEFERRED BY A PRIOR GATE RULING, NEEDS A PARENT SCOPE RULING.** `AccountingService::reverseDocumentGl` deliberately skips the balance assertion for **lineless** documents, sealing a one-legged (unbalanced) entry into the chain — accepted in-code as "the lesser evil" so a lineless document remains cancellable. `$balanceAssertable` gates both the pre-flight refusal (`:903`) and `assertLegsBalance` (`:950`). **Classification correction (round-2 finding 4): this is squarely IN balance scope — it is the one class-(c) row that would be RED AT BASE.** It is out of *guard-addition* scope only, because closing it would make lineless documents uncancellable — a behaviour change a prior L1 gate deliberately deferred. Reporting rather than fixing is the right call under rule 4 (no scope creep), but it must **not** be filtered out of the parent's list as "not a balance problem", which the earlier wording invited. | `AccountingService.php:881-902` (GL gate finding M-1); gating verified at `:903`, `:950` | Needs an owner/parent ruling on the cancellability-vs-balance trade-off, not a unilateral P3 change. The only reported finding here whose underlying defect is a genuine, live, chained imbalance. |
 | **R-5** | **Rule-19 boundary drift (cosmetic, no reachable defect).** `AccountingOpeningService::postBatch` writes line amounts without `CurrencyScale::bcformatStrict`, relying on upstream `validateRow` normalisation. Safe today, but the invariant lives in a different class from the write. | `AccountingOpeningService.php:299-307` vs `:190,:196` | No demonstrable failing behaviour (§4.1) — implementing it would be scope creep and would ship a green-at-base test. |
-| **R-7** | **`SalesOrderToInvoiceConverter.php:590` — balance refusal protected only by transaction nesting.** Its `catch (\InvalidArgumentException\|\RuntimeException)` would swallow a chokepoint balance refusal into a `Log::warning` + `gl_entry_skipped`, and does not today only because `transferPrepayments()` always runs inside the billing retrier's transaction, so the post defers past the frame. If that transaction is ever removed the swallow becomes live. | `SalesOrderToInvoiceConverter.php:165,590`; `DeliveryNoteBillingConcurrencyRetrier.php:40`; `GeneralLedgerService.php:96-110` | Architecturally unreachable today — a guard here would be unreachable dead code with a non-discriminating test, which is exactly what round 1 rejected (§5.2). Pinned instead by `it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud`, which goes red if the nesting changes. |
+| **R-7** | **`SalesOrderToInvoiceConverter.php:590` — balance refusal protected only by transaction nesting.** Its `catch (\InvalidArgumentException\|\RuntimeException)` would swallow a chokepoint balance refusal into a `Log::warning` + `gl_entry_skipped`, and does not today only because `transferPrepayments()` always runs inside the billing retrier's transaction, so the post defers past the frame. If that transaction is ever removed the swallow becomes live. | `SalesOrderToInvoiceConverter.php:165,590`; `DeliveryNoteBillingConcurrencyRetrier.php:40`; `GeneralLedgerService.php:97-111` | Architecturally unreachable today — a guard here would be unreachable dead code with a non-discriminating test, which is exactly what round 1 rejected (§5.2). Pinned instead by `it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud`, which goes red if the nesting changes. |
 | **R-8** | **Shift-variance GL refusals have no retry or dead-letter (residual of the §5.6 fix).** `PostShiftCashVarianceAdjustment` is a plain synchronous listener (`final readonly`, NOT `ShouldQueue`, registered at `TreasuryServiceProvider.php:185`). A balance refusal is now recorded loudly under its own queryable reason at `error` level, but it is still not retried and never reaches a dead-letter queue — the brief's "retryably/dead-letter" discipline cannot be satisfied without making this listener queued. | `PostShiftCashVarianceAdjustment.php:184,210`; `TreasuryServiceProvider.php:185` | Making the listener queued is an architectural change (queue registration per rule 20, replay/idempotency semantics for an already-sealed Z report) well outside 3(a). Recorded so the gap is visible rather than implied closed. |
-| **R-9** | **Two more "protected by transaction-nesting accident" catchers, same class as R-7.** (i) `PostGrIrOnGoodsReceipt.php:41` `catch (\Throwable)` → `Log::error`, explicitly never re-throws, around `createGoodsReceiptGrIrEntry`; safe only because `flushPendingGlPostings` runs inside `post()`'s transaction. Note the fail-closed twin at `GoodsReceiptService.php:409` calls the GL service directly, outside the listener. (ii) `BatchWriteOffService.php:122` `catch (\RuntimeException)` → `Log::warning`, around `createInventoryWriteOffEntry`; safe only because `$postSynchronously` defaults to false (`GeneralLedgerService.php:4765`) so the `…AfterCommit` branch defers. | as cited; `GoodsReceiptService.php:393,403,409` | Same reasoning as R-7 — unreachable today, so no guard and no test. Both are one refactor away from becoming live swallows; listed so the parent can decide whether the nesting invariants deserve their own pins. |
+| **R-9** | **Two more "protected by transaction-nesting accident" catchers, same class as R-7.** (i) `PostGrIrOnGoodsReceipt.php:41` `catch (\Throwable)` → `Log::error`, explicitly never re-throws, around `createGoodsReceiptGrIrEntry`; safe only because `flushPendingGlPostings` runs inside `post()`'s transaction. Note the fail-closed twin at `GoodsReceiptService.php:409` calls the GL service directly, outside the listener. (ii) `BatchWriteOffService.php:122` `catch (\RuntimeException)` → `Log::warning`, around `createInventoryWriteOffEntry`; safe only because `$postSynchronously` defaults to false (`GeneralLedgerService.php:4767`) so the `…AfterCommit` branch defers. | as cited; `GoodsReceiptService.php:393,403,409` | Same reasoning as R-7 — unreachable today, so no guard and no test. Both are one refactor away from becoming live swallows; listed so the parent can decide whether the nesting invariants deserve their own pins. |
 | **R-10** | **PRE-EXISTING catch-site downgrades of a chokepoint balance refusal (not introduced by M1, not fixed by it).** Because the chokepoint's refusal is an `\InvalidArgumentException` — as it was before M1 — two narrow sites still render it as a client error: `DocumentConversionController.php:418` → **422 `VALIDATION_ERROR`**, and `POS/ReceiptController.php:385` → **400 `INVALID_RETURN_DATA`**. Broad `catch (\Exception)` / `catch (\Throwable)` sites match under any hierarchy and add more: `RefundController.php:154,254` (422, message echoed as both `error` and `code`), `MultiPaymentController.php:214,338` (422), `PaymentRefundController.php:89,128,177` (422), `PosCoreReceiptProjection.php:506` and `ReceiptReturnService.php:516` (`Log::error` on the non-retryable branch), `TenantScopedCommand.php:333` (logs and continues to the next tenant). A fiscal imbalance reported as a client-fixable 4xx is exactly what the type's "never a 422" contract forbids. | §5.5 rows 7, 9, 14, 15, 17, 19, 20, 23 | **No exception hierarchy can fix this — only per-site narrowing can** (§5.4). Each site needs its own `catch (UnbalancedJournalEntryPostException) { throw $e; }` ahead of the broad clause, the pattern applied at `PostShiftCashVarianceAdjustment.php:184` and already used natively at `POS/ReceiptController.php:374`. That is a multi-module change to HTTP error contracts, outside a balance-guard census, and it needs the parent's scope ruling. |
 | **R-6** | **Census blind spot for the P1 scanner.** `JournalEntry::query()->create` is invisible to a `JournalEntry::create` grep and hides **6** creators. `DocumentPerActionWriteScanner` should be re-checked for the same pattern, and P1's 116-site census re-derived if it shares the blind spot. | §1(i); `GeneralLedgerService.php:1084,2884,2993,3079,3134,3201` | P1 is landed and closed; changing its baseline is the parent's call, not P3's. |
 
@@ -718,7 +734,7 @@ only, so touched test files are outside its scope by configuration).
 
 | id | deviation |
 |---|---|
-| **M1-D1** | **Line numbers in the brief have drifted** from the landed base. Actual: `sealAndPersistEntry` `:3378` (balance check `:3396-3410`), not `:3480-3510`; `postEntry` `:2772`, not `:2874`; `postEntryNow` `:3348`, not `:3450`; `createPOSChargeEntry` `:3999`, not `:4072`. Every cited fact was verified at the **actual** location. |
+| **M1-D1** | **Line numbers in the brief have drifted** from the landed base. Actual: `sealAndPersistEntry` `:3379` (balance check `:3396-3410`), not `:3480-3510`; `postEntry` `:2772`, not `:2874`; `postEntryNow` `:3348`, not `:3450`; `createPOSChargeEntry` `:3999`, not `:4072`. Every cited fact was verified at the **actual** location. |
 | **M1-D2** | **The P1 baseline was insufficient as a census seed** — it holds 4 `journal_entries` keys (a violation set), not a creator inventory. The census was rebuilt independently and its completeness proven (§1). |
 | **M1-D3** | **Zero class-(c) guards added, zero class-(c) red-first tests.** This is the *correct* outcome under the C-2 ruling, not an omission: every structural bypass is green-at-base and therefore disqualified. Two leads were pursued to proof and killed (§4). The milestone's implementation content is deliverable D. |
 | **M1-D4** | **Worktree had no `vendor/`.** `composer install` was run in the worktree (a symlink to the main repo's `vendor` would autoload **stale main-repo** `App\` classes and invalidate every test result). Autoloader confirmed worktree-local. |

@@ -172,11 +172,11 @@ milestones:
   - id: M1
     title: "3(a) RESCOPED (gate-r1 C-2): the GL chokepoint (GeneralLedgerService::sealAndPersistEntry, :3480-3510; postEntry :2874 / postEntryNow :3450 funnel into it) ALREADY balance-validates. Work = (i) semantic classification of every journal_entries creator from P1's census: draft-only (e.g. createPOSChargeEntry :4072 — who posts the draft, through what guard?) / posted-through-chokepoint (characterize, NO new validator, NO new test presented as evidence) / bypassing (the genuine gaps); (ii) close ONLY the genuine gaps — route through the chokepoint where possible, else constructor-injected DoubleEntryValidator; never a second balance algorithm in the chokepoint; (iii) RED-FIRST PROOF MANDATORY per targeted path — a green-at-base test DISQUALIFIES the target (reclassify as guarded); (iv) optional scoped chokepoint failure-mode normalization for queued contexts (loud fail, retry/dead-letter); (v) rule 19/20 in every touched queued path. One unbalanced-guard test PER class-(c) census row in its OWN module — the acceptance command list is DERIVED from the census (gate-r2 R2-H-7, superseding the gate-r1 H-11 fixed Treasury/BatchExpiry/Accounting trio): per class-(c) row, a named test path + anchored --filter with an asserted NONZERO selected-test count (parse the PHPUnit summary; apps/api/phpunit.xml sets no failOnEmptyTestSuite, so an empty selection exits 0 — exit code alone proves nothing) + preserved red-first evidence; modules with ZERO class-(c) rows submit the reviewed census evidence only, NO placeholder green command. The -19.000 item is LEDGER §2 row S-15 — pointer only (gate-r1 H-10)."
     review_lenses: [treasury, fiscal-pos, stock-gl-interaction, inventory-costing]
-    status: review          # round-1 CHANGES-REQUIRED addressed 2026-08-21; handed back for re-review
-    fix_rounds: 1
+    status: review          # round-2 CHANGES-REQUIRED (documentation-only) addressed; handed back for re-review
+    fix_rounds: 2
     commit: bea3b4936       # Phase 6.1.6 (type split + retraction); 6.1.4 1d6fbe63c round-1 fixes, 6.1.1 ffe6cd018 census, 6.1.2 4ad66ca31 deliverable D
     verdict: null
-    last_verdict: changes_required   # round 1 — docs/handoff/reviews/enforcement-p3/M1-round1.md
+    last_verdict: changes_required   # round 2 (documentation-only) — docs/handoff/reviews/enforcement-p3/M1-round2.md
     # ── M1 EXECUTION RECORD (2026-08-21) ──
     # Census: docs/handoff/reviews/enforcement-p3/M1-census.md — 53 real journal_entries
     # creator sites across 9 files (7 production + 2 seeders). Classification:
@@ -311,6 +311,40 @@ milestones:
     # Regression: 115 tests green across 10 files (incl. the preserved graceful
     # gl_entry_skipped case and all three shift-variance suites). Pint pass on all 11
     # touched files; PHPStan level 8 "[OK] No errors" on the 6 touched app/ files.
+    # ── M1 ROUND-2 RECORD (fix_rounds 2) ──
+    # Verdict: CHANGES-REQUIRED, DOCUMENTATION-ONLY — the register states "the code is
+    # correct and verified" and independently re-confirmed every round-1 disposition,
+    # the completeness proof, deptrac (176/176), rule 19, and all four acceptance
+    # commands. No code behaviour changed in this round; only docblocks and the census.
+    # 1. Two production docblocks (finding 1, P2) still said the chokepoint raises
+    #    UnbalancedJournalEntryException and cited a test method that does not exist.
+    #    Both were written at 1d6fbe63c (shared type) and not revisited when bea3b4936
+    #    split the types. They now name UnbalancedJournalEntryPostException, state that
+    #    assertLegsBalance is the ONLY source of UnbalancedJournalEntryException, and
+    #    cite test_the_two_unbalanced_types_keep_their_load_bearing_parents.
+    #    UnpostableDocumentGlException now carries a 3-row table of all three
+    #    unbalanced-entry types + the explicit warning that narrowing a
+    #    catch(\RuntimeException) to catch a CHOKEPOINT refusal matches NOTHING —
+    #    which is exactly the mistake the register's failure scenario predicted for the
+    #    R-10 narrowing work.
+    # 2. Test class docblock (finding 2) no longer argues against its own assertions.
+    # 3. Census line refs refreshed (finding 3). NOTE they moved TWICE: this milestone's
+    #    own docblock edits inserted lines into AccountingService (+12 then +9) and
+    #    GeneralLedgerService (+10). Every ref re-verified by symbol against HEAD, and a
+    #    pin note now tells readers to resolve by SYMBOL, not line number. The round-0
+    #    red-trace paste is deliberately NOT renumbered — it is a verbatim base-tree
+    #    transcript and editing it would falsify the evidence; an annotation says so.
+    #    Stale §5.7 rows fixed: ChokepointUnbalancedGuardTest is 7 assertions (not 4),
+    #    and GLIntegrationTest/GeneralLedgerPostEntryScaleTest are relabelled UNMODIFIED
+    #    AT BASE — stronger evidence for the byte-identical-blast-radius claim than the
+    #    census had been claiming for itself.
+    # 4. R-4 reclassified (finding 4): it is IN balance scope and would be RED AT BASE;
+    #    it is out of GUARD-ADDITION scope only, deferred by a prior L1 gate ruling
+    #    because closing it makes lineless documents uncancellable. Needs a parent scope
+    #    ruling and must not be filtered out as "not a balance problem". The executive
+    #    table now carries a matching row so §0 and §6 cannot disagree.
+    # Pint pass (one self-inflicted FQN fixer found and fixed); PHPStan level 8 no
+    # errors; regression re-run green: 107 tests across 8 files.
   - id: M2
     title: "3(b) CONSUMER mode (gate-r1 C-3). The P2 dependency is already satisfied at M0 (gate-r3 R3-H-3 — the whole P2 package is on the base by dispatch precondition; 'per 2(b) outcome' is a landed fact, no mid-wave pin exists). Work: reconcile TreasuryReceiptBridge's local required-purposes lists (:446,:528) + any census-surfaced local list against ProvisioningRequiredPurposesV1 — divergences are REPORTED findings, never edits; per-country seeder/template completeness CI test keyed to the manifest's REQUIRED classification + expectedAccountType() (never keyed to requiredPurposes()); enumerate seeded charts, don't assume; wire into a lane that actually runs (per the LANDED 2(b) outcome; worst case the anchored pgsql allowlist; P2 carries the reciprocal never-drop-this-wiring obligation); tamper test names country + purpose. Frozen country seeder class bodies and the manifest's classification content UNTOUCHED."
     review_lenses: [treasury, fiscal-pos]

@@ -27,17 +27,32 @@ use DomainException;
  * Contrast {@see UnbalancedJournalEntryException}, which stays a 500: it can only
  * fire from the listener, after the seal, and by then a 422 would be a lie.
  *
- * Two corrections of record from enforcement-P3 M1 (round 1, findings 3/4).
- * (1) "It can only fire from the listener" is no longer the whole story — the GL
- * posting chokepoint (`GeneralLedgerService::sealAndPersistEntry`) also raises
- * `UnbalancedJournalEntryException` now, so it additionally fires from every
- * `postEntry`/`postEntryNow` path. The 500 disposition is unchanged and still
- * right for both sources. (2) The contrast above depends on that type keeping its
- * `\RuntimeException` parent. M1 briefly re-parented it under
- * `\InvalidArgumentException`, which would have let the ~30
- * `catch (\InvalidArgumentException)` blocks in `app/` render it as a 4xx — the
- * exact lie this docblock rules out. Reverted, and now guarded by
- * `ChokepointUnbalancedGuardTest::test_the_house_unbalanced_exception_is_never_a_logic_exception`.
+ * **Three unbalanced-entry types, and picking the wrong one silently does nothing.**
+ * enforcement-P3 M1 added a third; the distinction is load-bearing for anyone
+ * writing a `catch`:
+ *
+ *   | type | thrown by | parent |
+ *   |---|---|---|
+ *   | `UnpostableDocumentGlException` (this) | `DocumentPostingService::post()` pre-flight, BEFORE the seal | `\DomainException` → 422 `BUSINESS_ERROR` |
+ *   | {@see UnbalancedJournalEntryException} | `AccountingService::assertLegsBalance()` — post-seal, document-sourced, its ONLY source | `\RuntimeException` → unmapped 500 |
+ *   | {@see UnbalancedJournalEntryPostException} | the GL posting chokepoint, `GeneralLedgerService::sealAndPersistEntry()` — every `postEntry`/`postEntryNow` path | `\InvalidArgumentException` → unmapped 500 |
+ *
+ * The latter two are deliberately SIBLINGS under different parents, not one shared
+ * type: M1 tried sharing and it broke a live contract in whichever direction the
+ * parent was chosen (under `\InvalidArgumentException` the post-seal refusal fell
+ * out of `CreditNoteController::post()`'s `catch (\RuntimeException)`; under
+ * `\RuntimeException` the chokepoint's refusal newly hit `catch (\RuntimeException)`
+ * clauses rendering **422**). The chokepoint's type keeps the `\InvalidArgumentException`
+ * hierarchy its bare throw already had, so naming it changed no catch site.
+ *
+ * **Consequence for narrowing work** (e.g. the per-site narrowing R-10 asks for in
+ * `docs/handoff/reviews/enforcement-p3/M1-census.md`): to intercept a CHOKEPOINT
+ * balance refusal you must target `UnbalancedJournalEntryPostException` or the
+ * `\InvalidArgumentException` family. Narrowing a `catch (\RuntimeException)` clause
+ * will compile, read correctly, and match nothing.
+ *
+ * Both parents are guarded by
+ * `ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents`.
  *
  * docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md (D1a)
  * docs/superpowers/reviews/2026-08-05-l1-fiscal-gate.md (C-1, C-2)

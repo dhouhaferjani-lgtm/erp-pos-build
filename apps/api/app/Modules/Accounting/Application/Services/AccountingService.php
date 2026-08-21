@@ -310,10 +310,19 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
      * `app/` that render 400/422, and drops it out of the `catch (\RuntimeException)`
      * in `CreditNoteController::post()` that maps it to a detailed 500.
      * enforcement-P3 M1 did exactly that and reverted it (round 1, findings 3/4);
-     * `ChokepointUnbalancedGuardTest::test_the_house_unbalanced_exception_is_never_a_logic_exception`
-     * now guards it. Note the SAME type is also raised by the GL posting chokepoint
-     * (`GeneralLedgerService::sealAndPersistEntry`) since M1 — this method is no
-     * longer its only source.
+     * `ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents`
+     * now guards it.
+     *
+     * **This method is the ONLY source of `UnbalancedJournalEntryException`.** The GL
+     * posting chokepoint (`GeneralLedgerService::sealAndPersistEntry`) raises a
+     * DIFFERENT type — `UnbalancedJournalEntryPostException`
+     * (`App\Modules\Accounting\Domain\Exceptions`), a sibling under
+     * `\InvalidArgumentException`, not under `\RuntimeException`.
+     * They are deliberately unrelated: the two refusals need opposite catch
+     * semantics, and one shared parent broke a live contract in whichever direction
+     * it was chosen. **A `catch` written to intercept the CHOKEPOINT's refusal must
+     * target the `…PostException` / `\InvalidArgumentException` family — catching
+     * `\RuntimeException` will not match it.**
      *
      * Uses `isSumBalanced()` — Σdr == Σcr and nothing else — rather than
      * `isBalanced()`, whose `count($lines) < 2` clause is a second, unadvertised
