@@ -64,7 +64,7 @@ describe('ImportDashboardPage', () => {
   it('marks the products card as current when arrived with ?entity=products', () => {
     renderDashboard('/settings/import?entity=products')
 
-    const current = screen.getAllByRole('link', { current: 'page' })
+    const current = screen.getAllByRole('link', { current: true })
 
     expect(current).toHaveLength(1)
     expect(current[0]).toHaveAttribute('href', '/settings/import/products')
@@ -74,7 +74,7 @@ describe('ImportDashboardPage', () => {
     for (const entity of ['customers', 'suppliers']) {
       const { unmount } = renderDashboard(`/settings/import?entity=${entity}`)
 
-      const current = screen.getAllByRole('link', { current: 'page' })
+      const current = screen.getAllByRole('link', { current: true })
 
       expect(current).toHaveLength(1)
       expect(current[0]).toHaveAttribute('href', '/settings/import/parties')
@@ -87,7 +87,7 @@ describe('ImportDashboardPage', () => {
     const { container } = renderDashboard('/settings/import?entity=composite_items')
 
     expect(container.querySelector('details')).toHaveAttribute('open')
-    expect(screen.getByRole('link', { current: 'page' })).toHaveAttribute(
+    expect(screen.getByRole('link', { current: true })).toHaveAttribute(
       'href',
       '/settings/import/composite_items'
     )
@@ -96,12 +96,12 @@ describe('ImportDashboardPage', () => {
   it('marks nothing when no entity is requested', () => {
     renderDashboard()
 
-    expect(screen.queryAllByRole('link', { current: 'page' })).toHaveLength(0)
+    expect(screen.queryAllByRole('link', { current: true })).toHaveLength(0)
   })
 
   it('marks nothing for an unrecognised entity', () => {
     renderDashboard('/settings/import?entity=not-a-thing')
 
-    expect(screen.queryAllByRole('link', { current: 'page' })).toHaveLength(0)
+    expect(screen.queryAllByRole('link', { current: true })).toHaveLength(0)
   })
 })

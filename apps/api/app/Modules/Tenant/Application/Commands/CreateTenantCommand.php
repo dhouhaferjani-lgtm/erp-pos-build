@@ -152,10 +152,11 @@ class CreateTenantCommand extends Command
             $this->line('TenantInitializationService — so the tenant would be permanently unusable:');
             $this->line('every request for it fails closed with a 503 (TenantUnavailableException).');
             $this->line('');
-            $this->line('Use the working path instead — the signup/registration flow');
-            $this->line('(POST /api/auth/register), which runs TenantProvisioningService: it creates');
-            $this->line('and migrates the tenant database, then initializes roles, reference data,');
-            $this->line('chart of accounts, tax, and payment configuration.');
+            $this->line('Use the working path instead — the self-service signup form at /register.');
+            $this->line('API route: POST /api/v1/auth/register');
+            $this->line('It runs TenantProvisioningService, which creates and migrates the tenant');
+            $this->line('database, then initializes roles, reference data, chart of accounts, tax,');
+            $this->line('and payment configuration.');
             $this->line('');
             $this->line('If you genuinely want the central directory row alone (for example repairing');
             $this->line('a directory entry for a database that is already provisioned), re-run with');

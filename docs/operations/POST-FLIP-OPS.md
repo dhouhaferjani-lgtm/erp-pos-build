@@ -110,7 +110,16 @@ a transaction pool. In production:
 - Run signup/deprovision/restore from a host whose `DB_HOST` points at the
   backend Postgres directly (not PgBouncer), OR
 - Maintain a separate ops env (`.env.ops`) where `DB_HOST` is the direct
-  Postgres host. Use `php artisan --env=ops tenant:create` etc.
+  Postgres host. Use `php artisan --env=ops tenant:deprovision` /
+  `tenant:restore` etc.
+
+> **Not `tenant:create`.** Under database-per-tenant that command refuses by
+> design: it writes only the central `tenants`/`domains` rows, so the tenant it
+> would produce has no database, no migrations and no initialization, and every
+> request for it 503s. Provision through the signup form at `/register`
+> (API route: `POST /api/v1/auth/register`), which runs
+> `TenantProvisioningService`. The `--central-row-only` flag exists only for
+> repairing a directory entry whose database is already provisioned.
 
 (Single-env shops with low signup volume can also just leave PgBouncer
 in place — DDL through transaction-pool mode works in practice for most

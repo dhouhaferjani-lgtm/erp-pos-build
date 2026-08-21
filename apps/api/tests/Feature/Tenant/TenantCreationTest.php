@@ -191,6 +191,10 @@ class TenantCreationTest extends TestCase
             ->expectsOutputToContain('database-per-tenant')
             ->expectsOutputToContain('TenantProvisioningService')
             ->expectsOutputToContain('--central-row-only')
+            // Pin the VERSION SEGMENT: the routes live under an `api/v1/auth`
+            // prefix (Identity/routes.php), so an unversioned `/api/auth/...`
+            // in the message would send the operator to a 404.
+            ->expectsOutputToContain('POST /api/v1/auth/register')
             ->assertExitCode(Command::FAILURE);
 
         $this->assertDatabaseMissing('tenants', ['slug' => 'bricked-garage']);

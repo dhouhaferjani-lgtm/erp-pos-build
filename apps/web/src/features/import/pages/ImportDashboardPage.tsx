@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
@@ -113,11 +114,18 @@ export function ImportDashboardPage() {
   const primaryMatch = PRIMARY_IMPORT_TYPES.some((card) => card.type === requestedType)
   const advancedMatch = !primaryMatch && ADVANCED_IMPORT_TYPES.some((card) => card.type === requestedType)
 
+  // The disclosure is SEEDED from the requested card and then owned by the
+  // user. Deriving `open` directly from `advancedMatch` would make an ambient
+  // value authoritative over an explicit user gesture: any later render in
+  // which that value flips back to true reopens a section the user closed.
+  // Holding it in state keeps the toggle the user's to control.
+  const [advancedOpen, setAdvancedOpen] = useState(advancedMatch)
+
   const renderImportCard = (card: ImportTypeConfig, isRequested = false) => (
     <Link
       key={card.type}
       to={`/settings/import/${card.type}`}
-      aria-current={isRequested ? 'page' : undefined}
+      aria-current={isRequested ? 'true' : undefined}
       className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.borderHover} hover:shadow-md ${isRequested ? `ring-2 ${colorTokens.intent.primary.ring}` : ''}`}
     >
       <div className="flex items-start justify-between">
@@ -206,7 +214,11 @@ export function ImportDashboardPage() {
       </div>
 
       {showAdvancedImports && (
-        <details open={advancedMatch} className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}>
+        <details
+          open={advancedOpen}
+          onToggle={(event) => { setAdvancedOpen(event.currentTarget.open) }}
+          className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}
+        >
           <summary className="cursor-pointer list-none">
             <div className="inline-flex flex-col gap-1">
               <span className={`text-lg font-semibold ${colorTokens.text.primary}`}>

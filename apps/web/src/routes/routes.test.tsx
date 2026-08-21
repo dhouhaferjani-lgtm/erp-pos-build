@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const routesSource = readFileSync(`${process.cwd()}/src/routes/index.tsx`, 'utf8')
@@ -194,21 +195,33 @@ describe('route module guards', () => {
  * route table.
  */
 describe('import navigation targets resolve against the route table', () => {
-  const importPaths = [...routesSource.matchAll(/path="(import(?:\/[^"]*)?)"/g)].map(
-    (match) => match[1]
-  )
+  // The closing quote anchors the match to a whole path segment, so a sibling
+  // route such as `path="importers"` is not mistaken for an import route.
+  const IMPORT_ROUTE_PATTERN = /path="(import(?:\/[^"]*)?)"/g
 
-  it('registers exactly the import routes the app links to', () => {
+  const importPaths = [...routesSource.matchAll(IMPORT_ROUTE_PATTERN)].map((match) => match[1])
+
+  it('matches whole path segments only, never an `importers`-style sibling', () => {
+    const sample = 'path="import" path="import/history" path="importers" path="importers/new"'
+
+    expect([...sample.matchAll(IMPORT_ROUTE_PATTERN)].map((match) => match[1])).toEqual([
+      'import',
+      'import/history',
+    ])
+  })
+
+  it('lists every registered import route — update this array when adding an import route', () => {
     expect(importPaths).toEqual(['import', 'import/history', 'import/:type'])
   })
 
   it('has no source file linking to the non-existent import wizard path', () => {
-    // Assembled from parts so this guard does not match its own source.
-    const deadPath = ['/settings/import', 'wizard'].join('/')
+    const deadPath = '/settings/import/wizard'
+    const thisFile = fileURLToPath(import.meta.url)
 
-    const offenders = sourceFilesUnder(`${process.cwd()}/src`).filter((file) =>
-      readFileSync(file, 'utf8').includes(deadPath)
-    )
+    const offenders = sourceFilesUnder(`${process.cwd()}/src`)
+      // This guard necessarily contains the string it forbids.
+      .filter((file) => file !== thisFile)
+      .filter((file) => readFileSync(file, 'utf8').includes(deadPath))
 
     expect(offenders).toEqual([])
   })
