@@ -301,7 +301,7 @@ export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_recei
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-export type CorrectingEntryRefusalCode = 'CORRECTING_ENTRY_MISSING_SOURCE_DOCUMENT' | 'CORRECTING_ENTRY_TARGET_NOT_FOUND' | 'CORRECTING_ENTRY_UNSUPPORTED_TARGET_TYPE' | 'CORRECTING_ENTRY_TARGET_HAS_NO_LEDGER_ENTRY' | 'CORRECTING_ENTRY_UNKNOWN_ACCOUNT' | 'CORRECTING_ENTRY_LEAVES_TARGET_UNBALANCED' | 'CORRECTING_ENTRY_ALREADY_POSTED' | 'CORRECTING_ENTRY_MALFORMED_PAYLOAD';
+export type CorrectingEntryRefusalCode = 'CORRECTING_ENTRY_MISSING_SOURCE_DOCUMENT' | 'CORRECTING_ENTRY_TARGET_NOT_FOUND' | 'CORRECTING_ENTRY_UNSUPPORTED_TARGET_TYPE' | 'CORRECTING_ENTRY_TARGET_HAS_NO_LEDGER_ENTRY' | 'CORRECTING_ENTRY_UNKNOWN_ACCOUNT' | 'CORRECTING_ENTRY_LEAVES_TARGET_UNBALANCED' | 'CORRECTING_ENTRY_ALREADY_POSTED' | 'CORRECTING_ENTRY_MALFORMED_PAYLOAD' | 'CORRECTING_ENTRY_TARGET_ALREADY_WITHDRAWN' | 'CORRECTING_ENTRY_LEG_AMOUNT_BEYOND_CURRENCY_SCALE' | 'CORRECTING_ENTRY_CONTROL_ACCOUNT_LEG_WITHOUT_PARTNER' | 'CORRECTING_ENTRY_UNKNOWN_PARTNER' | 'CORRECTING_ENTRY_VAT_LEG_IN_FILED_PERIOD';
 export type GlResidualRefusal = 'negative_residual' | 'no_absorbing_account' | 'residual_exceeds_rounding_tolerance' | 'legs_do_not_balance' | 'no_credit_note_stamp_account';
 export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'EF' | 'OD';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
