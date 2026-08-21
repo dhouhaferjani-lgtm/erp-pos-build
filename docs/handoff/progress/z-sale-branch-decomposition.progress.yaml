@@ -109,8 +109,8 @@ milestones:
     owner_gate: z-signed-bytes-versioning
     status: blocked_review
     commit: 0edbf402b       # z-decomp M1.1 (memo); amended by the round-1 fix round, see fix_commit
-    fix_commits: [63b756784, b13536a76, faa0a3ec1]  # M1.2 round-1 fixes, M1.3 round-2 fixes, M1.4 round-3 fixes. The round-4 fix commit is THIS commit (self-reference impossible at write time).
-    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round4.md   # LAST REGISTER THAT EXISTS AT THIS COMMIT. A later round's register is named in verdict_history only once it has been written — this field never forward-references.
+    fix_commits: [63b756784, b13536a76, faa0a3ec1, 464eea67a]  # M1.2 r1, M1.3 r2, M1.4 r3, M1.5 r4 fixes. The round-5 P3 closure is THIS commit (self-reference impossible at write time).
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round5.md   # ACCEPT. Exists at this commit — this field never forward-references.
     verdict_history:
       - round: 1
         register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round1.md
@@ -133,10 +133,14 @@ milestones:
           charged Option A for zero archive work), 2 P3 (the absolute "reaches NO archive surface"
           over-corrected — <HashFiscal> IS a hash over the changed bytes; YAML forward-reference)
       - round: 5
-        register: PENDING — not yet run at this commit; named here only after it exists
-        result: pending
-    last_verdict: see verdict_history
-    fix_rounds: 4
+        register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round5.md
+        result: >-
+          ACCEPT (exit 0) — 0 P1, 0 P2, 3 P3. MEMO-QUALITY GATE SATISFIED. The three P3s
+          (Option-A cost figure double-counted A7 and mis-stated A12's count; three surviving
+          absolute NF525 framings; a new downstream defect) were closed anyway in the M1.6 commit
+          rather than shipped with a ticket — no memo CONCLUSION changed.
+    last_verdict: ACCEPT (round 5, exit 0) — 0 P1, 0 P2, 3 P3; all three closed in the M1.6 commit
+    fix_rounds: 5
     memo: docs/handoff/reviews/z-sale-branch-decomposition/M1-signed-bytes-decision.md
     no_production_code: true
     findings:
@@ -216,14 +220,28 @@ milestones:
         server-enforced invariant for SALE_RECEIPT (FiscalPayloadConstraintValidator.php:1097-1098,
         enforced :1139-1166); the Z family escapes it only via F-4. Ruling question 3 must be
         answered knowing this.
+      F-5: >-
+        gate-r5 finding 3 (P3), verified independently: NF525 GrandsTotaux period totals are always
+        0.00 for canonical Z reports. mapCanonicalZReportGrandTotal() (Nf525DataProvider.php:1255-1262)
+        builds periodTotals with exactly five keys (receipt_totals, refunds_totals, voids_totals,
+        vat_breakdown, payment_method_totals) and NO top-level gross_sales/tax_amount — the real
+        figures are nested at receipt_totals.* — while addGrandTotals() (Nf525XmlBuilder.php:335-336)
+        reads periodTotals['gross_sales'] and ['tax_amount'], so both fall through to the '0.00'
+        default. The sibling mapGrandTotal() (:1286-1298) passes period_totals verbatim, so the two
+        mappers produce DIFFERENT SHAPES for one DTO. Does not change this memo's conclusions
+        (the builder still never renders vat_breakdown) but falsifies "at least gross_sales reaches
+        the archive through the grand totals". NOT FIXED HERE (rule 4) — belongs to whichever lane
+        picks up F-2/F-4.
       option_A_real_cost: >-
         gate-r4 finding 2: Option A's real cost is NINE code sites across device + server
         (A1-A3, A5-A8, with A4/A7 conditional on whether the version is ENFORCED or merely
-        stamped), plus 8 hardcoded-1 test sites (A12) and a golden fixture that must be authored
-        from scratch (A13, because no Z/X byte-stability vector exists). A9/A10 are NOT costs —
-        the archive layer requires zero work under either option — and A14 is a rollout
-        constraint, not code. Earlier revisions said "~13 sites ... plus an archive format",
-        which inflated the disfavoured option in the recommendation's own direction.
+        stamped), plus 9 hardcoded-1 assertions across 5 files (A12) and a golden fixture that must
+        be authored from scratch (A13, because no Z/X byte-stability vector exists). Corrected at
+        gate-r5: the count is EIGHT code sites (6 unconditional: A1, A2, A3, A5, A6, A8; plus
+        A4/A7 conditional) — an earlier "9" double-counted A7. A9/A10 are NOT costs — the archive
+        layer requires zero work under either option — and A14 is a rollout constraint, not code.
+        Earlier revisions said "~13 sites ... plus an archive format", which inflated the
+        disfavoured option in the recommendation's own direction.
       option_A_deploy_ordering: >-
         M1 gate-r1 finding 1 (P2, closed in round 2 as memo item A14): Option A creates a
         SERVER-BEFORE-DEVICE deploy obligation that does not exist today. A device build authoring
@@ -270,4 +288,4 @@ milestones:
     verdict: null
     fix_rounds: 0
 
-updated: faa0a3ec1   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)
+updated: 464eea67a   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)
