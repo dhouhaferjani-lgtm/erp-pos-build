@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Enums;
 
+use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
+
 /**
  * System account purposes for country-agnostic account lookups.
  *
@@ -159,44 +161,65 @@ enum SystemAccountPurpose: string
     /**
      * Get all purposes that must be assigned for GL operations to work.
      *
+     * DERIVED, NOT DECLARED (O-27, owner ruling 2026-08-21). This is what
+     * ALREADY-LIVE tenants are measured against by
+     * `ChartOfAccountsService::validateCompanyAccounts()` and what
+     * `AccountPurposeController::validate()` surfaces to operators. Until this
+     * lane it was a hand-written list of fourteen purposes — a strict SUBSET of
+     * the twenty-eight {@see ProvisioningRequiredPurposesV1} classifies
+     * REQUIRED (P3-M2 reconciliation, finding D-2). A brownfield tenant missing
+     * one of the other fourteen got `valid: true`, a clean bill of health, and
+     * then hard-failed the first time the corresponding path ran; `inventory`
+     * was the sharpest instance — resolved through `findByPurposeOrFail` at
+     * GR/IR, supplier-invoice clearing, cost capitalization, inventory movement
+     * and write-off, so a tenant without it passed validation and then could
+     * not receive goods.
+     *
+     * Reading the manifest at runtime rather than mirroring it is what makes
+     * that divergence structurally impossible to reintroduce: there is now ONE
+     * definition of "REQUIRED", owned by the country-defaults authority, and a
+     * purpose added or reclassified there moves both provisioning conformance
+     * and live-tenant validation in the same commit.
+     * `SystemAccountPurposeManifestParityTest` pins the derivation itself.
+     *
+     * `assertConforms()` is deliberately NOT called here: this runs on a live
+     * request path, and a manifest whose partition has drifted must fail in CI
+     * (SeededChartManifestRequiredPurposeCompletenessTest) rather than throw at
+     * an operator opening the Chart of Accounts screen.
+     *
+     * The classification is the manifest's to make, and the two judgements this
+     * list used to spell out survive it unchanged: `InventoryShrinkageExpense`
+     * is REQUIRED there (without it `GeneralLedgerService::hasInventoryWriteOffAccounts()`
+     * returns false and a destructive-loss movement is written with no journal
+     * entry at all), while its sibling `InventoryGainIncome` is SOFT (a
+     * published template may legally omit `7586`, and its only consumer
+     * `InventoryGlPostingService::postForCountCorrection` fail-softs with a
+     * logged warning) — so a chart that legally omits the gain is still
+     * reported healthy.
+     *
+     * BEFORE WIDENING THIS, BACKFILL. A purpose becoming REQUIRED in the
+     * manifest immediately makes every brownfield chart without it report
+     * unhealthy. `BackfillChartPurposesCommand` (and the tenant migration that
+     * wraps it) is the repair path, and it must carry a country mapping for the
+     * new purpose first — it reports and skips what it cannot map rather than
+     * guessing an account code.
+     *
      * @return list<SystemAccountPurpose>
      */
     public static function requiredPurposes(): array
     {
-        return [
-            self::CustomerReceivable,
-            self::CustomerAdvance,
-            self::SupplierPayable,
-            self::SupplierAdvance,
-            self::VatCollected,
-            self::VatDeductible,
-            self::ProductRevenue,
-            self::ServiceRevenue,
-            self::Bank,
-            self::Cash,
-            self::OpeningBalanceEquity,
-            // R2 E-1 (register H-5): both were absent from this list, so
-            // ChartOfAccountsService::validateCompanyAccounts() passed the French
-            // chart that could post NEITHER — France booked zero COGS silently
-            // (PostCOGSOnInvoice swallows the miss) and the expense-document lane
-            // had no fallback account. All three country charts now seed them.
-            self::CostOfGoodsSold,
-            self::GeneralExpense,
-            // Wave 3D M4: `InventoryShrinkageExpense` is listed and its sibling
-            // `InventoryGainIncome` deliberately is NOT. The list gates
-            // ChartOfAccountsService::validateCompanyAccounts(), so membership
-            // means "a chart without this is unhealthy". Shrinkage qualifies:
-            // GeneralLedgerService::hasInventoryWriteOffAccounts() returns false
-            // without it and the destructive-loss movement is written with no
-            // journal entry at all. The gain does not: it is SOFT in
-            // ProvisioningRequiredPurposesV1, a published template may legally
-            // omit `7586`, the template overlay skips it with a warning when the
-            // chart has no same-type revenue parent, and its only consumer
-            // (InventoryGlPostingService::postForCountCorrection) fail-softs with
-            // a logged warning. Adding it here would report every such legal
-            // chart unhealthy. The overlay's warning token is its operator signal.
-            self::InventoryShrinkageExpense,
-        ];
+        $required = [];
+
+        foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
+            // The classification constants are private to the manifest; the
+            // published shape of entries() is the string. Reading the string is
+            // the documented consumption path, not a workaround.
+            if ($entry['classification'] === 'REQUIRED') {
+                $required[] = $entry['purpose'];
+            }
+        }
+
+        return $required;
     }
 
     /**

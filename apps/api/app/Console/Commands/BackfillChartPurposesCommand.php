@@ -6,6 +6,7 @@ namespace App\Console\Commands;
 
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 use Illuminate\Console\Command;
 use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Facades\Schema;
@@ -40,12 +41,58 @@ use Illuminate\Support\Str;
  *        SupplierAdvance (both in requiredPurposes(), so the chart failed
  *        validateCompanyAccounts outright), UninvoicedRevenue, SalesDiscount.
  *   TN — UninvoicedRevenue, SalesDiscount (TN already mapped the rest).
- * The generic chart already mapped every one of them, so it has no definitions.
+ * The generic chart already mapped every one of them, so it has no definitions
+ * in that (original) arm.
  * The four unconsumed expense purposes (office/travel/meals/utilities) are
  * deliberately NOT backfilled: nothing resolves them, so a brownfield chart
  * without them cannot misbook — they are seeded for new charts only.
  * TN's FX pair and rounding pair are owned by the H-1 (PCN class-6 re-numbering)
  * and H-2 (rounding dust out of 4375) lanes; they must not be created here.
+ *
+ * O-27 EXTENSION (owner ruling 2026-08-21, LEDGER row O-27; evidence
+ * `docs/handoff/reviews/enforcement-p3/M2-reconciliation.md` finding D-2).
+ * `SystemAccountPurpose::requiredPurposes()` used to check a strict 14-of-28
+ * SUBSET of what {@see ProvisioningRequiredPurposesV1} classifies REQUIRED, so a
+ * brownfield tenant missing one of the other fourteen reported `valid: true` and
+ * then hard-failed at runtime. The ruling is: backfill the fourteen FIRST, then
+ * widen the validation set. This command now also carries those fourteen —
+ *
+ *   goods_received_not_invoiced, inventory, marketing_goodwill_expense,
+ *   payment_tolerance_expense, payment_tolerance_income, pos_tender_clearing,
+ *   purchase_expenses, purchase_price_variance_expense,
+ *   purchase_price_variance_income, purchase_stamp_duty, rounding_loss_expense,
+ *   sales_discount, sales_returns_clearing, voucher_liability
+ *
+ * — for ALL THREE seeded charts (TN / FR / generic), not just the French plan:
+ * the "generic already mapped them" argument holds for the chart as it is
+ * seeded TODAY, and a brownfield generic chart provisioned before those rows
+ * were added to `GenericChartOfAccountsSeeder` is missing them exactly as a
+ * French one is. `sales_discount` is already carried for FR/TN by the original
+ * `$frenchPlanShared` arm, so the O-27 arm adds it for the generic chart only —
+ * a purpose must appear at most once per country or the run would probe the
+ * same row twice.
+ *
+ * NO CODE IS INVENTED HERE. Every tuple below (code / name / type / parent) is
+ * copied verbatim from the frozen country seeder that owns that chart —
+ * `TunisiaChartOfAccountsSeeder`, `FranceChartOfAccountsSeeder`,
+ * `GenericChartOfAccountsSeeder` — which are the country-defaults authority for
+ * the legacy provisioning arm that built every brownfield chart. That copy is
+ * not trusted to stay correct by inspection: `ChartPurposeBackfillSeederParityTest`
+ * re-derives every tuple from the seeders' own definition tables and fails on
+ * any divergence, so the two can never drift.
+ *
+ * WHAT IT STILL CANNOT FILL — the residual, reported and never guessed. A
+ * manifest-REQUIRED purpose with no definition for the company's country is
+ * SKIPPED and named, per company, followed by the second stable token
+ * `CHART-PURPOSE BACKFILL UNMAPPED REQUIRED: <n>`. Guessing an account code is
+ * an owner/expert decision, not a backfill's. That token is deliberately NOT
+ * folded into the FAILURES token or the exit code: FAILURES means "a chart this
+ * command was asked to repair could not be placed", while UNMAPPED means "this
+ * command was never given a mapping for that purpose". The fourteen purposes
+ * `requiredPurposes()` always checked are in the second class — a chart missing
+ * one of those was already failing `validateCompanyAccounts()` loudly before
+ * this lane, so it is a pre-existing operator follow-up rather than a
+ * regression this run introduced.
  *
  * INVOCATION — tenant-DB-scoped; run via `tenants:run`, exactly like the
  * tolerance backfill (no `--tenant` flag by design; boolean flags are passed as
@@ -60,6 +107,11 @@ use Illuminate\Support\Str;
  *
  *   ! grep -qE 'CHART-PURPOSE BACKFILL FAILURES: [1-9]' /tmp/chart-backfill.log
  *   test "$(grep -c 'CHART-PURPOSE BACKFILL FAILURES:' /tmp/chart-backfill.log)" -eq "$TENANT_COUNT"
+ *
+ * The O-27 residual token is REVIEWED, not gated — a non-zero count names the
+ * tenants whose live-tenant validation will now legitimately report unhealthy:
+ *
+ *   grep -E 'CHART-PURPOSE BACKFILL UNMAPPED REQUIRED: [1-9]' /tmp/chart-backfill.log
  *
  * @cross-tenant-by-design NOT cross-tenant in practice: `companies` and `accounts` are TENANT tables, so under
  *   database-per-tenant this reads ONLY the tenant database `tenants:run` binds around it. A bare run on the
@@ -82,6 +134,17 @@ final class BackfillChartPurposesCommand extends Command
      */
     public const SUMMARY_TOKEN_PREFIX = 'CHART-PURPOSE BACKFILL FAILURES:';
 
+    /**
+     * Second machine-readable result prefix (O-27), emitted as `<prefix> <n>`
+     * on the line before the FAILURES token.
+     *
+     * Counts (company, purpose) pairs that are manifest-REQUIRED, absent from
+     * the chart, and have NO definition this command could fill them from. It
+     * is a REVIEW signal, not a gate: see the class docblock for why it is kept
+     * out of the FAILURES token and the exit code.
+     */
+    public const UNMAPPED_TOKEN_PREFIX = 'CHART-PURPOSE BACKFILL UNMAPPED REQUIRED:';
+
     public function __construct(private readonly DatabaseManager $database)
     {
         parent::__construct();
@@ -102,6 +165,7 @@ final class BackfillChartPurposesCommand extends Command
         $promoted = 0;
         $satisfied = 0;
         $invalid = 0;
+        $unmapped = 0;
 
         // Company uses SoftDeletes and this is a raw query builder with no model
         // scope: a trashed company would otherwise inflate the deploy-gate token
@@ -114,8 +178,9 @@ final class BackfillChartPurposesCommand extends Command
 
         foreach ($companies as $company) {
             $companyId = (string) $company->id;
+            $definitions = $this->definitions((string) $company->country_code);
 
-            foreach ($this->definitions((string) $company->country_code) as $definition) {
+            foreach ($definitions as $definition) {
                 // 1. PURPOSE FIRST — a chart that already resolves is done,
                 //    whatever code carries the purpose (see the class docblock).
                 $holder = $this->database->table('accounts')
@@ -233,22 +298,33 @@ final class BackfillChartPurposesCommand extends Command
                 }
 
                 // 3. CREATE — the only path that needs a parent. Never invent one.
-                $parentId = $this->database->table('accounts')
-                    ->where('company_id', $companyId)
-                    ->where('code', $definition['parent_code'])
-                    ->value('id');
+                //
+                // A NULL `parent_code` is not "parent unknown": it is the
+                // seeder's own declaration that the account is a ROOT of the
+                // chart. The generic chart declares `5810` (POS tender
+                // clearing) that way — see GenericChartOfAccountsSeeder — so a
+                // null here must insert a root row, never be reported as a
+                // missing parent.
+                $parentId = null;
 
-                if (! is_string($parentId)) {
-                    $this->error(sprintf(
-                        'Company %s is missing parent account %s; account %s (%s) was skipped.',
-                        $companyId,
-                        $definition['parent_code'],
-                        $definition['code'],
-                        $definition['purpose'],
-                    ));
-                    $invalid++;
+                if ($definition['parent_code'] !== null) {
+                    $parentId = $this->database->table('accounts')
+                        ->where('company_id', $companyId)
+                        ->where('code', $definition['parent_code'])
+                        ->value('id');
 
-                    continue;
+                    if (! is_string($parentId)) {
+                        $this->error(sprintf(
+                            'Company %s is missing parent account %s; account %s (%s) was skipped.',
+                            $companyId,
+                            $definition['parent_code'],
+                            $definition['code'],
+                            $definition['purpose'],
+                        ));
+                        $invalid++;
+
+                        continue;
+                    }
                 }
 
                 if ($dryRun) {
@@ -258,7 +334,7 @@ final class BackfillChartPurposesCommand extends Command
                         $definition['type'],
                         $definition['code'],
                         $definition['name'],
-                        $definition['parent_code'],
+                        $definition['parent_code'] ?? '(root)',
                     ));
                     $created++;
 
@@ -283,6 +359,8 @@ final class BackfillChartPurposesCommand extends Command
                 ]);
                 $created++;
             }
+
+            $unmapped += $this->reportUnmappableRequiredPurposes($companyId, $definitions);
         }
 
         $prefix = $dryRun ? '[DRY-RUN] ' : '';
@@ -296,6 +374,11 @@ final class BackfillChartPurposesCommand extends Command
             $invalid,
         ));
 
+        // O-27 RESIDUAL TOKEN — reviewed, not gated (class docblock). Emitted
+        // BEFORE the failures token so the failures token stays the last line,
+        // which every existing deploy checklist assumes.
+        $this->line(sprintf('%s %d', self::UNMAPPED_TOKEN_PREFIX, $unmapped));
+
         // STABLE GATE TOKEN — the exit code is swallowed by tenants:run (see the
         // class docblock), so this line is the machine-readable result. Its exact
         // shape is pinned by a test; do not reword it.
@@ -305,7 +388,65 @@ final class BackfillChartPurposesCommand extends Command
     }
 
     /**
-     * @return list<array{code: string, name: string, type: string, parent_code: string, purpose: string}>
+     * Name every manifest-REQUIRED purpose this command has no mapping for and
+     * the chart does not already resolve — the O-27 skip-and-report path.
+     *
+     * Guessing an account code for a purpose whose country mapping was never
+     * established is an owner/expert decision, so the command refuses and says
+     * so per (company, purpose). The report is the deliberate residual of the
+     * `requiredPurposes()` widening: these are the tenants whose live-tenant
+     * validation now legitimately reports unhealthy, and an operator assigns
+     * the purpose in Settings -> Chart of Accounts.
+     *
+     * `ProvisioningRequiredPurposesV1::assertConforms()` is NOT called here.
+     * This is an unattended repair path; a drifted manifest must not abort a
+     * tenant's migration run. The manifest's own conformance is gated in CI
+     * (SeededChartManifestRequiredPurposeCompletenessTest).
+     *
+     * @param  list<array{code: string, name: string, type: string, parent_code: string|null, purpose: string}>  $definitions
+     */
+    private function reportUnmappableRequiredPurposes(string $companyId, array $definitions): int
+    {
+        $covered = [];
+        foreach ($definitions as $definition) {
+            $covered[$definition['purpose']] = true;
+        }
+
+        $unmapped = 0;
+
+        foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
+            if ($entry['classification'] !== 'REQUIRED') {
+                continue;
+            }
+
+            $purpose = $entry['purpose']->value;
+            if (isset($covered[$purpose])) {
+                continue;
+            }
+
+            $resolves = $this->database->table('accounts')
+                ->where('company_id', $companyId)
+                ->where('system_purpose', $purpose)
+                ->exists();
+
+            if ($resolves) {
+                continue;
+            }
+
+            $this->warn(sprintf(
+                'Company %s does not map REQUIRED purpose %s and this backfill has no account definition for it; '
+                .'skipped without guessing a code. Assign it in Settings -> Chart of Accounts.',
+                $companyId,
+                $purpose,
+            ));
+            $unmapped++;
+        }
+
+        return $unmapped;
+    }
+
+    /**
+     * @return list<array{code: string, name: string, type: string, parent_code: string|null, purpose: string}>
      */
     private function definitions(string $countryCode): array
     {
@@ -364,6 +505,253 @@ final class BackfillChartPurposesCommand extends Command
             ],
         ] : [];
 
-        return array_merge($frenchOnly, $frenchPlanShared);
+        return array_merge($frenchOnly, $frenchPlanShared, $this->o27Definitions($country));
+    }
+
+    /**
+     * O-27: the manifest-REQUIRED purposes `requiredPurposes()` did not check
+     * before this lane, per country.
+     *
+     * Every tuple is a verbatim copy of the corresponding row in the frozen
+     * seeder that owns the chart — the country-defaults authority for the
+     * legacy provisioning arm — and `ChartPurposeBackfillSeederParityTest`
+     * re-derives all of them from those seeders and fails on any divergence.
+     * Nothing here is invented; a purpose with no seeder row for a country
+     * would be reported by {@see reportUnmappableRequiredPurposes()} instead.
+     *
+     * @return list<array{code: string, name: string, type: string, parent_code: string|null, purpose: string}>
+     */
+    private function o27Definitions(string $country): array
+    {
+        if ($country === 'TN' || $country === 'FR') {
+            // The two French-plan charts are identical on every one of these
+            // rows except where `5810` hangs: TN has no `58` (Virements
+            // internes) header and roots it directly on class `5`.
+            return $this->frenchPlanO27Definitions($country === 'TN' ? '5' : '58');
+        }
+
+        return $this->genericO27Definitions();
+    }
+
+    /**
+     * Mirrors TunisiaChartOfAccountsSeeder / FranceChartOfAccountsSeeder.
+     *
+     * `sales_discount` is deliberately absent: the original `$frenchPlanShared`
+     * arm already carries it for FR and TN (`7097`), and a purpose listed twice
+     * for one country would probe the same row twice.
+     *
+     * @return list<array{code: string, name: string, type: string, parent_code: string|null, purpose: string}>
+     */
+    private function frenchPlanO27Definitions(string $posTenderClearingParent): array
+    {
+        return [
+            [
+                'code' => '408',
+                'name' => 'Fournisseurs - Factures non parvenues',
+                'type' => 'liability',
+                'parent_code' => '40',
+                'purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value,
+            ],
+            [
+                'code' => '37',
+                'name' => 'Stocks de marchandises',
+                'type' => 'asset',
+                'parent_code' => '3',
+                'purpose' => SystemAccountPurpose::Inventory->value,
+            ],
+            [
+                'code' => '6238',
+                'name' => 'Dépenses de bonne volonté commerciale',
+                'type' => 'expense',
+                'parent_code' => '62',
+                'purpose' => SystemAccountPurpose::MarketingGoodwillExpense->value,
+            ],
+            [
+                'code' => '6580',
+                'name' => 'Écart de règlement (charges)',
+                'type' => 'expense',
+                'parent_code' => '65',
+                'purpose' => SystemAccountPurpose::PaymentToleranceExpense->value,
+            ],
+            [
+                'code' => '7580',
+                'name' => 'Écart de règlement (produits)',
+                'type' => 'revenue',
+                'parent_code' => '75',
+                'purpose' => SystemAccountPurpose::PaymentToleranceIncome->value,
+            ],
+            [
+                'code' => '5810',
+                'name' => 'Compte d\'attente règlements TPV (bons d\'achat)',
+                'type' => 'asset',
+                'parent_code' => $posTenderClearingParent,
+                'purpose' => SystemAccountPurpose::PosTenderClearing->value,
+            ],
+            [
+                'code' => '607',
+                'name' => 'Achats de marchandises',
+                'type' => 'expense',
+                'parent_code' => '60',
+                'purpose' => SystemAccountPurpose::PurchaseExpenses->value,
+            ],
+            [
+                'code' => '6585',
+                'name' => 'Écart sur prix d\'achat',
+                'type' => 'expense',
+                'parent_code' => '65',
+                'purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value,
+            ],
+            [
+                'code' => '7585',
+                'name' => 'Écart sur prix d\'achat',
+                'type' => 'revenue',
+                'parent_code' => '75',
+                'purpose' => SystemAccountPurpose::PurchasePriceVarianceIncome->value,
+            ],
+            [
+                'code' => '6354',
+                'name' => 'Droits d\'enregistrement et de timbre',
+                'type' => 'expense',
+                'parent_code' => '63',
+                'purpose' => SystemAccountPurpose::PurchaseStampDuty->value,
+            ],
+            [
+                'code' => '6588',
+                'name' => 'Pertes d\'arrondis sur bons d\'achat',
+                'type' => 'expense',
+                'parent_code' => '65',
+                'purpose' => SystemAccountPurpose::RoundingLossExpense->value,
+            ],
+            [
+                'code' => '7091',
+                'name' => 'Remboursements clients - Virements bons d\'achat',
+                'type' => 'expense',
+                'parent_code' => '70',
+                'purpose' => SystemAccountPurpose::SalesReturnsClearing->value,
+            ],
+            [
+                'code' => '4197',
+                'name' => 'Clients - Bons d\'achat émis (passif courant)',
+                'type' => 'liability',
+                'parent_code' => '41',
+                'purpose' => SystemAccountPurpose::VoucherLiability->value,
+            ],
+        ];
+    }
+
+    /**
+     * Mirrors GenericChartOfAccountsSeeder — the chart every non-TN/FR country
+     * receives through `ChartOfAccountsService::getSeederForCountry()`'s
+     * `default` arm.
+     *
+     * Unlike the French-plan arm this one DOES carry `sales_discount` (`7091`
+     * on this chart), because the original `$frenchPlanShared` arm never
+     * covered the generic chart. `5810` is declared with a NULL parent by the
+     * seeder — it is a root account on this chart, not a missing parent.
+     *
+     * @return list<array{code: string, name: string, type: string, parent_code: string|null, purpose: string}>
+     */
+    private function genericO27Definitions(): array
+    {
+        return [
+            [
+                'code' => '4080',
+                'name' => 'Goods Received Not Invoiced',
+                'type' => 'liability',
+                'parent_code' => '4000',
+                'purpose' => SystemAccountPurpose::GoodsReceivedNotInvoiced->value,
+            ],
+            [
+                'code' => '3700',
+                'name' => 'Goods for Resale',
+                'type' => 'asset',
+                'parent_code' => '3000',
+                'purpose' => SystemAccountPurpose::Inventory->value,
+            ],
+            [
+                'code' => '6238',
+                'name' => 'Marketing Goodwill Expense',
+                'type' => 'expense',
+                'parent_code' => '6000',
+                'purpose' => SystemAccountPurpose::MarketingGoodwillExpense->value,
+            ],
+            [
+                'code' => '6580',
+                'name' => 'Payment Tolerance Expense',
+                'type' => 'expense',
+                'parent_code' => '6000',
+                'purpose' => SystemAccountPurpose::PaymentToleranceExpense->value,
+            ],
+            [
+                'code' => '7580',
+                'name' => 'Payment Tolerance Income',
+                'type' => 'revenue',
+                'parent_code' => '7000',
+                'purpose' => SystemAccountPurpose::PaymentToleranceIncome->value,
+            ],
+            [
+                'code' => '5810',
+                'name' => 'POS Tender Clearing (Voucher Redemption)',
+                'type' => 'asset',
+                'parent_code' => null,
+                'purpose' => SystemAccountPurpose::PosTenderClearing->value,
+            ],
+            [
+                'code' => '6070',
+                'name' => 'Purchase Expenses',
+                'type' => 'expense',
+                'parent_code' => '6000',
+                'purpose' => SystemAccountPurpose::PurchaseExpenses->value,
+            ],
+            [
+                'code' => '6585',
+                'name' => 'Écart sur prix d\'achat',
+                'type' => 'expense',
+                'parent_code' => '6000',
+                'purpose' => SystemAccountPurpose::PurchasePriceVarianceExpense->value,
+            ],
+            [
+                'code' => '7585',
+                'name' => 'Écart sur prix d\'achat',
+                'type' => 'revenue',
+                'parent_code' => '7000',
+                'purpose' => SystemAccountPurpose::PurchasePriceVarianceIncome->value,
+            ],
+            [
+                'code' => '6350',
+                'name' => 'Purchase Stamp Duty',
+                'type' => 'expense',
+                'parent_code' => '6000',
+                'purpose' => SystemAccountPurpose::PurchaseStampDuty->value,
+            ],
+            [
+                'code' => '6588',
+                'name' => 'Rounding Loss Expense (Voucher)',
+                'type' => 'expense',
+                'parent_code' => '6000',
+                'purpose' => SystemAccountPurpose::RoundingLossExpense->value,
+            ],
+            [
+                'code' => '7091',
+                'name' => 'Sales Discounts',
+                'type' => 'expense',
+                'parent_code' => '7000',
+                'purpose' => SystemAccountPurpose::SalesDiscount->value,
+            ],
+            [
+                'code' => '7092',
+                'name' => 'Sales Returns Clearing (Voucher)',
+                'type' => 'expense',
+                'parent_code' => '7000',
+                'purpose' => SystemAccountPurpose::SalesReturnsClearing->value,
+            ],
+            [
+                'code' => '4197',
+                'name' => 'Voucher Liability',
+                'type' => 'liability',
+                'parent_code' => '4000',
+                'purpose' => SystemAccountPurpose::VoucherLiability->value,
+            ],
+        ];
     }
 }
