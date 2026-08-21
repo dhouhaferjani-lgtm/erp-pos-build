@@ -172,11 +172,11 @@ milestones:
   - id: M1
     title: "3(a) RESCOPED (gate-r1 C-2): the GL chokepoint (GeneralLedgerService::sealAndPersistEntry, :3480-3510; postEntry :2874 / postEntryNow :3450 funnel into it) ALREADY balance-validates. Work = (i) semantic classification of every journal_entries creator from P1's census: draft-only (e.g. createPOSChargeEntry :4072 — who posts the draft, through what guard?) / posted-through-chokepoint (characterize, NO new validator, NO new test presented as evidence) / bypassing (the genuine gaps); (ii) close ONLY the genuine gaps — route through the chokepoint where possible, else constructor-injected DoubleEntryValidator; never a second balance algorithm in the chokepoint; (iii) RED-FIRST PROOF MANDATORY per targeted path — a green-at-base test DISQUALIFIES the target (reclassify as guarded); (iv) optional scoped chokepoint failure-mode normalization for queued contexts (loud fail, retry/dead-letter); (v) rule 19/20 in every touched queued path. One unbalanced-guard test PER class-(c) census row in its OWN module — the acceptance command list is DERIVED from the census (gate-r2 R2-H-7, superseding the gate-r1 H-11 fixed Treasury/BatchExpiry/Accounting trio): per class-(c) row, a named test path + anchored --filter with an asserted NONZERO selected-test count (parse the PHPUnit summary; apps/api/phpunit.xml sets no failOnEmptyTestSuite, so an empty selection exits 0 — exit code alone proves nothing) + preserved red-first evidence; modules with ZERO class-(c) rows submit the reviewed census evidence only, NO placeholder green command. The -19.000 item is LEDGER §2 row S-15 — pointer only (gate-r1 H-10)."
     review_lenses: [treasury, fiscal-pos, stock-gl-interaction, inventory-costing]
-    status: review          # executor work complete 2026-08-21; handed over for the bridge review
-    fix_rounds: 0
-    commit: 4ad66ca31       # Phase 6.1.2 (deliverable D); census landed at ffe6cd018 (Phase 6.1.1)
+    status: review          # round-1 CHANGES-REQUIRED addressed 2026-08-21; handed back for re-review
+    fix_rounds: 1
+    commit: 1d6fbe63c       # Phase 6.1.4 (round-1 fixes); 6.1.1 ffe6cd018 census, 6.1.2 4ad66ca31 deliverable D, 6.1.3 6558a7c42 record
     verdict: null
-    last_verdict: null
+    last_verdict: changes_required   # round 1 — docs/handoff/reviews/enforcement-p3/M1-round1.md
     # ── M1 EXECUTION RECORD (2026-08-21) ──
     # Census: docs/handoff/reviews/enforcement-p3/M1-census.md — 53 real journal_entries
     # creator sites across 9 files (7 production + 2 seeders). Classification:
@@ -234,14 +234,58 @@ milestones:
     # blind spot the P1 scanner may share: JournalEntry::query()->create is invisible to
     # a JournalEntry::create grep and hid 6 creators.
     #
-    # Acceptance (nonzero selection asserted, census §5.5):
+    # ── M1 ROUND-1 RECORD (2026-08-21, fix_rounds 1) ──
+    # Verdict: CHANGES-REQUIRED (docs/handoff/reviews/enforcement-p3/M1-round1.md, 6 findings).
+    # Round 1's central correction: round 0 censused CREATORS but never CATCHERS, and so
+    # fixed the wrong site. All five required-to-clear items addressed in 1d6fbe63c.
+    #
+    # 1. CATCHER CENSUS added (census §5.5) — 7 broad catchers that can intercept a
+    #    balance refusal, each resolved synchronous-vs-deferred, + 8 narrow ones excluded.
+    #    The sweep's lexical limit is stated: it cannot see event/afterCommit-mediated
+    #    catchers (how CreditNoteController:406 hides), so that row was added by hand.
+    # 2. FIXED — PostShiftCashVarianceAdjustment:210, the genuine queued-context swallow
+    #    the brief names. postEntryNow (GeneralLedgerService.php:1307) is synchronous, so
+    #    the refusal landed in catch(Throwable) as reason "exception". It now has its own
+    #    queryable reason at error level (the file's own N4 pattern). Re-throw REJECTED
+    #    with justification: the listener is NOT ShouldQueue (TreasuryServiceProvider.php:185)
+    #    and runs post-seal, so throwing would 500 a successful close and still not retry.
+    #    Residual (no retry/dead-letter) reported as R-8.
+    # 3. WITHDRAWN — the SalesOrderToInvoiceConverter re-throw. Proven unreachable by
+    #    deleting it and watching its test stay green. That file now has ZERO behavioural
+    #    change. Test kept, re-scoped and renamed to pin the DEFERRAL (what it actually
+    #    discriminates on). Overclaiming comment resolved by deletion (finding 5).
+    # 4. REVERTED — the UnbalancedJournalEntryException re-parenting, back to
+    #    \RuntimeException. Round 0's blast-radius claim was false transitively: it broke
+    #    CreditNoteController::post's catch(\RuntimeException), silently turning a
+    #    500 CONFIGURATION_ERROR into a generic 500 INTERNAL_ERROR on a fiscal refusal,
+    #    and made the type a \LogicException exposed to the ~30 catch(\InvalidArgumentException)
+    #    blocks rendering 400/422. Resolves findings 3 AND 4 together. No new swallow
+    #    introduced (BatchWriteOffService:122 deferred; InventoryGlPostingService has no
+    #    catch blocks). Two tests updated, message assertions preserved.
+    # 5. Both docblocks updated (AccountingService:304-306, UnpostableDocumentGlException:26-27)
+    #    + a regression test pinning that the type is a \RuntimeException and never a
+    #    \LogicException, so the re-parenting cannot recur.
+    #
+    # Standard applied to every catcher, stated at census §5.6: FIX what is reachable and
+    # provable red-first, REPORT what is unreachable. That is why finding 1 is fixed while
+    # R-7/R-9 are only reported — a guard on an always-deferred path would be the exact
+    # unreachable dead code + non-discriminating test round 1 rejected in §5.2.
+    # New findings: R-7 (converter deferral), R-8 (no retry/dead-letter residual),
+    # R-9 (PostGrIrOnGoodsReceipt:41 + BatchWriteOffService:122). Total findings now 9.
+    # New deviation M1-D7 records the four round-0 positions that did not survive review.
+    #
+    # Acceptance (nonzero selection asserted, census §5.8):
+    #   ShiftCashVarianceAdjustmentTest::test_an_unbalanced_adjustment_entry_is_refused_under_its_own_reason
+    #     -> OK (1 test, 5 assertions)
     #   ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type
     #     -> OK (1 test, 2 assertions)
-    #   DocumentConversionScenarioTest::it_does_not_swallow_an_unbalanced_prepayment_gl_post
+    #   ChokepointUnbalancedGuardTest::test_the_house_unbalanced_exception_is_never_a_logic_exception
+    #     -> OK (1 test, 2 assertions)
+    #   DocumentConversionScenarioTest::it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud
     #     -> OK (1 test, 1 assertion)
-    # Regression green across all 6 test files touching this path (89 tests total),
-    # including the preserved graceful gl_entry_skipped case. Pint pass on all 5 touched
-    # files; PHPStan level 8 "[OK] No errors" on the 3 touched app/ files.
+    # Regression: 115 tests green across 10 files (incl. the preserved graceful
+    # gl_entry_skipped case and all three shift-variance suites). Pint pass on all 11
+    # touched files; PHPStan level 8 "[OK] No errors" on the 6 touched app/ files.
   - id: M2
     title: "3(b) CONSUMER mode (gate-r1 C-3). The P2 dependency is already satisfied at M0 (gate-r3 R3-H-3 — the whole P2 package is on the base by dispatch precondition; 'per 2(b) outcome' is a landed fact, no mid-wave pin exists). Work: reconcile TreasuryReceiptBridge's local required-purposes lists (:446,:528) + any census-surfaced local list against ProvisioningRequiredPurposesV1 — divergences are REPORTED findings, never edits; per-country seeder/template completeness CI test keyed to the manifest's REQUIRED classification + expectedAccountType() (never keyed to requiredPurposes()); enumerate seeded charts, don't assume; wire into a lane that actually runs (per the LANDED 2(b) outcome; worst case the anchored pgsql allowlist; P2 carries the reciprocal never-drop-this-wiring obligation); tamper test names country + purpose. Frozen country seeder class bodies and the manifest's classification content UNTOUCHED."
     review_lenses: [treasury, fiscal-pos]
