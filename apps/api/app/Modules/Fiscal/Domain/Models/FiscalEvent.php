@@ -8,6 +8,7 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Enums\IntegrityStatus;
 use App\Modules\Fiscal\Domain\Enums\PayloadParseStatus;
 use App\Modules\Fiscal\Domain\Enums\SignatureStatus;
+use App\Shared\Domain\ByteaBinding;
 use App\Shared\Domain\Concerns\BindsBinaryColumns;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -151,20 +152,13 @@ final class FiscalEvent extends Model
         return ['canonical_bytes'];
     }
 
+    /**
+     * `canonical_bytes` is NOT NULL, and comes back from PostgreSQL as a stream
+     * resource. One normalization implementation — see {@see ByteaBinding::read()}.
+     */
     public function getCanonicalBytesAttribute(mixed $value): string
     {
-        if (is_resource($value)) {
-            $meta = stream_get_meta_data($value);
-            if ($meta['seekable'] === true) {
-                rewind($value);
-            }
-
-            $contents = stream_get_contents($value);
-
-            return $contents === false ? '' : $contents;
-        }
-
-        return (string) $value;
+        return ByteaBinding::read($value);
     }
 
     /**

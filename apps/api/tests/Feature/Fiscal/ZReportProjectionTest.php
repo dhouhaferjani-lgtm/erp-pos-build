@@ -183,6 +183,66 @@ final class ZReportProjectionTest extends TestCase
         $this->assertSame('Z0003', $report->report_data['canonical_z_report']['formatted_z_number']);
     }
 
+    /**
+     * The legacy-row upgrade is an UPDATE, not an INSERT — `$existing->fill($row);
+     * $existing->save()` in ZReportProjection routes through `performUpdate()` →
+     * `getDirtyForUpdate()`, a completely different binding path from
+     * `getAttributesForInsert()`.
+     *
+     * It is always reached on a cutover terminal: ZReportSyncController creates the
+     * legacy row with NO canonical_bytes, so the column is NULL and therefore always
+     * dirty on upgrade. The `pos_z_reports` immutability trigger explicitly sanctions
+     * this one-time NULL -> value write and pins `NEW.canonical_bytes` to the event's,
+     * so a mangled bind is either a hard 22P02 rollback (quote) or a silently
+     * byte-dropped value the trigger then rejects (lone backslash). Either way the
+     * projection fails permanently for that terminal.
+     */
+    public function test_legacy_row_upgrade_preserves_canonical_bytes_with_backslash_escapes(): void
+    {
+        $payload = $this->zReportPayload();
+        $payload['operator_name'] = 'Caissier "Chef" \\ équipe A';
+        $payload['terminal_label'] = 'T001 \\ "Comptoir"';
+
+        $canonicalBytes = $this->canonicalEncode($payload);
+        $event = $this->storeZReportFiscalEvent([
+            'payload' => $payload,
+            'canonical_bytes' => $canonicalBytes,
+            'current_hash' => hash('sha256', $canonicalBytes),
+        ]);
+
+        $this->assertStringContainsString('\\"', $event->canonical_bytes);
+        $this->assertStringContainsString('\\\\', $event->canonical_bytes);
+
+        // Legacy v2 row exactly as ZReportSyncController writes it — no
+        // canonical_bytes, no fiscal_event_id.
+        $legacyId = Str::uuid()->toString();
+        ZReport::query()->create([
+            'id' => $legacyId,
+            'terminal_id' => $this->terminal->id,
+            'shift_id' => $this->shift->id,
+            'z_number' => 2,
+            'fiscal_hash' => str_repeat('c', 64),
+            'previous_z_hash' => null,
+            'report_data' => ['schema_version' => 2],
+            'receipt_snapshots' => [],
+            'grand_totals' => [],
+            'generated_by' => $this->cashier->id,
+            'generated_at' => '2026-05-24 18:00:00',
+        ]);
+
+        $this->app->make(ZReportProjection::class)->apply($event);
+
+        $this->assertSame(1, ZReport::query()->count());
+        $report = ZReport::query()->firstOrFail();
+        $this->assertSame($legacyId, $report->id, 'upgrade must keep the legacy row id');
+        $this->assertSame($event->id, $report->fiscal_event_id);
+
+        $mirrored = DB::table('pos_z_reports')->where('id', $legacyId)->first();
+        $this->assertNotNull($mirrored);
+        $this->assertSame($event->canonical_bytes, ByteaBinding::read($mirrored->canonical_bytes));
+        $this->assertSame(hash('sha256', $event->canonical_bytes), $mirrored->canonical_bytes_hash);
+    }
+
     public function test_z_report_projection_is_registered_as_fiscal_event_projector_tag(): void
     {
         /** @var list<FiscalEventProjector> $tagged */

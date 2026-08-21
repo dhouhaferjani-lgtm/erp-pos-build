@@ -496,7 +496,6 @@ final class OutboxIngestorTest extends TestCase
         $this->assertNotNull($row);
         $this->assertSame('verified', $row->integrity_status);
 
-        // Read the stream ONCE — a PG bytea resource is not rewound between reads.
         $stored = $this->readBytea($row->canonical_bytes);
         $this->assertSame($env->canonicalBytes, $stored);
         $this->assertSame($env->currentHash, hash('sha256', $stored));

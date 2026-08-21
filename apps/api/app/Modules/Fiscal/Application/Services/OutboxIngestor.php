@@ -348,7 +348,16 @@ final class OutboxIngestor
         );
 
         try {
-            $this->insertQuarantineRow($row);
+            // Wrapped in a transaction ON PURPOSE. This is the ONE quarantine
+            // write that runs outside the ingest transaction (see the class
+            // docblock), and `canonical_bytes` is bound as a single-use stream.
+            // Laravel retries a statement on a lost connection only while
+            // `transactions === 0` (Connection.php:974) — a retry here would
+            // re-execute with the CONSUMED stream and silently persist an empty
+            // canonical_bytes. Opening a transaction disables that retry.
+            $this->db->transaction(function () use ($row): void {
+                $this->insertQuarantineRow($row);
+            });
         } catch (QueryException $insertException) {
             // Even the quarantine table refused the row — typically a PG
             // `timestamptz` or `uuid` column type mismatch beyond what
@@ -859,13 +868,15 @@ final class OutboxIngestor
     private function insertOnConflictDoNothingReturningId(array $row): ?string
     {
         $driver = $this->driverName();
+
+        // `canonical_bytes` is a BINARY column — it must be bound as a stream
+        // (PDO::PARAM_LOB), never as a plain string. See ByteaBinding. Done
+        // BEFORE the column list is derived so the two can never disagree.
+        [$row, $streams] = ByteaBinding::prepareRow($row, self::BYTEA_COLUMNS);
+
         $columns = array_keys($row);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
         $columnList = implode(', ', array_map(fn (string $c): string => '"'.$c.'"', $columns));
-
-        // `canonical_bytes` is a BINARY column — it must be bound as a stream
-        // (PDO::PARAM_LOB), never as a plain string. See ByteaBinding.
-        [$row, $streams] = ByteaBinding::prepareRow($row, self::BYTEA_COLUMNS);
         $bindings = array_values($row);
 
         if ($driver === 'pgsql') {

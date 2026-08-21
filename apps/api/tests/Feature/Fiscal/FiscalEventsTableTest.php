@@ -133,8 +133,18 @@ final class FiscalEventsTableTest extends TestCase
             'sequence_number' => 3,
         ]));
 
-        // All three rows are byte-identical in the DATABASE.
-        foreach ([$event->id, $replica->id, $third->id] as $id) {
+        // (4) The refresh() arm. On PostgreSQL a refreshed model holds a bytea
+        // STREAM in its attribute bag, not a string — TerminalRegistrySnapshotService
+        // refreshes right after create(). Re-saving those attributes must re-stream
+        // from the resource's contents, never rebind the (possibly consumed) resource.
+        $event->refresh();
+        $refreshedReplica = $event->replicate();
+        $refreshedReplica->id = Str::uuid()->toString();
+        $refreshedReplica->sequence_number = 4;
+        $refreshedReplica->save();
+
+        // All rows are byte-identical in the DATABASE.
+        foreach ([$event->id, $replica->id, $third->id, $refreshedReplica->id] as $id) {
             $row = DB::table('fiscal_events')->where('id', $id)->first();
             $this->assertNotNull($row);
             $this->assertSame($bytes, ByteaBinding::read($row->canonical_bytes), "row {$id} bytes");

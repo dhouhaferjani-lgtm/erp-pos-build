@@ -64,7 +64,11 @@ final class AccountStatusChangedServerOnlyTest extends TestCase
         $this->assertSame(IntegrityStatus::Verified, $event->integrity_status);
         $this->assertSame(PayloadParseStatus::Parsed, $event->payload_parse_status);
 
-        $this->assertSame([
+        // `payload` is jsonb: PostgreSQL stores object keys in ITS order (length,
+        // then bytewise), sqlite preserves insertion order. Sort both sides by key
+        // instead of comparing insertion order — assertSame stays strict on types
+        // (assertEqualsCanonicalizing would sort VALUES and weaken the assertion).
+        $this->assertSame($this->ksortRecursive([
             'actor_user_id' => $actor->id,
             'company_id' => $company->id,
             'event_time_device' => $event->event_time_device->utc()->format('Y-m-d\TH:i:s.v\Z'),
@@ -81,7 +85,21 @@ final class AccountStatusChangedServerOnlyTest extends TestCase
             'tenant_id' => $tenant->id,
             'terminal_id' => $terminal->id,
             'training_flag' => false,
-        ], $event->payload);
+        ]), $this->ksortRecursive($event->payload));
+    }
+
+    /**
+     * @param  array<string, mixed>  $value
+     * @return array<string, mixed>
+     */
+    private function ksortRecursive(array $value): array
+    {
+        ksort($value);
+
+        return array_map(
+            fn (mixed $v): mixed => is_array($v) ? $this->ksortRecursive($v) : $v,
+            $value,
+        );
     }
 
     /**

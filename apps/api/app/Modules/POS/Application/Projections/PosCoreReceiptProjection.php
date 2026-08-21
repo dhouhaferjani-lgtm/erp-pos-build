@@ -527,14 +527,16 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
     private function insertReceiptOnConflictDoNothing(array $row): ?string
     {
         $driver = DB::connection()->getDriverName();
+
+        // `pos_receipts.canonical_bytes` is BINARY — bind it as PDO::PARAM_LOB
+        // or PostgreSQL parses it with its bytea *escape* input rules: `\"`
+        // raises SQLSTATE 22P02 and `\\` is silently collapsed to one byte.
+        // Done BEFORE the column list is derived so the two can never disagree.
+        [$row, $streams] = ByteaBinding::prepareRow($row, ['canonical_bytes']);
+
         $columns = array_keys($row);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
         $columnList = implode(', ', array_map(fn (string $c): string => '"'.$c.'"', $columns));
-
-        // `pos_receipts.canonical_bytes` is BINARY — bind it as PDO::PARAM_LOB
-        // or PostgreSQL parses the RFC 8785 `\"` / `\\` escapes with its bytea
-        // *escape* input rules and rejects the row (SQLSTATE 22P02).
-        [$row, $streams] = ByteaBinding::prepareRow($row, ['canonical_bytes']);
         $bindings = array_values($row);
 
         if ($driver === 'pgsql') {
