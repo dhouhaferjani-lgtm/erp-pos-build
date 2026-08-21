@@ -24,6 +24,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use RuntimeException;
 use stdClass;
 use Throwable;
 
@@ -117,6 +118,13 @@ use Throwable;
  */
 final class OutboxIngestor
 {
+    /**
+     * The one BINARY column written by this service — `bytea` on PostgreSQL,
+     * `blob` on SQLite. Bound as a stream, never as a plain string. See
+     * byteaStream().
+     */
+    private const BYTEA_COLUMN = 'canonical_bytes';
+
     public function __construct(
         private readonly ConnectionInterface $db,
         private readonly StrictCanonicalParser $parser,
@@ -338,7 +346,7 @@ final class OutboxIngestor
         );
 
         try {
-            $this->db->table('fiscal_event_quarantine')->insert($row);
+            $this->insertQuarantineRow($row);
         } catch (QueryException $insertException) {
             // Even the quarantine table refused the row — typically a PG
             // `timestamptz` or `uuid` column type mismatch beyond what
@@ -852,7 +860,23 @@ final class OutboxIngestor
         $columns = array_keys($row);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
         $columnList = implode(', ', array_map(fn (string $c): string => '"'.$c.'"', $columns));
-        $bindings = array_values($row);
+
+        // `canonical_bytes` is a BINARY column — it must be bound as a stream
+        // (PDO::PARAM_LOB), never as a plain string. See byteaStream().
+        $streams = [];
+        $bindings = [];
+
+        foreach ($row as $column => $value) {
+            if ($column === self::BYTEA_COLUMN && is_string($value)) {
+                $stream = $this->byteaStream($value);
+                $streams[] = $stream;
+                $bindings[] = $stream;
+
+                continue;
+            }
+
+            $bindings[] = $value;
+        }
 
         if ($driver === 'pgsql') {
             $sql = sprintf(
@@ -875,7 +899,13 @@ final class OutboxIngestor
             );
         }
 
-        $rows = $this->db->select($sql, $bindings);
+        try {
+            $rows = $this->db->select($sql, $bindings);
+        } finally {
+            foreach ($streams as $stream) {
+                fclose($stream);
+            }
+        }
 
         if ($rows === []) {
             return null;
@@ -885,6 +915,69 @@ final class OutboxIngestor
         $id = is_object($first) && property_exists($first, 'id') ? $first->id : null;
 
         return is_string($id) ? $id : (is_scalar($id) ? (string) $id : null);
+    }
+
+    /**
+     * Insert one `fiscal_event_quarantine` row, binding the binary
+     * `canonical_bytes` column as a stream. See byteaStream().
+     *
+     * @param  array<string, mixed>  $row
+     */
+    private function insertQuarantineRow(array $row): void
+    {
+        $bytes = $row[self::BYTEA_COLUMN] ?? null;
+
+        if (! is_string($bytes)) {
+            $this->db->table('fiscal_event_quarantine')->insert($row);
+
+            return;
+        }
+
+        $stream = $this->byteaStream($bytes);
+        $row[self::BYTEA_COLUMN] = $stream;
+
+        try {
+            $this->db->table('fiscal_event_quarantine')->insert($row);
+        } finally {
+            fclose($stream);
+        }
+    }
+
+    /**
+     * Wrap raw bytes in an in-memory stream so PDO binds them as
+     * `PDO::PARAM_LOB` instead of `PDO::PARAM_STR`.
+     *
+     * `canonical_bytes` is `bytea` on PostgreSQL and `blob` on SQLite.
+     * `Illuminate\Database\Connection::bindValues()` binds a plain PHP string
+     * as `PDO::PARAM_STR`, which is transmitted as a text literal — so
+     * PostgreSQL parses it with the bytea *escape* input rules and every
+     * backslash that is not `\\` or `\NNN` fails with
+     * `SQLSTATE[22P02] invalid input syntax for type bytea`. RFC 8785
+     * canonical JSON emits `\"` for every quote in free text, so any receipt
+     * whose product name or note contains a quote or a backslash would be
+     * un-ingestable on PostgreSQL.
+     *
+     * A resource binds as `PDO::PARAM_LOB`, which is sent as binary and
+     * round-trips byte-identically on BOTH drivers.
+     *
+     * The caller MUST `fclose()` the stream once the statement has executed.
+     *
+     * @return resource
+     */
+    private function byteaStream(string $bytes)
+    {
+        $stream = fopen('php://memory', 'r+b');
+
+        if ($stream === false) {
+            throw new RuntimeException(
+                'OutboxIngestor: unable to open an in-memory stream for the canonical_bytes binding.',
+            );
+        }
+
+        fwrite($stream, $bytes);
+        rewind($stream);
+
+        return $stream;
     }
 
     // ------------------------------------------------------------------
@@ -1116,7 +1209,7 @@ final class OutboxIngestor
             payloadParseStatus: $payloadParseStatus,
         );
 
-        $this->db->table('fiscal_event_quarantine')->insert($row);
+        $this->insertQuarantineRow($row);
 
         // §7.2 Step 4 line 374 — "raise an admin alert". Phase 1: emit a
         // structured Log::critical so monitoring picks it up. Task 23+

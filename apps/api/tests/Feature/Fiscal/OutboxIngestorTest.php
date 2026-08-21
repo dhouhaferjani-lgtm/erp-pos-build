@@ -458,6 +458,81 @@ final class OutboxIngestorTest extends TestCase
         $this->assertSame(1, DB::table('fiscal_events')->count());
     }
 
+    // =================================================================
+    // bytea binding — canonical bytes carrying backslash escapes
+    // =================================================================
+
+    /**
+     * `canonical_bytes` is `bytea` on PostgreSQL. A plain PHP string binds as
+     * `PDO::PARAM_STR`, which PG parses with the bytea **escape** input rules:
+     * any backslash that is not `\\` or `\NNN` fails with
+     * `SQLSTATE[22P02] invalid input syntax for type bytea`.
+     *
+     * RFC 8785 canonical JSON emits `\"` for every quote in free text, so a
+     * receipt whose product name contains a quote or a backslash could never
+     * be ingested on PostgreSQL. The value must be bound as a stream
+     * (`PDO::PARAM_LOB`) so it is transmitted as binary.
+     */
+    public function test_canonical_bytes_with_backslash_escapes_are_stored_byte_identically(): void
+    {
+        $env = $this->validEnvelope([
+            'sequence_number' => 1,
+            'payload' => $this->escapeHeavySaleReceiptPayload(),
+        ]);
+
+        // Guard the fixture: the canonical encoding really does carry the two
+        // byte sequences PG's bytea escape parser rejects, plus a raw
+        // (non-escaped) UTF-8 accent as the control that was never at risk.
+        $this->assertStringContainsString('\\"', $env->canonicalBytes);
+        $this->assertStringContainsString('\\\\', $env->canonicalBytes);
+        $this->assertStringContainsString('é', $env->canonicalBytes);
+
+        $result = $this->ingest($env);
+
+        $this->assertTrue($result->stored);
+
+        $row = DB::table('fiscal_events')->where('id', $result->fiscalEventId)->first();
+        $this->assertNotNull($row);
+        $this->assertSame('verified', $row->integrity_status);
+
+        // Read the stream ONCE — a PG bytea resource is not rewound between reads.
+        $stored = $this->readBytea($row->canonical_bytes);
+        $this->assertSame($env->canonicalBytes, $stored);
+        $this->assertSame($env->currentHash, hash('sha256', $stored));
+    }
+
+    /**
+     * Same binding hazard on the second write site: the `fiscal_event_quarantine`
+     * insert that preserves a sequence-conflicting envelope verbatim.
+     *
+     * The FIRST envelope carries a plain payload so this test fails only on the
+     * quarantine insert, isolating it from the `fiscal_events` write path above.
+     */
+    public function test_quarantined_envelope_canonical_bytes_with_backslash_escapes_are_stored_byte_identically(): void
+    {
+        $this->ingest($this->validEnvelope(['sequence_number' => 1]));
+
+        // A DIFFERENT envelope claims the occupied slot — routed verbatim to
+        // fiscal_event_quarantine (§8).
+        $conflicting = $this->validEnvelope([
+            'sequence_number' => 1,
+            'payload' => $this->escapeHeavySaleReceiptPayload(),
+        ]);
+
+        $this->assertStringContainsString('\\"', $conflicting->canonicalBytes);
+        $this->assertStringContainsString('\\\\', $conflicting->canonicalBytes);
+
+        $result = $this->ingest($conflicting);
+
+        $this->assertTrue($result->sequenceConflict);
+
+        $q = DB::table('fiscal_event_quarantine')
+            ->where('envelope_event_id', $conflicting->id)
+            ->first();
+        $this->assertNotNull($q);
+        $this->assertSame($conflicting->canonicalBytes, $this->readBytea($q->canonical_bytes));
+    }
+
     public function test_sequence_gap_when_hash_linkage_is_broken(): void
     {
         $this->ingest($this->validEnvelope(['sequence_number' => 1]));
@@ -933,6 +1008,44 @@ final class OutboxIngestorTest extends TestCase
             currentHash: $currentHash,
             canonicalBytes: $canonicalBytes,
         );
+    }
+
+    /**
+     * A SALE_RECEIPT payload whose free-text fields carry a double quote, a
+     * backslash and a raw UTF-8 accent — i.e. canonical bytes containing the
+     * `\"` and `\\` sequences that PG's bytea *escape* input parser rejects.
+     *
+     * @return array<string, mixed>
+     */
+    private function escapeHeavySaleReceiptPayload(): array
+    {
+        $payload = $this->minimalSaleReceiptPayload();
+
+        /** @var list<array<string, mixed>> $lines */
+        $lines = $payload['line_items'];
+        $lines[0]['name'] = 'Filtre à huile 5" "Prémium" \\ réf C:\\PARTS\\OIL';
+        $payload['line_items'] = $lines;
+        $payload['notes'] = 'Client a dit « 5" \\ OK »';
+
+        return $payload;
+    }
+
+    /**
+     * Read a `canonical_bytes` value selected through the query builder.
+     *
+     * PostgreSQL returns `bytea` as a stream resource on a raw `DB::table()`
+     * read (Eloquent applies the FiscalEvent accessor; the query builder does
+     * not); SQLite returns a plain string.
+     */
+    private function readBytea(mixed $value): string
+    {
+        if (is_resource($value)) {
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return is_string($value) ? $value : '';
     }
 
     /**
