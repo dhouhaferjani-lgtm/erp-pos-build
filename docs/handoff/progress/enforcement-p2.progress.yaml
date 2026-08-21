@@ -112,7 +112,7 @@ pre_promotion_ci_dispatch:
       - "Backend PG-only: 51 distinct failing tests == the 51 at base control run 32427893316, diff EMPTY"
       - "Treasury Spine PG: 78 distinct == base 78, diff EMPTY"
       - "Frontend Vitest: exactly the 4 known inherited reds (arLocaleCoverage ×3 — Arabic backfill lane; SupportWindowForm — CI flake, red at base, green locally). The parent's a4a8c2293 web-fix commit removed the other 5 base reds; P2's own i18n/tools/eslint suites GREEN in this run"
-      - "Security Regression (NEW job, first real execution): 8 failures == the identical 8 Tests\Feature\Security\MarketplaceFlagEnabled* failures inside the base full-suite job (P1-run inventory) — a pre-existing CI-env defect (.env.testing copied from .env.example pins MARKETPLACE_ENABLED=false; the EnablesMarketplaceModule trait wins locally where no .env.testing exists). The job MOVED an already-red-inherited suite into a loud lane; fix lane = dev commit immediately after this close (see ledger)"
+      - "Security Regression (NEW job, first real execution): 8 failures == the identical 8 Tests/Feature/Security MarketplaceFlagEnabled* failures inside the base full-suite job (P1-run inventory) — a pre-existing CI-env defect (.env.testing copied from .env.example pins MARKETPLACE_ENABLED=false; the EnablesMarketplaceModule trait wins locally where no .env.testing exists). The job MOVED an already-red-inherited suite into a loud lane; fix lane = dev commit immediately after this close (see ledger)"
       - "Backend Tests full-suite step: still in progress at close; covered structurally (P2 adds no Feature classes; its new Architecture test green by path) — post-hoc confirmation to the parent session ledger, per the P1 precedent"
     worksheet: memory session-2026-08-19-parent-merge-ledger.md
 # STRUCTURED CLOSING RECEIPT (gate-r6 R6-H-4; de-self-referenced gate-r7 R7-C-2 — C can only contain
@@ -266,7 +266,7 @@ milestones:
     # authorise its own override; this field only records what that ruling decided.
     max_fix_rounds_override: 6      # M1 ONLY, by the parent ruling above
     fix_rounds: 5
-    commit: c9ac654b75d7c95f7b0bd245d4c43b2977e96d57
+    commit: b55cb7ac89a4038abacd367454828fcb3d54e890   # re-derived post-rebase (was c9ac654b7 pre-rebase; subject-matched)
     verdict: docs/handoff/reviews/enforcement-p2/M1-round7.md
     last_verdict: ACCEPT   # round 7, under the parent-ruled M1-only override
     updated: c9ac654b7
@@ -298,7 +298,7 @@ milestones:
     # AUTHORITY: the parent ruling quoted verbatim ABOVE, not this line.
     max_fix_rounds_override: 7      # M2 ONLY, this continuation + its verifying round
     fix_rounds: 7
-    commit: 2c0689f24462cec4c77ace2acb9c08e2bdce5883
+    commit: 42853df5850f7bd075c9c07d6fb5f43169a691be   # re-derived post-rebase (was 2c0689f24)
     verdict: docs/handoff/reviews/enforcement-p2/M2-round8.md
     last_verdict: ACCEPT   # round 8, under the parent terminal condition; residuals in DECISION §(73)
     updated: 2c0689f24
@@ -307,23 +307,23 @@ milestones:
     review_lenses: [frontend-conventions]
     status: passed
     fix_rounds: 5
-    commit: 6774489bee2b355a7f034c3c8b3271a3ba96c3bf
+    commit: 7e5cedeafd7fe970b700522381b53b16b7d79d16   # re-derived post-rebase (was 6774489be)
     verdict: docs/handoff/reviews/enforcement-p2/M3-round6.md
     last_verdict: ACCEPT   # round 6; one close-before-merge obligation on the parent (regenerate the ceilings on dev)
     updated: 6774489be
   - id: M4
     title: "WHOLE-PACKAGE GATE (no new implementation, gate-r1 H-8): rerun the full accumulated evidence with EVERY lens this package used (frontend-conventions, tenancy-authz) over the integrated branch — pnpm lint / node tools/audit-i18n-completeness.mjs / pnpm test:tools (the exact CI command string — gate-r2 R2-H-3) / pnpm test:eslint-rules all green — each preceded by the LOCAL AUTHORITY SETUP export (gate-r4 R4-H-4); local workflow-change evidence per brief §5 (no executor CI links — the remote proof is the owner's PRE-promotion workflow_dispatch gate on EXACTLY the accepted SHA, receipt recorded post-promotion in pre_promotion_ci_dispatch, gate-r2 R2-C-2/R2-H-2 + gate-r3 R3-C-2; the handback names the step/job ids that run must show executed); scope proof git diff --stat <base_sha>..HEAD + allowlist. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
     review_lenses: [frontend-conventions, tenancy-authz]
-    status: review
-    fix_rounds: 5
+    status: passed          # parent-invoked final bridge round 6 attempt 2 ACCEPT, 2026-08-21
+    fix_rounds: 5           # of max 7 (parent continuation ruling — see manifest comment)
     # NOT self-recordable: the handover tip would have to contain its own SHA (the
     # same fixed point R7-C-2 describes for the closing commit). The accepted tip is
     # carried by the executor's handover report, the handback header, and the
     # parent's own --accepted argument to adversarial-review-final.sh — which is
     # what the bridge actually reads. The YAML field-check verifies base_sha,
     # control_manifest, final-milestone status and fix_rounds, never this field.
-    commit: null
-    verdict: null
+    commit: d8a631133db1153c24b0e4c0211fc5c43969a7ec   # accepted tip A == p2_landed_sha
+    verdict: docs/handoff/reviews/enforcement-p2/final-gate-r6a2.md   # sha256 1279c812… == ci-pin/enforcement-p2-r1 annotation
     last_verdict: null
     updated: final-gate-fix-round-2
 
