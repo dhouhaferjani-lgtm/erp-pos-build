@@ -194,20 +194,50 @@ final class UnpostableCorrectingEntryException extends DomainException
         );
     }
 
+    /**
+     * @param  bool  $mayInheritFromTarget  Whether this control account is one that
+     *                                      COULD have taken the target's partner —
+     *                                      false for the supplier side, whose
+     *                                      remedy is different and is spelled out.
+     */
     public static function controlAccountLegWithoutPartner(
         ?string $documentNumber,
         string $accountCode,
+        bool $mayInheritFromTarget = true,
     ): self {
+        $remedy = $mayInheritFromTarget
+            ? 'Name the partner on the leg, or post the correction to a non-control account.'
+            : 'This is a SUPPLIER control account, so it does not inherit the corrected document\'s '
+                .'partner: the target is a customer document, and inheriting would stamp a customer '
+                .'into the supplier subledger — a balance that reconciles and is still wrong. Name the '
+                .'supplier explicitly on the leg.';
+
         return new self(
             sprintf(
                 'Correcting entry %s posts to partner control account %s without naming a partner. A '
                 .'control-account leg with no partner breaks subledger reconciliation permanently: the '
-                .'control balance moves and no partner statement moves with it. Name the partner on the '
-                .'leg, or post the correction to a non-control account.',
+                .'control balance moves and no partner statement moves with it. %s',
                 $documentNumber ?? '(unnumbered)',
                 $accountCode,
+                $remedy,
             ),
             CorrectingEntryRefusalCode::ControlAccountLegWithoutPartner,
+            $documentNumber,
+        );
+    }
+
+    public static function unknownPartner(?string $documentNumber, string $partnerId): self
+    {
+        return new self(
+            sprintf(
+                'Correcting entry %s names partner %s on a leg, which does not belong to this company. '
+                .'A partner is scoped exactly as an account is: nothing downstream would catch a foreign '
+                .'one — the subledger reconciler does not scope partners by company, so the divergence '
+                .'would be silent and, the journal being immutable, permanent.',
+                $documentNumber ?? '(unnumbered)',
+                $partnerId,
+            ),
+            CorrectingEntryRefusalCode::UnknownPartner,
             $documentNumber,
         );
     }

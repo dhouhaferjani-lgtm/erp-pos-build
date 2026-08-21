@@ -24,6 +24,7 @@ use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Partner\Domain\Partner;
 use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
@@ -110,6 +111,28 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
         SystemAccountPurpose::CustomerReceivable,
         SystemAccountPurpose::CustomerAdvance,
         SystemAccountPurpose::SupplierPayable,
+    ];
+
+    /**
+     * The control purposes whose partner may be INHERITED from the target.
+     *
+     * A correcting entry's target is always a CUSTOMER document — Invoice or
+     * CreditNote, per {@see self::CORRECTABLE_TARGET_TYPES} — so its
+     * `partner_id` is a customer. Inheriting it onto a CustomerReceivable or
+     * CustomerAdvance leg is sound: the correction is about that customer's
+     * balance by construction.
+     *
+     * `SupplierPayable` is DELIBERATELY ABSENT. Inheriting there would stamp a
+     * CUSTOMER id into the supplier subledger, which reconciles as cleanly as it
+     * is wrong: `reconcileSubledger(SupplierPayable)` would balance, on a partner
+     * that never owed the money. A 401 leg therefore requires an EXPLICIT
+     * partner, and is refused without one (treasury gate P3-1).
+     *
+     * @var list<SystemAccountPurpose>
+     */
+    private const TARGET_PARTNER_INHERITABLE_PURPOSES = [
+        SystemAccountPurpose::CustomerReceivable,
+        SystemAccountPurpose::CustomerAdvance,
     ];
 
     /**
@@ -1510,6 +1533,48 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             }
         }
 
+        // The PARTNER axis, proven exactly as the ACCOUNT axis is proven three
+        // statements above — and for the same reason, which the account block
+        // already states: company_id is an AUTHORIZATION axis, not a filter.
+        //
+        // Until this existed, `legs.*.partner_id` was validated for FORMAT only
+        // (`uuid` in the FormRequest) and no query ever confirmed the partner was
+        // real, let alone this company's. Two probes went through:
+        //
+        //  - a SIBLING-COMPANY partner was accepted onto a 411 leg. Nothing
+        //    downstream catches it: `getSubledgerTotal()` never scopes partners
+        //    by company, so the reconciler cannot see the foreign row, and the
+        //    balance refresh dies inside its own try/catch as a swallowed
+        //    ModelNotFoundException. The divergence is silent and permanent.
+        //  - a well-formed but NONEXISTENT uuid reached the INSERT and became an
+        //    FK violation — an untyped 500 where a typed 422 belongs.
+        //
+        // Only SUPPLIED leg partners are resolved here. A partner INHERITED from
+        // the target needs no separate proof: it is read off a document this
+        // method has already scoped to the same tenant and company.
+        $suppliedPartnerIds = array_values(array_unique(array_filter(array_map(
+            static fn (CorrectingEntryLegData $leg): ?string => $leg->partnerId,
+            $payload->legs,
+        ))));
+
+        if ($suppliedPartnerIds !== []) {
+            $knownPartnerIds = Partner::query()
+                ->where('tenant_id', $correctingEntry->tenant_id)
+                ->where('company_id', $correctingEntry->company_id)
+                ->whereIn('id', $suppliedPartnerIds)
+                ->pluck('id')
+                ->all();
+
+            foreach ($suppliedPartnerIds as $partnerId) {
+                if (! in_array($partnerId, $knownPartnerIds, true)) {
+                    throw UnpostableCorrectingEntryException::unknownPartner(
+                        $correctingEntry->document_number,
+                        $partnerId,
+                    );
+                }
+            }
+        }
+
         $scale = $this->documentScale($correctingEntry);
 
         // Is the target's VAT period FILED? Asked ONCE, before the leg loop, and
@@ -1538,9 +1603,11 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
         //     it the control account moves and no partner statement moves with
         //     it, and `reconcileSubledger()` reports the divergence forever.
         //     The leg's own `partner_id` wins; absent that, the TARGET's partner
-        //     is the answer, because a correction to an invoice's AR is by
-        //     construction about that invoice's customer. Neither available on a
-        //     control leg is a refusal, never a guess.
+        //     is the answer FOR CUSTOMER control accounts only, because a
+        //     correction to an invoice's AR is by construction about that
+        //     invoice's customer. A SupplierPayable leg inherits nothing — see
+        //     TARGET_PARTNER_INHERITABLE_PURPOSES. Neither available on a control
+        //     leg is a refusal, never a guess.
         $restatedLegs = [];
 
         foreach ($payload->legs as $leg) {
@@ -1562,12 +1629,21 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             $partnerId = $leg->partnerId;
 
             if (in_array($account->system_purpose, self::PARTNER_CONTROL_PURPOSES, true)) {
-                $partnerId ??= $this->usablePartnerId($target);
+                $mayInherit = in_array(
+                    $account->system_purpose,
+                    self::TARGET_PARTNER_INHERITABLE_PURPOSES,
+                    true,
+                );
+
+                if ($partnerId === null && $mayInherit) {
+                    $partnerId = $this->usablePartnerId($target);
+                }
 
                 if ($partnerId === null) {
                     throw UnpostableCorrectingEntryException::controlAccountLegWithoutPartner(
                         $correctingEntry->document_number,
                         $account->code,
+                        $mayInherit,
                     );
                 }
             }

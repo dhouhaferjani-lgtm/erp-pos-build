@@ -81,6 +81,19 @@ enum CorrectingEntryRefusalCode: string
     case ControlAccountLegWithoutPartner = 'CORRECTING_ENTRY_CONTROL_ACCOUNT_LEG_WITHOUT_PARTNER';
 
     /**
+     * A leg names a partner that does not belong to this tenant AND company.
+     *
+     * `legs.*.partner_id` was format-checked (`uuid`) and never resolved, while
+     * the ACCOUNT on the same leg was company-scoped three statements earlier.
+     * A sibling-company partner therefore posted onto a control leg and diverged
+     * the subledger invisibly — `getSubledgerTotal()` does not scope partners by
+     * company, so the reconciler cannot even see the foreign row. A nonexistent
+     * uuid reached the INSERT and surfaced as an FK-violation 500.
+     * company_id is an authorization axis on BOTH axes, not just the chart.
+     */
+    case UnknownPartner = 'CORRECTING_ENTRY_UNKNOWN_PARTNER';
+
+    /**
      * A leg names a VAT control account while the TARGET's VAT period is FILED.
      *
      * Moving 4457 / 4456 inside a period whose declaration is already with the

@@ -1066,6 +1066,199 @@ final class CorrectingEntryGlPostingTest extends TestCase
         self::assertNotSame('', $this->corrections->postCorrectingEntryGl($correction));
     }
 
+    // ================================================================
+    // Re-gate round — treasury P2-1 (partner axis) + P3-1 (fallback)
+    // ================================================================
+
+    /**
+     * PROBE C. A SIBLING-COMPANY partner must not reach a control leg.
+     *
+     * `legs.*.partner_id` was format-only (`uuid`) while the ACCOUNT on the same
+     * leg was company-scoped three statements earlier. Nothing downstream closes
+     * the gap: `PartnerBalanceService::getSubledgerTotal()` does not scope
+     * partners by company, so the reconciler cannot see the foreign row at all,
+     * and the balance refresh dies inside its own try/catch as a swallowed
+     * `ModelNotFoundException`. The divergence would be silent and — the journal
+     * being immutable — permanent.
+     */
+    public function test_a_sibling_company_partner_on_a_leg_is_refused(): void
+    {
+        $siblingCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Sibling Company',
+            'legal_name' => 'Sibling Company SARL',
+            'tax_id' => 'TAX-SIBLING-'.uniqid(),
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $foreignPartner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $siblingCompany->id,
+            'name' => 'Client de la societe soeur',
+            'type' => PartnerType::Customer,
+            'is_active' => true,
+        ]);
+
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null, $foreignPartner->id),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A partner from another company must be refused');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(CorrectingEntryRefusalCode::UnknownPartner, $exception->refusalCode);
+        }
+
+        self::assertSame(0, JournalEntry::query()
+            ->where('source_type', AccountingService::DOCUMENT_CORRECTION_SOURCE_TYPE)
+            ->where('source_id', $correction->id)
+            ->count());
+    }
+
+    /**
+     * PROBE D. A well-formed but NONEXISTENT partner uuid must be a typed 422,
+     * not an FK violation surfacing as an untyped 500 from the INSERT.
+     */
+    public function test_a_nonexistent_partner_uuid_on_a_leg_is_a_typed_refusal_not_an_fk_violation(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of(
+                $this->accountId('411'),
+                '19.000',
+                '0',
+                null,
+                Str::uuid()->toString(),
+            ),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A nonexistent partner must be refused before the INSERT');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(CorrectingEntryRefusalCode::UnknownPartner, $exception->refusalCode);
+        }
+    }
+
+    /** A partner of THIS company still posts — the guard scopes, it does not forbid. */
+    public function test_an_own_company_partner_on_a_leg_still_posts(): void
+    {
+        $ownPartner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Autre client de la maison',
+            'type' => PartnerType::Customer,
+            'is_active' => true,
+        ]);
+
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null, $ownPartner->id),
+        ]);
+
+        $entryId = $this->corrections->postCorrectingEntryGl($correction);
+
+        self::assertSame(
+            $ownPartner->id,
+            JournalLine::query()
+                ->where('journal_entry_id', $entryId)
+                ->where('account_id', $this->accountId('411'))
+                ->firstOrFail()
+                ->partner_id,
+        );
+    }
+
+    /**
+     * P3-1. A SUPPLIER control leg does NOT inherit the target's partner.
+     *
+     * A correcting entry's target is always a CUSTOMER document, so inheriting
+     * would stamp a customer id into the supplier subledger — and it would
+     * RECONCILE, because `reconcileSubledger(SupplierPayable)` only checks that
+     * control equals Σ(partner statements). A balance that is clean and wrong is
+     * worse than one that is visibly broken.
+     */
+    public function test_a_supplier_control_leg_does_not_inherit_the_targets_customer(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        // The target HAS a partner — the point is that 401 must not take it.
+        self::assertNotNull($invoice->partner_id);
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('401'), '19.000', '0', 'Supplier side'),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A supplier control leg must require an explicit partner');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(
+                CorrectingEntryRefusalCode::ControlAccountLegWithoutPartner,
+                $exception->refusalCode,
+            );
+            self::assertStringContainsString('SUPPLIER control account', $exception->getMessage());
+        }
+    }
+
+    /** Named explicitly, the supplier leg posts — the rule is "explicit", not "never". */
+    public function test_a_supplier_control_leg_with_an_explicit_partner_posts(): void
+    {
+        $supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Fournisseur SARL',
+            'type' => PartnerType::Supplier,
+            'is_active' => true,
+        ]);
+
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('401'), '19.000', '0', null, $supplier->id),
+        ]);
+
+        $entryId = $this->corrections->postCorrectingEntryGl($correction);
+
+        self::assertSame(
+            $supplier->id,
+            JournalLine::query()
+                ->where('journal_entry_id', $entryId)
+                ->where('account_id', $this->accountId('401'))
+                ->firstOrFail()
+                ->partner_id,
+        );
+    }
+
+    /** The CUSTOMER side still inherits — the restriction is targeted, not blanket. */
+    public function test_a_customer_control_leg_still_inherits_the_targets_partner(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
+        ]);
+
+        $entryId = $this->corrections->postCorrectingEntryGl($correction);
+
+        self::assertSame(
+            $this->customer->id,
+            JournalLine::query()
+                ->where('journal_entry_id', $entryId)
+                ->where('account_id', $this->accountId('411'))
+                ->firstOrFail()
+                ->partner_id,
+        );
+    }
+
     // ------------------------------- gate-fix-round helpers ---
 
     private function reloadDocument(Document $document): Document
