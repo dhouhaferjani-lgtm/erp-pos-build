@@ -5,14 +5,20 @@ declare(strict_types=1);
 namespace Tests\Feature\Accounting;
 
 use App\Modules\Accounting\Application\Services\AccountingService;
+use App\Modules\Accounting\Application\Services\PartnerBalanceService;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\CorrectingEntryRefusalCode;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
+use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\Exceptions\UnpostableCorrectingEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Enums\PeriodStatus;
+use App\Modules\Company\Domain\FiscalPeriod;
+use App\Modules\Company\Domain\FiscalYear;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Application\DTOs\CorrectingEntryLegData;
 use App\Modules\Document\Application\DTOs\CorrectingEntryPayload;
@@ -720,6 +726,473 @@ final class CorrectingEntryGlPostingTest extends TestCase
             'unit_price' => '10.000',
             'tax_rate' => '19.00',
             'line_total' => '100.000',
+        ]);
+
+        /** @var Document */
+        return $invoice->fresh(['lines']);
+    }
+
+    // =====================================================================
+    // Gate fix round — treasury + fiscal P1/P2 findings
+    // =====================================================================
+
+    /**
+     * P1-1 (both gates). A WITHDRAWN target may not be corrected.
+     *
+     * The probe that found this posted a 50.000 reclass onto a CANCELLED
+     * invoice's AR and VAT. `reverseDocumentGl()` had already mirrored the
+     * original out and is idempotent, so the correction's legs stood in the
+     * ledger with nothing left to unwind them — permanently unreachable money.
+     */
+    public function test_a_correction_onto_a_cancelled_target_is_refused(): void
+    {
+        $invoice = $this->postedInvoiceWithBalancedGl(Carbon::parse('2026-01-15'));
+
+        $this->accountingService->reverseDocumentGl($this->reloadDocument($invoice));
+        $invoice->update(['status' => DocumentStatus::Cancelled]);
+
+        $correction = $this->correctingDocumentFor($this->reloadDocument($invoice), [
+            CorrectingEntryLegData::of($this->accountId('706'), '50.000', '0', 'Reclass'),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '50.000', 'Reclass'),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A cancelled document must not accept a correction');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(CorrectingEntryRefusalCode::TargetAlreadyWithdrawn, $exception->refusalCode);
+        }
+
+        self::assertSame(0, JournalEntry::query()
+            ->where('source_type', AccountingService::DOCUMENT_CORRECTION_SOURCE_TYPE)
+            ->where('source_id', $correction->id)
+            ->count());
+    }
+
+    /**
+     * The LEDGER's answer, not the document's: a reversal exists even though the
+     * status was left behind. The two halves of the guard are independent and
+     * both are load-bearing.
+     */
+    public function test_a_correction_onto_an_already_reversed_target_is_refused_even_if_the_status_lags(): void
+    {
+        $invoice = $this->postedInvoiceWithBalancedGl(Carbon::parse('2026-01-15'));
+
+        $this->accountingService->reverseDocumentGl($this->reloadDocument($invoice));
+        // Status deliberately NOT moved to Cancelled.
+        self::assertSame(DocumentStatus::Posted, $this->reloadDocument($invoice)->status);
+
+        $correction = $this->correctingDocumentFor($this->reloadDocument($invoice), [
+            CorrectingEntryLegData::of($this->accountId('706'), '50.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '50.000', null),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('An already-reversed ledger footprint must not accept a correction');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(CorrectingEntryRefusalCode::TargetAlreadyWithdrawn, $exception->refusalCode);
+        }
+    }
+
+    /**
+     * P1-2 (both gates). A control-account leg carries `partner_id`, and the
+     * subledger still reconciles afterwards.
+     *
+     * The probe: this lane's own canonical example — a 19.000 debit to 411 —
+     * moved the control account to 129.000 while the partner subledger stayed at
+     * 119.000. `reconcileSubledger()` is the house's own arbiter, so it is what
+     * this asserts; a `partner_id IS NOT NULL` check alone would pass on a leg
+     * stamped with the WRONG partner.
+     */
+    public function test_a_control_account_leg_carries_the_partner_and_the_subledger_reconciles(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
+        ]);
+
+        $entryId = $this->corrections->postCorrectingEntryGl($correction);
+
+        $arLine = JournalLine::query()
+            ->where('journal_entry_id', $entryId)
+            ->where('account_id', $this->accountId('411'))
+            ->firstOrFail();
+
+        self::assertSame(
+            $this->customer->id,
+            $arLine->partner_id,
+            'A 411 leg must name the partner whose balance it moves',
+        );
+
+        $reconciliation = app(PartnerBalanceService::class)
+            ->reconcileSubledger($this->company->id, SystemAccountPurpose::CustomerReceivable);
+
+        self::assertTrue(
+            $reconciliation['is_balanced'],
+            sprintf(
+                'Subledger must reconcile after a control-account correction: control=%s subledger=%s',
+                $reconciliation['control_account_balance'],
+                $reconciliation['subledger_total'],
+            ),
+        );
+        self::assertSame(0, $reconciliation['entries_without_partner']);
+    }
+
+    /**
+     * The leg's OWN partner wins over the target's — an accountant reclassifying
+     * between two customers must be able to say which balance each leg moves.
+     */
+    public function test_an_explicit_leg_partner_overrides_the_targets(): void
+    {
+        $otherCustomer = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Autre Client',
+            'type' => PartnerType::Customer,
+            'is_active' => true,
+        ]);
+
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', 'To the other client', $otherCustomer->id),
+        ]);
+
+        $entryId = $this->corrections->postCorrectingEntryGl($correction);
+
+        self::assertSame(
+            $otherCustomer->id,
+            JournalLine::query()
+                ->where('journal_entry_id', $entryId)
+                ->where('account_id', $this->accountId('411'))
+                ->firstOrFail()
+                ->partner_id,
+        );
+    }
+
+    /**
+     * Refused, never guessed: a control leg whose partner cannot be resolved
+     * would move the control account with no partner statement behind it, and
+     * the journal is immutable, so there is no later repair.
+     */
+    public function test_a_control_account_leg_with_no_resolvable_partner_is_refused(): void
+    {
+        // Partnerless from birth. It cannot be nulled AFTERWARDS: the invoice is
+        // sealed, and `trg_document_immutability` refuses the update — which is
+        // itself a useful reminder that a leg written without a partner can
+        // never be repaired later either.
+        $invoice = $this->partnerlessInvoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A control-account leg with no partner must be refused');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(
+                CorrectingEntryRefusalCode::ControlAccountLegWithoutPartner,
+                $exception->refusalCode,
+            );
+        }
+    }
+
+    /**
+     * P1-3 (fiscal). A leg finer than the CURRENCY admits is refused.
+     *
+     * The FormRequest's ceiling is the COLUMN scale (3). The balance verdict and
+     * the ledger run at the CURRENCY scale — EUR is 2 — and `bcadd` TRUNCATES.
+     * The probe posted `dr 0.005 / cr 0.001` on a EUR document: both truncated
+     * to `0.00`, the aggregate declared it balanced, and the company ledger was
+     * permanently out by 0.004 at column scale.
+     */
+    public function test_a_leg_finer_than_the_currency_scale_is_refused(): void
+    {
+        $invoice = $this->eurInvoiceWithBalancedGl(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('706'), '0.005', '0', null),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '0.001', null),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A sub-currency-scale leg must be refused, not truncated into a false balance');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(
+                CorrectingEntryRefusalCode::LegAmountBeyondCurrencyScale,
+                $exception->refusalCode,
+            );
+        }
+
+        self::assertSame(0, JournalEntry::query()
+            ->where('source_type', AccountingService::DOCUMENT_CORRECTION_SOURCE_TYPE)
+            ->where('source_id', $correction->id)
+            ->count());
+    }
+
+    /** A leg AT the currency scale still posts — the guard refuses excess, not precision. */
+    public function test_a_leg_at_the_currency_scale_still_posts_on_a_eur_document(): void
+    {
+        $invoice = $this->eurInvoiceWithBalancedGl(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('706'), '0.01', '0', null),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '0.01', null),
+        ]);
+
+        self::assertNotSame('', $this->corrections->postCorrectingEntryGl($correction));
+    }
+
+    /**
+     * P1-4 (treasury). The post takes the SAME per-company advisory lock the GL
+     * chokepoint holds (`GeneralLedgerService::sealAndPersistEntry`), and takes
+     * it BEFORE it reads `chain_sequence`.
+     *
+     * Asserted on the statement log rather than on `pg_locks`, because the
+     * property that matters is ORDERING: an advisory lock acquired after the
+     * max() read would serialise nothing.
+     */
+    public function test_the_post_takes_the_company_advisory_lock_before_reading_the_chain(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
+        ]);
+
+        /** @var list<string> $statements */
+        $statements = [];
+        DB::listen(static function ($query) use (&$statements): void {
+            $statements[] = $query->sql;
+        });
+
+        $this->corrections->postCorrectingEntryGl($correction);
+
+        $lockIndex = null;
+        $chainReadIndex = null;
+        foreach ($statements as $index => $sql) {
+            if ($lockIndex === null && str_contains($sql, 'pg_advisory_xact_lock')) {
+                $lockIndex = $index;
+            }
+            if ($chainReadIndex === null && str_contains($sql, 'max("chain_sequence")')) {
+                $chainReadIndex = $index;
+            }
+        }
+
+        self::assertNotNull($lockIndex, 'The correcting post must take the company advisory lock');
+        self::assertNotNull($chainReadIndex, 'The correcting post must read the chain sequence');
+        self::assertLessThan(
+            $chainReadIndex,
+            $lockIndex,
+            'The advisory lock must be taken BEFORE the chain-sequence read it serialises',
+        );
+    }
+
+    /**
+     * P2-3 (treasury). Ordinary period control: a `fiscal_periods` row covering
+     * the CORRECTION's own date that is Closed refuses the post, on exactly the
+     * terms the GL chokepoint applies.
+     *
+     * Distinct from the target's VAT period, which may be closed or filed — that
+     * is the whole escape hatch and is pinned separately above.
+     */
+    public function test_posting_into_a_closed_fiscal_period_is_refused(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
+        ]);
+
+        $this->closeFiscalPeriodCovering(now());
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A closed fiscal period must refuse the correcting post');
+        } catch (ClosedFiscalPeriodException) {
+            // The chokepoint's own refusal type, deliberately.
+        }
+
+        self::assertSame(0, JournalEntry::query()
+            ->where('source_type', AccountingService::DOCUMENT_CORRECTION_SOURCE_TYPE)
+            ->where('source_id', $correction->id)
+            ->count());
+    }
+
+    /**
+     * P2-6 (fiscal). A VAT control leg is refused while the TARGET's VAT period
+     * is FILED — the declaration is lodged, and moving 4457 inside it diverges
+     * the ledger from the return with no reconciliation path.
+     *
+     * The non-VAT legs of the same correction remain permitted; that is what the
+     * companion test below pins, and together they are the whole ruling: the
+     * escape hatch stays open, the declaration stays honest.
+     */
+    public function test_a_vat_leg_is_refused_when_the_targets_period_is_filed(): void
+    {
+        $documentDate = Carbon::parse('2026-01-15');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Filed);
+
+        $invoice = $this->invoiceWithStrandedVatLeg($documentDate);
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('4457'), '19.000', '0', 'Move the VAT'),
+        ]);
+
+        try {
+            $this->corrections->postCorrectingEntryGl($correction);
+            self::fail('A VAT leg in a FILED period must be refused');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(CorrectingEntryRefusalCode::VatLegInFiledPeriod, $exception->refusalCode);
+        }
+    }
+
+    /** A VAT leg is fine while the period is merely CLOSED — closed is reopenable, filed is not. */
+    public function test_a_vat_leg_is_permitted_when_the_targets_period_is_only_closed(): void
+    {
+        $documentDate = Carbon::parse('2026-02-15');
+        $this->vatPeriodFor($documentDate, VatPeriodStatus::Closed);
+
+        $invoice = $this->invoiceWithStrandedVatLeg($documentDate);
+
+        $correction = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('4457'), '19.000', '0', 'Move the VAT'),
+        ]);
+
+        self::assertNotSame('', $this->corrections->postCorrectingEntryGl($correction));
+    }
+
+    // ------------------------------- gate-fix-round helpers ---
+
+    private function reloadDocument(Document $document): Document
+    {
+        /** @var Document */
+        return Document::query()->with('lines')->findOrFail($document->id);
+    }
+
+    /**
+     * A posted, balanced invoice denominated in EUR — a currency whose scale is
+     * 2, against the 3-decimal storage column. That gap is the P1-3 hole.
+     */
+    private function eurInvoiceWithBalancedGl(Carbon $documentDate): Document
+    {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-EUR-'.uniqid(),
+            'document_date' => $documentDate,
+            'status' => DocumentStatus::Posted,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'subtotal' => '100.00',
+            'tax_amount' => '0.00',
+            'total' => '100.00',
+            'balance_due' => '100.00',
+            'currency' => 'EUR',
+        ]);
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'EUR-'.uniqid(),
+            'entry_date' => $documentDate,
+            'description' => 'Balanced EUR invoice',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => AccountingService::DOCUMENT_SOURCE_TYPE,
+            'source_id' => $invoice->id,
+            'chain_sequence' => JournalEntry::getNextChainSequence($this->company->id),
+            'previous_hash' => JournalEntry::getLastChainHash($this->company->id),
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->accountId('411'),
+            'partner_id' => $this->customer->id,
+            'debit' => '100.00',
+            'credit' => '0',
+            'description' => 'AR',
+        ]);
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->accountId('707'),
+            'debit' => '0',
+            'credit' => '100.00',
+            'description' => 'Revenue',
+        ]);
+
+        /** @var Document */
+        return $invoice->fresh(['lines']);
+    }
+
+    private function closeFiscalPeriodCovering(Carbon $date): void
+    {
+        $year = FiscalYear::create([
+            'company_id' => $this->company->id,
+            'name' => 'FY '.$date->year,
+            'start_date' => $date->copy()->startOfYear()->toDateString(),
+            'end_date' => $date->copy()->endOfYear()->toDateString(),
+            'is_closed' => false,
+        ]);
+
+        FiscalPeriod::create([
+            'fiscal_year_id' => $year->id,
+            'company_id' => $this->company->id,
+            'name' => $date->format('F Y'),
+            'period_number' => (int) $date->format('n'),
+            'start_date' => $date->copy()->startOfMonth()->toDateString(),
+            'end_date' => $date->copy()->endOfMonth()->toDateString(),
+            'status' => PeriodStatus::Closed,
+        ]);
+    }
+
+    /**
+     * The stranded-VAT shape with NO partner on the invoice at all
+     * (`documents.partner_id` has been nullable since
+     * `2026_06_27_110000_make_documents_partner_id_nullable`), so a control-account
+     * leg has nothing to inherit.
+     */
+    private function partnerlessInvoiceWithStrandedVatLeg(Carbon $documentDate): Document
+    {
+        $invoice = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => null,
+            'type' => DocumentType::Invoice,
+            'document_number' => 'INV-NOPARTNER-'.uniqid(),
+            'document_date' => $documentDate,
+            'status' => DocumentStatus::Posted,
+            'fiscal_status' => FiscalStatus::Sealed,
+            'subtotal' => '100.000',
+            'tax_amount' => '19.000',
+            'total' => '119.000',
+            'balance_due' => '119.000',
+            'currency' => 'TND',
+        ]);
+
+        $entry = JournalEntry::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'entry_number' => 'STRANDED-NP-'.uniqid(),
+            'entry_date' => $documentDate,
+            'description' => 'Partnerless invoice with a stranded VAT leg',
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => AccountingService::DOCUMENT_SOURCE_TYPE,
+            'source_id' => $invoice->id,
+            'chain_sequence' => JournalEntry::getNextChainSequence($this->company->id),
+            'previous_hash' => JournalEntry::getLastChainHash($this->company->id),
+        ]);
+
+        JournalLine::create([
+            'journal_entry_id' => $entry->id,
+            'account_id' => $this->accountId('4457'),
+            'debit' => '0',
+            'credit' => '19.000',
+            'description' => 'Stranded TVA collectee',
         ]);
 
         /** @var Document */

@@ -151,4 +151,84 @@ final class UnpostableCorrectingEntryException extends DomainException
             $documentNumber,
         );
     }
+
+    public static function targetAlreadyWithdrawn(?string $documentNumber, ?string $targetNumber): self
+    {
+        return new self(
+            sprintf(
+                'Document %s has already been withdrawn — its ledger entry was reversed when it was '
+                .'cancelled. Correcting entry %s cannot repair it: the reversal has already run and is '
+                .'idempotent, so these legs would stand in the ledger with nothing left to mirror them '
+                .'out. A withdrawn document is corrected by issuing a new one, never by adding to the '
+                .'entry that was already unwound.',
+                $targetNumber ?? '(unnumbered)',
+                $documentNumber ?? '(unnumbered)',
+            ),
+            CorrectingEntryRefusalCode::TargetAlreadyWithdrawn,
+            $documentNumber,
+        );
+    }
+
+    public static function legAmountBeyondCurrencyScale(
+        ?string $documentNumber,
+        string $accountId,
+        string $amount,
+        string $currency,
+        int $scale,
+    ): self {
+        return new self(
+            sprintf(
+                'Correcting entry %s posts %s to account %s, which carries more decimals than %s admits '
+                .'(%d). The ledger truncates at that scale, so the amount actually posted would differ '
+                .'from the amount stated — on a CORRECTION that means the repair made is not the repair '
+                .'the accountant described. State the amount at %d decimals.',
+                $documentNumber ?? '(unnumbered)',
+                $amount,
+                $accountId,
+                $currency,
+                $scale,
+                $scale,
+            ),
+            CorrectingEntryRefusalCode::LegAmountBeyondCurrencyScale,
+            $documentNumber,
+        );
+    }
+
+    public static function controlAccountLegWithoutPartner(
+        ?string $documentNumber,
+        string $accountCode,
+    ): self {
+        return new self(
+            sprintf(
+                'Correcting entry %s posts to partner control account %s without naming a partner. A '
+                .'control-account leg with no partner breaks subledger reconciliation permanently: the '
+                .'control balance moves and no partner statement moves with it. Name the partner on the '
+                .'leg, or post the correction to a non-control account.',
+                $documentNumber ?? '(unnumbered)',
+                $accountCode,
+            ),
+            CorrectingEntryRefusalCode::ControlAccountLegWithoutPartner,
+            $documentNumber,
+        );
+    }
+
+    public static function vatLegInFiledPeriod(
+        ?string $documentNumber,
+        ?string $targetNumber,
+        string $accountCode,
+    ): self {
+        return new self(
+            sprintf(
+                'Correcting entry %s moves VAT control account %s, but the VAT period covering document '
+                .'%s is already FILED. The declaration is with the tax authority; moving VAT inside that '
+                .'period would diverge the ledger from the return with no reconciliation path. Correct '
+                .'the non-VAT legs here and settle the VAT through the next declaration.',
+                $documentNumber ?? '(unnumbered)',
+                $accountCode,
+                $targetNumber ?? '(unnumbered)',
+            ),
+            CorrectingEntryRefusalCode::VatLegInFiledPeriod,
+            $documentNumber,
+        );
+    }
 }

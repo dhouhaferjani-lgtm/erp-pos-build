@@ -47,4 +47,47 @@ enum CorrectingEntryRefusalCode: string
 
     /** The document's `payload` is not a well-formed correcting-entry payload. */
     case MalformedPayload = 'CORRECTING_ENTRY_MALFORMED_PAYLOAD';
+
+    /**
+     * The target has already been WITHDRAWN — cancelled, or its GL already
+     * reversed. Correcting it is a no-op that cannot be undone: `reverseDocumentGl()`
+     * is idempotent and has already run, so the correction's legs would land in
+     * the ledger with nothing left to mirror them out again (gate probe: a
+     * 50.000 reclass on a cancelled invoice's AR + VAT, permanently unreachable).
+     */
+    case TargetAlreadyWithdrawn = 'CORRECTING_ENTRY_TARGET_ALREADY_WITHDRAWN';
+
+    /**
+     * A leg carries more decimals than the entry's CURRENCY admits.
+     *
+     * The FormRequest's ceiling is the column scale (3); the balance verdict and
+     * the ledger both run at the currency scale, which for EUR is 2 — and
+     * `bcadd` TRUNCATES. A leg of `0.005` on a EUR company therefore balanced as
+     * `0.00` and posted a permanent 0.004 hole at column scale (fiscal gate
+     * P1-3 probe). Refused rather than silently rounded: an accountant's stated
+     * repair must be the repair that is made.
+     */
+    case LegAmountBeyondCurrencyScale = 'CORRECTING_ENTRY_LEG_AMOUNT_BEYOND_CURRENCY_SCALE';
+
+    /**
+     * A leg names a PARTNER CONTROL account but no partner can be resolved for it.
+     *
+     * Every sibling GL path stamps `journal_lines.partner_id` on control-account
+     * legs; without it `PartnerBalanceService::reconcileSubledger()` reports the
+     * control account and the subledger as divergent forever (gate probe:
+     * control 129.000 vs subledger 119.000, broken by this lane's own canonical
+     * 411 example). A control leg with no partner is refused, never guessed.
+     */
+    case ControlAccountLegWithoutPartner = 'CORRECTING_ENTRY_CONTROL_ACCOUNT_LEG_WITHOUT_PARTNER';
+
+    /**
+     * A leg names a VAT control account while the TARGET's VAT period is FILED.
+     *
+     * Moving 4457 / 4456 inside a period whose declaration is already with the
+     * tax authority diverges the ledger from the filed return with no
+     * reconciliation path. Refused for now; the recorded alternative is to gate
+     * it behind an explicitly acknowledged flag, which needs an owner ruling
+     * because it trades a silent divergence for a deliberate one.
+     */
+    case VatLegInFiledPeriod = 'CORRECTING_ENTRY_VAT_LEG_IN_FILED_PERIOD';
 }

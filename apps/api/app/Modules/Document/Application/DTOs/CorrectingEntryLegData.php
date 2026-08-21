@@ -44,6 +44,7 @@ final class CorrectingEntryLegData
         public readonly string $debit,
         public readonly string $credit,
         public readonly ?string $description,
+        public readonly ?string $partnerId,
     ) {}
 
     /**
@@ -56,6 +57,7 @@ final class CorrectingEntryLegData
         string $debit,
         string $credit,
         ?string $description,
+        ?string $partnerId = null,
     ): self {
         if (trim($accountId) === '') {
             throw new InvalidArgumentException('A correcting-entry leg must name an account.');
@@ -95,7 +97,14 @@ final class CorrectingEntryLegData
             );
         }
 
-        return new self($accountId, $debit, $credit, $description);
+        if ($partnerId !== null && trim($partnerId) === '') {
+            throw new InvalidArgumentException(
+                'A correcting-entry leg partner must be an identifier or null, never a blank string — '
+                .'a blank would read as "no partner" to this DTO and as "some partner" to a caller.',
+            );
+        }
+
+        return new self($accountId, $debit, $credit, $description, $partnerId);
     }
 
     /**
@@ -107,6 +116,7 @@ final class CorrectingEntryLegData
         $debit = $data['debit'] ?? null;
         $credit = $data['credit'] ?? null;
         $description = $data['description'] ?? null;
+        $partnerId = $data['partner_id'] ?? null;
 
         if (! is_string($accountId) || ! is_string($debit) || ! is_string($credit)) {
             throw new InvalidArgumentException(
@@ -118,11 +128,31 @@ final class CorrectingEntryLegData
             throw new InvalidArgumentException('A correcting-entry leg description must be a string or null.');
         }
 
-        return self::of($accountId, $debit, $credit, $description);
+        if ($partnerId !== null && ! is_string($partnerId)) {
+            throw new InvalidArgumentException('A correcting-entry leg partner_id must be a string or null.');
+        }
+
+        return self::of($accountId, $debit, $credit, $description, $partnerId);
     }
 
     /**
-     * @return array{account_id: string, debit: string, credit: string, description: string|null}
+     * A COPY of this leg with its amounts restated and its partner resolved.
+     *
+     * Accounting owns both facts — the currency scale the ledger truncates at,
+     * and whether the account is a partner control account — so it is Accounting
+     * that produces the definitive leg. Returning a new instance rather than
+     * mutating keeps every invariant `of()` proved intact, and re-proves them.
+     *
+     * @param  numeric-string  $debit
+     * @param  numeric-string  $credit
+     */
+    public function restated(string $debit, string $credit, ?string $partnerId): self
+    {
+        return self::of($this->accountId, $debit, $credit, $this->description, $partnerId);
+    }
+
+    /**
+     * @return array{account_id: string, debit: string, credit: string, description: string|null, partner_id: string|null}
      */
     public function toArray(): array
     {
@@ -131,6 +161,7 @@ final class CorrectingEntryLegData
             'debit' => $this->debit,
             'credit' => $this->credit,
             'description' => $this->description,
+            'partner_id' => $this->partnerId,
         ];
     }
 }

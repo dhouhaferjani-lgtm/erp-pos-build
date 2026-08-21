@@ -97,7 +97,7 @@ final class CorrectingEntryPayload
     }
 
     /**
-     * @return array{reason: string, legs: list<array{account_id: string, debit: string, credit: string, description: string|null}>}
+     * @return array{reason: string, legs: list<array{account_id: string, debit: string, credit: string, description: string|null, partner_id: string|null}>}
      */
     public function toArray(): array
     {

@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Enums\GlResidualRefusal;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryCreated;
+use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\Exceptions\UnpostableCorrectingEntryException;
 use App\Modules\Accounting\Domain\Exceptions\UnpostableDocumentGlException;
@@ -21,12 +22,15 @@ use App\Modules\Document\Application\DTOs\CorrectingEntryLegData;
 use App\Modules\Document\Application\DTOs\CorrectingEntryPayload;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
+use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Shared\Contracts\Accounting\DocumentGlCorrectionInterface;
 use App\Shared\Contracts\Accounting\DocumentGlPreflightInterface;
 use App\Shared\Contracts\Accounting\DocumentGlReversalInterface;
 use App\Shared\Contracts\AccountingServiceInterface;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Contracts\Taxation\DocumentPeriodLockInterface;
+use App\Shared\Domain\CurrencyScale;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -90,11 +94,56 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
         DocumentType::CreditNote,
     ];
 
+    /**
+     * The account purposes whose balance IS a partner subledger.
+     *
+     * Exactly the set `CheckSubledgerReconciliationCommand` reconciles by default
+     * (`:118-120`), and that is the point: an account this command checks is an
+     * account whose control balance must equal Σ(partner statements). A leg
+     * posted to one of these without a `partner_id` moves the control side and
+     * nothing else, and the divergence is permanent — the journal is immutable,
+     * so there is no later edit that can attach the partner.
+     *
+     * @var list<SystemAccountPurpose>
+     */
+    private const PARTNER_CONTROL_PURPOSES = [
+        SystemAccountPurpose::CustomerReceivable,
+        SystemAccountPurpose::CustomerAdvance,
+        SystemAccountPurpose::SupplierPayable,
+    ];
+
+    /**
+     * The account purposes that feed the VAT DECLARATION.
+     *
+     * A leg touching one of these inside a FILED period moves the ledger away
+     * from a return that is already lodged with the tax authority.
+     *
+     * @var list<SystemAccountPurpose>
+     */
+    private const VAT_CONTROL_PURPOSES = [
+        SystemAccountPurpose::VatCollected,
+        SystemAccountPurpose::VatDeductible,
+    ];
+
+    /**
+     * The `DocumentPeriodLockInterface::cancellationRefusalCode()` value that
+     * means "the covering VAT period is FILED".
+     *
+     * Compared as a STRING on purpose. The Shared contract deliberately returns
+     * the backing values of Taxation's `PeriodLockRefusalCode` rather than the
+     * enum itself, precisely so Accounting does not have to depend on a Taxation
+     * Domain type to read the answer (rule 6). Importing the enum to avoid this
+     * literal would defeat the contract's whole design.
+     */
+    private const PERIOD_FILED_REFUSAL_CODE = 'DOCUMENT_PERIOD_FILED';
+
     public function __construct(
         private readonly GeneralLedgerHashService $hashService,
         private readonly PartnerBalanceService $partnerBalanceService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly DoubleEntryValidator $doubleEntryValidator,
+        private readonly FiscalPeriodResolverService $fiscalPeriodResolver,
+        private readonly DocumentPeriodLockInterface $vatPeriodLock,
     ) {}
 
     /**
@@ -1125,7 +1174,28 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      */
     public function postCorrectingEntryGl(Document $correctingEntry): string
     {
-        $entryId = DB::transaction(function () use ($correctingEntry): string {
+        // Every partner whose subledger this entry moves, collected inside the
+        // transaction and refreshed after it commits.
+        /** @var list<string> $touchedPartnerIds */
+        $touchedPartnerIds = [];
+
+        $entryId = DB::transaction(function () use ($correctingEntry, &$touchedPartnerIds): string {
+            // STEP 1, before ANY read — the same per-company transaction-scoped
+            // advisory lock the GL chokepoint takes
+            // (`GeneralLedgerService::sealAndPersistEntry()`), with the same
+            // idiom and the same argument. This path allocates `chain_sequence`
+            // and reads `previous_hash` with unlocked `max()` queries; without
+            // the lock it can interleave with a concurrent legitimate post and
+            // allocate a duplicate sequence — an FEC-sequentiality break. Taking
+            // it FIRST also serialises the already-posted probe below with the
+            // insert that would satisfy it, closing the double-post TOCTOU in
+            // the same stroke (treasury gate P1-3 / P2-1).
+            //
+            // Released at COMMIT, never earlier, and a no-op outside pgsql.
+            if (DB::connection()->getDriverName() === 'pgsql') {
+                DB::statement('SELECT pg_advisory_xact_lock(hashtextextended(?, 0))', [$correctingEntry->company_id]);
+            }
+
             // Re-resolved INSIDE the transaction: the aggregate-balance verdict
             // depends on rows another request may be writing concurrently, so a
             // pre-flight answer computed outside would be stale by construction.
@@ -1134,14 +1204,34 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             $legs = $resolved['legs'];
             $scale = $resolved['scale'];
 
+            $entryDate = now();
+
+            // Ordinary period control, on the SAME terms the chokepoint applies
+            // it: a `fiscal_periods` row that EXISTS and is Closed/Locked for the
+            // entry date refuses; absence permits, so no company that has not
+            // configured periods is bricked. Checked AFTER the advisory lock so
+            // the verdict shares the serialised view the sequence allocation uses.
+            //
+            // This is not the target's period — a correction lands in the period
+            // it is made in — so it is not the "may I correct a closed period?"
+            // question the docblock above answers. It is "may I write to the
+            // ledger TODAY?", which for arbitrary admin-authored legs has exactly
+            // one right answer and it is the chokepoint's.
+            if ($this->fiscalPeriodResolver->isDateInClosedPeriod($correctingEntry->company_id, $entryDate)) {
+                throw new ClosedFiscalPeriodException(
+                    $correctingEntry->company_id,
+                    $entryDate->toDateString(),
+                );
+            }
+
             $previousHash = JournalEntry::getLastChainHash($correctingEntry->company_id);
             $chainSequence = JournalEntry::getNextChainSequence($correctingEntry->company_id);
 
             $entry = JournalEntry::create([
                 'tenant_id' => $correctingEntry->tenant_id,
                 'company_id' => $correctingEntry->company_id,
-                'entry_number' => 'CORR-'.now()->format('YmdHis').'-'.str_replace('-', '', $correctingEntry->id),
-                'entry_date' => now(),
+                'entry_number' => 'CORR-'.$entryDate->format('YmdHis').'-'.str_replace('-', '', $correctingEntry->id),
+                'entry_date' => $entryDate,
                 'description' => 'Correction of '.($target->document_number ?? $target->id)
                     .' — '.$resolved['reason'],
                 'status' => JournalEntryStatus::Posted,
@@ -1155,11 +1245,20 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
                 JournalLine::create([
                     'journal_entry_id' => $entry->id,
                     'account_id' => $leg->accountId,
+                    // Resolved by `resolveCorrectingEntry()`, which REFUSED the
+                    // entry rather than reach here with a control-account leg
+                    // carrying no partner. Every sibling path stamps this column;
+                    // omitting it is what broke subledger reconciliation.
+                    'partner_id' => $leg->partnerId,
                     'debit' => $leg->debit,
                     'credit' => $leg->credit,
                     'description' => $leg->description
                         ?? 'Correction of '.($target->document_number ?? $target->id),
                 ]);
+
+                if ($leg->partnerId !== null) {
+                    $touchedPartnerIds[] = $leg->partnerId;
+                }
             }
 
             $freshEntry = $entry->fresh(['lines']);
@@ -1194,11 +1293,18 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             return $entry->id;
         });
 
-        $this->refreshPartnerBalanceAfterGlPersistence(
-            $correctingEntry->company_id,
-            $correctingEntry->partner_id,
-            $entryId
-        );
+        // EVERY partner the legs actually touched, not just the correcting
+        // document's own — a leg may name a different partner than the target's,
+        // and the cached balance of a partner whose control account moved is
+        // stale until it is recomputed. Before the legs carried `partner_id` at
+        // all this call was decorative; now it has something to recompute from.
+        foreach (array_unique($touchedPartnerIds) as $partnerId) {
+            $this->refreshPartnerBalanceAfterGlPersistence(
+                $correctingEntry->company_id,
+                $partnerId,
+                $entryId
+            );
+        }
 
         return $entryId;
     }
@@ -1342,6 +1448,31 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             );
         }
 
+        // A WITHDRAWN target cannot be corrected — and this is unconditional, not
+        // part of the balance verdict, because withdrawal is irreversible: once
+        // true it never becomes false again, which is exactly the structural
+        // verdict's criterion.
+        //
+        // Both halves matter. `status = Cancelled` is the document's own answer;
+        // the reversal-entry probe is the LEDGER's, and they can disagree —
+        // `reverseDocumentGl()` is idempotent and keyed on its own source type,
+        // so a document whose GL was already unwound must be refused even if some
+        // path left the status behind. Posting into that gap is what the gate
+        // probe caught: a 50.000 reclass landing on a cancelled invoice's AR and
+        // VAT, with the mirror already written and nothing left to unwind it.
+        $alreadyReversed = JournalEntry::query()
+            ->where('company_id', $target->company_id)
+            ->where('source_type', self::DOCUMENT_CANCELLATION_SOURCE_TYPE)
+            ->where('source_id', $target->id)
+            ->exists();
+
+        if ($target->status === DocumentStatus::Cancelled || $alreadyReversed) {
+            throw UnpostableCorrectingEntryException::targetAlreadyWithdrawn(
+                $correctingEntry->document_number,
+                $target->document_number,
+            );
+        }
+
         try {
             $payload = CorrectingEntryPayload::fromDocumentPayload($correctingEntry->payload);
         } catch (\InvalidArgumentException $exception) {
@@ -1360,15 +1491,18 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             $payload->legs,
         )));
 
-        $knownAccountIds = Account::query()
+        /** @var Collection<int, Account> $accounts */
+        $accounts = Account::query()
             ->where('tenant_id', $correctingEntry->tenant_id)
             ->where('company_id', $correctingEntry->company_id)
             ->whereIn('id', $accountIds)
-            ->pluck('id')
-            ->all();
+            ->get();
+
+        /** @var array<string, Account> $accountsById */
+        $accountsById = $accounts->keyBy('id')->all();
 
         foreach ($accountIds as $accountId) {
-            if (! in_array($accountId, $knownAccountIds, true)) {
+            if (! array_key_exists($accountId, $accountsById)) {
                 throw UnpostableCorrectingEntryException::unknownAccount(
                     $correctingEntry->document_number,
                     $accountId,
@@ -1377,6 +1511,82 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
         }
 
         $scale = $this->documentScale($correctingEntry);
+
+        // Is the target's VAT period FILED? Asked ONCE, before the leg loop, and
+        // only when a VAT leg is actually present — the answer costs a repository
+        // query and most corrections touch no VAT account at all.
+        $targetPeriodIsFiled = null;
+
+        // RESTATE every leg before anything reads its amounts.
+        //
+        // Two facts only Accounting holds, applied here so no later reader has to
+        // remember them:
+        //
+        //  1. SCALE. The FormRequest's ceiling is the COLUMN scale (3 decimals);
+        //     the ledger's arithmetic runs at the CURRENCY scale, which for EUR
+        //     is 2 — and `bcadd` TRUNCATES rather than rounds. A leg of `0.005`
+        //     on a EUR company therefore contributed `0.00` to the balance
+        //     verdict and `0.005` to the column, which is how the fiscal gate's
+        //     probe posted a "balanced" entry that left the company ledger
+        //     permanently out by 0.004. Over-precision is REFUSED, never
+        //     silently truncated: on a correction, an amount that is not the
+        //     amount the accountant stated is a new defect, not a repair.
+        //
+        //  2. PARTNER. A leg on a partner control account must carry
+        //     `journal_lines.partner_id`, exactly as every sibling GL path does
+        //     (`createInvoiceGLEntries` :501, the reversal mirror :929). Without
+        //     it the control account moves and no partner statement moves with
+        //     it, and `reconcileSubledger()` reports the divergence forever.
+        //     The leg's own `partner_id` wins; absent that, the TARGET's partner
+        //     is the answer, because a correction to an invoice's AR is by
+        //     construction about that invoice's customer. Neither available on a
+        //     control leg is a refusal, never a guess.
+        $restatedLegs = [];
+
+        foreach ($payload->legs as $leg) {
+            $account = $accountsById[$leg->accountId];
+
+            $debit = $this->restateLegAmount(
+                $correctingEntry,
+                $leg->accountId,
+                $leg->debit,
+                $scale,
+            );
+            $credit = $this->restateLegAmount(
+                $correctingEntry,
+                $leg->accountId,
+                $leg->credit,
+                $scale,
+            );
+
+            $partnerId = $leg->partnerId;
+
+            if (in_array($account->system_purpose, self::PARTNER_CONTROL_PURPOSES, true)) {
+                $partnerId ??= $this->usablePartnerId($target);
+
+                if ($partnerId === null) {
+                    throw UnpostableCorrectingEntryException::controlAccountLegWithoutPartner(
+                        $correctingEntry->document_number,
+                        $account->code,
+                    );
+                }
+            }
+
+            if (in_array($account->system_purpose, self::VAT_CONTROL_PURPOSES, true)) {
+                $targetPeriodIsFiled ??= $this->vatPeriodLock->cancellationRefusalCode($target)
+                    === self::PERIOD_FILED_REFUSAL_CODE;
+
+                if ($targetPeriodIsFiled) {
+                    throw UnpostableCorrectingEntryException::vatLegInFiledPeriod(
+                        $correctingEntry->document_number,
+                        $target->document_number,
+                        $account->code,
+                    );
+                }
+            }
+
+            $restatedLegs[] = $leg->restated($debit, $credit, $partnerId);
+        }
 
         // Everything below depends on the target's CURRENT ledger, which is
         // exactly what the structural verdict must not judge: a document's own GL
@@ -1408,7 +1618,10 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
                 }
             }
 
-            foreach ($payload->legs as $leg) {
+            // The RESTATED legs, not the raw payload: the verdict must be reached
+            // on the same numbers that reach `journal_lines`, or it certifies a
+            // balance the ledger does not have (fiscal gate P1-3).
+            foreach ($restatedLegs as $leg) {
                 $debits = bcadd($debits, $leg->debit, $scale);
                 $credits = bcadd($credits, $leg->credit, $scale);
             }
@@ -1429,10 +1642,68 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
 
         return [
             'target' => $target,
-            'legs' => $payload->legs,
+            'legs' => $restatedLegs,
             'scale' => $scale,
             'reason' => $payload->reason,
         ];
+    }
+
+    /**
+     * A document's partner id, or NULL when it genuinely has none.
+     *
+     * Reads through `getAttribute()` DELIBERATELY, rather than `$target->partner_id`.
+     * The model's docblock still declares `@property string $partner_id`
+     * (`Document.php:44`), but the column has been NULLABLE since
+     * `2026_06_27_110000_make_documents_partner_id_nullable.php` — the annotation
+     * is stale, and PHPStan believes it, which is how `$partnerId === null` reads
+     * as "always false" on a value that can very much be null at runtime.
+     *
+     * Going through the attribute bag returns `mixed`, so `is_string()` PROVES
+     * what the docblock only asserts. This is a local defence, not a fix: the
+     * stale annotation is repo-wide (every `refreshPartnerBalanceAfterGlPersistence()`
+     * call site passes it into a `string` parameter) and correcting it belongs to
+     * its own lane.
+     */
+    private function usablePartnerId(Document $target): ?string
+    {
+        $partnerId = $target->getAttribute('partner_id');
+
+        return is_string($partnerId) && $partnerId !== '' ? $partnerId : null;
+    }
+
+    /**
+     * One leg amount, restated at the currency scale — or refused.
+     *
+     * `bcformatStrict()` truncates, so a value that survives it unchanged is one
+     * the ledger can hold exactly. The comparison runs at `scale + 6` because
+     * comparing at `$scale` is precisely the blindness being closed: at EUR's
+     * scale 2, `0.005` and `0.00` compare EQUAL.
+     *
+     * @param  numeric-string  $amount
+     * @return numeric-string
+     *
+     * @throws UnpostableCorrectingEntryException
+     */
+    private function restateLegAmount(
+        Document $correctingEntry,
+        string $accountId,
+        string $amount,
+        int $scale,
+    ): string {
+        /** @var numeric-string $restated */
+        $restated = CurrencyScale::bcformatStrict($amount, $scale);
+
+        if (bccomp($amount, $restated, $scale + 6) !== 0) {
+            throw UnpostableCorrectingEntryException::legAmountBeyondCurrencyScale(
+                $correctingEntry->document_number,
+                $accountId,
+                $amount,
+                $correctingEntry->currency,
+                $scale,
+            );
+        }
+
+        return $restated;
     }
 
     /**
