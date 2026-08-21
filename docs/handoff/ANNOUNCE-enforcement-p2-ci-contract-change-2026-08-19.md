@@ -40,19 +40,20 @@ laneless hole must not grow silently — and the remedy is one number, in the sa
 | `feat/owner-dashboard-demo` | `Seeders` **+1** | 26 | raise `Seeders` **and** `debt_ceiling` by 1 |
 
 > **Two different debt numbers appear in this package — they measure different things.** The gate
-> prints `⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es)` = every class in a group **no lane runs as
-> a whole** (and `debt_ceiling: 1114` matches it). The `ci.yml` census comment says **990** =
+> prints `⚠ COVERAGE DEBT: 71 group(s) / 1131 class(es)` = every class in a group **no lane runs as
+> a whole** (and `debt_ceiling: 1131` matches it — re-derived at the accepted tip after the
+> stale-A rebase; the pre-rebase figure was 1114). The `ci.yml` census comment says **990** =
 > classes reachable by **no CI job at all**. The full decomposition, all four figures re-derived:
 >
 > | measure | files | distinct names |
 > |---|---|---|
-> | all of `tests/Feature` | 1329 | 1316 |
-> | in groups no lane runs as a whole (**what `debt_ceiling` enforces**) | **1114** | 1102 |
+> | all of `tests/Feature` | 1348 | 1335 |
+> | in groups no lane runs as a whole (**what `debt_ceiling` enforces**) | **1131** | 1119 |
 > | minus those individually named in the two `--filter` allowlists (111 of the 124 entries — the
-> other 13 were never in the 1114 — 12 sit in **laned** `tests/Feature` groups and 1 (`VoucherLedgerTest`) has no `tests/Feature` class at all, resolving to `tests/Unit/Voucher/Domain/`, which the lane's `php artisan test -c phpunit-pgsql.xml` does run) | 1003 | **991** ≈ the census's 990 |
+> other 13 were never in the 1131 — 12 sit in **laned** `tests/Feature` groups and 1 (`VoucherLedgerTest`) has no `tests/Feature` class at all, resolving to `tests/Unit/Voucher/Domain/`, which the lane's `php artisan test -c phpunit-pgsql.xml` does run) | 1020 | **1008** (the checker-header/ci.yml census stamp of 990 is a base-time figure; the widening gap is classes added since) |
 >
 > *An earlier version said "subtracts the ~124", which lands on 990 only because a files-vs-distinct
-> error and an over-subtraction nearly cancel.* **1114 is the number the ceilings enforce and the
+> error and an over-subtraction nearly cancel.* **1131 is the number the ceilings enforce and the
 > number to act on.**
 >
 > **The "ceiling now" column shows P2-base values.** §8 item 0 re-baselines `Inventory` → 106,
@@ -193,7 +194,7 @@ does not block this package.** Measured **6.24 s/class** (two independent sample
 | Option | Scope | Cost per triggering event |
 |---|---|---|
 | A — whole Feature suite on PG | 1 329 classes | ≈ 138 min |
-| B-full — the 71 laneless groups | 1 114 classes | ≈ 116 min |
+| B-full — the 71 laneless groups | 1 131 classes | ≈ 118 min |
 | B-partial — fund a subset (e.g. `POS` 143, `Inventory` 105, `Fiscal` 73) | owner's pick | ~10 min / 100 classes |
 | **B-as-shipped — ADOPTED interim (parent ruling 2026-08-19)** | 0 new classes | **0 min** |
 
@@ -222,7 +223,7 @@ shadow by substring, and a lane cannot be certified by a commented-out step.
 
 Otherwise `frontend-lint` reddens **every** open lane (correct fail-closed direction, but repo-wide):
 
-1. repository variable **`I18N_BASELINE_PROTECTED_BLOB`** = `da151bbc51edcd066d2153b51a1df8ae1ab5bd32`
+1. repository variable **`I18N_BASELINE_PROTECTED_BLOB`** = `26a9ae1688d80e0f450215326b19ccd1701c9a8f` (seed `6a0c1cd72` — the merged-tree seed revision; the original `da151bbc5…`/`cb618c12c` pins were superseded by the 2026-08-21 stale-A rebase)
 2. annotated tag **`ci-pin/enforcement-p2-r1`** at exactly the accepted SHA
 
 Neither has ever executed on a real runner (the executor never pushes), so the pre-promotion
@@ -232,7 +233,13 @@ Neither has ever executed on a real runner (the executor never pushes), so the p
 
 ## 8. Owed at promotion — for the parent, not the lanes
 
-0. ⚠️ **RE-BASELINE THE CEILINGS IMMEDIATELY AFTER THE MERGE — regenerate, do not copy the numbers
+0. ✅ **DISCHARGED IN-CANDIDATE (2026-08-21 stale-A rebase, Phase 5.5.1):** the package was rebased
+   onto the then-current `dev` tip `a4a8c2293` and the ceilings REGENERATED against that merged
+   tree (`CountryDefaults` 28 / `Document` 74 / `Fiscal` 79 / `Inventory` 106, `debt_ceiling`
+   **1131**) — the checker exits 0 on the accepted tip. The instruction below stays as written for
+   the residual case: if `dev` moves again between this acceptance and the merge, regenerate again
+   (step 2) — never copy.
+   ⚠️ **RE-BASELINE THE CEILINGS IMMEDIATELY AFTER THE MERGE — regenerate, do not copy the numbers
    below.** ⚠️ **`dev` MOVES.** During the M3 round-6 review alone it advanced twice
    (`41fb478c2` → `3d66be352`, the second being `merge codex/es-wave-a0`), which changed `Fiscal`
    73 → 79 and `debt_ceiling` 1114 → 1122 — **and moved a third time, to `47fdc72b9`, while this

@@ -184,43 +184,44 @@ smart-prompts, enrichment, refund-policies, deposits, customer-history-audit, st
 stock-adjustments, adminCountryDefaults`; the 12 spread-merged ones are `sales, inventory, treasury,
 finance, expenses, import, settings, products, pos, compliance, notifications, locations`.
 
-**A scanner importing `resources` would report ZERO Arabic gaps across all 35 of those namespaces.**
-The authored-provenance scanner reports, at the **pinned seed `cb618c12c`** (re-derived at the accepted
-tip):
+**A scanner importing `resources` would report ZERO Arabic gaps across all 34 of those namespaces**
+(35 before ui-wave0's owner-ruled `marketing` deletion — that namespace left the aliased list at the
+2026-08-21 stale-A rebase). The authored-provenance scanner reports, at the **pinned seed `6a0c1cd72`**
+(the merged-tree seed revision; re-derived at the accepted tip):
 
 | basis | value | what it counts |
 |---|---|---|
-| **baseline entries** | **2 638** | what the baseline file actually holds for those 35 namespaces — 23 `aliased` + 2 610 `missing` + 5 `plural` |
-| **key-level gaps** | **4 613** | 2 615 per-key findings + the **1 998** English keys standing behind the 23 whole-namespace `aliased` entries |
+| **baseline entries** | **2 640** | what the baseline file actually holds for those 34 namespaces — 22 `aliased` + 2 613 `missing` + 5 `plural` |
+| **key-level gaps** | **4 604** | 2 618 per-key findings + the **1 986** English keys standing behind the 22 whole-namespace `aliased` entries |
 
 *(Supersedes “4 594”, which was the key-level figure at the **first seed `96b7fd0e8`** — discarded and
 replaced by the seed revision `cb618c12c` at M1 fix round 1, when the `aliased` finding type changed
 what is counted. It reproduces at no revision in this candidate.)*
 
-### (2) Baseline statistics at the PINNED seed (`cb618c12c`, blob `da151bbc5…`)
+### (2) Baseline statistics at the PINNED seed (`6a0c1cd72`, blob `26a9ae168…`) — merged-tree seed revision 2026-08-21; the prior pins `cb618c12c`/`da151bbc5…` are superseded
 
 Re-derived at the accepted tip; the working baseline file hashes to the pinned seed blob, so these are
 the numbers the ratchet actually enforces.
 
 | Metric | Value |
 |---|---|
-| Namespaces in the `ns` array | **56** |
-| Authored leaf keys — **en** | **9 242** |
-| Authored leaf keys — **fr** | **9 258** |
-| Authored leaf keys — **ar** | **4 702** (of which **1 998** sit behind whole-namespace aliases) |
-| Locale source files present | en 57, fr 57, **ar 34** |
-| **Total baseline entries** | **2 917** |
-| — `ar` `aliased` | **23** |
-| — `ar` `missing` | **2 848** |
+| Namespaces in the `ns` array | **55** |
+| Authored leaf keys — **en** | **9 228** |
+| Authored leaf keys — **fr** | **9 244** |
+| Authored leaf keys — **ar** | **4 697** (of which **1 986** sit behind whole-namespace aliases) |
+| Locale source files present | en 56, fr 56, **ar 34** |
+| **Total baseline entries** | **2 924** |
+| — `ar` `aliased` | **22** |
+| — `ar` `missing` | **2 851** |
 | — `ar` `plural` | 9 |
-| — `fr` `plural` | 29 |
+| — `fr` `plural` | 34 |
 | — `en` `plural` | 8 |
 | Structural failures | **0** |
 
 Largest Arabic gaps by namespace, on the **`ar|missing` basis** (per-key gaps in namespaces Arabic is
-actually wired into — the 23 aliased namespaces contribute one whole-namespace entry each and so do not
-appear here): `pos` **683**, `sales` **569**, `inventory` **418**, `settings` **274**, `finance`
-**263**, `import` **170**, `compliance` **157**, `common` **125**.
+actually wired into — the 22 aliased namespaces contribute one whole-namespace entry each and so do not
+appear here): `sales` **650**, `pos` **638**, `inventory` **417**, `settings` **274**, `finance`
+**231**, `import` **170**, `compliance` **157**, `common` **125**.
 
 > ⚠️ **SUPERSEDED — first-seed figures, kept for history only.** Before M1 fix round 1 this table read
 > *"Total baseline entries 4 631 · `ar` `missing` 4 585"* with a top-8 ending
@@ -531,7 +532,7 @@ Verdict at round 2: **CHANGES-REQUIRED** — but with **0 P1**, and all five rou
 CLOSED against the code (the reviewer re-ran the probes rather than reading my report). One P2 and two
 P3 remain. **All three fixes are BASELINE-NEUTRAL** — the regenerated baseline is byte-identical to
 the pinned one (2 917 entries, `git diff` empty), so this round does **not** re-create the two-commit
-seed topology and the pins stay at `cb618c12c` / `da151bbc5…` / `ci-pin/enforcement-p2-r1`.
+seed topology and the pins stay at `cb618c12c` / `da151bbc5…` / `ci-pin/enforcement-p2-r1`. *[Superseded 2026-08-21 stale-A rebase: pins now `6a0c1cd72`/`26a9ae168…`, baseline 2 924 entries — see §(2).]*
 
 ### (27) ⚠️ R2-1 (P2) — the classifier read COMMENTS, so one comment could neuter the H-5 invariant
 
@@ -629,7 +630,7 @@ tool error is fail-closed and never a pass; it is not a substantive fix round, s
 
 Verdict at round 3: **CHANGES-REQUIRED** — 0 P1, 1 P2 (required), 1 further required item, 7 notes.
 All three round-2 findings verified CLOSED by re-execution. **Every round-3 fix is again
-BASELINE-NEUTRAL** (regenerated baseline byte-identical, 2 917 entries), so no seed revision, no
+BASELINE-NEUTRAL** (regenerated baseline byte-identical, 2 917 entries — a round-time figure; superseded 2026-08-21 by the merged-tree seed revision, 2 924 entries — see §(2)), so no seed revision, no
 two-commit re-pin, no new pin tag.
 
 ### (30) ⚠️ R3-1 (P2) — spread ORDER decides who wins, and the classifier ignored it
@@ -733,7 +734,7 @@ The `&&` in the CI step propagates the non-zero exit — the new step is not a d
 ## M1 fix round 4 — response to `docs/handoff/reviews/enforcement-p2/M1-round4.md`
 
 Verdict: **CHANGES-REQUIRED** — 0 P1, 2 P2, 3 P3; **finding 1 only** was required. All other round-3
-findings verified CLOSED by re-execution. **Baseline-neutral again** (byte-identical, 2 917 entries):
+findings verified CLOSED by re-execution. **Baseline-neutral again** (byte-identical, 2 917 entries — round-time figure; superseded 2026-08-21 by the merged-tree seed revision, 2 924 — see §(2)):
 no seed revision, no two-commit re-pin, pin tag unchanged.
 
 ### (34) ⚠️ R4-1 (P2) — my round-3 order fix was keyed by DEPTH; siblings collapse
@@ -801,7 +802,7 @@ namespace name appear in `structural`. An `en`-only `readdirSync` fails it under
 ## M1 fix round 5 — response to `docs/handoff/reviews/enforcement-p2/M1-round5.md`
 
 Verdict: **CHANGES-REQUIRED** — 0 P1, 1 P2 (required), 4 P3. `fix_rounds` 4 → 5, the last round
-`max_fix_rounds` allows. **Baseline-neutral** (byte-identical, 2 917), so no seed revision, no re-pin,
+`max_fix_rounds` allows. **Baseline-neutral** (byte-identical, 2 917 — round-time figure; superseded 2026-08-21, now 2 924 — see §(2)), so no seed revision, no re-pin,
 pin tag unchanged.
 
 ### (37) ⚠️ R5-1 (P2) — my round-4 fix was a net DETECTION LOSS
@@ -984,7 +985,7 @@ Predicate (b) keeps its own independent pin (mutant with predicate (b) deleted):
 | **english-only-subtree** | **en-aliased** | **english-spread** | ← **pin alive** |
 
 So both predicates are independently killable-detectable, which is exactly what
-`08-DETECTOR-LIVENESS.md` requires. Baseline regenerated: **byte-identical, 2 917 entries** — no seed
+`08-DETECTOR-LIVENESS.md` requires. Baseline regenerated: **byte-identical, 2 917 entries** (round-time figure; superseded 2026-08-21, now 2 924 — see §(2)) — no seed
 revision, no re-pin, pin tag unchanged at `ci-pin/enforcement-p2-r1`. 46 i18n tests green.
 
 ---
@@ -1004,7 +1005,7 @@ list at `:730`. But enumerating the tree turned up a far bigger hole.
 | Groups a whole-directory CI run covers | **3** (`Security` 17, `Treasury` 119, `Accounting` 79) |
 | Distinct classes reachable by ANY CI job on ANY event | **326** |
 | **Distinct classes reachable by NO CI job, ever** | **990** |
-| Classes living in groups no lane runs | **1 114** |
+| Classes living in groups no lane runs | **1 131** (re-derived at the accepted tip 2026-08-21; 1 114 pre-rebase) |
 
 `backend-test` runs `php artisan test --testsuite=Unit` — it never runs `--testsuite=Feature`. So
 `tests/Feature` reaches CI only via three whole-directory steps and the two `--filter` lists. **A new
@@ -1044,7 +1045,7 @@ Tests: 324, Assertions: 10529, PHPUnit Deprecations: 333, Skipped: 16.
 |---|---|
 | Per class | **6.18 s** |
 | Per test | 0.763 s |
-| Uncovered remainder (1 114 classes) | **≈ 115 min** |
+| Uncovered remainder (1 131 classes) | **≈ 118 min** |
 | Whole `tests/Feature` (1 329 classes) | **≈ 137 min** |
 
 Caveats stated honestly: this ran on **SQLite in-memory** (`phpunit.xml`), which is the *fast* path —
@@ -1064,7 +1065,7 @@ rejected on the measured number.
 
 But the census exposes something the brief's framing did not anticipate, and it must be said plainly:
 **Option B *as literally described* — "replace the allowlist with directory-level inclusion" — has the
-same cost problem as Option A.** Directory inclusion for the 71 uncovered groups is 1 114 classes,
+same cost problem as Option A.** Directory inclusion for the 71 uncovered groups is 1 131 classes,
 ≈ 115 min, i.e. Option A's bill under a different name. The brief assumed the uncovered surface was
 small enough that directory inclusion was free; it is 75% of `tests/Feature`.
 
@@ -1111,7 +1112,7 @@ route/permission directory and is the outlier, not the estimator):
 | random 40 from the uncovered remainder (seed 20260819) | 40 | 4 m 07 s | **6.18** |
 | `tests/Feature/Treasury` | 119 | > 10 min (capped) | consistent with ~6.2 |
 
-Mean of the two large samples **6.24 s/class** → uncovered remainder (1 114) ≈ **116 min**, whole
+Mean of the two large samples **6.24 s/class** → uncovered remainder (1 131) ≈ **118 min**, whole
 `tests/Feature` (1 329) ≈ **138 min**, on **SQLite in-memory** (the fast path; Option A means
 PostgreSQL, which is slower).
 
@@ -1127,7 +1128,7 @@ such.
 ```
 $ php tools/feature-lane-manifest-check.php
 tests/Feature lane manifest OK — 1329 Feature classes in 74 groups; every group has a disposition; every declared lane is present in ci.yml; every --filter entry is anchored and uniquely matched against 1708 test classes across all suites.
-  ⚠ COVERAGE DEBT: 71 group(s) / 1114 class(es) sit in groups that NO CI lane runs as a whole,
+  ⚠ COVERAGE DEBT: 71 group(s) / 1131 class(es) sit in groups that NO CI lane runs as a whole,
     pending the F-2 CI-budget decision. Some are individually named in a --filter allowlist;
     a NEW class in any of these groups is selected by nothing. Ceilings are enforced above.
     See docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md §M2.
@@ -1259,7 +1260,7 @@ a clean message, instead of an uncaught Symfony YAML exception and exit 255.
 | Option | Scope | Cost per triggering CI event |
 |---|---|---|
 | **A** — Feature suite on PG | 1 329 classes | **≈ 138 min** sequential, more on PG |
-| **B-full** — directory inclusion for the 71 laneless groups | 1 114 classes | **≈ 116 min** |
+| **B-full** — directory inclusion for the 71 laneless groups | 1 131 classes | **≈ 118 min** |
 | **B-as-shipped** — manifest + ceilings + anchoring, no new execution | 0 new classes | **0 min** ← landed |
 | **B-partial** — fund a subset (e.g. `POS` 143, `Inventory` 105, `Fiscal` 73) | owner's pick | ~10 min per 100 classes |
 
@@ -1359,7 +1360,7 @@ over-generalising a real fix. Fixed by scoping the scan to scripts that actually
 Fail-closed behaviour **inside** test-runner scripts is unchanged. New case
 `test_it_does_not_flag_a_pnpm_workspace_filter`.
 
-### (54) N-3 (P2) — the whole 1 114-class debt was erasable by a one-word edit
+### (54) N-3 (P2) — the whole laneless-group debt (1 114 at the round; 1 131 at the accepted tip) was erasable by a one-word edit
 
 A group's `lane` value was validated only for **existence in `lanes`**, never that the named lane
 actually runs that group's directory. The reviewer rewrote all 71 `deferred` groups to
