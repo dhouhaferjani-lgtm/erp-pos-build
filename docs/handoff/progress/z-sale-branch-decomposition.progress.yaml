@@ -20,8 +20,43 @@ worktree: .worktrees/z-sale-decomposition
 commit_series: "z-decomp M<m>.<s>:"
 ledger_row: C-2   # parent closes at merge with the lane's evidence line
 
-status: in_progress
-blockers: []
+status: blocked_review
+blockers:
+  - id: z-signed-bytes-versioning
+    milestone: M1
+    kind: owner/reviewer gate — the wave STOPS here BY DESIGN (brief §M1, §R-1)
+    question: >-
+      The corrected Z/X per-rate VAT decomposition changes the bytes of SIGNED Z_REPORT and
+      X_REPORT events for ordinary sale-only shifts. Under rule 8 (events immutable forever):
+      Option A — bump the payload event_version, so old events keep the old (wrong) decomposition
+      semantics and new events carry the corrected one, with the version as the discriminator a
+      verifier reads; or Option B — correct the computation in place at the current version,
+      treating it as a bug fix to a derived field with no version discriminator?
+    ruling_channel: >-
+      PARENT dispatches the fiscal-pos-reviewer specialist gate over the committed memo. That gate
+      rules A vs B. The parent records chosen_option / ruled_by / record in owner_gates above and
+      files it as an owner-review item under the standing delegation (P3-M1 R-4 precedent).
+    must_also_answer:
+      - >-
+        F-1 — does the ruling apply to SESSION_CLOSE (a THIRD affected signed event type)?
+      - >-
+        F-2 — the net_sales headline defect in the same signed bytes. Ticket it, or fold it in
+        (a scope expansion the brief currently forbids)? See identity_inversion — answering
+        "ticket it" means M2 ships a signed Z whose headline and per-rate rows disagree by the
+        full VAT of the shift.
+      - >-
+        If Option A — is the key-set enforcement work (A4-A7) required, or is a
+        stamped-but-unenforced v2 sufficient?
+      - >-
+        If Option A — who owns the SERVER-BEFORE-DEVICE deploy ordering (A14), and how is it
+        reconciled with LEDGER D-3's opposite device-before-server obligation on the same fleet?
+      - >-
+        Q2 (has any demo/pilot device closed a shift?) is closable by NO server query and is
+        expected to remain open. If the ruling proceeds on an undischarged Q2, say so on the record.
+    blocks: [M2, M3, M4]
+    resume_condition: >-
+      owner_gates.z-signed-bytes-versioning.chosen_option recorded in this file. M2 implements
+      EXACTLY the ruled option. Resuming without the recorded ruling is a harness violation.
 
 owner_gates:
   z-signed-bytes-versioning:
@@ -72,12 +107,22 @@ milestones:
     title: signed-bytes decision memo (memo-quality bridge review, then STOP blocked_review)
     review_lenses: [fiscal-pos]
     owner_gate: z-signed-bytes-versioning
-    status: review
+    status: blocked_review
     commit: 0edbf402b       # z-decomp M1.1 (memo); amended by the round-1 fix round, see fix_commit
-    fix_commit: pending     # z-decomp M1.2 — filled by the blocked_review commit
-    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round1.md
-    last_verdict: ACCEPT (round 1, exit 0) — 0 P1, 1 P2, 4 P3; all five closed in round 2
-    fix_rounds: 1
+    fix_commit: 63b756784   # z-decomp M1.2 (round-1 fixes); round-2 fixes land in the blocked_review commit
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round3.md
+    verdict_history:
+      - round: 1
+        register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round1.md
+        result: ACCEPT (exit 0) — 0 P1, 1 P2, 4 P3; all five closed anyway (one-way-door consumer)
+      - round: 2
+        register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round2.md
+        result: CHANGES-REQUIRED (exit 2) — 1 P1 (NF525 claim wrong), 1 P2 (identity inversion), 3 P3
+      - round: 3
+        register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round3.md
+        result: see register
+    last_verdict: see verdict_history
+    fix_rounds: 2
     memo: docs/handoff/reviews/z-sale-branch-decomposition/M1-signed-bytes-decision.md
     no_production_code: true
     findings:
@@ -116,25 +161,52 @@ milestones:
         same three files, changing the same signed vat_breakdown field, IN PLACE at v1 with no
         version bump and no registry/payload file touched. Real precedent for Option B; narrower
         blast radius (v4 refunds were brand-new), so it is evidence, not a ruling.
+      option_A_nf525_not_visible: >-
+        M1 gate-r2 finding 1 (P1, closed in round 3): an earlier memo revision claimed a v2 Z is
+        regulator-visible in the NF525 archive and offered archive self-description as a
+        flip-to-Option-A condition. FACTUALLY WRONG. <VersionEvenement> is emitted at exactly one
+        site (Nf525XmlBuilder.php:598) and only inside addQuarantineSection() (:548), fed solely by
+        the quarantine table and by fiscal_events rows with integrity_status <> 'verified' OR
+        payload_parse_status = 'failed'. A VERIFIED v2 Z_REPORT never carries its event_version
+        into the export. The vat_breakdown VALUES do reach the archive GRANDTOTAL
+        (Nf525DataProvider.php:1247-1281, :1260). Net effect: Option A's discriminator is visible on
+        the fiscal-event bytes only — not the legacy z_reports chain (no version field at all), not
+        the regulator-facing export. The flip condition is STRUCK, not silently edited.
+      identity_inversion: >-
+        M1 gate-r2 finding 2 (P2, closed in round 3 as memo §1.3a): the fix MOVES the payload's
+        internal contradiction rather than removing it, under BOTH options. Today Sum(net_amount)
+        == net_sales (both gross) and Sum(gross_amount) != gross_sales. After this fix with F-2
+        unfixed, Sum(gross_amount) == gross_sales but Sum(net_amount) != net_sales, off by the
+        shift's FULL VAT. Operator-visible (ZReportModal.tsx:158-159 renders the headline directly
+        above the per-rate table at :176-193) and server-visible (ZReportProjection.php:149 vs
+        :154). The analogous identity Sum(vat_breakdown[].net_amount) == subtotal is a HARD
+        server-enforced invariant for SALE_RECEIPT (FiscalPayloadConstraintValidator.php:1097-1098,
+        enforced :1139-1166); the Z family escapes it only via F-4. Ruling question 3 must be
+        answered knowing this.
       option_A_deploy_ordering: >-
         M1 gate-r1 finding 1 (P2, closed in round 2 as memo item A14): Option A creates a
         SERVER-BEFORE-DEVICE deploy obligation that does not exist today. A device build authoring
         v2 that reaches a terminal before the API carrying the SUPPORTED_VERSIONS change quarantines
-        100% of that terminal's Z/X at StrictCanonicalParser.php:627-632, on an append-only device
+        100% of that terminal's Z/X at StrictCanonicalParser.php:628-634, on an append-only device
         chain that cannot be re-authored. It points OPPOSITE to LEDGER D-3's device-before-server
         obligation on the same fleet. Option B has no ordering constraint at all.
       option_A_highest_risk: >-
         FiscalEventPayloadRegistry.php:119-127 — SUPPORTED_VERSIONS holds only SALE_RECEIPT.
-        Omitting a Z/X entry quarantines 100% of Z and X events at StrictCanonicalParser.php:627-632.
+        Omitting a Z/X entry quarantines 100% of Z and X events at StrictCanonicalParser.php:628-634.
       history_evidence: >-
         Repo supports "no signed Z/X history is demonstrable from the codebase, and none is seeded,
         fixtured or migrated"; it does NOT support "none exists". Four open operator queries
         (Q1 staging fiscal_events counts, Q2 device-local unsynced chains — unclosable by any
         server query, Q3 the abandoned §Z campaign device, Q4 the tenant-#1 premise itself).
       recommendation: >-
-        Option B (in-place), CONDITIONAL on Q1/Q2/Q3 returning empty, with F-1 folded in so
-        SESSION_CLOSE moves with Z and X. Advisory only — stated because brief M1 item 5 asks for
-        a recommendation. Flip conditions to Option A are stated in the memo §6.
+        Option B (in-place), CONDITIONAL on Q1 and Q3 returning empty, with F-1 folded in so
+        SESSION_CLOSE moves with Z and X. Q2 (device-local unsynced chains) is closable by NO
+        server query and is EXPECTED to remain open: the recommendation still stands at Option B
+        on an open Q2, and only a POSITIVE Q2 answer (a device actually found with closed shifts)
+        is a flip condition — but accepting an open Q2 is the ruling gate's call, on the record.
+        Advisory only — stated because brief M1 item 5 asks for a recommendation. Flip conditions
+        are in memo §6; one earlier flip condition (NF525 archive self-description) was WITHDRAWN
+        at gate-r2 as factually wrong.
   - id: M2
     title: three sale-branch fixes + scale args, real-writer red-first per consumer
     review_lenses: [fiscal-pos, general]
@@ -157,4 +229,4 @@ milestones:
     verdict: null
     fix_rounds: 0
 
-updated: 0edbf402b   # short HEAD at write time (harness "No clock" rule: use git rev-parse --short HEAD)
+updated: 63b756784   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)

@@ -97,6 +97,44 @@ sealed chain.
   `vat_breakdown`**. A Z can be sealed today with an empty or malformed breakdown. (Contrast
   `SALE_RECEIPT`, which enforces non-empty and per-row keys.)
 
+#### 1.3a 🚨 The fix MOVES the payload's internal contradiction — it does not remove it (gate-r2 finding 2)
+
+This is the consequence the gate most needs for ruling question 3, and it holds **under both
+options**, because it is a property of the fix itself, not of how it is versioned.
+
+`net_sales` is `Σ receipt.subtotal` (`zReportService.ts:900`) and `subtotal` is `Σ line_total` —
+i.e. **gross** (F-2; `receiptService.ts:145-158`, stored `:547`). On a one-line shift of 12.00
+gross / 2.00 VAT / 10.00 true net:
+
+| | `gross_sales` | `net_sales` | `Σ gross_amount` | `Σ net_amount` | Which identity holds |
+|---|---|---|---|---|---|
+| **Today** | 12.00 | **12.00** (wrong — F-2) | **14.00** (wrong) | **12.00** (wrong) | `Σ net_amount == net_sales` ✓ · `Σ gross_amount == gross_sales` ✗ |
+| **After this fix, F-2 unfixed** | 12.00 | **12.00** (still wrong) | 12.00 ✓ | 10.00 ✓ | `Σ gross_amount == gross_sales` ✓ · **`Σ net_amount == net_sales` ✗ — off by the shift's full VAT** |
+| **After both fixes** | 12.00 | 10.00 | 12.00 | 10.00 | both ✓ |
+
+So today the two wrong numbers agree with each other and the gross column is the visible
+contradiction; after this lane's fix in isolation, the per-rate rows become correct and the
+**headline `net_sales` becomes the visible contradiction**, disagreeing with `Σ net_amount` by the
+entire VAT of the shift.
+
+**This is operator- and server-visible, not theoretical.** `apps/pos/src/components/pos/ZReportModal.tsx:158-159`
+renders `gross_sales`/`net_sales` directly above the per-rate table at `:176-193`, and
+`ZReportProjection.php` copies both into one row (`:149` vs `:154`).
+
+**And the codebase already treats the analogous identity as canonical.**
+`Σ vat_breakdown[].net_amount == subtotal` is a **hard, server-enforced invariant for
+`SALE_RECEIPT`** (`FiscalPayloadConstraintValidator.php:1097-1098`, enforced `:1139-1166`). The Z
+family escapes it only because `validateZReportFamilyPayload` (`:764-771`) never iterates the
+breakdown (F-4). If that validation is ever extended to the Z family — which F-4 suggests it should
+be — a post-fix, F-2-unfixed Z would **fail** it.
+
+**What this means for the ruling:** answering ruling question 3 with *"F-2 is out of scope, ticket
+it"* is a legitimate call, but it must be made knowing that **M2 would then ship a signed Z whose
+headline and per-rate rows disagree by the full VAT of the shift**. That is arguably more
+defensible than today's state (two consistent wrong numbers) because the per-rate rows become
+correct — but it is a **new** inconsistency in a sealed record, and it should be chosen, not
+inherited.
+
 ### 1.4 A second, separate chain also changes — and it has no version field
 
 `computeZReportHash()` (`apps/pos/src/lib/fiscal/zReportHashService.ts`) hashes
@@ -148,14 +186,37 @@ would exist purely to be read by a future verifier that does not exist yet (§1.
 |---|---|---|
 | A1 | `apps/pos/src/lib/fiscal/FiscalEventPayloadRegistry.ts:245` | The flat `return 1;` must gain a `Z_REPORT`/`X_REPORT`/`SESSION_CLOSE` branch (or become a map). Today `SALE_RECEIPT` is the only type with any fan-out (`:222-244`). |
 | A2 | `apps/api/.../Fiscal/Application/Services/FiscalEventPayloadRegistry.php:92-94` | `PHASE_1_MAP` authoring version `1 → 2` for the three types. |
-| A3 | **`…/FiscalEventPayloadRegistry.php:119-127`** | `SUPPORTED_VERSIONS` currently contains **only** `SALE_RECEIPT => [1,2,3,4]`. Z/X/`SESSION_CLOSE` must gain `[1, 2]`. **Omitting this quarantines 100 % of Z and X events** at `StrictCanonicalParser.php:627-632` (`envelope_event_version_mismatch`), because `supportedVersionsFor()` falls back to `[eventVersionFor()]` (`:152-155`). This is the single highest-risk line in Option A. |
+| A3 | **`…/FiscalEventPayloadRegistry.php:119-127`** | `SUPPORTED_VERSIONS` currently contains **only** `SALE_RECEIPT => [1,2,3,4]`. Z/X/`SESSION_CLOSE` must gain `[1, 2]`. **Omitting this quarantines 100 % of Z and X events** at `StrictCanonicalParser.php:628-634` (`envelope_event_version_mismatch`), because `supportedVersionsFor()` falls back to `[eventVersionFor()]` (`:152-155`). This is the single highest-risk line in Option A. |
 | A4 | `apps/api/.../FiscalPayloadConstraintValidator.php:427-438` | `payloadKeysFor()` fans out only for `SALE_RECEIPT >= 4` / `>= 3`; everything else ignores `$eventVersion`. A v2 with an unchanged key set needs **no** change here — but if the gate wants the version to be *enforced* rather than merely stamped, this is where a `Z_REPORT_PAYLOAD_KEYS_V2` branch would go. |
 | A5 | `apps/api/.../FiscalPayloadConstraintValidator.php:524-526` | `SESSION_CLOSE`/`X_REPORT`/`Z_REPORT` call `validateZReportFamilyPayload($payload)` with `$eventVersion` **dropped**. Threading it is required for any version-aware validation. |
 | A6 | `apps/pos/src/lib/fiscal/FiscalEventEngine.ts:911-916` | The TS mirror of A5 — same drop of `eventVersion` for the Z family. |
 | A7 | `apps/pos/src/lib/fiscal/FiscalEventEngine.ts:1297-1317`, `:1319-1348`, `:1350-1383` | `X_REPORT_PAYLOAD_KEYS`, `SESSION_CLOSE_PAYLOAD_KEYS`, `Z_REPORT_PAYLOAD_KEYS` — flat `as const` lists with no version suffix (contrast `SALE_RECEIPT_PAYLOAD_KEYS_V3`/`_V4`). Only touched if A4 is taken. |
-| A8 | `apps/api/.../POS/Application/Projections/ZReportProjection.php:174-179` | A load-bearing comment states the design premise being retired: *"it is derived server-side rather than read off the device payload because `Z_REPORT` **stays v1** — adding a key to the canonical payload would quarantine 100 % of Z events."* Must be rewritten. `rowFromPayload()` (`:53-121`) and `legacyReportData()` (`:127-164`, `vat_breakdown` passthrough at `:151`) read Z payload keys directly and **never branch on the Z's own version** — they would need to, if the two semantics are ever to be told apart server-side. |
-| A9 | `apps/api/.../Compliance/Services/Nf525/Nf525DataProvider.php:1246-1281` | `mapCanonicalZReportGrandTotal()` reads `vat_breakdown` (`:1260`) straight off the signed payload into the NF525 GRANDTOTAL section. A v2 must be handled here or the archive silently mixes conventions. |
-| A10 | `apps/api/.../Nf525/Nf525XmlBuilder.php:579`, `:598` | Emits `event_version` as `<VersionEvenement>` — a v2 Z appears verbatim in the NF525 archive. Behavioural, no code change, but it is a **regulator-visible** consequence and belongs in the ruling. |
+| A8 | `apps/api/.../POS/Application/Projections/ZReportProjection.php:174-179` | A load-bearing comment states the design premise being retired: *"it is derived server-side rather than read off the device payload because `Z_REPORT` **stays v1** — adding a key to the canonical payload would quarantine 100 % of Z events."* Must be rewritten. `rowFromPayload()` (`:53-121`) and `legacyReportData()` (`:127-164`, `vat_breakdown` passthrough at `:154`) read Z payload keys directly and **never branch on the Z's own version** — they would need to, if the two semantics are ever to be told apart server-side. |
+| A9 | `apps/api/app/Modules/POS/Application/Services/Nf525DataProvider.php:1247-1281` | `mapCanonicalZReportGrandTotal()` reads `vat_breakdown` (`:1260`) straight off the signed payload into the NF525 GRANDTOTAL section. A v2 must be handled here or the archive silently mixes conventions. |
+| A10 | `apps/api/app/Modules/Compliance/Services/Nf525/Nf525XmlBuilder.php:579`, `:598` | **A version bump is NOT regulator-visible on the verified path — corrected at M1 gate-r2, see below.** No code change; the entry is kept because the *absence* of archive visibility is itself a ruling input. |
+
+**A10 in full — the NF525 correction (M1 gate-r2 finding 1).** An earlier revision of this memo
+asserted that a v2 Z *"appears verbatim in the NF525 archive"* and offered archive
+self-description as a flip-to-Option-A condition. **That was wrong, and it pointed the ruling the
+wrong way.** Verified at `base_sha`:
+
+- `<VersionEvenement>` is emitted at **exactly one site** — `Nf525XmlBuilder.php:598` — and that
+  site is inside **`addQuarantineSection()`** (`:548`, element `EvenementsQuarantaine` at `:554`).
+  `grep -rn "VersionEvenement" apps/api/` returns that one line and nothing else.
+- Its only two feeds are the quarantine table and `fiscal_events` rows where
+  `integrity_status <> 'verified' OR payload_parse_status = 'failed'`
+  (`Nf525DataProvider.php:1553-1607`, `:1613-1660`).
+- **A verified v2 `Z_REPORT` therefore never carries its `event_version` into the NF525 export at
+  all.** No NF525 section emits `canonical_bytes` for verified events.
+
+**The honest fact cuts against Option A, not for it.** The corrected (or uncorrected)
+`vat_breakdown` **values** *do* reach the archive — `Nf525DataProvider::mapCanonicalZReportGrandTotal()`
+(`:1247-1281`, `vat_breakdown` at `:1260`) feeds the NF525 GRANDTOTAL section — while the version
+stamp does **not**. So Option A labels the canonical bytes and the `fiscal_events.event_version`
+column, and leaves the **regulator-facing export exactly as undifferentiated as Option B does**.
+Combined with §1.4 (the legacy `z_reports` chain has no version field either), the discriminator
+Option A buys is visible on **one** of three surfaces: the fiscal-event bytes — not the legacy
+chain, not the archive.
 | A11 | `app/Shared/Domain/CashRoundingCutover.php:44,52-55` | `EVENT_VERSION = 3` and `applies()` is a bare `>= 3` with **no event-type guard**. Not reachable for Z/X today; if Z/X ever pass ≥ 3 it misclassifies them as rounding-era. A v1→v2 bump does not reach it, but it is a latent trap the ruling should note. |
 | A12 | Tests that hardcode `1` | `apps/pos/src/lib/fiscal/__tests__/FiscalEventPayloadRegistry.test.ts:80-81` (`toBe(1)`); `apps/api/tests/Unit/Fiscal/FiscalEventPayloadRegistryTest.php:86-87` (`assertSame(1, …)`); Z fixtures at v1 in `tests/Feature/Fiscal/ZReportProjectionTest.php:333,375,422`, `ZSessionLifecycleQuarantineVisibilityTest.php:509,539,561`, `tests/Feature/POS/ZReportImmutabilityTest.php:400`. |
 | A13 | New test owed by the brief (M2 §4) | "Old events keep old semantics" needs its own test. **There is nothing to test it against**: no Z/X golden vector, byte-stability fixture or key-set test exists anywhere in the repo (§3.2), so the fixture would have to be authored from scratch. |
@@ -166,7 +227,7 @@ would exist purely to be read by a future verifier that does not exist yet (§1.
 sharp: devices author locally and sync opportunistically to **whatever API is currently deployed**.
 If a device build authoring v2 reaches a terminal **before** the API carrying A3 is deployed, every
 `Z_REPORT`/`X_REPORT`/`SESSION_CLOSE` that terminal syncs is rejected at
-`StrictCanonicalParser.php:627-632` as `envelope_event_version_mismatch` and lands in
+`StrictCanonicalParser.php:628-634` as `envelope_event_version_mismatch` and lands in
 `fiscal_event_quarantine` — **100 % of that terminal's Z/X**, on an append-only device chain that
 cannot be re-authored.
 
@@ -232,9 +293,15 @@ change. Nothing can quarantine.
 
 **The dishonesty cost, stated plainly.** If signed history exists, Option B leaves **two different
 meanings for one version, with nothing in the bytes to say which** — a fiscal record that cannot be
-interpreted without out-of-band knowledge of the device build rollout date. Under NF525 that is a
-real defect in the archive's self-description, and `<VersionEvenement>` will read `1` for both
-conventions.
+interpreted without out-of-band knowledge of the device build rollout date. That is a real defect in
+the **bytes'** self-description.
+
+**But it is NOT an archive defect, and Option A does not fix one.** Per A10, `<VersionEvenement>`
+is emitted only for **quarantined/unverified** events (`Nf525XmlBuilder.php:598` inside
+`addQuarantineSection()`), so the NF525 export of a *verified* Z carries no version stamp under
+either option — while the `vat_breakdown` values themselves do reach the archive's GRANDTOTAL
+section (`Nf525DataProvider.php:1247-1281`). Both options therefore leave the regulator-facing
+export equally undifferentiated.
 
 **The counterweight the gate must weigh against that:** Option A does not repair the old events
 either. It only labels the new ones. Old v1 events remain wrong under both options — rule 8
@@ -486,8 +553,16 @@ The reasoning, weighted:
   makes the "two meanings, one version" objection concrete rather than theoretical; or
 - the gate rules that the **`net_sales` defect (F-2) will be fixed in the same device build**, in
   which case one bump can cover both corrections and the marginal cost of A collapses; or
-- **NF525 archive self-description** is judged a hard regulatory requirement rather than a
-  best-practice preference — `<VersionEvenement>` (A10) is the field a French auditor reads.
+- the gate judges that **the canonical bytes and the `fiscal_events.event_version` column must be
+  self-describing as a matter of principle**, independent of whether any tool reads the
+  discriminator today (§1.3) — i.e. it is buying option value for a future verifier.
+
+**A flip condition that an earlier revision of this memo listed and that is now WITHDRAWN as
+factually wrong (M1 gate-r2 finding 1):** *"NF525 archive self-description … `<VersionEvenement>`
+is the field a French auditor reads."* It is not — that element is emitted only for quarantined
+events (A10). A verified v2 Z shows no version in the NF525 export, so **archive
+self-description cannot be a reason to prefer Option A.** The condition is struck rather than
+silently edited, because it was offered to a gate whose ruling is a one-way door.
 
 **What I am explicitly NOT deciding, and why:** whether the residual staging/demo-device exposure
 is acceptable; whether tenant #1's cheap window (§7) outweighs it; whether F-2 changes this lane's
@@ -553,4 +628,5 @@ The ruling should answer, explicitly:
 | Round | Lens | Verdict | Disposition |
 |---|---|---|---|
 | 1 | fiscal-pos | **ACCEPT** — 0 P1, 1 P2, 4 P3 (`M1-round1.md`) | All five folded in before the ruling, because the artifact this memo feeds is a one-way door: P2 finding 1 → **A14** + the §2.3 row + ruling question 5; P3 finding 2 → the **Q2 default** in §6; P3 finding 3 → the `:504` citation correction in F-3; P3 finding 4 → progress-YAML `updated:`/`commit:` bookkeeping; P3 finding 5 → the third site's structural non-identity, flagged as an M2/R-2 note in §1.1. |
-| 2 | fiscal-pos | see `M1-round2.md` | Re-gate of the amended memo. |
+| 2 | fiscal-pos | **CHANGES-REQUIRED** — 1 P1, 1 P2, 3 P3 (`M1-round2.md`) | **P1** → the NF525 argument for Option A was **factually wrong**: `<VersionEvenement>` (`Nf525XmlBuilder.php:598`) is emitted only inside `addQuarantineSection()`, so a *verified* v2 Z never carries its version into the archive. A10 rewritten, the §2.2 sentence corrected, and **flip condition 3 struck and replaced** — the corrected fact cuts *against* Option A. **P2** → new **§1.3a**: the fix *moves* the payload's internal contradiction from the gross column to the net column (`Σ net_amount` vs `net_sales`, off by the shift's full VAT) unless F-2 moves with it. **P3** → YAML `recommendation:` de-staled to Q1/Q3; YAML stop-state bookkeeping; three citation corrections (A9 path, `ZReportProjection.php:154`, `StrictCanonicalParser.php:628-634`). |
+| 3 | fiscal-pos | see `M1-round3.md` | Re-gate of the round-2 fixes. |
