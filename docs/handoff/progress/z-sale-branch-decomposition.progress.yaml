@@ -109,8 +109,8 @@ milestones:
     owner_gate: z-signed-bytes-versioning
     status: blocked_review
     commit: 0edbf402b       # z-decomp M1.1 (memo); amended by the round-1 fix round, see fix_commit
-    fix_commit: 63b756784   # z-decomp M1.2 (round-1 fixes); round-2 fixes land in the blocked_review commit
-    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round3.md
+    fix_commits: [63b756784, b13536a76]  # M1.2 = round-1 fixes; M1.3 = round-2 fixes. The round-3 fix commit is THIS commit (self-reference impossible at write time).
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round4.md   # written by the round-4 bridge run; if absent, round 4 did not complete — see verdict_history
     verdict_history:
       - round: 1
         register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round1.md
@@ -120,9 +120,16 @@ milestones:
         result: CHANGES-REQUIRED (exit 2) — 1 P1 (NF525 claim wrong), 1 P2 (identity inversion), 3 P3
       - round: 3
         register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round3.md
+        result: >-
+          CHANGES-REQUIRED (exit 2) — 1 P1 (the round-2 REPLACEMENT NF525 claim was also false),
+          2 P2 (F-2's net_sales IS archive-visible as <VentesNettes>; the A10 prose had broken the
+          Option-A cost table so A11-A14 rendered as a run-on paragraph), 2 P3 (transaction-discount
+          caveat; YAML verdict forward-reference)
+      - round: 4
+        register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round4.md
         result: see register
     last_verdict: see verdict_history
-    fix_rounds: 2
+    fix_rounds: 3
     memo: docs/handoff/reviews/z-sale-branch-decomposition/M1-signed-bytes-decision.md
     no_production_code: true
     findings:
@@ -162,24 +169,39 @@ milestones:
         version bump and no registry/payload file touched. Real precedent for Option B; narrower
         blast radius (v4 refunds were brand-new), so it is evidence, not a ruling.
       option_A_nf525_not_visible: >-
-        M1 gate-r2 finding 1 (P1, closed in round 3): an earlier memo revision claimed a v2 Z is
-        regulator-visible in the NF525 archive and offered archive self-description as a
-        flip-to-Option-A condition. FACTUALLY WRONG. <VersionEvenement> is emitted at exactly one
-        site (Nf525XmlBuilder.php:598) and only inside addQuarantineSection() (:548), fed solely by
-        the quarantine table and by fiscal_events rows with integrity_status <> 'verified' OR
-        payload_parse_status = 'failed'. A VERIFIED v2 Z_REPORT never carries its event_version
-        into the export. The vat_breakdown VALUES do reach the archive GRANDTOTAL
-        (Nf525DataProvider.php:1247-1281, :1260). Net effect: Option A's discriminator is visible on
-        the fiscal-event bytes only — not the legacy z_reports chain (no version field at all), not
-        the regulator-facing export. The flip condition is STRUCK, not silently edited.
+        This memo was wrong about NF525 TWICE, in opposite directions; the verified position was
+        reached at gate-r3. (a) gate-r2 finding 1 (P1): the original claim that a v2 Z is
+        regulator-visible was FALSE — <VersionEvenement> is emitted at exactly one site
+        (Nf525XmlBuilder.php:598), only inside addQuarantineSection() (:548), fed solely by the
+        quarantine table and by fiscal_events rows with integrity_status <> 'verified' OR
+        payload_parse_status = 'failed'. (b) gate-r3 finding 1 (P1): the REPLACEMENT claim that the
+        vat_breakdown VALUES reach the archive GRANDTOTAL was ALSO FALSE —
+        mapCanonicalZReportGrandTotal() puts vat_breakdown into periodTotals
+        (Nf525DataProvider.php:1260), but Nf525XmlBuilder::addGrandTotals() (:319-350) emits ONLY
+        <VentesBrutes> (gross_sales, :335) and <Taxe> (tax_amount, :336); addZReports() (:296-302)
+        emits five scalars and no breakdown; the ticket-level <VentilationTVA> (:160-169) is fed
+        per-receipt from the SALE_RECEIPT view, not from the Z. NET POSITION: this lane's per-rate
+        correction has ZERO NF525 export consequence under EITHER option, and A9 is not an Option-A
+        cost. Archive self-description is STRUCK as a flip condition. What the archive DOES carry
+        wrong is F-2's net_sales, exported as <VentesNettes> (Nf525XmlBuilder.php:299) for every
+        taxed shift — see identity_inversion.
       identity_inversion: >-
         M1 gate-r2 finding 2 (P2, closed in round 3 as memo §1.3a): the fix MOVES the payload's
         internal contradiction rather than removing it, under BOTH options. Today Sum(net_amount)
         == net_sales (both gross) and Sum(gross_amount) != gross_sales. After this fix with F-2
         unfixed, Sum(gross_amount) == gross_sales but Sum(net_amount) != net_sales, off by the
         shift's FULL VAT. Operator-visible (ZReportModal.tsx:158-159 renders the headline directly
-        above the per-rate table at :176-193) and server-visible (ZReportProjection.php:149 vs
-        :154). The analogous identity Sum(vat_breakdown[].net_amount) == subtotal is a HARD
+        above the per-rate table at :176-193), server-visible (ZReportProjection.php:149 vs :154)
+        and — gate-r3 finding 2 — REGULATOR-visible: the headline reaches the NF525 JET export as
+        <VentesNettes> (Nf525XmlBuilder.php:299) from the projection's verbatim passthrough. So the
+        asymmetry is: the per-rate values this lane FIXES reach no archive surface, while the
+        net_sales it does NOT fix is archived wrong for every taxed shift. gate-r3 finding 4: on a
+        DISCOUNTED shift the gross column stays contradictory too (lines[] carry the
+        pre-transaction-discount line_total, receiptService.ts:537, while the discount is
+        header-only, :549/:555-557), so post-fix Sum(gross_amount) - gross_sales = discount. The
+        honest summary is "one contradiction moves to the net column and, on discounted shifts, a
+        second is retained in the gross column". The analogous identity
+        Sum(vat_breakdown[].net_amount) == subtotal is a HARD
         server-enforced invariant for SALE_RECEIPT (FiscalPayloadConstraintValidator.php:1097-1098,
         enforced :1139-1166); the Z family escapes it only via F-4. Ruling question 3 must be
         answered knowing this.
@@ -229,4 +251,4 @@ milestones:
     verdict: null
     fix_rounds: 0
 
-updated: 63b756784   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)
+updated: b13536a76   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)
