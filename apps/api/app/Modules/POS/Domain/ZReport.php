@@ -91,8 +91,7 @@ class ZReport extends Model
      * readers (ZReportHashService / ReceiptHashService / Nf525DataProvider
      * stringify helpers) already normalise raw query-builder rows; this
      * covers the Eloquent path.
-     */
-    /**
+     *
      * Nullable on this table (a legacy v2 row has no canonical bytes until the
      * one-time projection upgrade), so the null is handled here — ByteaBinding
      * fails loud on anything that is neither a string nor a stream.

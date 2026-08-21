@@ -153,11 +153,25 @@ final class FiscalEvent extends Model
     }
 
     /**
-     * `canonical_bytes` is NOT NULL, and comes back from PostgreSQL as a stream
-     * resource. One normalization implementation — see {@see ByteaBinding::read()}.
+     * `canonical_bytes` is NOT NULL in the database, and pdo_pgsql hydrates it
+     * as a stream resource (SQLite returns a string) — one normalization
+     * implementation, see {@see ByteaBinding::read()}.
+     *
+     * The null guard is NOT dead code: Laravel fires an accessor even when the
+     * key is absent from `$attributes`, passing null. That happens on a
+     * transient model (the §7.2 `new FiscalEvent` + `forceFill` probe) or a
+     * narrowed select. Null there means "not loaded", not "empty bytes", and an
+     * accessor must not explode on an unhydrated model — so return '' rather
+     * than letting ByteaBinding's fail-loud path throw during ingest. Mirrors
+     * ZReport::getCanonicalBytesAttribute(), which returns null for its
+     * nullable column.
      */
     public function getCanonicalBytesAttribute(mixed $value): string
     {
+        if ($value === null) {
+            return '';
+        }
+
         return ByteaBinding::read($value);
     }
 
