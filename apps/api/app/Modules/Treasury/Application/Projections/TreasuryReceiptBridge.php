@@ -66,6 +66,14 @@ use RuntimeException;
  *     (no draft state — POS payments are DIRECT TO REVENUE).
  *   - the back-link `payments.journal_entry_id` populated post-post.
  *
+ * **Training containment (LEDGER gate G-3).** A receipt whose sealed canonical
+ * payload carries `training_flag = true` is a rehearsal, not a sale: `apply()`
+ * returns before ANY Treasury effect — no `payments` row, no GL post, no
+ * `repository_movements` movement, no instrument lifecycle write, no §4.6
+ * rounding/tolerance entry — for sales and refunds/voids alike. The projection
+ * still completes cleanly so the queue row reaches `applied`. Pinned by
+ * `tests/Feature/Treasury/TrainingReceiptTreasuryContainmentTest.php`.
+ *
  * **Change netting (spec §4.6, `event_version >= 3`).** From the cash-rounding
  * cutover on, `payments.amount` is the RETAINED amount, not the tendered one:
  * a pre-pass in `apply()` subtracts the over-tender from the last cash leg
@@ -352,6 +360,39 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
             // resolveRepositoryForTender).
             $view = $this->canonicalReader->forSaleReceipt($event);
 
+            // ============================================================
+            // LEDGER gate G-3 — TRAINING receipts never move real money.
+            // ============================================================
+            // A training receipt is a rehearsal on a live terminal: nothing
+            // is sold, no cash enters the drawer, no revenue is earned. The
+            // device still authors a fully-signed SALE_RECEIPT (the hash
+            // chain has no "practice" mode) with `training_flag = true`, so
+            // the flag on the SEALED payload is the only honest
+            // discriminator — never the mutable `pos_receipts.is_training`
+            // mirror, and never a heuristic on amounts.
+            //
+            // EVERY Treasury effect this projector owns is suppressed from
+            // here down, for SALES and REFUNDS/VOIDS alike (a refund rides
+            // this same SALE_RECEIPT event through this same apply(), keyed
+            // off `invoice_type_code` below — so one gate covers both):
+            //   - the `payments` row (origin=Pos, status=Completed),
+            //   - the synchronously-posted POS revenue / reversal GL entry,
+            //   - the `repository_movements` drawer balance movement,
+            //   - instrument receive/cancel lifecycle writes, and
+            //   - the §4.6 rounding + tolerance entries below.
+            //
+            // Returning cleanly (rather than throwing) is deliberate: the
+            // read-model row is PosCoreReceiptProjection's job (priority 50,
+            // already training-aware) and `ApplyFiscalEventProjectionJob`
+            // still marks this projection `applied`, so a rehearsal never
+            // parks a permanently-retrying projection row.
+            //
+            // Placed AFTER the legacy null-key short-circuit so a
+            // pre-Task-20 event keeps its existing untouched-return path.
+            if ($view->payload->trainingFlag === true) {
+                return;
+            }
+
             // Spec §4.6 netting pre-pass. Gated on
             // `event_version >= CashRoundingCutover::EVENT_VERSION` — the same
             // single discriminator PosCoreReceiptProjection uses, so the read
@@ -396,14 +437,18 @@ final class TreasuryReceiptBridge implements FiscalEventProjector
                 $index++;
             }
 
-            // Spec §4.6 new entries — v3-gated and training-guarded, inside the
-            // SAME transaction as the tender legs. Both run AFTER the loop so a
-            // missing purpose account can never block revenue recognition: the
-            // legs are already written when the precheck decides to skip.
+            // Spec §4.6 new entries — v3-gated, inside the SAME transaction as
+            // the tender legs. Both run AFTER the loop so a missing purpose
+            // account can never block revenue recognition: the legs are already
+            // written when the precheck decides to skip.
             //
-            // Training receipts never reach GL at all (they are rehearsals, not
-            // sales), and a v1/v2 event has no rounding semantics to book.
-            if (CashRoundingCutover::applies($event->event_version) && $view->payload->trainingFlag !== true) {
+            // The training discriminator that used to be duplicated here is
+            // GONE on purpose: the G-3 gate at the top of this closure already
+            // returned for every training receipt, at every event_version, so
+            // repeating `trainingFlag !== true` here could only ever be true
+            // and would falsely suggest the containment lives at this line.
+            // A v1/v2 event still has no rounding semantics to book.
+            if (CashRoundingCutover::applies($event->event_version)) {
                 $this->postCashRoundingEntry($event, $receipt, $view, $isRefund, $currencyScale);
                 $this->postToleranceWriteoffEntry($event, $receipt, $view, $currencyScale);
             }
