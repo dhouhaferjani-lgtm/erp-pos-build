@@ -27,6 +27,8 @@ Full audit evidence lives in the session transcript; gaps are ranked G1–G13. T
 | B-5 | **Cash-rounding UI (G4)** is artisan-only (`pos:configure-cash-rounding` via `tenants:run`, exit-code swallowed). For TN millime rounding on tenant #1: is a settings UI wanted pre-launch, or is the runbook step enough? (Also gated by O-24 sign-off, unchanged.) |
 | B-6 | **G-4 VAT lane sub-questions** (money netting fixed either way): (i) should `document_count` in the declaration count return receipts — and note the DOCUMENT arm counts credit notes the same way, so any ruling should apply to both arms together; (ii) explicit ack wanted that shift X/Z reports *exclude* refund VAT (own positive refunds block) while the declaration now *nets* it — the two numbers deliberately won't reconcile. |
 | B-7 | **Arabic legal copy**: the backfill lane machine-authors the `legal.privacy.*` Arabic tree (38 keys). Needs a native/legal read before production exposure to AR-locale users. |
+| B-8 | **dpa-v8 vs the F-9 park order**: your 2026-08-09 park ("F-9 must land before its CN-posting wiring") vs today's land-what-deserves-landing ruling. Session proceeding whole-branch with the gate ruling explicitly on pre-F-9 wiring safety (the multi-price residual is gate-accepted with failing-visible pins); fallback = land the document+stock half, hold the CN-posting wiring. Confirm or override. Full reasoning: `docs/handoff/ORPHAN-BRANCH-DISPOSITIONS-2026-08-21.md` §3. |
+| B-9 | **r2f2 discarded** under ruling #4 — recorded rationale in the dispositions file; tip preserved at tag `archive/r2f2-cancel-flow-prompt-2026-08-21`. Veto = restore from the tag. |
 
 ## C. Standing open items carried
 Four rulings arrived mid-session (2026-08-21, relayed from session de182ed3) and are RECORDED in
@@ -45,6 +47,7 @@ Still open elsewhere: Dokploy deploy pipeline (yours) · staging owes S-1..S-13 
 ## E. Merges under the CI-blind window (S-17 register — every row locally verified)
 | Lane | Branch | Merged at | Local verification |
 |---|---|---|---|
+| G-4 VAT refund netting | `fix/g4-vat-pos-refund-netting` | `efa2282dd` | treasury gate r1 (revert-probe red-proof) + fix round (probe-verified CI token, voided-return pin); PG 7/31 + sqlite 7/31 by path; manifest checker exit 0 re-run on MERGED dev; actionlint OWED (not installed) at next CI-sighted window |
 | _(rows appended at each merge)_ | | | |
 
 ## D. Session log pointers
