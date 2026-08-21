@@ -156,14 +156,20 @@ final class TrainingVoucherRedemptionContainmentTest extends TestCase
 
     /**
      * The gate arm above runs with NO `CompanyContext` (rule 20, worker
-     * fidelity) — which means that if the G-3 guard were removed, the arm would
-     * still "pass its zeros" for the WRONG reason: the ticketed unbound-context
-     * bug throws inside `redeem()` before anything is written, and a future
-     * `try`/`catch` "fix" for that bug would silently disarm this file.
+     * fidelity). When this file was written that raised a real ambiguity: the
+     * then-unfixed unbound-context bug threw inside `redeem()` before anything
+     * was written, so the arm could "pass its zeros" for the WRONG reason, and
+     * a future `try`/`catch` "fix" for that bug would have silently disarmed
+     * the file.
      *
-     * This third arm removes that ambiguity. Same TRAINING event, same four
-     * zeros, but with `CompanyContext` BOUND so redemption is fully capable of
-     * succeeding. Zeros here can only be caused by the training guard.
+     * That specific bug is gone — LEDGER row C-5 fixed it by resolving the
+     * voucher GL scale from the entity currency
+     * (`GeneralLedgerService::createVoucherLedgerEntry()`), and the control arm
+     * below now proves redemption works with the context CLEARED. This third
+     * arm is kept anyway, because the ambiguity it closes is not specific to
+     * that bug: with `CompanyContext` BOUND, redemption is unconditionally
+     * capable of succeeding, so zeros here can only be caused by the training
+     * guard — never by any exception path, present or future.
      */
     public function test_training_receipt_does_not_redeem_even_with_company_context_bound(): void
     {
@@ -194,39 +200,28 @@ final class TrainingVoucherRedemptionContainmentTest extends TestCase
     // =================================================================
 
     /**
-     * ⚠️ **This control arm binds `CompanyContext`, deliberately breaking the
-     * rule-20 worker fidelity the gate arm above keeps — and it must say why.**
+     * The load-bearing half of the gate: an otherwise identical NON-training
+     * receipt must still redeem the voucher and post the GL pair, so G-3 can
+     * never be "satisfied" by breaking redemption outright.
      *
-     * Redemption via the projection path is CURRENTLY BROKEN on a real Horizon
-     * worker, independently of anything in this wave:
-     * `VoucherRedemptionService::redeem()` (`:204`) calls
-     * `GeneralLedgerService::createVoucherLedgerEntry()`, which resolves scale
-     * through the private `scale()` helper (`GeneralLedgerService:64-66`) —
-     * a BARE no-arg `getScale()`. `ApplyFiscalEventProjectionJob` binds no
-     * `CompanyContext` and `PosCoreReceiptProjection` binds none either, so
-     * that call throws `UnboundCompanyContextException` (F-RES-1) and
-     * `redeemVouchers()` has no try/catch to absorb it — the whole SALE_RECEIPT
-     * projection rolls back and the job retries forever.
+     * It runs through {@see project()} — `CompanyContext` CLEARED, the real
+     * Horizon worker reality (rule 20) — exactly like the gate arm, so the two
+     * differ ONLY in the training pair.
      *
-     * That is a separate P1 defect on the NON-training path, filed as
-     * `docs/superpowers/tickets/2026-08-21-voucher-redemption-unbound-company-context.md`.
-     * It is NOT fixed here (out of the G-3 training-containment lane, and the
-     * fix — threading an explicit currency into `createVoucherLedgerEntry` —
-     * has its own GL blast radius).
-     *
-     * Binding the context here is therefore MASKING A KNOWN BUG on purpose, so
-     * that this arm can still do its one job: prove the fixture is genuinely
-     * redemption-capable, and hence that the gate arm's zeros are caused by the
-     * training guard rather than by a fixture that never could have redeemed.
-     * When the ticket lands, delete the bind and this note.
+     * **This arm used to bind the context on purpose**, to mask LEDGER row C-5:
+     * `VoucherRedemptionService::redeem()` reached a bare no-arg `getScale()`
+     * in `GeneralLedgerService::createVoucherLedgerEntry()`, which threw
+     * `UnboundCompanyContextException` (F-RES-1) on any real worker and rolled
+     * the whole SALE_RECEIPT projection back. C-5 is fixed — the voucher GL
+     * scale now comes from the entity currency — so the mask is gone and this
+     * arm doubles as an independent regression guard for it: if C-5 ever
+     * regresses, this arm goes red without any context binding to hide it.
      */
     public function test_control_non_training_receipt_redeems_the_voucher_and_posts_the_gl_pair(): void
     {
         $voucher = $this->seedRedeemableVoucher();
 
-        $event = $this->buildEvent(training: false);
-        app(CompanyContext::class)->setCompanyId($this->companyId);
-        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+        $this->project($this->buildEvent(training: false));
 
         $voucher->refresh();
         $this->assertNotSame(
