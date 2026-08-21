@@ -998,13 +998,16 @@ The finding that motivated 2(b) was the hand-maintained `--filter` allowlist. It
 brief measured **93** entries at `ci.yml:629`; at `base_sha` it is **112**, plus a second **16**-entry
 list at `:730`. But enumerating the tree turned up a far bigger hole.
 
+*(Measurement-epoch note: the M2 round measured this table at `base_sha`; the class counts are
+re-derived at the accepted tip 2026-08-21 — pre-rebase figures in parentheses.)*
+
 | Measure | Value |
 |---|---|
-| `tests/Feature` classes | **1 329** |
+| `tests/Feature` classes | **1 348** files / **1 335** distinct (1 329 / 1 316 pre-rebase) |
 | Top-level groups | **74** |
-| Groups a whole-directory CI run covers | **3** (`Security` 17, `Treasury` 119, `Accounting` 79) |
-| Distinct classes reachable by ANY CI job on ANY event | **326** |
-| **Distinct classes reachable by NO CI job, ever** | **990** |
+| Groups a whole-directory CI run covers | **3** (`Security` 17, `Treasury` 119, `Accounting` 79 — base-time counts) |
+| Distinct classes reachable by ANY CI job on ANY event | **326** (base-time) |
+| **Distinct classes reachable by NO CI job, ever** | **990** (base-time; the merged tree adds classes — see handback §3c) |
 | Classes living in groups no lane runs | **1 131** (re-derived at the accepted tip 2026-08-21; 1 114 pre-rebase) |
 
 `backend-test` runs `php artisan test --testsuite=Unit` — it never runs `--testsuite=Feature`. So

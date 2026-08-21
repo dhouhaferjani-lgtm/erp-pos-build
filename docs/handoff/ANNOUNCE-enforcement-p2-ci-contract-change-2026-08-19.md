@@ -56,8 +56,10 @@ laneless hole must not grow silently — and the remedy is one number, in the sa
 > error and an over-subtraction nearly cancel.* **1131 is the number the ceilings enforce and the
 > number to act on.**
 >
-> **The "ceiling now" column shows P2-base values.** §8 item 0 re-baselines `Inventory` → 106,
-> `CountryDefaults` → 28 and `debt_ceiling` → 1116 in the first commit on `dev` after the merge, so
+> **The "ceiling now" column shows P2-base values.** The candidate itself now carries the ceilings
+> regenerated against the merged tree (2026-08-21 stale-A rebase: `Inventory` 106, `CountryDefaults`
+> 28, `Document` 74, `Fiscal` 79, `debt_ceiling` 1131 — §8 item 0), so at merge time the shipped
+> manifest already matches `dev`. If your lane lands after further `dev` movement,
 > **raise the value you find, not the value printed here** — the actions are relative for that reason.
 >
 > **Counted as ADDED classes (`git diff --diff-filter=A dev...<branch>`), not changed files.** An
@@ -263,23 +265,18 @@ Neither has ever executed on a real runner (the executor never pushes), so the p
    | `Fiscal` | 73 | **79** (landed mid-review) |
    | `debt_ceiling` | 1114 | **1122** |
 
-   **RE-BASELINE THE CEILINGS AFTER THE MERGE — otherwise P2 breaks `dev` for every lane.**
-   P2's `base_sha` is **47 commits behind `dev`** and the gap keeps widening.
+   **The breakage this section originally predicted was closed in-candidate**: the 2026-08-21
+   stale-A rebase re-based the whole series onto the then-current `dev` tip `a4a8c2293` and
+   regenerated the ceilings against that merged tree (Phase 5.5.1), so the accepted SHA's manifest is
+   self-consistent WITH `dev` at 1131 and the checker exits 0 at A. The prediction above ("the next
+   PR→dev fails with `ceiling is 105`") described the pre-rebase candidate and no longer applies at A.
 
-   The promotion protocol merges the accepted SHA **unchanged**, so the moment P2 lands, the next
-   PR→dev from *any* lane fails `backend-architecture` with
-   `✗ COVERAGE DEBT GREW: group "Inventory" now holds 106 class(es), ceiling is 105.` — blaming that
-   lane for debt that predates its branch. **The pre-promotion `workflow_dispatch` will NOT catch
-   this**: it runs on the accepted SHA, where the tree is self-consistent and green.
-
-   **Required post-merge step, in the first commit on `dev` after the merge:** set `Inventory` → 106,
-   `CountryDefaults` → 28, `debt_ceiling` → 1116 — or, better, regenerate the manifest against the
-   merged tree and confirm `php tools/feature-lane-manifest-check.php` exits 0 **on `dev`** before any
-   other lane opens a PR.
-
-   *(Deliberately not pre-raised in the candidate: a ceiling set from another checkout's `dev` would
-   introduce slack the reviewer specifically verified absent, and would be stale again by merge time
-   since `dev` keeps moving. The re-baseline has to happen against the merged tree.)*
+   **Required post-merge step — the ONLY instruction, no literal values:** if `dev` moved between this
+   acceptance and the merge, regenerate the manifest against the **merged tree** and confirm
+   `php tools/feature-lane-manifest-check.php` exits 0 **on `dev`** before any other lane opens a PR.
+   Never copy numbers from this document or any other checkout — regeneration is the whole
+   instruction. (If `dev` did not move, the shipped manifest is already correct and the checker's
+   exit-0 on `dev` confirms it for free.)
 
 1. **Owner prerequisites, BOTH before the merge lands** (§7): the repository variable and the annotated
    tag. Either missing reddens `frontend-lint` on every open lane — correct fail-closed direction, but
