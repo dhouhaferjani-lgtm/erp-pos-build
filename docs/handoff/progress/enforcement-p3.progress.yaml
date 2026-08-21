@@ -412,11 +412,11 @@ milestones:
   - id: M2
     title: "3(b) CONSUMER mode (gate-r1 C-3). The P2 dependency is already satisfied at M0 (gate-r3 R3-H-3 — the whole P2 package is on the base by dispatch precondition; 'per 2(b) outcome' is a landed fact, no mid-wave pin exists). Work: reconcile TreasuryReceiptBridge's local required-purposes lists (:446,:528) + any census-surfaced local list against ProvisioningRequiredPurposesV1 — divergences are REPORTED findings, never edits; per-country seeder/template completeness CI test keyed to the manifest's REQUIRED classification + expectedAccountType() (never keyed to requiredPurposes()); enumerate seeded charts, don't assume; wire into a lane that actually runs (per the LANDED 2(b) outcome; worst case the anchored pgsql allowlist; P2 carries the reciprocal never-drop-this-wiring obligation); tamper test names country + purpose. Frozen country seeder class bodies and the manifest's classification content UNTOUCHED."
     review_lenses: [treasury, fiscal-pos]
-    status: review          # round-1 fixes delivered 2026-08-21; handed back for re-review
+    status: passed          # round-2 ACCEPT 2026-08-21          # round-1 fixes delivered 2026-08-21; handed back for re-review
     fix_rounds: 1
     commit: d7c9d187a       # Phase 6.2.1 (the guard + lane wiring); 6.2.2 the record; 6.2.3 the round-1 fixes
     verdict: null
-    last_verdict: changes_required   # round 1 — docs/handoff/reviews/enforcement-p3/M2-round1.md
+    last_verdict: ACCEPT   # round 1 — docs/handoff/reviews/enforcement-p3/M2-round1.md
     # ── M2 EXECUTION RECORD (2026-08-21) ──
     # Report of record: docs/handoff/reviews/enforcement-p3/M2-reconciliation.md (§ numbers below).
     #
