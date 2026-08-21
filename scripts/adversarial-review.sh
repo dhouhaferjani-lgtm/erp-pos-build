@@ -106,9 +106,13 @@ fi
 cp "$TMP" "$OUT"
 rm -f "$TMP" "${TMP}.err"
 
-VERDICT_LINE="$(grep -E '^VERDICT:' "$OUT" | tail -1 || true)"
+# The prompt contract requires the verdict as the ABSOLUTE LAST LINE, exactly. Parse accordingly,
+# fail-closed: a verdict anywhere else, a mutated verdict ("NOT-ACCEPT"), multiple verdicts with
+# trailing output, or no verdict at all are ALL tool errors (2026-08-21 brief-gate finding 3 —
+# the old grep-anywhere + *ACCEPT* glob was fail-open; adversarial-review-final.sh is the model).
+VERDICT_LINE="$(awk 'NF{last=$0} END{print last}' "$OUT" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
 case "$VERDICT_LINE" in
-  *ACCEPT*)             echo "ACCEPT";             exit 0 ;;
-  *CHANGES-REQUIRED*)   echo "CHANGES-REQUIRED";   exit 2 ;;
-  *) echo "NO PARSEABLE VERDICT (fail-closed → CHANGES-REQUIRED)" >&2; exit 3 ;;
+  "VERDICT: ACCEPT")            echo "ACCEPT";           exit 0 ;;
+  "VERDICT: CHANGES-REQUIRED")  echo "CHANGES-REQUIRED"; exit 2 ;;
+  *) echo "NO PARSEABLE FINAL-LINE VERDICT (got: '${VERDICT_LINE}'; fail-closed → CHANGES-REQUIRED)" >&2; exit 3 ;;
 esac

@@ -1,0 +1,71 @@
+wave: z-sale-branch-decomposition
+brief: docs/handoff/CODEX-DISPATCH-z-sale-branch-decomposition-2026-08-18.md
+harness: docs/handoff/SELF-REVIEW-HARNESS.md
+review_register: docs/handoff/reviews/z-sale-branch-decomposition/
+reviewer_model: opus
+max_fix_rounds: 5
+
+# Pinned at dispatch 2026-08-21 by the parent orchestrator (session 0578e8d8).
+# Brief gate: Codex Sol CHANGES-REQUIRED round 1 (6 findings) -> all applied in the dispatched
+# revision -> dispatch authorized. Round-0 precheck: all three defect sites live at base.
+base_sha: null  # executor pins at M0: git rev-parse dev at worktree creation (the local-dev tip carrying this gated brief; its first parent chain reaches origin/dev c6d6308ae)
+branch: codex/z-sale-branch-decomposition-2026-08-18
+worktree: .worktrees/z-sale-decomposition
+commit_series: "z-decomp M<m>.<s>:"
+ledger_row: C-2   # parent closes at merge with the lane's evidence line
+
+status: dispatched
+blockers: []
+
+owner_gates:
+  z-signed-bytes-versioning:
+    question: >-
+      New event_version vs in-place semantic correction for the corrected Z/X per-rate
+      decomposition (signed-bytes change for ordinary sale-only shifts).
+    ruled_by: null        # parent-dispatched fiscal-pos-reviewer specialist gate (autonomous per ticket)
+    chosen_option: null   # A | B — parent writes this; M2 implements exactly this option
+    record: null          # path to the ruling record
+    owner_review: pending # filed as owner-review item under the standing delegation (P3-M1 R-4 precedent)
+  z-device-build-number:
+    question: which device build carries this fix (v60-67 stack, D-1/D-3 sequencing)
+    disposition: record-never-assign
+
+milestones:
+  - id: M0
+    title: preflight — base pin, defect present in all 3 sites, citation inventory
+    review_lenses: []
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M1
+    title: signed-bytes decision memo (memo-quality bridge review, then STOP blocked_review)
+    review_lenses: [fiscal-pos]
+    owner_gate: z-signed-bytes-versioning
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M2
+    title: three sale-branch fixes + scale args, real-writer red-first per consumer
+    review_lenses: [fiscal-pos, general]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M3
+    title: real-writer E2E matrix (mixed-rate, sale+refund net-to-zero) + fixture-correction register
+    review_lenses: [fiscal-pos, general]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+  - id: M4
+    title: whole-lane gate over the integrated branch
+    review_lenses: [fiscal-pos, general]
+    status: pending
+    commit: null
+    verdict: null
+    fix_rounds: 0
+
+updated: dispatch

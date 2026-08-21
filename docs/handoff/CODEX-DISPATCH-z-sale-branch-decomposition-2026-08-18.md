@@ -1,12 +1,16 @@
-# ⚠️ DRAFT — Codex micro-lane dispatch: **device Z/X/EOD SALE-branch gross-as-net VAT decomposition** (2026-08-18)
+# Codex micro-lane dispatch: **device Z/X/EOD SALE-branch gross-as-net VAT decomposition** (2026-08-18, dispatched 2026-08-21)
 
-> **DRAFT — NOT DISPATCHED.** The parent orchestrator gates this brief (mechanical ROUND-0 precheck +
-> adversarial gate) before it is renamed to
-> `CODEX-DISPATCH-z-sale-branch-decomposition-2026-08-18.md` and handed to Codex Desktop.
-> **Everything marked `<PARENT: …>` is unset and MUST be set at dispatch.**
+> **GATED + DISPATCHED 2026-08-21.** Round-0 precheck passed (all three defect sites live at
+> `c6d6308ae`); adversarial brief gate (Codex Sol, record in the session scratchpad) returned 6
+> findings, ALL applied in this revision: (1) M1 ruling channel restructured — see R-1/M1; (2) the
+> progress YAML now exists at `docs/handoff/progress/z-sale-branch-decomposition.progress.yaml`;
+> (3) `scripts/adversarial-review.sh` verdict parse hardened (exact final-line match, fail-closed);
+> (4) real-writer red-first moved into M2, masking fixtures enumerated; (5) stale metadata resolved
+> (LEDGER row **C-2** exists — this lane closes it); (6) verification uses the live
+> `pnpm lint:ratchet` gate, not raw lint.
 
-**Model/effort (owner directive):** Codex SOL 5.6, HIGH effort. Workhorse mode: implement end-to-end,
-TDD red-first.
+**Executor:** an Opus implementation agent under the parent orchestrator (owner directive 2026-08-21:
+Opus implements, Codex Sol/specialist agents gate). Workhorse mode: implement end-to-end, TDD red-first.
 
 > ## ⚙️ EXECUTION MODE — SELF-REVIEWING WAVE (read this before anything else)
 > This wave runs under **`docs/handoff/SELF-REVIEW-HARNESS.md`**. You do NOT hand back to a human
@@ -58,7 +62,7 @@ git -C <repo> log -1 --format='%H %ci %s' origin/dev   # → paste verbatim into
 git -C <repo> status --porcelain              # → MUST be empty
 ```
 
-`base_sha: <PARENT: pin at dispatch — the fresh origin/dev tip>`. Do not reuse a stale pin.
+`base_sha` = the LOCAL dev tip at worktree creation (`git rev-parse dev` — the commit carrying this gated brief + progress YAML; per the harness, the EXECUTOR records it in the YAML at M0; origin/dev `c6d6308ae` is in its first-parent chain). Do not reuse a stale pin.
 
 **M0 base check (all three):**
 1. `git merge-base --is-ancestor <base_sha> HEAD` passes.
@@ -72,7 +76,7 @@ Dedicated worktree **`.worktrees/z-sale-decomposition`**, branch
 **`codex/z-sale-branch-decomposition-2026-08-18`**, from `BASE_SHA`.
 **Never `git stash`** (repo-global stack). Do not push; do not merge.
 
-**Commit series:** `<PARENT: assign at dispatch>`.
+**Commit series:** `z-decomp M<m>.<s>:` (assigned at dispatch 2026-08-21).
 
 ---
 
@@ -255,17 +259,35 @@ Per **R-1**. Produce
 4. **The tenant-#1 cheap-window argument**, stated with its limits (R-1).
 5. **A recommendation** — you may recommend; you may **not** decide.
 
-Then: run the M1 review with the **fiscal-pos** lens, set milestone `status: blocked_review`, write the
-question verbatim into `blockers:`, leave the tree clean, and **END THE RUN**.
+Then: run the M1 review with the **fiscal-pos** lens — **this bridge review gates the MEMO'S QUALITY
+only** (both options concretely costed, consumers enumerated, history evidence real); it does **not**
+and **cannot** emit the A/B ruling (its verdict vocabulary is ACCEPT/CHANGES-REQUIRED only —
+2026-08-21 brief-gate finding 1). Once the memo review is ACCEPT, set milestone
+`status: blocked_review`, write the question verbatim into `blockers:`, leave the tree clean, and
+**END THE RUN**.
 
-**Resume condition:** a recorded ruling in the YAML (`owner_gates:` entry `z-signed-bytes-versioning`
-resolved, with the chosen option and the ruling's source). M2 implements **exactly** the ruled option.
+**The ruling channel (restructured 2026-08-21):** the PARENT orchestrator dispatches the
+`fiscal-pos-reviewer` specialist gate over the committed memo; THAT gate rules Option A vs Option B.
+The parent records the ruling in the progress YAML (`owner_gates:` entry `z-signed-bytes-versioning`:
+`chosen_option`, `ruled_by`, `record` path) and files it as an owner-review item (same pattern as the
+P3-M1 R-4 parent ruling under the owner's standing delegation).
+
+**Resume condition:** that recorded ruling in the YAML. M2 implements **exactly** the ruled option.
+Resuming without it is a harness violation.
 
 ### M2 — The three sale-branch fixes
 
-Red first, per site:
-1. A failing assertion on the current code showing the per-rate net inflated by the VAT amount. Paste
-   the actual red output.
+Red first, per site — and the red MUST be a **real-writer** red (2026-08-21 brief-gate finding 4: a
+red written against a hand-authored `lines` JSON proves nothing, because the existing sale fixtures
+author `line_total` as NET and mask the bug — confirmed at
+`apps/pos/src/lib/offline/__tests__/zReportService.test.ts:104-124` (line_total `42.00` = subtotal on
+a 50.00/8.00 receipt) and `apps/pos/src/lib/offline/__tests__/endOfDayPreview.test.ts:24-51`
+(line_total `8.40` = net). Re-derive both citations at BASE_SHA; enumerate any further masking sale
+fixtures you find in the fixture-correction register (R-4)):
+1. **Before each fix commit**: at least one failing real-writer assertion per consumer (cart →
+   `receiptService` → SQLite row → read back through that consumer), showing the per-rate net inflated
+   by the VAT amount. Paste the actual red output. (M3 completes the matrix; the red-first proof lives
+   HERE.)
 2. Apply the refund pattern (**R-2**) plus explicit scale arguments (**R-3**).
 3. Green. **Revert-replay** each fix commit.
 4. If the M1 ruling was **Option A**, the version bump lands here too, in the same milestone, with its
@@ -324,7 +346,10 @@ backfill of signed events. Record the **R-6** device-build sequencing obligation
 - **Rule 11 i18n** if any string surfaces: en + fr on the device; **do not** create `apps/pos/src/locales/ar/`.
 - **Rule 17**: assert on rendered/derived output, never on CSS class names.
 - **Rule 4 no scope creep** — three sale branches and their scale arguments. Note the rest, continue.
-- **No `any` in TypeScript**; `pnpm lint` + `pnpm typecheck` clean.
+- **No `any` in TypeScript**; `pnpm typecheck` clean, and **`pnpm lint:ratchet` exactly as CI's
+  `frontend-lint` job invokes it** (`.github/workflows/ci.yml:1189-1195`) — the warning ratchet
+  (`@autoerp/pos` baseline) is the live gate; raw `pnpm lint` green is NOT sufficient evidence
+  (2026-08-21 brief-gate finding 6). Zero warning growth.
 - Dedicated worktree; **never `git stash`**; **do not push**; **do not merge**.
 
 ---
@@ -334,7 +359,7 @@ backfill of signed events. Record the **R-6** device-build sequencing obligation
 | Milestone | Lenses | What the gate is really asking |
 |---|---|---|
 | M0 | *(none — setup only)* | — |
-| **M1** | **fiscal-pos (MANDATORY per the ticket)** | Is the byte-level consequence stated precisely? Are **both** options costed with concrete files/symbols? Is the tenant-#1 argument presented with its limits rather than as a conclusion? **This gate RULES the versioning question — it does not merely accept the memo.** |
+| **M1** | **fiscal-pos (MANDATORY per the ticket)** | Is the byte-level consequence stated precisely? Are **both** options costed with concrete files/symbols? Is the tenant-#1 argument presented with its limits rather than as a conclusion? **The bridge review gates the memo's quality; the A/B RULING comes from the parent-dispatched `fiscal-pos-reviewer` specialist gate and is recorded in the YAML (see M1 ruling channel).** |
 | M2 | fiscal-pos, general | Is the refund pattern mirrored exactly, three times identically? Are scale arguments explicit? Was the headline aggregation left alone? Does the implementation match the **ruled** option? |
 | M3 | fiscal-pos, general | Are the fixtures corrected to the **real writer**, each named and justified? Do the end-to-end tests cover all three consumers? Does the sale-plus-refund case net to zero? |
 | M4 | fiscal-pos, general | Whole-branch: nothing outside the three sites, no signed-event backfill, sequencing obligation recorded. |
@@ -349,7 +374,7 @@ close-before-merge; **P3** may ship with a ticket. A review with no parseable `V
 
 | id | Question | Blocks | Status |
 |---|---|---|---|
-| `z-signed-bytes-versioning` | New `event_version` vs. in-place semantic correction for the corrected Z/X per-rate decomposition. **Ruled by the fiscal-pos gate at M1**, informed by the memo and the tenant-#1 cheap-window argument. | **M2, M3, M4** | **REQUIRED — the wave STOPS at `blocked_review` until this is ruled and the ruling is recorded in the YAML** |
+| `z-signed-bytes-versioning` | New `event_version` vs. in-place semantic correction for the corrected Z/X per-rate decomposition. **Ruled by the parent-dispatched `fiscal-pos-reviewer` specialist gate at M1** (memo-informed, tenant-#1 cheap-window argument presented with limits); parent records the ruling in the YAML and files it as an owner-review item. | **M2, M3, M4** | **REQUIRED — the wave STOPS at `blocked_review` until the ruling is recorded in the YAML** |
 | `z-device-build-number` | Which device build carries this fix, and its ordering against the v60-67 cumulative stack (LEDGER D-1) and the D-3 SV-11-before-SV-9 obligation. | none | standing constraint — **record**, never assign |
 
 ---
@@ -366,19 +391,17 @@ close-before-merge; **P3** may ship with a ticket. A review with no parseable `V
 4. **A session report** at `docs/sessions/codex-z-sale-branch-decomposition-report.md`: per milestone —
    files touched, tests + commands + **actual output**, decisions, deviations, concerns; plus **the
    fixture-correction register** (R-4), the **ruled option and its source**, the **D-1/D-3 sequencing
-   note** (R-6), and a proposed **LEDGER row** for this defect (see open question 3).
+   note** (R-6), and the **evidence line for closing LEDGER row C-2** (the parent closes the row at
+   merge — do not edit LEDGER.md yourself).
 
 ---
 
-## ❓ OPEN AT DISPATCH — parent must resolve
+## ❓ OPEN AT DISPATCH — ALL RESOLVED 2026-08-21
 
-1. **`base_sha`** — unset. Pin the fresh `origin/dev` tip at dispatch.
-2. **Commit series prefix** — unset.
-3. **This defect has NO LEDGER row.** It is live on every device build including staging, yet
-   `docs/handoff/LEDGER.md` carries no entry for it (grep for "gross-as-net" / the ticket path returns
-   nothing). Should the parent open one before dispatch, so the lane closes a tracked owe rather than an
-   untracked ticket?
-4. **Does the M1 gate rule autonomously, or does it escalate to the owner?** This brief treats the
-   fiscal-pos gate as the deciding authority (per the ticket's "own micro-lane with fiscal-pos-reviewer
-   gate"). If the parent wants the versioning choice reserved to the owner, the gate becomes
-   `blocked_owner` at M1 and the memo goes to the owner sheet instead.
+1. **`base_sha`** = `c6d6308ae` (origin/dev == local dev tip at dispatch).
+2. **Commit series prefix** = `z-decomp M<m>.<s>:`.
+3. **LEDGER row**: row **C-2** in `docs/handoff/LEDGER.md` now records this defect. The lane closes a
+   tracked owe; the parent flips C-2 to CLOSED at merge with the lane's evidence line.
+4. **M1 ruling authority**: the parent-dispatched `fiscal-pos-reviewer` specialist gate rules
+   autonomously (per the ticket's assignment), recorded in the YAML by the parent and filed as an
+   owner-review item under the owner's standing delegation (P3-M1 R-4 precedent).
