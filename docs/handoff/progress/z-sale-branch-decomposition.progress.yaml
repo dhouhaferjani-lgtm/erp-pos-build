@@ -63,9 +63,9 @@ owner_gates:
     question: >-
       New event_version vs in-place semantic correction for the corrected Z/X per-rate
       decomposition (signed-bytes change for ordinary sale-only shifts).
-    ruled_by: null        # parent-dispatched fiscal-pos-reviewer specialist gate (autonomous per ticket)
-    chosen_option: null   # A | B — parent writes this; M2 implements exactly this option
-    record: null          # path to the ruling record
+    ruled_by: fiscal-pos-reviewer specialist gate (parent-dispatched 2026-08-21, standing owner delegation)
+    chosen_option: B      # in-place semantic correction at the current event_version — NO version bump; UNCONDITIONAL on Q1/Q2/Q3
+    record: docs/handoff/reviews/z-sale-branch-decomposition/M1-ruling.md
     owner_review: pending # filed as owner-review item under the standing delegation (P3-M1 R-4 precedent)
   z-device-build-number:
     question: which device build carries this fix (v60-67 stack, D-1/D-3 sequencing)
