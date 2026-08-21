@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1132,
+  "gated_ceiling": 1134,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -826,8 +826,8 @@
     },
     "Inventory": {
       "lane": "feature-lane-inventory/Inventory",
-      "classes": 106,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 108,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. 106 -> 108 raised by lane dpa-v8-supplier-goods-return (DPA V8) for SupplierGoodsReturnNoteTest and SupplierGoodsReturnNotesSchemaTest, the only guards on the new supplier goods-return note document. NOT added to the pgsql --filter allowlist: unlike r2f4's CorrectingEntryEndpointTest these guard a surface with zero callers in app/ or routes/ (the lane is merge-ordered behind c1-bis and wired only from SupplierCreditNotePostingService), so nothing they cover is reachable today. Re-decide when F-3 wires the controller — at that point they must either run on every event or the lane's gate must be flipped, because SupplierGoodsReturnNoteTest carries the two failing-visible C-11 residual pins (:601, :656) that are meant to go red the day F-9 lands a real cost basis."
     },
     "Jobs": {
       "lane": "feature-lane-platform-misc/Jobs",

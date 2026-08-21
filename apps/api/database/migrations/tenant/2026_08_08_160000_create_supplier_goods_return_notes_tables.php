@@ -81,9 +81,12 @@ return new class extends Migration
         // `wac_undilution_forgone` (gate round 1, C-1). That is legal ONLY because
         // the branch is unmerged and undeployed: no tenant, staging or production
         // DB has ever run the earlier version. Any DEV or SCRATCH database that
-        // ran commit 3fdbee6f5 WILL silently lack those three columns — the
-        // `hasTable` guard below skips the create and there is no column guard to
-        // catch it. Before migrating such a database:
+        // ran the branch's FIRST commit WILL silently lack those three columns —
+        // the `hasTable` guard below skips the create and there is no column guard
+        // to catch it. That commit is `7687e1ab0` after the 2026-08-21 rebase onto
+        // dev, and was `3fdbee6f5` before it; a scratch DB may have been migrated
+        // from EITHER sha, so treat both as affected. Before migrating such a
+        // database:
         //     DROP TABLE supplier_goods_return_note_lines;
         //     DROP TABLE supplier_goods_return_notes;
         // and re-run `tenants:migrate`. From the merge of this branch onward the
