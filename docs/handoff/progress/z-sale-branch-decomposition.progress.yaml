@@ -20,7 +20,7 @@ worktree: .worktrees/z-sale-decomposition
 commit_series: "z-decomp M<m>.<s>:"
 ledger_row: C-2   # parent closes at merge with the lane's evidence line
 
-status: in_progress
+status: complete   # M0-M4 all passed; branch NOT merged, NOT pushed — awaiting the parent
 
 # Obligations this lane CANNOT discharge itself (parent-owned per the brief's §DELIVERABLE),
 # tracked here so they cannot be lost between the M1 ruling and the merge.
@@ -464,7 +464,7 @@ milestones:
     review_lenses: [fiscal-pos, general]
     status: passed
     commit: null            # self-reference impossible at write time — this IS the closure commit
-    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M4-round2.md
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M4-round2.md   # ACCEPT; exists at this commit
     verdict_history:
       - round: 1
         register: docs/handoff/reviews/z-sale-branch-decomposition/M4-round1.md
@@ -475,8 +475,14 @@ milestones:
           the same unfixed scale defect on SIGNED fields; "truncation" vs Big.RM=1 rounding;
           stale `updated:`; owes_parent implied the brief was pristine when the lane had edited it)
       - round: 2
-        register: PENDING — named only once written
-        result: pending
+        register: docs/handoff/reviews/z-sale-branch-decomposition/M4-round2.md
+        result: >-
+          ACCEPT (exit 0) — 0 P1, 1 P2, 2 P3. WHOLE-LANE GATE SATISFIED. The gate re-ran all three
+          REPRODUCE commands rather than reading the numbers (18/13/5 and 15 lines, exact) and
+          traced the two new signed guards for vacuity (they cannot pass for the wrong reason —
+          the precision row is the only receipt in a per-test SqliteTestAdapter). All three
+          findings closed in THIS commit; the gate explicitly directed NOT to re-gate for them,
+          because another round re-breaks the file census by one and buys nothing.
     fix_rounds: 1
     gates: >-
       pnpm typecheck CLEAN. pnpm lint:ratchet @autoerp/pos HELD at 84 (zero growth) with all
@@ -489,25 +495,37 @@ milestones:
       green. Two further guards added, both in saleReportingEndToEnd.test.ts (no new file in the
       census): one over the SIGNED Z (which also feeds SESSION_CLOSE) and one over the SIGNED X.
       Both VERIFIED TO BITE — reverting the scale arguments in zReportService.ts and reportApi.ts
-      fails them with "expected '20.01' to be '20.00'". All three sites now covered.
+      fails them with "expected '20.01' to be '20.00'".
+      COMPLETED AT M4 gate-r2 finding 2: the guards initially asserted net_amount ONLY, leaving the
+      GROSS accumulator's scale argument unguarded on every consumer — dropping it alone yields
+      10.004 + 10.004 = 20.008 -> '20.01' in the SIGNED vat_breakdown[].gross_amount with all 88
+      Tier-1 tests still green. gross_amount is now asserted in all three guards, and the
+      gross-only revert is VERIFIED TO FAIL them. Coverage is now complete PER-ACCUMULATOR, not
+      merely per-consumer. Residual, stated rather than glossed: the `vat` accumulator is
+      structurally identical but does not drift on this fixture (0.001 + 0.001 = 0.002 -> '0.00'
+      either way), so it is guarded by inspection and by the structural-identity requirement, not
+      by an assertion that can distinguish the two.
       The precision row is inserted by direct SQL and is the ONE non-writer-produced fixture in
       that file, labelled as such: the drift is invisible to any well-formed scale-2 row because
       every consumer re-formats through bcformat at emission, and sub-cent line_totals are exactly
       what the real cash-rounding writer produces (receiptService.cashRounding.test.ts:202).
       Decomposition semantics remain proven by the real-writer tests; this fixture proves SCALE.
     whole_branch_file_list: >-
-      CORRECTED at M4 gate-r1 finding 1 — the earlier figures ("16 files ... ELEVEN under docs")
-      were WRONG WHEN WRITTEN, not merely stale: the same commit that wrote them (27acf2833) also
-      added M3-round1.md. Re-derived mechanically at the M4 closure commit:
-      **18 files — 5 under apps/pos (3 production + 2 test) and 13 under docs/.**
-      The closure commit adds exactly one tracked file to the 17 at 27acf2833: its own
-      M4-round1.md register. No apps/pos file is added by it (the signed-path R-3 guards land in
-      saleReportingEndToEnd.test.ts, already counted).
-      REPRODUCE: `git diff --name-only 9d14cb8e1..HEAD | wc -l` (18);
-      `... | grep -c '^docs/'` (13); `... | grep -c '^apps/pos/'` (5).
-      Production: zReportService.ts, endOfDayPreview.ts, reportApi.ts.
-      Tests: saleReportingEndToEnd.test.ts (new), endOfDayPreview.test.ts (R-4 corrections + the
-      R-3 unsigned-consumer guard).
+      Stated as an INVARIANT so it cannot go stale again (M4 gate-r2 finding 1 — the round-1
+      correction anchored to "the closure commit", a commit that had not happened yet, and was
+      therefore wrong by exactly the mechanism it was fixing):
+        apps/pos = **5, FIXED** — 3 production (zReportService.ts, endOfDayPreview.ts,
+          reportApi.ts) + 2 test (saleReportingEndToEnd.test.ts new, endOfDayPreview.test.ts).
+          This count does not change again; the lane touches no other apps/pos file.
+        docs/ = the brief + the progress YAML + the M0 preflight artifact + the M1 memo +
+          the M1 ruling + **one register per gate round actually run**.
+      Rounds run: M1 x5, M2 x1, M3 x1, M4 x2 = 9 registers. So docs = 5 + 9 = **14**, and the
+      whole branch = **19 files** at THIS closure commit. Any further gate round adds exactly one
+      docs file and one to the total — the formula, not the number, is the durable statement.
+      REPRODUCE (the durable part — run these, do not trust the prose):
+        `git diff --name-only 9d14cb8e1..HEAD | wc -l`          -> 19
+        `git diff --name-only 9d14cb8e1..HEAD | grep -c '^docs/'`    -> 14
+        `git diff --name-only 9d14cb8e1..HEAD | grep -c '^apps/pos/'` -> 5
     production_diff_size: >-
       CORRECTED at M4 gate-r1 finding 1 — the earlier "18 lines / three six-line blocks" was
       wrong. Re-derived: **15 added non-comment lines = three IDENTICAL FIVE-line blocks**
@@ -540,6 +558,35 @@ milestones:
         NO SIGNED-EVENT BACKFILL — no migration, no seeder, nothing that rewrites history.
         Rule 8 honoured: no event renamed, deleted or rewritten; nothing added a version either
         (that was Option A, not ruled).
+    ledger_c2_evidence_line: >-
+      DUPLICATED HERE DELIBERATELY (M4 gate-r2 finding 3): the session report that normally
+      carries this is gitignored under house rule 15, so it is NOT part of the branch and does not
+      survive pruning of the worktree. The parent closes C-2 from THIS field.
+      ---
+      C-2 CLOSED. Defect confirmed live at 9d14cb8e1 in all three declared sites
+      (zReportService.ts:907-914, endOfDayPreview.ts:301-308 — the row's own :297-304 was +4 stale
+      — reportApi.ts:491-496). Corrected per the z-signed-bytes-versioning ruling (OPTION B,
+      in-place at the current event_version; M1-ruling.md): one pattern applied three times,
+      net = gross - vat at the explicit currency scale, 15 added non-comment production lines =
+      three identical five-line blocks, no bcabs on the positive-signed sale rows. Proven by a
+      real-writer end-to-end suite (saleReportingEndToEnd.test.ts) that drives the actual writer
+      into real SQLite and reads the row back through ALL THREE consumers, red-first per consumer
+      before the fix (net 12.00 / gross 14.00 -> 10.00 / 12.00), with per-SITE revert-replay.
+      SESSION_CLOSE covered in lockstep (ruling condition 2), asserted byte-identical to Z_REPORT
+      on the same close. The ticket's live symptom is closed: a fully-refunded taxed sale now nets
+      the per-rate buckets to exactly zero, where pre-fix it left net +2.00 / gross +2.00.
+      Two masking fixtures corrected (R-4) with expected values UNCHANGED. R-3 scale arguments
+      added and guarded on all three consumers and all drifting accumulators.
+      Gates: typecheck clean; lint:ratchet @autoerp/pos held at 84.
+      RECORDED, NOT FIXED (rule 4 / ruling condition 4): F-1 SESSION_CLOSE was a third affected
+      signed type the row never named; F-2 the row's "headline totals correct" sentence is FALSE
+      (signed net_sales == gross_sales on every taxed shift) and MUST BE STRUCK; F-3 a fourth,
+      unsigned gross-as-net site at zReportService.ts:1015-1017; F-4 vat_breakdown has no
+      structural validation on either side; F-5 NF525 GrandsTotaux exports 0.00 period totals for
+      every canonical Z; F-6 the in-loop HEADLINE accumulators carry the same unfixed R-3 scale
+      defect on SIGNED fields — F-2's sibling lane must inherit it.
+      SHIPS VIA A DEVICE BUILD, NOT THIS MERGE (R-6 / D-1 / D-3), and the ruling's REVERSAL WINDOW
+      CLOSES AT BUILD ROLLOUT, NOT AT MERGE.
     r6_device_build_sequencing: >-
       RECORDED, NEVER ASSIGNED (the build number is the device/deploy operator's call and O-22
       is OPEN). This fix is DEVICE-SIDE ONLY and therefore reaches a terminal ONLY via a device
@@ -561,4 +608,4 @@ milestones:
       (per-rate rows correct, headline net_sales wrong by the full VAT) plus a wrong NF525
       <VentesNettes> from event one.
 
-updated: 27acf2833   # short HEAD at write time (the M4 closure commit is this commit's child)
+updated: 23dda4501   # short HEAD at write time; this closure commit is its child (self-reference is impossible — see whole_branch_file_list for the invariant form)

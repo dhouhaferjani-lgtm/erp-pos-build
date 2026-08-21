@@ -168,6 +168,9 @@ describe('buildEndOfDayPreview', () => {
     // PHP `CurrencyScale::bcformat`, not this device-side helper — the two
     // differ, and conflating them misreads which primitive does what.)
     expect(preview.vat_breakdown[0]!.net_amount).toBe('20.00');
+    // The gross accumulator has its own scale argument and drifts independently
+    // (M4 gate-r2 finding 2): unscaled it yields 20.008 → '20.01'.
+    expect(preview.vat_breakdown[0]!.gross_amount).toBe('20.00');
   });
 
   it('normalizes an ISO shiftOpenedAt to SQLite UTC format in the receipts query', async () => {

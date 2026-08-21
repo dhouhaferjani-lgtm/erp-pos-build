@@ -674,6 +674,11 @@ describe('C-2 sale reporting — REAL writer through Z / EOD / X', () => {
     // sale branch, which feeds the signed Z_REPORT *and* SESSION_CLOSE bytes.
     expect(z.report_data.vat_breakdown).toHaveLength(1);
     expect(z.report_data.vat_breakdown[0]!.net_amount).toBe('20.00');
+    // The GROSS accumulator carries its own scale argument and drifts
+    // independently of net (M4 gate-r2 finding 2): unscaled it accumulates
+    // 10.004 + 10.004 = 20.008 → '20.01'. Asserted so no accumulator in the
+    // signed path is left unguarded.
+    expect(z.report_data.vat_breakdown[0]!.gross_amount).toBe('20.00');
   });
 
   it('R-3 — the SIGNED X accumulates at the CURRENCY scale, not decimal.ts\'s default of 3', async () => {
@@ -689,6 +694,7 @@ describe('C-2 sale reporting — REAL writer through Z / EOD / X', () => {
 
     expect(x.vat_breakdown).toHaveLength(1);
     expect(x.vat_breakdown[0]!.net_amount).toBe('20.00');
+    expect(x.vat_breakdown[0]!.gross_amount).toBe('20.00');
   });
 
   it('M1 ruling condition 2 — Z_REPORT and SESSION_CLOSE for the same close carry byte-identical vat_breakdown', async () => {
