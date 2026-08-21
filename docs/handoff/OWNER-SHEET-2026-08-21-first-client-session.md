@@ -25,7 +25,7 @@ Full audit evidence lives in the session transcript; gaps are ranked G1–G13. T
 | B-3 | **`Location.pos_enabled` is a dead flag (G12)** — set by three creation paths, enforced by nothing. (a) wire it (POS terminal claim/open refuses at a disabled location) or (b) remove it from the UI until wired. Session lean: (b) is dishonest-UI removal, (a) is a small lane; recommend (a) post-launch, document meanwhile. |
 | B-4 | **`parties` vs `partners` import duplication (G13).** `partners` is a strictly weaker duplicate (no opening balances) — a client picking it loses AR/AP openings silently. Session lean: hide `partners` from the dashboard (keep API for history), or add a deprecation banner steering to `parties`. Cheap; will implement the hide+banner unless you object (flagged, not yet done). |
 | B-5 | **Cash-rounding UI (G4)** is artisan-only (`pos:configure-cash-rounding` via `tenants:run`, exit-code swallowed). For TN millime rounding on tenant #1: is a settings UI wanted pre-launch, or is the runbook step enough? (Also gated by O-24 sign-off, unchanged.) |
-| B-6 | **G-4 VAT lane open sub-question**: should `document_count` in the VAT declaration POS arm count return receipts? (Money netting is fixed by the lane either way; this is presentation semantics.) |
+| B-6 | **G-4 VAT lane sub-questions** (money netting fixed either way): (i) should `document_count` in the declaration count return receipts — and note the DOCUMENT arm counts credit notes the same way, so any ruling should apply to both arms together; (ii) explicit ack wanted that shift X/Z reports *exclude* refund VAT (own positive refunds block) while the declaration now *nets* it — the two numbers deliberately won't reconcile. |
 | B-7 | **Arabic legal copy**: the backfill lane machine-authors the `legal.privacy.*` Arabic tree (38 keys). Needs a native/legal read before production exposure to AR-locale users. |
 
 ## C. Standing open items carried
@@ -35,8 +35,17 @@ fiscal-pos gates) · **O-27** GO on F-4 backfill (lane queued via country-defaul
 **O-28** Today's-Sales = NET excl. refunds, labeled (audit lane queued; satisfies the D-3 rider (b)
 recording precondition) · **orphan branches** dpa-v8 / r2f2 / r2f4 = evaluate + rebase + full
 adversarial gates, merge-or-discard-with-rationale (assessment agent dispatched).
-Still open elsewhere: F-2 CI feature-suite scope · Dokploy deploy pipeline (yours) · staging owes
-S-1..S-13 once deploys work.
+Second ruling batch (direct, 2026-08-21): **O-29** F-2 RULED — laneless Feature tests get real
+lanes, heavy lanes target a self-hosted runner (quota exhausted), interim = containerized local
+execution (design lane dispatched) · **S-17** CI-BLIND WINDOW recorded — every merge this session is
+CI-unverified, locally verified per the interim discipline; GitHub gates re-run on the promotion
+candidate before any promotion.
+Still open elsewhere: Dokploy deploy pipeline (yours) · staging owes S-1..S-13 once deploys work.
+
+## E. Merges under the CI-blind window (S-17 register — every row locally verified)
+| Lane | Branch | Merged at | Local verification |
+|---|---|---|---|
+| _(rows appended at each merge)_ | | | |
 
 ## D. Session log pointers
 - Wave-1 lane branches: `fix/ar-locale-coverage`, `fix/fiscal-bytea-param-lob`,
