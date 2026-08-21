@@ -18,6 +18,7 @@ use App\Modules\Document\Domain\Enums\FiscalStatus;
 use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
+use App\Shared\Domain\Enums\StockMovementReferenceType;
 use App\Modules\Inventory\Domain\Enums\MovementType;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
@@ -337,6 +338,58 @@ class CheckCogsCoverageCommandTest extends TestCase
         );
         Log::spy();
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+    }
+
+    /**
+     * DPA V8 — the supplier goods-return note lane.
+     *
+     * V8 replaced a raw `StockMovement::create` that stamped NO `reason` at all
+     * with a proper `MovementReason::SupplierReturn` exit. That is the correct
+     * stamping, but `SupplierReturn` is `requiresGLEntry() === true` with counter
+     * family `Neither` (`MovementReason.php:89`, `:102`), so it sits in D-e's
+     * `$nonCogsGlReasons` population — where the old NULL-reason row was excluded
+     * by `whereIn('reason', ...)` for free. Without an exclusion, every confirmed
+     * goods-return note becomes a permanent D-e false alarm and fails the nightly
+     * command.
+     *
+     * The GL for this lane is not missing, it is keyed elsewhere: the AP credit
+     * note posts the Inventory credit for BOTH return kinds under
+     * `source_type = 'supplier_credit_note'`, keyed on the DOCUMENT id
+     * (`GeneralLedgerService.php:2482-2524`), which `$missingEntry` cannot see —
+     * it looks only for movement-keyed rows in `InventoryGlSourceTypes::ALL`.
+     *
+     * The control arm matters as much as the silence: the exclusion is by
+     * REFERENCE TYPE, not by reason, so an ordinary `SupplierReturn` movement
+     * from any other lane must still fire.
+     */
+    #[Test]
+    public function test_de_excludes_the_supplier_goods_return_note_lane_the_credit_note_posts_for(): void
+    {
+        $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
+
+        $note = $this->movement(
+            MovementReason::SupplierReturn,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: StockMovementReferenceType::SupplierGoodsReturnNote->value,
+        );
+        Log::spy();
+
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
+        Log::shouldNotHaveReceived('warning', [
+            \Mockery::on(static fn (string $message): bool => str_contains($message, '[D-e]')),
+            \Mockery::on(static fn (array $context): bool => ($context['movement_id'] ?? null) === $note->id),
+        ]);
+
+        // Control: the exclusion is scoped to this document lane only.
+        $other = $this->movement(MovementReason::SupplierReturn, '4.000000', now()->subMinutes(30));
+        Log::spy();
+
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '[D-e]')
+                && ($context['movement_id'] ?? null) === $other->id,
+        );
     }
 
     /**

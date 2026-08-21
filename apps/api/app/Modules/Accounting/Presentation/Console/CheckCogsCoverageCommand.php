@@ -255,6 +255,27 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             ->where(function ($query): void {
                 $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::StockAdjustment->value);
             })
+            // DPA V8 — the supplier goods-return note. Its GL is not missing, it
+            // is keyed on a different row: the AP credit note posts the Inventory
+            // credit for BOTH return kinds (ordinary and bonus) under
+            // `source_type = 'supplier_credit_note'`, keyed on the DOCUMENT id
+            // (`GeneralLedgerService::createSupplierCreditNoteEntry*`), which
+            // `$missingEntry` above cannot see — it looks only for movement-keyed
+            // rows in `InventoryGlSourceTypes::ALL`. Posting a movement-GL leg as
+            // well would relieve Inventory twice for the same goods.
+            //
+            // The exclusion is needed only because V8 stamps these exits
+            // correctly. The raw write it replaced set no `reason` at all, so the
+            // rows fell out of `whereIn('reason', ...)` by accident; the moment
+            // they carry `MovementReason::SupplierReturn` — `requiresGLEntry()`
+            // true, counter family `Neither` — they enter this population. The
+            // quantity-neutral WAC un-dilution movement on the same document
+            // needs no exclusion: it carries a NULL reason and
+            // `quantity_before = quantity_after`, so the two predicates above
+            // already keep it out.
+            ->where(function ($query): void {
+                $query->whereNull('reference_type')->orWhere('reference_type', '!=', StockMovementReferenceType::SupplierGoodsReturnNote->value);
+            })
             // T21 landed as an M5 writer, but its posting is held behind
             // `inventory.count_correction_gl_posting_enabled` until the
             // expert-comptable ratifies the Option A presentation (OQ-12/H-5).
