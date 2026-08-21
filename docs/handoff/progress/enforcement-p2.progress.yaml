@@ -123,7 +123,10 @@ ratchet_trust_model_ack: "2026-08-19, at dev 60df88a01b52828665caf33809486bdf0a6
 # RECEIPT (gate-r10 R10-C-1) — the final gate's sole source for lenses/max_fix_rounds/control hashes;
 # the bridge field-checks this pin against the receipt. Null at M0 = blocked_precondition. On the
 # control-file preflight list: no package may touch it; manifest surrogates in base..A are rejected.
-control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 709b6fe9a81cf5bbc5578aa297a44035a75e578708bd40155671c654094b217a}
+# sha256 RE-PINNED 2026-08-21 with the stale-A re-base: the manifest legitimately changed after this
+# package's dispatch (p1 max_fix_rounds raises 5→…→10, each an owner-ruled dev commit); the p2 block
+# it projects is UNCHANGED (M4 / frontend-conventions,tenancy-authz / max 5). Receipt re-pinned in step.
+control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 7d53797b1849b6adeb2fcb39789935a48fc32a6f4804a9833d4bb8a78f1aa2b7}
 
 owner_gates:
   # informational — NO milestone below carries an `owner_gate:` field. The harness treats a populated
