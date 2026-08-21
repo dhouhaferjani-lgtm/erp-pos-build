@@ -1,6 +1,6 @@
 // This file is generated. Do not edit it by hand.
 // Source: apps/api/database/seeders/RolesAndPermissionsSeeder.php
-// Source hash: sha256:8ed8c461b1f172471264fd27fd375b3e6cc1d86102d8296fde4f52b0a3d7ed6e
+// Source hash: sha256:0d119fd9f7fa2bfeee4b4b246d03a949df975ccfa17dfed06b692d67633ca1aa
 
 export const PERMISSIONS = {
   'accounts.manage': ['accountant', 'admin', 'manager'],
@@ -59,6 +59,7 @@ export const PERMISSIONS = {
   'document-ingestions.create': ['accountant', 'admin', 'manager'],
   'document-ingestions.reject': ['accountant', 'admin', 'manager'],
   'document-ingestions.view': ['accountant', 'admin', 'manager'],
+  'documents.correct': ['admin'],
   'documents.update': ['accountant', 'admin', 'cashier', 'manager', 'operator'],
   'documents.view': ['accountant', 'admin', 'cashier', 'manager', 'operator', 'viewer'],
   'enrichment.review': ['admin', 'manager'],

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Http\Controllers\Api\DocumentAdditionalCostController;
 use App\Modules\Communication\Presentation\Controllers\DocumentEmailController;
+use App\Modules\Document\Presentation\Controllers\CorrectingEntryController;
 use App\Modules\Document\Presentation\Controllers\CreditNoteController;
 use App\Modules\Document\Presentation\Controllers\DeliveryNoteController;
 use App\Modules\Document\Presentation\Controllers\DocumentController;
@@ -344,6 +345,47 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     Route::get('/documents/{document}/landed-cost-breakdown', [DocumentAdditionalCostController::class, 'landedCostBreakdown'])
         ->middleware('can:documents.view')
         ->name('documents.landed-cost-breakdown');
+
+    // Correcting Entries (R2-F4, owner ruling c4)
+    //
+    // A correction is ALWAYS created from the document it repairs — there is no
+    // standalone-creation route, because the mandatory `source_document_id` link
+    // IS the ruling ("no free-floating manual JEs as the correction mechanism").
+    //
+    // Every route, INCLUDING the reads, is gated on the dedicated admin-tier
+    // `documents.correct` permission rather than `documents.view` /
+    // `documents.update` / `invoices.cancel`: a correcting entry both exposes and
+    // writes raw general-ledger accounts and amounts, which is strictly more
+    // powerful than anything those permissions buy.
+    Route::get('/documents/{document}/correcting-entries', [CorrectingEntryController::class, 'index'])
+        ->whereUuid('document')
+        ->middleware('can:documents.correct')
+        ->name('documents.correcting-entries.index');
+
+    Route::post('/documents/{document}/correcting-entries', [CorrectingEntryController::class, 'store'])
+        ->whereUuid('document')
+        ->middleware('can:documents.correct')
+        ->name('documents.correcting-entries.store');
+
+    Route::get('/correcting-entries/{correctingEntry}', [CorrectingEntryController::class, 'show'])
+        ->whereUuid('correctingEntry')
+        ->middleware('can:documents.correct')
+        ->name('correcting-entries.show');
+
+    Route::post('/correcting-entries/{correctingEntry}/confirm', [CorrectingEntryController::class, 'confirm'])
+        ->whereUuid('correctingEntry')
+        ->middleware('can:documents.correct')
+        ->name('correcting-entries.confirm');
+
+    Route::post('/correcting-entries/{correctingEntry}/post', [CorrectingEntryController::class, 'post'])
+        ->whereUuid('correctingEntry')
+        ->middleware('can:documents.correct')
+        ->name('correcting-entries.post');
+
+    Route::delete('/correcting-entries/{correctingEntry}', [CorrectingEntryController::class, 'destroy'])
+        ->whereUuid('correctingEntry')
+        ->middleware('can:documents.correct')
+        ->name('correcting-entries.destroy');
 
     // Related Documents (document chain)
     Route::get('/documents/{document}/related', [DocumentController::class, 'related'])

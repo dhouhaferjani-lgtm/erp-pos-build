@@ -53,6 +53,9 @@ class DocumentPolicy
             DocumentType::CreditNote => $user->can('credit-notes.view'),
             DocumentType::DeliveryNote => $user->can('deliveries.view'),
             DocumentType::Expense => $user->can('expenses.view'),
+            // R2-F4: a correcting entry exposes raw GL accounts and amounts, so
+            // it rides on its own admin-tier permission, never on documents.view.
+            DocumentType::CorrectingEntry => $user->can('documents.correct'),
             default => false,
         };
     }
@@ -93,6 +96,9 @@ class DocumentPolicy
             DocumentType::CreditNote => false, // Credit notes can't be updated
             DocumentType::DeliveryNote => false, // Delivery notes can't be updated after creation
             DocumentType::Expense => $user->can('expenses.update'),
+            // R2-F4: a correcting entry's legs are never edited in place — a
+            // draft is discarded and re-created, a posted one is immutable.
+            DocumentType::CorrectingEntry => false,
             default => false,
         };
     }
@@ -116,6 +122,9 @@ class DocumentPolicy
             DocumentType::CreditNote => false, // Credit notes can't be deleted
             DocumentType::DeliveryNote => false, // Delivery notes can't be deleted
             DocumentType::Expense => $user->can('expenses.delete'),
+            // R2-F4: only a DRAFT correcting entry is deletable; the status check
+            // lives in CorrectingEntryService::delete().
+            DocumentType::CorrectingEntry => $user->can('documents.correct'),
             default => false,
         };
     }
@@ -135,6 +144,7 @@ class DocumentPolicy
             DocumentType::Invoice => $user->can('invoices.post'),
             DocumentType::CreditNote => $user->can('credit-notes.post'),
             DocumentType::Expense => $user->can('expenses.post'),
+            DocumentType::CorrectingEntry => $user->can('documents.correct'),
             default => false,
         };
     }

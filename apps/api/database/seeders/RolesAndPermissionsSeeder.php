@@ -119,6 +119,13 @@ class RolesAndPermissionsSeeder extends Seeder
             // Sales Documents (Quotes, Orders, Invoices)
             'documents.view',  // Unified document view
             'documents.update',  // Document attachments (Media module)
+            // R2-F4 (owner ruling c4) — create and post a CORRECTING ENTRY
+            // against a posted document. Deliberately its own admin-tier
+            // permission and NOT granted to any non-admin role below: a
+            // correcting entry writes arbitrary general-ledger legs, which is
+            // strictly more powerful than cancelling a document, and it also
+            // EXPOSES chart-of-accounts detail on read.
+            'documents.correct',
             'quotes.view',
             'quotes.create',
             'quotes.update',
