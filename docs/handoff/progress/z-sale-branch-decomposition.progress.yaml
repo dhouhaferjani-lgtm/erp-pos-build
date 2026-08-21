@@ -73,9 +73,11 @@ milestones:
     review_lenses: [fiscal-pos]
     owner_gate: z-signed-bytes-versioning
     status: review
-    commit: null            # filled below once the memo commit exists
-    verdict: null
-    fix_rounds: 0
+    commit: 0edbf402b       # z-decomp M1.1 (memo); amended by the round-1 fix round, see fix_commit
+    fix_commit: pending     # z-decomp M1.2 — filled by the blocked_review commit
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round1.md
+    last_verdict: ACCEPT (round 1, exit 0) — 0 P1, 1 P2, 4 P3; all five closed in round 2
+    fix_rounds: 1
     memo: docs/handoff/reviews/z-sale-branch-decomposition/M1-signed-bytes-decision.md
     no_production_code: true
     findings:
@@ -98,7 +100,7 @@ milestones:
       F-3: >-
         A FOURTH gross-as-net site exists in zReportService.ts itself — buildReceiptSnapshots()
         taxByRate, defect at :1015-1017. NOT in the signed bytes and NOT in the Z hash
-        (receipt_snapshots is a sibling of report_data, :505 vs :507; computeZReportHash hashes
+        (receipt_snapshots is a sibling of report_data, :504 vs :507; computeZReportHash hashes
         report_data only). Recorded, not fixed.
       F-4: >-
         vat_breakdown has NO structural validation on either side (FiscalEventEngine.ts:3748-3760,
@@ -114,6 +116,13 @@ milestones:
         same three files, changing the same signed vat_breakdown field, IN PLACE at v1 with no
         version bump and no registry/payload file touched. Real precedent for Option B; narrower
         blast radius (v4 refunds were brand-new), so it is evidence, not a ruling.
+      option_A_deploy_ordering: >-
+        M1 gate-r1 finding 1 (P2, closed in round 2 as memo item A14): Option A creates a
+        SERVER-BEFORE-DEVICE deploy obligation that does not exist today. A device build authoring
+        v2 that reaches a terminal before the API carrying the SUPPORTED_VERSIONS change quarantines
+        100% of that terminal's Z/X at StrictCanonicalParser.php:627-632, on an append-only device
+        chain that cannot be re-authored. It points OPPOSITE to LEDGER D-3's device-before-server
+        obligation on the same fleet. Option B has no ordering constraint at all.
       option_A_highest_risk: >-
         FiscalEventPayloadRegistry.php:119-127 — SUPPORTED_VERSIONS holds only SALE_RECEIPT.
         Omitting a Z/X entry quarantines 100% of Z and X events at StrictCanonicalParser.php:627-632.
@@ -148,4 +157,4 @@ milestones:
     verdict: null
     fix_rounds: 0
 
-updated: 9d14cb8e1   # base_sha marker (no clock; harness "No clock" rule)
+updated: 0edbf402b   # short HEAD at write time (harness "No clock" rule: use git rev-parse --short HEAD)

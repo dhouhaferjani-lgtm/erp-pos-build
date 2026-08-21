@@ -34,8 +34,8 @@ decomposition. All three sale branches do the same wrong thing:
 | Site | Expression at `base_sha` |
 |---|---|
 | `apps/pos/src/lib/offline/zReportService.ts:907-914` | `lineVat = line.tax_amount`; **`lineNet = line.line_total`**; `lineGross = bcadd(lineNet, lineVat)` |
-| `apps/pos/src/lib/offline/endOfDayPreview.ts:301-307` | identical (brief cites `:297-304` — **+4 stale**, drift D-2) |
-| `apps/pos/src/api/reportApi.ts:491-496` | identical |
+| `apps/pos/src/lib/offline/endOfDayPreview.ts:301-307` | semantically identical (brief cites `:297-304` — **+4 stale**, drift D-2) |
+| `apps/pos/src/api/reportApi.ts:491-496` | semantically identical, **structurally not**: it binds no `lineGross` local, inlining `bcadd(lineNet, lineVat)` inside the accumulator at `:496`. **M2 note (R-2):** the third diff must be *normalised* to the two-local shape, not transcribed — R-2 requires a reviewer reading all three side by side to see one pattern, and today the third site does not have the same shape to begin with. |
 
 `line_total` is **GROSS/TTC**: `cartStore.recalcLineTotal()` (`apps/pos/src/stores/cartStore.ts:179`)
 computes `grossTotal = bcmul(unit_price, qty, decimals)` from a tax-INCLUSIVE `unit_price`, and
@@ -159,6 +159,25 @@ would exist purely to be read by a future verifier that does not exist yet (§1.
 | A11 | `app/Shared/Domain/CashRoundingCutover.php:44,52-55` | `EVENT_VERSION = 3` and `applies()` is a bare `>= 3` with **no event-type guard**. Not reachable for Z/X today; if Z/X ever pass ≥ 3 it misclassifies them as rounding-era. A v1→v2 bump does not reach it, but it is a latent trap the ruling should note. |
 | A12 | Tests that hardcode `1` | `apps/pos/src/lib/fiscal/__tests__/FiscalEventPayloadRegistry.test.ts:80-81` (`toBe(1)`); `apps/api/tests/Unit/Fiscal/FiscalEventPayloadRegistryTest.php:86-87` (`assertSame(1, …)`); Z fixtures at v1 in `tests/Feature/Fiscal/ZReportProjectionTest.php:333,375,422`, `ZSessionLifecycleQuarantineVisibilityTest.php:509,539,561`, `tests/Feature/POS/ZReportImmutabilityTest.php:400`. |
 | A13 | New test owed by the brief (M2 §4) | "Old events keep old semantics" needs its own test. **There is nothing to test it against**: no Z/X golden vector, byte-stability fixture or key-set test exists anywhere in the repo (§3.2), so the fixture would have to be authored from scratch. |
+| A14 | **Deploy ordering — a rollout constraint, not a code change** | See below. Option A creates a **server-before-device** ordering obligation that does not exist today. |
+
+**A14 in full — the rollout hazard (M1 gate-r1 finding 1).** A3 says that *omitting* the
+`SUPPORTED_VERSIONS` change quarantines all Z/X. The rollout corollary is separate and equally
+sharp: devices author locally and sync opportunistically to **whatever API is currently deployed**.
+If a device build authoring v2 reaches a terminal **before** the API carrying A3 is deployed, every
+`Z_REPORT`/`X_REPORT`/`SESSION_CLOSE` that terminal syncs is rejected at
+`StrictCanonicalParser.php:627-632` as `envelope_event_version_mismatch` and lands in
+`fiscal_event_quarantine` — **100 % of that terminal's Z/X**, on an append-only device chain that
+cannot be re-authored.
+
+This is exactly the inverse of the ordering the device-side stack normally runs: R-6 / LEDGER **D-1**
+describes device builds rolling out on their own cadence, and **D-3** pins a *device-before-server*
+obligation for SV-11/SV-9. **Option A would introduce a server-before-device obligation pointing the
+other way**, on the same fleet, in the same window. Two opposing ordering constraints on one rollout
+is a real operational cost and belongs in the ruling.
+
+**Option B has no ordering constraint at all**: three `bcsub` expressions, device-local, order-free
+against any API version.
 
 **Consumers that branch on `event_version` — the enumeration.**
 - *Enforcing:* `StrictCanonicalParser.php:625-634` (the hard gate, via `supportedVersionsFor()` at
@@ -233,6 +252,7 @@ pinned, no consumer contract changes.
 | Corrected values | identical | identical |
 | Files touched | ~13 sites across device + server + archive + 8 test sites (§2.1) | 3 expressions + fixtures (§2.2) |
 | Quarantine risk | **high** — omitting A3 quarantines 100 % of Z/X | none |
+| Deploy ordering | **server-before-device, mandatory** (A14). Inverted order quarantines 100 % of a terminal's Z/X on an append-only chain. Points **opposite** to D-3's device-before-server obligation on the same fleet | **none** — device-local, order-free |
 | Discriminator on the fiscal-event chain | yes | no |
 | Discriminator on the legacy `z_reports` chain | **no** (§1.4) | no |
 | Repairs existing wrong events | **no** | no |
@@ -410,7 +430,8 @@ argument. Its output feeds `receipt_snapshots` (`:436`, `:507`).
 
 **It is NOT in the signed bytes and NOT in the Z hash** — `buildZReportPayload` does not carry
 `receipt_snapshots`, and `computeZReportHash` (`:445-451`) hashes only `report_data`, of which
-`receipt_snapshots` is a **sibling** (`:505` vs `:507`). It lands on the device-local `z_reports`
+`receipt_snapshots` is a **sibling** (`report_data: reportData` at `:504`; `receipt_snapshots` at
+`:507`). It lands on the device-local `z_reports`
 row and on whatever consumes that mirror. Lower severity, outside the brief's three declared sites,
 **recorded per rule 4 and not fixed.** The audit names it as part of R-01
 (`production-v1-readiness.md:185`, cited there as `:1015-1017`).
@@ -427,8 +448,24 @@ Z/X. Downstream finding; a separate lane.
 
 ## 6. Recommendation (advisory — the gate rules)
 
-**I recommend Option B — in-place semantic correction — conditional on Q1/Q2/Q3 (§3.2) coming back
+**I recommend Option B — in-place semantic correction — conditional on Q1 and Q3 (§3.2) coming back
 empty, and with F-1 folded in so `SESSION_CLOSE` moves with Z and X.**
+
+**The Q2 default, stated in advance (M1 gate-r1 finding 2).** Q2 — *has any demo/pilot device
+closed a shift?* — is closable only by a per-terminal operator inventory and by **no** server query
+(§3.2, `2026-05-14-pos-phase1-fiscal-event-engine.md:139`). "Q2 unresolved" is therefore the
+**expected** state, not an exceptional one, and a recommendation that goes silent there would be
+useless at exactly the moment it is read. So:
+
+> **If Q2 cannot be discharged, the recommendation still stands at Option B** — because Option A
+> does not repair a pre-fix device's sealed events either (§2.2), does not shorten the window in
+> which more of them accrue (§7 item 3), and adds a rollout hazard aimed at that same fleet (A14).
+> An undischargeable Q2 makes Option A *less* attractive, not more: the fleet whose contents are
+> unknown is precisely the fleet the server-before-device ordering constraint would endanger.
+>
+> **Who may decide to proceed on an open Q2:** the `fiscal-pos-reviewer` ruling gate, on the record,
+> naming Q2 as accepted-open. It is not mine to accept, and it is not a thing to leave unstated.
+> Only a **positive** Q2 answer — an actual device found with closed shifts — is a flip condition.
 
 The reasoning, weighted:
 
@@ -502,3 +539,18 @@ The ruling should answer, explicitly:
    for this lane and ticketed, or folded in (a scope expansion the brief currently forbids)?
 4. If **Option A**: does the version bump also require the **key-set enforcement** work (A4–A7), or
    is a stamped-but-unenforced v2 sufficient?
+5. If **Option A**: who owns the **server-before-device deploy ordering** obligation (A14), and how
+   is it reconciled with LEDGER **D-3**'s opposite device-before-server obligation on the same
+   fleet? An inverted rollout quarantines 100 % of a terminal's Z/X irrecoverably.
+6. **Q2 (§3.2) is expected to remain open.** If the ruling proceeds on an undischarged Q2, say so
+   on the record — the memo's §6 default is that an open Q2 does not change the recommendation, but
+   accepting it is the gate's call, not the executor's.
+
+---
+
+## 9. Review history
+
+| Round | Lens | Verdict | Disposition |
+|---|---|---|---|
+| 1 | fiscal-pos | **ACCEPT** — 0 P1, 1 P2, 4 P3 (`M1-round1.md`) | All five folded in before the ruling, because the artifact this memo feeds is a one-way door: P2 finding 1 → **A14** + the §2.3 row + ruling question 5; P3 finding 2 → the **Q2 default** in §6; P3 finding 3 → the `:504` citation correction in F-3; P3 finding 4 → progress-YAML `updated:`/`commit:` bookkeeping; P3 finding 5 → the third site's structural non-identity, flagged as an M2/R-2 note in §1.1. |
+| 2 | fiscal-pos | see `M1-round2.md` | Re-gate of the amended memo. |
