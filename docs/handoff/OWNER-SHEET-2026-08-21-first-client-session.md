@@ -58,6 +58,7 @@ Still open elsewhere: Dokploy deploy pipeline (yours) · staging owes S-1..S-13 
 | O-27 chart-purposes backfill | `fix/o27-chart-purposes-backfill` | merged (post-`3d3b76623`) | gate ACCEPT + 7-item fix round; 40/370 PG in-lane; post-merge 8/69 parity + manifest exit 0; MIGRATION-BEARING (self-guarding proven); acks wanted: additive authority accessor + circular Domain import (rule-6 exception, documented at site) |
 | O-29/F-2 feature-lane execution | `feat/f2-feature-lane-execution` | merged | 4 gate rounds (Codex r1 + Opus r2/r4, every executed bypass pinned); post-merge checker exit 0 + 86/483 architecture tests green on merged dev; ci.yml workflow-touching → S-14 dispatch leg owed at promotion (B-11 step 5) |
 | POS real manager screens (audit G3) | `fix/pos-mocked-manager-screens` | merged | fiscal gate r1 CHANGES + conventions gate r1 CHANGES → fix round → re-gate ACCEPT (2 rulings granted; reviewer independently recomputed the bars-sum-to-net-headline reconciliation and traced legacy/v4 refund disjointness to the writer); post-merge 14 files/125 tests green; device app — Playwright N/A (Tauri surface), evidence = 210-file/2275-test sweep in-gate |
+| C-5 voucher projection context | `fix/c5-voucher-projection-context` | merged | treasury gate r1 CHANGES → final round (gate-corrected G-3 arm conversion, revert-probe verified); post-merge 6/55 green; unblocks voucher tenders on real Horizon workers — first-client relevant if vouchers enabled |
 | _(rows appended at each merge)_ | | | |
 
 ## D. Session log pointers
