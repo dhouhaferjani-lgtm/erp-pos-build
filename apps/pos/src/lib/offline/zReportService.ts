@@ -896,7 +896,15 @@ function aggregateReportData(
     }
 
     salesCount++;
-    grossSales = bcadd(grossSales, receipt.total);
+    // F-6 (C-2 M4 → C-6 item 2): every headline accumulator carries its CURRENCY
+    // scale explicitly. `bcadd`/`bcsub` default to `decimal.ts`'s scale of 3
+    // (`decimal.ts:22-28`), so on a scale-2 currency an unscaled accumulator
+    // carries sub-cent residue that only re-rounds at emission — reachable today
+    // because the cash-rounding writer persists sub-scale line values
+    // (`receiptService.cashRounding.test.ts:202` writes `'9.997'` on EUR). These
+    // three figures are SIGNED into Z_REPORT / X_REPORT / SESSION_CLOSE, so the
+    // residue would land in immutable bytes. Rule 19: round once, at the scale.
+    grossSales = bcadd(grossSales, receipt.total, decimals);
     // C-6 fix (z-headline-net-sales) — the HEADLINE sibling of the C-2 per-rate
     // fix below. `offline_receipts.subtotal` is a MISNOMER: the writer stores
     // Σ GROSS `line_total` in it (`receiptService.ts:149-157` `computeLineTotals`
@@ -928,7 +936,7 @@ function aggregateReportData(
     // adds `transaction_discount_amount` back). The Z payload records neither
     // field, so no such identity is claimed anywhere.
     netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, decimals), decimals);
-    taxAmount = bcadd(taxAmount, receipt.tax_amount);
+    taxAmount = bcadd(taxAmount, receipt.tax_amount, decimals);
 
     // VAT breakdown from receipt lines.
     //

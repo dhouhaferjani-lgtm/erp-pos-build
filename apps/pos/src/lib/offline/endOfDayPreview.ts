@@ -232,7 +232,12 @@ export async function buildEndOfDayPreview(
     // own tracked figure below, never folded into gross/net sales).
     if (!isRefund) {
       salesCount += 1;
-      grossSales = bcadd(grossSales, receipt.total);
+      // F-6 (C-2 M4 → C-6 item 2): explicit CURRENCY scale on every headline
+      // accumulator — `bcadd`/`bcsub` otherwise default to `decimal.ts`'s scale
+      // of 3 (`decimal.ts:22-28`) and carry sub-cent residue on a scale-2
+      // currency. Reachable today: the cash-rounding writer persists sub-scale
+      // values (`receiptService.cashRounding.test.ts:202`). Rule 19.
+      grossSales = bcadd(grossSales, receipt.total, scale);
       // C-6 fix (z-headline-net-sales) — the second of three structurally
       // separate copies of this headline accumulation. Same derivation as
       // `zReportService.ts` (which carries the full rationale): the SQLite
@@ -249,7 +254,7 @@ export async function buildEndOfDayPreview(
       // against before the Z is authored — it must agree with the signed Z or
       // the close is disputed at the counter.
       netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, scale), scale);
-      taxAmount = bcadd(taxAmount, receipt.tax_amount);
+      taxAmount = bcadd(taxAmount, receipt.tax_amount, scale);
     }
 
     // Receipt-level rounding / tolerance columns (Task 9), written inside the

@@ -540,4 +540,101 @@ describe('C-6 sale headline totals — REAL writer through Z / EOD / X', () => {
     });
     expect(x.net_sales).toBe(NET);
   });
+
+  // ── F-6: the headline accumulators' currency-scale arguments ─────────────
+
+  /**
+   * Insert an `offline_receipts` row directly, with sub-scale precision in the
+   * three HEADLINE columns.
+   *
+   * Same rationale as C-2's R-3 fixture (`saleReportingEndToEnd.test.ts:616`):
+   * the scale arguments are invisible on a well-formed scale-2 row because
+   * every consumer re-formats through `bcformat(total, scale)` at emission, so
+   * the drift only shows when a stored value carries MORE precision than the
+   * currency scale — which the real writer DOES produce on the cash-rounding
+   * path (`receiptService.cashRounding.test.ts:202` persists a `'9.997'`).
+   * A precision fixture, not a decomposition one.
+   *
+   * Two rows at subtotal 10.006 / tax 0.001 / total 10.005 on EUR (scale 2):
+   *   accumulated at scale 2 → 10.01 + 10.01 = 20.02 gross,
+   *                            (10.01 − 0.00) × 2 = 20.02 net   ✅
+   *   accumulated at scale 3 → 10.005 + 10.005 = 20.010 → 20.01 gross,
+   *                            10.005 − 0.001 = 10.004, ×2 = 20.008 → 20.01 net ❌
+   */
+  async function insertSubScaleHeadlineRow(suffix: string): Promise<void> {
+    const lines = JSON.stringify([
+      { name: 'W', quantity: 1, unit_price: '10.006', line_total: '10.006', tax_rate: TAX_RATE, tax_amount: '0.001' },
+    ]);
+    await adapter.execute(
+      `INSERT INTO offline_receipts (
+         id, idempotency_key, receipt_number, terminal_id, terminal_code,
+         operator_id, operator_name, lines, subtotal, tax_amount, discount_amount,
+         total, currency, fiscal_hash, previous_hash, hash_sequence,
+         tendered_amount, change_due, payment_method_id, payment_repository_id, status,
+         payments_json, fiscal_schema_version, is_training
+       ) VALUES ($1,$2,$3,$4,'T01',$5,'Alice',$6,'10.006','0.001','0.00','10.005','EUR',
+                 $8,'genesis',$9,'10.005','0.00','pm-cash','pr-cash','pending',$7,3,0)`,
+      [
+        `precision-row-${suffix}`, `idem-prec-${suffix}`, `T001-900${suffix}`, TERMINAL_UUID, OPERATOR_UUID, lines,
+        JSON.stringify([{ method_code: 'CASH', amount: '10.005' }]),
+        `h-prec-${suffix}`, Number(suffix),
+      ],
+    );
+  }
+
+  it('F-6 — the SIGNED Z headline accumulates at the CURRENCY scale, not decimal.ts\'s default of 3', async () => {
+    await insertSubScaleHeadlineRow('1');
+    await insertSubScaleHeadlineRow('2');
+
+    const z = await generateZReport(
+      adapter as unknown as Database,
+      TERMINAL_UUID,
+      'shift-1',
+      SHIFT_OPENED_AT,
+      '100.00',
+      zOpts,
+    );
+
+    // Per-row rounding at the currency scale (Big.RM = 1, ROUND_HALF_UP):
+    // 10.005 → 10.01 each, so 20.02 — not 20.01.
+    expect(z.report_data.gross_sales).toBe('20.02');
+    // net: (10.006 − 0.001) rounded at scale 2 = 10.01 each → 20.02.
+    expect(z.report_data.net_sales).toBe('20.02');
+    // tax: 0.001 → 0.00 each → 0.00 (unscaled it accumulates 0.002 → '0.00'
+    // too, so this one rests on structural identity with its two siblings —
+    // stated rather than glossed, exactly as C-2's M4 did for its vat leg).
+    expect(z.report_data.tax_amount).toBe('0.00');
+  });
+
+  it('F-6 — the SIGNED X headline accumulates at the CURRENCY scale, not decimal.ts\'s default of 3', async () => {
+    await insertSubScaleHeadlineRow('1');
+    await insertSubScaleHeadlineRow('2');
+
+    const x = await generateXReport(TERMINAL_UUID, {
+      tenantId: TENANT_ID,
+      fiscalShiftId: SHIFT_UUID,
+      fiscalSessionId: SESSION_UUID,
+      operatorId: OPERATOR_UUID,
+      operatorName: 'Alice',
+    });
+
+    expect(x.gross_sales).toBe('20.02');
+    expect(x.net_sales).toBe('20.02');
+  });
+
+  it('F-6 — the EOD preview headline accumulates at the CURRENCY scale', async () => {
+    await insertSubScaleHeadlineRow('1');
+    await insertSubScaleHeadlineRow('2');
+
+    const eod = await buildEndOfDayPreview(
+      adapter as unknown as Database,
+      TERMINAL_UUID,
+      SHIFT_OPENED_AT,
+      '100.00',
+      'EUR',
+    );
+
+    expect(eod.gross_sales).toBe('20.02');
+    expect(eod.net_sales).toBe('20.02');
+  });
 });
