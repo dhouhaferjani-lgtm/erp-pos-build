@@ -1,0 +1,17 @@
+# PARENT DISPATCH RECEIPT — enforcement P2 (created per docs/handoff/enforcement-dispatch-checklist.md)
+# Dispatch context 2026-08-19: Codex quota exhausted; owner directed the parent orchestrator
+# (session de182ed3) to drive the enforcement packages with its own implementation subagents.
+# quiet_window_ack: GRANTED by owner in-session 2026-08-19 ("start driving the workflow
+# stabilization work"). Preliminary scope notice: moot — all active lanes are executed by this
+# same parent session (single-writer discipline holds; parent is the only dev merger).
+# ratchet_trust_model_ack: ACKNOWLEDGED by parent on the owner's standing r21 ruling — trust
+# anchor = owner-set repo variables (DPA_/I18N_BASELINE_PROTECTED_BLOB); YAML pins are mirrors.
+package: p2
+base_sha: ab94195d8dbd79be44c4b9ce809942250ec37009  # RE-PINNED 2026-08-21 (2nd): manifest raise fold-in (p2 max 5→7)
+manifest_path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml
+manifest_sha256: 7c298d5fbe0b35d9cd3970f57d3c49c03fa219a6eb44976dbe1d478c7da6a811  # RE-PINNED with the p2 max raise
+progress_path: docs/handoff/progress/enforcement-p2.progress.yaml
+final_milestone: M4
+lenses: frontend-conventions,tenancy-authz
+max_fix_rounds: 7
+created: 2026-08-19, dev tip c97e0d1ada0ff73c7beb12dca478fa106df23128 (pre-dispatch pin commit)

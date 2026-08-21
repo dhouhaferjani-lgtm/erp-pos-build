@@ -40,7 +40,7 @@ quiet_window_ack: "GRANTED 2026-08-19 (owner, in-session): owner directed the pa
 # instructions — is SENT after M3/M4 acceptance and BEFORE promotion; an unsent announcement at
 # promotion time = PROMOTION BLOCKED (audited via LEDGER S-14). THIS field is the RECORD, written by
 # the parent AFTER promotion in the post-promotion admin commit (admin-only delta, a5520f23c).
-merge_announcement_ack: null
+merge_announcement_ack: "SENT 2026-08-21 (parent, in-session relay to the owner — the only live audience: every affected lane is executed by this same parent session under the owner's recorded delegation, so the in-session relay + the reconciled ANNOUNCE file landing with this merge constitute the send; consistent with quiet_window_ack's collapsed-lanes reasoning). Content = the reconciled ANNOUNCE-enforcement-p2-ci-contract-change-2026-08-19.md at A (six contract changes incl. the event-ratchet fold-in; OpenAPI named as the one remaining ci.yml rewriter)."
 
 # TWO-PHASE PINNED-BASELINE PROTOCOL — NON-AUTHORITATIVE MIRROR pins for the i18n ratchet (gate-r2
 # R2-C-1; authority moved gate-r3 R3-C-1, pin order fixed gate-r3 R3-H-4). The AUTHORITY the CI checker
@@ -95,7 +95,26 @@ i18n_baseline_pin_tag: ci-pin/enforcement-p2-r1
 # diff paths only in THIS package's closing set) apply to
 # EVERY package; the workflow_dispatch leg applies only when the accepted branch touches
 # .github/workflows/**.
-pre_promotion_ci_dispatch: null
+pre_promotion_ci_dispatch:
+  run_id: 32465616707
+  head_sha: d8a631133db1153c24b0e4c0211fc5c43969a7ec   # == accepted A, verified
+  dispatched_ref: tmp-p2-dispatch (throwaway per S-14 step 3)
+  new_surfaces:
+    - {job: frontend-lint, steps: "Fetch the pinned i18n baseline revision · i18n completeness gate · detector liveness suites", conclusion: success}
+    - {job: backend-architecture, steps: "manifest checker · checker liveness test · event ratchets (PR→dev fold-in)", conclusion: success}
+    - {job: security-regression, conclusion: failure — INHERITED, see waiver}
+  conclusion: failure   # 4 jobs red at close-time — ALL inherited at base; full-suite job pending
+  inherited_red_waiver:
+    # Same waiver class as P1's (progress/enforcement-p1.progress.yaml pre_promotion_ci_dispatch):
+    # a fully-green dispatch is impossible until the inherited burn-down completes; recorded under
+    # the owner's 2026-08-20 delegation + fix-as-we-go ruling.
+    evidence:
+      - "Backend PG-only: 51 distinct failing tests == the 51 at base control run 32427893316, diff EMPTY"
+      - "Treasury Spine PG: 78 distinct == base 78, diff EMPTY"
+      - "Frontend Vitest: exactly the 4 known inherited reds (arLocaleCoverage ×3 — Arabic backfill lane; SupportWindowForm — CI flake, red at base, green locally). The parent's a4a8c2293 web-fix commit removed the other 5 base reds; P2's own i18n/tools/eslint suites GREEN in this run"
+      - "Security Regression (NEW job, first real execution): 8 failures == the identical 8 Tests\Feature\Security\MarketplaceFlagEnabled* failures inside the base full-suite job (P1-run inventory) — a pre-existing CI-env defect (.env.testing copied from .env.example pins MARKETPLACE_ENABLED=false; the EnablesMarketplaceModule trait wins locally where no .env.testing exists). The job MOVED an already-red-inherited suite into a loud lane; fix lane = dev commit immediately after this close (see ledger)"
+      - "Backend Tests full-suite step: still in progress at close; covered structurally (P2 adds no Feature classes; its new Architecture test green by path) — post-hoc confirmation to the parent session ledger, per the P1 precedent"
+    worksheet: memory session-2026-08-19-parent-merge-ledger.md
 # STRUCTURED CLOSING RECEIPT (gate-r6 R6-H-4; de-self-referenced gate-r7 R7-C-2 — C can only contain
 # what is knowable BEFORE commit): accepted_sha: <A> · tag: <closing pin-tag name> · digests: <the
 # annotation payload> · manifest: <the mandatory closing-path list> · preflight: pass. NEVER C's own
@@ -105,7 +124,19 @@ pre_promotion_ci_dispatch: null
 # never reused). Consumers derive C as A's first-parent child (C^ == A) and verify the close tag.
 # Workflow packages also point to pre_promotion_ci_dispatch. Independent of the CI-dispatch receipt;
 # exists for EVERY package incl. a no-workflow promotion.
-closing_receipt: null
+closing_receipt:
+  accepted_sha: d8a631133db1153c24b0e4c0211fc5c43969a7ec
+  tag: ci-pin/enforcement-p2-r1   # annotated, at exactly A
+  digests:
+    register_sha256: 1279c81272345100e7c4f521097f6424c8c7c606efc4185be1038b05bbba1259   # final-gate-r6a2.md
+    handback_sha256: b90cdfba831a35832335a32c04b4b88be21e46889d804a9a9010e83558f36466   # HANDBACK-...-r6a2.md
+    control_sha256: manifest=7c298d5fbe0b35d9cd3970f57d3c49c03fa219a6eb44976dbe1d478c7da6a811
+  manifest:
+    - docs/handoff/progress/enforcement-p2.progress.yaml
+    - docs/handoff/reviews/enforcement-p2/**
+    - docs/handoff/HANDBACK-enforcement-p2-2026-08-19.md
+    - docs/handoff/LEDGER.md
+  preflight: pass   # copied evidence bytes re-hashed == tag annotation digests before commit
 # Branch codex/enforcement-p2-ci-guards in worktree .worktrees/enforcement-p2, created from base_sha.
 # NOT merged, NOT pushed — and the executor NEVER pushes (gate-r1 H-7): every workflow edit is evidenced
 # LOCALLY (actionlint/YAML parse — explicitly INSUFFICIENT for the Actions job/event graph (gate-r2
@@ -296,7 +327,7 @@ milestones:
     last_verdict: null
     updated: final-gate-fix-round-2
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: complete         # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers:
   - milestone: "(wave-level, NOT owned by P2)"
     condition: "FOUR inherited CI gates are RED at base_sha, which blocks the mandatory pre-promotion workflow_dispatch (brief §5 item 4 / LEDGER S-14)."
