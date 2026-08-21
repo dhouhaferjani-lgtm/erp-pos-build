@@ -236,6 +236,14 @@ final class VoucherRedemptionProjectionWorkerContextTest extends TestCase
             ->with('lines')
             ->first();
 
+        // Pin the count before reading a row: `->first()` is unordered, so an
+        // unexpected second entry (e.g. a RoundingAdjustment) would otherwise
+        // silently decide which entry this assertion is about.
+        $this->assertSame(
+            1,
+            JournalEntry::query()->where('source_type', 'voucher_ledger')->count(),
+            'Exactly one voucher_ledger journal entry is expected for this flow.',
+        );
         $this->assertNotNull(
             $entry,
             'The Dr VoucherLiability / Cr PosTenderClearing pair must be posted.',
