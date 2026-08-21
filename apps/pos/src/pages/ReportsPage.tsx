@@ -55,9 +55,13 @@ export function ReportsPage() {
   const terminalId = terminal?.id ?? null;
   const shiftOpenedAt = shift?.opened_at ?? null;
 
+  // If the shift closes while its period is selected, fall back to today rather
+  // than freezing on the last window's numbers.
+  const effectivePeriod: SalesPeriod = period === 'shift' && !shiftOpenedAt ? 'today' : period;
+
   const since = useMemo(
-    () => periodStartIso(period, new Date(), shiftOpenedAt),
-    [period, shiftOpenedAt],
+    () => periodStartIso(effectivePeriod, new Date(), shiftOpenedAt),
+    [effectivePeriod, shiftOpenedAt],
   );
 
   useEffect(() => {
@@ -187,7 +191,11 @@ export function ReportsPage() {
       </div>
 
       <div className="flex shrink-0 items-center gap-3 rounded-card border border-border-subtle bg-surface-raised p-3">
-        <Segment value={period} onChange={(v) => setPeriod(v as SalesPeriod)} options={periodOptions} />
+        <Segment
+          value={effectivePeriod}
+          onChange={(v) => setPeriod(v as SalesPeriod)}
+          options={periodOptions}
+        />
         <div className="h-8 w-px bg-border-subtle" />
         <Segment value={method} onChange={setMethod} options={methodOptions} />
         <label className="relative ml-auto w-[260px]">
