@@ -32,8 +32,10 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Database\Seeders\TunisiaChartOfAccountsSeeder;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\PermissionRegistrar;
 use Tests\TestCase;
@@ -409,6 +411,155 @@ final class CorrectingEntryEndpointTest extends TestCase
         }
     }
 
+    // ------------------------------------------ gate fix round (P3) ---
+
+    /**
+     * P3-9. The created row itself carries NON_FISCAL — not merely the enum
+     * mapping, but what actually reached Postgres, since
+     * `chk_fiscal_category_enum` is the constraint the zero-schema claim rests on.
+     */
+    public function test_a_created_correction_row_carries_the_non_fiscal_category(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg();
+        $correctionId = $this->createCorrection($invoice);
+
+        self::assertSame(
+            'NON_FISCAL',
+            DB::table('documents')->where('id', $correctionId)->value('fiscal_category'),
+        );
+    }
+
+    /**
+     * P3-10. A POSTED correction is SEALED, and that is not cosmetic: it is what
+     * arms `trg_document_immutability` and `trg_prevent_fiscal_deletion`, both of
+     * which key on `fiscal_status IN ('SEALED','VOIDED')`. Left at DRAFT — as it
+     * was — a posted correction's row was protected by NEITHER trigger while its
+     * legs were sealed into the journal chain.
+     *
+     * Asserted against the TRIGGERS, not against the column, because the column
+     * value is only interesting for what it switches on.
+     */
+    public function test_a_posted_correction_is_sealed_and_the_database_refuses_to_mutate_its_identity(): void
+    {
+        $correctionId = $this->postedCorrection();
+
+        self::assertSame(
+            FiscalStatus::Sealed->value,
+            DB::table('documents')->where('id', $correctionId)->value('fiscal_status'),
+        );
+
+        $this->expectException(QueryException::class);
+        DB::table('documents')->where('id', $correctionId)->update(['document_number' => 'TAMPERED']);
+    }
+
+    /** The deletion trigger is armed too — a posted correction cannot be removed. */
+    public function test_a_posted_correction_cannot_be_deleted_at_the_database_level(): void
+    {
+        $correctionId = $this->postedCorrection();
+
+        $this->expectException(QueryException::class);
+        DB::table('documents')->where('id', $correctionId)->delete();
+    }
+
+    /**
+     * THE RESIDUAL GAP, pinned so it is recorded rather than assumed closed.
+     *
+     * `trg_document_immutability`'s immutable-field list
+     * (`2025_12_11_054716_add_document_immutability_trigger.php:33-45`) was written
+     * for fiscal SALES documents: document_number, document_date, partner_id, the
+     * money columns, currency, the hash columns, fiscal_category. It does NOT
+     * include `payload` — which is exactly where a correcting entry keeps its
+     * LEGS — nor `source_document_id`, the link ruling c4 makes mandatory.
+     *
+     * So sealing buys real protection (identity frozen, deletion refused) but not
+     * total protection, and this test says so out loud rather than letting a
+     * future reader infer immutability the row does not have.
+     *
+     * WHY THIS IS TOLERABLE, and it is not "because it is hard": the LEDGER is the
+     * authority, not this row. The legs were copied into `journal_lines` under a
+     * hash-chained `journal_entries` row at post time; editing `payload`
+     * afterwards desynchronises the document from the ledger but cannot alter a
+     * single posted amount, and the chain verifier reads the ledger. Widening the
+     * trigger is a schema migration and would forfeit the lane's zero-schema
+     * property, so it belongs to its own lane — recorded in the report.
+     */
+    public function test_the_sealed_row_still_permits_payload_edits_a_known_and_recorded_gap(): void
+    {
+        $correctionId = $this->postedCorrection();
+
+        // No exception: `payload` is outside the trigger's field list.
+        DB::table('documents')->where('id', $correctionId)->update([
+            'payload' => json_encode(['correcting_entry' => ['reason' => 'edited after posting', 'legs' => []]]),
+        ]);
+
+        self::assertSame(
+            1,
+            JournalEntry::query()
+                ->where('source_type', AccountingService::DOCUMENT_CORRECTION_SOURCE_TYPE)
+                ->where('source_id', $correctionId)
+                ->count(),
+            'The LEDGER is untouched by a payload edit — which is why the gap is survivable',
+        );
+    }
+
+    /**
+     * A DRAFT correction is NOT sealed — the protection arrives with posting, and
+     * `delete` must keep working before it. Without this the test above would
+     * pass just as well on a document sealed at creation, which would break the
+     * discard path.
+     */
+    public function test_a_draft_correction_is_not_sealed(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg();
+        $correctionId = $this->createCorrection($invoice);
+
+        self::assertSame(
+            FiscalStatus::Draft->value,
+            DB::table('documents')->where('id', $correctionId)->value('fiscal_status'),
+        );
+    }
+
+    /**
+     * P1-2 at the HTTP boundary: a leg may name its own partner, and the request
+     * accepts it. The refusal side is pinned at the service level, where the
+     * chart of accounts lives.
+     */
+    public function test_a_leg_may_name_its_own_partner(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg();
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/documents/{$invoice->id}/correcting-entries", [
+                'reason' => 'AR leg for a named partner',
+                'legs' => [[
+                    'account_id' => $this->accountId('411'),
+                    'debit' => '19.000',
+                    'credit' => '0',
+                    'partner_id' => $this->customer->id,
+                ]],
+            ]);
+
+        $response->assertCreated();
+        $response->assertJsonPath('data.correcting_entry.legs.0.partner_id', $this->customer->id);
+    }
+
+    public function test_a_leg_partner_that_is_not_a_uuid_is_rejected_by_validation(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg();
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/documents/{$invoice->id}/correcting-entries", [
+                'reason' => 'bad partner',
+                'legs' => [[
+                    'account_id' => $this->accountId('411'),
+                    'debit' => '19.000',
+                    'credit' => '0',
+                    'partner_id' => 'not-a-uuid',
+                ]],
+            ])
+            ->assertStatus(422);
+    }
+
     // ----------------------------------------------------------- helpers ---
 
     private function userWithRole(string $role, string $email): User
@@ -511,5 +662,21 @@ final class CorrectingEntryEndpointTest extends TestCase
 
         /** @var Document */
         return $invoice->fresh(['lines']);
+    }
+
+    /** A correction taken all the way to POSTED through the HTTP surface. */
+    private function postedCorrection(): string
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg();
+        $correctionId = $this->createCorrection($invoice);
+
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/correcting-entries/{$correctionId}/confirm")->assertOk();
+        $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/correcting-entries/{$correctionId}/post")
+            ->assertOk()
+            ->assertJsonPath('data.fiscal_status', FiscalStatus::Sealed->value);
+
+        return $correctionId;
     }
 }

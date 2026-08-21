@@ -122,6 +122,20 @@ final class CorrectingEntryService
 
     /**
      * Post the correcting entry and its GL in ONE transaction.
+     *
+     * IDEMPOTENCE — the same shape, and the same limit, as the reversal path
+     * documents at `AccountingService:852-856`. A correcting DOCUMENT posts at
+     * most once, keyed on `journal_entries(source_type = 'DocumentCorrection',
+     * source_id = <this document>)`, but that pair carries NO database
+     * uniqueness (see `reference_journal_entries_no_global_source_uniqueness`),
+     * so the guard is a read followed by a write and, on its own, a TOCTOU
+     * window. What actually closes it is the per-company
+     * `pg_advisory_xact_lock` `postCorrectingEntryGl()` takes as the first
+     * statement of its transaction: two concurrent posts serialise on it, and
+     * the loser then SEES the winner's entry and is refused with
+     * `AlreadyPosted`. The read-then-write is the mechanism; the lock is the
+     * correctness argument. Neither alone is sufficient — do not remove the lock
+     * on the grounds that the `exists()` check is there.
      */
     public function post(Document $correction): Document
     {
@@ -138,13 +152,67 @@ final class CorrectingEntryService
             );
         }
 
+        // NON-WRITING PRE-FLIGHT, outside the transaction. It answers exactly the
+        // question the write will ask, so an entry that cannot post is refused
+        // with its typed 422 before a write transaction is ever opened — the same
+        // relationship `assertDocumentGlIsPostable()` has to the posting paths.
+        //
+        // It does NOT make the in-transaction re-resolve redundant, and must not
+        // be read as doing so: the verdict depends on ledger rows another request
+        // may be writing right now, so this answer can be stale by the time the
+        // lock is taken. The authoritative verdict is the one computed inside.
+        $this->corrections->assertCorrectingEntryIsPostable($correction);
+
         return DB::transaction(function () use ($correction): Document {
             // The GL write comes FIRST and inside this transaction: its refusal
             // must roll the status change back with it, never leave a document
             // marked Posted with nothing in the ledger.
             $this->corrections->postCorrectingEntryGl($correction);
 
-            $correction->update(['status' => DocumentStatus::Posted]);
+            $correction->update([
+                'status' => DocumentStatus::Posted,
+                // ARMS THE TWO POSTGRES TRIGGERS. `trg_document_immutability` and
+                // `trg_prevent_fiscal_deletion` both key on
+                // `fiscal_status IN ('SEALED','VOIDED')`; a posted correction left
+                // at DRAFT was protected by neither, so its row stayed editable
+                // and deletable while its legs were sealed in the journal chain.
+                //
+                // SEALED here means ROW IMMUTABILITY, not a document hash-chain
+                // seal — a correcting entry has no document chain and never gets
+                // a `fiscal_hash` (its integrity is the JOURNAL chain, which its
+                // legs joined a moment ago). That reading is what the column
+                // already means: `Document::isSealed()` is documented as
+                // "immutable core fields", and its only consumer is the
+                // `DocumentData.is_sealed` display flag.
+                //
+                // ZERO SCHEMA, and deliberately so: `chk_fiscal_mandatory_core`
+                // short-circuits on `fiscal_category = 'NON_FISCAL'`, so a
+                // non-fiscal document may be SEALED with a NULL `fiscal_hash` and
+                // NULL `chain_sequence` — the constraint permits exactly this
+                // case. `chk_fiscal_status_enum` already admits 'SEALED'.
+                //
+                // Set in the SAME statement as the status flip on purpose: the
+                // trigger reads OLD.fiscal_status, which is still DRAFT here, so
+                // this update passes and every LATER one is refused.
+                //
+                // PARTIAL, and knowingly so. `trg_document_immutability`'s
+                // immutable-field list
+                // (`2025_12_11_054716_add_document_immutability_trigger.php:33-45`)
+                // was written for fiscal SALES documents. It freezes identity and
+                // the money columns and refuses deletion, but it does NOT cover
+                // `payload` — where this document's LEGS live — nor
+                // `source_document_id`, the link ruling c4 makes mandatory. So a
+                // posted correction's row is protected, not immutable.
+                //
+                // Tolerable because the LEDGER is the authority: the legs were
+                // copied into hash-chained `journal_lines` at post time, and a
+                // later `payload` edit desynchronises the document from the ledger
+                // without moving a single posted amount. Widening the trigger is a
+                // schema migration and would forfeit this lane's zero-schema
+                // property; it belongs to its own lane. Pinned — including the gap
+                // — by `CorrectingEntryEndpointTest`.
+                'fiscal_status' => FiscalStatus::Sealed,
+            ]);
 
             /** @var Document */
             return $correction->fresh();

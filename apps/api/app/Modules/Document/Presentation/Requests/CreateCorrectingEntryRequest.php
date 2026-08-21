@@ -44,6 +44,15 @@ final class CreateCorrectingEntryRequest extends FormRequest
             'legs.*.debit' => ['required', 'string', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
             'legs.*.credit' => ['required', 'string', 'numeric', 'regex:/^\d+(\.\d{1,3})?$/'],
             'legs.*.description' => ['nullable', 'string', 'max:255'],
+            // OPTIONAL, and only meaningful on a partner control account (411 /
+            // 401 / 419). Omitted, a control leg inherits the TARGET's partner;
+            // supplied, it wins — an accountant reclassifying between two
+            // customers' balances needs to say which one each leg belongs to.
+            // A control leg with neither is REFUSED downstream, never guessed:
+            // `journal_lines.partner_id` is what makes the control account and
+            // the partner statements reconcile, and the journal is immutable, so
+            // a leg written without it can never be repaired.
+            'legs.*.partner_id' => ['nullable', 'uuid'],
         ];
     }
 

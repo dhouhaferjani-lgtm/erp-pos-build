@@ -84,7 +84,7 @@ class CorrectingEntryController extends Controller
 
         $validated = $request->validated();
 
-        /** @var list<array{account_id: string, debit: string, credit: string, description?: string|null}> $legs */
+        /** @var list<array{account_id: string, debit: string, credit: string, description?: string|null, partner_id?: string|null}> $legs */
         $legs = $validated['legs'];
 
         try {
@@ -100,6 +100,7 @@ class CorrectingEntryController extends Controller
                         $leg['debit'],
                         $leg['credit'],
                         $leg['description'] ?? null,
+                        $leg['partner_id'] ?? null,
                     ),
                     $legs,
                 ),
@@ -195,12 +196,13 @@ class CorrectingEntryController extends Controller
      *     id: string,
      *     type: string,
      *     status: string,
+     *     fiscal_status: string,
      *     document_number: string|null,
      *     document_date: string,
      *     currency: string,
      *     source_document_id: string|null,
      *     reference: string|null,
-     *     correcting_entry: array{reason: string, legs: list<array{account_id: string, debit: string, credit: string, description: string|null}>},
+     *     correcting_entry: array{reason: string, legs: list<array{account_id: string, debit: string, credit: string, description: string|null, partner_id: string|null}>},
      *     created_at: string|null
      * }
      */
@@ -210,6 +212,7 @@ class CorrectingEntryController extends Controller
             'id' => $correction->id,
             'type' => $correction->type->value,
             'status' => $correction->status->value,
+            'fiscal_status' => $correction->fiscal_status->value,
             'document_number' => $correction->document_number,
             'document_date' => $correction->document_date->toDateString(),
             'currency' => $correction->currency,

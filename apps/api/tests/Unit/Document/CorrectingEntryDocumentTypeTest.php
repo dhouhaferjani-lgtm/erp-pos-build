@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Document;
 
 use App\Modules\Document\Domain\Enums\DocumentType;
+use App\Modules\Document\Domain\Enums\FiscalCategory;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -93,5 +94,27 @@ final class CorrectingEntryDocumentTypeTest extends TestCase
     public function test_it_never_transitions_to_paid(): void
     {
         self::assertFalse(DocumentType::CorrectingEntry->canTransitionToPaid());
+    }
+
+    /**
+     * P3-9 (fiscal gate). The zero-schema claim's LOAD-BEARING property.
+     *
+     * `chk_fiscal_category_enum` admits only
+     * ('NON_FISCAL','FISCAL_RECEIPT','TAX_INVOICE','CREDIT_NOTE'), so a
+     * correcting entry that resolved to anything else would need the constraint
+     * widened — and the lane's whole premise is that it does not.
+     *
+     * It currently falls out of `fromDocumentType()`'s `default` arm rather than
+     * a named one, which is exactly why this test exists: a future edit that
+     * gives CorrectingEntry an explicit fiscal category would compile, migrate
+     * nothing, and break the INSERT at runtime on Postgres only.
+     */
+    public function test_the_type_is_non_fiscal_which_is_what_keeps_the_lane_zero_schema(): void
+    {
+        self::assertSame(
+            FiscalCategory::NonFiscal,
+            FiscalCategory::fromDocumentType(DocumentType::CorrectingEntry),
+        );
+        self::assertSame('NON_FISCAL', FiscalCategory::NonFiscal->value);
     }
 }
