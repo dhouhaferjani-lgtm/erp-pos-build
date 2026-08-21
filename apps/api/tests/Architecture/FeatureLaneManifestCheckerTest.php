@@ -527,11 +527,9 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         // relabelling, whatever it currently is.
         [$exitBefore, $outBefore] = $this->runChecker();
         self::assertSame(0, $exitBefore, $outBefore);
-        self::assertSame(
-            1,
-            preg_match('/COVERAGE DEBT: \d+ group\(s\) \/ (\d+) class\(es\)/', $outBefore, $m),
-            $outBefore,
-        );
+        if (preg_match('/COVERAGE DEBT: \d+ group\(s\) \/ (\d+) class\(es\)/', $outBefore, $m) !== 1) {
+            self::fail('COVERAGE DEBT count line not found in checker output: '.$outBefore);
+        }
         $debtCount = $m[1];
 
         $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
