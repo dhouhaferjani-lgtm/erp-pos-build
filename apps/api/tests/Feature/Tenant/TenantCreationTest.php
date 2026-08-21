@@ -7,6 +7,7 @@ namespace Tests\Feature\Tenant;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Console\Command;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -173,5 +174,58 @@ class TenantCreationTest extends TestCase
         $this->assertEquals(5, SubscriptionPlan::Starter->maxUsers());
         $this->assertEquals(20, SubscriptionPlan::Professional->maxUsers());
         $this->assertEquals(PHP_INT_MAX, SubscriptionPlan::Enterprise->maxUsers());
+    }
+
+    /**
+     * Register G-1. `tenant:create` inserts ONLY the central tenants/domains rows.
+     * Under database-per-tenant that produces a tenant whose database was never
+     * created or migrated, so TenancyResolver::initializeIfProvisioned() fails
+     * closed and every request for it 503s — permanently, and silently at
+     * creation time. The command must refuse rather than brick the tenant.
+     */
+    public function test_tenant_create_refuses_to_run_under_database_per_tenant(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $this->artisan('tenant:create', ['name' => 'Bricked Garage'])
+            ->expectsOutputToContain('database-per-tenant')
+            ->expectsOutputToContain('TenantProvisioningService')
+            ->expectsOutputToContain('--central-row-only')
+            ->assertExitCode(Command::FAILURE);
+
+        $this->assertDatabaseMissing('tenants', ['slug' => 'bricked-garage']);
+    }
+
+    /**
+     * Register G-1 escape hatch: the rare legitimate central-directory-row use
+     * (e.g. repairing a directory entry for an already-provisioned database)
+     * still works, but is announced as the partial operation it is.
+     */
+    public function test_tenant_create_central_row_only_flag_creates_the_row_with_a_warning(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => true]);
+
+        $this->artisan('tenant:create', [
+            'name' => 'Directory Only Garage',
+            '--central-row-only' => true,
+        ])
+            ->expectsOutputToContain('No tenant database is created or migrated')
+            ->assertExitCode(Command::SUCCESS);
+
+        $this->assertDatabaseHas('tenants', ['slug' => 'directory-only-garage']);
+    }
+
+    /**
+     * Register G-1: the shared-DB compat mode is unaffected — there the central
+     * row IS the whole tenant, so the command remains the correct tool.
+     */
+    public function test_tenant_create_still_works_in_shared_db_compat_mode(): void
+    {
+        config(['tenancy_resolver.db_per_tenant' => false]);
+
+        $this->artisan('tenant:create', ['name' => 'Compat Garage'])
+            ->assertExitCode(Command::SUCCESS);
+
+        $this->assertDatabaseHas('tenants', ['slug' => 'compat-garage']);
     }
 }

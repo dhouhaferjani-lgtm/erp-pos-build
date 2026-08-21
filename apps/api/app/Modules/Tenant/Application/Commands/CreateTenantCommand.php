@@ -26,7 +26,8 @@ class CreateTenantCommand extends Command
                             {--domain= : Primary domain for the tenant}
                             {--plan=trial : Subscription plan (trial, starter, professional, enterprise)}
                             {--country= : ISO 3166-1 alpha-2 country code}
-                            {--currency=EUR : ISO 4217 currency code}';
+                            {--currency=EUR : ISO 4217 currency code}
+                            {--central-row-only : Acknowledge that this writes ONLY the central directory rows (no tenant database, no migrations, no initialization). Required under database-per-tenant.}';
 
     /**
      * The console command description.
@@ -40,6 +41,10 @@ class CreateTenantCommand extends Command
      */
     public function handle(): int
     {
+        if (! $this->guardAgainstBrickingTheTenant()) {
+            return self::FAILURE;
+        }
+
         /** @var string $name */
         $name = $this->argument('name');
 
@@ -110,5 +115,61 @@ class CreateTenantCommand extends Command
         );
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Register G-1 — fail closed instead of producing a permanently broken tenant.
+     *
+     * This command writes ONLY the central `tenants` (+ optional `domains`) rows.
+     * That is the complete tenant in the shared-DB compat mode, but under
+     * database-per-tenant the per-tenant database is never created, never
+     * migrated, and TenantInitializationService never runs. TenancyResolver::
+     * initializeIfProvisioned() then fails closed on every request for that
+     * tenant (TenantUnavailableException -> 503), forever — and nothing at
+     * creation time said so. An operator reaching for the obvious command
+     * bricked the tenant silently.
+     *
+     * So: refuse under database-per-tenant and name the working path, unless the
+     * operator explicitly asked for the central rows alone (repairing a directory
+     * entry for an already-provisioned database), which is announced as partial.
+     *
+     * Building real provisioning into this command is deliberately NOT done here
+     * — that is an open owner decision, and a half-provisioning command would
+     * reintroduce the same silent trap in a new shape.
+     *
+     * @return bool false when the command must abort
+     */
+    private function guardAgainstBrickingTheTenant(): bool
+    {
+        $centralRowOnly = (bool) $this->option('central-row-only');
+        $dbPerTenant = (bool) config('tenancy_resolver.db_per_tenant', false);
+
+        if ($dbPerTenant && ! $centralRowOnly) {
+            $this->error('Refusing to create a tenant: database-per-tenant mode is ON (tenancy_resolver.db_per_tenant=true).');
+            $this->line('');
+            $this->line('This command writes only the central tenants/domains rows. It does not create');
+            $this->line('the per-tenant database, does not migrate it, and does not run');
+            $this->line('TenantInitializationService — so the tenant would be permanently unusable:');
+            $this->line('every request for it fails closed with a 503 (TenantUnavailableException).');
+            $this->line('');
+            $this->line('Use the working path instead — the signup/registration flow');
+            $this->line('(POST /api/auth/register), which runs TenantProvisioningService: it creates');
+            $this->line('and migrates the tenant database, then initializes roles, reference data,');
+            $this->line('chart of accounts, tax, and payment configuration.');
+            $this->line('');
+            $this->line('If you genuinely want the central directory row alone (for example repairing');
+            $this->line('a directory entry for a database that is already provisioned), re-run with');
+            $this->line('--central-row-only.');
+
+            return false;
+        }
+
+        if ($centralRowOnly) {
+            $this->warn('--central-row-only: writing the central tenants/domains rows only.');
+            $this->warn('No tenant database is created or migrated and no tenant initialization runs.');
+            $this->warn('Under database-per-tenant this tenant returns 503 until its database is provisioned separately.');
+        }
+
+        return true;
     }
 }
