@@ -140,6 +140,9 @@ import { buildSessionClosePayload, buildZReportPayload } from '@/lib/fiscal/zSes
 import type { AuthorZSessionCloseInput } from '@/lib/fiscal/zSessionAuthoring';
 import { computeTaxAmount } from '@/stores/cartStore';
 import { createOfflineReceipt } from '../receiptService';
+import { createRefundReceipt, type CreateRefundReceiptInput } from '../refundReceiptService';
+import type { OriginalFiscalEventLocalView } from '@/lib/db/repositories/fiscalEventRepository';
+import { type RefundLineInput } from '@/lib/fiscal/payloads/RefundReceiptV4Payload';
 import { generateZReport } from '../zReportService';
 import { buildEndOfDayPreview } from '../endOfDayPreview';
 import { generateXReport } from '@/api/reportApi';
@@ -162,6 +165,22 @@ const VAT = '2.00';
 const NET = '10.00';
 const TAX_RATE = '20.00';
 
+/**
+ * The SECOND rate for the mixed-rate case: 10.50 TTC at 5 % VAT.
+ * Hand arithmetic: 10.50 / 1.05 = 10.00 net, so VAT = 0.50.
+ * Deliberately chosen so the two rates share the SAME net (10.00) while
+ * carrying different VAT — a bucket that leaked across rates would land on
+ * a number that looks plausible, so this catches mis-keying as well as
+ * mis-arithmetic.
+ */
+const GROSS_B = '10.50';
+const VAT_B = '0.50';
+const NET_B = '10.00';
+const TAX_RATE_B = '5.00';
+
+const REFUND_INTENT_ID = '55555555-5555-4555-8555-555555555555';
+const ORIGINAL_FISCAL_EVENT_ID = '99999999-9999-4999-8999-999999999999';
+
 async function runAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
   for (const m of migrations) {
     if (m.run) await m.run(adapter);
@@ -176,20 +195,25 @@ async function runAllMigrations(adapter: SqliteTestAdapter): Promise<void> {
  * the cart's OWN `computeTaxAmount()`. If the cart's tax semantics ever change,
  * this fixture changes with them instead of silently disagreeing.
  */
-function saleCartItem(): CartItem {
-  const taxAmount = computeTaxAmount(GROSS, TAX_RATE);
+function saleCartItem(
+  gross: string = GROSS,
+  rate: string = TAX_RATE,
+  expectedVat: string = VAT,
+  id = 'sale-line-0',
+): CartItem {
+  const taxAmount = computeTaxAmount(gross, rate);
   // Guard the guard: the derived value must equal the hand-computed VAT, or
   // every assertion below is measuring the wrong fixture.
-  if (taxAmount !== VAT) {
-    throw new Error(`fixture drift: computeTaxAmount('${GROSS}','${TAX_RATE}') = ${taxAmount}, expected ${VAT}`);
+  if (taxAmount !== expectedVat) {
+    throw new Error(`fixture drift: computeTaxAmount('${gross}','${rate}') = ${taxAmount}, expected ${expectedVat}`);
   }
   return {
-    id: 'sale-line-0',
-    product: { id: 'prod-1', name: 'Widget', sku: 'WGT-1', price: GROSS },
+    id,
+    product: { id: `prod-${id}`, name: 'Widget', sku: 'WGT-1', price: gross },
     quantity: 1,
-    unit_price: GROSS,
-    line_total: GROSS,
-    tax_rate: TAX_RATE,
+    unit_price: gross,
+    line_total: gross,
+    tax_rate: rate,
     tax_amount: taxAmount,
   } as unknown as CartItem;
 }
@@ -208,7 +232,10 @@ function snapshot(exactTotal: string): CheckoutPolicySnapshot {
   });
 }
 
-function saleInput(): Parameters<typeof createOfflineReceipt>[1] {
+function saleInput(
+  cartItems: CartItem[] = [saleCartItem()],
+  exactTotal: string = GROSS,
+): Parameters<typeof createOfflineReceipt>[1] {
   return {
     tenantId: TENANT_ID,
     companyId: COMPANY_ID,
@@ -220,7 +247,7 @@ function saleInput(): Parameters<typeof createOfflineReceipt>[1] {
     // ('shift-1', below) is a separate identifier and is not signed — a
     // distinction the hand-authored fixtures never had to honour.
     shiftId: SHIFT_UUID,
-    cartItems: [saleCartItem()],
+    cartItems,
     currency: 'EUR',
     seller: {
       name: 'Cafe Tunis',
@@ -232,10 +259,83 @@ function saleInput(): Parameters<typeof createOfflineReceipt>[1] {
     },
     paymentMethodId: 'pm-cash',
     paymentRepositoryId: 'pr-cash',
-    tenderedAmount: GROSS,
-    payments: [{ methodCode: 'CASH', amount: GROSS, paymentMethodId: 'pm-cash', repositoryId: 'pr-cash' }],
-    policySnapshot: snapshot(GROSS),
+    tenderedAmount: exactTotal,
+    payments: [{ methodCode: 'CASH', amount: exactTotal, paymentMethodId: 'pm-cash', repositoryId: 'pr-cash' }],
+    policySnapshot: snapshot(exactTotal),
   } as unknown as Parameters<typeof createOfflineReceipt>[1];
+}
+
+/**
+ * A REAL v4 refund that reverses the sale line: same rate, same gross, same
+ * extracted VAT, negative-signed — exactly what the refund cart produces.
+ */
+function refundInputFor(originalLocalReceiptId: string): CreateRefundReceiptInput {
+  const negGross = `-${GROSS}`;
+  const negVat = `-${VAT}`;
+  const returnItem = {
+    id: `return-${originalLocalReceiptId}-0`,
+    product: { id: 'prod-sale-line-0', name: 'Widget', sku: 'WGT-1', price: GROSS },
+    quantity: -1,
+    unit_price: GROSS,
+    line_total: negGross,
+    tax_rate: TAX_RATE,
+    tax_amount: negVat,
+    kind: 'return',
+  } as unknown as CartItem;
+
+  const lines: RefundLineInput[] = [
+    { cartItem: returnItem, originalLineIndex: 0, disposition: 'restock', quantity: '1.000' },
+  ];
+  const original: OriginalFiscalEventLocalView = {
+    fiscalEventId: ORIGINAL_FISCAL_EVENT_ID,
+    businessDate: '2026-08-01',
+    total: GROSS,
+    cashRoundingAdjustment: '0.00',
+    lineItems: [],
+    payments: [{ method_code: 'CASH', amount: GROSS }] as unknown as OriginalFiscalEventLocalView['payments'],
+    trainingFlag: false,
+    transactionDiscountAmount: '0.00',
+  };
+  return {
+    tenantId: TENANT_ID,
+    companyId: COMPANY_ID,
+    terminalId: TERMINAL_UUID,
+    terminalCode: 'T01',
+    locationCode: 'MAIN',
+    operatorId: OPERATOR_UUID,
+    operatorName: 'Alice',
+    shiftId: SHIFT_UUID,
+    businessDate: '2026-08-01',
+    eventTimeDevice: new Date('2026-08-01T10:00:00.000Z'),
+    currency: 'EUR',
+    seller: {
+      name: 'Cafe Tunis',
+      taxNumber: '1234567AM000',
+      countryCode: 'TN',
+      street: '1 Rue de la Liberte',
+      city: 'Tunis',
+      postalCode: '1000',
+    },
+    refundReason: 'customer return',
+    lines,
+    original,
+    originalReceiptUuid: originalLocalReceiptId,
+    originalBusinessDate: '2026-08-01',
+    approvalReferences: [
+      {
+        approval_event_id: '66666666-6666-4666-8666-666666666666',
+        approval_id: '77777777-7777-4777-8777-777777777777',
+        approval_scope: 'void_or_return_override',
+        override_event_id: '88888888-8888-4888-8888-888888888888',
+        policy_version: 'v1',
+        supervisor_user_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        target_reference_id: originalLocalReceiptId,
+      },
+    ],
+    refundIntentId: REFUND_INTENT_ID,
+    paymentMethodId: 'pm-cash',
+    paymentRepositoryId: 'pr-cash',
+  } as unknown as CreateRefundReceiptInput;
 }
 
 const zOpts = {
@@ -357,6 +457,136 @@ describe('C-2 sale reporting — REAL writer through Z / EOD / X', () => {
     };
     expect(signedX.vatBreakdown[0]!['net_amount']).toBe(NET);
     expect(signedX.vatBreakdown[0]!['gross_amount']).toBe(GROSS);
+  });
+
+  // ── M3: the mixed-rate case ──────────────────────────────────────────────
+
+  it('mixed rate — two rates on ONE receipt each decompose independently', async () => {
+    // 12.00 @ 20 % (vat 2.00, net 10.00) + 10.50 @ 5 % (vat 0.50, net 10.00).
+    // Receipt gross 22.50. The two rates share a net of 10.00 but differ in VAT,
+    // so a bucket that leaked across rates would land on a plausible-looking
+    // number rather than an obviously wrong one.
+    const items = [
+      saleCartItem(GROSS, TAX_RATE, VAT, 'sale-line-0'),
+      saleCartItem(GROSS_B, TAX_RATE_B, VAT_B, 'sale-line-1'),
+    ];
+    await createOfflineReceipt(adapter as unknown as Database, saleInput(items, '22.50'));
+
+    const z = await generateZReport(
+      adapter as unknown as Database,
+      TERMINAL_UUID,
+      'shift-1',
+      SHIFT_OPENED_AT,
+      '100.00',
+      zOpts,
+    );
+
+    // Sorted by tax_rate ascending (5 before 20).
+    expect(z.report_data.vat_breakdown).toEqual([
+      { tax_rate: 5, net_amount: NET_B, vat_amount: VAT_B, gross_amount: GROSS_B },
+      { tax_rate: 20, net_amount: NET, vat_amount: VAT, gross_amount: GROSS },
+    ]);
+
+    const eod = await buildEndOfDayPreview(
+      adapter as unknown as Database,
+      TERMINAL_UUID,
+      SHIFT_OPENED_AT,
+      '100.00',
+      'EUR',
+    );
+    expect(eod.vat_breakdown).toHaveLength(2);
+    const eodByRate = new Map(eod.vat_breakdown.map((r) => [r.tax_rate, r]));
+    expect(eodByRate.get(5)!.net_amount).toBe(NET_B);
+    expect(eodByRate.get(5)!.vat_amount).toBe(VAT_B);
+    expect(eodByRate.get(20)!.net_amount).toBe(NET);
+    expect(eodByRate.get(20)!.vat_amount).toBe(VAT);
+
+    const x = await generateXReport(TERMINAL_UUID, {
+      tenantId: TENANT_ID,
+      fiscalShiftId: SHIFT_UUID,
+      fiscalSessionId: SESSION_UUID,
+      operatorId: OPERATOR_UUID,
+      operatorName: 'Alice',
+    });
+    expect(x.vat_breakdown).toEqual([
+      { tax_rate: 5, net_amount: NET_B, vat_amount: VAT_B, gross_amount: GROSS_B },
+      { tax_rate: 20, net_amount: NET, vat_amount: VAT, gross_amount: GROSS },
+    ]);
+  });
+
+  // ── M3: the sale + refund case — THE ticket's live symptom ───────────────
+
+  it('a fully-refunded taxed sale nets the per-rate buckets to ZERO (the interim asymmetry, closed)', async () => {
+    // This is the defect the ticket describes as observable: with the refund
+    // branch already corrected (Lane C) and the sale branch not, a sale and its
+    // full refund left a +VAT / −0 residue instead of cancelling — e.g. +2.00
+    // net / +2.00 gross on a 12.00-gross / 2.00-VAT line. Both branches now
+    // derive net the same way, so the buckets must cancel EXACTLY.
+    await createOfflineReceipt(adapter as unknown as Database, saleInput());
+    const saleRows = await adapter.select<Array<Record<string, string>>>(
+      "SELECT * FROM offline_receipts WHERE receipt_kind IS NULL OR receipt_kind != 'refund'",
+      [],
+    );
+    expect(saleRows).toHaveLength(1);
+    const saleRow = saleRows[0]!;
+
+    // The refund reverses THIS sale — a real second write through the real
+    // refund writer, not a hand-authored negative row.
+    await adapter.execute(
+      `INSERT INTO refund_intents (
+         id, terminal_id, operator_id, original_local_receipt_id, original_fiscal_event_id,
+         line_snapshot_json, line_snapshot_fingerprint, approval_source_event_id,
+         override_source_event_id, state, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, '[]', 'fp', 'a-src', 'o-src', 'approval_authored',
+                 datetime('now'), datetime('now'))`,
+      [REFUND_INTENT_ID, TERMINAL_UUID, OPERATOR_UUID, saleRow['id'], ORIGINAL_FISCAL_EVENT_ID],
+    );
+    await createRefundReceipt(refundInputFor(saleRow['id']!));
+
+    const z = await generateZReport(
+      adapter as unknown as Database,
+      TERMINAL_UUID,
+      'shift-1',
+      SHIFT_OPENED_AT,
+      '100.00',
+      zOpts,
+    );
+
+    // Both rows were seen AND routed to their own branch — otherwise "nets to
+    // zero" could be read as "the refund row was never picked up" (it can't:
+    // the sale alone would give +10.00/+2.00/+12.00, not zero — but making the
+    // routing explicit costs nothing and answers the question directly).
+    expect(z.report_data.sales_count).toBe(1);
+    expect(z.report_data.refunds_count).toBe(1);
+    expect(z.report_data.refunds_amount).toBe(GROSS);
+
+    // ONE rate bucket, all three components exactly zero at the currency scale.
+    expect(z.report_data.vat_breakdown).toEqual([
+      { tax_rate: 20, net_amount: '0.00', vat_amount: '0.00', gross_amount: '0.00' },
+    ]);
+
+    const eod = await buildEndOfDayPreview(
+      adapter as unknown as Database,
+      TERMINAL_UUID,
+      SHIFT_OPENED_AT,
+      '100.00',
+      'EUR',
+    );
+    expect(eod.vat_breakdown).toHaveLength(1);
+    expect(eod.vat_breakdown[0]!.net_amount).toBe('0.00');
+    expect(eod.vat_breakdown[0]!.vat_amount).toBe('0.00');
+    expect(eod.vat_breakdown[0]!.gross_amount).toBe('0.00');
+
+    const x = await generateXReport(TERMINAL_UUID, {
+      tenantId: TENANT_ID,
+      fiscalShiftId: SHIFT_UUID,
+      fiscalSessionId: SESSION_UUID,
+      operatorId: OPERATOR_UUID,
+      operatorName: 'Alice',
+    });
+    expect(x.vat_breakdown).toEqual([
+      { tax_rate: 20, net_amount: '0.00', vat_amount: '0.00', gross_amount: '0.00' },
+    ]);
   });
 
   it('M1 ruling condition 2 — Z_REPORT and SESSION_CLOSE for the same close carry byte-identical vat_breakdown', async () => {
