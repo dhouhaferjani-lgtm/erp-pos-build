@@ -306,9 +306,11 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
      * That "never a 422" is enforced by the PARENT CLASS of
      * `UnbalancedJournalEntryException`, and the parent is load-bearing:
      * re-parenting it under `\InvalidArgumentException` (a `\LogicException`)
-     * exposes this refusal to the ~30 `catch (\InvalidArgumentException)` blocks in
-     * `app/` that render 400/422, and drops it out of the `catch (\RuntimeException)`
-     * in `CreditNoteController::post()` that maps it to a detailed 500.
+     * exposes this refusal to the `catch (\InvalidArgumentException)` blocks in `app/`
+     * that render 400/422 — 23 in that literal form, 53 clauses matching
+     * `catch (…InvalidArgumentException…)` — and drops it out of the
+     * `catch (\RuntimeException)` in `CreditNoteController::post()` that maps it to a
+     * detailed 500.
      * enforcement-P3 M1 did exactly that and reverted it (round 1, findings 3/4);
      * `ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents`
      * now guards it.

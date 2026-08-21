@@ -172,12 +172,23 @@ milestones:
   - id: M1
     title: "3(a) RESCOPED (gate-r1 C-2): the GL chokepoint (GeneralLedgerService::sealAndPersistEntry, :3480-3510; postEntry :2874 / postEntryNow :3450 funnel into it) ALREADY balance-validates. Work = (i) semantic classification of every journal_entries creator from P1's census: draft-only (e.g. createPOSChargeEntry :4072 — who posts the draft, through what guard?) / posted-through-chokepoint (characterize, NO new validator, NO new test presented as evidence) / bypassing (the genuine gaps); (ii) close ONLY the genuine gaps — route through the chokepoint where possible, else constructor-injected DoubleEntryValidator; never a second balance algorithm in the chokepoint; (iii) RED-FIRST PROOF MANDATORY per targeted path — a green-at-base test DISQUALIFIES the target (reclassify as guarded); (iv) optional scoped chokepoint failure-mode normalization for queued contexts (loud fail, retry/dead-letter); (v) rule 19/20 in every touched queued path. One unbalanced-guard test PER class-(c) census row in its OWN module — the acceptance command list is DERIVED from the census (gate-r2 R2-H-7, superseding the gate-r1 H-11 fixed Treasury/BatchExpiry/Accounting trio): per class-(c) row, a named test path + anchored --filter with an asserted NONZERO selected-test count (parse the PHPUnit summary; apps/api/phpunit.xml sets no failOnEmptyTestSuite, so an empty selection exits 0 — exit code alone proves nothing) + preserved red-first evidence; modules with ZERO class-(c) rows submit the reviewed census evidence only, NO placeholder green command. The -19.000 item is LEDGER §2 row S-15 — pointer only (gate-r1 H-10)."
     review_lenses: [treasury, fiscal-pos, stock-gl-interaction, inventory-costing]
-    status: review          # round-2 CHANGES-REQUIRED (documentation-only) addressed; handed back for re-review
-    fix_rounds: 2
+    status: review          # round-3 CHANGES-REQUIRED (documentation-truth) addressed; handed back for re-review
+    fix_rounds: 3
     commit: bea3b4936       # Phase 6.1.6 (type split + retraction); 6.1.4 1d6fbe63c round-1 fixes, 6.1.1 ffe6cd018 census, 6.1.2 4ad66ca31 deliverable D
     verdict: null
-    last_verdict: changes_required   # round 2 (documentation-only) — docs/handoff/reviews/enforcement-p3/M1-round2.md
+    last_verdict: changes_required   # round 3 (documentation-truth) — docs/handoff/reviews/enforcement-p3/M1-round3.md
     # ── M1 EXECUTION RECORD (2026-08-21) ──
+    # ⚠️ SUPERSEDED IN PART — read the M1 ROUND-1/ROUND-2/ROUND-3 RECORDS BELOW FIRST.
+    # This block records the ROUND-0 delivery. Three of its statements were reversed at
+    # review and are corrected inline below (marked SUPERSEDED). The census
+    # (docs/handoff/reviews/enforcement-p3/M1-census.md) is the current authority for the
+    # findings list and every line reference; where this block and the census disagree,
+    # THE CENSUS IS CORRECT.
+    # TRUE HEAD STATE in one line: two SIBLING exception types (UnbalancedJournalEntryException
+    # stays \RuntimeException, restored to pre-M1; the chokepoint throws the new
+    # UnbalancedJournalEntryPostException extends \InvalidArgumentException at
+    # GeneralLedgerService.php:3418); SalesOrderToInvoiceConverter is COMMENT-ONLY;
+    # ELEVEN reported findings R-1..R-11.
     # Census: docs/handoff/reviews/enforcement-p3/M1-census.md — 53 real journal_entries
     # creator sites across 9 files (7 production + 2 seeders). Classification:
     # (a) draft-only 21 · (b) chokepoint-guarded 24 · (c) writes Posted without
@@ -194,21 +205,30 @@ milestones:
     # mark a row Valid), and the opening-balance pair (two legs from one variable).
     #
     # Key structural proof (census §1): the ONLY writers of status => Posted are the
-    # chokepoint (GeneralLedgerService:3440) plus 6 direct creators; the DB column
+    # chokepoint (GeneralLedgerService:3450) plus 6 direct creators; the DB column
     # defaults to 'draft'; JournalLineObserver freezes lines on chained entries; and
     # there is no insert/upsert/firstOrCreate/relation-create/raw-SQL vector. Therefore
     # no draft can reach Posted except through sealAndPersistEntry.
     #
     # Implementation content = deliverable D (item iv), red-first proven:
     # the chokepoint raised its balance refusal as a BARE \InvalidArgumentException
-    # while the house type (UnbalancedJournalEntryException) already existed. It now
-    # raises the house type; the type was made a subclass of \InvalidArgumentException
-    # and the message kept byte-identical, so the change is backward compatible for
-    # every existing catcher. SalesOrderToInvoiceConverter re-throws it ahead of its
-    # graceful catch. Balance algorithm untouched; no second validator.
+    # while the house type (UnbalancedJournalEntryException) already existed.
+    # >>> SUPERSEDED (round 1 finding 3/4 + round 2): the chokepoint does NOT raise the
+    #     house type and that type was NOT re-parented. Re-parenting was tried, broke
+    #     CreditNoteController:406's envelope AND newly exposed the refusal to three
+    #     catch(\RuntimeException) sites rendering 422, and was REVERTED. HEAD ships a
+    #     SIBLING SPLIT: UnbalancedJournalEntryException extends \RuntimeException
+    #     (byte-identical to pre-M1); the chokepoint throws the NEW
+    #     UnbalancedJournalEntryPostException extends \InvalidArgumentException
+    #     (GeneralLedgerService.php:3418) — the same hierarchy its bare throw already had,
+    #     so NO catch site anywhere changed. Message byte-identical either way.
+    # >>> SUPERSEDED (round 1 finding 2): SalesOrderToInvoiceConverter does NOT re-throw.
+    #     The re-throw was proven unreachable and WITHDRAWN; that file is COMMENT-ONLY.
+    # Balance algorithm untouched; no second validator. (Both statements above hold.)
     #
-    # RECORDED DEVIATIONS (census §7): M1-D1 brief line numbers drifted (chokepoint is
-    # :3378, not :3480-3510; postEntry :2772; postEntryNow :3348; createPOSChargeEntry
+    # RECORDED DEVIATIONS (census §7): M1-D1 brief line numbers drifted (chokepoint
+    # sealAndPersistEntry is :3379 and its THROW is at :3418 at HEAD, not :3480-3510;
+    # postEntry :2773; postEntryNow :3349; createPOSChargeEntry
     # :3999) — every fact verified at the ACTUAL location. M1-D2 the P1 baseline holds
     # only 4 journal_entries keys (a violation set, not a creator inventory), so the
     # census was rebuilt independently. M1-D3 zero class-(c) guards is the CORRECT
@@ -221,7 +241,10 @@ milestones:
     # post past the try when transactionLevel > 0), and the fix now stands on the
     # corrected justification. No production incident is claimed.
     #
-    # SIX REPORTED FINDINGS handed to the parent, out of 3(a) balance scope (census §6):
+    # REPORTED FINDINGS handed to the parent, out of 3(a) balance scope (census §6).
+    # >>> SUPERSEDED: this list is the ROUND-0 SIX. The current count is ELEVEN (R-1..R-11)
+    #     — see the round-1 and round-3 records below. The six below are still accurate
+    #     as far as they go, EXCEPT R-4, whose disposition is now a PARENT RULING (below).
     # R-1 the live journal_entries DELETE at RepositoryTransferService:105 (Draft-only,
     # unchained, same-transaction — an append-only concern, not a balance gap; the
     # observer guard reads a STALE instance and there is no DB-level trigger).
@@ -345,6 +368,47 @@ milestones:
     #    table now carries a matching row so §0 and §6 cannot disagree.
     # Pint pass (one self-inflicted FQN fixer found and fixed); PHPStan level 8 no
     # errors; regression re-run green: 107 tests across 8 files.
+    # ── M1 ROUND-3 RECORD (fix_rounds 3) ──
+    # Verdict: CHANGES-REQUIRED, DOCUMENTATION-TRUTH ONLY. The register confirms the code
+    # is correct through five attempted bypasses (no raw write vector; type split broke no
+    # live catcher — 31 tests/123 assertions green on two UNMODIFIED base-content files;
+    # the new Treasury clause is reachable and unshadowed; no deptrac break; no rule-19
+    # drift). No code behaviour changed this round.
+    #
+    # 1 (P2) Census row 3 RECLASSIFIED. BatchWriteOffService.php:122 is catch(\RuntimeException)
+    #   and the chokepoint refusal is UnbalancedJournalEntryPostException extends
+    #   \InvalidArgumentException, so it CANNOT be intercepted there under ANY nesting —
+    #   the same rule the table already applied to rows 6/8/17. The old "protected by the
+    #   $postSynchronously/afterCommit deferral" text was round-1 wording that went stale at
+    #   bea3b4936. R-9 REDUCED to one site (PostGrIrOnGoodsReceipt.php:41, catch(\Throwable),
+    #   genuinely nesting-dependent). Explicit warning added: the change that WOULD expose
+    #   row 3 is RE-TYPING/BROADENING the catch, not removing deferral — so nobody spends
+    #   remediation effort pinning a nesting invariant on a site that is immune by type.
+    # 2 (P2) THIS execution record got a SUPERSEDED-IN-PART header + inline corrections:
+    #   the sibling split (not a re-parenting), converter is comment-only (re-throw withdrawn),
+    #   findings count 11 not 6/9, chokepoint throw at :3418, structural-proof ref :3450.
+    #   This YAML is what the parent and P3-M3 read, so it must not disagree with the census.
+    # 3 (P3) R-11 SPLIT OUT of R-10: PosCoreReceiptProjection.php:506 and
+    #   ReceiptReturnService.php:516 — reachable SYNCHRONOUS in-frame catchers that Log::error
+    #   and DISCARD THE GL BATCH on the non-retryable branch while the fiscal projection
+    #   completes. PARENT RULING RECORDED: REPORTED (in scope per brief item 4's
+    #   "propose/implement" optionality); fix lane = the fiscal projection-discipline family
+    #   post-P3, converging with the OutboxIngestor/seal-branch ticket cluster in the parent
+    #   ledger; framing = PROJECTION ERROR DISCIPLINE (fail loudly/retryably/dead-letter),
+    #   NOT HTTP catch narrowing. R-10 keeps only the HTTP/4xx sites.
+    # 4 (P3) R-4 PARENT RULING RECORDED: the prior L1 cancellability deferral is UPHELD for
+    #   P3 (no unilateral behaviour change); the cancellability-vs-chained-balance trade-off
+    #   is ESCALATED as a named owner decision to be added to the repo LEDGER at P3 close.
+    #   ⛔ M3 CARRY-FORWARD: R-4 must NOT be reported at the whole-package gate as "balance
+    #   invariant closed" — it is OPEN BY RULING. M3 should read the invariant as: closed for
+    #   every class-(c) seam EXCEPT this one, which stands deferred by an explicit ruling
+    #   rather than by absence of a defect.
+    # 5 (P3) AccountingService docblock "~30" corrected to the true counts: 23 literal
+    #   catch(\InvalidArgumentException) blocks, 53 clause-matching. Argument unaffected.
+    #
+    # ⛔ TWO RULINGS FOR M3 TO CARRY (do not silently drop): R-4 open-by-ruling (above), and
+    # R-11's post-P3 fix lane + projection-discipline framing.
+    # Pint pass; PHPStan L8 no errors; regression green.
   - id: M2
     title: "3(b) CONSUMER mode (gate-r1 C-3). The P2 dependency is already satisfied at M0 (gate-r3 R3-H-3 — the whole P2 package is on the base by dispatch precondition; 'per 2(b) outcome' is a landed fact, no mid-wave pin exists). Work: reconcile TreasuryReceiptBridge's local required-purposes lists (:446,:528) + any census-surfaced local list against ProvisioningRequiredPurposesV1 — divergences are REPORTED findings, never edits; per-country seeder/template completeness CI test keyed to the manifest's REQUIRED classification + expectedAccountType() (never keyed to requiredPurposes()); enumerate seeded charts, don't assume; wire into a lane that actually runs (per the LANDED 2(b) outcome; worst case the anchored pgsql allowlist; P2 carries the reciprocal never-drop-this-wiring obligation); tamper test names country + purpose. Frozen country seeder class bodies and the manifest's classification content UNTOUCHED."
     review_lenses: [treasury, fiscal-pos]
