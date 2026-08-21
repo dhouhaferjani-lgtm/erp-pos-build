@@ -10,6 +10,7 @@ use App\Http\Middleware\RequireModule;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\ValidateLocationAccess;
+use App\Modules\Accounting\Domain\Exceptions\UnpostableCorrectingEntryException;
 use App\Modules\BatchExpiry\Domain\Exceptions\InsufficientBatchStockException;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\CountryDefaults\Domain\Exceptions\CountryDefaultsProvisioningUnavailableException;
@@ -893,6 +894,25 @@ return Application::configure(basePath: dirname(__DIR__))
                         'message' => trans($e->translationKey()),
                     ],
                 ], 503);
+            }
+        });
+
+        // R2-F4 — a correcting-entry document that cannot be posted. Typed for the
+        // same reason as the CF period lock above: the FE branches on WHY (a
+        // missing link, an unknown account and "this does not rebalance the
+        // document" have completely different remedies). Registered BEFORE the
+        // generic DomainException handler, which it extends — Laravel 11 matches
+        // render callbacks in REGISTRATION ORDER, so below it the typed code would
+        // collapse into BUSINESS_ERROR.
+        $exceptions->render(function (UnpostableCorrectingEntryException $e, Request $request) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json([
+                    'error' => [
+                        'code' => $e->refusalCode->value,
+                        'message' => $e->getMessage(),
+                        'document_number' => $e->documentNumber,
+                    ],
+                ], 422);
             }
         });
 

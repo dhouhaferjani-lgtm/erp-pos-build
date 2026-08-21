@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Enums;
 
-use App\Modules\Document\Domain\DTOs\CorrectingEntryPayload;
-
 enum DocumentType: string
 {
     case Quote = 'quote';
@@ -32,8 +30,10 @@ enum DocumentType: string
      * mechanism."
      *
      * It carries no product lines and no partner balance — its content is a set
-     * of GL legs held in `documents.payload`
-     * ({@see CorrectingEntryPayload}) — and its
+     * of GL legs held in `documents.payload`, shaped by
+     * `App\Modules\Document\Application\DTOs\CorrectingEntryPayload` (named in
+     * prose, NOT imported: Domain may not depend on Application — deptrac
+     * `ModuleDomain` allows only `SharedDomain` + `SharedContracts`) — and its
      * mandatory `source_document_id` names the document whose sealed journal
      * entry it repairs.
      *
