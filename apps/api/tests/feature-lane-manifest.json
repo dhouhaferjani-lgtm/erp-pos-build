@@ -746,8 +746,8 @@
     },
     "Compliance": {
       "lane": "feature-lane-fiscal-finance/Compliance",
-      "classes": 22,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 23,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. RAISED 22->23 (LEDGER C-6 item 3 / F-5, 2026-08-21): Nf525CanonicalZGrandTotalPeriodTotalsTest. Deliberate, and NOT a silent class — the same commit names it in the backend-test-pgsql --filter allowlist so it executes on PR->dev today; when this lane is unparked, drop that allowlist entry and lower this ceiling back."
     },
     "Console": {
       "lane": "feature-lane-data-console/Console",

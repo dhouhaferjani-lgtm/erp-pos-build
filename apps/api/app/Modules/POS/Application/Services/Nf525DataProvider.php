@@ -1252,8 +1252,37 @@ final class Nf525DataProvider implements Nf525DataProviderContract
             $payload = is_array($event?->payload) ? $event->payload : [];
         }
 
+        /** @var array<string, mixed> $receiptTotals */
+        $receiptTotals = is_array($payload['receipt_totals'] ?? null) ? $payload['receipt_totals'] : [];
+        /** @var array<string, mixed> $refundsTotals */
+        $refundsTotals = is_array($payload['refunds_totals'] ?? null) ? $payload['refunds_totals'] : [];
+
+        // C-6 item 3 (F-5): `Nf525XmlBuilder::addGrandTotals()` reads the TOP-LEVEL
+        // keys `periodTotals['gross_sales']` / `['tax_amount']` (`:335-336`). This
+        // map used to emit ONLY the five nested keys below, so both of the
+        // builder's `?? '0.00'` fallbacks fired and `<TotauxPeriode>` exported
+        // 0.00/0.00 for EVERY canonical (device-authored) Z report.
+        //
+        // The FLAT shape is the contract, not the builder's problem: it is what
+        // `GrandtotalService::calculatePeriodTotals()` produces and signs into the
+        // grand-total event's own hash (`:103,:114`), what
+        // `GrandtotalEvent::getPeriodGrossSales()/getPeriodTaxAmount()` read
+        // (`:149,:157`), and what `mapGrandTotal()` below already passes through
+        // verbatim for the LEGACY path — which is why only the canonical path was
+        // exporting zeros. One producer, three readers, one dissenter; the
+        // dissenter is fixed.
+        //
+        // The nested detail is KEPT beside the flat money: it is the only route by
+        // which a canonical Z's `vat_breakdown` / `payment_method_totals` reach a
+        // grand-total consumer, and dropping it is an unrelated change.
         /** @var array<string, mixed> $periodTotals */
         $periodTotals = [
+            'gross_sales' => (string) ($receiptTotals['gross_sales'] ?? '0.00'),
+            'net_sales' => (string) ($receiptTotals['net_sales'] ?? '0.00'),
+            'tax_amount' => (string) ($receiptTotals['tax_amount'] ?? '0.00'),
+            'sales_count' => (int) ($receiptTotals['count'] ?? 0),
+            'refunds_count' => (int) ($refundsTotals['count'] ?? 0),
+            'refunds_amount' => (string) ($refundsTotals['amount'] ?? '0.00'),
             'receipt_totals' => $payload['receipt_totals'] ?? [],
             'refunds_totals' => $payload['refunds_totals'] ?? [],
             'voids_totals' => $payload['voids_totals'] ?? [],
