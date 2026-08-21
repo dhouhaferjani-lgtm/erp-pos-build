@@ -1,0 +1,39 @@
+## M2 merge gate — round 1 · lenses: fiscal-pos, general
+
+**Range reviewed:** `9d14cb8e1..HEAD` (M2 code = `d1afcba9d`). **Amending authority applied:** `M1-ruling.md` (Option B, unconditional; conditions 1–5).
+
+**Scope check against the ruled option (all verified in code, not from the brief):**
+- Ruling condition 1 (Option B, zero registry/payload/parser/validator/projection/archive change) — `git diff --name-only 9d14cb8e1..HEAD` = 3 POS production files + 2 POS test files + lane docs. No `apps/api/**`, no `FiscalEventPayloadRegistry`, no version bump. ✅
+- R-2 (one pattern, three times): `zReportService.ts:925-932`, `endOfDayPreview.ts:306-313`, `reportApi.ts:498-505` are token-for-token the same shape (`lineGross ← line_total`; `lineNet = bcsub(gross, vat, scale)`; three `bcadd` accumulators), matching the refund reference at `zReportService.ts:867-875` / `reportApi.ts:462-469`. No `bcabs` on the sale side — correct, and load-bearing: a mixed cart's return line writes a negative `line_total`/`tax_amount` (`cartStore.ts:564`, `computeTaxAmount:163-172`), which `bcabs` would silently flip. ✅
+- R-3 (explicit scale): every arithmetic call in the three touched branches now passes `decimals`/`scale`; previously they took `decimal.ts:22-28`'s default of 3. ✅
+- Headline aggregation untouched (`zReportService.ts:898-901`, `reportApi.ts:484-486` unchanged). ✅
+- Ruling condition 2 (SESSION_CLOSE lockstep) — asserted, not assumed, and non-vacuously: the test captures the real `AuthorZSessionCloseInput` and runs the real `buildZReportPayload`/`buildSessionClosePayload`, which production calls with the same `input` (`zSessionAuthoring.ts:684`/`:707`), then asserts the shared `vat_breakdown` equals the corrected decomposition. ✅
+- Red-first is **structurally CONFIRMED independently of the pasted evidence**: the pre-fix expression in the diff (`lineNet = line.line_total`, `lineGross = bcadd(lineNet, lineVat)`) provably yields `net '12.00' / gross '14.00'` on the suite's 12.00-gross/2.00-VAT real-writer row, while every new assertion demands `10.00 / 12.00`. The tests cannot have been written against the new code.
+- Verified green myself: `zReportService.test.ts`, `endOfDayPreview.test.ts`, `reportApi.test.ts`, `refundReportingEndToEnd.test.ts` → 62 passed; `saleReportingEndToEnd.test.ts` → 7 passed. `pnpm typecheck` clean. `lint:ratchet` → `@autoerp/pos` **held at 84**; `@autoerp/web` +3 confirmed **inherited** (`git diff base..HEAD -- apps/web` and `git status -- apps/web` both empty).
+- The endOfDayPreview fixture corrections are proven correct rather than fitted: expected values at `:83-85` (25.21 / 4.79 / 30.00) are unchanged and reconcile exactly with the corrected gross inputs (10.00−1.60 + 20.00−3.19).
+
+### Findings register
+
+**1 — P3 · CONFIRMED · `apps/pos/src/lib/offline/endOfDayPreview.ts:280-282`**
+The refund-branch comment still reads *"The SALE branch is left byte-identical (its own gross-as-net treatment predates this lane and is not in this wave's scope — see the fix-wave report)"* — now false, and directly contradicted 20 lines below by the fix at `:301-313`, whose own comment says *"the comment above already stated…"*. **Failure scenario:** a future fiscal auditor reading the sealed-bytes derivation is told the sale branch is untouched while looking at the corrected sale branch, and may re-"fix" or re-scope it. Comment-only; no runtime effect. Close by striking the two stale sentences (not a refund-branch code change, so R-2's "do not tidy" is not engaged).
+
+**2 — P3 · CONFIRMED · `docs/sessions/codex-z-sale-branch-decomposition-report.md` (title line 1; `:141`; `:149-155`)**
+The required handback report is stale at M2: title still *"(M0 → M1 STOP)"*, "Ruled option and its source" still reads **"NONE — this is the STOP"** with `chosen_option: null`, the R-4 register still says *"Empty for this run"*, and there is no M2 section. Consequently the M2 evidence contract's named antidote — **red output pasted before the fix commit** — exists nowhere verbatim; only paraphrased counts in the progress YAML (`red_first_evidence`) and the commit message. **Failure scenario:** the handback package asserts an unruled STOP state for a milestone that implemented a ruling, and the red-first proof rests on self-report. Downgraded to P3 only because I confirmed the red by derivation from the pre-fix expression preserved in the diff. Must be brought current before M4/handback.
+
+**3 — P3 · CONFIRMED · `docs/handoff/CODEX-DISPATCH-…-2026-08-18.md:105-107, :118` vs `M1-ruling.md` F-2**
+The ruling orders that the brief's *"headline totals … Already correct"* justification "is FALSE and must be annotated" and that LEDGER C-2's matching sentence be struck. At HEAD the brief still asserts it verbatim in both places, and the obligation is tracked nowhere — `blockers: []`, no `owes`/`amendments` entry in the progress YAML. **Failure scenario:** the lane merges, C-2 closes, and the record still says the headline is correct while M2 has just made `Σ vat_breakdown.net_amount ≠ net_sales` by the shift's full VAT (the ruling's own accepted identity inversion). LEDGER is parent-owned per §DELIVERABLE; the brief annotation and the YAML tracking entry are not.
+
+**4 — P3 · CONFIRMED · working tree, `apps/pos/src/lib/offline/__tests__/saleReportingEndToEnd.test.ts`**
+The tree is dirty at the gate: 236 uncommitted insertions / 14 deletions on the exact file that constitutes M2's acceptance evidence (M3's mixed-rate + net-to-zero cases, in flight). The file changed underneath this review — 422 lines mid-read, 617 lines minutes later. I reviewed the committed HEAD blob (395 lines) for acceptance and ran the working-tree version only as corroboration. **Failure scenario:** a gate that reads the working tree instead of the range certifies unreviewed M3 code as M2. Process note; ensure M3 commits before its own gate.
+
+### Bypasses attempted that FAILED to produce a finding
+- **Rounding/precision drift from the R-3 change** (per-line rounding at currency scale now, vs. one rounding at the old default-3 accumulation): unreachable — `cartStore.recalcLineTotal`/`computeTaxAmount` (`cartStore.ts:171-196`) write `line_total` and `tax_amount` at the *same* `getDecimals()` currency scale, so `gross − vat` is exact and the sums carry no residue. `Big.RM=1` (round-half-up) matches the refund branch.
+- **An unfixed signed consumer (F-3, `buildReceiptSnapshots` taxByRate, `zReportService.ts:1015-1017`)**: stays out — `computeZReportHash` hashes `reportData` only (`:445-451`), and neither `buildZReportPayload` nor `buildSessionClosePayload` carries snapshots (`zSessionAuthoring.ts:400-465`). Not in the sealed bytes.
+- **A masking sale fixture left uncorrected under a passing assertion**: `zReportService.test.ts:123` still authors `line_total '42.00'` as NET, but that file contains **no** `vat_breakdown` assertion (grep across all POS tests), so nothing asserted is masked — and it is already enumerated for M3 in the report's R-4 register.
+- **Vacuous lockstep assertion**: byte-identity alone is structurally guaranteed (one `input` object), but the paired assertion against the hand-computed decomposition makes the test non-vacuous.
+- **`noUnusedLocals` / lint growth from the new suite**: `pnpm typecheck` clean, pos ratchet held at 84.
+- **Scope creep into `apps/api`, headline aggregation, refund branches, or signed-event backfill**: none present in the file list or the diff.
+
+0 P1 · 0 P2 · 4 P3. The milestone's own invariants (ruled option implemented exactly, refund pattern mirrored three times, explicit scale, headline untouched, SESSION_CLOSE lockstep) are all satisfied and verified in code. The four P3s are artifact hygiene and one stale comment; none blocks merge, and all four should be closed at M3/M4.
+
+VERDICT: ACCEPT

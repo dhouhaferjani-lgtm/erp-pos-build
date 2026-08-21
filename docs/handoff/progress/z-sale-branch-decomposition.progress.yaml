@@ -21,6 +21,31 @@ commit_series: "z-decomp M<m>.<s>:"
 ledger_row: C-2   # parent closes at merge with the lane's evidence line
 
 status: in_progress
+
+# Obligations this lane CANNOT discharge itself (parent-owned per the brief's §DELIVERABLE),
+# tracked here so they cannot be lost between the M1 ruling and the merge.
+owes_parent:
+  - id: ledger-c2-strike-headline-sentence
+    source: M1-ruling.md §"Sub-item rulings" F-2; M2 gate-r1 finding 3
+    what: >-
+      LEDGER row C-2 still contains the sentence "Headline totals correct". The ruling requires
+      it STRUCK — it is false (F-2: signed net_sales == gross_sales on every taxed shift). The
+      executor annotated the BRIEF (done, this commit) but LEDGER.md is parent-owned and must not
+      be edited from this lane.
+    owner: parent orchestrator, at merge
+  - id: ledger-c2-name-session-close
+    source: M1-ruling.md §"Sub-item rulings" F-1
+    what: >-
+      LEDGER C-2 and the ticket name only Z_REPORT and X_REPORT. SESSION_CLOSE is a THIRD
+      affected signed event type and the ruling applies to it in lockstep; the parent amends both.
+    owner: parent orchestrator, at merge
+  - id: ticket-residue-column-label
+    source: M3 net-to-zero reproduction
+    what: >-
+      The ticket (:13-14) and the brief (:111-112) describe the residue as "+2.00 net / +2.00
+      VAT". Reproduced exactly, it is +2.00 net / +2.00 GROSS with VAT cancelling to 0.00.
+      Magnitude and net figure right, second column label wrong. Not this lane's file to edit.
+    owner: parent orchestrator
 # M1's gate RULED (Option B) and the parent recorded it at 9e43a4f5a — the M1 blocker is
 # DISCHARGED and kept below as `resolved_blockers` for the audit trail, not as an open item.
 blockers: []
@@ -277,10 +302,26 @@ milestones:
   - id: M2
     title: three sale-branch fixes + scale args, real-writer red-first per consumer
     review_lenses: [fiscal-pos, general]
-    status: review
-    commit: null            # self-reference impossible at write time; filled by M3's commit
-    verdict: null
-    fix_rounds: 0
+    status: passed
+    commit: d1afcba9d
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M2-round1.md
+    last_verdict: ACCEPT (round 1, exit 0) — 0 P1, 0 P2, 4 P3; all four closed in the M2.2 commit
+    fix_rounds: 1
+    p3_closures: >-
+      gate-r1 finding 1: endOfDayPreview.ts:280-282 still claimed "The SALE branch is left
+      byte-identical ... not in this wave's scope" twenty lines above the corrected sale branch.
+      Struck (comment-only; R-2's "do not tidy the refund branch" is not engaged, and a stale
+      "untouched" note is exactly what gets a fix re-reverted later).
+      finding 2: the handback report was stale at M2 (title, ruled option, empty R-4 register, no
+      M2 section) and the red output existed nowhere verbatim. Report brought current with the
+      red pasted verbatim, the final R-4 register, and the M2/M3 sections; the old STOP paragraph
+      is RETAINED as superseded text so the handback shows the stop was real, not back-filled.
+      finding 3: the brief's "which the writer already stores correctly" justification is FALSE
+      and the ruling ordered it annotated — done in-place at §SCOPE and in the NOT-IN-SCOPE table
+      (the instruction stands, but as a SCOPE BOUNDARY, not a correctness claim). The LEDGER half
+      is parent-owned and is now tracked under `owes_parent`.
+      finding 4: process — the tree was dirty with in-flight M3 work while M2 was under review.
+      M3 is committed separately BEFORE its own gate; this commit deliberately excludes it.
     ruled_option_implemented: >-
       B — in-place semantic correction at the current event_version. ZERO registry / payload /
       parser / validator / projection / archive changes (ruling condition 1); verified by the
@@ -335,10 +376,40 @@ milestones:
   - id: M3
     title: real-writer E2E matrix (mixed-rate, sale+refund net-to-zero) + fixture-correction register
     review_lenses: [fiscal-pos, general]
-    status: pending
-    commit: null
+    status: review
+    commit: null            # self-reference impossible at write time
     verdict: null
     fix_rounds: 0
+    matrix: >-
+      Both required cases added to the real-writer suite, and BOTH PROVEN MEANINGFUL by
+      reverting the sale branch and observing the predicted wrong values (not merely by
+      passing after the fix).
+    mixed_rate: >-
+      Two rates on ONE receipt through the real writer: 12.00 @ 20 pct (vat 2.00, net 10.00) +
+      10.50 @ 5 pct (vat 0.50, net 10.00), receipt gross 22.50, asserted across all THREE
+      consumers. The two rates deliberately share a net of 10.00 while differing in VAT, so a
+      bucket leaking across rates lands on a plausible-looking number rather than an obviously
+      wrong one. Pre-fix it reported rate-5 net 10.50 / gross 11.00 and rate-20 net 12.00 /
+      gross 14.00 — BOTH rates independently wrong.
+    net_to_zero: >-
+      A fully-refunded taxed sale — real createOfflineReceipt followed by real
+      createRefundReceipt reversing THAT row (real refund_intents seed, real v4 payload) —
+      nets every per-rate component to exactly 0.00 across all three consumers. Pre-fix it
+      leaves net +2.00 / gross +2.00 / vat 0.00, which is the ticket's live symptom reproduced
+      to the cent.
+    ticket_wording_correction: >-
+      The reproduction exposes a small error in the TICKET's own description
+      (docs/superpowers/tickets/2026-08-01-device-z-sale-branch-gross-as-net.md:13-14) and in
+      the brief's SCOPE echo of it: both say the residue is "+2.00 net / +2.00 VAT". The actual
+      residue is +2.00 NET and +2.00 GROSS with VAT cancelling to 0.00 — the buggy sale adds
+      (net 12.00, vat 2.00, gross 14.00) while the corrected refund subtracts (net 10.00,
+      vat 2.00, gross 12.00), so the VAT column is the one component that DOES cancel. The
+      magnitude and the net figure are right; the second column label is wrong. Recorded, not
+      edited (the ticket is not this lane's file to change).
+    fixture_register: see M2.fixture_corrections — no further fixtures were corrected at M3.
+    i18n: >-
+      No user-facing string changed in this lane (brief M3): the diff touches aggregation
+      expressions and tests only. apps/pos has no `ar` tree and none was created.
   - id: M4
     title: whole-lane gate over the integrated branch
     review_lenses: [fiscal-pos, general]

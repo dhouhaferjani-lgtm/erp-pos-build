@@ -277,9 +277,15 @@ export async function buildEndOfDayPreview(
     // for a 12.00-gross, 2.00-VAT refund instead of net −10.00 / gross
     // −12.00 — the same double-count the signed Z carried, additively.
     // The refund branch now derives net the only way it can be derived:
-    // gross − vat, at the currency scale. The SALE branch is left
-    // byte-identical (its own gross-as-net treatment predates this lane
-    // and is not in this wave's scope — see the fix-wave report).
+    // gross − vat, at the currency scale.
+    //
+    // C-2 update (z-sale-branch-decomposition): this block used to end by
+    // saying the SALE branch was left byte-identical and out of that wave's
+    // scope. That is no longer true — the sale branch below now uses the
+    // SAME derivation, so both branches agree. The sentence is struck rather
+    // than left standing, because a stale "the sale branch is untouched"
+    // sitting twenty lines above a corrected sale branch is exactly the kind
+    // of note that gets a fix re-litigated or re-reverted later.
     const lines = JSON.parse(receipt.lines || '[]') as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';

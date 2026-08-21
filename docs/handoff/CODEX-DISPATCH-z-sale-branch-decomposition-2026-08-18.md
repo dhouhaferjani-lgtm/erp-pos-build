@@ -102,10 +102,23 @@ cite the semantic anchor.)*
 
 **What is WRONG:** the per-rate `vatByRate` decomposition inside signed `Z_REPORT` / `X_REPORT` events —
 net overstated by the VAT amount per taxed line, gross overstated by the same.
-**What is CORRECT and must stay correct:** the headline totals. `gross_sales` / `net_sales` /
-`tax_amount` come from `receipt.total` / `receipt.subtotal` / `receipt.tax_amount` (`zReportService.ts:898-901`),
-which the writer already stores correctly. **Do not touch the headline aggregation** — this is a
-per-rate decomposition fix and nothing else.
+**What must stay OUT OF SCOPE:** the headline totals. `gross_sales` / `net_sales` / `tax_amount`
+come from `receipt.total` / `receipt.subtotal` / `receipt.tax_amount` (`zReportService.ts:898-901`).
+**Do not touch the headline aggregation** — this is a per-rate decomposition fix and nothing else.
+
+> 🚨 **ANNOTATION (ordered by the M1 ruling, `M1-ruling.md` §"Sub-item rulings" F-2).** The
+> original justification for that instruction — *"which the writer already stores correctly"* — is
+> **FALSE**, and the ruling requires it to be annotated rather than silently corrected.
+> `cartTotals.ts:36` defines `subtotal = Σ line_total`, and `line_total` is **GROSS**
+> (docblock `:7`); with no transaction discount `total === subtotal` exactly (`:40`, `:52`, `:66`);
+> `receiptService.ts:145-158` sums the same into the stored `subtotal` (`:547`). Therefore signed
+> **`net_sales` equals `gross_sales`** on every taxed shift — the F-2 defect, matching audit R-01's
+> "unnamed 5th defect" (`docs/superpowers/audits/2026-08-05-production-v1-readiness.md:185`).
+> The instruction to leave it alone **still stands** (ruling condition 4: F-2 is a sibling lane
+> bound to the same device build), but it stands as a **scope boundary, not a correctness claim**.
+> Consequence the executor must not paper over: with this lane's fix and F-2 unfixed, a sealed Z
+> has `Σ vat_breakdown.net_amount ≠ net_sales` by the shift's full VAT — the identity inversion the
+> ruling accepted knowingly.
 
 **The live symptom** (accepted interim asymmetry, orchestrator ruling 2026-08-01): a fully-refunded
 taxed sale leaves a **+VAT / −0 residue** in the Z buckets instead of netting to zero — e.g. +2.00 net /
@@ -115,7 +128,7 @@ taxed sale leaves a **+VAT / −0 residue** in the Z buckets instead of netting 
 
 | Area | Why |
 |---|---|
-| Headline `gross_sales` / `net_sales` / `tax_amount` aggregation | Already correct. Changing it would be a second, unrelated defect. |
+| Headline `gross_sales` / `net_sales` / `tax_amount` aggregation | **Out of scope — but NOT because it is correct** (that justification is FALSE; see the annotation in §SCOPE). It is a separate defect, **F-2**, ruled into a sibling lane bound to the same device build (M1 ruling condition 4). Changing it here would be scope creep, not a correction. |
 | The **refund** branches in all three files | Already fixed. **Do not "tidy" them** — they are the reference pattern. |
 | `receiptService.ts` / `cartStore.ts` writer semantics | The writer is correct; the readers are wrong. Changing `line_total` semantics would break the whole precision contract. |
 | Server-side Z/X report projections and any `apps/api/**` change | The defect is device-local. If a server consumer of the per-rate breakdown is found, **record it** (it is a downstream finding, likely a separate lane). |
