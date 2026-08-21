@@ -29,6 +29,7 @@ Full audit evidence lives in the session transcript; gaps are ranked G1–G13. T
 | B-7 | **Arabic legal copy**: the backfill lane machine-authors the `legal.privacy.*` Arabic tree (38 keys). Needs a native/legal read before production exposure to AR-locale users. |
 | B-8 | **dpa-v8 vs the F-9 park order**: your 2026-08-09 park ("F-9 must land before its CN-posting wiring") vs today's land-what-deserves-landing ruling. Session proceeding whole-branch with the gate ruling explicitly on pre-F-9 wiring safety (the multi-price residual is gate-accepted with failing-visible pins); fallback = land the document+stock half, hold the CN-posting wiring. Confirm or override. Full reasoning: `docs/handoff/ORPHAN-BRANCH-DISPOSITIONS-2026-08-21.md` §3. |
 | B-9 | **r2f2 discarded** under ruling #4 — recorded rationale in the dispositions file; tip preserved at tag `archive/r2f2-cancel-flow-prompt-2026-08-21`. Veto = restore from the tag. |
+| B-10 | **Promotion-time i18n re-pin (from the AR gate, P3-6)**: the promotion that carries the Arabic backfill shrinks the i18n baseline 2924→2763 — per the P2 regime you must then update `I18N_BASELINE_PROTECTED_BLOB` + the durable pin tag together in the post-promotion admin commit (CI passes meanwhile since the ratchet is removal-only, but the 161-entry gain isn't locked in until re-pinned). |
 
 ## C. Standing open items carried
 Four rulings arrived mid-session (2026-08-21, relayed from session de182ed3) and are RECORDED in
@@ -48,6 +49,7 @@ Still open elsewhere: Dokploy deploy pipeline (yours) · staging owes S-1..S-13 
 | Lane | Branch | Merged at | Local verification |
 |---|---|---|---|
 | G-4 VAT refund netting | `fix/g4-vat-pos-refund-netting` | `efa2282dd` | treasury gate r1 (revert-probe red-proof) + fix round (probe-verified CI token, voided-return pin); PG 7/31 + sqlite 7/31 by path; manifest checker exit 0 re-run on MERGED dev; actionlint OWED (not installed) at next CI-sighted window |
+| Arabic backfill (161 keys + 9 plurals) | `fix/ar-locale-coverage` | `176d2e932` | conventions gate r1 (exhaustive 161/161 placeholder check, empirical tsc causation repro, pure-shrink 1:1 proof) + fix round (3 wording P2s, ar appName guard row); post-merge on dev: i18n suite 51/51, audit:i18n:local exit 0, baseline 2763 held |
 | _(rows appended at each merge)_ | | | |
 
 ## D. Session log pointers
