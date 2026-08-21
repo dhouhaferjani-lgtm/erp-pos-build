@@ -77,17 +77,17 @@ max_fix_rounds: 5
 #      Checking M1 alone is INSUFFICIENT — a partial cherry-pick can carry the manifest + an M1-passed
 #      YAML snapshot without the lane having passed M7 or merged.
 #   Any failure: status blocked_precondition, STOP. Do NOT edit the pins.
-base_sha: null
-p1_landed_sha: null
-country_defaults_landed_sha: null
-p2_landed_sha: null
+base_sha: null   # P1/P2 convention: the RECEIPT carries the true base (= the pre-dispatch pin commit); the executor fills this field on the branch at M0
+p1_landed_sha: e55a1c8aee706237a3222485b74f72e71b274423   # accepted A, ff-merged 2026-08-21; C=e26412f0e; tags ci-pin/enforcement-p1-r2 + ci-close/enforcement-p1-r1
+country_defaults_landed_sha: 132dd50496099853d9e2d4038f7ae4dfc2752607   # merge: country-defaults Phase A — pre-verified: M7 passed (98f7dd53d, M7-round3 ACCEPT), ancestry chain OK
+p2_landed_sha: d8a631133db1153c24b0e4c0211fc5c43969a7ec   # accepted A, ff-merged 2026-08-21; C=c68ad6f47; tags ci-pin/enforcement-p2-r1 + ci-close/enforcement-p2-r1
 # PRE-ALLOCATED closing pin-tag NAME for P3 (gate-r6 R6-H-4 — uniform with P1/P2): the EXECUTOR records
 # it in a small metadata commit BEFORE the final milestone review (reviewed at P3-M3, NON-NULL in the
 # accepted candidate; allocation ci-pin/enforcement-p3-r<n>, n = 1 + highest existing, never reuse).
 # The OWNER creates the ANNOTATED tag at exactly A at promotion step 3 (annotation = the R5-C-1 schema);
 # tags are NEVER deleted. No CI consumer fetches it (P3 has no baseline checker) — it is the evidence
 # anchor P3's own closing receipt and any future consumer verifies.
-p3_closing_pin_tag: null
+p3_closing_pin_tag: ci-pin/enforcement-p3-r1   # pre-allocated; n = 1 + highest existing (none) — executor records in the metadata commit before M3
 
 # PRE-PROMOTION CI DISPATCH receipt (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2): REQUIRED
 # whenever the accepted P3 branch touches .github/workflows/** (M2's CI wiring likely does). The GATE
@@ -125,16 +125,16 @@ pre_promotion_ci_dispatch: null
 closing_receipt: null
 # Branch codex/enforcement-p3-money-lanes in worktree .worktrees/enforcement-p3, created from base_sha.
 # NOT merged, NOT pushed — the executor NEVER pushes (gate-r1 H-7). The parent promotes.
-branch: null
+branch: codex/enforcement-p3-money-lanes   # worktree .worktrees/enforcement-p3, created from base_sha
 
 # F-1: parent writes the `Phase <major.minor.patch>` series here BEFORE dispatch (AGENTS.md:16).
-commit_series: null
+commit_series: "Phase 6.<milestone>.<seq>"   # parent-assigned at dispatch (P1=4.x, P2=5.x)
 # CONTROL MANIFEST pin (gate-r8 R8-C-1/R8-H-1; STRUCTURED gate-r10 R10-H-2; PARENT fills at
 # dispatch): {path: <canonical absolute manifest path>, sha256: <hex>} matching the PARENT DISPATCH
 # RECEIPT (gate-r10 R10-C-1) — the final gate's sole source for lenses/max_fix_rounds/control hashes;
 # the bridge field-checks this pin against the receipt. Null at M0 = blocked_precondition. On the
 # control-file preflight list: no package may touch it; manifest surrogates in base..A are rejected.
-control_manifest: null
+control_manifest: {path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml, sha256: 7c298d5fbe0b35d9cd3970f57d3c49c03fa219a6eb44976dbe1d478c7da6a811}
 
 owner_gates:
   # informational — NO milestone below carries an `owner_gate:` field. The harness treats a populated
