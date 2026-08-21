@@ -75,8 +75,10 @@ final class SalesReportService
             // DECISION, not by accident. What still justifies gross here is that a
             // refund carries no location/SKU/category attribution safe to net against an
             // arbitrary grouping key, and that gross is sign-era-proof without ABS
-            // handling. Because the two now disagree, every surface rendering this data
-            // is LABELLED gross. Revisiting is open question O-28-a in
+            // handling. Because the two now disagree, ALL SIX surfaces rendering this
+            // data are LABELLED gross: branchLeaderboard, salesTrend, salesByLocation,
+            // topSkus (title + revenue column), revenueByCategory, and paymentMethods
+            // (title + amount column) — en/fr/ar. Revisiting is open question O-28-a in
             // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
@@ -134,8 +136,10 @@ final class SalesReportService
             // DECISION, not by accident. What still justifies gross here is that a
             // refund carries no location/SKU/category attribution safe to net against an
             // arbitrary grouping key, and that gross is sign-era-proof without ABS
-            // handling. Because the two now disagree, every surface rendering this data
-            // is LABELLED gross. Revisiting is open question O-28-a in
+            // handling. Because the two now disagree, ALL SIX surfaces rendering this
+            // data are LABELLED gross: branchLeaderboard, salesTrend, salesByLocation,
+            // topSkus (title + revenue column), revenueByCategory, and paymentMethods
+            // (title + amount column) — en/fr/ar. Revisiting is open question O-28-a in
             // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
@@ -195,8 +199,10 @@ final class SalesReportService
             // DECISION, not by accident. What still justifies gross here is that a
             // refund carries no location/SKU/category attribution safe to net against an
             // arbitrary grouping key, and that gross is sign-era-proof without ABS
-            // handling. Because the two now disagree, every surface rendering this data
-            // is LABELLED gross. Revisiting is open question O-28-a in
+            // handling. Because the two now disagree, ALL SIX surfaces rendering this
+            // data are LABELLED gross: branchLeaderboard, salesTrend, salesByLocation,
+            // topSkus (title + revenue column), revenueByCategory, and paymentMethods
+            // (title + amount column) — en/fr/ar. Revisiting is open question O-28-a in
             // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])
@@ -263,8 +269,10 @@ final class SalesReportService
             // DECISION, not by accident. What still justifies gross here is that a
             // refund carries no location/SKU/category attribution safe to net against an
             // arbitrary grouping key, and that gross is sign-era-proof without ABS
-            // handling. Because the two now disagree, every surface rendering this data
-            // is LABELLED gross. Revisiting is open question O-28-a in
+            // handling. Because the two now disagree, ALL SIX surfaces rendering this
+            // data are LABELLED gross: branchLeaderboard, salesTrend, salesByLocation,
+            // topSkus (title + revenue column), revenueByCategory, and paymentMethods
+            // (title + amount column) — en/fr/ar. Revisiting is open question O-28-a in
             // docs/superpowers/tickets/2026-08-21-o28-todays-sales-audit.md.
             ->where('pos_receipts.receipt_type', ReceiptType::Sale->value)
             ->whereBetween('pos_receipts.posted_at', [$range->from->startOfDay(), $range->to->endOfDay()])

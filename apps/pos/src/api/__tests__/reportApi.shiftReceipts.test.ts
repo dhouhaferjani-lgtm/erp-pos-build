@@ -124,8 +124,8 @@ describe('fetchShiftReceipts pagination', () => {
 
     expect(apiGetMock).not.toHaveBeenCalled();
     expect(apiGetRawMock).toHaveBeenCalledTimes(2);
-    expect(apiGetRawMock.mock.calls[0]?.[1]).toMatchObject({ page: 1 });
-    expect(apiGetRawMock.mock.calls[1]?.[1]).toMatchObject({ page: 2 });
+    expect(apiGetRawMock.mock.calls[0]?.[1]).toMatchObject({ page: 1, per_page: 200 });
+    expect(apiGetRawMock.mock.calls[1]?.[1]).toMatchObject({ page: 2, per_page: 200 });
   });
 
   it('stops after a single request when the shift fits on one page', async () => {
@@ -138,6 +138,43 @@ describe('fetchShiftReceipts pagination', () => {
 
     expect(receipts).toHaveLength(2);
     expect(apiGetRawMock).toHaveBeenCalledTimes(1);
+  });
+
+  // P3-C — a SHORT page without `meta` is legitimately single-page (some endpoints in
+  // this module answer a divergent envelope). A FULL page without `meta` is the
+  // dangerous case: it looks complete and is not, which is the exact silent-truncation
+  // this lane exists to remove. Fail loudly instead of guessing.
+  it('refuses a full page that carries no pagination meta', async () => {
+    // Exactly SHIFT_RECEIPTS_PAGE_SIZE rows — indistinguishable from a truncated page.
+    apiGetRawMock.mockResolvedValue({
+      data: Array.from({ length: 200 }, (_, i) => receipt(i + 1, 'sale')),
+    });
+
+    await expect(fetchShiftReceipts('shift-1')).rejects.toThrow(/pagination meta/i);
+  });
+
+  it('accepts a short page with no pagination meta as the only page', async () => {
+    apiGetRawMock.mockResolvedValue({ data: page2 });
+
+    const receipts = await fetchShiftReceipts('shift-1');
+
+    expect(receipts).toHaveLength(2);
+    expect(apiGetRawMock).toHaveBeenCalledTimes(1);
+  });
+
+  // P3-B — the hard stop must fail LOUDLY. Thrown from inside the try it was caught by
+  // the offline fallback, so an offline shift past the cap silently returned local rows
+  // instead of erroring — contradicting the docblock's "fail loudly rather than spin
+  // forever or silently truncate".
+  it('throws past the page cap even when offline, rather than falling back', async () => {
+    mockIsOnline = false;
+    apiGetRawMock.mockResolvedValue({
+      data: page1,
+      meta: { current_page: 1, last_page: 9999, per_page: 20, total: 999999 },
+    });
+
+    await expect(fetchShiftReceipts('shift-1')).rejects.toThrow(/exceeded 40 pages/);
+    expect(queryAllMock).not.toHaveBeenCalled();
   });
 
   it('falls back to the local shift receipts when the server errors offline', async () => {

@@ -80,8 +80,8 @@
       "axis": "Ventes"
     },
     "topSkus": {
-      "title": "Meilleurs SKU",
-      "revenue": "Revenu",
+      "title": "Meilleurs SKU (brut)",
+      "revenue": "Revenu (brut)",
       "quantity": "Quantité"
     },
     "liveSales": {
@@ -100,17 +100,17 @@
       "title": "Alertes Stock Bas"
     },
     "revenueByCategory": {
-      "title": "Revenu par Catégorie"
+      "title": "Revenu par Catégorie (brut)"
     },
     "paymentMethods": {
-      "title": "Répartition des Paiements",
-      "amount": "Montant",
+      "title": "Répartition des Paiements (brut)",
+      "amount": "Montant (brut)",
       "percentage": "Pourcentage"
     },
     "kpi": {
       "netSales": "Ventes nettes (hors remboursements)",
       "transactions": "Transactions",
-      "avgBasket": "Panier moyen",
+      "avgBasket": "Panier moyen (brut)",
       "itemsSold": "Articles vendus",
       "returns": "Retours",
       "live": "Live",

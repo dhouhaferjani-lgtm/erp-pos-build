@@ -27,10 +27,14 @@ function getLineSummary(line: ShiftReceipt['lines'][number]): string {
  * `ShiftController::receipts` filters on neither `is_voided` nor `is_training`
  * (unlike every server-side fiscal aggregate, which carries
  * `training_flag = false`), and the offline path deliberately returns every row
- * so the list below can still show it. `is_training` is optional on the wire —
- * a pre-fix cached payload carries no such field — so this tests `!== true`
- * rather than trusting a default. A voided refund never moved money; a training
- * receipt is not a sale.
+ * so the list below can still show it.
+ *
+ * `is_training` is OPTIONAL on the wire, so the comparison direction is a
+ * deliberate fail-OPEN choice. A device pointed at an older API build receives no
+ * such field; `!== true` counts those receipts, where a fail-closed `=== false`
+ * would drop every receipt from that server and report zero sales. Under-reporting
+ * to zero is the worse failure: a training receipt is an occasional deliberate act,
+ * an old API build is a whole deployment.
  */
 function isCounted(receipt: ShiftReceipt): boolean {
   return !receipt.is_voided && receipt.is_training !== true;

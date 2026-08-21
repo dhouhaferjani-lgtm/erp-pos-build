@@ -340,6 +340,15 @@ interface PaginatedEnvelope<T> {
   meta?: { current_page?: number; last_page?: number; per_page?: number; total?: number };
 }
 
+/**
+ * A BROKEN PAGINATION CONTRACT, not a transport failure. It must never be
+ * absorbed by the offline fallback below: falling back would answer a plausible
+ * local figure for a shift whose true extent is unknown, which is precisely the
+ * silent truncation this pagination exists to remove. Thrown from inside the try
+ * and rethrown unconditionally by the catch.
+ */
+class ShiftReceiptsPaginationError extends Error {}
+
 export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[]> {
   try {
     // `GET /pos/shifts/{id}/receipts` PAGINATES (ShiftController::receipts ends in
@@ -359,17 +368,36 @@ export async function fetchShiftReceipts(shiftId: string): Promise<ShiftReceipt[
 
       all.push(...envelope.data);
 
-      // A server that answers without `meta` is treated as single-page rather
-      // than looped against forever.
-      if (page >= (envelope.meta?.last_page ?? page)) {
+      const lastPage = envelope.meta?.last_page;
+
+      if (lastPage === undefined) {
+        // No `meta` at all. A SHORT page is legitimately the only page — some
+        // endpoints in this module answer a divergent envelope. A FULL page is the
+        // dangerous case: it looks complete and is not. Never assume.
+        if (envelope.data.length >= SHIFT_RECEIPTS_PAGE_SIZE) {
+          throw new ShiftReceiptsPaginationError(
+            `fetchShiftReceipts: shift ${shiftId} returned a full page with no pagination meta`,
+          );
+        }
+
+        return all;
+      }
+
+      if (page >= lastPage) {
         return all;
       }
     }
 
-    throw new Error(
+    throw new ShiftReceiptsPaginationError(
       `fetchShiftReceipts: shift ${shiftId} exceeded ${String(SHIFT_RECEIPTS_MAX_PAGES)} pages`,
     );
   } catch (err) {
+    // A broken pagination contract is never a connectivity problem — rethrow it
+    // BEFORE the offline fallback can absorb it (P3-B).
+    if (err instanceof ShiftReceiptsPaginationError) {
+      throw err;
+    }
+
     const { useConnectivityStore } = await import('@/stores/connectivityStore');
     const offline = !useConnectivityStore.getState().isOnline;
     // A 404 means the server has no projection for this shift yet — a normal,

@@ -21,11 +21,12 @@ label. Line numbers are as of `08e68ab41` unless the row says otherwise.
 |---|---|---|---|---|
 | 1 | **POS `/sales` headline** — `apps/pos/src/components/pos/TodaySalesPanel.tsx` | client reduce over `fetchShiftReceipts` | ❌ **GROSS — FIXED**: now `gross − Σ\|return\|`, both arms filtered `!is_voided && !is_training`, intermediates at `decimals + 1` | `pos:reports.totalSales` "Total Sales" → `pos:reports.netSalesExclRefunds` "Net sales (excl. refunds)" (en+fr; the device has no ar tree) |
 | 2 | **Owner dashboard headline KPI** — `apps/web/src/features/owner-dashboard/components/SalesSummaryCards.tsx` | bound `data.grossSales` + `delta.grossSalesPct` while the service's correct `netSales` went unused | ❌ **GROSS by presentation — FIXED**: binds `netSales` and a new `delta.netSalesPct` | `reports:ownerDashboard.kpi.totalSales` → `kpi.netSales` (en+fr+ar; the `reports` ar bundle is a straight swap, so the ar string is authored, not aliased) |
+| 2b | Owner dashboard "Average basket" tile — same component | `averageBasket = gross / saleCount` (`OwnerSalesSummaryService:52`) | ⚠️ gross per sale, unchanged — a return is not a member of the population being averaged | `kpi.avgBasket` → "Average basket (gross)" (en+fr+ar), matching the POS `avgSaleTicket` treatment |
 | 3 | `OwnerSalesSummaryService.php` (feeds #2) | `SUM(CASE receipt_type='sale' THEN total)`; returns via per-row `ABS()` **inside** the SUM; `netSales = gross − returns` | ✅ already correct — **extended** with `delta.netSalesPct` | — |
 | 4 | Branch leaderboard today rows — `BranchLeaderboard.tsx` → `SalesReportService::salesByLocation` | `SUM(pos_receipts.total)` under a `receipt_type='sale'` filter | ⚠️ **GROSS BY SCOPE DECISION** (§2) — derivation unchanged, now **labelled** | `branchLeaderboard.title` → "Branch leaderboard (gross sales)" |
 | 5 | Sales-trend chart "Today" series — `SalesTrendChart.tsx` | same `by-location` data as #4 | ⚠️ same | `salesTrend.title` → "Sales over time (gross)" |
 | 6 | Sales-by-location chart — `SalesByLocationChart.tsx` | same `by-location` data as #4 | ⚠️ same | `salesByLocation.title` → "Sales by Location (gross)" |
-| 7 | Top SKUs / revenue-by-category / owner payment breakdown — `SalesReportService` | sign-blind `SUM` + `receipt_type='sale'` filter | ⚠️ same class; **not** today-scoped headlines, left unlabelled | period-generic titles |
+| 7 | Top SKUs / revenue-by-category / owner payment breakdown — `SalesReportService` | sign-blind `SUM` + `receipt_type='sale'` filter | ⚠️ same class — and they ARE today-scoped: `OwnerDashboardPage` defaults `from: today, to: today` and feeds all four hooks the same `dateParams`. Derivation unchanged, now **labelled** | `topSkus.title` → "Top SKUs (gross)" + `topSkus.revenue` → "Revenue (gross)"; `revenueByCategory.title` → "Revenue by Category (gross)"; `paymentMethods.title` → "Payment Method Breakdown (gross)" + `paymentMethods.amount` → "Amount (gross)" |
 | 8 | POS Analytics Gross/Net cards — `features/pos/organisms/Analytics/SalesSummaryCards.tsx` → `PosAnalyticsService::getSalesSummary` | full `netOfReturns()` per-row `-ABS` helper | ✅ net of refunds; default range is **MTD, not today** | "Gross Sales" / "Net Sales" — but see O-28-c |
 | 9 | Generic Dashboard "Revenue" — `features/dashboard/Dashboard.tsx` → `DashboardController::stats` | `SUM(documents.total)` over posted/paid invoices, **month-to-date**; never touches `pos_receipts` | N/A — not a POS today figure | `common:dashboard.revenue` |
 | 10 | Live sales feed — `LiveSalesReportService` | row-level, `receipt_type='sale'` filtered, no aggregate | N/A | — |
@@ -68,18 +69,26 @@ wording (`reports.netSalesExclRefunds`).
 1. *No new defect at the three C-2 defect sites.* `reportApi.ts:~490`,
    `endOfDayPreview.ts:~300` and `zReportService.ts:~905` are sale-only gross and are
    **correctly labelled "Gross Sales"**; no O-28 fix is owed there.
-2. **`apps/pos/src/api/reportApi.ts` carries TWO surgical edits from this lane.** The C-2
-   lane's M4 negative-proof / diff check must EXPECT both regions, and neither is a C-2 site:
-   - **Region A — `fetchShiftReceipts`** (~`:320`): `apiGet` → paginated `apiGetRaw` loop,
-     plus `is_training?: boolean` on the `ShiftReceipt` interface.
-   - **Region B — the row mapper inside `fetchLocalShiftReceipts`** (~`:680`): projects
-     `is_voided` / `is_training` from the row (record 3 below).
+2. **`apps/pos/src/api/reportApi.ts` carries exactly FOUR hunks from this lane.** The C-2
+   lane's M4 negative-proof / diff check must EXPECT all four; none is a C-2 defect site.
+   Verbatim from `git diff dev -- apps/pos/src/api/reportApi.ts`:
 
-   Both sit in different functions and regions from the three C-2 defect sites
-   (`reportApi.ts:~490` SALE-branch VAT decomposition, `endOfDayPreview.ts:~300`,
-   `zReportService.ts:~905`), none of which this lane touches. A third file,
-   `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`, gains one optional
-   interface field (`voided?: 0 | 1`) and nothing else.
+   | Hunk | Location (post-image) | Change |
+   |---|---|---|
+   | 1 | `@@ -1,5 +1,5 @@` — the import line | `import { apiGet, apiPost }` → `import { apiGet, apiGetRaw, apiPost }` |
+   | 2 | `@@ -129,6 +129,16 @@` — `interface ShiftReceipt` | adds `is_training?: boolean` + its docblock |
+   | 3 | `@@ -315,10 +325,79 @@` — `fetchShiftReceipts` | page-size / max-page constants, `PaginatedEnvelope`, `ShiftReceiptsPaginationError`, the `apiGetRaw` loop and its two fail-loud guards |
+   | 4 | `@@ -669,7 +748,16 @@` — the row mapper in `fetchLocalShiftReceipts` | projects `is_voided` / `is_training` from the row (record 3 below) |
+
+   The three C-2 defect sites are the SALE-branch VAT decomposition at
+   `reportApi.ts:~490` (pre-image; unchanged by this lane), `endOfDayPreview.ts:~300` and
+   `zReportService.ts:~905`. Hunks 2 and 3 add 10 and 69 lines respectively, so everything
+   below them shifts by **+79**: the C-2 SALE-branch site whose `const rate = line.tax_rate
+   ?? '0'` sat at pre-image `:490` is at post-image `:569` — a pure offset, not an edit.
+   (Verify with `git diff dev -- apps/pos/src/api/reportApi.ts`: the file has four `@@`
+   hunks and none of them is inside `generateLocalXReport`'s decomposition loop.)
+   A third file, `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`, gains one
+   optional interface field (`voided?: 0 | 1`) and nothing else.
 3. *Offline training/void projection — **FIXED HERE** (authorised 2026-08-21 as a second
    surgical edit; previously recorded as fenced).* The mapper hardcoded `is_voided: false`
    and emitted no `is_training`, although the row query is `SELECT *` and `offline_receipts`
@@ -103,7 +112,9 @@ wording (`reports.netSalesExclRefunds`).
 
 **O-28-a — do the breakdowns follow the headline?** Branch leaderboard, trend chart,
 sales-by-location, top SKUs, revenue-by-category and the owner payment breakdown all report
-sale-only gross. They are labelled gross rather than converted. Converting them to net is a
+sale-only gross. **All six are labelled gross** (en/fr/ar) rather than converted — the
+dashboard defaults to today, so every one of them is a today figure sitting beside a net
+headline, and the label is what keeps the two readable together. Converting them to net is a
 separate lane (DTO + 4 endpoints + 3 chart consumers) and reverses a recorded ruling (F-5),
 so it needs the owner, not an implementer.
 

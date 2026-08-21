@@ -80,8 +80,8 @@
       "axis": "Sales"
     },
     "topSkus": {
-      "title": "Top SKUs",
-      "revenue": "Revenue",
+      "title": "Top SKUs (gross)",
+      "revenue": "Revenue (gross)",
       "quantity": "Quantity"
     },
     "liveSales": {
@@ -100,17 +100,17 @@
       "title": "Low Stock Alerts"
     },
     "revenueByCategory": {
-      "title": "Revenue by Category"
+      "title": "Revenue by Category (gross)"
     },
     "paymentMethods": {
-      "title": "Payment Method Breakdown",
-      "amount": "Amount",
+      "title": "Payment Method Breakdown (gross)",
+      "amount": "Amount (gross)",
       "percentage": "Percentage"
     },
     "kpi": {
       "netSales": "Net sales (excl. refunds)",
       "transactions": "Transactions",
-      "avgBasket": "Average basket",
+      "avgBasket": "Average basket (gross)",
       "itemsSold": "Items sold",
       "returns": "Returns",
       "live": "Live",
