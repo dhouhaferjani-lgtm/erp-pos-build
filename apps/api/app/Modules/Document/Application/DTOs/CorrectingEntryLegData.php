@@ -27,26 +27,53 @@ use InvalidArgumentException;
 final class CorrectingEntryLegData
 {
     /**
+     * PRIVATE by design. Use {@see self::of()}.
+     *
+     * Every invariant below is a PRECONDITION here, not a check: the factory has
+     * already proven the amounts are numeric and non-negative and that exactly
+     * one side is non-zero. Splitting construction from validation is also what
+     * lets the amounts be typed `numeric-string` honestly — the narrowing happens
+     * inside `of()`, where `is_numeric()` proves it, instead of being asserted by
+     * a docblock the callers cannot satisfy.
+     *
      * @param  numeric-string  $debit
      * @param  numeric-string  $credit
      */
-    public function __construct(
+    private function __construct(
         public readonly string $accountId,
         public readonly string $debit,
         public readonly string $credit,
         public readonly ?string $description,
-    ) {
+    ) {}
+
+    /**
+     * Build a leg from untrusted strings, enforcing every per-leg invariant.
+     *
+     * @throws InvalidArgumentException
+     */
+    public static function of(
+        string $accountId,
+        string $debit,
+        string $credit,
+        ?string $description,
+    ): self {
         if (trim($accountId) === '') {
             throw new InvalidArgumentException('A correcting-entry leg must name an account.');
         }
 
-        foreach (['debit' => $debit, 'credit' => $credit] as $side => $amount) {
-            if (! is_numeric($amount)) {
-                throw new InvalidArgumentException(
-                    "A correcting-entry leg's {$side} must be numeric, got: {$amount}",
-                );
-            }
+        if (! is_numeric($debit)) {
+            throw new InvalidArgumentException(
+                "A correcting-entry leg's debit must be numeric, got: {$debit}",
+            );
+        }
 
+        if (! is_numeric($credit)) {
+            throw new InvalidArgumentException(
+                "A correcting-entry leg's credit must be numeric, got: {$credit}",
+            );
+        }
+
+        foreach (['debit' => $debit, 'credit' => $credit] as $side => $amount) {
             if (bccomp($amount, '0', 6) < 0) {
                 throw new InvalidArgumentException(
                     "A correcting-entry leg's {$side} may not be negative. Post the amount on the "
@@ -67,6 +94,8 @@ final class CorrectingEntryLegData
                 ."Got debit={$debit}, credit={$credit}.",
             );
         }
+
+        return new self($accountId, $debit, $credit, $description);
     }
 
     /**
@@ -89,11 +118,7 @@ final class CorrectingEntryLegData
             throw new InvalidArgumentException('A correcting-entry leg description must be a string or null.');
         }
 
-        if (! is_numeric($debit) || ! is_numeric($credit)) {
-            throw new InvalidArgumentException('A correcting-entry leg needs numeric debit and credit.');
-        }
-
-        return new self($accountId, $debit, $credit, $description);
+        return self::of($accountId, $debit, $credit, $description);
     }
 
     /**

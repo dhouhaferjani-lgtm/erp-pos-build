@@ -29,8 +29,8 @@ final class CorrectingEntryPayloadTest extends TestCase
         $payload = new CorrectingEntryPayload(
             'Stranded VAT on 4457 — missing counterpart leg (W-6 D1b)',
             [
-                new CorrectingEntryLegData('acc-1', '19.000', '0', 'Debit VAT'),
-                new CorrectingEntryLegData('acc-2', '0', '19.000', null),
+                CorrectingEntryLegData::of('acc-1', '19.000', '0', 'Debit VAT'),
+                CorrectingEntryLegData::of('acc-2', '0', '19.000', null),
             ],
         );
 
@@ -53,7 +53,7 @@ final class CorrectingEntryPayloadTest extends TestCase
     public function test_it_reads_and_writes_the_namespaced_payload_key(): void
     {
         $payload = new CorrectingEntryPayload('reason', [
-            new CorrectingEntryLegData('acc-1', '1.000', '0', null),
+            CorrectingEntryLegData::of('acc-1', '1.000', '0', null),
         ]);
 
         $stored = $payload->toDocumentPayload();
@@ -88,7 +88,7 @@ final class CorrectingEntryPayloadTest extends TestCase
         $this->expectException(InvalidArgumentException::class);
 
         new CorrectingEntryPayload('   ', [
-            new CorrectingEntryLegData('acc-1', '1.000', '0', null),
+            CorrectingEntryLegData::of('acc-1', '1.000', '0', null),
         ]);
     }
 
@@ -101,34 +101,34 @@ final class CorrectingEntryPayloadTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
 
-        new CorrectingEntryLegData('acc-1', '5.000', '5.000', null);
+        CorrectingEntryLegData::of('acc-1', '5.000', '5.000', null);
     }
 
     public function test_a_leg_with_neither_a_debit_nor_a_credit_is_refused(): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        new CorrectingEntryLegData('acc-1', '0', '0', null);
+        CorrectingEntryLegData::of('acc-1', '0', '0', null);
     }
 
     public function test_a_negative_amount_is_refused(): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        new CorrectingEntryLegData('acc-1', '-5.000', '0', null);
+        CorrectingEntryLegData::of('acc-1', '-5.000', '0', null);
     }
 
     public function test_a_non_numeric_amount_is_refused(): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        new CorrectingEntryLegData('acc-1', 'nineteen', '0', null);
+        CorrectingEntryLegData::of('acc-1', 'nineteen', '0', null);
     }
 
     public function test_a_blank_account_id_is_refused(): void
     {
         $this->expectException(InvalidArgumentException::class);
 
-        new CorrectingEntryLegData('', '5.000', '0', null);
+        CorrectingEntryLegData::of('', '5.000', '0', null);
     }
 }

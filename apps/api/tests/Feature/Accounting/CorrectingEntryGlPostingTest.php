@@ -130,7 +130,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
         ]);
 
         $entryId = $this->corrections->postCorrectingEntryGl($correction);
@@ -167,7 +167,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
         ]);
 
         $entry = JournalEntry::query()->findOrFail(
@@ -193,8 +193,8 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->postedInvoiceWithBalancedGl(Carbon::parse('2026-01-20'));
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('706'), '100.000', '0', 'Out of 707'),
-            new CorrectingEntryLegData($this->accountId('707'), '0', '100.000', 'Into 706'),
+            CorrectingEntryLegData::of($this->accountId('706'), '100.000', '0', 'Out of 707'),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '100.000', 'Into 706'),
         ]);
 
         $entryId = $this->corrections->postCorrectingEntryGl($correction);
@@ -217,7 +217,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
 
         $first = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
         ]);
         $this->corrections->postCorrectingEntryGl($first);
         // Deliberately NOT flipping $first to Posted: the LEDGER is the source of
@@ -226,7 +226,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         // The target now balances (0 + 19.000 debit vs 19.000 credit). A second
         // correction must therefore be self-balancing to be accepted...
         $unbalancedSecond = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '5.000', '0', 'Breaks it again'),
+            CorrectingEntryLegData::of($this->accountId('411'), '5.000', '0', 'Breaks it again'),
         ]);
 
         try {
@@ -242,8 +242,8 @@ final class CorrectingEntryGlPostingTest extends TestCase
 
         // ...and a self-balancing one is.
         $balancedSecond = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('706'), '5.000', '0', null),
-            new CorrectingEntryLegData($this->accountId('707'), '0', '5.000', null),
+            CorrectingEntryLegData::of($this->accountId('706'), '5.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '5.000', null),
         ]);
 
         self::assertNotSame('', $this->corrections->postCorrectingEntryGl($balancedSecond));
@@ -259,7 +259,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $entriesBefore = JournalEntry::query()->count();
 
         $good = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
         ]);
         $this->corrections->assertCorrectingEntryIsPostable($good);
 
@@ -270,7 +270,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         );
 
         $bad = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '9.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '9.000', '0', null),
         ]);
 
         $this->expectException(UnpostableCorrectingEntryException::class);
@@ -292,7 +292,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
 
         // Only 9.000 of the 19.000 gap.
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '9.000', '0', 'Half a fix'),
+            CorrectingEntryLegData::of($this->accountId('411'), '9.000', '0', 'Half a fix'),
         ]);
 
         try {
@@ -322,8 +322,8 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('706'), '5.000', '0', null),
-            new CorrectingEntryLegData($this->accountId('707'), '0', '5.000', null),
+            CorrectingEntryLegData::of($this->accountId('706'), '5.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '5.000', null),
         ]);
 
         $this->expectException(UnpostableCorrectingEntryException::class);
@@ -349,7 +349,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
             'currency' => 'TND',
             'source_document_id' => null,
             'payload' => (new CorrectingEntryPayload('orphan', [
-                new CorrectingEntryLegData($this->accountId('411'), '1.000', '0', null),
+                CorrectingEntryLegData::of($this->accountId('411'), '1.000', '0', null),
             ]))->toDocumentPayload(),
         ]);
 
@@ -385,7 +385,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
             ->id;
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($foreignAccountId, '19.000', '0', null),
+            CorrectingEntryLegData::of($foreignAccountId, '19.000', '0', null),
         ]);
 
         try {
@@ -420,8 +420,8 @@ final class CorrectingEntryGlPostingTest extends TestCase
         ]);
 
         $correction = $this->correctingDocumentFor($supplierInvoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '1.000', '0', null),
-            new CorrectingEntryLegData($this->accountId('707'), '0', '1.000', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '1.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '1.000', null),
         ]);
 
         try {
@@ -449,8 +449,8 @@ final class CorrectingEntryGlPostingTest extends TestCase
         ]);
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '1.000', '0', null),
-            new CorrectingEntryLegData($this->accountId('707'), '0', '1.000', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '1.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('707'), '0', '1.000', null),
         ]);
 
         try {
@@ -471,7 +471,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
         ]);
 
         $first = $this->corrections->postCorrectingEntryGl($correction);
@@ -516,7 +516,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg($documentDate);
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
         ]);
 
         $entry = JournalEntry::query()->findOrFail(
@@ -539,7 +539,7 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg($documentDate);
 
         $correction = $this->correctingDocumentFor($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', null),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', null),
         ]);
 
         self::assertNotSame('', $this->corrections->postCorrectingEntryGl($correction));

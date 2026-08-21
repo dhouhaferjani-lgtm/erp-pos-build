@@ -150,7 +150,7 @@ final class CorrectingEntryUnblocksCancellationTest extends TestCase
         }
 
         $this->postCorrection($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
         ]);
 
         $reversalId = $this->accountingService->reverseDocumentGl($this->reload($invoice));
@@ -169,7 +169,7 @@ final class CorrectingEntryUnblocksCancellationTest extends TestCase
         $invoice = $this->invoiceWithStrandedVatLeg();
 
         $this->postCorrection($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
         ]);
 
         $reversalId = $this->accountingService->reverseDocumentGl($this->reload($invoice));
@@ -223,7 +223,7 @@ final class CorrectingEntryUnblocksCancellationTest extends TestCase
         self::assertSame(DocumentStatus::Posted, $this->reload($invoice)->status);
 
         $this->postCorrection($invoice, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', 'Missing AR leg'),
         ]);
 
         $this->postingService->cancel($this->reload($invoice), 'after the correction', null);
@@ -250,7 +250,7 @@ final class CorrectingEntryUnblocksCancellationTest extends TestCase
         $other = $this->invoiceWithStrandedVatLeg();
 
         $this->postCorrection($other, [
-            new CorrectingEntryLegData($this->accountId('411'), '19.000', '0', "Other invoice's fix"),
+            CorrectingEntryLegData::of($this->accountId('411'), '19.000', '0', "Other invoice's fix"),
         ]);
 
         $this->expectException(UnreversibleDocumentGlException::class);
