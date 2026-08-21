@@ -92,6 +92,7 @@
     "payrollExports": "تصدير الرواتب"
   },
   "authoring": {
+    "tabsAriaLabel": "علامات تبويب تفاصيل الفنّي",
     "tabs": {
       "overview": "نظرة عامة",
       "certifications": "الشهادات",

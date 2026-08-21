@@ -21,6 +21,27 @@
   "transmission": "ناقل الحركة",
   "engineCode": "رمز المحرّك",
   "notes": "ملاحظات",
+  "mileageKm": "عدد الكيلومترات (كم)",
+  "owner": "المالك (اختياري)",
+  "noOwner": "-- بدون مالك --",
+  "addVehicleHint": "إنشاء سريع للمركبة. يمكنك إضافة مزيد من التفاصيل (نوع الوقود، ناقل الحركة، عدد الكيلومترات، إلخ) بتعديل المركبة لاحقًا.",
+  "brandRequired": "الماركة مطلوبة",
+  "modelRequired": "الموديل مطلوب",
+  "licensePlateRequired": "رقم اللوحة مطلوب",
+  "mileageNegative": "لا يمكن أن يكون عدد الكيلومترات سالبًا",
+  "vinValidation": "يجب أن يتكوّن رقم الهيكل (VIN) من 17 حرفًا (بدون I أو O أو Q)",
+  "yearMin": "يجب أن تكون السنة بعد 1900",
+  "yearMax": "السنة بعيدة جدًا في المستقبل",
+  "placeholders": {
+    "brand": "Renault",
+    "model": "Clio",
+    "year": "2020",
+    "color": "أزرق",
+    "licensePlate": "AB-123-CD",
+    "vin": "VF1RFB00X51234567",
+    "engineCode": "K9K 608",
+    "notes": "ملاحظات إضافية حول المركبة…"
+  },
   "sections": {
     "vehicleInfo": "معلومات المركبة",
     "technicalDetails": "التفاصيل التقنية"
