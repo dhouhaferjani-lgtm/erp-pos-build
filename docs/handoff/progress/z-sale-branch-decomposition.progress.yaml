@@ -42,10 +42,15 @@ owes_parent:
   - id: ticket-residue-column-label
     source: M3 net-to-zero reproduction
     what: >-
-      The ticket (:13-14) and the brief (:111-112) describe the residue as "+2.00 net / +2.00
-      VAT". Reproduced exactly, it is +2.00 net / +2.00 GROSS with VAT cancelling to 0.00.
-      Magnitude and net figure right, second column label wrong. Not this lane's file to edit.
-    owner: parent orchestrator
+      The ticket (:13-14) described the residue as "+2.00 net / +2.00 VAT". Reproduced exactly, it
+      is +2.00 net / +2.00 GROSS with VAT cancelling to 0.00. Magnitude and net figure right,
+      second column label wrong. The TICKET is not this lane's file to edit and is deferred here.
+      M4 gate-r1 finding 6 correction: the BRIEF carried the same error at :111-112, and since the
+      lane had already edited the brief under the ruling's annotation authority twelve lines above
+      it, leaving that one wrong while fixing the other read as an oversight rather than scope
+      discipline. The brief's copy is now annotated in-place (same commit), so this row covers the
+      TICKET ONLY — the brief is NOT pristine and the parent should not assume it is.
+    owner: parent orchestrator (ticket only; the brief's copy is already annotated)
 # M1's gate RULED (Option B) and the parent recorded it at 9e43a4f5a — the M1 blocker is
 # DISCHARGED and kept below as `resolved_blockers` for the audit trail, not as an open item.
 blockers: []
@@ -212,6 +217,20 @@ milestones:
         same three files, changing the same signed vat_breakdown field, IN PLACE at v1 with no
         version bump and no registry/payload file touched. Real precedent for Option B; narrower
         blast radius (v4 refunds were brand-new), so it is evidence, not a ruling.
+      F-6: >-
+        M4 gate-r1 finding 3 — the HEADLINE accumulators sitting inside the SAME loop iteration as
+        the corrected sale branch still call bcadd with NO scale argument, taking decimal.ts:22's
+        default of 3, and they feed the SIGNED gross_sales / net_sales / tax_amount:
+        zReportService.ts:899-901 and reportApi.ts:484-486 (endOfDayPreview.ts:235-237 likewise,
+        unsigned). This is the IDENTICAL R-3 defect class as the one this lane fixed, on signed
+        fields, and it is REACHABLE not theoretical — receipt.subtotal carries genuine sub-cent
+        precision on cash-rounded EUR receipts (receiptService.cashRounding.test.ts:199-211
+        persists line_total '9.997'), so two such receipts diverge by one cent between scale-2 and
+        scale-3 accumulation, exactly the arithmetic the new R-3 guards demonstrate.
+        CORRECTLY NOT FIXED HERE — brief NOT-IN-SCOPE + ruling conditions 1 and 4 put the headline
+        out of this lane. RECORDED AGAINST F-2 SO THE SIBLING LANE INHERITS IT: those three lines
+        are F-2's entire subject, and a lane that rewrites them without knowing the scale defect
+        rides along would ship a corrected headline still accumulating at the wrong scale.
       option_A_nf525_not_visible: >-
         This memo was wrong about NF525 TWICE, in opposite directions; the verified position was
         reached at gate-r3. (a) gate-r2 finding 1 (P1): the original claim that a v2 Z is
@@ -443,19 +462,60 @@ milestones:
   - id: M4
     title: whole-lane gate over the integrated branch
     review_lenses: [fiscal-pos, general]
-    status: pending
-    commit: null
-    verdict: null
-    fix_rounds: 0
+    status: passed
+    commit: null            # self-reference impossible at write time — this IS the closure commit
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M4-round2.md
+    verdict_history:
+      - round: 1
+        register: docs/handoff/reviews/z-sale-branch-decomposition/M4-round1.md
+        result: >-
+          CHANGES-REQUIRED (exit 2) — 0 P1, 1 P2 (the whole-branch census was numerically wrong in
+          the very artifact M4's evidence contract names as the anti-faking antidote), 5 P3
+          (R-3 guard covered only the UNSIGNED consumer; the in-loop headline accumulators carry
+          the same unfixed scale defect on SIGNED fields; "truncation" vs Big.RM=1 rounding;
+          stale `updated:`; owes_parent implied the brief was pristine when the lane had edited it)
+      - round: 2
+        register: PENDING — named only once written
+        result: pending
+    fix_rounds: 1
+    gates: >-
+      pnpm typecheck CLEAN. pnpm lint:ratchet @autoerp/pos HELD at 84 (zero growth) with all
+      three R-3 guards added. @autoerp/web 6449 -> 6452 (+3) INHERITED — every changed path is
+      apps/pos/** or docs/**, no eslint config, baseline, package.json or shared package touched,
+      so apps/web lints identically to base. Tier-1 88 passed BY PATH; no full suite.
+    r3_coverage_completed: >-
+      M4 gate-r1 finding 2 — the R-3 guard existed for ONE consumer, and it was the only one whose
+      output is NOT SIGNED. Dropping the scale args on the signed paths left all 86 Tier-1 tests
+      green. Two further guards added, both in saleReportingEndToEnd.test.ts (no new file in the
+      census): one over the SIGNED Z (which also feeds SESSION_CLOSE) and one over the SIGNED X.
+      Both VERIFIED TO BITE — reverting the scale arguments in zReportService.ts and reportApi.ts
+      fails them with "expected '20.01' to be '20.00'". All three sites now covered.
+      The precision row is inserted by direct SQL and is the ONE non-writer-produced fixture in
+      that file, labelled as such: the drift is invisible to any well-formed scale-2 row because
+      every consumer re-formats through bcformat at emission, and sub-cent line_totals are exactly
+      what the real cash-rounding writer produces (receiptService.cashRounding.test.ts:202).
+      Decomposition semantics remain proven by the real-writer tests; this fixture proves SCALE.
     whole_branch_file_list: >-
-      16 files. FIVE under apps/pos (3 production + 2 test), ELEVEN under docs/. Production:
-      zReportService.ts, endOfDayPreview.ts, reportApi.ts. Tests: saleReportingEndToEnd.test.ts
-      (new), endOfDayPreview.test.ts (the two R-4 fixture corrections).
+      CORRECTED at M4 gate-r1 finding 1 — the earlier figures ("16 files ... ELEVEN under docs")
+      were WRONG WHEN WRITTEN, not merely stale: the same commit that wrote them (27acf2833) also
+      added M3-round1.md. Re-derived mechanically at the M4 closure commit:
+      **18 files — 5 under apps/pos (3 production + 2 test) and 13 under docs/.**
+      The closure commit adds exactly one tracked file to the 17 at 27acf2833: its own
+      M4-round1.md register. No apps/pos file is added by it (the signed-path R-3 guards land in
+      saleReportingEndToEnd.test.ts, already counted).
+      REPRODUCE: `git diff --name-only 9d14cb8e1..HEAD | wc -l` (18);
+      `... | grep -c '^docs/'` (13); `... | grep -c '^apps/pos/'` (5).
+      Production: zReportService.ts, endOfDayPreview.ts, reportApi.ts.
+      Tests: saleReportingEndToEnd.test.ts (new), endOfDayPreview.test.ts (R-4 corrections + the
+      R-3 unsigned-consumer guard).
     production_diff_size: >-
-      The ENTIRE production code change across the whole branch is 18 lines — three IDENTICAL
-      six-line blocks (one gross local, one bcsub-derived net, three scaled accumulators),
-      differing only in each file's own scale identifier (`decimals` vs `scale`). Everything
-      else in the production diff is comment.
+      CORRECTED at M4 gate-r1 finding 1 — the earlier "18 lines / three six-line blocks" was
+      wrong. Re-derived: **15 added non-comment lines = three IDENTICAL FIVE-line blocks**
+      (one gross local, one bcsub-derived net, three scaled accumulators), differing only in each
+      file's own scale identifier (`decimals` vs `scale`). Everything else in the production diff
+      is comment. REPRODUCE:
+      `git diff 9d14cb8e1..HEAD -- <the 3 production files> | grep -E '^\+' | grep -vE '^\+\+\+' | grep -vE '^\+[[:space:]]*(//|$)' | wc -l`
+      -> 15.
     negatives_proven:
       - >-
         NO apps/api/** change at all — `git diff --name-only base..HEAD | grep ^apps/api/` is
@@ -501,4 +561,4 @@ milestones:
       (per-rate rows correct, headline net_sales wrong by the full VAT) plus a wrong NF525
       <VentesNettes> from event one.
 
-updated: 9e43a4f5a   # short HEAD at write time
+updated: 27acf2833   # short HEAD at write time (the M4 closure commit is this commit's child)

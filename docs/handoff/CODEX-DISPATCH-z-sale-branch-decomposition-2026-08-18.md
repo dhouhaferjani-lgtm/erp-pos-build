@@ -124,6 +124,18 @@ come from `receipt.total` / `receipt.subtotal` / `receipt.tax_amount` (`zReportS
 taxed sale leaves a **+VAT / −0 residue** in the Z buckets instead of netting to zero — e.g. +2.00 net /
 +2.00 VAT on a 12.00-gross / 2.00-VAT line.
 
+> 📐 **ANNOTATION (M4 gate-r1 finding 6 — one column label is wrong).** Reproduced end-to-end at
+> M3 through the real writer on both sides, the residue is **+2.00 net / +2.00 GROSS**, with
+> **VAT the one component that CANCELS to 0.00**: the buggy sale adds (net 12.00, vat 2.00,
+> gross 14.00) while the corrected refund subtracts (net 10.00, vat 2.00, gross 12.00). The
+> magnitude and the net figure above are right; the second column is `gross_amount`, not
+> `vat_amount`. The same wording appears in the ticket of record
+> (`docs/superpowers/tickets/2026-08-01-device-z-sale-branch-gross-as-net.md:13-14`), which is
+> **not this lane's file to edit** — it is deferred to the parent under
+> `owes_parent.ticket-residue-column-label`. Annotated here (rather than left to match the
+> ticket) because this brief had already been amended under the M1 ruling's annotation authority,
+> so leaving a known-false figure standing in it would read as an oversight.
+
 ### 🚫 NOT IN SCOPE
 
 | Area | Why |

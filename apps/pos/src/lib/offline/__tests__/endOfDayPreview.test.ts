@@ -124,8 +124,9 @@ describe('buildEndOfDayPreview', () => {
     // receiptService.cashRounding.test.ts:202, `line_total: '9.997'`).
     //
     // Two lines at gross 10.004 / vat 0.001 on EUR (scale 2):
-    //   accumulated at scale 2 → 10.00 + 10.00               = 20.00  ✅
-    //   accumulated at scale 3 → 10.003 + 10.003 = 20.006 → 20.01  ❌ (one cent)
+    //   accumulated at scale 2 → 10.00 + 10.00              = 20.00  ✅
+    //   accumulated at scale 3 → 10.003 + 10.003 = 20.006 → 20.01  ❌ (one cent,
+    //     half-up at the final bcformat — Big.RM = 1)
     // So this test fails if the scale argument is ever dropped again.
     vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
       if ((sql as string).includes('FROM offline_receipts')) {
@@ -161,7 +162,11 @@ describe('buildEndOfDayPreview', () => {
     );
 
     expect(preview.vat_breakdown).toHaveLength(1);
-    // 20.00, not 20.01 — the per-line truncation happens at the CURRENCY scale.
+    // 20.00, not 20.01 — the per-line ROUNDING happens at the CURRENCY scale.
+    // (`decimal.ts:14` sets `Big.RM = 1` = ROUND_HALF_UP, so bcsub/bcadd/bcformat
+    // ROUND; they do not truncate. Rule 19's "bcformat truncates" describes the
+    // PHP `CurrencyScale::bcformat`, not this device-side helper — the two
+    // differ, and conflating them misreads which primitive does what.)
     expect(preview.vat_breakdown[0]!.net_amount).toBe('20.00');
   });
 

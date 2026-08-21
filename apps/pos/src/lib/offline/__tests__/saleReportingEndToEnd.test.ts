@@ -611,6 +611,86 @@ describe('C-2 sale reporting — REAL writer through Z / EOD / X', () => {
     ]);
   });
 
+  // ── R-3: the currency-scale arguments, on the SIGNED consumers ──────────
+
+  /**
+   * Insert an `offline_receipts` row directly, with sub-cent line precision.
+   *
+   * This is the ONE fixture in this file that is not writer-produced, and the
+   * reason is deliberate: the R-3 scale arguments are invisible to any
+   * well-formed scale-2 row, because every consumer re-formats through
+   * `bcformat(totals.*, scale)` at emission, so a value accumulated at scale 3
+   * from scale-2 inputs re-rounds to the same answer. The drift only shows
+   * when a stored line carries MORE precision than the currency scale — which
+   * the real writer DOES produce on the cash-rounding path
+   * (`receiptService.cashRounding.test.ts:202` persists `line_total '9.997'`
+   * on a EUR receipt).
+   *
+   * It is therefore a PRECISION fixture, not a decomposition one: the
+   * gross-as-net semantics are proven by the real-writer tests above, and this
+   * row exists only to make the accumulation scale observable.
+   *
+   * Two lines at gross 10.004 / vat 0.001 on EUR (scale 2):
+   *   accumulated at scale 2 → 10.00 + 10.00              = 20.00  ✅
+   *   accumulated at scale 3 → 10.003 + 10.003 = 20.006 → 20.01  ❌
+   */
+  async function insertSubCentPrecisionRow(): Promise<void> {
+    const lines = JSON.stringify([
+      { name: 'W', quantity: 1, unit_price: '10.004', line_total: '10.004', tax_rate: TAX_RATE, tax_amount: '0.001' },
+      { name: 'W', quantity: 1, unit_price: '10.004', line_total: '10.004', tax_rate: TAX_RATE, tax_amount: '0.001' },
+    ]);
+    await adapter.execute(
+      `INSERT INTO offline_receipts (
+         id, idempotency_key, receipt_number, terminal_id, terminal_code,
+         operator_id, operator_name, lines, subtotal, tax_amount, discount_amount,
+         total, currency, fiscal_hash, previous_hash, hash_sequence,
+         tendered_amount, change_due, payment_method_id, payment_repository_id, status,
+         payments_json, fiscal_schema_version, is_training
+       ) VALUES ($1,$2,$3,$4,'T01',$5,'Alice',$6,'20.006','0.002','0.00','20.01','EUR',
+                 'h-prec','genesis',1,'20.01','0.00','pm-cash','pr-cash','pending',$7,3,0)`,
+      [
+        'precision-row-1', 'idem-prec-1', 'T001-9001', TERMINAL_UUID, OPERATOR_UUID, lines,
+        JSON.stringify([{ method_code: 'CASH', amount: '20.01' }]),
+      ],
+    );
+  }
+
+  it('R-3 — the SIGNED Z accumulates at the CURRENCY scale, not decimal.ts\'s default of 3', async () => {
+    await insertSubCentPrecisionRow();
+
+    const z = await generateZReport(
+      adapter as unknown as Database,
+      TERMINAL_UUID,
+      'shift-1',
+      SHIFT_OPENED_AT,
+      '100.00',
+      zOpts,
+    );
+
+    // 20.00, not 20.01 — per-line ROUNDING happens at the CURRENCY scale
+    // (`decimal.ts:14` sets Big.RM = 1, ROUND_HALF_UP — these helpers round,
+    // they do not truncate).
+    // Fails if the `decimals` arguments are ever dropped from zReportService's
+    // sale branch, which feeds the signed Z_REPORT *and* SESSION_CLOSE bytes.
+    expect(z.report_data.vat_breakdown).toHaveLength(1);
+    expect(z.report_data.vat_breakdown[0]!.net_amount).toBe('20.00');
+  });
+
+  it('R-3 — the SIGNED X accumulates at the CURRENCY scale, not decimal.ts\'s default of 3', async () => {
+    await insertSubCentPrecisionRow();
+
+    const x = await generateXReport(TERMINAL_UUID, {
+      tenantId: TENANT_ID,
+      fiscalShiftId: SHIFT_UUID,
+      fiscalSessionId: SESSION_UUID,
+      operatorId: OPERATOR_UUID,
+      operatorName: 'Alice',
+    });
+
+    expect(x.vat_breakdown).toHaveLength(1);
+    expect(x.vat_breakdown[0]!.net_amount).toBe('20.00');
+  });
+
   it('M1 ruling condition 2 — Z_REPORT and SESSION_CLOSE for the same close carry byte-identical vat_breakdown', async () => {
     await writeRealSaleRow();
 
