@@ -66,3 +66,6 @@ that SOME escape hatch is required.
   same reversal path)
 - `docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md` (D1a/D1b, the
   origin of the one known stranded entry)
+
+
+**STATUS 2026-08-21: CLOSED** — r2f4 correcting-documents merged to local dev (session 0578e8d8); the escape hatch exists (admin-only, prospective-only, Invoice/CreditNote-only — LEDGER O-26/C-8 scope limits).
