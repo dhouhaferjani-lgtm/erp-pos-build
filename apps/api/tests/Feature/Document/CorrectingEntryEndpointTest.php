@@ -498,7 +498,67 @@ final class CorrectingEntryEndpointTest extends TestCase
                 ->where('source_type', AccountingService::DOCUMENT_CORRECTION_SOURCE_TYPE)
                 ->where('source_id', $correctionId)
                 ->count(),
-            'The LEDGER is untouched by a payload edit — which is why the gap is survivable',
+            'The LEDGER is untouched by a payload edit — which is why the payload half is survivable',
+        );
+    }
+
+    /**
+     * THE SECOND ARM, and the more serious one — measured, not asserted.
+     *
+     * `source_document_id` is also outside the trigger's field list, and unlike
+     * `payload` its consequence is NOT confined to the document row. The link is
+     * the sole input to `AccountingService::correctingEntryDocumentIdsFor()`,
+     * which is what `documentLedgerFootprint()` reads — so re-pointing a SEALED
+     * correction MIGRATES its posted legs from one document's ledger footprint
+     * to another's. Both documents' balance verdicts change, and so does whether
+     * `reverseDocumentGl()` will consent to withdraw either of them, without a
+     * single journal row being touched.
+     *
+     * This test performs the re-point and MEASURES the migration rather than
+     * describing it, so the residual is recorded at its true size. It is the
+     * strongest argument for widening the trigger in the follow-on lane: the
+     * payload half is cosmetic, this half is not.
+     */
+    public function test_a_sealed_correction_can_still_be_re_pointed_and_its_footprint_migrates(): void
+    {
+        $firstInvoice = $this->invoiceWithStrandedVatLeg();
+        $correctionId = $this->postedCorrectionFor($firstInvoice);
+
+        $secondInvoice = $this->invoiceWithStrandedVatLeg();
+
+        $footprintOf = function (string $documentId): int {
+            $correctionIds = DB::table('documents')
+                ->where('type', DocumentType::CorrectingEntry->value)
+                ->where('source_document_id', $documentId)
+                ->pluck('id')
+                ->all();
+
+            return $correctionIds === [] ? 0 : JournalEntry::query()
+                ->where('source_type', AccountingService::DOCUMENT_CORRECTION_SOURCE_TYPE)
+                ->whereIn('source_id', $correctionIds)
+                ->count();
+        };
+
+        self::assertSame(1, $footprintOf($firstInvoice->id));
+        self::assertSame(0, $footprintOf($secondInvoice->id));
+
+        // The re-point. No exception: `source_document_id` is outside
+        // `trg_document_immutability`'s immutable-field list, even though the row
+        // is SEALED.
+        DB::table('documents')->where('id', $correctionId)->update([
+            'source_document_id' => $secondInvoice->id,
+        ]);
+
+        // MEASURED: the posted legs now belong to a different document's ledger.
+        self::assertSame(
+            0,
+            $footprintOf($firstInvoice->id),
+            'The correction left the first document\'s footprint without any journal row moving',
+        );
+        self::assertSame(
+            1,
+            $footprintOf($secondInvoice->id),
+            'and arrived in the second document\'s footprint — which is what changes both balance verdicts',
         );
     }
 
@@ -667,7 +727,11 @@ final class CorrectingEntryEndpointTest extends TestCase
     /** A correction taken all the way to POSTED through the HTTP surface. */
     private function postedCorrection(): string
     {
-        $invoice = $this->invoiceWithStrandedVatLeg();
+        return $this->postedCorrectionFor($this->invoiceWithStrandedVatLeg());
+    }
+
+    private function postedCorrectionFor(Document $invoice): string
+    {
         $correctionId = $this->createCorrection($invoice);
 
         $this->actingAs($this->admin, 'sanctum')

@@ -199,18 +199,36 @@ final class CorrectingEntryService
                 // immutable-field list
                 // (`2025_12_11_054716_add_document_immutability_trigger.php:33-45`)
                 // was written for fiscal SALES documents. It freezes identity and
-                // the money columns and refuses deletion, but it does NOT cover
+                // the money columns and refuses deletion, but it covers neither
                 // `payload` — where this document's LEGS live — nor
                 // `source_document_id`, the link ruling c4 makes mandatory. So a
                 // posted correction's row is protected, not immutable.
                 //
-                // Tolerable because the LEDGER is the authority: the legs were
-                // copied into hash-chained `journal_lines` at post time, and a
-                // later `payload` edit desynchronises the document from the ledger
-                // without moving a single posted amount. Widening the trigger is a
-                // schema migration and would forfeit this lane's zero-schema
-                // property; it belongs to its own lane. Pinned — including the gap
-                // — by `CorrectingEntryEndpointTest`.
+                // THE TWO HALVES ARE NOT EQUALLY BENIGN, and the difference is
+                // measured, not assumed — `CorrectingEntryEndpointTest` performs
+                // both edits:
+                //
+                //  - `payload` is cosmetic. The legs were copied into hash-chained
+                //    `journal_lines` at post time, so editing it desynchronises
+                //    the document from the ledger without moving a posted amount.
+                //
+                //  - `source_document_id` is NOT. It is the sole input to
+                //    `AccountingService::correctingEntryDocumentIdsFor()`, which
+                //    `documentLedgerFootprint()` reads — so re-pointing a SEALED
+                //    correction MIGRATES its posted legs from one document's
+                //    ledger footprint to another's. The journal rows do not move;
+                //    what moves is which document they count toward, and with it
+                //    both documents' balance verdicts and whether
+                //    `reverseDocumentGl()` will consent to withdraw either. The
+                //    test measures the migration rather than describing it.
+                //
+                // So "the ledger is the authority" holds for the payload half
+                // only. The re-point half is a genuine open exposure, and it is
+                // the reason the follow-on lane widens the trigger rather than
+                // closing this at the application layer — an application guard
+                // cannot stop a raw UPDATE, which is exactly what the probe used.
+                // Widening is a schema migration and would forfeit this lane's
+                // zero-schema property; recorded in the report and its ticket.
                 'fiscal_status' => FiscalStatus::Sealed,
             ]);
 
