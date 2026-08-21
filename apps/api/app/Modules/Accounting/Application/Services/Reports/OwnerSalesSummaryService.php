@@ -52,11 +52,17 @@ final class OwnerSalesSummaryService
             ? CurrencyScale::bcround(bcdiv($current['gross'], (string) $current['saleCount'], $scale + 2), $scale)
             : null;
 
+        // Net of returns for BOTH windows — the headline figure (O-28) and its trend
+        // badge must come from the same definition. Intermediates at $scale + 1; the
+        // single rounding boundary is the bcformatStrict/pct call that consumes them.
+        $currentNet = bcsub($current['gross'], $current['returns'], $scale + 1);
+        $priorNet = bcsub($prior['gross'], $prior['returns'], $scale + 1);
+
         return new SalesSummaryData(
             currencyCode: $currency,
             grossSales: CurrencyScale::bcformatStrict($current['gross'], $scale),
             returnsAmount: CurrencyScale::bcformatStrict($current['returns'], $scale),
-            netSales: CurrencyScale::bcformatStrict(bcsub($current['gross'], $current['returns'], $scale + 1), $scale),
+            netSales: CurrencyScale::bcformatStrict($currentNet, $scale),
             salesCount: $current['saleCount'],
             returnsCount: $current['returnCount'],
             itemsSold: CurrencyScale::bcformatStrict($current['items'], self::QTY_SCALE),
@@ -64,6 +70,8 @@ final class OwnerSalesSummaryService
             delta: new SalesSummaryDeltaData(
                 grossSalesAbs: CurrencyScale::bcformatStrict(bcsub($current['gross'], $prior['gross'], $scale + 1), $scale),
                 grossSalesPct: $this->pct($current['gross'], $prior['gross']),
+                netSalesAbs: CurrencyScale::bcformatStrict(bcsub($currentNet, $priorNet, $scale + 1), $scale),
+                netSalesPct: $this->pct($currentNet, $priorNet),
                 salesCountAbs: $current['saleCount'] - $prior['saleCount'],
                 salesCountPct: $this->pct((string) $current['saleCount'], (string) $prior['saleCount']),
             ),
@@ -170,7 +178,7 @@ final class OwnerSalesSummaryService
             returnsCount: 0,
             itemsSold: CurrencyScale::bcformatStrict('0', self::QTY_SCALE),
             averageBasket: null,
-            delta: new SalesSummaryDeltaData($zero, null, 0, null),
+            delta: new SalesSummaryDeltaData($zero, null, $zero, null, 0, null),
         );
     }
 }

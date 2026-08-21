@@ -54,6 +54,36 @@ final class OwnerSalesSummaryServiceTest extends TestCase
     }
 
     /**
+     * O-28 (owner ruling 2026-08-21): the owner dashboard headline is NET, EXCLUDING
+     * REFUNDS. The trend badge attached to that headline must be derived from the same
+     * definition — a net figure carrying a gross-derived percentage is exactly the
+     * blend the ruling forbids. The two windows here have DIFFERENT return activity,
+     * so the gross and net deltas cannot coincide by accident.
+     */
+    public function test_delta_exposes_a_net_of_returns_trend_alongside_the_gross_one(): void
+    {
+        // current window (2026-06-09..06-16): sales 100 + 200 = 300, return 50 → net 250
+        $sale1 = $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-10 10:00:00', '100.00');
+        $this->seedReceipt($this->locationB, $this->terminalB, '2026-06-11 10:00:00', '200.00');
+        $this->seedReturn($this->locationA, $this->terminalA, '2026-06-12 10:00:00', '-50.00', $sale1);
+        // prior window (2026-06-01..06-08): sale 200, return 50 → gross 200, net 150
+        $priorSale = $this->seedReceipt($this->locationA, $this->terminalA, '2026-06-05 10:00:00', '200.00');
+        $this->seedReturn($this->locationA, $this->terminalA, '2026-06-06 10:00:00', '-50.00', $priorSale);
+
+        $summary = $this->app->make(OwnerSalesSummaryService::class)->summary(
+            $this->range(), [$this->company->id], [$this->locationA->id, $this->locationB->id],
+        );
+
+        $this->assertSame('250.00', $summary->netSales);
+        // gross: (300-200)/200*100 = 50.00
+        $this->assertSame('100.00', $summary->delta->grossSalesAbs);
+        $this->assertSame('50.00', $summary->delta->grossSalesPct);
+        // net: (250-150)/150*100 = 66.666… → 66.67 (round half away from zero)
+        $this->assertSame('100.00', $summary->delta->netSalesAbs);
+        $this->assertSame('66.67', $summary->delta->netSalesPct);
+    }
+
+    /**
      * `returns` was `ABS(SUM(CASE … receipt_type='return' … total …))` — an ABS
      * OUTSIDE the SUM. Legacy returns stored a NEGATIVE total and v4 refunds
      * store a POSITIVE one (spec §7.7), so in a window spanning the cutover the
@@ -145,5 +175,7 @@ final class OwnerSalesSummaryServiceTest extends TestCase
         $this->assertNull($summary->averageBasket);
         $this->assertSame('0.000', $summary->delta->grossSalesAbs);
         $this->assertNull($summary->delta->grossSalesPct);
+        $this->assertSame('0.000', $summary->delta->netSalesAbs);
+        $this->assertNull($summary->delta->netSalesPct);
     }
 }

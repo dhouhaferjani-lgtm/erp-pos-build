@@ -8,7 +8,7 @@ import { toast } from 'sonner';
 import { fetchShiftReceipts, type ShiftReceipt } from '@/api/reportApi';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useCurrency } from '@/lib/currency';
-import { bcsum, bcdiv, bccomp, bcformat } from '@/lib/decimal';
+import { bcsum, bcsub, bcdiv, bccomp, bcabs, bcformat } from '@/lib/decimal';
 import { formatQuantity } from '@/lib/quantity';
 import { printReceiptAsPdf } from '@/lib/printing';
 import { SaleDetailModal } from '@/components/pos/SaleDetailModal';
@@ -85,11 +85,20 @@ export function TodaySalesPage() {
   const saleReceipts = receipts.filter((r) => r.receipt_type === 'sale' && !r.is_voided);
   const returnReceipts = receipts.filter((r) => r.receipt_type === 'return');
   const voidedCount = receipts.filter((r) => r.is_voided).length;
-  const totalSales = bcsum(saleReceipts.map((r) => r.total), decimals);
-  const totalReturns = bcsum(returnReceipts.map((r) => r.total), decimals);
+  const grossSales = bcsum(saleReceipts.map((r) => r.total), decimals);
+  // Per-row magnitude, never a raw sum of the stored totals. Legacy returns stored
+  // a NEGATIVE total and v4 refund authoring stores a POSITIVE one (v3-refund-chain
+  // spec §7.7), so a shift spanning the cutover would otherwise ADD a legacy return
+  // back into the headline and cancel one era against the other. Same reasoning as
+  // the backend `-ABS(col)` CASE (ticket 2026-08-01-positive-refund-total-consumers).
+  const totalReturns = bcsum(returnReceipts.map((r) => bcabs(r.total, decimals)), decimals);
+  // O-28 (owner ruling 2026-08-21): the headline figure is NET, EXCLUDING REFUNDS.
+  // Gross stays available for the per-sale average below, where a return is not a
+  // member of the population being averaged.
+  const netSales = bcsub(grossSales, totalReturns, decimals);
   const avgTicket =
     saleReceipts.length > 0
-      ? bcdiv(totalSales, String(saleReceipts.length), decimals)
+      ? bcdiv(grossSales, String(saleReceipts.length), decimals)
       : bcformat('0', decimals);
 
   const receiptTime = (receipt: ShiftReceipt) => {
@@ -117,8 +126,8 @@ export function TodaySalesPage() {
         <>
           <div className="grid grid-cols-4 gap-4 px-6 py-4">
             <div className="rounded-card bg-action-subtle p-4">
-              <p className="text-xs font-medium text-action">{t('reports.totalSales')}</p>
-              <p className="mt-1 text-2xl font-bold text-ink">{format(totalSales)}</p>
+              <p className="text-xs font-medium text-action">{t('reports.netSalesExclRefunds')}</p>
+              <p className="mt-1 text-2xl font-bold text-ink">{format(netSales)}</p>
             </div>
             <div className="rounded-card bg-surface-raised p-4 shadow-sm ring-1 ring-border-subtle">
               <p className="text-xs font-medium text-ink-muted">{t('reports.receiptCount')}</p>

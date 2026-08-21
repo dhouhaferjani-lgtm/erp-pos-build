@@ -21,7 +21,7 @@ final class SalesSummaryDataTest extends TestCase
             returnsCount: 1,
             itemsSold: '34.0000',
             averageBasket: '125.00',
-            delta: new SalesSummaryDeltaData('200.00', '15.38', 3, '33.33'),
+            delta: new SalesSummaryDeltaData('200.00', '15.38', '150.00', '11.54', 3, '33.33'),
         );
 
         $array = $dto->toArray();
@@ -29,6 +29,10 @@ final class SalesSummaryDataTest extends TestCase
         $this->assertSame('EUR', $array['currencyCode']);
         $this->assertSame('1500.00', $array['grossSales']);
         $this->assertSame(12, $array['salesCount']);
-        $this->assertNull((new SalesSummaryDeltaData('0.00', null, 0, null))->grossSalesPct);
+        // O-28: the net-of-returns trend pair rides alongside the gross one.
+        $this->assertSame('150.00', $array['delta']['netSalesAbs']);
+        $this->assertSame('11.54', $array['delta']['netSalesPct']);
+        $this->assertNull((new SalesSummaryDeltaData('0.00', null, '0.00', null, 0, null))->grossSalesPct);
+        $this->assertNull((new SalesSummaryDeltaData('0.00', null, '0.00', null, 0, null))->netSalesPct);
     }
 }

@@ -108,7 +108,7 @@
       "percentage": "Percentage"
     },
     "kpi": {
-      "totalSales": "Total sales",
+      "netSales": "Net sales (excl. refunds)",
       "transactions": "Transactions",
       "avgBasket": "Average basket",
       "itemsSold": "Items sold",

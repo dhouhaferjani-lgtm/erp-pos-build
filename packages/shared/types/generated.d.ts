@@ -233,6 +233,8 @@ delta: App.Modules.Accounting.Application.DTOs.Reports.SalesSummaryDeltaData;
 export type SalesSummaryDeltaData = {
 grossSalesAbs: string;
 grossSalesPct: string | null;
+netSalesAbs: string;
+netSalesPct: string | null;
 salesCountAbs: number;
 salesCountPct: string | null;
 };

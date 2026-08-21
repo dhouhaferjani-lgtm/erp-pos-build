@@ -108,7 +108,7 @@
       "percentage": "Pourcentage"
     },
     "kpi": {
-      "totalSales": "Ventes totales",
+      "netSales": "Ventes nettes (hors remboursements)",
       "transactions": "Transactions",
       "avgBasket": "Panier moyen",
       "itemsSold": "Articles vendus",

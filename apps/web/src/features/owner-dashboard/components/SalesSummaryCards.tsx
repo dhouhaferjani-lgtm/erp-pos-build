@@ -48,17 +48,20 @@ export function SalesSummaryCards({ data, isLoading, isError, isLive = false }: 
           isPositive: Number(v) >= 0,
         }
 
-  const grossSalesTrend = pct(data.delta.grossSalesPct)
+  // O-28 (owner ruling 2026-08-21): the headline figure is NET, EXCLUDING REFUNDS —
+  // and so is its trend badge. `grossSales`/`delta.grossSalesPct` stay on the DTO for
+  // surfaces that report gross explicitly; this tile must not blend the two.
+  const netSalesTrend = pct(data.delta.netSalesPct)
   const salesCountTrend = pct(data.delta.salesCountPct)
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
       <div className="relative">
         <StatCard
-          label={t('reports:ownerDashboard.kpi.totalSales')}
-          value={formatCurrency(data.grossSales, true, currency)}
+          label={t('reports:ownerDashboard.kpi.netSales')}
+          value={formatCurrency(data.netSales, true, currency)}
           icon={ShoppingBag}
-          {...(grossSalesTrend ? { trend: grossSalesTrend } : {})}
+          {...(netSalesTrend ? { trend: netSalesTrend } : {})}
         />
         {isLive && (
           <span className={`absolute end-4 top-4 inline-flex items-center gap-1 text-xs font-medium ${textColors.success}`}>

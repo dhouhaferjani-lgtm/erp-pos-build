@@ -83,6 +83,8 @@ describe('OwnerDashboardPage', () => {
         delta: {
           grossSalesAbs: '150.00',
           grossSalesPct: '100.00',
+          netSalesAbs: '100.00',
+          netSalesPct: '66.67',
           salesCountAbs: 1,
           salesCountPct: '50.00',
         },
@@ -178,7 +180,7 @@ describe('OwnerDashboardPage', () => {
 
   it('renders the KPI summary row', () => {
     renderPage()
-    expect(screen.getByText('reports:ownerDashboard.kpi.totalSales')).toBeInTheDocument()
+    expect(screen.getByText('reports:ownerDashboard.kpi.netSales')).toBeInTheDocument()
   })
 
   it('defaults the dashboard query to today with hour granularity', () => {

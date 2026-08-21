@@ -12,7 +12,7 @@ vi.mock('react-i18next', () => ({
     t: (key: string) => {
       const map: Record<string, string> = {
         'reports.todaySales': "Today's Sales",
-        'reports.totalSales': 'Total Sales',
+        'reports.netSalesExclRefunds': 'Net sales (excl. refunds)',
         'reports.receiptCount': 'Receipts',
         'reports.avgTicket': 'Avg Ticket',
         'reports.returns': 'Returns',
@@ -216,6 +216,41 @@ describe('TodaySalesPage', () => {
     renderPage();
 
     expect(await screen.findByText('1.20× Measured Item, 1.2000× Archived Item')).toBeInTheDocument();
+  });
+
+  // ── O-28: the headline is NET of refunds ────────────────────────────────────
+  //
+  // Owner ruling 2026-08-21 (LEDGER O-28): every Today's-Sales headline figure is
+  // NET, EXCLUDING REFUNDS, and must be labelled accordingly. Before the fix the
+  // tile summed SALE receipts only (125.00 here) and showed the day's returns as a
+  // separate, never-subtracted figure — a cashier reading "Total Sales" saw a
+  // number that ignored the 20.00 return.
+  it('renders the headline as sales minus returns under the net label', async () => {
+    renderPage();
+
+    // 50.00 + 75.00 sales − 20.00 return = 105.000 (bcsum/bcsub default scale 3).
+    expect(await screen.findByText('Net sales (excl. refunds)')).toBeInTheDocument();
+    expect(await screen.findByText('105.000')).toBeInTheDocument();
+    expect(screen.queryByText('125.000')).not.toBeInTheDocument();
+  });
+
+  // Legacy returns stored a NEGATIVE total; v4 refund authoring stores a POSITIVE
+  // one (v3-refund-chain spec §7.7). A raw `sales - sum(returnTotals)` ADDS a
+  // legacy return back into the headline. Per-row magnitude is the only safe form
+  // — same reasoning as the backend `-ABS` CASE (ticket
+  // 2026-08-01-positive-refund-total-consumers).
+  it('subtracts a legacy negative-total return by magnitude, not by sign', async () => {
+    mockFetchShiftReceipts.mockResolvedValue([
+      sampleReceipts[0],
+      sampleReceipts[1],
+      { ...sampleReceipts[2], total: '-20.00' },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText('105.000')).toBeInTheDocument();
+    // The un-normalised form would report 145.000 (125 − −20).
+    expect(screen.queryByText('145.000')).not.toBeInTheDocument();
   });
 
   it('shows reprint button for each receipt', async () => {
