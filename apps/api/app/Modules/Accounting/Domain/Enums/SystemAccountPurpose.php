@@ -4,6 +4,35 @@ declare(strict_types=1);
 
 namespace App\Modules\Accounting\Domain\Enums;
 
+/**
+ * RULED EXCEPTION to agent rule 6 (module boundaries), O-27, 2026-08-21.
+ *
+ * This is the first production cross-module Domain->Domain import in the tree,
+ * and it is CIRCULAR: `ProvisioningRequiredPurposesV1` imports this enum back
+ * (its every entry is typed `SystemAccountPurpose`). Both halves are stated
+ * plainly so a later reader does not mistake it for drift:
+ *
+ *  - WHY IT IS ALLOWED. `ProvisioningRequiredPurposesV1` is deliberately the
+ *    CROSS-MODULE authority on which purposes are REQUIRED — the country-defaults
+ *    lane owns that classification and every other lane consumes it (P3-M2, and
+ *    the O-27 ruling routes the widening "through the country-defaults
+ *    authority" by name). Routing the answer through a Shared/Contracts
+ *    interface or a Service class would put a second declaration of the set in
+ *    the tree, which is precisely the divergence D-2 reported: the enum's own
+ *    hand-written list had drifted to a 14-of-28 subset of it. One authority,
+ *    read directly, is the fix.
+ *  - WHY NO TOOL CATCHES IT. `deptrac.yaml` layers are hexagonal TIERS
+ *    (ModuleDomain, ModuleApplication, ...), glob-collected across all modules,
+ *    and its header says cross-module coupling is explicitly NOT enforced —
+ *    "module A's Domain depending on module B's Domain is a same-layer
+ *    dependency and is allowed". The ratchet therefore reports PASS on this
+ *    import; it is not evidence the boundary was reviewed. This docblock is
+ *    that evidence.
+ *
+ * Recorded on the owner sheet. If cross-module Domain coupling is ever
+ * enforced, this import is the case to rule on first.
+ */
+
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
 
 /**
@@ -180,12 +209,17 @@ enum SystemAccountPurpose: string
      * definition of "REQUIRED", owned by the country-defaults authority, and a
      * purpose added or reclassified there moves both provisioning conformance
      * and live-tenant validation in the same commit.
-     * `SystemAccountPurposeManifestParityTest` pins the derivation itself.
+     * `LiveTenantChartValidationParityTest` pins the derivation itself, in both
+     * directions.
      *
-     * `assertConforms()` is deliberately NOT called here: this runs on a live
-     * request path, and a manifest whose partition has drifted must fail in CI
-     * (SeededChartManifestRequiredPurposeCompletenessTest) rather than throw at
-     * an operator opening the Chart of Accounts screen.
+     * It delegates to the authority's own `requiredPurposes()` accessor rather
+     * than filtering `entries()` on the string `'REQUIRED'`. That string is a
+     * PRIVATE const of the manifest, so a filter written here would compare
+     * against a value it cannot see and would FAIL OPEN if the value ever
+     * changed: no entry matches, this returns `[]`, and
+     * `validateCompanyAccounts()` reports every chart healthy — including one
+     * that cannot post a single entry. The authority answers in the one scope
+     * that can see the const.
      *
      * The classification is the manifest's to make, and the two judgements this
      * list used to spell out survive it unchanged: `InventoryShrinkageExpense`
@@ -208,18 +242,7 @@ enum SystemAccountPurpose: string
      */
     public static function requiredPurposes(): array
     {
-        $required = [];
-
-        foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
-            // The classification constants are private to the manifest; the
-            // published shape of entries() is the string. Reading the string is
-            // the documented consumption path, not a workaround.
-            if ($entry['classification'] === 'REQUIRED') {
-                $required[] = $entry['purpose'];
-            }
-        }
-
-        return $required;
+        return ProvisioningRequiredPurposesV1::requiredPurposes();
     }
 
     /**

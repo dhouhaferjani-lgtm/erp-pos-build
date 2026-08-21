@@ -47,9 +47,12 @@ use Illuminate\Support\Facades\Schema;
  * `requiredPurposes()`.
  *
  * SELF-GUARDING AND IDEMPOTENT, as `tenants:migrate` demands:
- *  - CHARTLESS TENANT: the `companies` / `accounts` table check returns early,
- *    so a run before the accounting tables exist is a quiet no-op. A company
- *    with no chart rows at all reaches the command, finds no parent for
+ *  - CHARTLESS TENANT: the `companies` / `accounts` table check returns early
+ *    and emits `status=skipped` on the gate token, so a run before the
+ *    accounting tables exist is a no-op that is still ACCOUNTED FOR — see the
+ *    comment at the guard for why silence there would be indistinguishable
+ *    from a crashed tenant. A company that exists but has no chart rows at all
+ *    is a different case: it reaches the command, finds no parent for
  *    anything, and reports — it never invents a chart.
  *  - ALREADY COMPLETE: the command is PURPOSE-FIRST, so a chart that already
  *    resolves a purpose on ANY code is counted `satisfied` and left untouched.
@@ -66,8 +69,13 @@ use Illuminate\Support\Facades\Schema;
  *    the migration repository's own bookkeeping INSERT would fail, killing the
  *    tenant's entire run. `DB::transaction()` opens a SAVEPOINT when a
  *    transaction is already active and rolls back to it alone, which is what
- *    makes the catch below an honest guarantee. Proven by
- *    `BackfillChartPurposesMigrationTest::test_a_failing_backfill_does_not_poison_the_enclosing_migration_transaction`.
+ *    makes the catch below an honest guarantee. Proven FOR THIS MIGRATION by
+ *    `BackfillChartRequiredPurposesO27MigrationTest::test_a_failing_backfill_does_not_poison_the_enclosing_migration_transaction`
+ *    (`tests/Feature/Accounting/BackfillChartRequiredPurposesO27MigrationTest.php:279`),
+ *    which runs green on a real PostgreSQL database and is skipped on sqlite —
+ *    only PostgreSQL aborts the enclosing transaction after a failed statement.
+ *    The identically-shaped case on the 2026-08-10 sibling proves the sibling,
+ *    not this file; each migration carries its own proof.
  *
  * RESIDUAL, DOCUMENTED. For a French-plan chart the command now maps eighteen
  * of the twenty-eight REQUIRED purposes; the ten it does not are exactly the
@@ -93,13 +101,28 @@ return new class extends Migration
 
     public function up(): void
     {
+        // Under `tenants:migrate` all tenants share one laravel.log, so an
+        // unattributed line cannot be acted on. Resolved BEFORE the table guard
+        // because the guard now reports too.
+        $tenantKey = (string) (tenant()?->getTenantKey() ?? 'unknown');
+
         if (! Schema::hasTable('companies') || ! Schema::hasTable('accounts')) {
+            // REPORTS, does not return silently. The deploy gate's second half
+            // asserts one token line PER TENANT, precisely because ABSENCE of
+            // the token means the migration died before finishing. A silent
+            // early return is indistinguishable from that failure at the log,
+            // so a database legitimately without the accounting tables would
+            // read as a crashed tenant. `status=skipped` is a third value
+            // alongside `ok` and `FAILED`, so it satisfies the per-tenant count
+            // without ever matching a `status=FAILED` failure grep.
+            Log::warning(sprintf(
+                '%s tenant=%s status=skipped reason=accounting-tables-absent.',
+                self::GATE_TOKEN,
+                $tenantKey,
+            ));
+
             return;
         }
-
-        // Under `tenants:migrate` all tenants share one laravel.log, so an
-        // unattributed line cannot be acted on.
-        $tenantKey = (string) (tenant()?->getTenantKey() ?? 'unknown');
 
         try {
             $exitCode = 1;

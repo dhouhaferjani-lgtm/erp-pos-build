@@ -85,6 +85,47 @@ final class ProvisioningRequiredPurposesV1
     }
 
     /**
+     * The REQUIRED partition, as the authority's own answer.
+     *
+     * ADDED, NOT EDITED (O-27). The manifest's DATA — `entries()`, the
+     * classifications, the evidence citations, `registeredThrowingCallSites()`
+     * — is frozen and must never be changed by a consuming lane. This is an
+     * accessor over that data: it introduces no new fact and cannot change any
+     * classification. Adding a read path is permitted; rewriting what is read
+     * is not.
+     *
+     * WHY IT EXISTS. Consumers previously filtered `entries()` themselves with
+     * `$entry['classification'] === 'REQUIRED'` — a bare string compared
+     * against a PRIVATE const. That comparison FAILS OPEN: change the value of
+     * `self::REQUIRED` and every such filter silently matches nothing, so
+     * `SystemAccountPurpose::requiredPurposes()` returns `[]` and
+     * `ChartOfAccountsService::validateCompanyAccounts()` certifies every chart
+     * — including one that cannot post a single entry — as healthy. Callers
+     * cannot reference the const, so the only safe fix is for the authority to
+     * answer the question itself, comparing against the const in the one scope
+     * that can see it.
+     *
+     * Deliberately does NOT call {@see assertConforms()}: live request paths
+     * consume this (validation, the Chart of Accounts screen) and a drifted
+     * manifest must fail in CI, not throw at an operator. The conformance gate
+     * is `SeededChartManifestRequiredPurposeCompletenessTest`.
+     *
+     * @return list<SystemAccountPurpose>
+     */
+    public static function requiredPurposes(): array
+    {
+        $required = [];
+
+        foreach (self::entries() as $entry) {
+            if ($entry['classification'] === self::REQUIRED) {
+                $required[] = $entry['purpose'];
+            }
+        }
+
+        return $required;
+    }
+
+    /**
      * Complete AST ratchet inventory. A line is deliberately part of the registration key: moving or
      * adding a throwing lookup requires re-reviewing its manifest evidence rather than silently passing.
      *

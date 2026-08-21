@@ -286,6 +286,104 @@ final class ChartPurposeBackfillSeederParityTest extends TestCase
     }
 
     /**
+     * The OTHER `purchase_stamp_duty` writer.
+     *
+     * Unlike the tolerance pair, this second writer is not a command with a
+     * `definitions()` method to reflect: it is the 2026-08-07 tenant migration,
+     * and its mapping lives in an inline `match` inside a private method with
+     * side effects, so it cannot be invoked. The binding is therefore a SOURCE
+     * SCAN of exactly that match — the same technique
+     * `SeededChartManifestRequiredPurposeCompletenessTest` uses to bind its
+     * country list to `getSeederForCountry()`.
+     *
+     * Its third element is a LIST of parent-code candidates tried in order
+     * (`['63', '6000']` for the French plan), not a single parent. That is a
+     * fallback chain, not a disagreement: the PREFERRED parent is its first
+     * entry, and that is what must match the backfill's `parent_code`.
+     *
+     * @return array<string, array{code: string, name: string, parent_code: string}>
+     */
+    private function stampDutyMigrationArms(): array
+    {
+        $path = database_path('migrations/tenant/2026_08_07_100000_backfill_purchase_stamp_duty_account.php');
+        $source = file_get_contents($path);
+
+        $this->assertIsString($source, 'Could not read the 2026-08-07 purchase stamp duty migration.');
+
+        $pattern = "/%s\\s*=>\\s*\\[\\s*'(?<code>[^']+)'\\s*,\\s*(?<name>\"[^\"]*\"|'[^']*')\\s*,\\s*\\[\\s*'(?<parent>[^']+)'/";
+
+        $arms = [];
+        foreach ([
+            'FR' => "'TN',\\s*'FR'",
+            'XX' => 'default',
+        ] as $countryCode => $armPattern) {
+            $matched = preg_match(sprintf($pattern, $armPattern), $source, $captures);
+
+            $this->assertSame(1, $matched, sprintf(
+                'The %s arm of the 2026-08-07 stamp-duty migration no longer matches the scan pattern, so this '
+                .'dual-writer pin has gone vacuous. Re-read the migration and fix the pattern.',
+                $countryCode,
+            ));
+
+            $arms[$countryCode] = [
+                'code' => $captures['code'],
+                // Both quoting styles appear in the source (the French name
+                // carries an apostrophe); compare the VALUE, not the literal.
+                'name' => substr($captures['name'], 1, -1),
+                'parent_code' => $captures['parent'],
+            ];
+        }
+
+        // TN and FR share the arm; the generic chart is the default arm.
+        $arms['TN'] = $arms['FR'];
+
+        return $arms;
+    }
+
+    /**
+     * `purchase_stamp_duty` has TWO writers — this backfill and the 2026-08-07
+     * tenant migration — and O-27 added it to the first. Two writers with two
+     * answers is how a chart ends up with the purpose on the wrong code, so
+     * they are pinned byte-identical per country on code, name and preferred
+     * parent.
+     */
+    public function test_the_purchase_stamp_duty_tuples_agree_with_the_dedicated_stamp_duty_migration(): void
+    {
+        $command = $this->chartCommand();
+        $arms = $this->stampDutyMigrationArms();
+
+        foreach (array_keys(self::SEEDER_BY_COUNTRY) as $countryCode) {
+            $fromChart = $this->tuplesByPurpose(
+                $this->backfillDefinitions($command, $countryCode),
+                [SystemAccountPurpose::PurchaseStampDuty->value],
+            );
+
+            $this->assertArrayHasKey(
+                SystemAccountPurpose::PurchaseStampDuty->value,
+                $fromChart,
+                sprintf('Country %s lost its purchase_stamp_duty definition.', $countryCode),
+            );
+
+            $tuple = $fromChart[SystemAccountPurpose::PurchaseStampDuty->value];
+
+            $this->assertSame($arms[$countryCode]['code'], $tuple['code'], sprintf(
+                'Country %s: the chart backfill and the 2026-08-07 stamp-duty migration disagree on the ACCOUNT CODE.',
+                $countryCode,
+            ));
+            $this->assertSame($arms[$countryCode]['name'], $tuple['name'], sprintf(
+                'Country %s: the two purchase_stamp_duty writers disagree on the account NAME.',
+                $countryCode,
+            ));
+            $this->assertSame($arms[$countryCode]['parent_code'], $tuple['parent_code'], sprintf(
+                'Country %s: the chart backfill\'s parent_code must be the migration\'s PREFERRED (first) parent '
+                .'candidate, or the same purpose lands under two different parents depending on which writer ran.',
+                $countryCode,
+            ));
+            $this->assertSame('expense', $tuple['type']);
+        }
+    }
+
+    /**
      * @param  list<array{code: string, name: string, type: string, parent_code: string|null, purpose: string}>  $definitions
      * @param  list<string>  $purposes
      * @return array<string, array{code: string, name: string, type: string, parent_code: string|null}>
@@ -326,5 +424,10 @@ final class ChartPurposeBackfillSeederParityTest extends TestCase
         $this->assertTrue(method_exists(BackfillChartPurposesCommand::class, 'definitions'));
         $this->assertTrue(method_exists(BackfillTolerancePurposesCommand::class, 'definitions'));
         $this->assertTrue(method_exists(ChartOfAccountsService::class, 'getSeederForCountry'));
+
+        $this->assertFileExists(
+            database_path('migrations/tenant/2026_08_07_100000_backfill_purchase_stamp_duty_account.php'),
+            'The second purchase_stamp_duty writer is gone; the dual-writer pin below has nothing to compare against.',
+        );
     }
 }

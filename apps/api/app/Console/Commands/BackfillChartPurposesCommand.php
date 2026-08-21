@@ -398,6 +398,13 @@ final class BackfillChartPurposesCommand extends Command
      * validation now legitimately reports unhealthy, and an operator assigns
      * the purpose in Settings -> Chart of Accounts.
      *
+     * The REQUIRED set comes from the authority's own `requiredPurposes()`
+     * accessor, never from filtering `entries()` on the string `'REQUIRED'`:
+     * that string is a PRIVATE const of the manifest, so a local filter would
+     * compare against a value it cannot see and would FAIL OPEN if the value
+     * changed — matching nothing, reporting no residual, and certifying every
+     * chart complete.
+     *
      * `ProvisioningRequiredPurposesV1::assertConforms()` is NOT called here.
      * This is an unattended repair path; a drifted manifest must not abort a
      * tenant's migration run. The manifest's own conformance is gated in CI
@@ -414,12 +421,8 @@ final class BackfillChartPurposesCommand extends Command
 
         $unmapped = 0;
 
-        foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
-            if ($entry['classification'] !== 'REQUIRED') {
-                continue;
-            }
-
-            $purpose = $entry['purpose']->value;
+        foreach (ProvisioningRequiredPurposesV1::requiredPurposes() as $requiredPurpose) {
+            $purpose = $requiredPurpose->value;
             if (isset($covered[$purpose])) {
                 continue;
             }

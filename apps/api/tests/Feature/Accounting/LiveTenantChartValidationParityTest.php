@@ -155,6 +155,46 @@ final class LiveTenantChartValidationParityTest extends TestCase
     }
 
     /**
+     * The launch country, end to end, on the one purpose whose mapping is NOT
+     * identical across the two French-plan charts.
+     *
+     * `pos_tender_clearing` lives on `5810` for both TN and FR, but TN has no
+     * `58` (Virements internes) header and roots it directly on class `5`. A
+     * backfill that copied the FR tuple wholesale would report TN's parent as
+     * missing and repair nothing — so this asserts the created account's
+     * parent_id is the class-`5` row by identity, not just that a row appeared.
+     */
+    public function test_the_backfill_repairs_a_tunisian_chart_and_roots_pos_tender_clearing_on_class_five(): void
+    {
+        $company = $this->seedChart('TN');
+
+        $classFive = Account::forCompany($company->id)->where('code', '5')->first();
+        $this->assertNotNull($classFive, 'The TN chart must carry the class-5 FINANCIERS header.');
+
+        Account::forCompany($company->id)
+            ->where('system_purpose', SystemAccountPurpose::PosTenderClearing->value)
+            ->delete();
+
+        $before = $this->service->validateCompanyAccounts($company->id);
+        $this->assertFalse($before['valid']);
+        $this->assertContains(SystemAccountPurpose::PosTenderClearing->value, $before['missing_purposes']);
+
+        $this->artisan('accounting:backfill-chart-purposes')->assertSuccessful();
+
+        $repaired = $this->service->validateCompanyAccounts($company->id);
+        $this->assertTrue($repaired['valid'], 'Backfill left: '.implode(', ', $repaired['missing_purposes']));
+
+        $posTenderClearing = Account::findByPurpose($company->id, SystemAccountPurpose::PosTenderClearing);
+        $this->assertNotNull($posTenderClearing);
+        $this->assertSame('5810', $posTenderClearing->code);
+        $this->assertSame(
+            $classFive->id,
+            $posTenderClearing->parent_id,
+            'TN roots 5810 on class 5, not on the French chart\'s 58 (Virements internes) header.',
+        );
+    }
+
+    /**
      * The same repair for a chart whose account row is missing outright (the
      * CREATE branch), on the generic chart every non-TN/FR country receives.
      */
@@ -217,6 +257,49 @@ final class LiveTenantChartValidationParityTest extends TestCase
     public function test_the_manifest_required_set_is_the_full_twenty_eight(): void
     {
         $this->assertCount(28, SystemAccountPurpose::requiredPurposes());
+    }
+
+    /**
+     * FAIL-OPEN GUARD. The set is now produced by the authority's own
+     * `requiredPurposes()` accessor, which compares against the PRIVATE const
+     * in the one scope that can see it. A consumer that instead filtered
+     * `entries()` on the bare string `'REQUIRED'` would silently return `[]`
+     * the day that const's VALUE changed — and an empty required set makes
+     * `validateCompanyAccounts()` certify EVERY chart healthy, including one
+     * that cannot post a single entry.
+     *
+     * This asserts the accessor agrees with an INDEPENDENT derivation and, more
+     * importantly, that neither is empty — emptiness is the failure mode, and
+     * two empty sets would compare equal.
+     */
+    public function test_the_authority_accessor_is_not_a_fail_open_empty_set(): void
+    {
+        $independent = [];
+        foreach (ProvisioningRequiredPurposesV1::entries() as $entry) {
+            if ($entry['classification'] === 'REQUIRED') {
+                $independent[] = $entry['purpose']->value;
+            }
+        }
+
+        $viaAccessor = array_map(
+            static fn (SystemAccountPurpose $purpose): string => $purpose->value,
+            ProvisioningRequiredPurposesV1::requiredPurposes(),
+        );
+
+        sort($independent);
+        sort($viaAccessor);
+
+        $this->assertNotEmpty($viaAccessor, 'The authority accessor returned an EMPTY required set — fail-open.');
+        $this->assertCount(28, $viaAccessor);
+        $this->assertSame($independent, $viaAccessor);
+
+        // And the enum genuinely delegates rather than keeping its own copy.
+        $viaEnum = array_map(
+            static fn (SystemAccountPurpose $purpose): string => $purpose->value,
+            SystemAccountPurpose::requiredPurposes(),
+        );
+        sort($viaEnum);
+        $this->assertSame($viaAccessor, $viaEnum);
     }
 
     /**

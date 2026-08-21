@@ -14,6 +14,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Tests\Support\Attributes\UsesFrozenSeederFixture;
 use Tests\TestCase;
@@ -251,6 +252,42 @@ final class BackfillChartRequiredPurposesO27MigrationTest extends TestCase
         Log::shouldHaveReceived('warning')
             ->withArgs(static fn (string $message): bool => str_contains($message, self::GATE_TOKEN)
                 && str_contains($message, 'status=ok'))
+            ->once();
+    }
+
+    /**
+     * The table guard REPORTS rather than returning silently.
+     *
+     * The deploy gate's second half asserts one token line per tenant, because
+     * ABSENCE of the token means the migration died before finishing. A silent
+     * early return would be indistinguishable from that at the log, so a
+     * database legitimately without the accounting tables would read as a
+     * crashed tenant. `status=skipped` is a third value alongside `ok` and
+     * `FAILED` — it satisfies the count without ever matching a failure grep.
+     */
+    public function test_the_table_guard_emits_a_skipped_gate_line_instead_of_returning_silently(): void
+    {
+        // RENAME, not drop. On PostgreSQL `accounts` carries four inbound
+        // foreign keys (journal_lines, expense_categories, payment_repositories,
+        // income_metadata), so a plain DROP raises 2BP01 and would make this
+        // case fail for a reason unrelated to the guard. A rename makes
+        // `Schema::hasTable('accounts')` false — which is exactly the condition
+        // the guard tests — while leaving the dependents intact, and it behaves
+        // the same on both drivers.
+        Schema::rename('accounts', 'accounts_guard_probe');
+
+        Log::spy();
+
+        try {
+            $this->runMigration();
+        } finally {
+            Schema::rename('accounts_guard_probe', 'accounts');
+        }
+
+        Log::shouldHaveReceived('warning')
+            ->withArgs(static fn (string $message): bool => str_contains($message, self::GATE_TOKEN)
+                && str_contains($message, 'status=skipped')
+                && ! str_contains($message, 'status=FAILED'))
             ->once();
     }
 
