@@ -357,10 +357,22 @@ milestones:
       Scope check: these are the ONLY two sale fixtures any decomposition assertion relies on
       (endOfDayPreview.test.ts:80-84 is the only such assertion in the file; :127 asserts empty;
       zReportService.test.ts:1045 is a REFUND row at tax_rate 0; reportApi tests assert []).
-      The remaining NET-valued line_total fixtures in endOfDayPreview.test.ts
-      (:144,:193,:247,:323,:390,:450,:488,:523,:555,:622) feed expected_cash / payment
-      assertions only and are REGISTERED-NOT-CORRECTED (rule 4 — correcting them would be a
-      large diff with no assertion benefit).
+      REGISTERED-NOT-CORRECTED, complete across ALL files (M3 gate-r1 finding 2 — the earlier
+      enumeration listed only endOfDayPreview rows and omitted the ones the brief and M0 named):
+        endOfDayPreview.test.ts :144,:193,:247,:323,:390,:450,:488,:523,:555,:622
+        zReportService.test.ts :123 (line_total '42.00' = NET on a 50.00/8.00 receipt — the
+          brief's own §M2 masking citation) and :452 ('84.03' on 100.00/15.97)
+        reportApi.localTimestamps.test.ts :136, :143
+        zReportService.cashRounding.test.ts :166 (line_total := input.total)
+      All feed expected_cash / payment / timestamp assertions, never a per-rate decomposition,
+      so none masks anything this lane asserts (verified: zReportService.test.ts touches
+      vat_breakdown only at :1045, a refund row at tax_rate 0; the reportApi tests assert []).
+      Left uncorrected under rule 4 — correcting them would be a large diff with no assertion
+      benefit. STANDING RISK, recorded deliberately: if a later change adds a per-rate assertion
+      in one of those files against the surviving NET-valued fixture, it will re-derive a wrong
+      expectation and re-establish exactly the masking pattern this lane exists to kill. The
+      antidote is the real-writer suite — any new per-rate assertion should be written there,
+      not against a hand-authored lines JSON.
       DISCLOSED RESIDUAL: the corrected rows still carry a NET `subtotal` column ('8.40'/'16.81')
       where the real writer would store GROSS — that is F-2's defect, deliberately NOT corrected
       here (ruling condition 4 keeps F-2 out of this lane).
@@ -376,10 +388,11 @@ milestones:
   - id: M3
     title: real-writer E2E matrix (mixed-rate, sale+refund net-to-zero) + fixture-correction register
     review_lenses: [fiscal-pos, general]
-    status: review
-    commit: null            # self-reference impossible at write time
-    verdict: null
-    fix_rounds: 0
+    status: passed
+    commit: 5b805657c
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M3-round1.md
+    last_verdict: ACCEPT (round 1, exit 0) — 0 P1, 1 P2, 7 P3; all eight closed in the M3.2 commit
+    fix_rounds: 1
     matrix: >-
       Both required cases added to the real-writer suite, and BOTH PROVEN MEANINGFUL by
       reverting the sale branch and observing the predicted wrong values (not merely by
@@ -407,6 +420,23 @@ milestones:
       magnitude and the net figure are right; the second column label is wrong. Recorded, not
       edited (the ticket is not this lane's file to change).
     fixture_register: see M2.fixture_corrections — no further fixtures were corrected at M3.
+    gates: >-
+      M3 gate-r1 finding 3 — this entry was missing (M2 had one) and the M3 commit message
+      recorded only typecheck + Tier-1, though the house rules make lint:ratchet binding EVERY
+      milestone. Run and recorded: pnpm typecheck CLEAN; pnpm lint:ratchet @autoerp/pos HELD at
+      84 (zero growth). @autoerp/web 6449 -> 6452 (+3) INHERITED — every changed path in this
+      branch is apps/pos/** or docs/**, with no eslint config, no baseline file, no package.json
+      and no shared package touched, so apps/web lints identically to base. Tier-1 85 passed,
+      Tier-2 80 passed, BY PATH only; no full suite.
+    record_ordering_disclosure: >-
+      M3 gate-r1 finding 4 — the M3 milestone record (including the pre-fix red values it cites)
+      was committed in 0cf1c7835 (M2.2), BEFORE the M3 implementation commit 5b805657c, and the
+      M3 commit touched no YAML. So commit order does NOT corroborate the "proven meaningful by
+      reverting" claim; the reviewer re-derived the numbers independently and confirmed them.
+      Disclosed rather than quietly re-committed. Root cause: the YAML was updated while M3 was
+      still in the working tree, then swept into the M2 fix-round commit. Corrected here — the
+      M3 commit SHA is now filled and this closure commit carries the evidence that follows the
+      artifact rather than preceding it.
     i18n: >-
       No user-facing string changed in this lane (brief M3): the diff touches aggregation
       expressions and tests only. apps/pos has no `ar` tree and none was created.
@@ -417,5 +447,58 @@ milestones:
     commit: null
     verdict: null
     fix_rounds: 0
+    whole_branch_file_list: >-
+      16 files. FIVE under apps/pos (3 production + 2 test), ELEVEN under docs/. Production:
+      zReportService.ts, endOfDayPreview.ts, reportApi.ts. Tests: saleReportingEndToEnd.test.ts
+      (new), endOfDayPreview.test.ts (the two R-4 fixture corrections).
+    production_diff_size: >-
+      The ENTIRE production code change across the whole branch is 18 lines — three IDENTICAL
+      six-line blocks (one gross local, one bcsub-derived net, three scaled accumulators),
+      differing only in each file's own scale identifier (`decimals` vs `scale`). Everything
+      else in the production diff is comment.
+    negatives_proven:
+      - >-
+        NO apps/api/** change at all — `git diff --name-only base..HEAD | grep ^apps/api/` is
+        EMPTY. Option B required none, and ruling condition 1 forbade one.
+      - >-
+        NO registry / payload / parser / validator / projection / archive change — the same grep
+        over Registry|Payload|Parser|Validator|Projection|Nf525|zSessionAuthoring is EMPTY.
+      - >-
+        HEADLINE AGGREGATION UNTOUCHED — no `grossSales|netSales|taxAmount = bcadd` line appears
+        in the diff at all.
+      - >-
+        REFUND BRANCHES UNTOUCHED AS CODE — no added/removed non-comment line contains a
+        `bcabs(` call; the two refund derivations still read
+        `const lineGross = bcabs(line.line_total ?? '0', decimals)` at zReportService.ts:868 and
+        reportApi.ts:463. R-2's "do not tidy them" honoured. (The only refund-side edit in the
+        branch is the endOfDayPreview COMMENT struck per M2 gate-r1 finding 1 — a now-false
+        sentence claiming the sale branch was out of scope.)
+      - >-
+        WRITER SEMANTICS UNTOUCHED — receiptService.ts, cartStore.ts and cartTotals.ts do not
+        appear in the diff. F-2 stays out of scope (ruling condition 4).
+      - >-
+        NO SIGNED-EVENT BACKFILL — no migration, no seeder, nothing that rewrites history.
+        Rule 8 honoured: no event renamed, deleted or rewritten; nothing added a version either
+        (that was Option A, not ruled).
+    r6_device_build_sequencing: >-
+      RECORDED, NEVER ASSIGNED (the build number is the device/deploy operator's call and O-22
+      is OPEN). This fix is DEVICE-SIDE ONLY and therefore reaches a terminal ONLY via a device
+      build; it joins the cumulative stack LEDGER D-1: v60/61 -> v62 -> v63 -> v66 -> v67
+      (v67 subject to owner ruling O-22, LEDGER.md:34). LEDGER D-3 remains binding: the SV-11
+      device build must deploy fleet-wide BEFORE the SV-9 migration reaches any origin/dev
+      promotion — this lane joins the same fleet rollout and must not be sequenced in a way
+      that breaks that. Option B introduces NO server-before-device obligation (the A14 hazard
+      the memo costed applies only to Option A, which was not ruled), so this lane adds no new
+      ordering constraint of its own.
+      RULING CONDITION 5 — THE REVERSAL WINDOW CLOSES AT DEVICE BUILD ROLLOUT, NOT AT MERGE: an
+      owner override back to Option A before any terminal receives the fixed build costs
+      essentially nothing; after rollout a v2 would separate "correct" from "ambiguous" rather
+      than "wrong" from "correct" — strictly worse, permanently. The parent should surface this
+      to the owner BEFORE the build ships, not before the merge.
+      SEQUENCING PREFERENCE from the ruling (prefer, do not block): bind this fix and the F-2
+      sibling lane to ONE device build. C-2 may ship alone if F-2 slips, but a tenant onboarding
+      on a C-2-without-F-2 build is an owner-visible residual — internally inconsistent Zs
+      (per-rate rows correct, headline net_sales wrong by the full VAT) plus a wrong NF525
+      <VentesNettes> from event one.
 
 updated: 9e43a4f5a   # short HEAD at write time

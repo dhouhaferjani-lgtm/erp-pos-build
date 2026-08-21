@@ -110,6 +110,61 @@ describe('buildEndOfDayPreview', () => {
     expect(cardMethod.is_physical).toBe(false);
   });
 
+  it('R-3 — accumulates the VAT decomposition at the CURRENCY scale, not decimal.ts\'s default of 3', async () => {
+    // The C-2 fix added an explicit currency-scale argument to every bc* call in
+    // the sale branch (R-3). Without it those calls silently take
+    // `decimal.ts`'s default of 3 (`decimal.ts:22-28`).
+    //
+    // That drift is INVISIBLE to a well-formed scale-2 fixture: the final
+    // emission re-formats through `bcformat(totals.*, scale)`, so a value
+    // accumulated at scale 3 from scale-2 inputs re-rounds to the same answer.
+    // It only becomes observable when the stored line carries MORE precision
+    // than the currency scale — which happens in this codebase: the cash-
+    // rounding path persists 3-decimal line_totals on EUR receipts (see
+    // receiptService.cashRounding.test.ts:202, `line_total: '9.997'`).
+    //
+    // Two lines at gross 10.004 / vat 0.001 on EUR (scale 2):
+    //   accumulated at scale 2 → 10.00 + 10.00               = 20.00  ✅
+    //   accumulated at scale 3 → 10.003 + 10.003 = 20.006 → 20.01  ❌ (one cent)
+    // So this test fails if the scale argument is ever dropped again.
+    vi.mocked(queryAll).mockImplementation(async (_db, sql) => {
+      if ((sql as string).includes('FROM offline_receipts')) {
+        return [
+          {
+            id: 'r1',
+            total: '20.01',
+            subtotal: '20.00',
+            tax_amount: '0.00',
+            payments_json: JSON.stringify([
+              { payment_method_id: 'pm-cash', amount: '20.01', method_code: 'CASH' },
+            ]),
+            lines: JSON.stringify([
+              { tax_rate: '19', tax_amount: '0.001', line_total: '10.004' },
+              { tax_rate: '19', tax_amount: '0.001', line_total: '10.004' },
+            ]),
+            created_at: '2026-04-23T10:00:00Z',
+          },
+        ];
+      }
+      if ((sql as string).includes('FROM payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', is_physical: 1 }];
+      }
+      return [];
+    });
+
+    const preview = await buildEndOfDayPreview(
+      {} as unknown as Database,
+      'term-1',
+      '2026-04-23T08:00:00Z',
+      '100.00',
+      'EUR',
+    );
+
+    expect(preview.vat_breakdown).toHaveLength(1);
+    // 20.00, not 20.01 — the per-line truncation happens at the CURRENCY scale.
+    expect(preview.vat_breakdown[0]!.net_amount).toBe('20.00');
+  });
+
   it('normalizes an ISO shiftOpenedAt to SQLite UTC format in the receipts query', async () => {
     // offline_receipts.created_at is `datetime('now')` format (space
     // separator, UTC); binding the raw ISO string (T separator) would

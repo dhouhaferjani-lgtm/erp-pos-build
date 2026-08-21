@@ -268,17 +268,32 @@ function saleInput(
 /**
  * A REAL v4 refund that reverses the sale line: same rate, same gross, same
  * extracted VAT, negative-signed — exactly what the refund cart produces.
+ *
+ * M3 gate-r1 finding 7: the rate, gross and VAT are read back from the
+ * PERSISTED sale row rather than re-used from the test's own constants. The
+ * `vatByRate` bucket is keyed on the RAW `tax_rate` string
+ * (`zReportService.ts:924`), so a `'20'` vs `'20.00'` formatting difference
+ * between the sale row and the refund row would produce TWO buckets that each
+ * fail to cancel — and a test that fed both sides the same constant could not
+ * see it. Reading the sale row back makes the key agreement part of what is
+ * asserted, not part of the fixture.
  */
-function refundInputFor(originalLocalReceiptId: string): CreateRefundReceiptInput {
-  const negGross = `-${GROSS}`;
-  const negVat = `-${VAT}`;
+function refundInputFor(
+  originalLocalReceiptId: string,
+  saleLine: Record<string, string>,
+): CreateRefundReceiptInput {
+  const rate = saleLine['tax_rate']!;
+  const gross = saleLine['line_total']!;
+  const vat = saleLine['tax_amount']!;
+  const negGross = `-${gross}`;
+  const negVat = `-${vat}`;
   const returnItem = {
     id: `return-${originalLocalReceiptId}-0`,
-    product: { id: 'prod-sale-line-0', name: 'Widget', sku: 'WGT-1', price: GROSS },
+    product: { id: 'prod-sale-line-0', name: 'Widget', sku: 'WGT-1', price: gross },
     quantity: -1,
-    unit_price: GROSS,
+    unit_price: gross,
     line_total: negGross,
-    tax_rate: TAX_RATE,
+    tax_rate: rate,
     tax_amount: negVat,
     kind: 'return',
   } as unknown as CartItem;
@@ -289,10 +304,10 @@ function refundInputFor(originalLocalReceiptId: string): CreateRefundReceiptInpu
   const original: OriginalFiscalEventLocalView = {
     fiscalEventId: ORIGINAL_FISCAL_EVENT_ID,
     businessDate: '2026-08-01',
-    total: GROSS,
+    total: gross,
     cashRoundingAdjustment: '0.00',
     lineItems: [],
-    payments: [{ method_code: 'CASH', amount: GROSS }] as unknown as OriginalFiscalEventLocalView['payments'],
+    payments: [{ method_code: 'CASH', amount: gross }] as unknown as OriginalFiscalEventLocalView['payments'],
     trainingFlag: false,
     transactionDiscountAmount: '0.00',
   };
@@ -496,10 +511,16 @@ describe('C-2 sale reporting — REAL writer through Z / EOD / X', () => {
     );
     expect(eod.vat_breakdown).toHaveLength(2);
     const eodByRate = new Map(eod.vat_breakdown.map((r) => [r.tax_rate, r]));
+    // gross_amount asserted too (M3 gate-r1 finding 8): the gross accumulator
+    // is one of the three lines the fix changed, and the Z and X legs assert it
+    // via toEqual — leaving it out here would have left that line unpinned on
+    // the one consumer whose assertions are field-by-field.
     expect(eodByRate.get(5)!.net_amount).toBe(NET_B);
     expect(eodByRate.get(5)!.vat_amount).toBe(VAT_B);
+    expect(eodByRate.get(5)!.gross_amount).toBe(GROSS_B);
     expect(eodByRate.get(20)!.net_amount).toBe(NET);
     expect(eodByRate.get(20)!.vat_amount).toBe(VAT);
+    expect(eodByRate.get(20)!.gross_amount).toBe(GROSS);
 
     const x = await generateXReport(TERMINAL_UUID, {
       tenantId: TENANT_ID,
@@ -541,7 +562,8 @@ describe('C-2 sale reporting — REAL writer through Z / EOD / X', () => {
                  datetime('now'), datetime('now'))`,
       [REFUND_INTENT_ID, TERMINAL_UUID, OPERATOR_UUID, saleRow['id'], ORIGINAL_FISCAL_EVENT_ID],
     );
-    await createRefundReceipt(refundInputFor(saleRow['id']!));
+    const saleLines = JSON.parse(saleRow['lines']!) as Array<Record<string, string>>;
+    await createRefundReceipt(refundInputFor(saleRow['id']!, saleLines[0]!));
 
     const z = await generateZReport(
       adapter as unknown as Database,
