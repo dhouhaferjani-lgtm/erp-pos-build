@@ -2608,13 +2608,32 @@ final class GeneralLedgerService
 
         $user = User::query()->find($ledgerRow->user_id);
 
-        $entry = DB::transaction(function () use ($ledgerRow, $voucher): JournalEntry {
+        // Rule 19/20 — LEDGER row C-5. This method is reached from
+        // `PosCoreReceiptProjection::redeemVouchers()` via
+        // `VoucherRedemptionService::redeem()`, i.e. from
+        // `ApplyFiscalEventProjectionJob`, which binds NO `CompanyContext`. The
+        // bare no-arg `$this->scale()` this used to call therefore threw
+        // `UnboundCompanyContextException` (F-RES-1) on a real Horizon worker,
+        // and `redeemVouchers()` has no try/catch — the whole SALE_RECEIPT
+        // projection rolled back and the job retried forever.
+        //
+        // The scale must come from the ENTITY currency instead. The ledger row
+        // carries the denomination of this very movement and is what the
+        // posting calls at the end of this method already use; the voucher's
+        // own currency is the authoritative fallback for a row whose currency
+        // was never populated.
+        $currencyCode = (string) $ledgerRow->currency !== ''
+            ? (string) $ledgerRow->currency
+            : (string) $voucher->currency;
+        $scale = $this->scaleResolver->getScale($currencyCode);
+
+        $entry = DB::transaction(function () use ($ledgerRow, $voucher, $scale): JournalEntry {
             $companyId = $voucher->company_id;
             $entryNumber = $this->generateEntryNumber($companyId);
             /** @var numeric-string $rawAmount */
             $rawAmount = $ledgerRow->amount;
-            $absAmount = bccomp($rawAmount, '0', $this->scale()) < 0
-                ? bcmul($rawAmount, '-1', $this->scale())
+            $absAmount = bccomp($rawAmount, '0', $scale) < 0
+                ? bcmul($rawAmount, '-1', $scale)
                 : $rawAmount;
 
             $entry = JournalEntry::create([
@@ -2660,9 +2679,9 @@ final class GeneralLedgerService
         });
 
         if ($user !== null) {
-            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $voucher->company_id, (string) $ledgerRow->currency);
+            $this->postEntryAndDispatchPostedEventAfterCommit($entry, $user, $voucher->company_id, $currencyCode);
         } else {
-            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $voucher->company_id, (string) $ledgerRow->currency);
+            $this->postSystemGeneratedEntryAndDispatchPostedEventAfterCommit($entry, $voucher->company_id, $currencyCode);
         }
 
         return $entry;

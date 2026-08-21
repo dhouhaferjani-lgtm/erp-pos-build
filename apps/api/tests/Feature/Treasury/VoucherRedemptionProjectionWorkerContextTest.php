@@ -6,6 +6,7 @@ namespace Tests\Feature\Treasury;
 
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\CompanyContext;
@@ -25,6 +26,7 @@ use App\Modules\Voucher\Domain\Enums\VoucherStatus;
 use App\Modules\Voucher\Domain\Voucher;
 use App\Modules\Voucher\Domain\VoucherLedger;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\Infrastructure\CurrencyScaleResolver;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -46,26 +48,33 @@ use Tests\TestCase;
  * back, and the job retried forever. Any ordinary (non-training) receipt paid
  * with a store voucher was unprojectable in production.
  *
- * Neither arm below may bind `CompanyContext`. Binding it would restore the
- * request-context comfort that a queue worker never has and would make both
- * arms pass against the broken code — which is exactly how this bug survived
- * until the G-3 lane's control arm tripped over it.
+ * NO arm below may bind `CompanyContext`. Binding it restores the
+ * request-context comfort that a queue worker never has, and makes every arm
+ * pass against the broken code — which is exactly how this bug survived until
+ * the G-3 lane's control arm tripped over it.
  *
- * The two arms differ ONLY in the entity currency, and they are the
- * scale-discrimination pair:
+ * Three arms:
  *
- *  - **TND, scale 3.** The receipt tenders `10.005` — a legal TND amount whose
- *    third decimal is BELOW the minor unit of a scale-2 currency. If the scale
- *    were resolved at 2 (or from a scale-2 ambient company), `bcmul` would
- *    truncate the GL legs to `10.00` while the voucher ledger still drew down
- *    `10.005`, silently desynchronising the ledger from the GL.
- *  - **EUR, scale 2.** The same flow at the other scale, proving the resolved
- *    scale FOLLOWS the entity currency rather than a hardcoded 3.
+ *  1. **TND, scale 3, full projection.** The receipt tenders `10.005` — a legal
+ *     TND amount whose third decimal is BELOW the minor unit of a scale-2
+ *     currency. At scale 2 `bcmul` truncates the GL legs to `10.00` while the
+ *     voucher ledger still draws down `10.005`, desynchronising ledger from GL.
+ *  2. **EUR, scale 2, full projection.** The same flow at the other scale.
+ *  3. **The seam, TND entity inside a EUR company.** See its own docblock — it
+ *     is the arm that separates "resolved from the entity currency" from
+ *     "hardcoded" and from "read off the company record".
  *
- * Both arms wrap the container's resolver in a pass-through
+ * Every arm wraps the container's resolver in a pass-through
  * {@see RecordingCurrencyScaleResolver} (it fakes nothing — it delegates and
- * records) so the assertion is about the argument the production code actually
- * passed, not merely about a value that happens to agree at both scales.
+ * records, with caller attribution), so the assertions are about the argument
+ * the seam actually passed, not merely about a value that would agree at more
+ * than one scale.
+ *
+ * **Mutation-verified.** Against the fixed code, each of these fails:
+ *   - `$scale = $this->scale()` (the original bug) → all 3 arms, UnboundCompanyContextException
+ *   - `$scale = 2`                                 → all 3 arms
+ *   - `$scale = 3`                                 → all 3 arms (no resolver call attributed to the seam)
+ *   - scale from `currencyCodeForCompany()`        → arm 3 (records EUR, not TND)
  */
 final class VoucherRedemptionProjectionWorkerContextTest extends TestCase
 {
@@ -128,7 +137,7 @@ final class VoucherRedemptionProjectionWorkerContextTest extends TestCase
         $this->assertGlPair(expectedAmount: '10.005', scale: 3);
 
         // The scale that governed the GL legs came from the ENTITY currency.
-        $this->assertScaleResolvedFromEntityCurrency('TND', 3);
+        $this->assertVoucherGlScaleResolvedFrom('TND', 3);
     }
 
     // =================================================================
@@ -150,15 +159,65 @@ final class VoucherRedemptionProjectionWorkerContextTest extends TestCase
 
         $this->assertGlPair(expectedAmount: '10.00', scale: 3);
 
-        // The load-bearing half: the SAME code path asked for EUR here and TND
-        // in the arm above, and got 2 rather than the 3 a hardcoded scale would
-        // have produced.
-        $this->assertScaleResolvedFromEntityCurrency('EUR', 2);
+        // The load-bearing half: the SAME seam asked for EUR here and for TND
+        // in the arm above, and got 2 — not the 3 a hardcoded scale or a
+        // TND-shaped assumption would have produced.
+        $this->assertVoucherGlScaleResolvedFrom('EUR', 2);
         $this->assertNotContains(
             'TND',
             $this->scaleRecorder->currenciesSeen(),
             'A EUR receipt must never resolve scale against another currency.',
         );
+    }
+
+    // =================================================================
+    // Scale discrimination, at the seam — the arm that actually bites
+    // =================================================================
+
+    /**
+     * The two full-flow arms above cannot, by themselves, distinguish the fix
+     * from a scale HARDCODED to 3: 3 is the global maximum in
+     * {@see CurrencyScale}, `bcmul` only ever truncates, and
+     * the whole-projection recorder still sees a `getScale('EUR')` from
+     * `VoucherRedemptionService:150` no matter what the GL layer does. Verified
+     * by mutation: `$scale = 2` fails the TND arm, `$scale = 3` passes both.
+     *
+     * So this arm isolates the seam. It calls `createVoucherLedgerEntry()`
+     * directly with the recorder reset immediately beforehand, so every
+     * recorded call belongs to the method under test, and it puts the entity
+     * currency (TND, scale 3) DELIBERATELY at odds with the company currency
+     * (EUR, scale 2) — the company being the other plausible source, and the
+     * one `GeneralLedgerService::currencyCodeForCompany()` sitting right below
+     * `scale()` would have supplied.
+     *
+     * It therefore fails on all three wrong answers:
+     *   - bare no-arg `getScale()`   → UnboundCompanyContextException (context cleared)
+     *   - company-sourced currency   → records 'EUR', truncates 10.005 to 10.00
+     *   - hardcoded constant         → records NO getScale call at all
+     */
+    public function test_voucher_gl_scale_comes_from_the_ledger_row_currency_not_the_company_or_a_constant(): void
+    {
+        $this->bootCompany(countryCode: 'FR', currency: 'EUR');
+        $voucher = $this->seedRedeemableVoucher('TND');
+
+        $redemption = new VoucherLedger;
+        $redemption->id = (string) Str::uuid();
+        $redemption->tenant_id = $this->tenantId;
+        $redemption->company_id = $this->companyId;
+        $redemption->voucher_id = $voucher->id;
+        $redemption->event = VoucherEvent::Redeemed;
+        $redemption->amount = '-10.00500';
+        $redemption->currency = 'TND';
+        $redemption->user_id = $this->operatorId;
+        $redemption->occurred_at = now();
+
+        app(CompanyContext::class)->clear();
+        $this->scaleRecorder->reset();
+
+        $this->app->make(GeneralLedgerService::class)->createVoucherLedgerEntry($redemption, $voucher);
+
+        $this->assertVoucherGlScaleResolvedFrom('TND', 3);
+        $this->assertGlPair(expectedAmount: '10.005', scale: 3);
     }
 
     // =================================================================
@@ -197,22 +256,43 @@ final class VoucherRedemptionProjectionWorkerContextTest extends TestCase
         );
     }
 
-    private function assertScaleResolvedFromEntityCurrency(string $currency, int $expectedScale): void
+    /**
+     * The seam assertion, attributed to `createVoucherLedgerEntry` specifically.
+     *
+     * Attribution is what makes this bite. Asserting merely that SOME call
+     * resolved the entity currency proves nothing — a projection resolves scale
+     * many times for many legitimate reasons (`VoucherRedemptionService:150`
+     * resolves the tender currency; `GeneralLedgerHashService::serializeForHashing`
+     * legitimately resolves the COMPANY currency to seal the entry). Only the
+     * caller-attributed record can tell the seam under test from its
+     * neighbours, and only it can detect a hardcoded scale — which makes no
+     * call at all and so leaves `currencyResolvedBy()` null.
+     */
+    private function assertVoucherGlScaleResolvedFrom(string $currency, int $expectedScale): void
     {
-        $this->assertContains(
+        $seam = 'createVoucherLedgerEntry';
+
+        $this->assertNotNull(
+            $this->scaleRecorder->currencyResolvedBy($seam),
+            "{$seam}() resolved no scale at all — a hardcoded constant, not the entity currency (rule 19).\n"
+            ."Recorded:\n".$this->scaleRecorder->describe(),
+        );
+        $this->assertSame(
             $currency,
-            $this->scaleRecorder->currenciesSeen(),
-            'The voucher GL path must resolve scale from the entity currency (rule 19).',
+            $this->scaleRecorder->currencyResolvedBy($seam),
+            "{$seam}() must resolve scale from the ENTITY currency — never the company record or the ambient context.\n"
+            ."Recorded:\n".$this->scaleRecorder->describe(),
+        );
+        $this->assertSame(
+            $expectedScale,
+            $this->scaleRecorder->scaleResolvedBy($seam),
+            sprintf('%s must resolve to scale %d.', $currency, $expectedScale),
         );
         $this->assertNotContains(
             '<bare>',
             $this->scaleRecorder->currenciesSeen(),
-            'No bare no-arg getScale() may run on a projection path (rule 19/20, F-RES-1).',
-        );
-        $this->assertSame(
-            $expectedScale,
-            $this->scaleRecorder->scaleResolvedFor($currency),
-            sprintf('%s must resolve to scale %d.', $currency, $expectedScale),
+            "No bare no-arg getScale() may run on a projection path (rule 19/20, F-RES-1).\n"
+            ."Recorded:\n".$this->scaleRecorder->describe(),
         );
     }
 
