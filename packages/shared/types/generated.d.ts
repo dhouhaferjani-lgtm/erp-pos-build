@@ -301,6 +301,7 @@ export type CashMovementSourceType = 'customer_payment' | 'payment' | 'pos_recei
 }
 declare namespace App.Modules.Accounting.Domain.Enums {
 export type AccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+export type CorrectingEntryRefusalCode = 'CORRECTING_ENTRY_MISSING_SOURCE_DOCUMENT' | 'CORRECTING_ENTRY_TARGET_NOT_FOUND' | 'CORRECTING_ENTRY_UNSUPPORTED_TARGET_TYPE' | 'CORRECTING_ENTRY_TARGET_HAS_NO_LEDGER_ENTRY' | 'CORRECTING_ENTRY_UNKNOWN_ACCOUNT' | 'CORRECTING_ENTRY_LEAVES_TARGET_UNBALANCED' | 'CORRECTING_ENTRY_ALREADY_POSTED' | 'CORRECTING_ENTRY_MALFORMED_PAYLOAD';
 export type GlResidualRefusal = 'negative_residual' | 'no_absorbing_account' | 'residual_exceeds_rounding_tolerance' | 'legs_do_not_balance' | 'no_credit_note_stamp_account';
 export type JournalCode = 'VT' | 'AC' | 'BQ' | 'CA' | 'EF' | 'OD';
 export type JournalEntryStatus = 'draft' | 'posted' | 'reversed';
@@ -844,7 +845,7 @@ export type DeliveryComplianceCode = 'COMPLIANT' | 'NO_DELIVERY_NOTES' | 'DRAFT_
 export type DeliveryNoteBillingLane = 'consolidation' | 'order_conversion' | 'pre_post_delivery' | 'legacy_unknown';
 export type DeliveryStatus = 'not_delivered' | 'partially_delivered' | 'fully_delivered';
 export type DocumentStatus = 'draft' | 'confirmed' | 'posted' | 'paid' | 'received' | 'cancelled';
-export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note' | 'income' | 'purchase_rfq';
+export type DocumentType = 'quote' | 'sales_order' | 'purchase_order' | 'invoice' | 'credit_note' | 'delivery_note' | 'return_note' | 'expense' | 'supplier_invoice' | 'supplier_credit_note' | 'income' | 'purchase_rfq' | 'correcting_entry';
 export type FacturXProfile = 'minimum' | 'basicwl' | 'basic' | 'en16931' | 'extended';
 export type FiscalCategory = 'NON_FISCAL' | 'FISCAL_RECEIPT' | 'TAX_INVOICE' | 'CREDIT_NOTE' | 'DELIVERY_NOTE' | 'RETURN_NOTE';
 export type FiscalStatus = 'DRAFT' | 'SEALED' | 'VOIDED';
