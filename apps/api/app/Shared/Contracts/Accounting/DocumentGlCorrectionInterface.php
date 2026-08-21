@@ -38,9 +38,31 @@ use App\Modules\Document\Domain\Document;
 interface DocumentGlCorrectionInterface
 {
     /**
-     * The NON-writing verdict, for a pre-flight or a read model.
+     * The STRUCTURAL verdict: is this a well-formed correcting entry at all?
      *
-     * Same relationship to {@see self::postCorrectingEntryGl()} as
+     * Checks only what can NEVER become true later — the mandatory link to an
+     * original, that the original exists in this company and is a correctable
+     * type, that the payload parses, and that every leg names an account of this
+     * company's chart. Deliberately does NOT check the aggregate balance.
+     *
+     * That split is what makes DRAFTS meaningful. An accountant may save a
+     * half-finished correction and come back to it; the balance verdict depends
+     * on ledger rows that can move between drafting and posting, so making it a
+     * creation-time refusal would both lie about permanence and forbid the
+     * ordinary workflow. A correction pointed at a supplier invoice, by
+     * contrast, will never become postable no matter how long it is left — so
+     * that IS refused up front.
+     *
+     * @throws UnpostableCorrectingEntryException
+     */
+    public function assertCorrectingEntryIsWellFormed(Document $correctingEntry): void;
+
+    /**
+     * The full NON-writing verdict: would this post RIGHT NOW?
+     *
+     * Everything {@see self::assertCorrectingEntryIsWellFormed()} checks, PLUS
+     * the aggregate-balance invariant and the already-posted guard. Same
+     * relationship to {@see self::postCorrectingEntryGl()} as
      * `DocumentGlPreflightInterface::assertDocumentGlIsPostable()` has to the
      * posting paths: it answers "would this post?" without writing anything, so
      * a caller can refuse cleanly before touching the document's status.

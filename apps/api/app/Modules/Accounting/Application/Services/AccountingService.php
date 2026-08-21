@@ -1053,13 +1053,19 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
     // =====================================================================
 
     /**
-     * The non-writing verdict: would this correcting-entry document post?
-     *
+     * {@inheritDoc}
+     */
+    public function assertCorrectingEntryIsWellFormed(Document $correctingEntry): void
+    {
+        $this->resolveCorrectingEntry($correctingEntry, assertBalance: false);
+    }
+
+    /**
      * {@inheritDoc}
      */
     public function assertCorrectingEntryIsPostable(Document $correctingEntry): void
     {
-        $this->resolveCorrectingEntry($correctingEntry);
+        $this->resolveCorrectingEntry($correctingEntry, assertBalance: true);
     }
 
     /**
@@ -1079,10 +1085,41 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      * locked period, not forward correction into the current one. Pinned by
      * `CorrectingEntryGlPostingTest::test_a_correcting_entry_may_target_an_original_in_a_filed_period()`.
      *
-     * Not routed through `GeneralLedgerService::postEntryNow()`, exactly like
-     * `reverseDocumentGl()`, so the same known `fiscal_periods` gap applies
-     * (ticket `2026-08-07-cancel-reversal-bypasses-closed-fiscal-period.md`);
-     * closing it for one path and not the other would be worse than either.
+     * RE-VERIFIED 2026-08-21 against the period-lock surface `dev` has grown
+     * since this lane branched (the CF cancel-flow lane). The claim above still
+     * holds, on both contracts, for reasons that are structural rather than
+     * incidental:
+     *
+     *  - `DocumentPeriodLockInterface::assertCancellationPeriodIsOpen()`
+     *    (`app/Shared/Contracts/Taxation/DocumentPeriodLockInterface.php`) asks
+     *    whether a document may be WITHDRAWN, and resolves the period from the
+     *    document's OWN `document_date`
+     *    (`VatPeriodCancellationGuard::lockedPeriodFor()`). A correction
+     *    withdraws nothing and is dated `now()`, so the question does not apply.
+     *    Its population also excludes this type outright:
+     *    `VatPeriodCancellationGuard::refusalAppliesTo()` admits only
+     *    SALES_LEDGER_BEARING_TYPES (Invoice, CreditNote, Income) and
+     *    PURCHASE_DOCUMENT_TYPES (SupplierInvoice, SupplierCreditNote, Expense),
+     *    so calling it with a CorrectingEntry would be a guaranteed no-op —
+     *    consulting it would be theatre, not protection.
+     *  - `PeriodBackdatingGuardInterface::assertBackdatingPeriodIsOpen()`
+     *    (`app/Shared/Contracts/Taxation/PeriodBackdatingGuardInterface.php`)
+     *    asks whether a document may be DATED INTO a period, keyed on the date
+     *    the user typed. A correcting entry offers the user no date at all: both
+     *    `documents.document_date` and this entry's `entry_date` are `now()`. It
+     *    is therefore structurally incapable of backdating, which is exactly why
+     *    the guard is not wired here.
+     *
+     * KNOWN RESIDUAL, inherited and deliberately not closed in this lane: if the
+     * CURRENT period is itself already CLOSED or FILED, this entry still posts
+     * into it. That is the same gap `reverseDocumentGl()` carries — neither path
+     * is routed through `GeneralLedgerService::postEntryNow()`, so neither
+     * consults `fiscal_periods` (ticket
+     * `2026-08-07-cancel-reversal-bypasses-closed-fiscal-period.md`). Closing it
+     * for one path and not the other would be worse than either: a correction
+     * that is refused where the cancellation it exists to unblock is permitted
+     * re-creates the dead end this whole lane was built to remove. Both close
+     * together or neither does.
      *
      * {@inheritDoc}
      */
@@ -1092,7 +1129,7 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             // Re-resolved INSIDE the transaction: the aggregate-balance verdict
             // depends on rows another request may be writing concurrently, so a
             // pre-flight answer computed outside would be stale by construction.
-            $resolved = $this->resolveCorrectingEntry($correctingEntry);
+            $resolved = $this->resolveCorrectingEntry($correctingEntry, assertBalance: true);
             $target = $resolved['target'];
             $legs = $resolved['legs'];
             $scale = $resolved['scale'];
@@ -1247,11 +1284,14 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
      * reach different verdicts (the `assertDocumentGlIsPostable()` /
      * `createInvoiceGLEntries()` split learned this the hard way — GL gate I-2).
      *
+     * @param  bool  $assertBalance  FALSE for the structural (draft-time) verdict —
+     *                               see the contract's docblock for why the
+     *                               balance check is not a creation-time refusal.
      * @return array{target: Document, legs: list<CorrectingEntryLegData>, scale: int, reason: string}
      *
      * @throws UnpostableCorrectingEntryException
      */
-    private function resolveCorrectingEntry(Document $correctingEntry): array
+    private function resolveCorrectingEntry(Document $correctingEntry, bool $assertBalance): array
     {
         if ($correctingEntry->type !== DocumentType::CorrectingEntry) {
             // A programming error, not a business refusal: no caller should ever
@@ -1268,14 +1308,16 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
             throw UnpostableCorrectingEntryException::missingSourceDocument($correctingEntry->document_number);
         }
 
-        $alreadyPosted = JournalEntry::query()
-            ->where('company_id', $correctingEntry->company_id)
-            ->where('source_type', self::DOCUMENT_CORRECTION_SOURCE_TYPE)
-            ->where('source_id', $correctingEntry->id)
-            ->exists();
+        if ($assertBalance) {
+            $alreadyPosted = JournalEntry::query()
+                ->where('company_id', $correctingEntry->company_id)
+                ->where('source_type', self::DOCUMENT_CORRECTION_SOURCE_TYPE)
+                ->where('source_id', $correctingEntry->id)
+                ->exists();
 
-        if ($alreadyPosted) {
-            throw UnpostableCorrectingEntryException::alreadyPosted($correctingEntry->document_number);
+            if ($alreadyPosted) {
+                throw UnpostableCorrectingEntryException::alreadyPosted($correctingEntry->document_number);
+            }
         }
 
         /** @var Document|null $target */
@@ -1335,46 +1377,54 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
         }
 
         $scale = $this->documentScale($correctingEntry);
-        $footprint = $this->documentLedgerFootprint($target);
 
-        if ($footprint->isEmpty()) {
-            throw UnpostableCorrectingEntryException::targetHasNoLedgerEntry(
-                $correctingEntry->document_number,
-                $target->document_number,
-            );
-        }
+        // Everything below depends on the target's CURRENT ledger, which is
+        // exactly what the structural verdict must not judge: a document's own GL
+        // is written by a post-commit listener, so "no ledger entry yet" is a
+        // transient state, and the balance can move between drafting and posting.
+        if ($assertBalance) {
+            $footprint = $this->documentLedgerFootprint($target);
 
-        /** @var numeric-string $debits */
-        $debits = '0';
-        /** @var numeric-string $credits */
-        $credits = '0';
-
-        foreach ($footprint as $entry) {
-            foreach ($entry->lines as $line) {
-                /** @var numeric-string $lineDebit */
-                $lineDebit = (string) $line->debit;
-                /** @var numeric-string $lineCredit */
-                $lineCredit = (string) $line->credit;
-                $debits = bcadd($debits, $lineDebit, $scale);
-                $credits = bcadd($credits, $lineCredit, $scale);
+            if ($footprint->isEmpty()) {
+                throw UnpostableCorrectingEntryException::targetHasNoLedgerEntry(
+                    $correctingEntry->document_number,
+                    $target->document_number,
+                );
             }
-        }
 
-        foreach ($payload->legs as $leg) {
-            $debits = bcadd($debits, $leg->debit, $scale);
-            $credits = bcadd($credits, $leg->credit, $scale);
-        }
+            /** @var numeric-string $debits */
+            $debits = '0';
+            /** @var numeric-string $credits */
+            $credits = '0';
 
-        // THE INVARIANT. Not "does this entry balance on its own" — a correcting
-        // entry legitimately does not, when it supplies the one leg a broken
-        // original is missing — but "does the corrected document balance now".
-        if (bccomp($debits, $credits, $scale) !== 0) {
-            throw UnpostableCorrectingEntryException::leavesTargetUnbalanced(
-                $correctingEntry->document_number,
-                $target->document_number,
-                $debits,
-                $credits,
-            );
+            foreach ($footprint as $entry) {
+                foreach ($entry->lines as $line) {
+                    /** @var numeric-string $lineDebit */
+                    $lineDebit = (string) $line->debit;
+                    /** @var numeric-string $lineCredit */
+                    $lineCredit = (string) $line->credit;
+                    $debits = bcadd($debits, $lineDebit, $scale);
+                    $credits = bcadd($credits, $lineCredit, $scale);
+                }
+            }
+
+            foreach ($payload->legs as $leg) {
+                $debits = bcadd($debits, $leg->debit, $scale);
+                $credits = bcadd($credits, $leg->credit, $scale);
+            }
+
+            // THE INVARIANT. Not "does this entry balance on its own" — a
+            // correcting entry legitimately does not, when it supplies the one leg
+            // a broken original is missing — but "does the corrected document
+            // balance now".
+            if (bccomp($debits, $credits, $scale) !== 0) {
+                throw UnpostableCorrectingEntryException::leavesTargetUnbalanced(
+                    $correctingEntry->document_number,
+                    $target->document_number,
+                    $debits,
+                    $credits,
+                );
+            }
         }
 
         return [

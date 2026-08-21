@@ -277,6 +277,52 @@ final class CorrectingEntryGlPostingTest extends TestCase
         $this->corrections->assertCorrectingEntryIsPostable($bad);
     }
 
+    /**
+     * The two pre-flights are deliberately different verdicts.
+     *
+     * The STRUCTURAL one accepts a correction that does not (yet) rebalance the
+     * target — that is what makes a DRAFT meaningful, and the balance can move
+     * between drafting and posting. It still refuses what can never become true,
+     * such as an unsupported target type.
+     */
+    public function test_the_structural_preflight_accepts_an_unbalanced_draft_but_still_refuses_the_impossible(): void
+    {
+        $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
+
+        $unbalanced = $this->correctingDocumentFor($invoice, [
+            CorrectingEntryLegData::of($this->accountId('411'), '9.000', '0', 'Not enough yet'),
+        ]);
+
+        // Structural: fine. Postable: not yet.
+        $this->corrections->assertCorrectingEntryIsWellFormed($unbalanced);
+
+        try {
+            $this->corrections->assertCorrectingEntryIsPostable($unbalanced);
+            self::fail('The postable verdict must still refuse an unbalancing correction');
+        } catch (UnpostableCorrectingEntryException $exception) {
+            self::assertSame(CorrectingEntryRefusalCode::LeavesTargetUnbalanced, $exception->refusalCode);
+        }
+
+        // Structural refusals still fire on the structural verdict.
+        $orphan = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => DocumentType::CorrectingEntry,
+            'document_number' => 'CE-ORPHAN2-'.uniqid(),
+            'document_date' => now(),
+            'status' => DocumentStatus::Draft,
+            'currency' => 'TND',
+            'source_document_id' => null,
+            'payload' => (new CorrectingEntryPayload('orphan', [
+                CorrectingEntryLegData::of($this->accountId('411'), '1.000', '0', null),
+            ]))->toDocumentPayload(),
+        ]);
+
+        $this->expectException(UnpostableCorrectingEntryException::class);
+        $this->corrections->assertCorrectingEntryIsWellFormed($orphan);
+    }
+
     // --------------------------------------------------------- refusals ---
 
     /**
