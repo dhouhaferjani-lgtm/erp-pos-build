@@ -84,17 +84,25 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
         // ============================================================
         // LEDGER gate G-3 — TRAINING events never move real money.
         // ============================================================
-        // The device stamps `training_flag` on ACCOUNT_PAYMENT payloads
-        // (`apps/pos/src/lib/offline/accountPaymentService.ts:216,261`), so a
-        // trainee rehearsing "customer settles their account" authors a
-        // fully-signed event that this bridge would otherwise turn into real
-        // money: a `payments` row (status=Completed, origin=Pos), a real FIFO
-        // allocation against the customer's OPEN INVOICES with its posted GL
-        // consequence, and a real `repository_movements` drawer movement.
+        // A trainee rehearsing "customer settles their account" would otherwise
+        // get real money out of this bridge: a `payments` row (status=Completed,
+        // origin=Pos), a real FIFO allocation against the customer's OPEN
+        // INVOICES with its posted GL consequence, and a real
+        // `repository_movements` drawer movement. Unlike a rehearsed sale this
+        // also mutates PARTNER state — it would mark genuine receivables as
+        // settled — so containment matters more here, not less.
         //
-        // Unlike a rehearsed sale, this one also mutates PARTNER state — it
-        // would mark genuine receivables as settled — so containment matters
-        // more here, not less.
+        // DEFENSE-IN-DEPTH, not a live-path fix. The device stamps
+        // `training_flag` on ACCOUNT_PAYMENT payloads
+        // (`accountPaymentService.ts:261`) but `FiscalEventEngine` REFUSES TO
+        // SEAL the event: ACCOUNT_PAYMENT is in `OPERATIONAL_CHAIN_EVENT_TYPES`
+        // (`FiscalEventEngine.ts:220`), `accountPaymentService.ts:294` passes no
+        // `chain_context`, the engine defaults it to `'operational'` (`:565`),
+        // and `:815-818` throws on `training_flag = true` outside a `training_*`
+        // context. That is the SAME refusal that blocks a training SALE_RECEIPT
+        // — ACCOUNT_PAYMENT is NOT an exception to it. So no producer can author
+        // one today; this covers legacy rows, replays, quarantine repairs, and
+        // the moment training authoring is enabled.
         //
         // Keyed on the SEALED payload flag, same shape as the sibling gate in
         // TreasuryReceiptBridge. Returning cleanly (not throwing) keeps

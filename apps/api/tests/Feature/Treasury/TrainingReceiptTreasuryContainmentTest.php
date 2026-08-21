@@ -49,22 +49,20 @@ use Tests\TestCase;
  * contained to the read model.
  *
  * ⚠️ **REACHABILITY — read before believing the narrative below.**
- * The device CANNOT currently author a training `SALE_RECEIPT` at all:
- * `FiscalEventEngine` defaults `chain_context` to `'operational'` and THROWS on
- * a `training_flag` without a training chain context
- * (`FiscalEventEngine.ts:815-818`), and no receipt service passes a training
- * `chain_context`. So for SALE_RECEIPT specifically this guard is
+ * No producer can currently author a training `SALE_RECEIPT`:
+ * `FiscalEventEngine` defaults `chain_context` to `'operational'` (`:565`) and
+ * THROWS on a `training_flag` outside a `training_*` context (`:815-818`), and
+ * no receipt service passes a training `chain_context`. So this guard is
  * **defense-in-depth**, not a live-path fix: it covers legacy rows, replayed or
  * quarantine-repaired events, directly-inserted rows, and — the real motivation
- * — the moment training sale authoring is switched on, at which point the
+ * — the moment training authoring is switched on, at which point the
  * containment must already be in place rather than being discovered afterwards.
  *
- * The sibling G-3 surfaces are NOT all in that position: the ACCOUNT_PAYMENT
- * bridge guard closes a shape the device stamps today
- * (`accountPaymentService.ts:216,261`), and the voucher-redemption guard
- * (see {@see TrainingVoucherRedemptionContainmentTest}) closes a tender the
- * device applies with no training check at all. Do not generalise this file's
- * "not currently authorable" caveat to those.
+ * **The sibling G-3 surfaces are in the SAME position, not a stronger one.**
+ * ACCOUNT_PAYMENT also sits in `OPERATIONAL_CHAIN_EVENT_TYPES` (`:220`) and
+ * meets the identical refusal, so although the device stamps `training_flag` on
+ * its payload (`accountPaymentService.ts:261`) the engine will not seal it.
+ * Treat all three G-3 guards as pre-enablement containment.
  *
  * `TreasuryReceiptBridge` did NOT. Before this fix its tender-leg loop ran with
  * zero training discrimination, so a rehearsal produced:

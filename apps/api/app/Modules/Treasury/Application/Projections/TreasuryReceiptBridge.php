@@ -74,19 +74,23 @@ use RuntimeException;
  * still completes cleanly so the queue row reaches `applied`. Pinned by
  * `tests/Feature/Treasury/TrainingReceiptTreasuryContainmentTest.php`.
  *
- * For SALE_RECEIPT this is DEFENSE-IN-DEPTH rather than a live-path fix: the
- * device cannot currently author a training sale at all (`FiscalEventEngine.ts`
- * defaults `chain_context` to `'operational'` and throws on a `training_flag`
- * without a training chain context, `:815-818`; no receipt service passes one).
- * It covers legacy rows, replays, quarantine repairs, and the moment training
- * authoring is switched on. The sibling guard in `TreasuryAccountPaymentBridge`
- * is NOT in that position — the device stamps `training_flag` on
- * ACCOUNT_PAYMENT payloads today.
+ * This is DEFENSE-IN-DEPTH rather than a live-path fix: no producer can
+ * currently author a training event on ANY operational chain. `FiscalEventEngine`
+ * defaults `chain_context` to `'operational'` (`FiscalEventEngine.ts:565`) and
+ * throws on a `training_flag` outside a `training_*` context (`:815-818`), and
+ * no service passes a training context. That refusal covers SALE_RECEIPT and
+ * ACCOUNT_PAYMENT alike — both sit in `OPERATIONAL_CHAIN_EVENT_TYPES` (`:219-220`)
+ * — so the sibling guard in `TreasuryAccountPaymentBridge` is in exactly the
+ * same position, not a stronger one. These guards cover legacy rows, replays,
+ * quarantine repairs, directly-inserted rows, and the moment training authoring
+ * is switched on.
  *
- * **Pre-enable census.** Because authoring is currently blocked, the expected
- * count of already-written training-created money rows is ZERO — but that must
- * be CONFIRMED per tenant at deploy, never assumed. See the query shapes in
- * the G-3 evidence line / `docs/superpowers/tickets/2026-08-21-*`.
+ * **Pre-enable census.** Because authoring is blocked on every operational
+ * chain, the expected count of already-written training-created money rows is
+ * ZERO — but that must be CONFIRMED per tenant at deploy, never assumed. The
+ * four money-side census queries live in
+ * `docs/superpowers/tickets/2026-08-21-training-latent-surfaces-deposit-and-exchange.md`
+ * (§ Census — pre-enable verification).
  *
  * **Change netting (spec §4.6, `event_version >= 3`).** From the cash-rounding
  * cutover on, `payments.amount` is the RETAINED amount, not the tendered one:

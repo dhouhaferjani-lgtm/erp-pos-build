@@ -83,3 +83,66 @@ unreachable. Recommend the Task-30-followup cleanup resolve both together rather
 than leaving a training-blind payment writer alive on a dead-code technicality.
 
 **Action:** none now. Do not add a training guard to a dead path; retire the path.
+
+---
+
+## Census — pre-enable verification (money side)
+
+**This is the artifact `TreasuryReceiptBridge`'s docblock points at.** The owner
+runs these **per tenant database** at deploy, before training authoring is
+enabled anywhere.
+
+**Expected result: zero on every query.** `FiscalEventEngine` defaults
+`chain_context` to `'operational'` (`FiscalEventEngine.ts:565`) and throws on a
+`training_flag` outside a `training_*` context (`:815-818`); `SALE_RECEIPT` and
+`ACCOUNT_PAYMENT` both sit in `OPERATIONAL_CHAIN_EVENT_TYPES` (`:219-220`) and
+no producer passes a training context. So no training event should ever have
+been sealed. **Non-zero anywhere means an event reached the projectors by a path
+this analysis did not model — stop and investigate before enabling.**
+
+Filters key on the **SEALED payload flag**, not the mutable
+`pos_receipts.is_training` mirror, per the same discipline the guards themselves
+follow. The `is_training` variants are kept commented as a cross-check: a
+divergence between the two is itself a finding.
+
+```sql
+-- 1. Treasury payments created from a training fiscal event.
+SELECT count(*) AS training_payments
+FROM payments p
+JOIN fiscal_events fe ON fe.id = p.fiscal_event_id
+WHERE (fe.payload->>'training_flag')::boolean = true;
+-- cross-check: ... JOIN pos_receipts r ON r.fiscal_event_id = p.fiscal_event_id WHERE r.is_training = true;
+
+-- 2. POS/GL entries posted for a training receipt.
+SELECT count(*) AS training_journal_entries
+FROM journal_entries je
+JOIN pos_receipts r ON r.id = je.source_id
+JOIN fiscal_events fe ON fe.id = r.fiscal_event_id
+WHERE je.source_type IN (
+        'pos_receipt', 'pos_receipt_refund',
+        'pos_cash_rounding', 'pos_cash_rounding_refund',
+        'pos_tolerance_bridge'
+      )
+  AND (fe.payload->>'training_flag')::boolean = true;
+-- cross-check: drop the fiscal_events join and use r.is_training = true.
+
+-- 3. Drawer movements recorded from a training fiscal event
+--    (covers SALE_RECEIPT and ACCOUNT_PAYMENT — both use sourceType 'fiscal_event').
+SELECT count(*) AS training_repository_movements
+FROM repository_movements rm
+JOIN fiscal_events fe ON fe.id = rm.source_id
+WHERE rm.source_type = 'fiscal_event'
+  AND (fe.payload->>'training_flag')::boolean = true;
+
+-- 4. Vouchers burned by a training receipt.
+SELECT count(*) AS training_voucher_redemptions
+FROM voucher_ledger vl
+JOIN pos_receipts r ON r.id = vl.receipt_id
+JOIN fiscal_events fe ON fe.id = r.fiscal_event_id
+WHERE vl.event = 'redeemed'
+  AND (fe.payload->>'training_flag')::boolean = true;
+-- cross-check: ... WHERE vl.event = 'redeemed' AND r.is_training = true;
+```
+
+The **stock-side** census (not covered by G-3) lives in
+`2026-08-21-training-stock-movement-gap.md`.

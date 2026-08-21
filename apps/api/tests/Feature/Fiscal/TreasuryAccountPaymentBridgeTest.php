@@ -38,7 +38,6 @@ use App\Modules\Treasury\Domain\PaymentMethod;
 use App\Modules\Treasury\Domain\PaymentRepository;
 use App\Shared\Contracts\Treasury\TreasuryMovementServiceInterface;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -157,74 +156,14 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
     }
 
     // =================================================================
-    // LEDGER gate G-3 — a TRAINING account payment moves no real money
+    // LEDGER gate G-3 — pins live in tests/Feature/Treasury/
     // =================================================================
-
-    /**
-     * A trainee rehearsing "customer settles their account" authors a real,
-     * signed ACCOUNT_PAYMENT: the device stamps `training_flag` on this payload
-     * (`apps/pos/src/lib/offline/accountPaymentService.ts:216,261`), and unlike
-     * a training SALE_RECEIPT there is no upstream chain-context refusal
-     * blocking it. Before the G-3 guard this bridge turned that rehearsal into
-     * a completed `payments` row, a real FIFO allocation against the customer's
-     * genuine open invoices, and a real drawer movement.
-     *
-     * Every non-training test in this file is the control arm — they all run
-     * the identical fixture with `training_flag => false` and assert the
-     * payment, the allocation command and the movement DO happen.
-     */
-    public function test_training_account_payment_writes_no_payment_no_allocation_and_no_movement(): void
-    {
-        $event = $this->storeAccountPaymentFiscalEvent(
-            $this->accountPaymentPayload(['training_flag' => true]),
-        );
-
-        $this->bridge()->apply($event);
-
-        $this->assertSame(
-            0,
-            Payment::query()->count(),
-            'A training account payment must not write a Treasury payment.',
-        );
-        $this->assertSame(
-            0,
-            $this->allocationService->callCount(),
-            'A training account payment must not allocate against real open invoices.',
-        );
-        $this->assertSame(
-            0,
-            DB::table('repository_movements')->where('payment_repository_id', $this->repository->id)->count(),
-            'A training account payment must not move the drawer balance.',
-        );
-        $this->assertSame(
-            0,
-            JournalEntry::query()->count(),
-            'A training account payment must not post to the general ledger.',
-        );
-    }
-
-    /**
-     * Containment must survive redelivery: a training event replayed after the
-     * guard landed still writes nothing, and (unlike a throw) leaves the
-     * projection free to be marked `applied` rather than retried forever.
-     */
-    public function test_training_account_payment_stays_contained_on_replay(): void
-    {
-        $event = $this->storeAccountPaymentFiscalEvent(
-            $this->accountPaymentPayload(['training_flag' => true]),
-        );
-        $bridge = $this->bridge();
-
-        $bridge->apply($event);
-        $bridge->apply($event);
-
-        $this->assertSame(0, Payment::query()->count());
-        $this->assertSame(0, $this->allocationService->callCount());
-        $this->assertSame(
-            0,
-            DB::table('repository_movements')->where('payment_repository_id', $this->repository->id)->count(),
-        );
-    }
+    //
+    // The two TRAINING containment arms for this bridge deliberately do NOT
+    // live here: Fiscal is a deferred manifest group and this file matches no
+    // `ci.yml` filter, so pins placed here would run in NO CI job. They live in
+    // `tests/Feature/Treasury/TrainingAccountPaymentContainmentTest.php`, a
+    // whole-directory PG lane (`ci.yml:1109`).
 
     public function test_bridge_is_idempotent_on_retry(): void
     {
@@ -532,12 +471,15 @@ final class TreasuryAccountPaymentBridgeTest extends TestCase
             canonicalReader: new CanonicalPayloadReader,
             allocationService: $this->allocationService,
             movementService: $this->app->make(TreasuryMovementServiceInterface::class),
-            // INHERITED-RED REPAIR (not part of the G-3 change): this helper
-            // still passed 3 arguments after `HandlesMaturityTenderLeg` became
-            // a 4th constructor dependency, so EVERY test in this file died
-            // with `ArgumentCountError` at the merge-base (c6d6308ae). Resolved
-            // from the container rather than hand-built so the concern keeps
-            // its own wiring.
+            // INHERITED-RED REPAIR — REVIVED, NOT NEW. This helper still passed
+            // 3 arguments after `HandlesMaturityTenderLeg` became a 4th
+            // constructor dependency, so all 17 tests in this file died with
+            // `ArgumentCountError` at the merge-base (c6d6308ae) and had been
+            // proving nothing. The G-3 wave repaired the helper to unblock its
+            // own evidence; the 17 tests below are pre-existing coverage
+            // brought back to life, NOT new coverage authored by that wave.
+            // Resolved from the container rather than hand-built so the concern
+            // keeps its own wiring.
             maturityLegHandler: $this->app->make(HandlesMaturityTenderLeg::class),
         );
     }

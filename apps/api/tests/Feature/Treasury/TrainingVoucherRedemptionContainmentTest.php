@@ -47,14 +47,15 @@ use Tests\TestCase;
  * `PosTenderClearing` balance sitting on top of a real voucher the customer can
  * no longer spend. This file pins the second half of that pair.
  *
- * **Reachability.** Unlike the SALE_RECEIPT training arms in
- * {@see TrainingReceiptTreasuryContainmentTest} (see its docblock — device
- * authoring of a training sale is currently blocked upstream), the voucher
- * tender itself is reachable by construction: `VoucherTenderModal` applies no
- * training check, and the device deliberately keeps the redeemed voucher row in
- * the sealed payload. So this guard closes a live shape the moment training
- * sale authoring is enabled, and closes it today for any legacy, replayed, or
- * directly-inserted event.
+ * **Reachability — defense-in-depth, like its two siblings.** The voucher
+ * TENDER carries no training check of its own (`VoucherTenderModal` applies
+ * none, and the device deliberately keeps the redeemed voucher row in the
+ * sealed payload), so nothing on the voucher side would stop this. What stops
+ * it today is the same upstream refusal that covers the other two G-3 surfaces:
+ * `FiscalEventEngine` will not seal a `training_flag` event on an operational
+ * chain (`:565`, `:815-818`). So this guard closes the shape for legacy,
+ * replayed, quarantine-repaired and directly-inserted events now, and closes it
+ * on the live path the moment training authoring is enabled.
  *
  * The control arm is the load-bearing half: an otherwise identical NON-training
  * receipt must still redeem the voucher and post the GL pair, so the guard can
@@ -150,6 +151,41 @@ final class TrainingVoucherRedemptionContainmentTest extends TestCase
             0,
             JournalEntry::query()->where('source_type', 'voucher_ledger')->count(),
             'A training receipt must not post the Dr VoucherLiability / Cr PosTenderClearing pair.',
+        );
+    }
+
+    /**
+     * The gate arm above runs with NO `CompanyContext` (rule 20, worker
+     * fidelity) — which means that if the G-3 guard were removed, the arm would
+     * still "pass its zeros" for the WRONG reason: the ticketed unbound-context
+     * bug throws inside `redeem()` before anything is written, and a future
+     * `try`/`catch` "fix" for that bug would silently disarm this file.
+     *
+     * This third arm removes that ambiguity. Same TRAINING event, same four
+     * zeros, but with `CompanyContext` BOUND so redemption is fully capable of
+     * succeeding. Zeros here can only be caused by the training guard.
+     */
+    public function test_training_receipt_does_not_redeem_even_with_company_context_bound(): void
+    {
+        $voucher = $this->seedRedeemableVoucher();
+
+        $event = $this->buildEvent(training: true);
+        app(CompanyContext::class)->setCompanyId($this->companyId);
+        $this->app->make(PosCoreReceiptProjection::class)->apply($event);
+
+        $voucher->refresh();
+        $this->assertSame(VoucherStatus::Issued, $voucher->status);
+        $this->assertSame(0, bccomp($voucher->current_balance, '50.00000', 5));
+        $this->assertSame(
+            0,
+            VoucherLedger::query()
+                ->where('voucher_id', $voucher->id)
+                ->where('event', VoucherEvent::Redeemed)
+                ->count(),
+        );
+        $this->assertSame(
+            0,
+            JournalEntry::query()->where('source_type', 'voucher_ledger')->count(),
         );
     }
 

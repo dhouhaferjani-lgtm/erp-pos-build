@@ -120,10 +120,20 @@ is **not** re-averaged — but `unit_cost` / `total_cost` are written at
   applies here, so the expected count is also zero. **This must be confirmed per
   tenant before the ticket is closed as "no backfill needed."** Census:
 
+Filters key on the SEALED payload flag, not the mutable `pos_receipts.is_training`
+mirror (the `is_training` variant is kept as a commented cross-check — a
+divergence between the two is itself a finding):
+
 ```sql
 SELECT count(*) AS training_stock_movements
 FROM stock_movements sm
 JOIN pos_receipts r
   ON r.id = sm.reference_id AND sm.reference_type = 'pos_receipt'
-WHERE r.is_training = true;
+JOIN fiscal_events fe ON fe.id = r.fiscal_event_id
+WHERE (fe.payload->>'training_flag')::boolean = true;
+-- cross-check: drop the fiscal_events join and use r.is_training = true;
 ```
+
+The **money-side** census (payments / journal_entries / repository_movements /
+voucher_ledger) lives in
+`2026-08-21-training-latent-surfaces-deposit-and-exchange.md`, § Census.
