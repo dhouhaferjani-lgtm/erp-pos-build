@@ -94,19 +94,18 @@ export function ShiftClosurePage() {
 
   const tenders = useMemo(() => {
     if (!preview) return [];
-    const totalAbs = preview.payment_methods.reduce(
+    const active = preview.payment_methods.filter((method) => method.transaction_count > 0);
+    const totalAbs = active.reduce(
       (sum, method) => bcadd(sum, bcabs(method.total_amount, decimals), decimals),
       '0',
     );
-    return preview.payment_methods
-      .filter((method) => method.transaction_count > 0)
-      .map((method, index) => ({
-        key: method.payment_method_code,
-        label: method.payment_method_name,
-        amount: method.total_amount,
-        percent: paymentSharePercent(method.total_amount, totalAbs),
-        fill: BAR_FILLS[index % BAR_FILLS.length],
-      }));
+    return active.map((method, index) => ({
+      key: method.payment_method_code,
+      label: method.payment_method_name,
+      amount: method.total_amount,
+      percent: paymentSharePercent(method.total_amount, totalAbs),
+      fill: BAR_FILLS[index % BAR_FILLS.length],
+    }));
   }, [preview, decimals]);
 
   if (!shift) {

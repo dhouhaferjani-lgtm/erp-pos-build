@@ -118,20 +118,23 @@ export async function loadSalesHistoryTickets(
   terminalId: string,
   sinceIso: string,
 ): Promise<SalesHistoryTicket[]> {
-  const rows = await queryAll<ReceiptRow>(
-    db,
-    `SELECT id, receipt_number, created_at, operator_name, lines, payments_json,
-            payment_method_id, total, receipt_kind
-       FROM offline_receipts
-      WHERE terminal_id = $1 AND created_at >= $2 AND voided = 0 AND is_training = 0
-      ORDER BY created_at DESC`,
-    [terminalId, toSqliteUtc(sinceIso)],
-  );
+  // The two reads are independent — issue them together rather than serially.
+  const [rows, methods] = await Promise.all([
+    queryAll<ReceiptRow>(
+      db,
+      `SELECT id, receipt_number, created_at, operator_name, lines, payments_json,
+              payment_method_id, total, receipt_kind
+         FROM offline_receipts
+        WHERE terminal_id = $1 AND created_at >= $2 AND voided = 0 AND is_training = 0
+        ORDER BY created_at DESC`,
+      [terminalId, toSqliteUtc(sinceIso)],
+    ),
+    queryAll<{ id: string; code: string; name: string }>(
+      db,
+      `SELECT id, code, COALESCE(name, code) AS name FROM payment_methods`,
+    ),
+  ]);
 
-  const methods = await queryAll<{ id: string; code: string; name: string }>(
-    db,
-    `SELECT id, code, COALESCE(name, code) AS name FROM payment_methods`,
-  );
   const nameByCode = new Map(methods.map((m) => [m.code, m.name]));
   const codeById = new Map(methods.map((m) => [m.id, m.code]));
 
@@ -163,10 +166,13 @@ export async function loadSalesHistoryTickets(
 function tenderCodes(row: ReceiptRow, codeById: Map<string, string>): string[] {
   const payments = parseJsonArray(row.payments_json) as PaymentJsonRow[];
   const codes: string[] = [];
+  const seen = new Set<string>();
   for (const payment of payments) {
     const code = payment.method_code;
     if (typeof code !== 'string' || code === '') continue;
-    if (!codes.includes(code)) codes.push(code);
+    if (seen.has(code)) continue;
+    seen.add(code);
+    codes.push(code);
   }
   if (codes.length > 0) return codes;
 
