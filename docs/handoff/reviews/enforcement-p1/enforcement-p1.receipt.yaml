@@ -1,0 +1,15 @@
+# PARENT DISPATCH RECEIPT — enforcement P1 (per docs/handoff/enforcement-dispatch-checklist.md)
+# Dispatch context 2026-08-19: Codex quota exhausted; parent orchestrator (session de182ed3)
+# drives the package with its own implementation subagents per owner directive.
+# Upstream gate: dpa_3c_merge_sha = 1e8c0fa03 (3C M0-M3 merged); parent hold released after
+# 3D landed at e4dcf0936 (baseline stability). Ancestry reviewed(d07868cca)->merge(1e8c0fa03)
+# ->base verified at dispatch.
+package: p1
+base_sha: 82a032e04e1e0a42d67503fcf2bf91095826e7f8  # includes the max-10 manifest commit
+manifest_path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml
+manifest_sha256: 7d53797b1849b6adeb2fcb39789935a48fc32a6f4804a9833d4bb8a78f1aa2b7  # max 10, delegation ruling
+progress_path: docs/handoff/progress/enforcement-p1.progress.yaml
+final_milestone: M3
+lenses: stock-gl-interaction,inventory-costing
+max_fix_rounds: 10
+created: 2026-08-19, dev tip 41fb478c21ae010568036aa66ffaef726ec63f09 (pre-dispatch pin commit)

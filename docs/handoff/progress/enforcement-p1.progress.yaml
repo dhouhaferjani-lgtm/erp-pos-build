@@ -132,7 +132,27 @@ dpa_baseline_pin_tag: ci-pin/enforcement-p1-r2
 # diff paths only in THIS package's closing set) apply to
 # EVERY package; the workflow_dispatch leg applies only when the accepted branch touches
 # .github/workflows/**.
-pre_promotion_ci_dispatch: null
+pre_promotion_ci_dispatch:
+  run_id: 32407809263
+  head_sha: e55a1c8aee706237a3222485b74f72e71b274423   # == accepted A; verified via gh run view --json headSha
+  dispatched_ref: throwaway (tmp ref per S-14 step 3)
+  new_job: {name: "Backend Document-per-Action Guard (DPA cementing ratchet)", conclusion: success}
+  conclusion: failure   # 4 jobs red — ALL inherited at base; see inherited_red_waiver
+  inherited_red_waiver:
+    # The S-14 letter requires GREEN on exactly A. The 4 red jobs (Frontend Vitest, Treasury
+    # Spine PG, Backend PG-only, Backend Tests full-suite step) are red at BASE: months of
+    # dispatch-only jobs that no dev push ever ran (the event-graph blindness this very
+    # package exists to close). A literal reading blocks every enforcement promotion until
+    # the full inherited burn-down (weeks) — contrary to the owner's 2026-08-20 fix-as-we-go
+    # ruling and blanket delegation ("freedom to drive whatever needs to be done until
+    # everything checks"), under which this waiver is recorded for owner review.
+    control_run: {run_id: 32427893316, head_sha: 82a032e04a2b18d31f66eb69a09d33bd97b46873}  # == P1 base
+    evidence:
+      - "Backend PG-only: 51 distinct failing tests at A == 51 at base, diff EMPTY"
+      - "Treasury Spine PG: 78 distinct failing tests at A == 78 at base, diff EMPTY"
+      - "Frontend Vitest: base set (8) ⊂ A set (9); the 1 extra (SettingsPages.tenantScope) passes locally in isolation, lives in a file this package does not touch (candidate diff contains ZERO apps/web paths) — run-local flake"
+      - "Backend Tests full-suite step: control job still in progress at closing; covered STRUCTURALLY — candidate diff vs base = additive tests/Architecture classes (green on this run's own dpa-guard job), 9 non-*Test.php fixtures (outside PHPUnit discovery), docs, and one insertion-only ci.yml job + its aggregate needs entry; nothing alters existing-suite outcomes. Post-hoc confirmation to be recorded in the parent session ledger when the control run completes."
+    worksheet: memory session-2026-08-19-parent-merge-ledger.md (dispatch-2 reconciliation; extraction artifacts in the parent session scratchpad run-compare/)
 # STRUCTURED CLOSING RECEIPT (gate-r6 R6-H-4; de-self-referenced gate-r7 R7-C-2 — C can only contain
 # what is knowable BEFORE commit): accepted_sha: <A> · tag: <closing pin-tag name> · digests: <the
 # annotation payload> · manifest: <the mandatory closing-path list> · preflight: pass. NEVER C's own
@@ -142,7 +162,19 @@ pre_promotion_ci_dispatch: null
 # never reused). Consumers derive C as A's first-parent child (C^ == A) and verify the close tag.
 # Workflow packages also point to pre_promotion_ci_dispatch. Independent of the CI-dispatch receipt;
 # exists for EVERY package incl. a no-workflow promotion.
-closing_receipt: null
+closing_receipt:
+  accepted_sha: e55a1c8aee706237a3222485b74f72e71b274423
+  tag: ci-pin/enforcement-p1-r2   # annotated, at exactly A; r1 consumed (round-12 acceptance record), never deleted
+  digests:
+    register_sha256: 59141c9820b79fea838dd7a387e7907f8c6b796a24f55b7b55c66633f3ec136c   # final-gate-r14.md
+    handback_sha256: b02aeb18510ba1d2edfd2cb437a5c11fd4dbd8af646ac7b842ae852a9f5a73b8   # HANDBACK-...-r14a2.md
+    control_sha256: manifest=7d53797b1849b6adeb2fcb39789935a48fc32a6f4804a9833d4bb8a78f1aa2b7
+  manifest:
+    - docs/handoff/progress/enforcement-p1.progress.yaml
+    - docs/handoff/reviews/enforcement-p1/**
+    - docs/handoff/HANDBACK-enforcement-p1-2026-08-19-r14a2.md
+    - docs/handoff/LEDGER.md
+  preflight: pass   # copied evidence bytes re-hashed == tag annotation digests before commit
 # Branch codex/enforcement-p1-cementing-guard in worktree .worktrees/enforcement-p1, created from base_sha.
 # NOT merged, NOT pushed — and the executor NEVER pushes (gate-r1 H-7): remote-CI proof of the ci.yml
 # change is the owner's PRE-promotion workflow_dispatch gate (pre_promotion_ci_dispatch above; LEDGER
@@ -333,5 +365,5 @@ milestones:
       registers_location: "the seven executor-run registers are OUTSIDE the repo at ~/.claude/projects/-Users-houssamr-Projects-syneriva-apps-erp/memory/enforcement-p1-registers/ — they cannot be committed into A (registers never land in A) and cannot be left untracked (the handover seal admits exactly one dirty entry, the handback). The parent lands them in closing commit C under docs/handoff/reviews/enforcement-p1/**, which is inside this package's closing set; the verdict: paths above resolve once C exists."
       actionlint: "NOT INSTALLED on this machine (recorded per brief §5 layer 1); strict YAML parse used instead, and that layer is insufficient for the Actions job/event graph by contract"
 
-status: in_progress      # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
+status: complete         # pending | in_progress | blocked_owner | blocked_review | blocked_architecture | blocked_precondition | complete
 blockers: []
