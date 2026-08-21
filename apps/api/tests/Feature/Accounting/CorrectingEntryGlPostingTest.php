@@ -958,6 +958,14 @@ final class CorrectingEntryGlPostingTest extends TestCase
      */
     public function test_the_post_takes_the_company_advisory_lock_before_reading_the_chain(): void
     {
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            // The lock statement itself is pgsql-guarded in postCorrectingEntryGl(),
+            // so on SQLite there is nothing to observe — the ordering property this
+            // test pins only exists on the production driver (the laned Accounting
+            // CI job runs PG; local by-path sqlite runs must skip, not fail).
+            self::markTestSkipped('pg_advisory_xact_lock ordering is observable on PostgreSQL only.');
+        }
+
         $invoice = $this->invoiceWithStrandedVatLeg(Carbon::parse('2026-01-15'));
 
         $correction = $this->correctingDocumentFor($invoice, [
