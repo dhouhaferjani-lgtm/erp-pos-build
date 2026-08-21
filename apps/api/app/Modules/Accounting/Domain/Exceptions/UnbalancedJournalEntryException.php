@@ -25,42 +25,24 @@ namespace App\Modules\Accounting\Domain\Exceptions;
  * An unbalanced entry must surface as an unmapped 500 + alert and must NEVER be
  * reportable as a client validation error; see the contract note at
  * `AccountingService::assertLegsBalance()` and `UnpostableDocumentGlException`.
- * enforcement-P3 M1 briefly re-parented this to `\InvalidArgumentException` (so the
- * GL chokepoint, which historically raised a BARE `\InvalidArgumentException`, could
- * adopt the house type without breaking existing catchers) and that was WRONG on
- * two counts, both caught at review (round 1, findings 3 and 4):
- *   1. `\InvalidArgumentException` is a `\LogicException`, so the ~30
- *      `catch (\InvalidArgumentException)` blocks in `app/` that render 400/422
- *      `VALIDATION_ERROR` responses became latent downgrade paths for a fiscal
- *      refusal — exactly what the "never a 422" contract exists to prevent.
- *   2. It silently changed a live API contract: `CreditNoteController::post()`'s
- *      `catch (\RuntimeException)` stopped matching, turning a
- *      `500 CONFIGURATION_ERROR` (with detail) into a generic `500 INTERNAL_ERROR`.
- * The parent was restored. The chokepoint still raises this type — see
- * `GeneralLedgerService::sealAndPersistEntry` — which is the actual goal of
- * deliverable D and needs no hierarchy change at all.
+ * `CreditNoteController::post()` depends on it concretely, catching this at `:406`
+ * to render a structured `500 CONFIGURATION_ERROR`.
+ *
+ * enforcement-P3 M1 briefly re-parented this to `\InvalidArgumentException` so the
+ * GL chokepoint could share the type, and that was WRONG (round 1, findings 3/4):
+ * it turned that structured 500 into a generic `500 INTERNAL_ERROR`, and made the
+ * type a `\LogicException` exposed to the `catch (\InvalidArgumentException)` blocks
+ * that render 400/422 — precisely what "never a 422" exists to prevent. Reverted.
+ *
+ * **This type covers the POST-SEAL, document-sourced refusal only.** The GL posting
+ * chokepoint raises its own sibling,
+ * {@see UnbalancedJournalEntryPostException} — deliberately a separate class,
+ * because the two refusals need opposite catch semantics and one shared parent
+ * cannot serve both without breaking a live contract in one direction or the other.
  * See `docs/handoff/reviews/enforcement-p3/M1-census.md` §5.
  */
 final class UnbalancedJournalEntryException extends \RuntimeException
 {
-    /**
-     * The GL posting chokepoint's refusal.
-     *
-     * The message is BYTE-IDENTICAL to the string the chokepoint raised before
-     * the type was normalized — existing assertions on it stay valid.
-     *
-     * @param  numeric-string  $totalDebit
-     * @param  numeric-string  $totalCredit
-     */
-    public static function forChokepoint(string $totalDebit, string $totalCredit): self
-    {
-        return new self(sprintf(
-            'Cannot post unbalanced journal entry: total debit %s does not equal total credit %s.',
-            $totalDebit,
-            $totalCredit,
-        ));
-    }
-
     /**
      * @param  numeric-string  $totalDebits
      * @param  numeric-string  $totalCredits

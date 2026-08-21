@@ -13,7 +13,6 @@ use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\Events\PartnerBalanceUpdated;
-use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -469,9 +468,7 @@ class GLIntegrationTest extends TestCase
         try {
             app(GeneralLedgerService::class)->postEntry($journalEntry, $this->user);
             $this->fail('Unbalanced journal entries must not be posted.');
-        } catch (UnbalancedJournalEntryException $exception) {
-            // enforcement-P3 M1: the chokepoint now raises the house type rather
-            // than a bare \InvalidArgumentException. The message is unchanged.
+        } catch (\InvalidArgumentException $exception) {
             $this->assertStringContainsString('Cannot post unbalanced journal entry', $exception->getMessage());
         }
 

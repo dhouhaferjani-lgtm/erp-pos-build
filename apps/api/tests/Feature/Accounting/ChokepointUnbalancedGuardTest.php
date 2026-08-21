@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -82,35 +83,64 @@ final class ChokepointUnbalancedGuardTest extends TestCase
             'line_order' => 1,
         ]);
 
-        $this->expectException(UnbalancedJournalEntryException::class);
+        $this->expectException(UnbalancedJournalEntryPostException::class);
         $this->expectExceptionMessage('Cannot post unbalanced journal entry');
 
         app(GeneralLedgerService::class)->postEntry($entry, $user, 'TND');
     }
 
     /**
-     * Round-1 findings 3 and 4: the `\RuntimeException` parent is load-bearing and
-     * this test exists to keep it that way.
+     * Round-1 findings 3 and 4: both halves of the SPLIT are load-bearing, and this
+     * test exists to keep either from being "simplified" back into one type.
      *
-     * An unbalanced entry must surface as an unmapped 500 + alert and must never be
-     * reportable as a client validation error. Re-parenting this type under
-     * `\InvalidArgumentException` (i.e. under `\LogicException`) exposes it to the
-     * ~30 `catch (\InvalidArgumentException)` blocks in `app/` that render
-     * 400/422 `VALIDATION_ERROR` responses, and simultaneously drops it out of
-     * `catch (\RuntimeException)` blocks that deliberately map it to a detailed 500
-     * (`CreditNoteController::post()`). M1 made that mistake and reverted it.
+     * M1 tried one shared type and measured the damage in both directions:
+     *  - parenting it under `\InvalidArgumentException` dropped the post-seal refusal
+     *    out of `CreditNoteController::post()`'s `catch (\RuntimeException)` (a
+     *    structured `500 CONFIGURATION_ERROR` became a generic 500) and made it a
+     *    `\LogicException` exposed to the `catch (\InvalidArgumentException)` blocks
+     *    that render 400/422;
+     *  - parenting it under `\RuntimeException` newly exposed the CHOKEPOINT's
+     *    refusal to `catch (\RuntimeException)` blocks that render **422**
+     *    (`DeliveryNoteController:587`, `DocumentConversionController:432`,
+     *    `POS/ReceiptController:378`) — the exact downgrade "never a 422" forbids.
+     *
+     * So: the post-seal type stays a `\RuntimeException`, and the chokepoint type
+     * stays an `\InvalidArgumentException` (which is what the chokepoint threw before
+     * M1, keeping its blast radius byte-identical to base).
      */
-    public function test_the_house_unbalanced_exception_is_never_a_logic_exception(): void
+    public function test_the_two_unbalanced_types_keep_their_load_bearing_parents(): void
     {
+        // Post-seal, document-sourced: an unmapped 500 + alert, never a 4xx.
         $this->assertTrue(
             is_subclass_of(UnbalancedJournalEntryException::class, \RuntimeException::class),
-            'UnbalancedJournalEntryException must extend \RuntimeException so it maps to an '
-            .'unmapped 500 + alert, never a 4xx validation response.'
+            'UnbalancedJournalEntryException must extend \RuntimeException: CreditNoteController::post() '
+            .'catches it to render a structured 500 CONFIGURATION_ERROR.'
         );
         $this->assertFalse(
             is_subclass_of(UnbalancedJournalEntryException::class, \LogicException::class),
             'UnbalancedJournalEntryException must NOT be a \LogicException: that exposes a fiscal '
             .'refusal to the catch (\InvalidArgumentException) blocks that render 400/422.'
+        );
+
+        // Chokepoint: same hierarchy the bare throw had before M1, so naming it
+        // changed no catch site anywhere.
+        $this->assertTrue(
+            is_subclass_of(UnbalancedJournalEntryPostException::class, \InvalidArgumentException::class),
+            'UnbalancedJournalEntryPostException must extend \InvalidArgumentException so the '
+            .'chokepoint blast radius stays identical to the pre-M1 bare throw.'
+        );
+        $this->assertFalse(
+            is_subclass_of(UnbalancedJournalEntryPostException::class, \RuntimeException::class),
+            'UnbalancedJournalEntryPostException must NOT be a \RuntimeException: that newly exposes '
+            .'the chokepoint refusal to catch (\RuntimeException) blocks rendering 422.'
+        );
+
+        // They must stay siblings — collapsing one into the other reintroduces the
+        // trade-off the split removes.
+        $this->assertFalse(
+            is_subclass_of(UnbalancedJournalEntryPostException::class, UnbalancedJournalEntryException::class),
+            'The chokepoint type must not inherit the post-seal type: it would inherit its '
+            .'\RuntimeException parent and the 422 downgrade paths with it.'
         );
     }
 }

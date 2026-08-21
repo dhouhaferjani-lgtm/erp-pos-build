@@ -18,9 +18,10 @@
 | new balance validators added | **0** (correct — see §4) |
 | red-first unbalanced-post tests presented as class-(c) evidence | **0** (correct — every candidate is green-at-base ⇒ DISQUALIFIED per C-2) |
 | deliverable **D** (chokepoint failure-mode normalization) | **type normalization + 1 genuinely swallowed queued-context refusal fixed**, both red-first proven (§5.6, §5.7) |
-| catchers of a balance refusal censused (round-1 finding 1) | **7 broad + 8 narrow-excluded** (§5.5) |
-| reported findings handed to the parent (out of 3(a) balance scope) | **9** (§6) |
-| round-0 changes WITHDRAWN at review (unreachable / wrong) | **2** — the converter re-throw (§5.2) and the exception re-parenting (§5.3) |
+| catchers of a balance refusal censused (round-1 finding 1) | **23 rows**, type-resolved reverse call graph over ~1,300 files (§5.5) |
+| reported findings handed to the parent (out of 3(a) balance scope) | **10** (§6) |
+| changes WITHDRAWN as wrong during review | **3** — the converter re-throw (§5.2), the round-0 re-parenting AND round-1's first revert of it (§5.3) |
+| net production behaviour change to existing catch sites | **ZERO** — proven by the two base tests passing unmodified (§5.3) |
 
 **The headline:** the GL posting chokepoint is genuinely complete for the balance
 invariant. Every path that can write a `posted`/sealed row is already guarded —
@@ -34,14 +35,25 @@ are fixed and red-first proven (§5.6, §5.7).
 
 **Round 1 changed this section's conclusions and the corrections are recorded in
 place, not smoothed over.** Round 0 surveyed only *creators*, never *catchers* — so
-it fixed the wrong site. Two round-0 changes were **withdrawn**: a re-throw in
-`SalesOrderToInvoiceConverter` that was proven unreachable with a non-discriminating
-test (§5.2), and a re-parenting of `UnbalancedJournalEntryException` that silently
-changed an API error envelope and invalidated two explicit in-tree design contracts
-(§5.3). The genuinely swallowed unbalanced post — in the queued-listener context the
-brief actually names — was found by the reviewer, not by round 0, and is now closed
-with its residual reported (§5.6, R-8). §5.5 adds the catcher census that was
-missing.
+it fixed the wrong site. **Three** changes were withdrawn as wrong, two of them this
+lane's own:
+
+1. the `SalesOrderToInvoiceConverter` re-throw — proven unreachable, its test proven
+   non-discriminating (§5.2). That file now carries **zero** behavioural change;
+2. round 0's re-parenting of `UnbalancedJournalEntryException` — it silently changed
+   a live API error envelope and invalidated two explicit in-tree contracts (§5.3);
+3. **round 1's own first fix for (2)** — reverting the parent was committed claiming
+   an exhaustive blast-radius check that had not been done, and it *introduced* a
+   regression, newly rendering a fiscal imbalance as **422** at three sites (§5.3,
+   M1-D8).
+
+The root cause of both (2) and (3) was forcing **one** exception type to serve **two**
+throw sites with opposite catch semantics. The delivered fix **splits** them, which
+leaves every existing catch site byte-identical to base — proven by two base tests
+passing unmodified. The genuinely swallowed unbalanced post, in the listener context
+the brief actually names, was found by the reviewer rather than by round 0 and is now
+closed with its residual reported (§5.6, R-8). §5.5 adds the missing catcher census;
+R-10 records the pre-existing 4xx downgrades this delivery does **not** fix.
 
 ---
 
@@ -369,113 +381,170 @@ already committed when the refusal fires and the advance is unclaimed either way
 What a re-throw would have bought is **loudness, not divergence prevention**. The
 replacement comment says exactly that.
 
-### 5.3 Blast radius — CORRECTED, and the hierarchy change REVERTED (round-1 findings 3 + 4)
+### 5.3 The exception hierarchy — round 0 was wrong, and so was round 1's first fix
 
-Round 0 also re-parented `UnbalancedJournalEntryException` from `\RuntimeException` to
-`\InvalidArgumentException`, justified by the claim that *"no `catch (\RuntimeException)`
-exists on any `createInvoiceGLEntries` / `createCreditNoteGLEntries` / `reverseDocumentGl`
-caller."* **That claim was true only for DIRECT callers and false transitively, and the
-re-parenting has been fully reverted.**
+This subsection has been rewritten twice because the analysis behind it was wrong
+twice. Both wrong versions are stated here rather than deleted, because the *reason*
+they were wrong is the reusable lesson.
 
-**The transitive path the original check missed:**
+**Attempt 1 (round 0) — one shared type parented under `\InvalidArgumentException`.**
+Round 0 re-parented `UnbalancedJournalEntryException` from `\RuntimeException` to
+`\InvalidArgumentException` so the chokepoint could adopt the house type, justified by
+the claim that *"no `catch (\RuntimeException)` exists on any `createInvoiceGLEntries` /
+`createCreditNoteGLEntries` / `reverseDocumentGl` caller."* **True for DIRECT callers,
+false transitively.** The path round 0 missed:
 
 ```
 CreditNoteController::post()  (:374)
-  → DocumentPostingService::post
-    → DB::afterCommit( event(new InvoicePosted …) )        DocumentPostingService.php:507-518
-      → EventServiceProvider.php:95 → InvoicePostedListener.php:30   (NOT ShouldQueue)
-        → AccountingService::createCreditNoteGLEntries
-          → assertLegsBalance → throw UnbalancedJournalEntryException   (:350)
-… the afterCommit callback's exception propagates out of DB::transaction
-   → CreditNoteController::post()'s  catch (\RuntimeException)  at :406
+  → DocumentPostingService::post :75 → DB::transaction :96 → seal
+    → DB::afterCommit( event(new InvoicePosted …) )              :508/:518
+      → InvoicePostedListener::handle :18   (NOT ShouldQueue)
+        → AccountingService::createCreditNoteGLEntries :30
+          → assertLegsBalance → throw                            :362
+… lands in CreditNoteController::post()'s  catch (\RuntimeException)  at :406
 ```
 
-Under the re-parenting that `catch (\RuntimeException)` stopped matching, so an
-unbalanced credit-note GL entry silently changed from
-`500 {code: CONFIGURATION_ERROR, message: <detail>}` to the generic
-`500 {code: INTERNAL_ERROR, message: <generic>}` envelope (`bootstrap/app.php:938-957`).
-Not fail-open — still a 500 — but a **silent API-contract change on a fiscal refusal
-path**, produced by a verification claim that was never tested transitively.
+Under attempt 1 that catch stopped matching, so an unbalanced credit-note GL entry
+silently changed from `500 {code: CONFIGURATION_ERROR, message: <detail>}` to the
+generic `500 {code: INTERNAL_ERROR}` envelope (`bootstrap/app.php:938-957`). It also
+made the type a `\LogicException`, exposing it to the `catch (\InvalidArgumentException)`
+blocks that render 400/422 — the exact downgrade the type's own docblock forbids
+(`AccountingService.php:304-306`, `UnpostableDocumentGlException.php:26-27`:
+*"stays an unmapped `RuntimeException` (a 500 + alert), never a 422"*).
 
-**Round-1 finding 4, the other direction:** the re-parenting also made the type a
-`\LogicException`, exposing it to the ~30 `catch (\InvalidArgumentException)` blocks in
-`app/` that render 400/422 `VALIDATION_ERROR` responses — and it invalidated two
-explicit in-tree design contracts that say the opposite
-(`AccountingService.php:304-306` and `UnpostableDocumentGlException.php:26-27`:
-*"stays an unmapped `RuntimeException` (a 500 + alert), never a 422"*). The reviewer
-found no currently-reachable downgrade, so the exposure was latent — but the guardrail
-was gone while the files still claimed it.
+**Attempt 2 (round 1, first pass) — revert the parent to `\RuntimeException`. ALSO
+WRONG, and it introduced a REGRESSION.** The revert was committed with the claim that
+its blast radius had been *"verified exhaustively."* **That claim was false.** It rested
+on a lexical sweep with a 60-line window, which cannot see any catcher separated from
+the post by an event dispatch or an `afterCommit` hop. A full type-resolved reverse
+call-graph over `app/` (246 reachable nodes from the two throw sites, cross-checked
+against a direct grep of all 60 `\RuntimeException` and 54 `\InvalidArgumentException`
+catchers) found that making the refusal a `\RuntimeException` newly exposed the
+**chokepoint's** refusal to five live catch sites — **three of which render a fiscal
+imbalance as a 422**, verified by reading each one:
 
-**Decision: revert the parent to `\RuntimeException`.** This resolves findings 3 and 4
-completely and is the *right* design independent of them — a post-seal balance refusal
-must never be reportable as client validation error, which is exactly what those two
-docblocks deliberately chose. The re-parenting was the round-0 mistake; adopting the
-house type at the chokepoint never required a hierarchy change at all.
-
-**Blast radius of the revert, verified exhaustively this round.** Only two places in
-`app/` catch a type that matches the refusal *and* wrap a GL post:
-
-| site | caught type | effect of the revert |
-|---|---|---|
-| `SalesOrderToInvoiceConverter.php:590` | `\InvalidArgumentException\|\RuntimeException` (union) | **none** — matches under either parent |
-| `PostShiftCashVarianceAdjustment.php:184` | `UnbalancedJournalEntryException` (concrete) | **none** — matches the concrete type |
-
-Everything else that catches `\InvalidArgumentException` in `app/` does not wrap a GL
-post. Two **tests** pinned the old bare type and were updated (message assertions
-preserved verbatim):
-`GLIntegrationTest.php:471` (`catch` type) and `GeneralLedgerPostEntryScaleTest.php:75`
-(`expectException`).
-
-**Regression guard added** so this cannot recur:
-`ChokepointUnbalancedGuardTest::test_the_house_unbalanced_exception_is_never_a_logic_exception`
-asserts the type is a `\RuntimeException` and is **not** a `\LogicException`. Both
-docblocks were updated to record that the parent is load-bearing, that the chokepoint
-is now a second source of the type, and that M1 made and reverted this mistake.
-
-### 5.4 Did the revert create any NEW swallow? (checked, no)
-
-Making the refusal a `\RuntimeException` means `catch (\RuntimeException)` blocks now
-match it where previously the bare `\InvalidArgumentException` did not. Every such site
-was checked:
-
-| site | caught type | is the post synchronous there? | verdict |
+| site | catch | renders | verified |
 |---|---|---|---|
-| `BatchWriteOffService.php:122` | `\RuntimeException` | **No — deferred.** `createInventoryWriteOffEntry`'s `$postSynchronously` defaults to **false** (`GeneralLedgerService.php:4765`) and this caller does not pass it, so the `…AfterCommit` branch (`:4886`) runs inside the caller's `DB::transaction` and defers past the catch | no new swallow; added as R-9 (same "protected by nesting" class) |
-| `InventoryGlPostingService.php:85,126,206` | — | **Yes — `postSynchronously: true`** | **no catch blocks at all in that file** — the refusal propagates fail-closed. Safe |
-| `CreditNoteController.php:406` | `\RuntimeException` | deferred (afterCommit), propagates out of `DB::transaction` | **restored** to its pre-M1 behaviour by the revert — this is finding 3's fix |
+| `DeliveryNoteController.php:587` | `\RuntimeException` | **422** `CONFIGURATION_ERROR` | synchronous — `glBuffer->flushIfOutermost()` `:581` → `postSynchronously: true` → `postEntryNow` |
+| `POS/ReceiptController.php:378` | `\RuntimeException` | **422** `RETURN_FAILED` | reached via voucher issuance → `createVoucherLedgerEntry` |
+| `DocumentConversionController.php:432` | `\RuntimeException` | **422** `GOODS_RECEIPT_ERROR` | via `GoodsReceiptService` → GR/IR |
+| `PurchaseOrderController.php:848` | `\RuntimeException` | 500 `CONFIGURATION_ERROR` | goods receipt already committed |
+| `CreditNoteController.php:406` | `\RuntimeException` | 500 `CONFIGURATION_ERROR` | the intended one (above) |
 
-### 5.5 CATCHER CENSUS (round-1 finding 1 — the section the round-0 census lacked)
+So attempt 2 fixed findings 3/4 by **breaking the same contract at three other sites**.
+Neither single parent is safe: `\InvalidArgumentException` opens two live 4xx paths,
+`\RuntimeException` opens five.
 
-Every `catch` in `app/` whose type could intercept a balance refusal **and** which
-lexically wraps a call reaching a GL post. Swept mechanically, then each row's
-synchronous-vs-deferred status resolved by reading the post path.
+**Attempt 3 (delivered) — SPLIT the two throw sites.** The trade-off only existed
+because one class was being asked to serve two throw sites with opposite catch
+semantics. It is removed, not chosen between:
 
-| # | catch site | caught type | post is | what the catch does | disposition |
+| type | thrown by | parent | rationale |
+|---|---|---|---|
+| `UnbalancedJournalEntryException` | `AccountingService::assertLegsBalance()` — post-seal, document-sourced | `\RuntimeException` — **restored to exactly its pre-M1 state** | `CreditNoteController:406` depends on it concretely; the "never a 422" docblocks are true again |
+| `UnbalancedJournalEntryPostException` **(new)** | the chokepoint, `sealAndPersistEntry` | `\InvalidArgumentException` — **the same hierarchy the bare throw already had** | naming it changes **no** catch site anywhere; deliverable D is satisfied because it now has a name callers can single out |
+
+**Proof that the chokepoint's blast radius is byte-identical to base** — the two tests
+that pinned the chokepoint's old bare type were **reverted to their base content** and
+still pass unmodified:
+
+```
+$ git diff 0ca7bbb09 -- tests/Feature/Accounting/GLIntegrationTest.php \
+                        tests/Feature/Accounting/GeneralLedgerPostEntryScaleTest.php
+(no output — identical to base)
+
+GLIntegrationTest.php                OK (29 tests, 120 assertions)   # catch (\InvalidArgumentException)
+GeneralLedgerPostEntryScaleTest.php  OK (2 tests, 3 assertions)      # expectException(InvalidArgumentException)
+```
+
+A test that catches `\InvalidArgumentException` around `postEntry` still catches the
+refusal, exactly as before M1. **Nothing that caught it before stops; nothing that did
+not catch it starts.** That is the strongest available evidence that this delivery adds
+no catch-site regression, and it is why round 1's earlier revert is not merely undone
+but replaced by a design that cannot recur.
+
+`ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents`
+pins all of it: each type's parent, the absence of the wrong parent, and that neither
+inherits the other.
+
+### 5.4 What this delivery does NOT fix (and does not pretend to)
+
+The split leaves the **pre-existing** exposure exactly where it was before M1: because
+the chokepoint's refusal is still an `\InvalidArgumentException`, the two
+`catch (\InvalidArgumentException)` sites that already downgraded the bare refusal to
+4xx still do — `DocumentConversionController.php:418` (422 `VALIDATION_ERROR`) and
+`POS/ReceiptController.php:385` (400 `INVALID_RETURN_DATA`). These are **reported as
+R-10, not introduced by M1** and not fixed by it: closing them needs per-site narrowing
+at each catch site, which is a different change from a balance-guard census.
+
+Stated plainly, because the round-0 version of this section overclaimed and that is the
+failure this document is trying not to repeat: **no exception hierarchy can fix
+catch-site downgrades. Only per-site narrowing can** — the pattern applied at
+`PostShiftCashVarianceAdjustment.php:184` (§5.6), and already used natively in this
+codebase at `POS/ReceiptController.php:374`, where a narrower clause is deliberately
+declared before a broad one.
+
+### 5.5 CATCHER CENSUS (round-1 finding 1 — the section round 0 lacked)
+
+**The mechanic that governs every row, and that round 0 got wrong.** `DB::afterCommit`
+callbacks run **synchronously inside `Connection::transaction()`, with no exception
+isolation** (`ManagesTransactions.php:79-104` → `DatabaseTransactionsManager.php:67,94`
+→ `DatabaseTransactionRecord.php:83-88` — a bare `foreach ($callbacks as $cb) { $cb(); }`).
+Therefore:
+
+> A deferred post escapes a `try` **only when the outermost transaction is opened
+> OUTSIDE that try.** If the `try` wraps the `DB::transaction(...)`, the deferred
+> refusal still lands in the catch — just *after* the data has committed.
+
+Round 0 assumed "deferred ⇒ escapes the try" unconditionally. That is false, and it is
+why the `CreditNoteController` path (`D→in` below) was missed.
+
+`S` = lands in the try · `D` = escapes it · `D→in` = deferred but commits inside the
+try, so it lands there anyway with the data already written.
+
+| # | catch site | type(s) | S/D | what it does | disposition |
 |---|---|---|---|---|---|
-| 1 | `Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php:210` | `Throwable` | **SYNCHRONOUS** — `createRepositoryAdjustmentJournalEntry` posts via `postEntryNow` (`GeneralLedgerService.php:1307`), no deferral | `refuse(… 'exception' …, level: 'error')` | **GENUINE SWALLOW → FIXED**, see §5.8 |
-| 2 | `Accounting/Listeners/PostGrIrOnGoodsReceipt.php:41` | `\Throwable` | deferred — `flushPendingGlPostings` runs inside `post()`'s `DB::transaction` (`GoodsReceiptService.php:393,403`) | `Log::error`, explicitly never re-throws | protected by nesting accident → **reported R-9** |
-| 3 | `BatchExpiry/Domain/Services/BatchWriteOffService.php:122` | `\RuntimeException` | deferred (`$postSynchronously` false, §5.4) | `Log::warning`, never re-throws | protected by nesting accident → **reported R-9** |
-| 4 | `Treasury/Application/Projections/TreasuryReceiptBridge.php:595` | `\Throwable` | synchronous (`postEntryNow` `:473,:547`) | **re-throws** (`:602`) — "the rethrow is the load-bearing part" (`:566`) | already fail-closed ✅ |
-| 5 | `Document/…/SalesOrderToInvoiceConverter.php:590` | `\InvalidArgumentException\|\RuntimeException` | deferred (§5.2) | `Log::warning` + `gl_entry_skipped` | protected by nesting accident → **reported R-7** |
-| 6 | `Document/Presentation/Controllers/CreditNoteController.php:406` | `\RuntimeException` | deferred, propagates out of `DB::transaction` | maps to `500 CONFIGURATION_ERROR` | intentional, loud, restored by the revert ✅ |
-| 7 | `Inventory/…/InventoryGlPostingService.php` | *(none)* | synchronous | — | fail-closed by absence of any catch ✅ |
+| 1 | `Treasury/…/PostShiftCashVarianceAdjustment.php:184`/`:210` | `UnbalancedJournalEntryPostException` / `Throwable` | **S** (`postEntryNow`, GL:1308) | now: own reason at `error`; was: generic `exception` | **GENUINE SWALLOW → FIXED** §5.6 |
+| 2 | `Accounting/Listeners/PostGrIrOnGoodsReceipt.php:41` | `\Throwable` | **D** | log only, never rethrows | unreachable → **R-9** |
+| 3 | `BatchExpiry/…/BatchWriteOffService.php:122` | `\RuntimeException` | **D** | `Log::warning` | unreachable → **R-9** |
+| 4 | `Document/…/SalesOrderToInvoiceConverter.php:589` | `\InvalidArgumentException\|\RuntimeException` | **D** (tx opened outside the try, at `DeliveryNoteBillingConcurrencyRetrier.php:40`) | `Log::warning` + `gl_entry_skipped` | unreachable → **R-7** |
+| 5 | `Document/…/CreditNoteController.php:406` | `\RuntimeException` | **D→in** | 500 `CONFIGURATION_ERROR` | intentional, loud ✅ |
+| 6 | `Document/…/DeliveryNoteController.php:587` | `\RuntimeException` | **S** | **422** `CONFIGURATION_ERROR` | not reached — chokepoint type is not a `\RuntimeException` ✅ |
+| 7 | `Document/…/DocumentConversionController.php:418` / `:432` | `\InvalidArgumentException` / `\RuntimeException` | **D→in** | 422 `VALIDATION_ERROR` / 422 `GOODS_RECEIPT_ERROR` | `:418` reachable → **R-10 (pre-existing)**; `:432` not reached ✅ |
+| 8 | `Document/…/PurchaseOrderController.php:848` | `\RuntimeException` | **D→in** | 500 `CONFIGURATION_ERROR` | not reached ✅ |
+| 9 | `Document/…/RefundController.php:154`, `:254` | `\Exception` | **S** | 422, message as both `error` and `code` | broad catch — matches any type → **R-10** |
+| 10 | `DocumentIngestion/…/DocumentIngestionController.php:229` | `\Throwable` | **D→in** | → `NeedsReview`; **rethrows** non-`DomainException` `:247` | fail-closed ✅ |
+| 11 | `Fiscal/…/ApplyFiscalEventProjectionJob.php:414` | `Throwable` | **S** + **D→in** | failure accounting + **rethrow** | **ShouldQueue** — retry/dead-letter ✅ |
+| 12 | `Fiscal/…/FiscalEventProjectionDispatcher.php:195` | `Throwable` | **S** | collect + re-dispatch async | ✅ |
+| 13 | `Fiscal/…/RetryFiscalProjectionsCommand.php:210` | `Throwable` | **S** | calls `failed()` | ✅ |
+| 14 | `POS/…/PosCoreReceiptProjection.php:506` | `\Throwable` | **S** | retryable→rethrow, else `Log::error` | partial → **R-10** |
+| 15 | `POS/…/ReceiptReturnService.php:516` | `\Throwable` | **S** | retryable→rethrow, else `Log::error` | partial → **R-10** |
+| 16 | `POS/…/ExchangeService.php:121` | `\Throwable` | **S** | `trackFailure` + **rethrow** | fail-closed ✅ |
+| 17 | `POS/…/ReceiptController.php:378` / `:385` | `\RuntimeException` / `\InvalidArgumentException` | **D→in** | 422 `RETURN_FAILED` / 400 `INVALID_RETURN_DATA` | `:378` not reached ✅; `:385` reachable → **R-10 (pre-existing)** |
+| 18 | `Procurement/…/StandaloneReceiptService.php:147` | `\Throwable` | **D→in** | compensate + **rethrow** | fail-closed ✅ |
+| 19 | `Treasury/…/MultiPaymentController.php:214`, `:338` | `\Exception` | **S** (`SynchronousInTransaction`) | 422 | broad → **R-10** |
+| 20 | `Treasury/…/PaymentRefundController.php:89`, `:128`, `:177` | `\Exception` | **S** | 422 | broad → **R-10** |
+| 21 | `Treasury/…/TreasuryReceiptBridge.php:595` | `\Throwable` | **S** | **rethrows** `:602` — "the rethrow is the load-bearing part" `:566` | fail-closed ✅ |
+| 22 | `Document/…/DeliveryNoteBillingConcurrencyRetrier.php:48` | `Throwable` | **D→in** | non-retryable → **rethrow** `:50` | fail-closed ✅ |
+| 23 | `Console/TenantScopedCommand.php:333` | `Throwable` | **S** | logs, continues to next tenant | covers any GL console command → **R-10** |
 
-Narrowly-typed catches around GL posts that **cannot** match a balance refusal, checked
-and excluded: `ToleranceExceededException` / `InvoiceAlreadyPaidException`
-(`InvoiceController.php:1119,1131`), `QueryException`
-(`RefundCompensationService.php:345`, `TreasuryMovementService.php:394`),
-`ModelNotFoundException` (`ReceiptPaymentService.php:419`),
-`AdjustmentToleranceAccountMissingException` / `AdjustmentAmountBelowCurrencyPrecisionException`
-(`RepositoryAdjustmentController.php:71,79`),
-`InsufficientRepositoryBalanceException` / `RepositoryFrozenException`
-(`PostShiftCashVarianceAdjustment.php:160,171`).
+**No catcher at all** on the manual route: `JournalEntryController::post` (`:148`) has no
+`try`, so a refusal there propagates — correct.
 
-> **Stated limitation of the sweep.** It is lexical: it matches a `catch` whose *try
-> body within 60 lines* contains a post-reaching call. It therefore does **not** find
-> catchers separated from the post by an event dispatch or an `afterCommit` hop — which
-> is exactly how round-1 finding 3's `CreditNoteController:406` hides (row 6 above was
-> added by hand from the reviewer's trace, not by the sweep). Any future re-run must
-> keep tracing transitive/event-mediated paths by hand.
+**Method.** Type-resolved reverse call graph over all ~1,300 `app/` PHP files
+(promoted-constructor property types + `use`-map + interface→implementor edges), seeded
+at both throw sites (`GeneralLedgerService.php:3418`, `AccountingService.php:362`) →
+246 reachable `(file, method)` nodes; then every `try` in `app/` whose body contains a
+reachable method and whose `catch` lists a matching type. Cross-checked against a raw
+grep of **every** narrow catcher in `app/` (60 `\RuntimeException`, 54
+`\InvalidArgumentException`, **0 `\LogicException`**), which surfaced no missed row.
+
+**Two honest limits.** (1) Event-dispatch edges are invisible to the graph; they were
+traced by hand for `InvoicePosted`, `GoodsReceived` and `CashCountRecorded` — a listener
+on some other event could still be missed. (2) Closure-invoked call sites (`$operation()`,
+`$fn()`) are invisible; a targeted sweep found 4, of which 2 are real (rows 22 and 23).
+Round 0's much weaker 60-line lexical sweep is exactly what produced the false
+"verified exhaustively" claim, and is not relied on anywhere in this section.
 
 ### 5.6 The real queued-context swallow — FIXED (round-1 finding 1)
 
@@ -601,8 +670,8 @@ cd apps/api
 # → OK (1 test, 2 assertions)                              N = 1  ≥ 1  ✅
 
 ./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php \
-  --filter '^Tests\\Feature\\Accounting\\ChokepointUnbalancedGuardTest::test_the_house_unbalanced_exception_is_never_a_logic_exception$'
-# → OK (1 test, 2 assertions)                              N = 1  ≥ 1  ✅
+  --filter '^Tests\\Feature\\Accounting\\ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents$'
+# → OK (1 test, 5 assertions)                              N = 1  ≥ 1  ✅
 
 ./vendor/bin/phpunit tests/Feature/Document/DocumentConversionScenarioTest.php \
   --filter '^Tests\\Feature\\Document\\DocumentConversionScenarioTest::it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud$'
@@ -640,6 +709,7 @@ only, so touched test files are outside its scope by configuration).
 | **R-7** | **`SalesOrderToInvoiceConverter.php:590` — balance refusal protected only by transaction nesting.** Its `catch (\InvalidArgumentException\|\RuntimeException)` would swallow a chokepoint balance refusal into a `Log::warning` + `gl_entry_skipped`, and does not today only because `transferPrepayments()` always runs inside the billing retrier's transaction, so the post defers past the frame. If that transaction is ever removed the swallow becomes live. | `SalesOrderToInvoiceConverter.php:165,590`; `DeliveryNoteBillingConcurrencyRetrier.php:40`; `GeneralLedgerService.php:96-110` | Architecturally unreachable today — a guard here would be unreachable dead code with a non-discriminating test, which is exactly what round 1 rejected (§5.2). Pinned instead by `it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud`, which goes red if the nesting changes. |
 | **R-8** | **Shift-variance GL refusals have no retry or dead-letter (residual of the §5.6 fix).** `PostShiftCashVarianceAdjustment` is a plain synchronous listener (`final readonly`, NOT `ShouldQueue`, registered at `TreasuryServiceProvider.php:185`). A balance refusal is now recorded loudly under its own queryable reason at `error` level, but it is still not retried and never reaches a dead-letter queue — the brief's "retryably/dead-letter" discipline cannot be satisfied without making this listener queued. | `PostShiftCashVarianceAdjustment.php:184,210`; `TreasuryServiceProvider.php:185` | Making the listener queued is an architectural change (queue registration per rule 20, replay/idempotency semantics for an already-sealed Z report) well outside 3(a). Recorded so the gap is visible rather than implied closed. |
 | **R-9** | **Two more "protected by transaction-nesting accident" catchers, same class as R-7.** (i) `PostGrIrOnGoodsReceipt.php:41` `catch (\Throwable)` → `Log::error`, explicitly never re-throws, around `createGoodsReceiptGrIrEntry`; safe only because `flushPendingGlPostings` runs inside `post()`'s transaction. Note the fail-closed twin at `GoodsReceiptService.php:409` calls the GL service directly, outside the listener. (ii) `BatchWriteOffService.php:122` `catch (\RuntimeException)` → `Log::warning`, around `createInventoryWriteOffEntry`; safe only because `$postSynchronously` defaults to false (`GeneralLedgerService.php:4765`) so the `…AfterCommit` branch defers. | as cited; `GoodsReceiptService.php:393,403,409` | Same reasoning as R-7 — unreachable today, so no guard and no test. Both are one refactor away from becoming live swallows; listed so the parent can decide whether the nesting invariants deserve their own pins. |
+| **R-10** | **PRE-EXISTING catch-site downgrades of a chokepoint balance refusal (not introduced by M1, not fixed by it).** Because the chokepoint's refusal is an `\InvalidArgumentException` — as it was before M1 — two narrow sites still render it as a client error: `DocumentConversionController.php:418` → **422 `VALIDATION_ERROR`**, and `POS/ReceiptController.php:385` → **400 `INVALID_RETURN_DATA`**. Broad `catch (\Exception)` / `catch (\Throwable)` sites match under any hierarchy and add more: `RefundController.php:154,254` (422, message echoed as both `error` and `code`), `MultiPaymentController.php:214,338` (422), `PaymentRefundController.php:89,128,177` (422), `PosCoreReceiptProjection.php:506` and `ReceiptReturnService.php:516` (`Log::error` on the non-retryable branch), `TenantScopedCommand.php:333` (logs and continues to the next tenant). A fiscal imbalance reported as a client-fixable 4xx is exactly what the type's "never a 422" contract forbids. | §5.5 rows 7, 9, 14, 15, 17, 19, 20, 23 | **No exception hierarchy can fix this — only per-site narrowing can** (§5.4). Each site needs its own `catch (UnbalancedJournalEntryPostException) { throw $e; }` ahead of the broad clause, the pattern applied at `PostShiftCashVarianceAdjustment.php:184` and already used natively at `POS/ReceiptController.php:374`. That is a multi-module change to HTTP error contracts, outside a balance-guard census, and it needs the parent's scope ruling. |
 | **R-6** | **Census blind spot for the P1 scanner.** `JournalEntry::query()->create` is invisible to a `JournalEntry::create` grep and hides **6** creators. `DocumentPerActionWriteScanner` should be re-checked for the same pattern, and P1's 116-site census re-derived if it shares the blind spot. | §1(i); `GeneralLedgerService.php:1084,2884,2993,3079,3134,3201` | P1 is landed and closed; changing its baseline is the parent's call, not P3's. |
 
 ---
@@ -652,6 +722,7 @@ only, so touched test files are outside its scope by configuration).
 | **M1-D2** | **The P1 baseline was insufficient as a census seed** — it holds 4 `journal_entries` keys (a violation set), not a creator inventory. The census was rebuilt independently and its completeness proven (§1). |
 | **M1-D3** | **Zero class-(c) guards added, zero class-(c) red-first tests.** This is the *correct* outcome under the C-2 ruling, not an omission: every structural bypass is green-at-base and therefore disqualified. Two leads were pursued to proof and killed (§4). The milestone's implementation content is deliverable D. |
 | **M1-D4** | **Worktree had no `vendor/`.** `composer install` was run in the worktree (a symlink to the main repo's `vendor` would autoload **stale main-repo** `App\` classes and invalidate every test result). Autoloader confirmed worktree-local. |
+| **M1-D8** | **A claim committed in this round was false and is retracted here.** Round 1's first pass reverted the exception parent to `\RuntimeException` and committed it asserting the blast radius was *"verified exhaustively."* It was not: the check was a 60-line lexical sweep that cannot see event- or `afterCommit`-mediated catchers. A type-resolved reverse call graph then showed the revert had **introduced a regression** — it newly exposed the chokepoint's refusal to five `catch (\RuntimeException)` sites, three rendering **422** (`DeliveryNoteController:587`, `DocumentConversionController:432`, `POS/ReceiptController:378`), breaking the very "never a 422" contract the revert was justified by. Root cause of both wrong attempts: forcing ONE type to serve TWO throw sites with opposite catch semantics. Resolved by splitting the types (§5.3), which leaves every existing catch site byte-identical to base. Also corrected: round 0's deferral mechanic ("deferred ⇒ escapes the try") is false — `DB::afterCommit` runs inside `Connection::transaction()` with no exception isolation, so a deferred refusal still lands in any `try` that wraps the transaction (§5.5). |
 | **M1-D7** | **Round-1 self-corrections (fix_rounds 1).** Four round-0 positions did not survive review and were changed rather than defended: (i) the census covered creators but not **catchers**, so it targeted the wrong site — §5.5 adds the catcher census; (ii) the `SalesOrderToInvoiceConverter` re-throw was **withdrawn** as unreachable, proven by deleting it and watching its test stay green (§5.2) — that file now carries zero behavioural change; (iii) the `UnbalancedJournalEntryException` **re-parenting was reverted** — it silently turned a `500 CONFIGURATION_ERROR` into a generic `500 INTERNAL_ERROR` on `CreditNoteController::post` and invalidated two docblocks that deliberately specify "never a 422" (§5.3), and a regression test now pins the parent; (iv) the genuinely swallowed unbalanced post at `PostShiftCashVarianceAdjustment:210` was **found by the reviewer, not by round 0**, and is now fixed red-first with its no-retry residual reported as R-8. The behavioural standard applied to every catcher — *fix what is reachable and provable red-first, report what is unreachable* — is stated at §5.6 and is what justifies fixing finding 1 while only reporting R-7 and R-9. |
 | **M1-D6** | **A claim in this document was falsified by its own red run and corrected, not quietly dropped.** The first reading of `SalesOrderToInvoiceConverter:589` asserted that an unbalanced GL post *is* silently swallowed there today. The red baseline trace showed the throw travelling through `DatabaseTransactionRecord` — i.e. deferred past the `try` by `DB::afterCommit` — so the escape is real but incidental. §5.2 now states the weaker, provable claim and explicitly withdraws the stronger one. The fix stands on the corrected justification (an untyped refusal whose only protection is transaction-nesting timing), not on the withdrawn one. |
 | **M1-D5** | **PG verification instance.** The `numeric` rounding fact in §4.1 was verified against the **port 5432 Homebrew PostgreSQL 15** instance (`TimeZone = Africa/Tunis`), using a dedicated scratch database `p3m1_test`. `autoerp_test` was **not** touched. |

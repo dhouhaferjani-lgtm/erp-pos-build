@@ -254,17 +254,42 @@ milestones:
     #    deleting it and watching its test stay green. That file now has ZERO behavioural
     #    change. Test kept, re-scoped and renamed to pin the DEFERRAL (what it actually
     #    discriminates on). Overclaiming comment resolved by deletion (finding 5).
-    # 4. REVERTED — the UnbalancedJournalEntryException re-parenting, back to
-    #    \RuntimeException. Round 0's blast-radius claim was false transitively: it broke
-    #    CreditNoteController::post's catch(\RuntimeException), silently turning a
-    #    500 CONFIGURATION_ERROR into a generic 500 INTERNAL_ERROR on a fiscal refusal,
-    #    and made the type a \LogicException exposed to the ~30 catch(\InvalidArgumentException)
-    #    blocks rendering 400/422. Resolves findings 3 AND 4 together. No new swallow
-    #    introduced (BatchWriteOffService:122 deferred; InventoryGlPostingService has no
-    #    catch blocks). Two tests updated, message assertions preserved.
+    # 4. EXCEPTION TYPES SPLIT (findings 3 + 4). This took THREE attempts and the first
+    #    two were wrong; see census §5.3 and deviation M1-D8.
+    #    - Round 0 re-parented UnbalancedJournalEntryException to \InvalidArgumentException:
+    #      broke CreditNoteController:406's catch(\RuntimeException) (structured 500
+    #      CONFIGURATION_ERROR -> generic 500) and made it a \LogicException exposed to the
+    #      catch(\InvalidArgumentException) blocks rendering 400/422.
+    #    - Round 1's FIRST pass reverted the parent and committed it claiming the blast
+    #      radius was "verified exhaustively". THAT CLAIM WAS FALSE (a 60-line lexical
+    #      sweep cannot see event/afterCommit-mediated catchers) and the revert INTRODUCED
+    #      a regression: it newly exposed the chokepoint refusal to five catch(\RuntimeException)
+    #      sites, THREE rendering 422 (DeliveryNoteController:587, DocumentConversionController:432,
+    #      POS/ReceiptController:378) — breaking the same "never a 422" contract it invoked.
+    #    - DELIVERED: split the two throw sites. UnbalancedJournalEntryException stays
+    #      \RuntimeException (restored to EXACTLY its pre-M1 state, CreditNoteController and
+    #      both docblocks correct again); the chokepoint throws a new sibling,
+    #      UnbalancedJournalEntryPostException extends \InvalidArgumentException — the same
+    #      hierarchy its bare throw already had, so NO catch site anywhere changes.
+    #      Proof: the two tests that pinned the old bare type were RESTORED TO BASE CONTENT
+    #      and still pass unmodified (git diff vs base is empty). Root cause of both wrong
+    #      attempts: one type forced to serve two throw sites with opposite catch semantics.
     # 5. Both docblocks updated (AccountingService:304-306, UnpostableDocumentGlException:26-27)
-    #    + a regression test pinning that the type is a \RuntimeException and never a
-    #    \LogicException, so the re-parenting cannot recur.
+    #    + a regression test pinning BOTH parents and that neither type inherits the other,
+    #    so neither wrong attempt can recur.
+    #
+    # ALSO CORRECTED: round 0's deferral mechanic was wrong. DB::afterCommit runs INSIDE
+    # Connection::transaction() with no exception isolation, so a deferred refusal escapes a
+    # try ONLY if the outermost transaction is opened OUTSIDE that try; if the try wraps the
+    # DB::transaction it still lands in the catch (census §5.5, the "D->in" rows). This is why
+    # CreditNoteController:406 was missed.
+    #
+    # NEW FINDING R-10: pre-existing catch-site downgrades of a chokepoint balance refusal to
+    # 4xx (DocumentConversionController:418 -> 422, POS/ReceiptController:385 -> 400, plus
+    # broad catch(\Exception) sites in RefundController/MultiPaymentController/PaymentRefundController).
+    # NOT introduced by M1 and NOT fixed by it: no hierarchy can fix a catch-site downgrade,
+    # only per-site narrowing can, which is a multi-module HTTP-contract change needing a
+    # parent scope ruling.
     #
     # Standard applied to every catcher, stated at census §5.6: FIX what is reachable and
     # provable red-first, REPORT what is unreachable. That is why finding 1 is fixed while
@@ -279,8 +304,8 @@ milestones:
     #     -> OK (1 test, 5 assertions)
     #   ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type
     #     -> OK (1 test, 2 assertions)
-    #   ChokepointUnbalancedGuardTest::test_the_house_unbalanced_exception_is_never_a_logic_exception
-    #     -> OK (1 test, 2 assertions)
+    #   ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents
+    #     -> OK (1 test, 5 assertions)
     #   DocumentConversionScenarioTest::it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud
     #     -> OK (1 test, 1 assertion)
     # Regression: 115 tests green across 10 files (incl. the preserved graceful

@@ -7,7 +7,7 @@ namespace Tests\Feature\Document;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
-use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -321,7 +321,7 @@ class DocumentConversionScenarioTest extends TestCase
             $injecting = false;
         });
 
-        $this->expectException(UnbalancedJournalEntryException::class);
+        $this->expectException(UnbalancedJournalEntryPostException::class);
 
         $this->converterRegistry->convert($order, DocumentType::Invoice, [
             'actor_user_id' => $user->id,

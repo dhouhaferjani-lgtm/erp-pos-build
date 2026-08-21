@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Listeners;
 
-use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
@@ -181,7 +181,7 @@ final readonly class PostShiftCashVarianceAdjustment
                 'exception' => $e::class,
                 'message' => $e->getMessage(),
             ]);
-        } catch (UnbalancedJournalEntryException $e) {
+        } catch (UnbalancedJournalEntryPostException $e) {
             // enforcement-P3 M1 (round 1, finding 1) — the GL posting chokepoint
             // refused this adjustment because Sigma(debits) != Sigma(credits).
             //
