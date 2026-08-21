@@ -89,7 +89,8 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
         //
         // `document_count` is deliberately left as COUNT(DISTINCT r.id): whether a
         // refund receipt counts as a declared document is a filing-semantics
-        // question for the owner, not a sign question. Unresolved (G-4 open item).
+        // question for the owner, not a sign question. Unresolved (G-4 open item,
+        // owner sheet 2026-08-21 B-6).
         $posQuery = DB::table('pos_receipt_vat_details as prvd')
             ->join('pos_receipts as r', 'prvd.receipt_id', '=', 'r.id')
             ->leftJoin('tax_configurations as tc2', function ($join) use ($companyId): void {

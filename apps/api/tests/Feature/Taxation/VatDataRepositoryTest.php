@@ -419,6 +419,31 @@ class VatDataRepositoryTest extends TestCase
         );
         $this->createPosVatRow($trainingRefund, '300.000', '57.000');
 
+        // The exact cell where the new netting CASE meets the is_voided filter:
+        // a VOIDED REFUND. `is_voided` must win — a cancelled refund never
+        // happened, so it must not deduct. Without this pin, moving the refund
+        // arithmetic ahead of the exclusion filters would go unnoticed.
+        $voidedRefund = $this->createPosReceipt(
+            receiptType: 'return',
+            postedAt: '2026-02-16 09:00:00',
+            subtotal: '400.000',
+            taxAmount: '76.000',
+            originalReceiptId: $sale,
+            isVoided: true,
+        );
+        $this->createPosVatRow($voidedRefund, '400.000', '76.000');
+
+        // ...and its legacy-sign twin, so the pin holds in both writer eras.
+        $voidedLegacyRefund = $this->createPosReceipt(
+            receiptType: 'return',
+            postedAt: '2026-02-17 09:00:00',
+            subtotal: '-500.000',
+            taxAmount: '-95.000',
+            originalReceiptId: $sale,
+            isVoided: true,
+        );
+        $this->createPosVatRow($voidedLegacyRefund, '-500.000', '-95.000');
+
         $results = $this->repository->aggregateByRateAndDirection(
             $this->company->id,
             '2026-02-01',
