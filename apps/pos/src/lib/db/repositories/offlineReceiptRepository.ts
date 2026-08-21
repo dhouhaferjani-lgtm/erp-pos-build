@@ -88,6 +88,13 @@ export interface OfflineReceipt {
    */
   is_training: 0 | 1;
   /**
+   * Migration 15 `add_voided_to_offline_receipts` — SQLite-native 0 or 1,
+   * `NOT NULL DEFAULT 0`. Optional at the TYPE level (like `receipt_kind` below)
+   * so the fixtures and call sites written before that migration do not all need
+   * editing; every row read back from SQLite carries it.
+   */
+  voided?: 0 | 1;
+  /**
    * v3-refund-chain-integration spec §7.2 — 'sale' (default, every row
    * written before this feature backfills here) or 'refund'. Optional at
    * the TYPE level (not just the column's own DB default) so the many

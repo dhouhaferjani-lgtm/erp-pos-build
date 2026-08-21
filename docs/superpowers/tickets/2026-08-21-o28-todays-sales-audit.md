@@ -68,18 +68,34 @@ wording (`reports.netSalesExclRefunds`).
 1. *No new defect at the three C-2 defect sites.* `reportApi.ts:~490`,
    `endOfDayPreview.ts:~300` and `zReportService.ts:~905` are sale-only gross and are
    **correctly labelled "Gross Sales"**; no O-28 fix is owed there.
-2. *`fetchShiftReceipts` was edited by this lane* (`apps/pos/src/api/reportApi.ts`). The
-   edit is confined to that one function plus the `ShiftReceipt` interface — it does **not**
-   touch any of the three C-2 sites. Flagged here for the C-2 lane's M4 boundary check.
-3. *Open gap in `fetchLocalShiftReceipts`* (C-2-owned): the offline mapper hardcodes
-   `is_voided: false` and emits no `is_training`, and its query filters on neither, even
-   though `offline_receipts` HAS both columns (`is_training` on the `OfflineReceipt`
-   interface; `voided` added by migration `add_voided_to_offline_receipts`). Offline,
-   therefore, `/sales` still cannot exclude a training receipt or a voided one. The panel's
-   client-side filter is correct and complete for whatever the source emits — closing the
-   remainder needs two lines in the mapper (surface `voided` and `is_training`) plus a
-   `voided` entry on the `OfflineReceipt` interface. Deliberately **not** done here: the
-   coordinator fenced the offline query for this lane.
+2. **`apps/pos/src/api/reportApi.ts` carries TWO surgical edits from this lane.** The C-2
+   lane's M4 negative-proof / diff check must EXPECT both regions, and neither is a C-2 site:
+   - **Region A — `fetchShiftReceipts`** (~`:320`): `apiGet` → paginated `apiGetRaw` loop,
+     plus `is_training?: boolean` on the `ShiftReceipt` interface.
+   - **Region B — the row mapper inside `fetchLocalShiftReceipts`** (~`:680`): projects
+     `is_voided` / `is_training` from the row (record 3 below).
+
+   Both sit in different functions and regions from the three C-2 defect sites
+   (`reportApi.ts:~490` SALE-branch VAT decomposition, `endOfDayPreview.ts:~300`,
+   `zReportService.ts:~905`), none of which this lane touches. A third file,
+   `apps/pos/src/lib/db/repositories/offlineReceiptRepository.ts`, gains one optional
+   interface field (`voided?: 0 | 1`) and nothing else.
+3. *Offline training/void projection — **FIXED HERE** (authorised 2026-08-21 as a second
+   surgical edit; previously recorded as fenced).* The mapper hardcoded `is_voided: false`
+   and emitted no `is_training`, although the row query is `SELECT *` and `offline_receipts`
+   carries BOTH columns (`is_training` on the `OfflineReceipt` interface; `voided` from
+   migration 15 `add_voided_to_offline_receipts`). Offline, therefore, the panel's
+   `isCounted` filter had nothing to act on, and every training or voided receipt counted as
+   a real sale — the last path by which either could inflate the audited figure. The mapper
+   now projects both from the row, and `voided?: 0 | 1` was added to `OfflineReceipt`
+   (optional at the type level, exactly as `receipt_kind?` was handled, so pre-migration
+   fixtures and call sites need no edits). This reuses the predicate pair the repository
+   already relies on in `getUnsyncedReceiptLineBlobs` ("`voided = 0`: a sealed-then-voided
+   receipt's sale was reversed. `is_training = 0`: training receipts never move real
+   stock."). The SQL query itself is **unchanged** — filtering stays in the panel, so the
+   offline list still SHOWS every row while only the money tiles exclude them. Red-first
+   proof: all three of `['real','trained','voided']` survived the counted filter before the
+   fix; only `['real']` survives after.
 
 ---
 

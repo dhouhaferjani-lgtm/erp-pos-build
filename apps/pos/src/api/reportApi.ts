@@ -720,7 +720,16 @@ async function fetchLocalShiftReceipts(): Promise<ShiftReceipt[]> {
       total: receipt.total,
       subtotal: receipt.subtotal,
       tax_amount: receipt.tax_amount,
-      is_voided: false,
+      // O-28 — both flags are projected from the row rather than assumed. The
+      // query is `SELECT *` and `offline_receipts` carries both columns
+      // (`is_training`; `voided` from migration 15), but the mapper used to
+      // hardcode `is_voided: false` and drop `is_training` entirely — so offline,
+      // a training or voided receipt reached the Today's-Sales tile as a real
+      // sale. Same predicate pair the repository already relies on in
+      // `getUnsyncedReceiptLineBlobs` ("a sealed-then-voided receipt's sale was
+      // reversed" / "training receipts never move real stock").
+      is_voided: receipt.voided === 1,
+      is_training: receipt.is_training === 1,
       posted_at: receipt.created_at,
       payments: [{
         id: `local-pay-${receipt.id}`,

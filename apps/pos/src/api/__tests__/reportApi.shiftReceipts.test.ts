@@ -29,6 +29,8 @@ vi.mock('@/lib/db', () => ({
   queryAll: vi.fn().mockResolvedValue([]),
 }));
 
+vi.mock('@/lib/db/sqliteTime', () => ({ toSqliteUtc: (v: string) => v }));
+
 vi.mock('@/lib/db/repositories/paymentRepository', () => ({
   getAllPaymentMethods: vi.fn().mockResolvedValue([]),
 }));
@@ -61,10 +63,12 @@ vi.mock('@/stores/connectivityStore', () => ({
 }));
 
 import { apiGet, apiGetRaw } from '@/lib/api';
+import { queryAll } from '@/lib/db';
 import { fetchShiftReceipts } from '../reportApi';
 
 const apiGetMock = vi.mocked(apiGet);
 const apiGetRawMock = vi.mocked(apiGetRaw);
+const queryAllMock = vi.mocked(queryAll);
 
 function receipt(n: number, type: 'sale' | 'return') {
   return {
@@ -145,5 +149,95 @@ describe('fetchShiftReceipts pagination', () => {
     // The local SQLite query is mocked to return no rows; the point is that the
     // rejection is routed to the offline path rather than thrown.
     expect(receipts).toEqual([]);
+  });
+});
+
+/**
+ * O-28 — the OFFLINE mapper is the last path by which a training or voided receipt
+ * can inflate the audited figure.
+ *
+ * `fetchLocalShiftReceipts` hardcoded `is_voided: false` and emitted no
+ * `is_training` at all, even though `offline_receipts` carries BOTH columns
+ * (`is_training` on the `OfflineReceipt` interface; `voided` added by migration 15
+ * `add_voided_to_offline_receipts`) and the row query is `SELECT *`. So the panel's
+ * `isCounted` filter — correct on the online path — had nothing to act on offline:
+ * every training and voided receipt was silently counted as a real sale.
+ *
+ * The repository already uses exactly this predicate pair for the same reason
+ * (`getUnsyncedReceiptLineBlobs`: "`voided = 0`: a sealed-then-voided receipt's sale
+ * was reversed. `is_training = 0`: training receipts never move real stock.").
+ */
+function offlineRow(over: Record<string, unknown>) {
+  return {
+    id: 'local-1',
+    receipt_number: 'POS01-0001',
+    terminal_id: 'term-1',
+    payment_method_id: 'pm-1',
+    lines: '[]',
+    subtotal: '84.00',
+    tax_amount: '16.00',
+    total: '100.00',
+    receipt_kind: 'sale',
+    is_training: 0,
+    voided: 0,
+    created_at: '2026-08-21 09:00:00',
+    ...over,
+  };
+}
+
+describe('fetchLocalShiftReceipts training/void projection', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsOnline = false;
+    apiGetRawMock.mockRejectedValue(new Error('offline'));
+  });
+
+  function withRows(rows: unknown[]) {
+    queryAllMock.mockImplementation((_db: unknown, sql: string) =>
+      Promise.resolve(sql.includes('FROM offline_receipts') ? rows : []),
+    );
+  }
+
+  it('marks a locally voided receipt as voided instead of hardcoding false', async () => {
+    withRows([offlineRow({ id: 'local-void', voided: 1 })]);
+
+    const receipts = await fetchShiftReceipts('shift-1');
+
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]?.is_voided).toBe(true);
+  });
+
+  it('surfaces the training flag so the panel can exclude it', async () => {
+    withRows([offlineRow({ id: 'local-training', is_training: 1 })]);
+
+    const receipts = await fetchShiftReceipts('shift-1');
+
+    expect(receipts).toHaveLength(1);
+    expect(receipts[0]?.is_training).toBe(true);
+  });
+
+  it('leaves an ordinary offline sale counted', async () => {
+    withRows([offlineRow({})]);
+
+    const receipts = await fetchShiftReceipts('shift-1');
+
+    expect(receipts[0]?.is_voided).toBe(false);
+    expect(receipts[0]?.is_training).toBe(false);
+  });
+
+  // The tile's population, expressed exactly as `TodaySalesPanel.isCounted` reads it.
+  // Before the mapper fix all three rows survived this filter offline, so a training
+  // receipt and a voided receipt both moved the headline.
+  it('leaves only the real sale in the counted population', async () => {
+    withRows([
+      offlineRow({ id: 'real' }),
+      offlineRow({ id: 'trained', is_training: 1 }),
+      offlineRow({ id: 'voided', voided: 1 }),
+    ]);
+
+    const receipts = await fetchShiftReceipts('shift-1');
+    const counted = receipts.filter((r) => !r.is_voided && r.is_training !== true);
+
+    expect(counted.map((r) => r.id)).toEqual(['real']);
   });
 });
