@@ -9,6 +9,7 @@ use App\Modules\Billing\Domain\PlanLimits;
 use App\Modules\Billing\Domain\TenantSubscription;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Tenant;
@@ -244,6 +245,14 @@ class PlanEnforcementService
         $current = DB::table('documents')
             ->where('tenant_id', $tenant->id)
             ->where('created_at', '>=', $startOfMonth)
+            // R2-F4 / fiscal gate P3-11: a CORRECTING ENTRY is an accounting
+            // repair the tenant did not choose to create — it exists because a
+            // posted document was defective. Billing the tenant's monthly
+            // document quota for fixing our own data would make the quota
+            // punish accuracy, and on a busy month could block real invoicing.
+            // Excluded here and in getUsageStats() below; the two must agree, or
+            // the usage bar and the enforcement disagree about the same number.
+            ->where('type', '!=', DocumentType::CorrectingEntry->value)
             ->count();
 
         $this->lastCheck = [
@@ -290,6 +299,7 @@ class PlanEnforcementService
                 'documents' => DB::table('documents')
                     ->where('tenant_id', $tenant->id)
                     ->where('created_at', '>=', now()->startOfMonth())
+                    ->where('type', '!=', DocumentType::CorrectingEntry->value)
                     ->count(),
             ];
         });
