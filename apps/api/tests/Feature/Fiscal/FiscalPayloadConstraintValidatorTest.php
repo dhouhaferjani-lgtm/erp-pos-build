@@ -2213,4 +2213,257 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
 
         return array_replace_recursive($payload, $overrides);
     }
+    // =================================================================
+    // LEDGER C-6 item 4 (finding F-4) — the Z-family vat_breakdown tripwire
+    //
+    // `validateZReportFamilyPayload` checked six scalars and never looked at
+    // `vat_breakdown` at all, which is the only reason the Z family escaped the
+    // invariant `validateSaleReceiptAggregateConsistency` has enforced on
+    // SALE_RECEIPT since v1 — and therefore the reason the C-2 (per-rate
+    // gross-as-net) and C-6 (headline gross-as-net) defects reached signed bytes
+    // undetected. These tests pin the extension.
+    //
+    // WHAT IS ASSERTED, and why not more (the honest boundary):
+    //
+    //   (a) per group `gross_amount == net_amount + vat_amount`, EXACT, always.
+    //   (b) on a REFUND-FREE shift only: `Σ net_amount == net_sales` and
+    //       `Σ vat_amount == tax_amount`, EXACT.
+    //
+    // (b) is gated on `refunds_totals.count == 0` because the device's
+    // `vat_breakdown` is SIGNED — refunds are SUBTRACTED from it
+    // (`zReportService.ts` refund branch) — while `receipt_totals`/`sales_totals`
+    // are SALE-ONLY by design (refunds live in `refunds_totals`). The two
+    // therefore cannot reconcile once a refund exists, and no field in the Z
+    // payload carries the refund's VAT split with which to bridge them. Asserting
+    // it unconditionally would quarantine every valid shift that took a return.
+    //
+    // NOT asserted: `net_sales + tax_amount == gross_sales`. `gross_sales` is
+    // Σ receipt `total` — POST transaction-discount and POST cash-rounding —
+    // while the other two are PRE both. The canonical receipt has the identical
+    // wedge and closes it with `transaction_discount_amount` +
+    // `cash_rounding_adjustment` (see validateSaleReceiptAggregateConsistency
+    // identity 1); the Z payload carries neither field, so the identity is not
+    // available and is not claimed.
+    //
+    // NOT caught, deliberately: a FULLY-LEGACY payload, where the breakdown AND
+    // the headline are both gross-as-net. Legacy `net_amount` was Σ line_total
+    // and legacy `net_sales` was Σ receipt `subtotal` — the same number — so
+    // (a) and (b) both hold on it. That is not an oversight but the requirement:
+    // this validator runs over STORED HISTORY, not only at ingest (see the
+    // execution-context note on the production method), so a check that rejected
+    // the pre-fix corpus would fail `fiscal:verify-chain` on every sealed Z
+    // authored before the C-2/C-6 device build. What IS caught is any payload
+    // where the two disagree — which is exactly every partial state: the
+    // post-C-2/pre-C-6 build, the reverse, and any future single-consumer
+    // regression of one of the three aggregation sites.
+    // =================================================================
+
+    public function test_z_report_family_accepts_a_correctly_decomposed_refund_free_payload(): void
+    {
+        foreach (self::zFamilyTypes() as $type) {
+            $this->validator->validatePerEventConstraints($type, self::zFamilyPayload($type));
+            $this->addToAssertionCount(1);
+        }
+    }
+
+    public function test_z_report_family_rejects_a_gross_as_net_vat_breakdown(): void
+    {
+        // THE tripwire. The pre-C-2 decomposition: `net_amount` carries the GROSS
+        // line total and `gross_amount` is net + vat on top of it, against a
+        // correctly-derived headline. Every component is individually plausible;
+        // only the cross-check catches it.
+        foreach (self::zFamilyTypes() as $type) {
+            $payload = self::zFamilyPayload($type, [
+                'vat_breakdown' => [
+                    ['rate' => '20.00', 'net_amount' => '120.00', 'vat_amount' => '20.00', 'gross_amount' => '140.00'],
+                ],
+            ]);
+
+            try {
+                $this->validator->validatePerEventConstraints($type, $payload);
+                self::fail('expected a gross-as-net vat_breakdown to be rejected for '.$type->value);
+            } catch (RuntimeException $e) {
+                self::assertStringContainsString(
+                    'payload_aggregate_consistency:vat_breakdown_net_sum_ne_net_sales',
+                    $e->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_z_report_family_rejects_a_gross_as_net_headline_against_a_correct_breakdown(): void
+    {
+        // The C-6 defect itself, as it would have arrived post-C-2: correct
+        // per-rate rows, `net_sales` still carrying the gross.
+        foreach (self::zFamilyTypes() as $type) {
+            $payload = self::zFamilyPayload($type);
+            $payload[self::zFamilyTotalsKey($type)]['net_sales'] = '120.00';
+
+            try {
+                $this->validator->validatePerEventConstraints($type, $payload);
+                self::fail('expected a gross-as-net headline to be rejected for '.$type->value);
+            } catch (RuntimeException $e) {
+                self::assertStringContainsString(
+                    'payload_aggregate_consistency:vat_breakdown_net_sum_ne_net_sales',
+                    $e->getMessage(),
+                );
+            }
+        }
+    }
+
+    public function test_z_report_family_rejects_a_group_whose_gross_is_not_net_plus_vat(): void
+    {
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'vat_breakdown' => [
+                ['rate' => '20.00', 'net_amount' => '100.00', 'vat_amount' => '20.00', 'gross_amount' => '119.00'],
+            ],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payload_aggregate_consistency:group_gross_ne_net_plus_vat/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+    }
+
+    public function test_z_report_family_rejects_a_vat_sum_that_disagrees_with_the_headline_tax(): void
+    {
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT);
+        $payload['receipt_totals']['tax_amount'] = '19.00';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payload_aggregate_consistency:vat_breakdown_vat_sum_ne_tax_amount/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+    }
+
+    public function test_z_report_family_skips_the_sum_identities_once_the_shift_took_a_refund(): void
+    {
+        // The device SUBTRACTS a refund from `vat_breakdown` while leaving the
+        // sale-only headline alone, so the sums legitimately stop reconciling.
+        // The per-group identity still holds and is still enforced (next test).
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'refunds_totals' => ['amount' => '12.00', 'count' => 1],
+            'vat_breakdown' => [
+                ['rate' => '20.00', 'net_amount' => '90.00', 'vat_amount' => '18.00', 'gross_amount' => '108.00'],
+            ],
+        ]);
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_z_report_family_still_enforces_the_group_identity_on_a_refund_bearing_shift(): void
+    {
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'refunds_totals' => ['amount' => '12.00', 'count' => 1],
+            'vat_breakdown' => [
+                ['rate' => '20.00', 'net_amount' => '90.00', 'vat_amount' => '18.00', 'gross_amount' => '110.00'],
+            ],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payload_aggregate_consistency:group_gross_ne_net_plus_vat/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+    }
+
+    public function test_z_report_family_accepts_a_signed_negative_bucket(): void
+    {
+        // A refund-only shift leaves every bucket negative. The money assertions
+        // must accept a leading minus (the breakdown is SIGNED, unlike a
+        // SALE_RECEIPT's), and the group identity still has to hold.
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'refunds_totals' => ['amount' => '12.00', 'count' => 1],
+            'vat_breakdown' => [
+                ['rate' => '20.00', 'net_amount' => '-10.00', 'vat_amount' => '-2.00', 'gross_amount' => '-12.00'],
+            ],
+        ]);
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_z_report_family_accepts_an_empty_shift(): void
+    {
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'vat_breakdown' => [],
+            'receipt_totals' => ['count' => 0, 'gross_sales' => '0.00', 'net_sales' => '0.00', 'tax_amount' => '0.00'],
+        ]);
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_z_report_family_rejects_a_vat_breakdown_that_is_not_a_list_of_objects(): void
+    {
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, ['vat_breakdown' => ['not-an-object']]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payload_object_invalid:vat_breakdown\.0/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+    }
+
+    public function test_z_report_family_accepts_a_legacy_fully_gross_as_net_payload(): void
+    {
+        // Documented boundary, asserted rather than left to the docblock: the
+        // pre-fix sealed corpus (breakdown AND headline both gross-as-net) still
+        // parses, because this validator also runs over STORED HISTORY
+        // (`VerifyEventChainCommand:544` re-parses `canonical_bytes`,
+        // `QuarantineBestEffortParseController:91` re-parses stored events) and a
+        // check that rejected it would break chain verification on every Z sealed
+        // before the C-2/C-6 device build.
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'vat_breakdown' => [
+                ['rate' => '20.00', 'net_amount' => '120.00', 'vat_amount' => '20.00', 'gross_amount' => '140.00'],
+            ],
+            'receipt_totals' => ['count' => 1, 'gross_sales' => '120.00', 'net_sales' => '120.00', 'tax_amount' => '20.00'],
+        ]);
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    /** @return list<FiscalEventType> */
+    private static function zFamilyTypes(): array
+    {
+        return [FiscalEventType::Z_REPORT, FiscalEventType::X_REPORT, FiscalEventType::SESSION_CLOSE];
+    }
+
+    /**
+     * Z_REPORT nests its headline under `receipt_totals`; X_REPORT and
+     * SESSION_CLOSE use `sales_totals` (`zSessionAuthoring.ts:384/:427/:482`).
+     */
+    private static function zFamilyTotalsKey(FiscalEventType $type): string
+    {
+        return $type === FiscalEventType::Z_REPORT ? 'receipt_totals' : 'sales_totals';
+    }
+
+    /**
+     * A minimal, CORRECT Z-family payload: 120.00 gross at 20 % ⇒ net 100.00,
+     * VAT 20.00. Only the fields `validateZReportFamilyPayload` reads are
+     * present — the key-set contract is a separate call with its own tests.
+     *
+     * @param  array<string, mixed>  $overrides
+     * @return array<string, mixed>
+     */
+    private static function zFamilyPayload(FiscalEventType $type, array $overrides = []): array
+    {
+        $payload = [
+            'session_id' => '11111111-1111-4111-8111-111111111111',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'operator_id' => '33333333-3333-4333-8333-333333333333',
+            'terminal_id' => '44444444-4444-4444-8444-444444444444',
+            'business_date' => '2026-08-21',
+            'training_flag' => false,
+            'refunds_totals' => ['amount' => '0.00', 'count' => 0],
+            'vat_breakdown' => [
+                ['rate' => '20.00', 'net_amount' => '100.00', 'vat_amount' => '20.00', 'gross_amount' => '120.00'],
+            ],
+        ];
+        $payload[self::zFamilyTotalsKey($type)] = [
+            'count' => 1,
+            'gross_sales' => '120.00',
+            'net_sales' => '100.00',
+            'tax_amount' => '20.00',
+        ];
+
+        return array_replace($payload, $overrides);
+    }
 }

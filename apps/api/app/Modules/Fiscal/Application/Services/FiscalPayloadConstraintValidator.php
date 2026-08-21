@@ -768,6 +768,169 @@ final class FiscalPayloadConstraintValidator
         }
         $this->assertIsoDate($payload, 'business_date');
         $this->assertBool($payload, 'training_flag');
+        $this->validateZFamilyVatBreakdownConsistency($payload);
+    }
+
+    /**
+     * Aggregate-consistency invariant for the Z FAMILY (Z_REPORT / X_REPORT /
+     * SESSION_CLOSE) — LEDGER C-6 item 4, finding F-4.
+     *
+     * Until this existed, `validateZReportFamilyPayload` checked six scalars and
+     * never looked at `vat_breakdown`, which is the ONLY reason the Z family
+     * escaped the invariant {@see validateSaleReceiptAggregateConsistency} has
+     * enforced on SALE_RECEIPT since v1 — and therefore the reason two
+     * gross-as-net defects (C-2 per-rate, C-6 headline) reached signed bytes
+     * undetected on every taxed shift.
+     *
+     * ── EXECUTION CONTEXT (read before tightening anything here) ─────────────
+     * This validator does NOT run only at ingest. `StrictCanonicalParser::parse()`
+     * calls it, and that parser is invoked over ALREADY-STORED bytes by
+     * `VerifyEventChainCommand` (`:544`, re-parsing every row's
+     * `canonical_bytes`), by `QuarantineBestEffortParseController` (`:43,:91`)
+     * and by `BestEffortPayloadParser` (`:24`), as well as at ingest by
+     * `OutboxIngestor` (`:176`). A rule added here is therefore applied
+     * retroactively to the entire sealed corpus — which is exactly why the
+     * "fully legacy" case below is accepted rather than rejected.
+     *
+     * ── WHAT IS ASSERTED ─────────────────────────────────────────────────────
+     *   1. per group: `gross_amount == net_amount + vat_amount` — EXACT, always.
+     *   2. on a REFUND-FREE shift only: `Σ net_amount == net_sales` and
+     *      `Σ vat_amount == tax_amount` — EXACT.
+     *
+     * (2) is gated on `refunds_totals.count == 0` because the device's
+     * `vat_breakdown` is SIGNED (a refund is SUBTRACTED from it) while the
+     * headline totals are SALE-ONLY by design (refunds live in
+     * `refunds_totals`). Once a refund exists the two cannot reconcile, and no
+     * Z field carries the refund's VAT split with which to bridge them.
+     * Asserting it unconditionally would quarantine every valid shift that took
+     * a return.
+     *
+     * ── WHAT IS NOT ASSERTED, AND WHY ────────────────────────────────────────
+     * `net_sales + tax_amount == gross_sales` is NOT claimed. `gross_sales` is
+     * Σ receipt `total` (POST transaction-discount, POST cash-rounding) while
+     * the other two are PRE both. The canonical receipt carries the identical
+     * wedge and closes it with `transaction_discount_amount` +
+     * `cash_rounding_adjustment` (identity 1 above); the Z payload carries
+     * neither field, so the identity is unavailable — not omitted by oversight.
+     *
+     * A FULLY-LEGACY payload — breakdown AND headline both gross-as-net, which
+     * is what every Z sealed before the C-2/C-6 device build looks like — PASSES.
+     * Legacy `net_amount` was Σ `line_total` and legacy `net_sales` was Σ receipt
+     * `subtotal`: the same number, so (1) and (2) both hold on it. Given the
+     * execution context above, rejecting it would fail `fiscal:verify-chain` on
+     * the whole pre-fix corpus. What IS caught is any payload where the two
+     * DISAGREE — the post-C-2/pre-C-6 partial state, its reverse, and any future
+     * single-site regression of one of the three device aggregation loops.
+     *
+     * Presence is not this method's job: `validatePayloadKeySet` owns the exact
+     * key set. If the headline container or its money is absent or non-numeric,
+     * the sum identities are skipped rather than duplicated as a presence error.
+     *
+     * @param  array<string, mixed>  $payload
+     *
+     * @throws RuntimeException on aggregate inconsistency (→ quarantine)
+     */
+    private function validateZFamilyVatBreakdownConsistency(array $payload): void
+    {
+        $rows = $payload['vat_breakdown'] ?? null;
+        if (! is_array($rows) || ($rows !== [] && ! array_is_list($rows))) {
+            throw new RuntimeException('payload_array_required:vat_breakdown');
+        }
+
+        // Z_REPORT nests the headline under `receipt_totals`; X_REPORT and
+        // SESSION_CLOSE use `sales_totals` (`zSessionAuthoring.ts:384/:427/:482`).
+        $totals = null;
+        foreach (['receipt_totals', 'sales_totals'] as $key) {
+            $candidate = $payload[$key] ?? null;
+            if (is_array($candidate) && ! array_is_list($candidate)) {
+                $totals = $candidate;
+                break;
+            }
+        }
+
+        $netSales = $totals['net_sales'] ?? null;
+        $taxAmount = $totals['tax_amount'] ?? null;
+        $headlineComparable = is_string($netSales) && is_numeric($netSales)
+            && is_string($taxAmount) && is_numeric($taxAmount);
+
+        // The Z family carries `currency_scale` on Z_REPORT only — X_REPORT and
+        // SESSION_CLOSE omit it — so the comparison scale is derived from the
+        // values themselves. Every Z-family money string is `bcformat`ed at the
+        // one currency scale, so the maximum observed fractional length IS that
+        // scale and every comparison below is exact, never truncating.
+        $scale = 0;
+        $observed = [];
+        foreach ($rows as $row) {
+            if (is_array($row)) {
+                foreach (['net_amount', 'vat_amount', 'gross_amount'] as $field) {
+                    $observed[] = $row[$field] ?? null;
+                }
+            }
+        }
+        if ($headlineComparable) {
+            $observed[] = $netSales;
+            $observed[] = $taxAmount;
+        }
+        foreach ($observed as $value) {
+            if (is_string($value)) {
+                $scale = max($scale, $this->fractionalDigitsOf($value));
+            }
+        }
+
+        $sumNet = bcadd('0', '0', $scale);
+        $sumVat = bcadd('0', '0', $scale);
+
+        foreach ($rows as $index => $row) {
+            $path = 'vat_breakdown.'.$index;
+            $group = $this->requireAssocObject($row, $path);
+
+            $net = $this->asNumericString($group['net_amount'] ?? null, $path.'.net_amount');
+            $vat = $this->asNumericString($group['vat_amount'] ?? null, $path.'.vat_amount');
+            $gross = $this->asNumericString($group['gross_amount'] ?? null, $path.'.gross_amount');
+
+            $groupGross = bcadd($net, $vat, $scale);
+            if (bccomp($groupGross, $gross, $scale) !== 0) {
+                throw new RuntimeException(
+                    'payload_aggregate_consistency:group_gross_ne_net_plus_vat:expected='.$groupGross.':got='.$gross
+                );
+            }
+
+            $sumNet = bcadd($sumNet, $net, $scale);
+            $sumVat = bcadd($sumVat, $vat, $scale);
+        }
+
+        if (! $headlineComparable) {
+            return;
+        }
+
+        $refundsTotals = $payload['refunds_totals'] ?? null;
+        $refundsCount = is_array($refundsTotals) ? ($refundsTotals['count'] ?? null) : null;
+        if (! is_int($refundsCount) || $refundsCount !== 0) {
+            return;
+        }
+
+        if (bccomp($sumNet, $netSales, $scale) !== 0) {
+            throw new RuntimeException(
+                'payload_aggregate_consistency:vat_breakdown_net_sum_ne_net_sales:expected='.$netSales.':got='.$sumNet
+            );
+        }
+        if (bccomp($sumVat, $taxAmount, $scale) !== 0) {
+            throw new RuntimeException(
+                'payload_aggregate_consistency:vat_breakdown_vat_sum_ne_tax_amount:expected='.$taxAmount.':got='.$sumVat
+            );
+        }
+    }
+
+    /**
+     * Number of digits after the decimal point in a numeric string, 0 when
+     * there is none. Used only to pick an EXACT comparison scale — never to
+     * validate a value's shape.
+     */
+    private function fractionalDigitsOf(string $value): int
+    {
+        $dot = strrpos($value, '.');
+
+        return $dot === false ? 0 : strlen($value) - $dot - 1;
     }
 
     /**
