@@ -1,4 +1,5 @@
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const routesSource = readFileSync(`${process.cwd()}/src/routes/index.tsx`, 'utf8')
@@ -182,3 +183,45 @@ describe('route module guards', () => {
     expect(branch.slice(analytics, analytics + 450)).toContain('<ExpenseAnalyticsPage />')
   })
 })
+
+/**
+ * Register G-9 — dead import links.
+ *
+ * The import wizard is registered as `settings/import/:type`. Several call
+ * sites linked to `settings/import/wizard/<type>` instead, a path that has never
+ * existed: the user landed on a blank/no-match route with no error. Nothing
+ * caught it because no test ever compared a navigation target against the real
+ * route table.
+ */
+describe('import navigation targets resolve against the route table', () => {
+  const importPaths = [...routesSource.matchAll(/path="(import(?:\/[^"]*)?)"/g)].map(
+    (match) => match[1]
+  )
+
+  it('registers exactly the import routes the app links to', () => {
+    expect(importPaths).toEqual(['import', 'import/history', 'import/:type'])
+  })
+
+  it('has no source file linking to the non-existent import wizard path', () => {
+    // Assembled from parts so this guard does not match its own source.
+    const deadPath = ['/settings/import', 'wizard'].join('/')
+
+    const offenders = sourceFilesUnder(`${process.cwd()}/src`).filter((file) =>
+      readFileSync(file, 'utf8').includes(deadPath)
+    )
+
+    expect(offenders).toEqual([])
+  })
+})
+
+function sourceFilesUnder(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name)
+
+    if (entry.isDirectory()) {
+      return sourceFilesUnder(full)
+    }
+
+    return /\.tsx?$/.test(entry.name) ? [full] : []
+  })
+}

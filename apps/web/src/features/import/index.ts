@@ -3,7 +3,6 @@ export { ImportDashboardPage, ImportWizardPage, ImportHistoryPage } from './page
 
 // Components
 export {
-  ImportTypeCard,
   FileUpload,
   ColumnMapper,
   ValidationGrid,

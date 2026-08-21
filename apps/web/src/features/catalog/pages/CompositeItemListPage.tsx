@@ -131,7 +131,7 @@ export function CompositeItemListPage() {
           <Button
             variant="secondary"
             className="gap-1.5"
-            onClick={() => { void navigate('/settings/import/wizard/composite_items') }}
+            onClick={() => { void navigate('/settings/import/composite_items') }}
           >
             <Upload className="h-4 w-4" />
             {t('catalog:bulkImport')}

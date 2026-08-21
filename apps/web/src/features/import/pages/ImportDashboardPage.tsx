@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
   ArrowLeft,
@@ -71,6 +71,24 @@ const ADVANCED_IMPORT_TYPES: ImportTypeConfig[] = [
   },
 ]
 
+/**
+ * Register G-9 (c). Callers link here with `?entity=…` using their own domain
+ * vocabulary ("customers", "suppliers") rather than import-type names, so the
+ * parameter needs translating before it can select a card. An entity that is
+ * not listed selects nothing — an unknown value must never silently point the
+ * user at the wrong importer.
+ */
+const ENTITY_TO_IMPORT_TYPE: Record<string, ImportType> = {
+  customers: 'parties',
+  suppliers: 'parties',
+  parties: 'parties',
+  partners: 'partners',
+  products: 'products',
+  product_images: 'product_images',
+  composite_items: 'composite_items',
+  opening_balances: 'opening_balances',
+}
+
 const ADVANCED_LINKS: AdvancedLinkConfig[] = [
   {
     key: 'accountingOpeningBalances',
@@ -83,13 +101,24 @@ const ADVANCED_LINKS: AdvancedLinkConfig[] = [
 export function ImportDashboardPage() {
   const { t } = useTranslation('import')
   const { config } = useCompanyConfig()
+  const [searchParams] = useSearchParams()
   const showAdvancedImports = config?.vertical !== 'parapharmacy'
 
-  const renderImportCard = (card: ImportTypeConfig) => (
+  const requestedEntity = searchParams.get('entity')
+  const requestedType = requestedEntity !== null ? ENTITY_TO_IMPORT_TYPE[requestedEntity] ?? null : null
+
+  // `products` appears in both grids, so resolve the request against the primary
+  // grid first and only fall through to the advanced one — exactly one card is
+  // ever marked, and the collapsed section opens only when the card is in there.
+  const primaryMatch = PRIMARY_IMPORT_TYPES.some((card) => card.type === requestedType)
+  const advancedMatch = !primaryMatch && ADVANCED_IMPORT_TYPES.some((card) => card.type === requestedType)
+
+  const renderImportCard = (card: ImportTypeConfig, isRequested = false) => (
     <Link
       key={card.type}
       to={`/settings/import/${card.type}`}
-      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.borderHover} hover:shadow-md`}
+      aria-current={isRequested ? 'page' : undefined}
+      className={`group block rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.base} p-6 shadow-sm transition-all ${colorTokens.intent.primary.borderHover} hover:shadow-md ${isRequested ? `ring-2 ${colorTokens.intent.primary.ring}` : ''}`}
     >
       <div className="flex items-start justify-between">
         <div className="flex items-start gap-4">
@@ -172,12 +201,12 @@ export function ImportDashboardPage() {
         </h2>
         <p className={`text-sm ${colorTokens.text.muted}`}>{t('dashboard.orderHint')}</p>
         <div className="grid gap-4 md:grid-cols-2">
-          {PRIMARY_IMPORT_TYPES.map(renderImportCard)}
+          {PRIMARY_IMPORT_TYPES.map((card) => renderImportCard(card, primaryMatch && card.type === requestedType))}
         </div>
       </div>
 
       {showAdvancedImports && (
-        <details className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}>
+        <details open={advancedMatch} className={`rounded-lg border ${colorTokens.border.subtle} ${colorTokens.surface.page} p-4`}>
           <summary className="cursor-pointer list-none">
             <div className="inline-flex flex-col gap-1">
               <span className={`text-lg font-semibold ${colorTokens.text.primary}`}>
@@ -189,7 +218,7 @@ export function ImportDashboardPage() {
             </div>
           </summary>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {ADVANCED_IMPORT_TYPES.map(renderImportCard)}
+            {ADVANCED_IMPORT_TYPES.map((card) => renderImportCard(card, advancedMatch && card.type === requestedType))}
             {ADVANCED_LINKS.map(renderAdvancedLink)}
           </div>
         </details>
