@@ -172,10 +172,10 @@ milestones:
   - id: M1
     title: "3(a) RESCOPED (gate-r1 C-2): the GL chokepoint (GeneralLedgerService::sealAndPersistEntry, :3480-3510; postEntry :2874 / postEntryNow :3450 funnel into it) ALREADY balance-validates. Work = (i) semantic classification of every journal_entries creator from P1's census: draft-only (e.g. createPOSChargeEntry :4072 — who posts the draft, through what guard?) / posted-through-chokepoint (characterize, NO new validator, NO new test presented as evidence) / bypassing (the genuine gaps); (ii) close ONLY the genuine gaps — route through the chokepoint where possible, else constructor-injected DoubleEntryValidator; never a second balance algorithm in the chokepoint; (iii) RED-FIRST PROOF MANDATORY per targeted path — a green-at-base test DISQUALIFIES the target (reclassify as guarded); (iv) optional scoped chokepoint failure-mode normalization for queued contexts (loud fail, retry/dead-letter); (v) rule 19/20 in every touched queued path. One unbalanced-guard test PER class-(c) census row in its OWN module — the acceptance command list is DERIVED from the census (gate-r2 R2-H-7, superseding the gate-r1 H-11 fixed Treasury/BatchExpiry/Accounting trio): per class-(c) row, a named test path + anchored --filter with an asserted NONZERO selected-test count (parse the PHPUnit summary; apps/api/phpunit.xml sets no failOnEmptyTestSuite, so an empty selection exits 0 — exit code alone proves nothing) + preserved red-first evidence; modules with ZERO class-(c) rows submit the reviewed census evidence only, NO placeholder green command. The -19.000 item is LEDGER §2 row S-15 — pointer only (gate-r1 H-10)."
     review_lenses: [treasury, fiscal-pos, stock-gl-interaction, inventory-costing]
-    status: review          # round-3 CHANGES-REQUIRED (documentation-truth) addressed; handed back for re-review
+    status: passed          # round-4 ACCEPT 2026-08-21          # round-3 CHANGES-REQUIRED (documentation-truth) addressed; handed back for re-review
     fix_rounds: 3
     commit: bea3b4936       # Phase 6.1.6 (type split + retraction); 6.1.4 1d6fbe63c round-1 fixes, 6.1.1 ffe6cd018 census, 6.1.2 4ad66ca31 deliverable D
-    verdict: null
+    verdict: docs/handoff/reviews/enforcement-p3/M1-round4.md
     last_verdict: changes_required   # round 3 (documentation-truth) — docs/handoff/reviews/enforcement-p3/M1-round3.md
     # ── M1 EXECUTION RECORD (2026-08-21) ──
     # ⚠️ SUPERSEDED IN PART — read the M1 ROUND-1/ROUND-2/ROUND-3 RECORDS BELOW FIRST.
