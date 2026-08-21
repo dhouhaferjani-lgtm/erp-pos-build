@@ -1,0 +1,14 @@
+# PARENT DISPATCH RECEIPT — enforcement P3 (created per docs/handoff/enforcement-dispatch-checklist.md)
+# Dispatch context 2026-08-21: parent-as-executor under the owner's 2026-08-20 blanket delegation
+# ("freedom to drive whatever needs to be done until everything checks"); Codex quota exhausted.
+# P1 landed (A=e55a1c8ae, C=e26412f0e) + P2 landed (A=d8a631133, C=c68ad6f47) + country-defaults
+# landed (132dd5049) — all three preconditions pre-verified before this pin.
+package: p3
+base_sha: 0ca7bbb091863b160383d630e6062c820cada9b1
+manifest_path: /Users/houssamr/Projects/syneriva/apps/erp/docs/handoff/enforcement-control-manifest.yaml
+manifest_sha256: 7c298d5fbe0b35d9cd3970f57d3c49c03fa219a6eb44976dbe1d478c7da6a811
+progress_path: docs/handoff/progress/enforcement-p3.progress.yaml
+final_milestone: M3
+lenses: treasury,fiscal-pos,stock-gl-interaction,inventory-costing
+max_fix_rounds: 5
+created: 2026-08-21, dev tip 0ca7bbb091863b160383d630e6062c820cada9b1 (pre-dispatch pin commit)
