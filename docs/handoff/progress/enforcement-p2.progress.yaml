@@ -19,7 +19,12 @@ max_fix_rounds: 5
 # quiet_window_ack (below) — this package edits .github/workflows/ci.yml, changing CI behaviour for
 # EVERY open lane, and P2-M1's frontend-lint step additions are themselves a CI-contract change
 # (gate-r1 H-3; mechanism corrected r4/R0-3 — the job runs discrete steps, never pnpm lint).
-base_sha: c97e0d1ada0ff73c7beb12dca478fa106df23128
+# STALE-A RE-BASE 2026-08-21 (parent): original base c97e0d1ada0ff73c7beb12dca478fa106df23128 went
+# stale when P1 + the merged-lane reconciliation landed on dev; the whole 58-commit series was
+# rebased onto the new tip (conflicts: statements/api.ts meta — resolved to this package's accepted
+# content; ci.yml aggregate needs — dev's list + this package's security-regression insertion;
+# generated.d.ts — net-zero here, dev's regenerated file kept). Receipt re-pinned to match.
+base_sha: a4a8c2293dcf7556045f44d35cfa5f734be8022b
 # Parent records here, BEFORE dispatch (gate-r2 R2-H-1 SPLIT — the final checklist does not exist until
 # M3, so M0 attests only the PRELIMINARY state): the owner-approved quiet window AND that a PRELIMINARY
 # scope notice (what will change, roughly when) was SENT to all active lanes (brief F-6).
@@ -56,8 +61,12 @@ merge_announcement_ack: null
 # item 4 steps 2-3 / §6 F-8); the parent updates this mirror block in the POST-promotion admin commit
 # (gate-r3 R3-C-2). LOCAL green runs export the reviewed seed blob under the same env name after
 # asserting it equals the mirror; the unset negative case runs isolated via env -u (gate-r4 R4-H-4).
-i18n_baseline_seed_commit: cb618c12cdddff9f269c112e4cf5ce80a08f9aa3
-i18n_baseline_protected_blob: da151bbc51edcd066d2153b51a1df8ae1ab5bd32
+# SEED REVISION 2026-08-21 (parent, post-rebase reconciliation): the pinned surface shrank
+# legitimately (ui-wave0's owner-ruled marketing deletion removed ar|marketing) and merged lanes
+# added keys, so the gate failed closed by design. Baseline regenerated on the merged tree
+# (Phase 5.5.2 dedicated seed commit, 2924 entries); prior pins cb618c12c/da151bbc5 superseded.
+i18n_baseline_seed_commit: 6a0c1cd72bd5e97548f42871497ae015ea68de6d
+i18n_baseline_protected_blob: 26a9ae1688d80e0f450215326b19ccd1701c9a8f
 i18n_baseline_pin_tag: ci-pin/enforcement-p2-r1
 
 # PRE-PROMOTION CI DISPATCH receipt (gate-r2 R2-C-2/R2-H-2; cycle fixed gate-r3 R3-C-2). The GATE is
