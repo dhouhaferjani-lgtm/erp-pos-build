@@ -16,6 +16,7 @@ use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\AssertionFailedError;
+use ReflectionMethod;
 use Tests\Feature\CountryDefaults\CertifiedFixtureDeltaTest;
 use Tests\Feature\CountryDefaults\TemplatePublishGateTest;
 use Tests\TestCase;
@@ -82,8 +83,70 @@ final class SeededChartManifestRequiredPurposeCompletenessTest extends TestCase
      * `getSupportedCountries()` returns `['TN', 'FR']` and every other country
      * receives the generic international chart. 'XX' is therefore not a fourth
      * chart: it is an unassigned code that exercises the `default` arm.
+     *
+     * This constant is a hand-maintained mirror of that match, so
+     * {@see test_the_country_code_list_still_mirrors_the_provisioning_dispatch()}
+     * BINDS it to the real dispatch by scanning the method's own source: adding a
+     * fourth country arm to `getSeederForCountry()` without extending this list
+     * fails that test rather than silently leaving the new chart ungated.
      */
     private const COUNTRY_CODES = ['TN', 'FR', 'XX'];
+
+    /**
+     * The code that makes `COUNTRY_CODES` a derived fact instead of an assumption.
+     *
+     * `getSeederForCountry()` is `private`, and its arms are literals rather than
+     * data, so there is nothing to enumerate at runtime. The binding is therefore a
+     * source scan of exactly that method body via reflection: every explicitly
+     * cased country literal must appear in `COUNTRY_CODES`, and the `default` arm
+     * must be exercised by at least one code that is NOT explicitly cased.
+     */
+    public function test_the_country_code_list_still_mirrors_the_provisioning_dispatch(): void
+    {
+        $method = new ReflectionMethod(ChartOfAccountsService::class, 'getSeederForCountry');
+        $file = $method->getFileName();
+        $this->assertIsString($file, 'Could not locate the ChartOfAccountsService source file.');
+
+        $source = file($file);
+        $this->assertIsArray($source, 'Could not read the ChartOfAccountsService source file.');
+
+        $body = implode('', array_slice(
+            $source,
+            $method->getStartLine() - 1,
+            $method->getEndLine() - $method->getStartLine() + 1,
+        ));
+
+        // Every `'XX' => ...` arm in the match, in source order.
+        preg_match_all("/'([A-Z]{2})'\s*=>/", $body, $matches);
+        $casedCountries = $matches[1];
+
+        $this->assertNotEmpty(
+            $casedCountries,
+            'No explicitly cased country arms found in getSeederForCountry() — the scan regex has gone stale, '
+            .'which would make this binding silently vacuous.',
+        );
+        $this->assertStringContainsString(
+            'default =>',
+            $body,
+            'getSeederForCountry() no longer has a default arm; the generic-chart assumption in COUNTRY_CODES is void.',
+        );
+
+        foreach ($casedCountries as $country) {
+            $this->assertContains($country, self::COUNTRY_CODES, sprintf(
+                'getSeederForCountry() dispatches country %s to its own seeder, but %s is missing from '
+                .'COUNTRY_CODES, so that chart is NOT gated by this completeness test. Add it.',
+                $country,
+                $country,
+            ));
+        }
+
+        $defaultArmProbes = array_values(array_diff(self::COUNTRY_CODES, $casedCountries));
+        $this->assertNotEmpty(
+            $defaultArmProbes,
+            'COUNTRY_CODES no longer contains any code that falls through to the `default` arm, so the generic '
+            .'international chart every unlisted country receives is untested. Keep one unassigned code (e.g. XX).',
+        );
+    }
 
     private ChartOfAccountsService $service;
 

@@ -188,7 +188,7 @@ final readonly class PostShiftCashVarianceAdjustment
             // This one is NOT a policy outcome like the two above, and not an
             // ordinary crash either: it is a fiscal-integrity fault. It reaches
             // this frame SYNCHRONOUSLY — `createRepositoryAdjustmentJournalEntry`
-            // posts through `postEntryNow` (GeneralLedgerService.php:1307) with no
+            // posts through `postEntryNow` (GeneralLedgerService.php:1308) with no
             // `afterCommit` deferral — so before it had its own reason it was
             // swallowed into the generic `exception` bucket below, where it was
             // indistinguishable from a crash and nothing could alert on it.

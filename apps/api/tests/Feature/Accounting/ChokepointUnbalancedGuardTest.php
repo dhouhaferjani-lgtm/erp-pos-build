@@ -44,7 +44,18 @@ final class ChokepointUnbalancedGuardTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_chokepoint_raises_the_house_unbalanced_exception_type(): void
+    /**
+     * Renamed at the P3 final-gate round 1. The old name —
+     * `test_chokepoint_raises_the_house_unbalanced_exception_type` — was a
+     * PRE-SPLIT survivor: after §5.3 the chokepoint deliberately does NOT raise
+     * the "house" type ({@see UnbalancedJournalEntryException}) but its sibling
+     * {@see UnbalancedJournalEntryPostException}. The old name asserted the
+     * opposite of what the body checks. The census's verbatim red-first
+     * transcript (§5.6) still shows the old name and is deliberately NOT
+     * rewritten; the acceptance filters in census §5.8 and the handback are
+     * swept to this name.
+     */
+    public function test_chokepoint_raises_the_named_post_unbalanced_exception_type(): void
     {
         $tenant = Tenant::factory()->create();
         $company = Company::factory()->create([

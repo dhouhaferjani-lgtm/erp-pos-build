@@ -174,7 +174,15 @@ milestones:
     review_lenses: [treasury, fiscal-pos, stock-gl-interaction, inventory-costing]
     status: passed          # round-4 ACCEPT 2026-08-21          # round-3 CHANGES-REQUIRED (documentation-truth) addressed; handed back for re-review
     fix_rounds: 3
-    commit: bea3b4936       # Phase 6.1.6 (type split + retraction); 6.1.4 1d6fbe63c round-1 fixes, 6.1.1 ffe6cd018 census, 6.1.2 4ad66ca31 deliverable D
+    commit: bea3b4936       # Phase 6.1.6 — the BEHAVIOUR-FINAL commit: the last commit that changed M1
+                            # PRODUCTION content (the sibling type split). Deliberately NOT the last
+                            # M1-content-bearing commit: 6.1.8 ebbfca144 and 6.1.9 de71689ca land
+                            # round-2/round-3 DOCUMENTATION-ONLY corrections (docblocks, census text),
+                            # and 6.1.11 0bc2fdd34 lands the round-4 ACCEPT register. Reviewers wanting
+                            # the full accepted M1 state incl. its documentation should read de71689ca;
+                            # this field names where M1's behaviour stopped changing. Annotation added
+                            # at the P3 final-gate round 1. Earlier: 6.1.4 1d6fbe63c round-1 fixes,
+                            # 6.1.1 ffe6cd018 census, 6.1.2 4ad66ca31 deliverable D
     verdict: docs/handoff/reviews/enforcement-p3/M1-round4.md
     last_verdict: changes_required   # round 3 (documentation-truth) — docs/handoff/reviews/enforcement-p3/M1-round3.md
     # ── M1 EXECUTION RECORD (2026-08-21) ──
@@ -297,7 +305,9 @@ milestones:
     #      Proof: the two tests that pinned the old bare type were RESTORED TO BASE CONTENT
     #      and still pass unmodified (git diff vs base is empty). Root cause of both wrong
     #      attempts: one type forced to serve two throw sites with opposite catch semantics.
-    # 5. Both docblocks updated (AccountingService:304-306, UnpostableDocumentGlException:26-27)
+    # 5. Both docblocks updated (AccountingService:304-320 — the citation read :304-306, which
+    #    stopped short of the load-bearing half of the passage; corrected at the P3 final-gate
+    #    round 1 — and UnpostableDocumentGlException:26-27)
     #    + a regression test pinning BOTH parents and that neither type inherits the other,
     #    so neither wrong attempt can recur.
     #
@@ -320,12 +330,22 @@ milestones:
     # unreachable dead code + non-discriminating test round 1 rejected in §5.2.
     # New findings: R-7 (converter deferral), R-8 (no retry/dead-letter residual),
     # R-9 (PostGrIrOnGoodsReceipt:41 + BatchWriteOffService:122). Total findings now 9.
+    # >>> SUPERSEDED (round 3; marker added at the P3 final-gate round 1). Both numbers
+    #     above are round-1-era and are NOT the final state:
+    #       - R-9 was REDUCED TO ONE SITE. BatchWriteOffService.php:122 was REMOVED from it —
+    #         it is `catch (\RuntimeException)` and cannot intercept the chokepoint's
+    #         \InvalidArgumentException-family refusal under any nesting. R-9 is now
+    #         PostGrIrOnGoodsReceipt:41 alone (census §6 R-9 + the correction note at §5.5 row 3).
+    #       - TOTAL FINDINGS IS 11, not 9 — R-10 (pre-existing catch-site 4xx downgrades) and
+    #         R-11 (reachable synchronous swallow in the fiscal projection path, split out of
+    #         R-10 at round 3) were both added after this line was written.
+    #     The census §6 register is authoritative; this line is kept as the round-1 record.
     # New deviation M1-D7 records the four round-0 positions that did not survive review.
     #
     # Acceptance (nonzero selection asserted, census §5.8):
     #   ShiftCashVarianceAdjustmentTest::test_an_unbalanced_adjustment_entry_is_refused_under_its_own_reason
     #     -> OK (1 test, 5 assertions)
-    #   ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type
+    #   ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_named_post_unbalanced_exception_type
     #     -> OK (1 test, 2 assertions)
     #   ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents
     #     -> OK (1 test, 5 assertions)
@@ -557,8 +577,8 @@ milestones:
   - id: M3
     title: "WHOLE-PACKAGE GATE (no new implementation, gate-r1 H-8): rerun the full accumulated evidence with EVERY lens this package used (treasury, fiscal-pos, stock-gl-interaction, inventory-costing) over the integrated branch — the census-derived per-class-(c)-row acceptance commands with nonzero-selection assertion (gate-r2 R2-H-7), the country-chart completeness test, the census + reconciliation tables, phpstan; scope proof git diff --stat <base_sha>..HEAD + allowlist. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
     review_lenses: [treasury, fiscal-pos, stock-gl-interaction, inventory-costing]
-    status: review          # whole-package evidence re-run 2026-08-21; handed over for the PARENT-run final bridge
-    fix_rounds: 0
+    status: review          # final-bridge round-1 fixes delivered 2026-08-21; re-handed over for the PARENT-run final bridge
+    fix_rounds: 1
     commit: null            # M3 adds NO implementation; the candidate tip is the Phase 6.3.1 commit that carries this flip
     verdict: null
     last_verdict: null
@@ -574,7 +594,7 @@ milestones:
     #   M1 census-derived acceptance set (§5.8), all four with NONZERO selection (N=1 each), matching
     #   the census's recorded counts exactly: ShiftCashVarianceAdjustmentTest::test_an_unbalanced_
     #   adjustment_entry_is_refused_under_its_own_reason OK (1 test, 5 assertions); Chokepoint
-    #   UnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type OK (1, 2);
+    #   UnbalancedGuardTest::test_chokepoint_raises_the_named_post_unbalanced_exception_type OK (1, 2);
     #   ChokepointUnbalancedGuardTest::test_the_two_unbalanced_types_keep_their_load_bearing_parents
     #   OK (1, 5); DocumentConversionScenarioTest::it_pins_the_deferral_that_keeps_an_unbalanced_
     #   prepayment_post_loud OK (1, 1). Whole classes also green: Chokepoint 2/7, ShiftCashVariance

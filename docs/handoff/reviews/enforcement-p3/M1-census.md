@@ -176,12 +176,37 @@ Already guarded. **No new validator, no new test presented as evidence.**
 | 22 | `:4833` | `createInventoryWriteOffEntry` | `postEntryNow` / `…AfterCommit` | (b) chokepoint-guarded |
 | 23 | `:4953` | `reverseInventoryWriteOffEntry` | `postEntry` (`:4984`) | (b) chokepoint-guarded — **stock↔GL seam**, see §3 |
 
-Two of these self-post **conditionally** — recorded here, escalated as finding R-2:
+**Two FURTHER creators — rows 52 and 53, NOT among the 23 numbered above —**
+self-post **conditionally**, and are escalated as finding R-2. (The previous lead-in
+read "Two of these", which wrongly implied they were already counted in the table
+above; corrected at the P3 final-gate round 1.)
 
-| site | method | condition | consequence when false |
+Each spans two classes by construction: on the posting branch it is a self-posting
+creator guarded by the chokepoint, class **(b)**; on the non-posting branch its draft
+is orphaned, class **(a)**. Neither branch can seal outside the chokepoint, so
+neither is a balance gap.
+
+| # | site | method | condition | consequence when false | class |
+|---|---|---|---|---|---|
+| 52 | `:1583` | `createPaymentToleranceJournalEntry` | posts at `:1645` **only if `$user !== null`** | `payment_tolerance` draft never posted | **(b)** posting branch / (a) orphan branch → R-2 |
+| 53 | `:1711` | `clearCustomerAdvanceToReceivable` | posts at `:1749` **only if `$user !== null`** | `prepayment_application` draft never posted | **(a)** orphan branch / (b) posting branch → R-2 |
+
+**How §0's 21 / 24 / 8 = 53 reconstructs** (added at the P3 final-gate round 1 — these
+two rows previously carried no class, so the tally could not be rebuilt from the
+tables):
+
+| bucket | numbered rows 1–51 | + rows 52–53 | §0 total |
 |---|---|---|---|
-| `:1583` | `createPaymentToleranceJournalEntry` | posts at `:1645` **only if `$user !== null`** | `payment_tolerance` draft never posted |
-| `:1711` | `clearCustomerAdvanceToReceivable` | posts at `:1749` **only if `$user !== null`** | `prepayment_application` draft never posted |
+| **(a)** draft-only | 20 — §2.2 rows 24–40 (17) + §2.3 rows 41–43 (3) | +1 (row 53) | **21** |
+| **(b)** chokepoint-guarded | 23 — §2.1 rows 1–23 | +1 (row 52) | **24** |
+| **(c)** writes Posted directly | 8 — §2.3 rows 44–51 | +0 | **8** |
+| | **51** | **+2** | **53** |
+
+The one-into-each allocation of rows 52/53 is a **presentation convention**, not a
+claim that either creator is single-class: both genuinely span (a) and (b) as
+described above, and each is counted exactly once so the total is 53 rather than 55.
+Nothing downstream depends on which bucket each lands in — both are already guarded
+on the posting branch and both are already reported under R-2 on the orphan branch.
 
 ### 2.2 `GeneralLedgerService.php` — draft-only creators → class (a)
 
@@ -343,8 +368,34 @@ diverges from the house throw+alert pattern and an unbalanced post could be
   single it out.
 
 **The delivered change is exactly this and nothing more:** the chokepoint now raises
-`UnbalancedJournalEntryException::forChokepoint(...)` with a **byte-identical
-message**. The balance algorithm is untouched. No second validator exists anywhere.
+a **named** type with a **byte-identical message**. The balance algorithm is
+untouched. No second validator exists anywhere.
+
+> ⚠️ **CORRECTED at the P3 final-gate round 1 — this paragraph was a PRE-SPLIT
+> SURVIVOR.** It previously named `UnbalancedJournalEntryException::forChokepoint(...)`
+> as the delivered change. **That is false at HEAD**, and was false from §5.3 onward:
+> the chokepoint raises
+> **`UnbalancedJournalEntryPostException::forChokepoint(...)`**
+> (`GeneralLedgerService.php:3418`). `forChokepoint()` is defined **only** on
+> `UnbalancedJournalEntryPostException` (`:56`) and does not exist on
+> `UnbalancedJournalEntryException` at all.
+>
+> The stale sentence was actively dangerous rather than merely untidy: three shipped
+> docblocks route readers to this section
+> (`UnbalancedJournalEntryException.php:42`, `GeneralLedgerService.php:3416`,
+> `ChokepointUnbalancedGuardTest.php:41`), and a maintainer following it would write
+> `catch (UnbalancedJournalEntryException)` around a chokepoint call — which
+> **compiles and matches nothing**, because the two types are siblings and neither
+> inherits the other.
+>
+> **Reconciliation with §5.3.** "Exactly this and nothing more" is scoped to the
+> FAILURE MODE — a bare `\InvalidArgumentException` became a named type carrying the
+> same message under the same parent. It never meant "one type serves both throw
+> sites": §5.3 records that forcing that was tried twice, broke
+> `CreditNoteController::post()`'s envelope, newly exposed the refusal to three
+> `catch (\RuntimeException)` sites rendering 422, and was **reverted** in favour of
+> the SIBLING SPLIT that HEAD ships. §5.3 is authoritative on which type is raised
+> where; this section is authoritative only on the scope of the change.
 
 ### 5.2 WITHDRAWN — the `SalesOrderToInvoiceConverter` re-throw (round-1 finding 2)
 
@@ -652,6 +703,14 @@ Tests: 1, Assertions: 2, Failures: 1.
 > `UnbalancedJournalEntryPostException` (§5.3). What the paste proves is unchanged
 > and is the only thing claimed for it: at base the chokepoint threw a **bare
 > `InvalidArgumentException`** with no distinguishing type.
+>
+> **Also unrenamed here (P3 final-gate round 1):** the test method shown below was
+> renamed to `test_chokepoint_raises_the_named_post_unbalanced_exception_type`,
+> because the old name asserted the chokepoint raises the "house" type — the exact
+> pre-split claim §5.1 has now corrected. The transcript keeps the OLD name for the
+> same reason it keeps the old line numbers: it is a verbatim record of a run that
+> actually happened. The acceptance filter in §5.8 and the handback are swept to the
+> new name; only this historical paste is not.
 
 ```
 $ ./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php \
@@ -698,7 +757,7 @@ cd apps/api
 # → OK (1 test, 5 assertions)                              N = 1  ≥ 1  ✅
 
 ./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php \
-  --filter '^Tests\\Feature\\Accounting\\ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type$'
+  --filter '^Tests\\Feature\\Accounting\\ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_named_post_unbalanced_exception_type$'
 # → OK (1 test, 2 assertions)                              N = 1  ≥ 1  ✅
 
 ./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php \

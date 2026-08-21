@@ -307,8 +307,10 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
      * `UnbalancedJournalEntryException`, and the parent is load-bearing:
      * re-parenting it under `\InvalidArgumentException` (a `\LogicException`)
      * exposes this refusal to the `catch (\InvalidArgumentException)` blocks in `app/`
-     * that render 400/422 — 23 in that literal form, 53 clauses matching
-     * `catch (…InvalidArgumentException…)` — and drops it out of the
+     * that render 400/422 — **20** real clauses in that literal form (23 raw grep
+     * matches minus 3 that are comment/docblock prose) and **50** real clauses
+     * matching `catch (…InvalidArgumentException…)` (54 raw minus 4 comments) —
+     * and drops it out of the
      * `catch (\RuntimeException)` in `CreditNoteController::post()` that maps it to a
      * detailed 500.
      * enforcement-P3 M1 did exactly that and reverted it (round 1, findings 3/4);

@@ -36,9 +36,15 @@ The four partitions as landed:
 
 ## 1. Reconciliation table (deliverable A)
 
-Every **local required-purposes list** in production code — the two `TreasuryReceiptBridge` lists the
-dispatch names, plus every other list surfaced by grepping `hasAccountForPurpose` callers and
-`SystemAccountPurpose` array literals across `app/` — reconciled against the manifest's classification.
+**Basis of the enumeration, stated precisely** (narrowed at the P3 final-gate round 1). The rows below
+are the complete set of **`hasAccountForPurpose()` caller sites** in `app/` — every place a live path
+probes whether a purpose is mapped before using it. That includes the two `TreasuryReceiptBridge` lists
+the dispatch names by line number. Round 0 described the basis as *"`hasAccountForPurpose` callers **and**
+`SystemAccountPurpose` array literals across `app/`"*; the second half overstated what was actually run —
+the literal grep was anchored to bare `SystemAccountPurpose::Case,` list entries and would not match a
+`'purpose' => SystemAccountPurpose::X->value` map entry. **The claim is therefore narrowed to the
+`hasAccountForPurpose` caller set, and the one known out-of-basis purpose literal is disclosed as row 9
+rather than left implicit.**
 
 "Shape on miss" is what the live path actually does when the purpose is unmapped. It is the column that
 matters: the manifest classifies a purpose by whether a **registered throwing** resolution site exists,
@@ -54,6 +60,14 @@ so a path that probes non-throwingly and degrades is classified by its *other* c
 | 6 | `Treasury/Application/Services/RepositoryAdjustmentService.php:79-83` | `PaymentToleranceExpense` if direction `Out` else `PaymentToleranceIncome` | throws `AdjustmentToleranceAccountMissingException` (typed refusal before the transaction) | both **REQUIRED**; the manifest's evidence for both cites the downstream `GeneralLedgerService::createRepositoryAdjustmentJournalEntry` `:1241/:1242` this path feeds | ✅ yes |
 | 7 | `Accounting/Infrastructure/Commands/BackfillRefundCompensationAccountsCommand.php:144,196` | `SalesReturn`, `RefundWriteOff` | backfill/idempotency probe — skips an already-mapped purpose | both **CONDITIONAL** | ✅ N/A — remediation tool, not a resolve-or-fail path |
 | 8 | `Console/Commands/BackfillTolerancePurposesCommand.php` | `PaymentToleranceExpense`, `PaymentToleranceIncome` | backfill; promotes/creates, hard-fails only on a missing parent | both **REQUIRED** | ✅ N/A — remediation tool |
+| 9 † | `Console/Commands/BackfillChartPurposesCommand.php:318-364` | `CostOfGoodsSold`, `GeneralExpense`, `SupplierAdvance`, `CustomerAdvance` (FR-only arm) + `UninvoicedRevenue`, `SalesDiscount` (FR+TN shared arm) | **not a precheck list at all** — a chart-DEFINITION literal (`code` / `name` / `type` / `parent_code` / `purpose` tuples) the backfill creates or promotes accounts from; it never calls `hasAccountForPurpose()` and no live path resolves-or-fails on it | `CostOfGoodsSold`, `GeneralExpense`, `SupplierAdvance`, `CustomerAdvance`, `SalesDiscount` all **REQUIRED**; `UninvoicedRevenue` **SOFT** | ✅ no divergence — see † |
+
+† **Row 9 is OUT-OF-BASIS and is listed for disclosure, not because it belongs to the same population.**
+It is a remediation tool's account-definition table, structurally unlike rows 1–8 (which are
+resolve-or-fail / probe-then-degrade prechecks on live paths). It is reconciled anyway and **contradicts
+nothing**: five of its six purposes are manifest-REQUIRED, and the sixth, `UninvoicedRevenue`, is SOFT —
+seeding an account for a SOFT purpose is permitted, since SOFT means "no registered THROWING resolution
+site", not "must not exist". No conclusion in this report moves either way.
 
 **Result: zero misclassifications.** No purpose that a live path resolves-or-fails on is classified
 differently by the manifest, and no such purpose is omitted from it. The manifest's AST ratchet
