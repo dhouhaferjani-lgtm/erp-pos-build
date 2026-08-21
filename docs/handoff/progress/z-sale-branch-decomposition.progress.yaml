@@ -41,7 +41,7 @@ milestones:
     title: preflight — base pin, defect present in all 3 sites, citation inventory
     review_lenses: []
     status: passed          # setup-only milestone; review_lenses is empty by design
-    commit: null            # self-referential at write time; the SHA is recorded by M1's commit
+    commit: 795966c1e       # z-decomp M0.1
     verdict: null           # no bridge review at M0 (review_lenses: [])
     fix_rounds: 0
     artifact: docs/handoff/reviews/z-sale-branch-decomposition/M0-preflight.md
@@ -72,10 +72,60 @@ milestones:
     title: signed-bytes decision memo (memo-quality bridge review, then STOP blocked_review)
     review_lenses: [fiscal-pos]
     owner_gate: z-signed-bytes-versioning
-    status: pending
-    commit: null
+    status: review
+    commit: null            # filled below once the memo commit exists
     verdict: null
     fix_rounds: 0
+    memo: docs/handoff/reviews/z-sale-branch-decomposition/M1-signed-bytes-decision.md
+    no_production_code: true
+    findings:
+      F-1: >-
+        SESSION_CLOSE is a THIRD affected signed event type (zSessionAuthoring.ts:440 carries the
+        same vat_breakdown). The brief, the ticket and LEDGER C-2 name only Z_REPORT and X_REPORT.
+        The ruling must say whether it applies to SESSION_CLOSE.
+      F-2: >-
+        🚨 The brief's "headline totals are correct" premise is FALSE. cartTotals.ts:36 defines
+        subtotal = Sum(line_total) = GROSS (docblock :7), and with no transaction discount
+        total === subtotal (:40,:52,:66); receiptService.ts:145-158 sums the same into the row's
+        subtotal (:547); zReportService.ts:900 sums receipt.subtotal as netSales. Therefore signed
+        net_sales == gross_sales on any taxed shift, and subtotal + tax_amount != total on every
+        sale row (the identity refundReportingEndToEnd.test.ts:292 asserts for refunds).
+        Independently recorded as the "unnamed 5th defect" of audit R-01
+        (docs/superpowers/audits/2026-08-05-production-v1-readiness.md:185, status open).
+        NOT FIXED HERE (rule 4 — the brief declares the headline out of scope). Needs a
+        parent/owner sequencing decision; it also changes Option A's arithmetic (a v2 that fixes
+        only vat_breakdown would need a v3 when net_sales is fixed).
+      F-3: >-
+        A FOURTH gross-as-net site exists in zReportService.ts itself — buildReceiptSnapshots()
+        taxByRate, defect at :1015-1017. NOT in the signed bytes and NOT in the Z hash
+        (receipt_snapshots is a sibling of report_data, :505 vs :507; computeZReportHash hashes
+        report_data only). Recorded, not fixed.
+      F-4: >-
+        vat_breakdown has NO structural validation on either side (FiscalEventEngine.ts:3748-3760,
+        FiscalPayloadConstraintValidator.php:764-771 never iterate it), and the Z/X key sets are
+        not covered by the PHP<->TS drift gate. Downstream finding, separate lane.
+      legacy_chain: >-
+        The fix ALSO changes the legacy z_reports hash chain — computeZReportHash hashes the whole
+        report_data, which contains vat_breakdown (zReportService.ts:995, hashed :445-451). That
+        chain has NO event_version, so Option A cannot make it self-describing. Grand totals are
+        UNAFFECTED (:459-465 uses headline scalars only).
+      precedent: >-
+        77283d2a5 (2026-08-01) corrected the identical expression class on the REFUND branch of the
+        same three files, changing the same signed vat_breakdown field, IN PLACE at v1 with no
+        version bump and no registry/payload file touched. Real precedent for Option B; narrower
+        blast radius (v4 refunds were brand-new), so it is evidence, not a ruling.
+      option_A_highest_risk: >-
+        FiscalEventPayloadRegistry.php:119-127 — SUPPORTED_VERSIONS holds only SALE_RECEIPT.
+        Omitting a Z/X entry quarantines 100% of Z and X events at StrictCanonicalParser.php:627-632.
+      history_evidence: >-
+        Repo supports "no signed Z/X history is demonstrable from the codebase, and none is seeded,
+        fixtured or migrated"; it does NOT support "none exists". Four open operator queries
+        (Q1 staging fiscal_events counts, Q2 device-local unsynced chains — unclosable by any
+        server query, Q3 the abandoned §Z campaign device, Q4 the tenant-#1 premise itself).
+      recommendation: >-
+        Option B (in-place), CONDITIONAL on Q1/Q2/Q3 returning empty, with F-1 folded in so
+        SESSION_CLOSE moves with Z and X. Advisory only — stated because brief M1 item 5 asks for
+        a recommendation. Flip conditions to Option A are stated in the memo §6.
   - id: M2
     title: three sale-branch fixes + scale args, real-writer red-first per consumer
     review_lenses: [fiscal-pos, general]
