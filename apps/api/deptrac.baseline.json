@@ -1,13 +1,13 @@
 {
     "generated_at": "2026-08-20",
     "note": "Regenerate with: php tools/deptrac-ratchet.php --config=deptrac.yaml --baseline=deptrac.baseline.json --update-baseline",
-    "total": 176,
+    "total": 182,
     "categories": {
         "ModuleApplication on ModuleInfrastructure": 68,
         "ModuleDomain on ModuleApplication": 54,
         "ModuleInfrastructure on ModulePresentation": 1,
         "SharedContracts on ModuleApplication": 18,
-        "SharedContracts on ModuleDomain": 29,
+        "SharedContracts on ModuleDomain": 35,
         "SharedDomain on ModuleDomain": 4,
         "SharedInfrastructure on ModuleDomain": 2
     },
@@ -28,6 +28,15 @@
             "delta": 77,
             "why": "Owner ack recorded 2026-08-20 in the parent orchestration session (de182ed3): the checked-in baseline (99) had drifted 77 below reality across the merged waves (3C/3D, country-defaults, receipts, sv-stage1, es-A0, ui-wave0, DN) — enforcement-P2 measured 174 at its base BEFORE the final two merges; every S-14 promotion dispatch fails on the stale number. Re-baselined at the measured 176 so CI is honest; the debt is NOT waived — see burn_down.",
             "burn_down": "docs/superpowers/tickets/2026-08-20-deptrac-burndown-176.md — ModuleDomain on ModuleApplication 35->54 (+19, BLOCKER class); ModuleApplication on ModuleInfrastructure 21->68 (+47); SharedContracts on ModuleDomain 22->29 (+7); SharedDomain on ModuleDomain 0->4 (+4). Burn-down as-you-go alongside first-tenant stabilization, per owner sequencing."
+        },
+        {
+            "lane": "r2f4 correcting-entry documents (LEDGER O-26 / S-15)",
+            "date": "2026-08-21",
+            "category": "SharedContracts on ModuleDomain",
+            "delta": 6,
+            "line": "app/Shared/Contracts/Accounting/DocumentGlCorrectionInterface.php:58,72,82 - assertCorrectingEntryIsWellFormed / assertCorrectingEntryIsPostable / postCorrectingEntryGl, each counted twice (Document parameter + @throws UnpostableCorrectingEntryException)",
+            "why": "The SAME violation the three sibling contracts in this directory already carry inside the 29: DocumentGlPreflightInterface:36, DocumentGlReversalInterface:40 and AccountingServiceInterface:37,49 are each typed on App\\Modules\\Document\\Domain\\Document and each document a module-domain exception. A Shared contract that lets Document ask Accounting about a document CANNOT avoid naming Document; the alternative - a Shared mirror of the Document entity - relocates the same edge to SharedDomain on ModuleDomain and adds a mapping layer with its own drift surface. This lane deliberately mirrors the established shape rather than inventing a second one, because the correction and the cancellation reversal must agree about what a document's ledger IS (that disagreement is the escape-hatch dead end this lane exists to close). 4 of the 6 arrive with the original branch commits, 2 with the well-formed/postable verdict split.",
+            "burn_down": "Rides the existing SharedContracts-on-ModuleDomain burn-down: docs/superpowers/tickets/2026-08-20-deptrac-burndown-176.md. NOT independently waived - when that ticket relocates the Document-typed contracts, these three methods move with their siblings in one edit."
         }
     ]
 }
