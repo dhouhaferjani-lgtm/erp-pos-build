@@ -12,7 +12,13 @@ describe('buildEndOfDayPreview — cash-tendered formula (TND multi-receipt with
           {
             id: 'r1',
             total: '100.120',
-            subtotal: '84.740',
+            // C-6 fixture correction: `offline_receipts.subtotal` was authored as
+            // NET ('84.740'), which the REAL writer never produces —
+            // `receiptService.ts:547` stores Σ GROSS `line_total` there
+            // (`computeLineTotals`, :149-157); the NET exists only as the SEALED
+            // payload's own `subtotal` (`SaleReceiptPayload.ts:121` = gross − tax).
+            // Expected values below are UNCHANGED: 100.120 − 15.380 = 84.740.
+            subtotal: '100.120',
             tax_amount: '15.380',
             payments_json: JSON.stringify([
               { payment_method_id: 'pm-cash', amount: '100.100', method_code: 'CASH' },
@@ -28,8 +34,9 @@ describe('buildEndOfDayPreview — cash-tendered formula (TND multi-receipt with
           },
           {
             id: 'r2',
+            // C-6 fixture correction, same justification: 50.000 − 7.630 = 42.370.
             total: '50.000',
-            subtotal: '42.370',
+            subtotal: '50.000',
             tax_amount: '7.630',
             payments_json: JSON.stringify([
               { payment_method_id: 'pm-cash', amount: '50.000', method_code: 'CASH' },

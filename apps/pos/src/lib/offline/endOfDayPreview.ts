@@ -233,7 +233,22 @@ export async function buildEndOfDayPreview(
     if (!isRefund) {
       salesCount += 1;
       grossSales = bcadd(grossSales, receipt.total);
-      netSales = bcadd(netSales, receipt.subtotal);
+      // C-6 fix (z-headline-net-sales) — the second of three structurally
+      // separate copies of this headline accumulation. Same derivation as
+      // `zReportService.ts` (which carries the full rationale): the SQLite
+      // column `subtotal` is Σ GROSS `line_total`, while the canonical
+      // SALE_RECEIPT field of the same name is the NET
+      // (`SaleReceiptPayload.ts:121` = `subtotalGross − taxAmount`), so the net
+      // is derived the only way that reproduces the sealed receipt —
+      // `subtotal − tax_amount`, at the currency scale. NOT `total −
+      // tax_amount`: `total` is the ROUNDED, POST-discount gross while
+      // `tax_amount` is the PRE-discount VAT, and mixing the two bases would
+      // also break `Σ vat_breakdown[].net_amount == net_sales`.
+      //
+      // This preview is unsigned, but it is the number the cashier reconciles
+      // against before the Z is authored — it must agree with the signed Z or
+      // the close is disputed at the counter.
+      netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, scale), scale);
       taxAmount = bcadd(taxAmount, receipt.tax_amount);
     }
 

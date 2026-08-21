@@ -561,7 +561,17 @@ async function generateLocalXReport(
 
     salesCount += 1;
     grossSales = bcadd(grossSales, receipt.total);
-    netSales = bcadd(netSales, receipt.subtotal);
+    // C-6 fix (z-headline-net-sales) — the third structurally separate copy of
+    // this headline accumulation, feeding the SIGNED X_REPORT. Same derivation
+    // as `zReportService.ts` (which carries the full rationale): the SQLite
+    // column `subtotal` holds Σ GROSS `line_total`, while the canonical
+    // SALE_RECEIPT field of the same name is the NET (`SaleReceiptPayload.ts:121`
+    // = `subtotalGross − taxAmount`), so net is derived the only way that
+    // reproduces the sealed receipt — `subtotal − tax_amount`, at the currency
+    // scale. NOT `total − tax_amount`: `total` is the ROUNDED, POST-discount
+    // gross against a PRE-discount VAT, and that mixture would also break
+    // `Σ vat_breakdown[].net_amount == net_sales`.
+    netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, decimals), decimals);
     taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
     // C-2 fix (z-sale-branch-decomposition, ruling: Option B) — the third,

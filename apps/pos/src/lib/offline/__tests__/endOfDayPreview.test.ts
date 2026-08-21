@@ -28,7 +28,16 @@ describe('buildEndOfDayPreview', () => {
           {
             id: 'r1',
             total: '10.00',
-            subtotal: '8.40',
+            // C-6 fixture correction: the COLUMN-level twin of the C-2 line-level
+            // correction below. `offline_receipts.subtotal` was authored as NET
+            // ('8.40'), which the REAL writer never produces —
+            // `receiptService.ts:547` stores Σ GROSS `line_total` there
+            // (`computeLineTotals`, :149-157); the NET exists only as the SEALED
+            // payload's own `subtotal` (`SaleReceiptPayload.ts:121` = gross − tax).
+            // The NET-valued column MASKED the headline gross-as-net defect exactly
+            // as the NET-valued `line_total` masked the per-rate one. Expected
+            // values below are UNCHANGED: 10.00 − 1.60 = 8.40.
+            subtotal: '10.00',
             tax_amount: '1.60',
             payments_json: JSON.stringify([
               { payment_method_id: 'pm-cash', amount: '10.00', method_code: 'CASH' },
@@ -51,7 +60,8 @@ describe('buildEndOfDayPreview', () => {
           {
             id: 'r2',
             total: '20.00',
-            subtotal: '16.81',
+            // C-6 fixture correction, same justification: 20.00 − 3.19 = 16.81.
+            subtotal: '20.00',
             tax_amount: '3.19',
             payments_json: JSON.stringify([
               { payment_method_id: 'pm-card', amount: '20.00', method_code: 'CARD' },

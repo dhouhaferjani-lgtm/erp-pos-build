@@ -112,7 +112,20 @@ function makeReceiptRows() {
       operator_name: 'Alice',
       payment_method_id: 'pm-cash',
       total: '50.00',
-      subtotal: '42.00',
+      // C-6 fixture correction: `offline_receipts.subtotal` was authored as NET
+      // ('42.00'), which the REAL writer never produces — `receiptService.ts:547`
+      // stores Σ GROSS `line_total` there (`computeLineTotals`, :149-157); the NET
+      // exists only as the SEALED payload's own `subtotal`
+      // (`SaleReceiptPayload.ts:121` = gross − tax). The NET-valued column MASKED
+      // the headline gross-as-net defect. Expected `net_sales: '42.00'` below is
+      // UNCHANGED: 50.00 − 8.00 = 42.00.
+      //
+      // `line_total` below is still the NET-valued C-2 masking shape; correcting
+      // it belongs to the per-rate lane (C-2 deliberately left these fixtures and
+      // proved the per-rate fix through the real writer in
+      // `saleReportingEndToEnd.test.ts` instead), and this file asserts no sale
+      // `vat_breakdown`, so it is left alone rather than pulled into scope.
+      subtotal: '50.00',
       tax_amount: '8.00',
       discount_amount: '0.00',
       transaction_discount_amount: null,

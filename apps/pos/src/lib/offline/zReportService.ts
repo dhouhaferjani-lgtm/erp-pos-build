@@ -897,7 +897,37 @@ function aggregateReportData(
 
     salesCount++;
     grossSales = bcadd(grossSales, receipt.total);
-    netSales = bcadd(netSales, receipt.subtotal);
+    // C-6 fix (z-headline-net-sales) — the HEADLINE sibling of the C-2 per-rate
+    // fix below. `offline_receipts.subtotal` is a MISNOMER: the writer stores
+    // Σ GROSS `line_total` in it (`receiptService.ts:149-157` `computeLineTotals`
+    // → `:547`), so accumulating the column straight into `net_sales` made the
+    // SIGNED headline `net_sales == gross_sales` on every taxed shift — exported
+    // by NF525 as `<VentesNettes>` (`Nf525XmlBuilder.php:299`) and passed through
+    // verbatim by `ZReportProjection.php:149`.
+    //
+    // THE IDENTITY, settled against the writer (not `total − tax_amount`):
+    // the canonical, server-validated SALE_RECEIPT field also called `subtotal`
+    // is the NET, derived at `SaleReceiptPayload.ts:121` as exactly
+    // `subtotalGross − taxAmount` from the same two values `receiptService.ts:368`
+    // hands the builder. So `receipt.subtotal − receipt.tax_amount` reproduces
+    // the SEALED per-receipt net byte for byte, and `net_sales` becomes Σ of the
+    // sealed corpus — the same corpus tie the M1 ruling used (V-14).
+    //
+    // `total − tax_amount` was rejected because the three columns do not share a
+    // base: `subtotal` and `tax_amount` are PRE transaction-discount and PRE
+    // cash-rounding, while `total` is the ROUNDED, POST-discount gross
+    // (`receiptService.ts:548` ← `:290`). Mixing them yields a figure that is
+    // neither the receipt's net nor the sum of the per-rate nets below — and
+    // would break `Σ vat_breakdown[].net_amount == net_sales`, the invariant the
+    // F-4 server tripwire enforces (SALE_RECEIPT #2/#3,
+    // `FiscalPayloadConstraintValidator.php:1155-1170`).
+    //
+    // Consequence, stated rather than glossed: on a discounted or cash-rounded
+    // shift `net_sales + tax_amount != gross_sales`. The wedge is the discount
+    // plus the rounding, exactly as on the canonical receipt (whose identity #1
+    // adds `transaction_discount_amount` back). The Z payload records neither
+    // field, so no such identity is claimed anywhere.
+    netSales = bcadd(netSales, bcsub(receipt.subtotal, receipt.tax_amount, decimals), decimals);
     taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
     // VAT breakdown from receipt lines.
