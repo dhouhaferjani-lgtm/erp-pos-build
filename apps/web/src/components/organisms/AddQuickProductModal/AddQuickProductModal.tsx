@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import type { Query } from '@tanstack/react-query'
 import { useTranslation } from 'react-i18next'
 import { Loader2 } from 'lucide-react'
 import { Modal, ModalHeader, ModalContent, ModalFooter } from '../Modal'
@@ -13,6 +14,26 @@ import { cn } from '../../../lib/utils'
 import { TaxConfigurationField } from '../../molecules/TaxConfigurationField'
 import type { ProductPrefill } from '../../../features/products/productPrefill'
 import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+
+function productCacheInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (query: Query) => boolean {
+  return (query) => {
+    if (tenantId === null || companyId === null) {
+      return false
+    }
+    const key = query.queryKey
+    return (
+      key.length >= 3 &&
+      key[0] === 'products' &&
+      key[key.length - 2] === tenantId &&
+      key[key.length - 1] === companyId
+    )
+  }
+}
 
 interface Product {
   id: string
@@ -148,6 +169,8 @@ export function AddQuickProductModal({
 }: AddQuickProductModalProps) {
   const { t } = useTranslation(['inventory', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
 
   // Form state with React Hook Form
   const {
@@ -206,7 +229,9 @@ export function AddQuickProductModal({
       return apiPost<Product>('/products', payload)
     },
     onSuccess: async (product) => {
-      await queryClient.invalidateQueries({ queryKey: ['products'] })
+      await queryClient.invalidateQueries({
+        predicate: productCacheInvalidationPredicate(tenantId, companyId),
+      })
       onSuccess?.(product)
       onClose()
     },

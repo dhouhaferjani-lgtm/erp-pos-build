@@ -6,7 +6,7 @@ import { semanticColorTokens as colorTokens } from '@/lib/designTokens'
 import { entityRoutes } from '@/lib/entityRoutes'
 import type { DeliveryNote } from '../api/deliveryNotes'
 
-function billingLaneKey(lane: string | null): string {
+function billingLaneKey(lane: string | null | undefined): string {
   switch (lane) {
     case 'consolidation':
       return 'consolidation'
@@ -22,9 +22,9 @@ function billingLaneKey(lane: string | null): string {
 }
 
 interface DeliveryNoteBillingAttributionProps {
-  invoiceId: string | null
-  invoiceNumber: string | null
-  lane: string | null
+  invoiceId: string | null | undefined
+  invoiceNumber: string | null | undefined
+  lane: string | null | undefined
 }
 
 export function DeliveryNoteBillingAttribution({
@@ -36,7 +36,7 @@ export function DeliveryNoteBillingAttribution({
   const badge = (
     <StatusBadge
       tone={
-        lane === null
+        lane == null
           ? 'neutral'
           : statusTone(lane, {
               // Bespoke lane→tone map retired into the canonical helper (C6, merged-tree
@@ -54,7 +54,7 @@ export function DeliveryNoteBillingAttribution({
     </StatusBadge>
   )
 
-  if (invoiceId === null || invoiceNumber === null) return badge
+  if (invoiceId == null || invoiceNumber == null) return badge
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -72,16 +72,18 @@ export function DeliveryNoteBillingAttribution({
 export function DeliveryNoteBillingStatus({
   deliveryNote,
 }: {
-  deliveryNote: Pick<DeliveryNote,
+  // Partial: pre-consolidation payloads (older caches, list endpoints) may omit
+  // the billing columns entirely — an absent column means "not invoiced", never a crash.
+  deliveryNote: Partial<Pick<DeliveryNote,
     | 'invoiced_at'
     | 'invoiced_by_document_id'
     | 'invoiced_by_document_number'
     | 'invoiced_via'
-  >
+  >>
 }) {
   const { t } = useTranslation('sales')
 
-  if (deliveryNote.invoiced_at === null) {
+  if (deliveryNote.invoiced_at == null) {
     return <StatusBadge tone="pending">{t('deliveryNotes.partnerTab.billingState.uninvoiced')}</StatusBadge>
   }
 

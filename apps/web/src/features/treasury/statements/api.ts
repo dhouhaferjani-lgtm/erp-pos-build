@@ -1,4 +1,5 @@
 import { api } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 export type StatementStatus = 'imported' | 'reconciling' | 'reconciled' | 'voided'
 export type StatementParserKey = 'csv' | 'xlsx'
@@ -109,7 +110,8 @@ export interface StatementTargetProvenance {
 
 export interface StatementListResponse {
   data: BankStatementSummary[]
-  meta: { current_page: number; last_page: number; per_page: number; total: number }
+  // BankStatementController::index emits only the four core fields (no from/to).
+  meta: Omit<OffsetPaginationMeta, 'from' | 'to'>
 }
 
 export interface StatementProfile {

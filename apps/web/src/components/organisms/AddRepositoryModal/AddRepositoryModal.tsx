@@ -16,6 +16,27 @@ import type { Bank } from '@/hooks/useBanks'
 import { useBankAccountValidation, type BankAccountValidationResult } from '@/hooks/useBankAccountValidation'
 import { useCompanyConfig } from '@/contexts/CompanyConfigContext'
 import { useTransactionLocations } from '@/features/locations/hooks/useTransactionLocations'
+import { useAuthStore } from '@/stores/authStore'
+import { useCompanyStore } from '@/stores/companyStore'
+import type { Query } from '@tanstack/react-query'
+
+function repositoryCacheInvalidationPredicate(
+  tenantId: string | null,
+  companyId: string | null,
+): (query: Query) => boolean {
+  return (query) => {
+    if (tenantId === null || companyId === null) {
+      return false
+    }
+    const key = query.queryKey
+    return (
+      key.length >= 3 &&
+      key[0] === 'payment-repositories' &&
+      key[key.length - 2] === tenantId &&
+      key[key.length - 1] === companyId
+    )
+  }
+}
 
 interface Repository {
   id: string
@@ -192,6 +213,8 @@ export function AddRepositoryModal({
 }: AddRepositoryModalProps) {
   const { t } = useTranslation(['treasury', 'common'])
   const queryClient = useQueryClient()
+  const tenantId = useAuthStore((s) => s.user?.tenant_id ?? null)
+  const companyId = useCompanyStore((s) => s.currentCompanyId ?? null)
   const { config } = useCompanyConfig()
   const countryCode = config?.country_code ?? ''
   const autoDerivedIbanRef = useRef('')
@@ -290,7 +313,9 @@ export function AddRepositoryModal({
       return apiPost<Repository>('/payment-repositories', payload)
     },
     onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: ['payment-repositories'] })
+      await queryClient.invalidateQueries({
+        predicate: repositoryCacheInvalidationPredicate(tenantId, companyId),
+      })
       onSuccess?.(response)
       onClose()
     },

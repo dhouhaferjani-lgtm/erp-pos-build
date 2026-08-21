@@ -4,6 +4,7 @@
  */
 
 import { api, apiGet, apiPost } from '@/lib/api'
+import type { OffsetPaginationMeta } from '@/types/pagination'
 
 /**
  * Delivery Note document type
@@ -34,14 +35,7 @@ export type PartnerDeliveryNoteFilter = 'uninvoiced' | 'invoiced' | 'all'
 
 export interface PartnerDeliveryNotesResponse {
   data: DeliveryNote[]
-  meta: {
-    current_page: number
-    last_page: number
-    total: number
-    per_page: number
-    from: number | null
-    to: number | null
-  }
+  meta: OffsetPaginationMeta
   aggregates?: {
     count: number
     total: string
@@ -73,12 +67,9 @@ export interface ToBillPartnerGroup {
   is_periodic: boolean
 }
 
-interface OffsetMeta {
-  current_page: number
-  last_page: number
-  total: number
-  per_page: number
-}
+// The to-bill endpoints emit only the four core fields (no from/to) —
+// see UninvoicedDeliveryNoteService::getToBillSummary.
+type OffsetMeta = Omit<OffsetPaginationMeta, 'from' | 'to'>
 
 export interface ToBillQueueResponse {
   data: ToBillPartnerGroup[]

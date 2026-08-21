@@ -198,7 +198,12 @@ describe('shared singleton tenant scope', () => {
 
     queryClient.setQueryData(['payment-repositories', 'tenant-A', 'company-1'], ['tenant-A-repos'])
     queryClient.setQueryData(['payment-repositories', 'tenant-B', 'company-2'], ['tenant-B-repos'])
-    render(<AddRepositoryModal isOpen={true} onClose={vi.fn()} />, { wrapper: wrapper(queryClient) })
+    render(
+      <CompanyConfigProvider>
+        <AddRepositoryModal isOpen={true} onClose={vi.fn()} />
+      </CompanyConfigProvider>,
+      { wrapper: wrapper(queryClient) },
+    )
     await user.type(screen.getByLabelText(/Code/), 'CASH-01')
     await user.type(screen.getByLabelText(/Name/), 'Cash Register')
     await user.click(screen.getByRole('button', { name: 'common:actions.save' }))
