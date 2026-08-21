@@ -6,13 +6,18 @@ namespace Tests\Feature\Taxation;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
+use App\Modules\Company\Domain\Location;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Partner;
+use App\Modules\POS\Domain\Receipt;
+use App\Modules\POS\Domain\ReceiptVatDetail;
+use App\Modules\POS\Domain\Terminal;
 use App\Modules\Taxation\Domain\DTOs\VatAggregation;
 use App\Modules\Taxation\Domain\Entities\DocumentTaxDetail;
 use App\Modules\Taxation\Domain\Entities\TaxConfiguration;
@@ -35,6 +40,12 @@ class VatDataRepositoryTest extends TestCase
     private Company $company;
 
     private Partner $partner;
+
+    private ?Location $location = null;
+
+    private ?Terminal $terminal = null;
+
+    private ?User $cashier = null;
 
     private VatDataRepositoryInterface $repository;
 
@@ -294,6 +305,214 @@ class VatDataRepositoryTest extends TestCase
         $this->assertSame('1000.000', $results[0]->baseAmount);
         $this->assertSame('190.000', $results[0]->vatAmount);
         $this->assertSame(1, $results[0]->documentCount);
+    }
+
+    /**
+     * G-4 — a POS refund must REDUCE the declared OUTPUT base/VAT.
+     *
+     * The two POS writers disagree on sign for `receipt_type = 'return'`:
+     *
+     *  - the canonical/fiscal path (PosCoreReceiptProjection::writeVatBreakdown)
+     *    mirrors the canonical `vat_breakdown[]` verbatim, and the canonical
+     *    view carries NON-NEGATIVE magnitudes — so a refund lands as POSITIVE
+     *    `pos_receipt_vat_details` rows;
+     *  - the legacy server path (ReceiptReturnService::buildReturnLines) derives
+     *    the row from a negated line_total — so a refund lands as NEGATIVE rows.
+     *
+     * A bare `SUM()` therefore ADDS the canonical refund to output VAT and only
+     * accidentally nets the legacy one. `-ABS()` (never a bare `-`) normalises
+     * both eras, exactly as PosAnalyticsService::netOfReturns() does.
+     */
+    public function test_pos_refunds_reduce_output_vat_in_both_writer_sign_conventions(): void
+    {
+        $this->createTaxConfiguration('19.00', true);
+
+        // Sale: +1000.000 base / +190.000 VAT
+        $sale = $this->createPosReceipt(
+            receiptType: 'sale',
+            postedAt: '2026-02-10 09:00:00',
+            subtotal: '1000.000',
+            taxAmount: '190.000',
+        );
+        $this->createPosVatRow($sale, '1000.000', '190.000');
+
+        // Refund written by the CANONICAL path — POSITIVE magnitudes.
+        $canonicalRefund = $this->createPosReceipt(
+            receiptType: 'return',
+            postedAt: '2026-02-11 09:00:00',
+            subtotal: '100.000',
+            taxAmount: '19.000',
+            originalReceiptId: $sale,
+        );
+        $this->createPosVatRow($canonicalRefund, '100.000', '19.000');
+
+        // Refund written by the LEGACY path — NEGATIVE magnitudes.
+        $legacyRefund = $this->createPosReceipt(
+            receiptType: 'return',
+            postedAt: '2026-02-12 09:00:00',
+            subtotal: '-200.000',
+            taxAmount: '-38.000',
+            originalReceiptId: $sale,
+        );
+        $this->createPosVatRow($legacyRefund, '-200.000', '-38.000');
+
+        $results = $this->repository->aggregateByRateAndDirection(
+            $this->company->id,
+            '2026-02-01',
+            '2026-02-28'
+        );
+
+        $this->assertCount(1, $results);
+        $this->assertSame('OUTPUT', $results[0]->direction);
+        $this->assertSame('19.00', $results[0]->taxRate);
+
+        // 1000.000 − |100.000| − |200.000|
+        $this->assertSame('700.000', $results[0]->baseAmount);
+        // 190.000 − |19.000| − |38.000|
+        $this->assertSame('133.000', $results[0]->vatAmount);
+    }
+
+    /**
+     * Regression pins for the two filters that sit beside the netting CASE —
+     * they must survive the sign-normalisation change.
+     */
+    public function test_pos_aggregation_still_excludes_training_and_voided_receipts(): void
+    {
+        $this->createTaxConfiguration('19.00', true);
+
+        $sale = $this->createPosReceipt(
+            receiptType: 'sale',
+            postedAt: '2026-02-10 09:00:00',
+            subtotal: '1000.000',
+            taxAmount: '190.000',
+        );
+        $this->createPosVatRow($sale, '1000.000', '190.000');
+
+        // Training-mode sale — never declarable.
+        $training = $this->createPosReceipt(
+            receiptType: 'sale',
+            postedAt: '2026-02-13 09:00:00',
+            subtotal: '5000.000',
+            taxAmount: '950.000',
+            isTraining: true,
+        );
+        $this->createPosVatRow($training, '5000.000', '950.000');
+
+        // Voided sale — never declarable.
+        $voided = $this->createPosReceipt(
+            receiptType: 'sale',
+            postedAt: '2026-02-14 09:00:00',
+            subtotal: '7000.000',
+            taxAmount: '1330.000',
+            isVoided: true,
+        );
+        $this->createPosVatRow($voided, '7000.000', '1330.000');
+
+        // A training-mode REFUND must not net anything out either.
+        $trainingRefund = $this->createPosReceipt(
+            receiptType: 'return',
+            postedAt: '2026-02-15 09:00:00',
+            subtotal: '300.000',
+            taxAmount: '57.000',
+            originalReceiptId: $training,
+            isTraining: true,
+        );
+        $this->createPosVatRow($trainingRefund, '300.000', '57.000');
+
+        $results = $this->repository->aggregateByRateAndDirection(
+            $this->company->id,
+            '2026-02-01',
+            '2026-02-28'
+        );
+
+        $this->assertCount(1, $results);
+        $this->assertSame('1000.000', $results[0]->baseAmount);
+        $this->assertSame('190.000', $results[0]->vatAmount);
+    }
+
+    /**
+     * @param  numeric-string  $subtotal
+     * @param  numeric-string  $taxAmount
+     */
+    private function createPosReceipt(
+        string $receiptType,
+        string $postedAt,
+        string $subtotal,
+        string $taxAmount,
+        ?Receipt $originalReceiptId = null,
+        bool $isTraining = false,
+        bool $isVoided = false,
+    ): Receipt {
+        $attributes = [
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->posLocation()->id,
+            'terminal_id' => $this->posTerminal()->id,
+            'cashier_id' => $this->posCashier()->id,
+            'receipt_type' => $receiptType,
+            'posted_at' => $postedAt,
+            'subtotal' => $subtotal,
+            'tax_amount' => $taxAmount,
+            'discount_amount' => '0.000',
+            'total' => bcadd($subtotal, $taxAmount, 3),
+            'currency' => 'TND',
+            'is_training' => $isTraining,
+            'is_voided' => $isVoided,
+        ];
+
+        if ($receiptType === 'return') {
+            // pos_receipts_return_logic CHECK (PostgreSQL): a return must
+            // carry both an original receipt and a reason.
+            $attributes['original_receipt_id'] = $originalReceiptId?->id;
+            $attributes['return_reason'] = 'defective';
+        }
+
+        if ($isVoided) {
+            // pos_receipts_void_logic CHECK (PostgreSQL).
+            $attributes['voided_at'] = $postedAt;
+            $attributes['voided_by'] = $this->posCashier()->id;
+            $attributes['void_reason'] = 'test void';
+        }
+
+        return Receipt::factory()->create($attributes);
+    }
+
+    /**
+     * @param  numeric-string  $netAmount
+     * @param  numeric-string  $vatAmount
+     */
+    private function createPosVatRow(Receipt $receipt, string $netAmount, string $vatAmount): ReceiptVatDetail
+    {
+        return ReceiptVatDetail::create([
+            'receipt_id' => $receipt->id,
+            'tax_rate' => '19.00',
+            'net_amount' => $netAmount,
+            'vat_amount' => $vatAmount,
+            'gross_amount' => bcadd($netAmount, $vatAmount, 3),
+        ]);
+    }
+
+    private function posLocation(): Location
+    {
+        return $this->location ??= Location::factory()->create([
+            'company_id' => $this->company->id,
+        ]);
+    }
+
+    private function posTerminal(): Terminal
+    {
+        return $this->terminal ??= Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $this->posLocation()->id,
+        ]);
+    }
+
+    private function posCashier(): User
+    {
+        return $this->cashier ??= User::factory()->create([
+            'tenant_id' => $this->tenant->id,
+        ]);
     }
 
     private function createDocument(DocumentType $type, string $documentDate): Document

@@ -64,7 +64,32 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
                 tc.id
             ");
 
-        // POS receipt VAT aggregation (all OUTPUT — sales only)
+        // POS receipt VAT aggregation (all OUTPUT — sales AND refunds).
+        //
+        // G-4 (2026-08-21): a POS refund (`pos_receipts.receipt_type = 'return'`)
+        // must REDUCE the declared OUTPUT base/VAT, exactly as a credit note does
+        // on the document arm above. Before this fix the arm was a bare SUM() with
+        // no receipt_type predicate, so refunds were mis-declared.
+        //
+        // The `-ABS()` is load-bearing, NOT decorative: the two POS writers store
+        // OPPOSITE signs for the same refund.
+        //   - Canonical/fiscal path (PosCoreReceiptProjection::writeVatBreakdown)
+        //     mirrors the canonical `vat_breakdown[]` verbatim, and the canonical
+        //     view carries non-negative magnitudes -> POSITIVE rows.
+        //   - Legacy server path (ReceiptReturnService::buildReturnLines) derives
+        //     the row from a negated line_total -> NEGATIVE rows.
+        // A bare `-` would flip the legacy rows back to positive and re-inflate the
+        // declaration; `-ABS()` normalises both eras to a single deduction. Same
+        // convention as PosAnalyticsService::netOfReturns().
+        //
+        // The literal 'return' is App\Modules\POS\Domain\Enums\ReceiptType::Return
+        // ->value; it stays a SQL literal (not an imported enum) because Taxation
+        // must not depend on POS internals — matching how the document arm above
+        // hardcodes 'credit_note' rather than importing DocumentType.
+        //
+        // `document_count` is deliberately left as COUNT(DISTINCT r.id): whether a
+        // refund receipt counts as a declared document is a filing-semantics
+        // question for the owner, not a sign question. Unresolved (G-4 open item).
         $posQuery = DB::table('pos_receipt_vat_details as prvd')
             ->join('pos_receipts as r', 'prvd.receipt_id', '=', 'r.id')
             ->leftJoin('tax_configurations as tc2', function ($join) use ($companyId): void {
@@ -83,8 +108,8 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
             ->selectRaw("
                 'OUTPUT' as direction,
                 prvd.tax_rate,
-                SUM(prvd.net_amount) as base_amount,
-                SUM(prvd.vat_amount) as vat_amount,
+                SUM(CASE WHEN r.receipt_type = 'return' THEN -ABS(prvd.net_amount) ELSE prvd.net_amount END) as base_amount,
+                SUM(CASE WHEN r.receipt_type = 'return' THEN -ABS(prvd.vat_amount) ELSE prvd.vat_amount END) as vat_amount,
                 COUNT(DISTINCT r.id) as document_count,
                 COALESCE(tc2.is_recoverable, true) as is_recoverable,
                 tc2.id as tax_configuration_id
