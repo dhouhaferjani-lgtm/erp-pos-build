@@ -152,13 +152,13 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
         $this->assertSame($this->genesisSeed, $event->previous_hash);
         $this->assertSame($currentHash, $event->current_hash);
         $this->assertSame($currentHash, hash('sha256', $canonicalBytes));
-        $this->assertSame($canonicalBytes, $event->canonical_bytes);
+        $this->assertSame($canonicalBytes, $this->readBytea($event->canonical_bytes));
         $this->assertSame(IntegrityStatus::Verified->value, $event->integrity_status);
         $this->assertSame(PayloadParseStatus::Parsed->value, $event->payload_parse_status);
 
         $receipt = DB::table('pos_receipts')->where('fiscal_event_id', $eventId)->first();
         $this->assertNotNull($receipt);
-        $this->assertSame($canonicalBytes, $receipt->canonical_bytes);
+        $this->assertSame($canonicalBytes, $this->readBytea($receipt->canonical_bytes));
         $this->assertSame($currentHash, $receipt->fiscal_hash);
         $this->assertSame($this->genesisSeed, $receipt->previous_hash);
         $this->assertSame(1, (int) $receipt->chain_sequence);
@@ -376,5 +376,25 @@ final class Task33FiscalFullFlowVerificationTest extends TestCase
         ksort($value);
 
         return array_map(fn ($v): mixed => $this->sortRecursive($v), $value);
+    }
+
+    /**
+     * Read a binary (`bytea` / `blob`) column selected through the query builder.
+     *
+     * PDO returns a PostgreSQL `bytea` as a stream resource on a raw
+     * `DB::table()` read — Eloquent applies the FiscalEvent stream→string
+     * accessor, the query builder does not. SQLite returns a plain string.
+     * Mirrors PosCoreReceiptProjectionTest::178. Production already normalizes
+     * its own reads (OutboxIngestor::normalizeCanonicalBytes).
+     */
+    private function readBytea(mixed $value): string
+    {
+        if (is_resource($value)) {
+            $contents = stream_get_contents($value);
+
+            return $contents === false ? '' : $contents;
+        }
+
+        return is_string($value) ? $value : '';
     }
 }
