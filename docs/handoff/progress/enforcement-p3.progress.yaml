@@ -412,11 +412,11 @@ milestones:
   - id: M2
     title: "3(b) CONSUMER mode (gate-r1 C-3). The P2 dependency is already satisfied at M0 (gate-r3 R3-H-3 — the whole P2 package is on the base by dispatch precondition; 'per 2(b) outcome' is a landed fact, no mid-wave pin exists). Work: reconcile TreasuryReceiptBridge's local required-purposes lists (:446,:528) + any census-surfaced local list against ProvisioningRequiredPurposesV1 — divergences are REPORTED findings, never edits; per-country seeder/template completeness CI test keyed to the manifest's REQUIRED classification + expectedAccountType() (never keyed to requiredPurposes()); enumerate seeded charts, don't assume; wire into a lane that actually runs (per the LANDED 2(b) outcome; worst case the anchored pgsql allowlist; P2 carries the reciprocal never-drop-this-wiring obligation); tamper test names country + purpose. Frozen country seeder class bodies and the manifest's classification content UNTOUCHED."
     review_lenses: [treasury, fiscal-pos]
-    status: review          # round-0 delivered 2026-08-21; awaiting adversarial gate
-    fix_rounds: 0
-    commit: d7c9d187a       # Phase 6.2.1 (the guard + lane wiring); this record lands in 6.2.2
+    status: review          # round-1 fixes delivered 2026-08-21; handed back for re-review
+    fix_rounds: 1
+    commit: d7c9d187a       # Phase 6.2.1 (the guard + lane wiring); 6.2.2 the record; 6.2.3 the round-1 fixes
     verdict: null
-    last_verdict: null
+    last_verdict: changes_required   # round 1 — docs/handoff/reviews/enforcement-p3/M2-round1.md
     # ── M2 EXECUTION RECORD (2026-08-21) ──
     # Report of record: docs/handoff/reviews/enforcement-p3/M2-reconciliation.md (§ numbers below).
     #
@@ -468,16 +468,21 @@ milestones:
     #
     # DELIVERABLE C (§4) — TWO tamper axes, both driving the SAME private assertion body as the main
     # test (not a parallel copy): missing mapping (FR / cost_of_goods_sold) and wrong TYPE
-    # (TN / customer_receivable moved onto a Revenue account); each asserts the message names the
-    # country and the purpose. RED-FIRST: the completeness assertion is green at base, so the TYPE
-    # assertion was DELETED from the shared body and the class re-run — tamper case 2 went RED
-    # (3 tests, 108 assertions, 1 failure, vs 200 assertions green), proving the assertion is
-    # load-bearing. Mutation reverted, re-run green.
+    # (TN / customer_receivable moved onto a Revenue account carrying NO system_purpose — see the
+    # round-1 note below). RED-FIRST, CORRECTED AT ROUND 1: round 0's 108-assertion mutant is
+    # WITHDRAWN as evidence — it died on a collateral MISSING MAPPING at product_revenue, not on a
+    # type mismatch, because round-0 tamper 2 re-pointed onto the already-mapped ProductRevenue
+    # account and UNIQUE(company_id, system_purpose) vacated it. Mutant v2, valid after the
+    # de-brittling: with the type assertion deleted the loop completes clean and tamper 2 falls
+    # through to its own $this->fail() (3 tests, 127 assertions, 1 failure, vs 200 green).
+    # Independently, unmutated tamper 2 asserts the message contains `expectedAccountType`, a string
+    # only the type assertion emits. Mutation reverted, re-run green.
     #
     # DELIVERABLE D (§5) — CI WIRING: group `Accounting`, lane `treasury-spine-pgsql/feature-accounting`,
     # selector `./vendor/bin/phpunit tests/Feature/Accounting`, runs_on_pr_dev true. The class is
     # picked up AUTOMATICALLY by the directory selector; NO ci.yml edit, NO allowlist entry, NO
-    # ceiling raise, +0 coverage debt. See deviation M2-D1 — this DEPARTS from the dispatch's stated
+    # ceiling raise, +0 coverage debt. (Accounting.classes corrected 82 -> 83 at round 1 — the real
+    # count at the P3 tip; round 0 counted only M2's own file and omitted M1's ChokepointUnbalancedGuardTest.) See deviation M2-D1 — this DEPARTS from the dispatch's stated
     # preference (CountryDefaults + anchored pgsql allowlist + 28->29 + debt_ceiling 1131->1132) and
     # is the stronger read of the brief's actual rule ("a lane that ACTUALLY RUNS; worst case the
     # allowlist"): a whole-directory lane beats a class-level filter, and the global debt_ceiling has
@@ -497,21 +502,58 @@ milestones:
     # reconciliation: `./vendor/bin/phpunit tests/Feature/Accounting` = 750 tests, 5 ERRORS, all in
     # InvoiceAndCreditNoteGLIntegrationTest, each a DeliveryRequiredBeforeInvoiceException out of
     # DocumentPostingService.php:649 (the DN / document-per-action delivery-before-invoice rule,
-    # nothing to do with chart purposes). PROVEN pre-existing, not asserted: the M2 file was moved
-    # out of the tree and that class re-run alone, reproducing the IDENTICAL 5 errors (8 tests,
-    # 5 errors). M2 neither introduced nor worsened it; rule 4 forbids fixing it here. Landing M2
-    # does NOT by itself make treasury-spine-pgsql green.
+    # nothing to do with chart purposes). WHAT THE EXPERIMENT SHOWS, precisely (corrected round 1):
+    # moving the M2 file out of the tree and re-running that class alone reproduces the IDENTICAL
+    # 5 errors (8 tests, 5 errors), which proves "NOT M2's" — not "red at base", since the branch
+    # also carries M1's GeneralLedgerService/exception-split edits. Base attribution is established
+    # SEPARATELY by range inspection: nothing in base..HEAD touches DocumentPostingService.php:649 or
+    # the delivery-before-invoice rule, and M1's SalesOrderToInvoiceConverter edit is comment-only.
+    # M2 neither introduced nor worsened it; rule 4 forbids fixing it here. Landing M2 does NOT by
+    # itself make treasury-spine-pgsql green.
     #
     # RECORDED DEVIATIONS (§9): M2-D1 lane placement (above). M2-D2 the manifest partition is
     # 28/1/4/10 = 43 cases (self-enforced at assertConforms():249-254), NOT the brief's 27/1/4/9 = 41
     # — the brief's prose is stale; M2 keyed to the LANDED authority as instructed. M2-D3
     # feature-lane-manifest.json edited (a P2-owned artifact): ONE informational integer,
-    # Accounting.classes 81->82 + its note, for a LANED group where the checker enforces no ceiling
+    # Accounting.classes 81->83 + its note, for a LANED group where the checker enforces no ceiling
     # (:336-352); debt_ceiling UNTOUCHED at 1131; checker + liveness suite re-run green. M2-D4 tests
     # run on the default sqlite phpunit.xml env plus a PG cross-check rather than a bespoke PG-only
     # env — the existing chart-seeder suite runs on sqlite and its baseline (ChartOfAccountsPurposeParityTest,
     # 12 tests/49 assertions) was verified green BEFORE any change. M2-D5 D-1 and D-2 reported, not
     # fixed — both are changes to authority this lane does not own.
+    #
+    # ── M2 ROUND-1 RECORD (2026-08-21) — fix_rounds 1, status stays review ──
+    # Verdict: docs/handoff/reviews/enforcement-p3/M2-round1.md — CHANGES-REQUIRED, FIVE findings, all
+    # documentation-truth or brittleness. The GUARD ITSELF WAS ACCEPTED: "sound, non-vacuous, correctly
+    # manifest-keyed, and genuinely CI-gated"; the reviewer independently reproduced 3 tests/200
+    # assertions, checker EXIT 0 / debt 1131, the lane red, and confirmed the 28/1/4/10 partition and
+    # that the CI wiring is real (ci.yml:1111-1112 selector, :1012 base_ref dev, :1048 pgsql, :1443 in
+    # all-checks-pass). Six bypass attempts were tried and all FAILED (vacuous-guard, fourth-chart,
+    # ratchet-loosening, fictional-lane, missed-local-list, forbidden-edit). ALL FIVE FIXED:
+    #   F1 (P2) Accounting.classes 82 was FALSE at HEAD — real count 83; round 0 counted only M2's own
+    #      file and missed M1's ChokepointUnbalancedGuardTest in the same directory. Corrected to 83,
+    #      note now names BOTH additions. No CI break today (laned groups carry no enforced ceiling)
+    #      but M3 would have inherited the false count.
+    #   F2 (P2) The red-first mutant did not show what it claimed — WITHDRAWN and restated (see
+    #      DELIVERABLE C above). Replaced by a valid mutant v2 enabled by F3's fix.
+    #   F3 (P3) Tamper 2 was silently coupled to ProvisioningRequiredPurposesV1::entries() ORDER, which
+    #      assertConforms() does not pin. Re-pointing now targets a Revenue account with NO
+    #      system_purpose, so the chart's only defect is the type mismatch; guarded by an assertNotNull
+    #      with an actionable message and the reasoning captured in the method docblock.
+    #   F4 (P3) Pre-existing-red proof reworded to what was actually demonstrated (see above).
+    #   F5 (P3) Scope-asymmetry note added to the report's §3 boundary discussion: the legacy-arm gate
+    #      enforces REQUIRED only, so a future drop of SalesStampDutyPayable from the TN chart is caught
+    #      on the TEMPLATE arm (TemplatePublishingService:309-317) but NOT the legacy one, even though
+    #      GeneralLedgerService.php:295 resolves it through the throwing getAccountByPurpose(). Verified
+    #      NOT a live gap (TunisiaChartOfAccountsSeeder.php:210 maps it; FR/Generic map it zero times,
+    #      consistent with SCOPE_REQUIRED) and NOT a scope violation (the brief scopes deliverable 2 to
+    #      REQUIRED). Recorded so "the legacy arm is gated" is not misread as "gated on everything".
+    # NO finding's substance changed: the guard, the country enumeration, the reconciliation table and
+    # D-1/D-2 all stand as delivered. F1/F2/F4 corrected claims ABOUT the work; F3 was the only code
+    # change; F5 added a boundary note.
+    # RE-VERIFIED at round 1: 3 tests/200 assertions OK on sqlite AND PostgreSQL (p3m2_test); mutant v2
+    # 3 tests/127 assertions/1 failure then reverted; checker EXIT 0 with debt still 1131 and
+    # debt_ceiling untouched; FeatureLaneManifestCheckerTest 46/46; pint pass; phpstan L8 [OK] No errors.
   - id: M3
     title: "WHOLE-PACKAGE GATE (no new implementation, gate-r1 H-8): rerun the full accumulated evidence with EVERY lens this package used (treasury, fiscal-pos, stock-gl-interaction, inventory-costing) over the integrated branch — the census-derived per-class-(c)-row acceptance commands with nonzero-selection assertion (gate-r2 R2-H-7), the country-chart completeness test, the census + reconciliation tables, phpstan; scope proof git diff --stat <base_sha>..HEAD + allowlist. FINAL-GATE INVOCATION (gate-r6 R6-C-1; gate-r7 R7-C-1; SEALED gate-r8 R8-C-1/R8-H-1/R8-H-3): PARENT-run via scripts/adversarial-review-final.sh — hand over with git status --porcelain showing EXACTLY ONE entry — the untracked handback (the bridge copies+hashes it itself; any other entry or a tracked-modified handback is rejected — gate-r9 R9-H-2); the parent seals a fresh detached worktree at the exact tip, verifies every control input against docs/handoff/enforcement-control-manifest.yaml, sources lenses/max_fix_rounds from the MANIFEST (this YAML is field-checked against it), binds the handback via bridge-computed digest (never in the prompt) with content-derived census evidence required; an executor-run final register is not acceptance evidence. SUBSTANTIVE CHANGES-REQUIRED: executor alone fixes, commits, increments fix_rounds, resets to status: review, hands over; max_fix_rounds exhaustion = blocked_review. TOOL ERROR: parent-owned same-A retry (round<n>-attempt<m>, bounded 3, then blocked_review), no executor commit, no fix_rounds change; parent registers never committed into the candidate."
     review_lenses: [treasury, fiscal-pos, stock-gl-interaction, inventory-costing]

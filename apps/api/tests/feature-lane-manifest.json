@@ -40,8 +40,8 @@
     },
     "Accounting": {
       "lane": "treasury-spine-pgsql/feature-accounting",
-      "classes": 82,
-      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 82 on disk after enforcement-P3 M2 added SeededChartManifestRequiredPurposeCompletenessTest (81 at the 2026-08-21 accepted tip)."
+      "classes": 83,
+      "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 83 on disk at the enforcement-P3 tip: 81 at the 2026-08-21 accepted tip, plus ChokepointUnbalancedGuardTest (P3 M1) and SeededChartManifestRequiredPurposeCompletenessTest (P3 M2)."
     },
     "Admin": {
       "deferred": true,

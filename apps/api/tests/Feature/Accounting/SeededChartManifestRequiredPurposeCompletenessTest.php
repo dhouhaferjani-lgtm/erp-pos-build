@@ -7,6 +7,7 @@ namespace Tests\Feature\Accounting;
 use App\Console\Commands\BackfillChartPurposesCommand;
 use App\Modules\Accounting\Application\Services\ChartOfAccountsService;
 use App\Modules\Accounting\Domain\Account;
+use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Company\Domain\Company;
 use App\Modules\CountryDefaults\Domain\Services\ProvisioningRequiredPurposesV1;
@@ -231,6 +232,17 @@ final class SeededChartManifestRequiredPurposeCompletenessTest extends TestCase
      * Second tamper axis: existence alone is not the gate. A purpose still
      * mapped, but onto an account of the wrong TYPE, must also fail and name
      * both types. This is the dimension no existing seeder-side test can see.
+     *
+     * The destination account is deliberately a Revenue account that carries NO
+     * `system_purpose`. Re-pointing onto an account that already holds one (say
+     * the ProductRevenue account) would VACATE that purpose as a side effect —
+     * `accounts_company_purpose_unique` is UNIQUE(company_id, system_purpose) —
+     * and inject a second, unrelated defect. The gate would then fire on
+     * whichever of the two purposes the manifest happens to list first, coupling
+     * this case to `entries()` ORDER, which `assertConforms()` does not pin (it
+     * pins counts and uniqueness only). Using an unmapped account keeps the
+     * chart's only defect the type mismatch itself, so the case stays
+     * order-independent and tests exactly one thing.
      */
     public function test_a_required_purpose_mapped_to_the_wrong_account_type_fails_and_names_both_types(): void
     {
@@ -239,20 +251,24 @@ final class SeededChartManifestRequiredPurposeCompletenessTest extends TestCase
 
         $tampered = SystemAccountPurpose::CustomerReceivable;
 
-        // Move the mapping onto a revenue account: still resolvable, still
-        // non-null, and silently wrong. UNIQUE(company_id, system_purpose)
-        // forces the vacate-then-reassign order.
-        $revenueAccountId = Account::forCompany($company->id)
-            ->where('system_purpose', SystemAccountPurpose::ProductRevenue->value)
+        $unmappedRevenueAccountId = Account::forCompany($company->id)
+            ->where('type', AccountType::Revenue->value)
+            ->whereNull('system_purpose')
             ->value('id');
 
-        $this->assertNotNull($revenueAccountId, 'TN chart must map ProductRevenue for this tamper case to be meaningful.');
+        $this->assertNotNull(
+            $unmappedRevenueAccountId,
+            'The TN chart must contain at least one Revenue account with no system_purpose for this '
+            .'tamper case to isolate the type mismatch. If the chart ever maps every revenue account, '
+            .'re-point onto a freshly created unmapped one rather than vacating an existing purpose.',
+        );
 
+        // UNIQUE(company_id, system_purpose) forces vacate-then-reassign.
         Account::forCompany($company->id)
             ->where('system_purpose', $tampered->value)
             ->update(['system_purpose' => null]);
         Account::forCompany($company->id)
-            ->where('id', $revenueAccountId)
+            ->where('id', $unmappedRevenueAccountId)
             ->update(['system_purpose' => $tampered->value]);
 
         try {

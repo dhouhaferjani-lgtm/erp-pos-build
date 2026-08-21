@@ -159,6 +159,24 @@ Enumerated from the provisioning dispatch itself, `ChartOfAccountsService::getSe
   neither guarantee. **That is the gap M2 closes.** The test pins
   `provisioning_enabled => false` in `setUp()` so it cannot silently drift onto the template arm.
 
+### Scope asymmetry between the two arms — the one dimension this gate structurally cannot see
+
+Deliverable 2 is scoped by the brief to the manifest's **REQUIRED** classification, so M2's legacy-arm
+gate enforces REQUIRED and nothing else. The template arm is broader: `TemplatePublishingService`
+(`:309-317`) additionally enforces the **SCOPE_REQUIRED** purpose for timbre countries. The asymmetry
+that follows is worth stating plainly:
+
+> A future edit dropping `SalesStampDutyPayable` from the Tunisian chart would be caught on the
+> **template** arm and **not** on the legacy one — even though `GeneralLedgerService.php:295` resolves
+> that purpose through the **throwing** `getAccountByPurpose()` on the TN credit-note path.
+
+**This is not a live gap and not a scope violation.** `TunisiaChartOfAccountsSeeder.php:210` maps the
+purpose today, and SCOPE_REQUIRED is outside deliverable 2's scope by the brief's own wording — M2
+enforcing it unilaterally would be the lane widening its own mandate. It is recorded here because it is
+the single classification the legacy-arm gate cannot observe, so a later reader does not mistake "the
+legacy arm is gated" for "the legacy arm is gated on everything the template arm is". Closing it is a
+scope decision for the country-defaults lane, not a defect in this guard.
+
 ### What it asserts, and how it differs from what already existed
 
 For each of TN / FR / XX, for each of the **28 manifest-REQUIRED** purposes: an account is mapped, **and**
@@ -192,29 +210,53 @@ uses, so they prove that body discriminates rather than exercising a parallel co
    `cost_of_goods_sold` mapping on a seeded **FR** fixture chart and asserts the failure message contains
    both `Country FR` and `cost_of_goods_sold`.
 2. `test_a_required_purpose_mapped_to_the_wrong_account_type_fails_and_names_both_types` — leaves
-   `customer_receivable` mapped on a seeded **TN** chart but moves it onto a Revenue account, and asserts
-   the failure names the country, the purpose, and `expectedAccountType`.
+   `customer_receivable` mapped on a seeded **TN** chart but moves it onto a Revenue account **that
+   carries no `system_purpose`**, and asserts the failure names the country, the purpose, and
+   `expectedAccountType`.
+
+   The destination account's being *unmapped* is load-bearing. Re-pointing onto an account that already
+   holds a purpose — the `ProductRevenue` account, as round 0 did — **vacates** that purpose as a side
+   effect, because `accounts_company_purpose_unique` is `UNIQUE(company_id, system_purpose)`. That
+   injects a second, unrelated defect (a *missing* mapping) alongside the intended type mismatch, and
+   which one the gate reports then depends on the order of `ProvisioningRequiredPurposesV1::entries()`
+   — order that `assertConforms()` does not pin, since it pins counts and uniqueness only. Round 1
+   finding 3. Using an unmapped account keeps the chart's only defect the type mismatch itself.
 
 ### Red-first mutation proof that the type assertion is load-bearing
 
 The completeness assertion is green at base (all three charts are complete), so a green run proves
 nothing on its own. The type assertion was therefore **deleted from the shared assertion body** and the
-class re-run. Tamper case 2 went RED, confirming the assertion is what catches a type mismatch and not
-decoration. Assertion count also fell from 200 to 108:
+class re-run.
+
+**Round 0's mutant did not prove what it claimed, and the claim is withdrawn** (round 1 finding 2).
+Because round-0 tamper 2 re-pointed onto the already-mapped `ProductRevenue` account, it vacated
+`product_revenue`. With the type assertion removed, the loop reached `customer_receivable` (still
+mapped, so it passed) and then died on `product_revenue` being **missing** — a collateral fixture
+side-effect, not a type mismatch. The 108-assertion mutant was therefore not evidence for the type
+assertion at all, and should not have been presented as such.
+
+After finding 3's de-brittling (tamper 2 now re-points onto an *unmapped* Revenue account, so the chart's
+only defect is the type mismatch), the mutation was re-run and is now **genuine**: with the type
+assertion gone, nothing in the chart fails, the loop completes clean, and tamper 2 falls through to its
+`$this->fail()`. That failure message is reachable only if the type assertion is what catches a type
+mismatch:
 
 ```
---- MUTANT RUN (type assertion removed from assertChartCoversRequiredPurposes) ---
+--- MUTANT RUN v2 (type assertion removed; tamper 2 de-brittled) ---
 ..F                                                                 3 / 3 (100%)
 
 1) Tests\Feature\Accounting\SeededChartManifestRequiredPurposeCompletenessTest::test_a_required_purpose_mapped_to_the_wrong_account_type_fails_and_names_both_types
-Failed asserting that 'Country TN: seeded chart does not map REQUIRED purpose product_revenue. ...
-Failed asserting that null is not null.' [ASCII](length: 244) contains "customer_receivable" [ASCII](length: 19).
+A type-mismatched REQUIRED purpose mapping did not fail the completeness gate.
+
+.../tests/Feature/Accounting/SeededChartManifestRequiredPurposeCompletenessTest.php:274
 
 FAILURES!
-Tests: 3, Assertions: 108, Failures: 1.
+Tests: 3, Assertions: 127, Failures: 1.
 ```
 
-The mutation was reverted and the class re-run green (§7).
+Independently of the mutation, the invariant also holds without any mutant at all: unmutated tamper 2
+asserts the failure message contains `expectedAccountType`, a string **only** the type assertion emits,
+and the class is green. The mutation was reverted and the class re-run green (§7).
 
 ---
 
@@ -257,7 +299,11 @@ The lane runs on **PostgreSQL** (job-level `DB_CONNECTION: pgsql`, `ci.yml:1048`
 verified against a real Postgres as well as the sqlite fast loop (§7).
 
 **Manifest edit made:** `apps/api/tests/feature-lane-manifest.json`, the `Accounting` group's
-informational `classes` count 81 → 82, with the note updated to say why. For **laned** groups this field
+informational `classes` count 81 → **83**, with the note updated to say why. 83 is the real count at the
+P3 tip: 81 at the 2026-08-21 accepted tip, plus **two** additions to this directory in this package —
+`ChokepointUnbalancedGuardTest` (M1) and `SeededChartManifestRequiredPurposeCompletenessTest` (M2).
+Round 0 wrote `82`, counting only M2's own file; that was false at HEAD and is corrected here (round 1
+finding 1). For **laned** groups this field
 is documentation only — P2's checker enforces ceilings for deferred/excluded groups exclusively
 (`:336-352`) — so this is a truthfulness edit, not a ratchet change. `debt_ceiling` is **untouched at
 1131**.
@@ -318,7 +364,9 @@ OK (3 tests, 200 assertions)
 
 ### 7.3 Red-first mutation
 
-See §4 — 3 tests, 108 assertions, 1 failure with the type assertion removed; reverted and re-run green.
+See §4 — mutant **v2** (post-de-brittling): 3 tests, 127 assertions, 1 failure with the type assertion
+removed, failing on tamper 2's own `$this->fail()`; reverted and re-run green. Round 0's 108-assertion
+mutant is **withdrawn** as evidence — it died on a collateral missing mapping, not on a type mismatch.
 
 ### 7.4 P2 feature-lane manifest checker — exit 0, debt unchanged
 
@@ -359,8 +407,9 @@ The lane's 750 tests include M2's 3. **The 5 errors are PRE-EXISTING and are not
 `DocumentPostingService.php:649` — i.e. the delivery-before-invoice rule from the
 document-per-action / DN lane, unrelated to chart purposes.
 
-Proven pre-existing rather than asserted: the M2 class was moved out of the tree and the failing class
-re-run on its own, reproducing **the identical 5 errors**:
+**What the file-removal experiment actually demonstrates — stated precisely** (round 1 finding 4). The M2
+class was moved out of the tree and the failing class re-run on its own, reproducing **the identical 5
+errors**:
 
 ```
 $ # (M2 test file temporarily removed from tests/Feature/Accounting/)
@@ -368,6 +417,13 @@ $ ./vendor/bin/phpunit tests/Feature/Accounting/InvoiceAndCreditNoteGLIntegratio
 ERRORS!
 Tests: 8, Assertions: 32, Errors: 5.
 ```
+
+That experiment proves **"not M2's"** — it does not by itself prove "red at base", since the branch also
+carries M1's `GeneralLedgerService` edits and exception split. Base attribution is established
+**separately**, by inspection of the range rather than by this run: nothing in `base..HEAD` touches
+`DocumentPostingService.php:649` or the delivery-before-invoice rule, and M1's only edit to a conversion
+path (`SalesOrderToInvoiceConverter`) is comment-only. The two together give the conclusion; the removal
+experiment alone does not.
 
 ⚠️ **Flagged for the parent's red-gate reconciliation, not owned by P3.** The `treasury-spine-pgsql`
 lane is the one M2 wires into, and it is already red at base on this class. M2 neither introduced nor
@@ -393,7 +449,7 @@ $ ./vendor/bin/phpstan analyse tests/Feature/Accounting/SeededChartManifestRequi
 | File | Change |
 |---|---|
 | `apps/api/tests/Feature/Accounting/SeededChartManifestRequiredPurposeCompletenessTest.php` | **new** — completeness + 2 tamper cases |
-| `apps/api/tests/feature-lane-manifest.json` | `Accounting.classes` 81 → 82 + note (informational for laned groups) |
+| `apps/api/tests/feature-lane-manifest.json` | `Accounting.classes` 81 → 83 + note (informational for laned groups) |
 | `docs/handoff/reviews/enforcement-p3/M2-reconciliation.md` | **new** — this document |
 
 Explicitly **not** touched: `ProvisioningRequiredPurposesV1.php`, `SystemAccountPurpose::requiredPurposes()`,
@@ -409,7 +465,7 @@ the three frozen country seeder class bodies, `ChartOfAccountsService::validateC
 |---|---|---|
 | **M2-D1** | **Test placed in `tests/Feature/Accounting/`, not `tests/Feature/CountryDefaults/`; no `ci.yml` allowlist edit; no ceiling/`debt_ceiling` raise.** | The dispatch's preferred route presumed the class would sit in a deferred group. `Accounting` is a **laned** group whose selector runs the whole directory on PR→dev, which satisfies the brief's actual rule ("a CI lane that ACTUALLY RUNS") strictly better than the allowlist it called the worst case — at zero coverage debt, against a global ceiling that has zero slack. Full comparison in §5. |
 | **M2-D2** | **Manifest partition is 28/1/4/10 (43 cases), not the brief's 27/1/4/9 (41).** | The landed manifest self-enforces 28/1/4/10 at `assertConforms():249`. Keyed to the landed authority per "CONSUMES the manifest; never redefines it". Recorded in §0 so the count mismatch is not later read as P3-introduced drift. |
-| **M2-D3** | **`feature-lane-manifest.json` edited** (a P2-owned artifact). | One informational integer + its note, for a **laned** group where the checker enforces no ceiling. Required for documentation truth once a class is added. `debt_ceiling` untouched; checker and its liveness suite both re-run green (§7.4, §7.5). |
+| **M2-D3** | **`feature-lane-manifest.json` edited** (a P2-owned artifact). | One informational integer + its note, for a **laned** group where the checker enforces no ceiling. Required for documentation truth once a class is added. Corrected at round 1 to **83**, the real count at the P3 tip (round 0's `82` counted only M2's own file and omitted M1's `ChokepointUnbalancedGuardTest`). `debt_ceiling` untouched at 1131; checker and its liveness suite both re-run green (§7.4, §7.5). |
 | **M2-D4** | **Tests run on the default sqlite `phpunit.xml` env, plus a PG cross-check** — no dedicated PG-only test env was built. | The existing chart-seeder conformance suite runs on the sqlite fast loop and the baseline was verified green there before any change. Because the wired lane is PG, the class was additionally run against scratch DB `p3m2_test` (§7.2). `autoerp_test` was never touched. |
 | **M2-D5** | **D-1 and D-2 reported, not fixed.** | Both are cross-lane changes to authority the P3 lane does not own — the manifest's gate-kind schema and the live-tenant validation set. The dispatch requires exactly this (deliverable A: "a REPORTED finding … NEVER a unilateral manifest edit"; deliverable E: F-4 is an owner gate). |
 
@@ -420,8 +476,42 @@ the three frozen country seeder class bodies, `ChartOfAccountsService::validateC
 - Deliverable A (reconciliation) — **done**, §1, zero misclassifications, two reported findings.
 - Deliverable B (per-country completeness CI test) — **done**, §3, 3 countries × 28 REQUIRED purposes,
   existence + type, manifest-keyed.
-- Deliverable C (tamper test) — **done**, §4, two axes plus a red-first mutation proof.
+- Deliverable C (tamper test) — **done**, §4, two axes (tamper 2 de-brittled at round 1) plus a valid
+  red-first mutation proof (mutant v2).
 - Deliverable D (CI wiring) — **done**, §5, laned on `treasury-spine-pgsql`, checker exit 0, debt unchanged.
 - Deliverable E (F-4 discipline) — **done**, §6, nothing tightened for live tenants; D-2 raised as the gate.
 
 **Blocked on nothing.** D-1 and D-2 are owed *rulings*, not owed work from this lane.
+
+---
+
+## 11. Round-1 fix record
+
+Verdict of record: `docs/handoff/reviews/enforcement-p3/M2-round1.md` — CHANGES-REQUIRED, five findings,
+all documentation-truth or brittleness; the guard itself was accepted as "sound, non-vacuous, correctly
+manifest-keyed, and genuinely CI-gated". All five are fixed.
+
+| Finding | Pri | Fix |
+|---|---|---|
+| **1** — `Accounting.classes: 82` false at HEAD; real count 83 | P2 | Corrected to **83** in `feature-lane-manifest.json` with the note naming BOTH additions to that directory in this package (M1's `ChokepointUnbalancedGuardTest`, M2's own class). Round 0 counted only its own file. §5, §8, M2-D3. |
+| **2** — red-first mutant died on a collateral missing mapping, not the type assertion | P2 | Round 0's 108-assertion mutant is **explicitly withdrawn** as evidence in §4, with the mechanism spelled out (re-pointing vacated `product_revenue` via `UNIQUE(company_id, system_purpose)`). Replaced by mutant **v2**, valid because finding 3's fix removes the collateral defect: with the type assertion gone the loop completes clean and tamper 2 falls through to its own `$this->fail()`. The independent non-mutation argument (the `expectedAccountType` string is emitted only by the type assertion) is stated alongside. |
+| **3** — tamper 2 coupled to `entries()` order | P3 | Tamper 2 now re-points `customer_receivable` onto a Revenue account carrying **no** `system_purpose`, so the chart's only defect is the type mismatch and the case is order-independent. Guarded by an `assertNotNull` on the destination account with an actionable message, and the reasoning is in the method docblock so the coupling cannot be reintroduced silently. |
+| **4** — pre-existing-red proof overclaimed | P3 | §7.6 now says what the file-removal experiment actually demonstrates (**"not M2's"**) and attributes "red at base" **separately**, by range inspection: nothing in `base..HEAD` touches `DocumentPostingService.php:649` or the delivery-before-invoice rule, and M1's `SalesOrderToInvoiceConverter` edit is comment-only. |
+| **5** — scope asymmetry between the two arms | P3 | New subsection in §3: the legacy-arm gate enforces REQUIRED only, so a future drop of `SalesStampDutyPayable` from the TN chart is caught on the template arm (`TemplatePublishingService:309-317`) but not the legacy one, even though `GeneralLedgerService.php:295` resolves it through the throwing `getAccountByPurpose()`. Verified **not a live gap** — `TunisiaChartOfAccountsSeeder.php:210` maps it, and FR/Generic map it zero times, consistent with its SCOPE_REQUIRED classification — and **not a scope violation**, since the brief scopes deliverable 2 to REQUIRED. |
+
+**No change to any finding's substance:** the guard, the country enumeration, the reconciliation table,
+D-1 and D-2 all stand as delivered. Findings 1, 2 and 4 corrected claims *about* the work; finding 3 was
+the only code change; finding 5 added a boundary note.
+
+### Round-1 re-verification
+
+| Check | Result |
+|---|---|
+| `phpunit …SeededChartManifestRequiredPurposeCompletenessTest.php` (sqlite) | **OK (3 tests, 200 assertions)** |
+| same, real PostgreSQL (`p3m2_test`) | **OK (3 tests, 200 assertions)** |
+| mutant v2 (type assertion removed) | **3 tests, 127 assertions, 1 failure** — tamper 2's own `$this->fail()`; reverted |
+| `php tools/feature-lane-manifest-check.php` | **EXIT=0**, coverage debt **1131** unchanged |
+| `phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php` | **OK (46 tests, 123 assertions)** |
+| `pint --test` on the touched test | **pass** |
+| `phpstan analyse … --level=8` | **[OK] No errors** |
+
