@@ -109,8 +109,8 @@ milestones:
     owner_gate: z-signed-bytes-versioning
     status: blocked_review
     commit: 0edbf402b       # z-decomp M1.1 (memo); amended by the round-1 fix round, see fix_commit
-    fix_commits: [63b756784, b13536a76]  # M1.2 = round-1 fixes; M1.3 = round-2 fixes. The round-3 fix commit is THIS commit (self-reference impossible at write time).
-    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round4.md   # written by the round-4 bridge run; if absent, round 4 did not complete — see verdict_history
+    fix_commits: [63b756784, b13536a76, faa0a3ec1]  # M1.2 round-1 fixes, M1.3 round-2 fixes, M1.4 round-3 fixes. The round-4 fix commit is THIS commit (self-reference impossible at write time).
+    verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round4.md   # LAST REGISTER THAT EXISTS AT THIS COMMIT. A later round's register is named in verdict_history only once it has been written — this field never forward-references.
     verdict_history:
       - round: 1
         register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round1.md
@@ -127,9 +127,16 @@ milestones:
           caveat; YAML verdict forward-reference)
       - round: 4
         register: docs/handoff/reviews/z-sale-branch-decomposition/M1-round4.md
-        result: see register
+        result: >-
+          CHANGES-REQUIRED (exit 2) — 0 P1, 2 P2 (the Option-A cost table was STILL broken — a
+          blank line orphaned A11-A14 as a delimiter-less block; two surviving cost claims still
+          charged Option A for zero archive work), 2 P3 (the absolute "reaches NO archive surface"
+          over-corrected — <HashFiscal> IS a hash over the changed bytes; YAML forward-reference)
+      - round: 5
+        register: PENDING — not yet run at this commit; named here only after it exists
+        result: pending
     last_verdict: see verdict_history
-    fix_rounds: 3
+    fix_rounds: 4
     memo: docs/handoff/reviews/z-sale-branch-decomposition/M1-signed-bytes-decision.md
     no_production_code: true
     findings:
@@ -181,8 +188,12 @@ milestones:
         <VentesBrutes> (gross_sales, :335) and <Taxe> (tax_amount, :336); addZReports() (:296-302)
         emits five scalars and no breakdown; the ticket-level <VentilationTVA> (:160-169) is fed
         per-receipt from the SALE_RECEIPT view, not from the Z. NET POSITION: this lane's per-rate
-        correction has ZERO NF525 export consequence under EITHER option, and A9 is not an Option-A
-        cost. Archive self-description is STRUCK as a flip condition. What the archive DOES carry
+        correction has no INTERPRETABLE NF525 export consequence under EITHER option, and A9 is not
+        an Option-A cost. (gate-r4 finding 3: ONE exported value does change — <HashFiscal>,
+        Nf525XmlBuilder.php:291, carrying ZReportProjection.php:114's fiscal_hash = the SHA-256 over
+        canonical_bytes. A hash differentiates nothing, so this does not restore archive
+        self-description as an Option-A argument; the claim is qualified rather than absolute
+        because this memo's NF525 reasoning was overstated in both directions before.) Archive self-description is STRUCK as a flip condition. What the archive DOES carry
         wrong is F-2's net_sales, exported as <VentesNettes> (Nf525XmlBuilder.php:299) for every
         taxed shift — see identity_inversion.
       identity_inversion: >-
@@ -194,7 +205,7 @@ milestones:
         above the per-rate table at :176-193), server-visible (ZReportProjection.php:149 vs :154)
         and — gate-r3 finding 2 — REGULATOR-visible: the headline reaches the NF525 JET export as
         <VentesNettes> (Nf525XmlBuilder.php:299) from the projection's verbatim passthrough. So the
-        asymmetry is: the per-rate values this lane FIXES reach no archive surface, while the
+        asymmetry is: the per-rate values this lane FIXES reach no interpretable archive surface, while the
         net_sales it does NOT fix is archived wrong for every taxed shift. gate-r3 finding 4: on a
         DISCOUNTED shift the gross column stays contradictory too (lines[] carry the
         pre-transaction-discount line_total, receiptService.ts:537, while the discount is
@@ -205,6 +216,14 @@ milestones:
         server-enforced invariant for SALE_RECEIPT (FiscalPayloadConstraintValidator.php:1097-1098,
         enforced :1139-1166); the Z family escapes it only via F-4. Ruling question 3 must be
         answered knowing this.
+      option_A_real_cost: >-
+        gate-r4 finding 2: Option A's real cost is NINE code sites across device + server
+        (A1-A3, A5-A8, with A4/A7 conditional on whether the version is ENFORCED or merely
+        stamped), plus 8 hardcoded-1 test sites (A12) and a golden fixture that must be authored
+        from scratch (A13, because no Z/X byte-stability vector exists). A9/A10 are NOT costs —
+        the archive layer requires zero work under either option — and A14 is a rollout
+        constraint, not code. Earlier revisions said "~13 sites ... plus an archive format",
+        which inflated the disfavoured option in the recommendation's own direction.
       option_A_deploy_ordering: >-
         M1 gate-r1 finding 1 (P2, closed in round 2 as memo item A14): Option A creates a
         SERVER-BEFORE-DEVICE deploy obligation that does not exist today. A device build authoring
@@ -251,4 +270,4 @@ milestones:
     verdict: null
     fix_rounds: 0
 
-updated: b13536a76   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)
+updated: faa0a3ec1   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)

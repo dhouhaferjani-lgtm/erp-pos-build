@@ -20,7 +20,7 @@ below was re-derived at `base_sha`.
 | **Second chain also affected** | The **legacy `z_reports` fiscal-hash chain** — `computeZReportHash` hashes the whole `report_data`, which contains `vat_breakdown`. That chain has **no `event_version` at all**, so Option A cannot make it self-describing. (§1.4) |
 | **Three findings the brief does not carry** | (F-1) `SESSION_CLOSE` is a third affected signed type. (F-2) **The brief's "headline totals are correct" premise is FALSE** — `net_sales` is independently wrong in the same signed bytes. (F-3) A fourth gross-as-net site exists in `zReportService.ts` itself (not signed). See §5. |
 | **Signed-history evidence** | **Nothing in the repository demonstrates any signed Z/X history exists** — no seeder, no fixture, no migration, no golden vector. That is not the same as proving none exists; device-local unsynced chains are unreachable from here. (§3) |
-| **NF525 archive** | **This lane's per-rate correction reaches NO archive surface** — neither the version stamp nor the `vat_breakdown` values are ever rendered. What the archive *does* carry wrong is F-2's `net_sales`, exported as `<VentesNettes>` for every taxed shift. (A9+A10, §1.3a) |
+| **NF525 archive** | **No *interpretable* value from this lane reaches the archive** — neither the version stamp nor the `vat_breakdown` values are ever rendered. (The exported `<HashFiscal>` does change, being a hash over the bytes; a hash differentiates nothing.) What the archive *does* carry wrong is F-2's `net_sales`, exported as `<VentesNettes>` for every taxed shift. (A9+A10, §1.3a) |
 | **Precedent** | The identical correction was already shipped **in place, at v1, with no discriminator**, on the refund branch — commit `77283d2a5` (2026-08-01). (§4) |
 
 ---
@@ -214,7 +214,6 @@ would exist purely to be read by a future verifier that does not exist yet (§1.
 | A8 | `apps/api/.../POS/Application/Projections/ZReportProjection.php:174-179` | A load-bearing comment states the design premise being retired: *"it is derived server-side rather than read off the device payload because `Z_REPORT` **stays v1** — adding a key to the canonical payload would quarantine 100 % of Z events."* Must be rewritten. `rowFromPayload()` (`:53-121`) and `legacyReportData()` (`:127-164`, `vat_breakdown` passthrough at `:154`) read Z payload keys directly and **never branch on the Z's own version** — they would need to, if the two semantics are ever to be told apart server-side. |
 | A9 | `apps/api/app/Modules/POS/Application/Services/Nf525DataProvider.php:1247-1281` | `mapCanonicalZReportGrandTotal()` reads `vat_breakdown` (`:1260`) off the signed payload into `Nf525GrandTotalData::$periodTotals`. **NOT an Option-A cost — corrected at M1 gate-r3: the builder never renders it** (see the NF525 block below). Listed only so an implementer does not add work here. |
 | A10 | `apps/api/app/Modules/Compliance/Services/Nf525/Nf525XmlBuilder.php:298-299`, `:319-350`, `:598` | **NOT an Option-A cost, and NOT a reason to prefer Option A.** No code change. The entry is kept because the *absence* of any archive visibility — for the version stamp **and** for the per-rate values — is itself a ruling input. See the NF525 block below the table. |
-
 | A11 | `app/Shared/Domain/CashRoundingCutover.php:44,52-55` | `EVENT_VERSION = 3` and `applies()` is a bare `>= 3` with **no event-type guard**. Not reachable for Z/X today; if Z/X ever pass ≥ 3 it misclassifies them as rounding-era. A v1→v2 bump does not reach it, but it is a latent trap the ruling should note. |
 | A12 | Tests that hardcode `1` | `apps/pos/src/lib/fiscal/__tests__/FiscalEventPayloadRegistry.test.ts:80-81` (`toBe(1)`); `apps/api/tests/Unit/Fiscal/FiscalEventPayloadRegistryTest.php:86-87` (`assertSame(1, …)`); Z fixtures at v1 in `tests/Feature/Fiscal/ZReportProjectionTest.php:333,375,422`, `ZSessionLifecycleQuarantineVisibilityTest.php:509,539,561`, `tests/Feature/POS/ZReportImmutabilityTest.php:400`. |
 | A13 | New test owed by the brief (M2 §4) | "Old events keep old semantics" needs its own test. **There is nothing to test it against**: no Z/X golden vector, byte-stability fixture or key-set test exists anywhere in the repo (§3.2), so the fixture would have to be authored from scratch. |
@@ -238,7 +237,7 @@ is a real operational cost and belongs in the ruling.
 **Option B has no ordering constraint at all**: three `bcsub` expressions, device-local, order-free
 against any API version.
 
-**A9 + A10 in full — the NF525 archive carries NOTHING from this lane (M1 gate-r2 finding 1, gate-r3 finding 1).**
+**A9 + A10 in full — the NF525 archive carries no INTERPRETABLE value from this lane (M1 gate-r2 finding 1, gate-r3 finding 1, qualified at gate-r4).**
 This memo has now been wrong about NF525 twice, in opposite directions, and both errors were wired
 into the Option-A case. The verified position, re-derived at `base_sha`:
 
@@ -258,10 +257,20 @@ into the Option-A case. The verified position, re-derived at `base_sha`:
    **per-receipt** from the `SALE_RECEIPT` canonical view (`Nf525DataProvider.php:661`, `:885`),
    not from the Z.
 
-**Therefore: this lane's per-rate correction has ZERO NF525 export consequence, under either
-option.** Archive self-description cannot be a reason to prefer Option A, and A9 is not an Option-A
-cost — there is nothing in the archive that could "silently mix conventions", because the values are
-never emitted.
+**Therefore: this lane's per-rate correction has no INTERPRETABLE NF525 export consequence, under
+either option.** Archive self-description cannot be a reason to prefer Option A, and A9 is not an
+Option-A cost — there is nothing in the archive that could "silently mix conventions", because the
+values are never emitted.
+
+3. **One exported value does change, and it is opaque (gate-r4 finding 3).** `<HashFiscal>`
+   (`Nf525XmlBuilder.php:291`) carries `$zReport->fiscalHash`, mapped from the projection's
+   `'fiscal_hash' => $event->current_hash` (`ZReportProjection.php:114`) — the SHA-256 **over**
+   `canonical_bytes`, which contain `vat_breakdown`. So an archive produced before and after this
+   correction differs in `<HashFiscal>` for every taxed shift, exactly as §1.4's legacy
+   `report_data` hash moves. **This does not restore the archive as an Option-A argument:** a hash
+   cannot differentiate two conventions — it only proves the bytes differ, which a verifier already
+   knows from the bytes. The claim is qualified here rather than left absolute because this memo's
+   NF525 reasoning has been overstated in both directions already.
 
 **What the archive DOES carry is F-2's defect.** `addZReports()` emits
 **`<VentesNettes>` ← `report_data['net_sales']`** (`Nf525XmlBuilder.php:299`, beside
@@ -353,7 +362,7 @@ pinned, no consumer contract changes.
 | | **A — new `event_version`** | **B — in-place** |
 |---|---|---|
 | Corrected values | identical | identical |
-| Files touched | ~13 sites across device + server + archive + 8 test sites (§2.1) | 3 expressions + fixtures (§2.2) |
+| Files touched | **9 real code sites** across device + server (A1-A3, A5-A8 + the conditional A4/A7), plus 8 hardcoded-`1` test sites and a from-scratch golden fixture (A12, A13). **A9/A10 are NOT costs** (zero archive work) and A14 is a rollout constraint, not code. | 3 expressions + fixtures (§2.2) |
 | Quarantine risk | **high** — omitting A3 quarantines 100 % of Z/X | none |
 | Deploy ordering | **server-before-device, mandatory** (A14). Inverted order quarantines 100 % of a terminal's Z/X on an append-only chain. Points **opposite** to D-3's device-before-server obligation on the same fleet | **none** — device-local, order-free |
 | Discriminator on the fiscal-event chain | yes | no |
@@ -577,8 +586,11 @@ The reasoning, weighted:
    this would be the first semantics-only bump in a system whose entire per-version machinery is
    built for key-set changes. Against that it carries a real quarantine hazard (A3) and is a
    **one-way door** (rule 8).
-2. **The cost asymmetry is large and the correctness benefit is identical.** ~13 sites across three
-   layers plus an archive format, versus three expressions — for the same corrected numbers.
+2. **The cost asymmetry is large and the correctness benefit is identical.** Nine real code sites
+   across two layers (device + server) plus eight hardcoded-`1` test sites and a golden fixture
+   that must be authored from scratch — versus three expressions — for the same corrected numbers.
+   **The archive layer costs nothing under either option** (A9/A10), so Option A is not being
+   charged for work it does not require.
 3. **The precedent is real and recent** (§4): the same field, the same event types, corrected in
    place at v1, gated and merged three weeks ago.
 4. **The evidence, as far as the repository can carry it, is that there is nothing to reinterpret**
@@ -672,4 +684,5 @@ The ruling should answer, explicitly:
 | 1 | fiscal-pos | **ACCEPT** — 0 P1, 1 P2, 4 P3 (`M1-round1.md`) | All five folded in before the ruling, because the artifact this memo feeds is a one-way door: P2 finding 1 → **A14** + the §2.3 row + ruling question 5; P3 finding 2 → the **Q2 default** in §6; P3 finding 3 → the `:504` citation correction in F-3; P3 finding 4 → progress-YAML `updated:`/`commit:` bookkeeping; P3 finding 5 → the third site's structural non-identity, flagged as an M2/R-2 note in §1.1. |
 | 2 | fiscal-pos | **CHANGES-REQUIRED** — 1 P1, 1 P2, 3 P3 (`M1-round2.md`) | **P1** → the NF525 argument for Option A was **factually wrong**: `<VersionEvenement>` (`Nf525XmlBuilder.php:598`) is emitted only inside `addQuarantineSection()`, so a *verified* v2 Z never carries its version into the archive. A10 rewritten, the §2.2 sentence corrected, and **flip condition 3 struck and replaced** — the corrected fact cuts *against* Option A. **P2** → new **§1.3a**: the fix *moves* the payload's internal contradiction from the gross column to the net column (`Σ net_amount` vs `net_sales`, off by the shift's full VAT) unless F-2 moves with it. **P3** → YAML `recommendation:` de-staled to Q1/Q3; YAML stop-state bookkeeping; three citation corrections (A9 path, `ZReportProjection.php:154`, `StrictCanonicalParser.php:628-634`). |
 | 3 | fiscal-pos | **CHANGES-REQUIRED** — 1 P1, 2 P2, 2 P3 (`M1-round3.md`) | **P1** → the round-2 *replacement* NF525 claim was **also false**: `addGrandTotals()` (`Nf525XmlBuilder.php:319-350`) emits only `<VentesBrutes>` and `<Taxe>` from `periodTotals`, so `vat_breakdown` is **never rendered** — this lane's correction has **zero** NF525 consequence, and A9 is not an Option-A cost. **P2** → §1.3a now records that F-2's `net_sales` **is** archive-visible as `<VentesNettes>` (`:299`); the correct framing is that the archive carries F-2's error and nothing from this lane. **P2** → the misplaced A10 prose had broken the Option-A cost table (A11–A14 rendering as a run-on paragraph, including A14's rollout hazard); the prose moved below the table. **P3** → the transaction-discount caveat in §1.3a; YAML `verdict:` forward-reference and `fix_commit`. |
-| 4 | fiscal-pos | see `M1-round4.md` | Re-gate of the round-3 fixes. |
+| 4 | fiscal-pos | **CHANGES-REQUIRED** — 0 P1, 2 P2, 2 P3 (`M1-round4.md`) | **P2** → the Option-A cost table was **still** broken: the round-3 fix moved the prose out but left a blank line orphaning A11-A14 as a delimiter-less block. Blank line deleted; a structural check now guards every table in the file. **P2** → two surviving cost claims (§2.3, §6 reason 2) still charged Option A for archive work the memo proves is zero; both restated as **9 real code sites**, with A9/A10 named as non-costs. **P3** → the absolute "reaches NO archive surface" over-corrected: `<HashFiscal>` (`Nf525XmlBuilder.php:291`) *is* a hash over the changed bytes, so the claim is now "no **interpretable** value" with the hash qualified as non-differentiating. **P3** → YAML `verdict:` no longer forward-references. |
+| 5 | fiscal-pos | see `M1-round5.md` | Re-gate of the round-4 fixes. |
