@@ -17,7 +17,7 @@
 | class **(c)** rows that are **genuine balance gaps** (unbalanced posted row reachable) | **0** |
 | new balance validators added | **0** (correct — see §4) |
 | red-first unbalanced-post tests presented as class-(c) evidence | **0** (correct — every candidate is green-at-base ⇒ DISQUALIFIED per C-2) |
-| deliverable **D** (chokepoint failure-mode normalization) | **1 genuine defect found and fixed**, red-first proven (§5) |
+| deliverable **D** (chokepoint failure-mode normalization) | **1 genuine posture defect found and fixed**, red-first proven (§5) — scope corrected mid-flight by the red run itself (§5.2) |
 | reported findings handed to the parent (out of 3(a) balance scope) | **6** (§6) |
 
 **The headline:** the GL posting chokepoint is genuinely complete for the balance
@@ -320,11 +320,28 @@ the chokepoint (`clearCustomerAdvanceToReceivable`, which posts at
 ```
 
 That `catch` matches **both** the chokepoint's `\InvalidArgumentException` *and* the
-house `UnbalancedJournalEntryException` (currently a `\RuntimeException`). An
-unbalanced GL post is therefore **downgraded to a `Log::warning`**, the conversion
+house `UnbalancedJournalEntryException` (a `\RuntimeException` before this change).
+A balance failure reaching it is **downgraded to a `Log::warning`**, the conversion
 reports success, and the customer advance is silently never cleared — the advance
-and receivable accounts diverge permanently with no loud failure. This is the exact
-incident class deliverable D names.
+and receivable accounts diverge permanently with no loud failure.
+
+> **Correction of record — the red-first run disproved the stronger claim, and the
+> weaker one is what is asserted here.** An earlier reading of this site claimed the
+> unbalanced post *is* swallowed today. The red baseline trace (§5.4) shows it is
+> **not**, and why: `clearCustomerAdvanceToReceivable` posts through
+> `postEntryAndDispatchPostedEventAfterCommit`, which **defers the post past the
+> `try` block via `DB::afterCommit` when `DB::transactionLevel() > 0`** and only
+> posts **synchronously — inside the `catch`'s reach — when the level is `0`**
+> (`GeneralLedgerService.php:106-108`). In the exercised conversion path the
+> converter's own transaction (`SalesOrderToInvoiceConverter.php:165` →
+> `DeliveryNoteBillingConcurrencyRetrier.php:40`) is open, so the failure escapes
+> **by transaction-nesting timing, not by design**.
+>
+> The defect is therefore correctly stated as: *the chokepoint's balance refusal is
+> untyped, and the only thing preventing an adjacent broad `catch` from swallowing
+> it is an incidental `afterCommit` deferral.* The normalization converts that
+> accidental escape into a guaranteed, explicit one. **No claim is made that a
+> production incident is occurring on this path today.**
 
 ### 5.3 The fix (no second balance algorithm)
 
@@ -346,7 +363,121 @@ and the only two tests referencing the chokepoint's unbalanced failure assert on
 
 ### 5.4 Red-first evidence
 
-<!-- RED_FIRST_EVIDENCE -->
+Both tests were written and run **before** any production change, against the
+unmodified base tree. `git stash` was **not** used at any point.
+
+**RED — test 1** (`tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php`),
+run at base:
+
+```
+$ ./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php \
+    --filter '^Tests\\Feature\\Accounting\\ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type$'
+
+F                                                                   1 / 1 (100%)
+
+1) Tests\Feature\Accounting\ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type
+Failed asserting that exception of type "InvalidArgumentException" matches expected exception
+"App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException".
+Message was: "Cannot post unbalanced journal entry: total debit 100.000 does not equal total credit 90.000." at
+  .../app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:3406      ← the chokepoint's bare throw
+  .../app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2781      ← postEntryWithOptionalActor
+  .../app/Modules/Accounting/Domain/Services/GeneralLedgerService.php:2774      ← postEntry
+
+FAILURES!
+Tests: 1, Assertions: 1, Failures: 1.
+```
+
+**RED — test 2** (`tests/Feature/Document/DocumentConversionScenarioTest.php`),
+run at base. The imbalance is produced with real production machinery (an Eloquent
+`created` hook adding a third leg to the still-unchained Draft) — `GeneralLedgerService`
+is `final` and cannot be doubled, so nothing is mocked:
+
+```
+$ ./vendor/bin/phpunit tests/Feature/Document/DocumentConversionScenarioTest.php \
+    --filter '^Tests\\Feature\\Document\\DocumentConversionScenarioTest::it_does_not_swallow_an_unbalanced_prepayment_gl_post$'
+
+1) Tests\Feature\Document\DocumentConversionScenarioTest::it_does_not_swallow_an_unbalanced_prepayment_gl_post
+Failed asserting that exception of type "InvalidArgumentException" matches expected exception
+"App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException".
+Message was: "Cannot post unbalanced journal entry: total debit 54.000 does not equal total credit 40.000." at
+  .../GeneralLedgerService.php:3406        ← chokepoint bare throw
+  .../GeneralLedgerService.php:2781/2774   ← postEntry
+  .../GeneralLedgerService.php:82/103      ← postEntryAndDispatchPostedEvent, via DB::afterCommit
+  .../Illuminate/Database/DatabaseTransactionRecord.php:86        ← THE DEFERRAL (see the §5.2 correction)
+  .../SalesOrderToInvoiceConverter.php:165 ← the converter's own transaction
+  .../DocumentConverterRegistry.php:105
+
+FAILURES!
+Tests: 1, Assertions: 1, Failures: 1.
+```
+
+> This trace is the evidence for the §5.2 correction: the throw passes through
+> `DatabaseTransactionRecord` (the `afterCommit` deferral), i.e. it lands **after**
+> the `try` block rather than inside it.
+
+**GREEN — after the change:**
+
+```
+$ ./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php
+OK (2 tests, 3 assertions)
+
+$ ./vendor/bin/phpunit tests/Feature/Document/DocumentConversionScenarioTest.php \
+    --filter '^Tests\\Feature\\Document\\DocumentConversionScenarioTest::it_does_not_swallow_an_unbalanced_prepayment_gl_post$'
+OK (1 test, 1 assertion)
+```
+
+**Regression — every test touching this exception path, all green:**
+
+| test path | result |
+|---|---|
+| `tests/Feature/Accounting/GeneralLedgerPostEntryScaleTest.php` (asserts `InvalidArgumentException` + message) | `OK (2 tests, 3 assertions)` |
+| `tests/Feature/Accounting/GLIntegrationTest.php` (catches `\InvalidArgumentException`) | `OK (29 tests, 120 assertions)` |
+| `tests/Feature/Accounting/InvoiceGLIntegrationTest.php` (catches `UnbalancedJournalEntryException`) | `OK (15 tests, 68 assertions)` |
+| `tests/Feature/Accounting/CreditNoteGLIntegrationTest.php` (same) | `OK (13 tests, 84 assertions)` |
+| `tests/Unit/Accounting/DoubleEntryValidationTest.php` | `OK (9 tests, 10 assertions)` |
+| `tests/Feature/Document/DocumentConversionScenarioTest.php` (whole file — includes the graceful `gl_entry_skipped` path, proving it is preserved) | `OK (14 tests, 36 assertions)` |
+
+Both pre-existing assertions on the chokepoint's failure survive **unchanged**,
+which is the point of the backward-compatible subclassing: `GLIntegrationTest`
+still catches it as `\InvalidArgumentException`, and `GeneralLedgerPostEntryScaleTest`
+still matches the identical message.
+
+### 5.5 Acceptance commands (deliverable D)
+
+Per gate-r2 R2-H-7 the selected-test count is asserted **nonzero** from the PHPUnit
+summary line (`apps/api/phpunit.xml` sets no `failOnEmptyTestSuite`, so an empty
+selection exits 0 and proves nothing).
+
+```bash
+cd apps/api
+./vendor/bin/phpunit tests/Feature/Accounting/ChokepointUnbalancedGuardTest.php \
+  --filter '^Tests\\Feature\\Accounting\\ChokepointUnbalancedGuardTest::test_chokepoint_raises_the_house_unbalanced_exception_type$'
+# → OK (1 test, 2 assertions)                              N = 1  ≥ 1  ✅
+
+./vendor/bin/phpunit tests/Feature/Document/DocumentConversionScenarioTest.php \
+  --filter '^Tests\\Feature\\Document\\DocumentConversionScenarioTest::it_does_not_swallow_an_unbalanced_prepayment_gl_post$'
+# → OK (1 test, 1 assertion)                               N = 1  ≥ 1  ✅
+```
+
+**No acceptance command is submitted for any class-(c) census row**, because there
+are none of that kind (§0, §4) — per the milestone contract, a module with zero
+class-(c) rows submits census evidence only and **no placeholder green**.
+
+### 5.6 Static analysis + style (touched files)
+
+```bash
+$ ./vendor/bin/pint --test <5 touched files>
+{"result":"pass"}
+
+$ ./vendor/bin/phpstan analyse --memory-limit=4G --no-progress \
+    app/Modules/Accounting/Domain/Exceptions/UnbalancedJournalEntryException.php \
+    app/Modules/Accounting/Domain/Services/GeneralLedgerService.php \
+    app/Modules/Document/Domain/Services/Conversion/Converters/SalesOrderToInvoiceConverter.php
+ [OK] No errors
+```
+
+PHPStan ran at level 8 against a live PG env (`phpstan.neon` `paths:` covers `app/`
+only, so the two touched test files are outside its scope by configuration).
 
 ---
 
@@ -371,4 +502,5 @@ and the only two tests referencing the chokepoint's unbalanced failure assert on
 | **M1-D2** | **The P1 baseline was insufficient as a census seed** — it holds 4 `journal_entries` keys (a violation set), not a creator inventory. The census was rebuilt independently and its completeness proven (§1). |
 | **M1-D3** | **Zero class-(c) guards added, zero class-(c) red-first tests.** This is the *correct* outcome under the C-2 ruling, not an omission: every structural bypass is green-at-base and therefore disqualified. Two leads were pursued to proof and killed (§4). The milestone's implementation content is deliverable D. |
 | **M1-D4** | **Worktree had no `vendor/`.** `composer install` was run in the worktree (a symlink to the main repo's `vendor` would autoload **stale main-repo** `App\` classes and invalidate every test result). Autoloader confirmed worktree-local. |
+| **M1-D6** | **A claim in this document was falsified by its own red run and corrected, not quietly dropped.** The first reading of `SalesOrderToInvoiceConverter:589` asserted that an unbalanced GL post *is* silently swallowed there today. The red baseline trace showed the throw travelling through `DatabaseTransactionRecord` — i.e. deferred past the `try` by `DB::afterCommit` — so the escape is real but incidental. §5.2 now states the weaker, provable claim and explicitly withdraws the stronger one. The fix stands on the corrected justification (an untyped refusal whose only protection is transaction-nesting timing), not on the withdrawn one. |
 | **M1-D5** | **PG verification instance.** The `numeric` rounding fact in §4.1 was verified against the **port 5432 Homebrew PostgreSQL 15** instance (`TimeZone = Africa/Tunis`), using a dedicated scratch database `p3m1_test`. `autoerp_test` was **not** touched. |

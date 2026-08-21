@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationContext;
@@ -586,6 +587,21 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                     $actorUserId,
                     (string) $invoice->currency,
                 );
+            } catch (UnbalancedJournalEntryException $e) {
+                // enforcement-P3 M1 deliverable D. A BALANCE failure is never a
+                // "GL clearing could not be created" case and must not be
+                // downgraded to a warning: swallowing it leaves the customer
+                // advance and the receivable permanently diverged while the
+                // conversion reports success.
+                //
+                // Whether the graceful catch below even sees this depends on
+                // transaction nesting — `postEntryAndDispatchPostedEventAfterCommit`
+                // posts synchronously (inside this `try`) when
+                // `DB::transactionLevel() === 0` and defers past it otherwise
+                // (GeneralLedgerService.php:106-108). Re-throwing here makes the
+                // fail-loud guarantee explicit instead of an accident of nesting.
+                // See docs/handoff/reviews/enforcement-p3/M1-census.md §5.
+                throw $e;
             } catch (\InvalidArgumentException|\RuntimeException $e) {
                 // If GL clearing cannot be created, log warning but don't fail the conversion.
                 Log::warning(

@@ -7,7 +7,9 @@ namespace Tests\Feature\Document;
 use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
@@ -224,6 +226,95 @@ class DocumentConversionScenarioTest extends TestCase
                 ->where('source_id', $invoice->id)
                 ->exists()
         );
+    }
+
+    /**
+     * enforcement-P3 M1 — deliverable D (chokepoint failure-mode normalization).
+     *
+     * The prepayment transfer wraps a LIVE GL post in a graceful `catch`. That
+     * catch is correct for the "cannot create" cases (the already-cleared advance
+     * covered by the test above), but it must NOT swallow a BALANCE failure: an
+     * unbalanced entry silently downgraded to a `Log::warning` leaves the advance
+     * and receivable accounts permanently diverged while the conversion reports
+     * success.
+     *
+     * The imbalance is produced with real production machinery — an Eloquent
+     * `created` hook adds a third, unbalancing leg to the prepayment entry while
+     * it is still an unchained Draft (which `JournalLineObserver` permits), so the
+     * chokepoint re-reads unbalanced lines and refuses. No mocking: the GL service
+     * is `final` and is exercised for real.
+     *
+     * Census evidence: `docs/handoff/reviews/enforcement-p3/M1-census.md` §5.
+     */
+    #[Test]
+    public function it_does_not_swallow_an_unbalanced_prepayment_gl_post(): void
+    {
+        $service = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => ProductType::Service,
+            'is_physical' => false,
+        ]);
+        $user = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Unbalanced Prepayment User',
+            'email' => 'unbalanced-prepayment@example.com',
+            'password' => bcrypt('password'),
+            'status' => UserStatus::Active,
+        ]);
+        $cashAccount = $this->seedPrepaymentApplicationAccounts();
+        $order = $this->createConfirmedOrder([
+            ['product_id' => $service->id, 'description' => 'Oil Change Service'],
+        ]);
+
+        app(GeneralLedgerService::class)->createCustomerAdvanceJournalEntry(
+            companyId: $this->company->id,
+            partnerId: $this->partner->id,
+            advanceId: (string) Str::uuid(),
+            amount: '40.000',
+            paymentMethodAccountId: $cashAccount->id,
+            date: now(),
+            user: $user,
+            description: 'Customer advance payment',
+            currencyCode: $this->company->currency,
+        );
+        PaymentAllocation::create([
+            'payment_id' => null,
+            'document_id' => $order->id,
+            'amount' => '40.000',
+        ]);
+
+        // Unbalance the prepayment entry between line creation and the post.
+        $injecting = false;
+        JournalLine::created(function (JournalLine $line) use (&$injecting, $cashAccount): void {
+            if ($injecting) {
+                return;
+            }
+
+            $entry = JournalEntry::find($line->journal_entry_id);
+            if ($entry === null
+                || $entry->source_type !== 'prepayment_application'
+                || $entry->status !== JournalEntryStatus::Draft) {
+                return;
+            }
+
+            $injecting = true;
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $cashAccount->id,
+                'debit' => '7.000',
+                'credit' => '0',
+                'description' => 'Injected unbalancing leg',
+                'line_order' => 99,
+            ]);
+            $injecting = false;
+        });
+
+        $this->expectException(UnbalancedJournalEntryException::class);
+
+        $this->converterRegistry->convert($order, DocumentType::Invoice, [
+            'actor_user_id' => $user->id,
+        ]);
     }
 
     #[Test]

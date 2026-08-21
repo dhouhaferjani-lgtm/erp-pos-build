@@ -20,9 +20,36 @@ namespace App\Modules\Accounting\Domain\Exceptions;
  * `JournalEntryController::store()` with `UNBALANCED_ENTRY`.
  *
  * W-6 D1a — docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md
+ *
+ * **Parent class (enforcement-P3 M1, deliverable D).** This extends
+ * `\InvalidArgumentException` because the GL posting chokepoint
+ * (`GeneralLedgerService::sealAndPersistEntry`) historically raised its balance
+ * refusal as a BARE `\InvalidArgumentException`. Making this type a REFINEMENT of
+ * that class lets the chokepoint raise the house type without breaking any
+ * pre-existing `catch (\InvalidArgumentException)` around a GL post, while giving
+ * callers a type they can single out and re-throw instead of swallowing.
+ * See `docs/handoff/reviews/enforcement-p3/M1-census.md` §5.
  */
-final class UnbalancedJournalEntryException extends \RuntimeException
+final class UnbalancedJournalEntryException extends \InvalidArgumentException
 {
+    /**
+     * The GL posting chokepoint's refusal.
+     *
+     * The message is BYTE-IDENTICAL to the string the chokepoint raised before
+     * the type was normalized — existing assertions on it stay valid.
+     *
+     * @param  numeric-string  $totalDebit
+     * @param  numeric-string  $totalCredit
+     */
+    public static function forChokepoint(string $totalDebit, string $totalCredit): self
+    {
+        return new self(sprintf(
+            'Cannot post unbalanced journal entry: total debit %s does not equal total credit %s.',
+            $totalDebit,
+            $totalCredit,
+        ));
+    }
+
     /**
      * @param  numeric-string  $totalDebits
      * @param  numeric-string  $totalCredits

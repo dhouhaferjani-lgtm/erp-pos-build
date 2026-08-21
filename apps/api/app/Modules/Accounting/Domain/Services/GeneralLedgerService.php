@@ -15,6 +15,7 @@ use App\Modules\Accounting\Domain\Enums\PostingMode;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
 use App\Modules\Accounting\Domain\Exceptions\ClosedFiscalPeriodException;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
@@ -3402,10 +3403,17 @@ final class GeneralLedgerService
             $eventTotalCredit = bcadd($eventTotalCredit, $line->credit, $currencyScale);
         }
 
+        // enforcement-P3 M1 deliverable D: the balance ALGORITHM above is
+        // unchanged — only the FAILURE MODE is normalized. The refusal is now
+        // raised as the house type (`UnbalancedJournalEntryException`, the same
+        // type `AccountingService::assertLegsBalance()` throws) rather than a bare
+        // `\InvalidArgumentException` that callers cannot tell apart from ordinary
+        // argument noise and therefore swallow in broad `catch` blocks. The type
+        // is a subclass of `\InvalidArgumentException` and the message is
+        // byte-identical, so this is backward compatible for every existing
+        // catcher. See docs/handoff/reviews/enforcement-p3/M1-census.md §5.
         if (bccomp($totalDebit, $totalCredit, $balanceScale) !== 0) {
-            throw new \InvalidArgumentException(
-                "Cannot post unbalanced journal entry: total debit {$totalDebit} does not equal total credit {$totalCredit}."
-            );
+            throw UnbalancedJournalEntryException::forChokepoint($totalDebit, $totalCredit);
         }
 
         // Serialize chain-sequence + hash reads per company via a transaction-scoped
