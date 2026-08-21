@@ -48,6 +48,16 @@
  * tax_amount` would FAIL that tripwire on every discounted or cash-rounded
  * shift. Both facts are pinned as tests below, not asserted in prose.
  *
+ * Independently confirmed across the layer boundary (rule 20): the SERVER derives
+ * the same figure. `PosCoreReceiptProjection.php:259,:386` stores the CANONICAL
+ * payload's `subtotal` — the NET — into `pos_receipts.subtotal`, and
+ * `ReportGenerationService.php:1054` sums THAT column into its own `net_sales`.
+ * The server column named `subtotal` is therefore the net while the device column
+ * of the same name is the gross, and only this derivation makes the device Z and
+ * the server Z agree on `net_sales` for the same shift. They disagreed by the full
+ * VAT before this fix, and `total − tax_amount` would have kept them disagreeing on
+ * every discounted or cash-rounded shift.
+ *
  * The transaction-discount / cash-rounding wedge therefore lives exactly where
  * the canonical receipt puts it — between `gross_sales` (Σ `total`) and
  * `net_sales + tax_amount`, reconciled on the receipt by

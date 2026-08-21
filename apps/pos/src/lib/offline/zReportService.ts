@@ -930,6 +930,18 @@ function aggregateReportData(
     // F-4 server tripwire enforces (SALE_RECEIPT #2/#3,
     // `FiscalPayloadConstraintValidator.php:1155-1170`).
     //
+    // CROSS-LAYER CONFIRMATION (rule 20 — the layers hide their contracts from
+    // each other, so this was checked rather than assumed). The SERVER computes
+    // the same figure independently: `PosCoreReceiptProjection.php:259,:386`
+    // stores the CANONICAL payload's `subtotal` — the NET — into
+    // `pos_receipts.subtotal`, and `ReportGenerationService.php:1054` sums THAT
+    // column into its own `net_sales`. So the server column named `subtotal` is
+    // the net while the device column of the same name is the gross, and only
+    // this derivation makes the device Z and the server Z report the same
+    // `net_sales` for the same shift. Before this fix they disagreed by the full
+    // VAT; `total − tax_amount` would have kept them disagreeing on every
+    // discounted or cash-rounded shift.
+    //
     // Consequence, stated rather than glossed: on a discounted or cash-rounded
     // shift `net_sales + tax_amount != gross_sales`. The wedge is the discount
     // plus the rounding, exactly as on the canonical receipt (whose identity #1
