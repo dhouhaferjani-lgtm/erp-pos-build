@@ -8,13 +8,19 @@ max_fix_rounds: 5
 # Pinned at dispatch 2026-08-21 by the parent orchestrator (session 0578e8d8).
 # Brief gate: Codex Sol CHANGES-REQUIRED round 1 (6 findings) -> all applied in the dispatched
 # revision -> dispatch authorized. Round-0 precheck: all three defect sites live at base.
-base_sha: null  # executor pins at M0: git rev-parse dev at worktree creation (the local-dev tip carrying this gated brief; its first parent chain reaches origin/dev c6d6308ae)
+# Pinned by the executor at M0 = `git rev-parse dev` at worktree creation, per the brief's
+# HARD PREREQUISITES §1. NOTE: the brief's "OPEN AT DISPATCH" item 1 says c6d6308ae on the
+# assumption origin/dev == local dev tip; that is stale — the dispatch commit 9d14cb8e1 itself
+# landed on local dev after c6d6308ae. §1's normative rule governs. c6d6308ae is VERIFIED in
+# 9d14cb8e1's first-parent ancestry (git merge-base --is-ancestor). Drift item D-1 in
+# docs/handoff/reviews/z-sale-branch-decomposition/M0-preflight.md.
+base_sha: 9d14cb8e1afae9b9cd3e5afa9d8bfac8dd2aabd3
 branch: codex/z-sale-branch-decomposition-2026-08-18
 worktree: .worktrees/z-sale-decomposition
 commit_series: "z-decomp M<m>.<s>:"
 ledger_row: C-2   # parent closes at merge with the lane's evidence line
 
-status: dispatched
+status: in_progress
 blockers: []
 
 owner_gates:
@@ -34,10 +40,34 @@ milestones:
   - id: M0
     title: preflight — base pin, defect present in all 3 sites, citation inventory
     review_lenses: []
-    status: pending
-    commit: null
-    verdict: null
+    status: passed          # setup-only milestone; review_lenses is empty by design
+    commit: null            # self-referential at write time; the SHA is recorded by M1's commit
+    verdict: null           # no bridge review at M0 (review_lenses: [])
     fix_rounds: 0
+    artifact: docs/handoff/reviews/z-sale-branch-decomposition/M0-preflight.md
+    findings:
+      base_check: 3/3 PASS (ancestor, empty diff at creation, all three defect sites live)
+      citation_inventory: 23 citations re-derived at base_sha; unresolved = 0
+      citation_drift:
+        D-1: brief "OPEN AT DISPATCH" item 1 pins c6d6308ae; actual local dev tip is 9d14cb8e1 (no consequence — §1 governs, ancestry verified)
+        D-2: endOfDayPreview.ts citations are +4 stale (comment 263-278 -> 267-282; refund 284-295 -> 288-299; SALE DEFECT 297-304 -> 301-308). LEDGER C-2 inherits the same +4.
+      third_site: >-
+        CONFIRMED INDEPENDENT — aggregateReportData is module-private (zReportService.ts:803,
+        no `export`) with exactly one call site (:232, same file); reportApi.ts imports only
+        generateZReport (:12) and carries its own loop (:452-504, own vatByRate at :449);
+        endOfDayPreview.ts carries a third (:284-309, own vatByRate at :212). Scope stays at 3.
+      fourth_vatByRate_site: >-
+        buildReceiptData.ts:270-283 also builds a vatByRate — OUT OF SCOPE and ALREADY CORRECT:
+        it consumes CartItem[] (:255) not offline_receipts.lines[], shape {taxable,tax}, feeds
+        the PRINTED receipt (:318-324), and :274 already derives taxable = bcsub(line_total,
+        tax_amount, decimals). Corroborates that line_total is GROSS on a sale line.
+      regression_set: >-
+        Tier 1 (6 suites): zReportService.test.ts, zReportService.cashRounding.test.ts,
+        endOfDayPreview.test.ts, api/__tests__/reportApi.test.ts,
+        api/__tests__/reportApi.localTimestamps.test.ts, refundReportingEndToEnd.test.ts.
+        Tier 2 (8 downstream .tsx/.ts suites) + Tier 3 (6 writer-side fixture suites) —
+        full list in the M0 artifact. Tests BY PATH only.
+      env: worktree had no node_modules; `pnpm install --frozen-lockfile` run at M0 (exit 0). No tests executed at M0.
   - id: M1
     title: signed-bytes decision memo (memo-quality bridge review, then STOP blocked_review)
     review_lenses: [fiscal-pos]
@@ -68,4 +98,4 @@ milestones:
     verdict: null
     fix_rounds: 0
 
-updated: dispatch
+updated: 9d14cb8e1   # base_sha marker (no clock; harness "No clock" rule)
