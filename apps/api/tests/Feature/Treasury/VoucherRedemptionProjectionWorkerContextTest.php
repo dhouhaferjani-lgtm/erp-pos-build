@@ -175,25 +175,29 @@ final class VoucherRedemptionProjectionWorkerContextTest extends TestCase
     // =================================================================
 
     /**
-     * The two full-flow arms above cannot, by themselves, distinguish the fix
-     * from a scale HARDCODED to 3: 3 is the global maximum in
-     * {@see CurrencyScale}, `bcmul` only ever truncates, and
-     * the whole-projection recorder still sees a `getScale('EUR')` from
-     * `VoucherRedemptionService:150` no matter what the GL layer does. Verified
-     * by mutation: `$scale = 2` fails the TND arm, `$scale = 3` passes both.
+     * In the two full-flow arms the entity currency and the COMPANY currency
+     * are necessarily the same string, so neither can tell "resolved from the
+     * ledger row" apart from "read off the company record" — and reading it off
+     * the company is the plausible wrong fix here, since
+     * `GeneralLedgerService::currencyCodeForCompany()` sits immediately below
+     * `scale()` and the ticket itself floated it.
      *
-     * So this arm isolates the seam. It calls `createVoucherLedgerEntry()`
-     * directly with the recorder reset immediately beforehand, so every
-     * recorded call belongs to the method under test, and it puts the entity
-     * currency (TND, scale 3) DELIBERATELY at odds with the company currency
-     * (EUR, scale 2) — the company being the other plausible source, and the
-     * one `GeneralLedgerService::currencyCodeForCompany()` sitting right below
-     * `scale()` would have supplied.
+     * This arm splits them: the entity is denominated in TND (scale 3) inside a
+     * company denominated in EUR (scale 2). It calls
+     * `createVoucherLedgerEntry()` directly, with the recorder reset
+     * immediately beforehand, so caller attribution is unambiguous.
      *
-     * It therefore fails on all three wrong answers:
+     * A note on the value assertion: a scale hardcoded to 3 cannot be caught by
+     * VALUE anywhere on this path — 3 is the global maximum in
+     * {@see CurrencyScale} and `bcmul` only ever truncates, so a too-high scale
+     * is numerically invisible. That is precisely why the recorder attributes
+     * calls to their caller: a constant makes no resolver call at all.
+     *
+     * Mutation-verified — this arm fails on every wrong answer:
      *   - bare no-arg `getScale()`   → UnboundCompanyContextException (context cleared)
-     *   - company-sourced currency   → records 'EUR', truncates 10.005 to 10.00
-     *   - hardcoded constant         → records NO getScale call at all
+     *   - `$scale = 2`               → no call attributed to the seam
+     *   - `$scale = 3`               → no call attributed to the seam
+     *   - company-sourced currency   → records 'EUR', and truncates 10.005 to 10.00
      */
     public function test_voucher_gl_scale_comes_from_the_ledger_row_currency_not_the_company_or_a_constant(): void
     {
