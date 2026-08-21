@@ -251,6 +251,10 @@ $errors = [];
 $notes = [];
 /** @var list<string> jobs resolved from the workflow for each declared lane */
 $resolvedLaneJobs = [];
+/** @var array<string,true> lane ids whose owning job is guarded by a repository-variable flag */
+$gatedLanes = [];
+/** @var list<string> jobs owning a flag-gated lane */
+$gatedLaneJobs = [];
 $deferredGroups = 0;
 $deferredClasses = 0;
 $excludedGroups = 0;
@@ -509,6 +513,139 @@ foreach ($lanes as $laneId => $lane) {
             $why,
         );
     }
+
+    // ---- B4. FLAG-GATED LANES (O-29 / F-2 execution ruling, 2026-08-21) ------
+    // A SEVENTH way a lane stops gating, and the one this session introduces: the
+    // lane is real, it runs the whole directory, its job is in the aggregate — and
+    // its job carries `if: ${{ vars.X == 'true' }}` for a repository variable that
+    // is OFF, so it executes on NO event at all. Every check above passes and the
+    // COVERAGE DEBT counter drops to zero while nothing new runs. That is the
+    // search-and-replace erasure the N-3 comment above warned about, one level
+    // further down, and it is exactly the shape of the self-hosted-runner rollout.
+    //
+    // So flag-gating must be DECLARED (`execution_gate`), VERIFIED against the job
+    // guard, and COUNTED out loud until the flag is flipped. Neither direction is
+    // free: a job guarded by a `vars.` expression with no declaration fails, and a
+    // declaration naming a flag the job does not reference fails too.
+    $gate = $lane['execution_gate'] ?? null;
+    $jobIsVarGuarded = str_contains($jobIf, 'vars.');
+    if ($jobIsVarGuarded && ($gate === null || $gate === '')) {
+        $errors[] = sprintf(
+            'LANE "%s" lives in job "%s", whose `if:` is guarded by a repository variable (%s), but the '
+            .'lane declares no `execution_gate`. A lane that executes on no event until an owner flips a '
+            .'flag must say so in the manifest — otherwise it silently erases the coverage-debt count it '
+            .'was created to discharge.',
+            $laneId,
+            $owningJob,
+            var_export($jobIf, true),
+        );
+    }
+    if ($gate !== null) {
+        if (! is_string($gate) || $gate === '') {
+            $errors[] = sprintf('LANE "%s" declares a non-string/empty `execution_gate`.', $laneId);
+        } elseif (! str_contains($jobIf, $gate)) {
+            $errors[] = sprintf(
+                'LANE "%s" declares execution_gate %s, but job "%s" `if:` (%s) does not reference it. The '
+                .'declared gate must be the REAL one, or flipping the real flag changes execution while the '
+                .'manifest still reports the lane parked.',
+                $laneId,
+                var_export($gate, true),
+                $owningJob,
+                var_export($jobIf, true),
+            );
+        } else {
+            $gatedLanes[$laneId] = true;
+            $gatedLaneJobs[] = $owningJob;
+        }
+    }
+}
+
+// ---- B4a. how many classes sit in lanes that do not execute yet -------------
+$gatedGroups = 0;
+$gatedClasses = 0;
+foreach ($byGroup as $group => $members) {
+    $entry = $groups[$group] ?? null;
+    if (! is_array($entry) || ! isset($entry['lane'])) {
+        continue;
+    }
+    if (($gatedLanes[(string) $entry['lane']] ?? false) === true) {
+        $gatedGroups++;
+        $gatedClasses += count($members);
+
+        // PER-GROUP CEILING SURVIVES THE MOVE. A `deferred` group carries an
+        // enforced non-growth ceiling; a group laned into a lane that does not
+        // execute yet is in exactly the same position, so it keeps exactly the
+        // same ceiling. Without this, a single global gated total would let a
+        // deletion in one parked group silently fund a new silent class in
+        // another — strictly weaker than the state this replaced. The ceiling
+        // is dropped (and `classes` becomes informational, as for any live
+        // lane) at the moment the execution gate is flipped.
+        if (! isset($entry['classes']) || ! is_int($entry['classes'])) {
+            $errors[] = sprintf(
+                'GROUP "%s" is laned into flag-gated lane "%s" and must keep its integer `classes` ceiling '
+                .'until the gate is flipped.',
+                $group,
+                (string) $entry['lane'],
+            );
+        } elseif (count($members) > $entry['classes']) {
+            $errors[] = sprintf(
+                'PARKED-LANE COVERAGE GREW: group "%s" now holds %d class(es), ceiling is %d. Its lane "%s" '
+                .'is wired but parked behind an unflipped execution gate, so a new class here still runs '
+                .'nowhere — the ceiling stays enforced until the gate is flipped.',
+                $group,
+                count($members),
+                $entry['classes'],
+                (string) $entry['lane'],
+            );
+        }
+    }
+}
+if ($gatedLanes !== []) {
+    // Ceiling with the same shrink-only semantics as `debt_ceiling`: parking
+    // classes behind an unflipped flag is a transitional state, and it must cost
+    // a deliberate edit to grow — otherwise "wire a lane, leave the flag off"
+    // becomes a quieter dumping ground than `deferred` ever was.
+    $gatedCeiling = $manifest['gated_ceiling'] ?? null;
+    if (! is_int($gatedCeiling)) {
+        $errors[] = 'MANIFEST declares flag-gated lane(s) but no integer top-level `gated_ceiling`.';
+    } elseif ($gatedClasses > $gatedCeiling) {
+        $errors[] = sprintf(
+            'GATED-LANE COVERAGE GREW: %d class(es) now sit in lanes parked behind an unflipped execution '
+            .'gate, ceiling is %d. Lower the ceiling when a gate is flipped or a class leaves; raising it '
+            .'is a deliberate edit.',
+            $gatedClasses,
+            $gatedCeiling,
+        );
+    }
+}
+
+// ---- B5. the aggregate's skip-tolerance list == exactly the gated lane jobs --
+// `all-checks-pass` must tolerate a SKIPPED dependency for flag-gated jobs only
+// (GitHub skips every dependent of a skipped job unless the dependent opts out),
+// and must NOT tolerate it for anything else. Left unchecked, the opt-out list is
+// a one-word way to make any red job non-blocking: add its name and its failure
+// becomes "skipped-and-allowed" to a reader, while this checker still certifies
+// aggregate membership.
+$allowSkipped = null;
+foreach (($workflowYaml['jobs']['all-checks-pass']['steps'] ?? []) as $aggregateStep) {
+    if (isset($aggregateStep['env']['ALLOW_SKIPPED_JOBS'])) {
+        $allowSkipped = (string) $aggregateStep['env']['ALLOW_SKIPPED_JOBS'];
+    }
+}
+$declaredSkippable = $allowSkipped === null
+    ? []
+    : array_values(array_filter(array_map('trim', explode(',', $allowSkipped)), static fn (string $s): bool => $s !== ''));
+$expectedSkippable = array_values(array_unique($gatedLaneJobs));
+sort($declaredSkippable);
+sort($expectedSkippable);
+if ($declaredSkippable !== $expectedSkippable) {
+    $errors[] = sprintf(
+        'AGGREGATE SKIP-TOLERANCE MISMATCH: `all-checks-pass` tolerates skipped jobs %s, but the flag-gated '
+        .'lane jobs are %s. The two sets must be identical — a name in the tolerance list that is not a '
+        .'flag-gated lane job is a job whose failure or disappearance the aggregate would forgive.',
+        json_encode($declaredSkippable),
+        json_encode($expectedSkippable),
+    );
 }
 
 // ---- B1. THE TRIGGER SET ----------------------------------------------------
@@ -811,6 +948,81 @@ if (! is_int($declaredDebtCeiling)) {
     );
 }
 
+// ---- E. FIRST-EXECUTION QUARANTINE (O-29 triage posture) --------------------
+// Turning on a lane that has never executed surfaces pre-existing reds in bulk.
+// The repo's answer to bulk pre-existing red is a RATCHET, not a waiver: an
+// explicit, enumerated, shrink-only list. `tests/quarantine.json` is that list —
+// every entry names one class (or one method), the lane it belongs to, a reason
+// and the date it was opened; `Tests\TestCase` skips exactly those entries and
+// only when AUTOERP_QUARANTINE=1. Absent file = no quarantine at all (strictly
+// safer, so its absence is not an error). Present file = every property below is
+// enforced, and the total may never exceed the ceiling.
+$quarantinePath = $apiRoot.'/tests/quarantine.json';
+$quarantineCount = 0;
+if (is_file($quarantinePath)) {
+    try {
+        $quarantine = json_decode((string) file_get_contents($quarantinePath), true, 512, JSON_THROW_ON_ERROR);
+    } catch (Throwable $e) {
+        $quarantine = null;
+        $errors[] = 'QUARANTINE tests/quarantine.json does not parse as JSON: '.$e->getMessage();
+    }
+    if (is_array($quarantine)) {
+        $entries = $quarantine['entries'] ?? null;
+        $quarantineCeiling = $quarantine['ceiling'] ?? null;
+        if (! is_array($entries)) {
+            $errors[] = 'QUARANTINE tests/quarantine.json has no `entries` object.';
+            $entries = [];
+        }
+        $quarantineCount = count($entries);
+        if (! is_int($quarantineCeiling)) {
+            $errors[] = 'QUARANTINE tests/quarantine.json has no integer `ceiling`.';
+        } elseif ($quarantineCount > $quarantineCeiling) {
+            $errors[] = sprintf(
+                'QUARANTINE GREW: %d entr(ies), ceiling is %d. A quarantine list may shrink freely and may '
+                .'never grow — fix the test, or raise the ceiling deliberately with the lane\'s baseline.',
+                $quarantineCount,
+                $quarantineCeiling,
+            );
+        }
+        foreach ($entries as $target => $meta) {
+            $target = (string) $target;
+            if (preg_match('/^Tests(\\\\[A-Za-z0-9_]+)+(::[A-Za-z0-9_]+)?$/', $target) !== 1) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" is not a `Tests\\…\\SomeTest` class or `…Test::test_method` target.',
+                    $target,
+                );
+
+                continue;
+            }
+            $class = explode('::', $target)[0];
+            $file = $apiRoot.'/'.str_replace('\\', '/', lcfirst($class)).'.php';
+            if (! is_file($file)) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" names a class with no file at %s. A stale entry silently skips '
+                    .'nothing while still occupying the ceiling — delete it.',
+                    $target,
+                    $file,
+                );
+            }
+            if (! is_array($meta) || empty($meta['reason']) || empty($meta['lane']) || empty($meta['opened'])) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" must carry `lane`, `reason` and `opened`.',
+                    $target,
+                );
+
+                continue;
+            }
+            if (! isset($lanes[(string) $meta['lane']])) {
+                $errors[] = sprintf(
+                    'QUARANTINE entry "%s" names lane "%s", which is not declared in `lanes`.',
+                    $target,
+                    (string) $meta['lane'],
+                );
+            }
+        }
+    }
+}
+
 // ---- report ----------------------------------------------------------------
 foreach ($notes as $note) {
     fwrite(STDOUT, "  note: {$note}\n");
@@ -839,6 +1051,27 @@ if ($excludedGroups > 0) {
         ."    reason; relabelling a `deferred` group as `excluded` does NOT remove it from this report.\n",
         $excludedGroups,
         $excludedClasses,
+    ));
+}
+
+if ($gatedGroups > 0) {
+    // Loud on EVERY run, for the same reason the debt line is: these groups have
+    // a real, whole-directory, aggregate-member lane — and it executes on NO
+    // event until the owner flips the flag. Reported until that day.
+    fwrite(STDOUT, sprintf(
+        "  ⚠ PARKED BEHIND AN EXECUTION GATE: %d group(s) / %d class(es) are laned but not yet running —\n"
+        ."    their job(s) are guarded by a repository-variable flag that is off. Flipping it is the owner\n"
+        ."    ops step in docs/handoff/DESIGN-f2-feature-lane-execution-2026-08-21.md §7.\n",
+        $gatedGroups,
+        $gatedClasses,
+    ));
+}
+
+if ($quarantineCount > 0) {
+    fwrite(STDOUT, sprintf(
+        "  ⚠ QUARANTINED: %d test target(s) are skipped when AUTOERP_QUARANTINE=1, each with a lane, a\n"
+        ."    reason and an open date in tests/quarantine.json. Shrink-only.\n",
+        $quarantineCount,
     ));
 }
 

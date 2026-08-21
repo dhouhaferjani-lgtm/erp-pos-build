@@ -50,6 +50,12 @@ final class FeatureLaneManifestCheckerTest extends TestCase
             $this->apiRoot.'/../../.github/workflows/ci.yml',
             $this->sandbox.'/.github/workflows/ci.yml',
         );
+        // O-29: the quarantine ratchet the Feature lanes triage through. Copied so
+        // the happy-path case exercises its validation too, not only the negative.
+        copy(
+            $this->apiRoot.'/tests/quarantine.json',
+            $this->sandbox.'/apps/api/tests/quarantine.json',
+        );
         // The checker resolves vendor/autoload.php relative to its api root.
         symlink($this->apiRoot.'/vendor', $this->sandbox.'/apps/api/vendor');
         // Only the tree shape matters, so mirror the real Feature dirs by symlink.
@@ -170,6 +176,37 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     {
         // The strict half of the brief's negative proof: a new class in an
         // EXISTING uncovered group must fail loudly, not tick a stdout counter.
+        //
+        // The fixture group is resolved from the manifest rather than hard-coded:
+        // O-29 laned every group that used to be `deferred` except `(root files)`,
+        // so a literal name here would have silently started exercising the
+        // PARKED-lane ceiling (its own case below) instead of this one.
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $deferred = null;
+        foreach ($manifest['groups'] as $group => $entry) {
+            if (($entry['deferred'] ?? false) === true) {
+                $deferred = (string) $group;
+                break;
+            }
+        }
+        self::assertNotNull($deferred, 'expected at least one deferred group to exercise the debt ceiling');
+        $manifest['groups'][$deferred]['classes'] -= 1;
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('COVERAGE DEBT GREW', $out);
+    }
+
+    /**
+     * O-29: a group laned into a lane that has not been switched on yet keeps the
+     * ceiling it had while `deferred`. Without this, "wire a lane, leave the flag
+     * off" would be a QUIETER dumping ground than the state it replaced.
+     */
+    public function test_it_fires_when_a_parked_lane_group_grows(): void
+    {
         $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         $manifest['groups']['Admin']['classes'] -= 1;
@@ -178,7 +215,102 @@ final class FeatureLaneManifestCheckerTest extends TestCase
         [$exit, $out] = $this->runChecker();
 
         self::assertSame(1, $exit, $out);
-        self::assertStringContainsString('COVERAGE DEBT GREW', $out);
+        self::assertStringContainsString('PARKED-LANE COVERAGE GREW', $out);
+    }
+
+    /**
+     * O-29: the erasure this whole file exists to prevent, one level down. A lane
+     * can be REAL, run the WHOLE directory, sit in the aggregate — and execute on
+     * no event at all, because its job is guarded by a repository variable that is
+     * off. Dropping `execution_gate` from the manifest would zero the parked
+     * counter while nothing runs.
+     */
+    public function test_it_fires_when_a_flag_gated_lane_hides_its_gate(): void
+    {
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        unset($manifest['lanes']['feature-lane-platform-misc/Api']['execution_gate']);
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('declares no `execution_gate`', $out);
+    }
+
+    /** O-29: the declared gate must be the gate the job actually carries. */
+    public function test_it_fires_when_a_lane_declares_a_gate_the_job_does_not_carry(): void
+    {
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $manifest['lanes']['feature-lane-platform-misc/Api']['execution_gate'] = "vars.SOME_OTHER_FLAG == 'true'";
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('does not reference it', $out);
+    }
+
+    /**
+     * O-29: `all-checks-pass` tolerates a SKIPPED dependency only for the
+     * flag-gated lane jobs. Adding any other job to that list would make its
+     * absence forgivable to the one gate that aggregates every other gate.
+     */
+    public function test_it_fires_when_the_aggregate_tolerates_a_skip_it_should_not(): void
+    {
+        $wf = $this->workflow();
+        self::assertStringContainsString('ALLOW_SKIPPED_JOBS: feature-lane-', $wf);
+        $this->writeWorkflow(str_replace(
+            'ALLOW_SKIPPED_JOBS: feature-lane-catalog',
+            'ALLOW_SKIPPED_JOBS: security-regression,feature-lane-catalog',
+            $wf,
+        ));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('AGGREGATE SKIP-TOLERANCE MISMATCH', $out);
+    }
+
+    /**
+     * O-29: lane resolution is a PREFIX match, so `tests/Feature/Service` also
+     * matches the `tests/Feature/Services` step. The trailing slash on every new
+     * lane selector is what keeps resolution one-to-one; strip it and the checker
+     * must refuse to certify either lane.
+     */
+    public function test_it_fires_when_a_lane_selector_becomes_ambiguous(): void
+    {
+        $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
+        $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
+        $manifest['lanes']['feature-lane-documents/Service']['selector'] = './vendor/bin/phpunit tests/Feature/Service';
+        file_put_contents($manifestPath, json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('resolves to 2 steps', $out);
+    }
+
+    /**
+     * O-29 triage posture: the quarantine list is a shrink-only ratchet, not a
+     * waiver. Raising the entry count above the recorded ceiling must fail.
+     */
+    public function test_it_fires_when_the_quarantine_grows(): void
+    {
+        $quarantinePath = $this->sandbox.'/apps/api/tests/quarantine.json';
+        $quarantine = json_decode((string) file_get_contents($quarantinePath), true, 512, JSON_THROW_ON_ERROR);
+        $quarantine['entries']['Tests\\Feature\\Admin\\AdminDashboardStatsTest'] = [
+            'lane' => 'feature-lane-tenancy/Admin',
+            'reason' => 'planted by the liveness test',
+            'opened' => '2026-08-21',
+        ];
+        file_put_contents($quarantinePath, json_encode($quarantine, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+
+        [$exit, $out] = $this->runChecker();
+
+        self::assertSame(1, $exit, $out);
+        self::assertStringContainsString('QUARANTINE GREW', $out);
     }
 
     public function test_it_fires_when_a_lane_misreports_its_pr_dev_coverage(): void

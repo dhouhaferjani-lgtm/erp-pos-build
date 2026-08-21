@@ -1,18 +1,19 @@
 {
-  "note": "Assignment of every tests/Feature top-level group to a CI lane, an exclusion, or a deferral. Enforced by tools/feature-lane-manifest-check.php, which runs as a discrete step in the backend-architecture job (no `if:` guard, in all-checks-pass `needs`). A new directory has no entry here and FAILS the check - that is the whole point: before this file, a new Feature class in an unlisted directory ran nowhere, forever, and nothing said so. `classes` is an ENFORCED non-growth CEILING for `deferred`/`excluded` groups: such a group may shrink freely and may NEVER grow, so a new class there fails CI until the ceiling is raised deliberately or the group is laned. It is NOT documentation.",
+  "note": "Assignment of every tests/Feature top-level group to a CI lane, an exclusion, or a deferral. Enforced by tools/feature-lane-manifest-check.php, which runs as a discrete step in the backend-architecture job (no `if:` guard, in all-checks-pass `needs`). A new directory has no entry here and FAILS the check - that is the whole point: before this file, a new Feature class in an unlisted directory ran nowhere, forever, and nothing said so. `classes` is an ENFORCED non-growth CEILING for `deferred`/`excluded` groups AND for groups laned into a lane that is still PARKED behind an execution gate: such a group may shrink freely and may NEVER grow, so a new class there fails CI until the ceiling is raised deliberately or the lane actually executes. It is NOT documentation. O-29 (2026-08-21): the 71 formerly `deferred` groups now carry real lanes, 8 self-hosted jobs partitioned by module family; those jobs are guarded by `vars.SELF_HOSTED_RUNNER_READY` and execute on no event until the owner registers the runner and flips it. Full design: docs/handoff/DESIGN-f2-feature-lane-execution-2026-08-21.md.",
   "dispositions": {
-    "lane": "Runs automatically in the named CI lane. New classes in the group are picked up with no edit here.",
+    "lane": "Runs automatically in the named CI lane. New classes in the group are picked up with no edit here — UNLESS the lane declares an `execution_gate`, in which case the lane is wired but parked, the group keeps its enforced ceiling, and the parked total is reported loudly on every run until the gate is flipped.",
     "excluded": "Genuinely cannot run in CI (needs a device, an external service, a manual fixture). Requires `reason`.",
-    "deferred": "CAN run, but no lane runs it yet; blocked on the F-2 CI-budget decision. Requires `reason`. Counted loudly on every CI run."
+    "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
-  "debt_ceiling": 1131,
+  "debt_ceiling": 1,
+  "gated_ceiling": 1130,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
       "step": "Security regression suite (module gating + kill-switches)",
       "selector": "./vendor/bin/phpunit tests/Feature/Security",
       "runs_on_pr_dev": true,
-      "events_note": "EVERY event that starts the workflow \u2014 PR->dev, PR->main, push->main, workflow_dispatch. The job has NO `if:` guard, by the parent ruling of 2026-08-19 on brief F-2's sub-decision. It was previously a step inside the `if:`-gated backend-test job and therefore did not run on PR->dev.",
+      "events_note": "EVERY event that starts the workflow — PR->dev, PR->main, push->main, workflow_dispatch. The job has NO `if:` guard, by the parent ruling of 2026-08-19 on brief F-2's sub-decision. It was previously a step inside the `if:`-gated backend-test job and therefore did not run on PR->dev.",
       "note": "Whole directory, not a filter list, so new classes are gated the moment they land."
     },
     "treasury-spine-pgsql/feature-treasury": {
@@ -30,13 +31,643 @@
       "runs_on_pr_dev": true,
       "events_note": "PR->dev, PR->main, push->main, workflow_dispatch.",
       "note": "Same PG rationale as the Treasury directory."
+    },
+    "feature-lane-pos/POS": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/POS",
+      "selector": "./vendor/bin/phpunit tests/Feature/POS/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group POS of the Sales & POS lane."
+    },
+    "feature-lane-pos/Cart": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/Cart",
+      "selector": "./vendor/bin/phpunit tests/Feature/Cart/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Cart of the Sales & POS lane."
+    },
+    "feature-lane-pos/Voucher": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/Voucher",
+      "selector": "./vendor/bin/phpunit tests/Feature/Voucher/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Voucher of the Sales & POS lane."
+    },
+    "feature-lane-pos/Loyalty": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/Loyalty",
+      "selector": "./vendor/bin/phpunit tests/Feature/Loyalty/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Loyalty of the Sales & POS lane."
+    },
+    "feature-lane-pos/Coupon": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/Coupon",
+      "selector": "./vendor/bin/phpunit tests/Feature/Coupon/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Coupon of the Sales & POS lane."
+    },
+    "feature-lane-pos/Promotion": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/Promotion",
+      "selector": "./vendor/bin/phpunit tests/Feature/Promotion/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Promotion of the Sales & POS lane."
+    },
+    "feature-lane-pos/Progression": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/Progression",
+      "selector": "./vendor/bin/phpunit tests/Feature/Progression/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Progression of the Sales & POS lane."
+    },
+    "feature-lane-pos/Pricing": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/Pricing",
+      "selector": "./vendor/bin/phpunit tests/Feature/Pricing/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Pricing of the Sales & POS lane."
+    },
+    "feature-lane-pos/SmartPrompts": {
+      "job": "feature-lane-pos",
+      "step": "Feature lane Sales & POS — tests/Feature/SmartPrompts",
+      "selector": "./vendor/bin/phpunit tests/Feature/SmartPrompts/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group SmartPrompts of the Sales & POS lane."
+    },
+    "feature-lane-fiscal-finance/Fiscal": {
+      "job": "feature-lane-fiscal-finance",
+      "step": "Feature lane Fiscal & Finance — tests/Feature/Fiscal",
+      "selector": "./vendor/bin/phpunit tests/Feature/Fiscal/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Fiscal of the Fiscal & Finance lane."
+    },
+    "feature-lane-fiscal-finance/Compliance": {
+      "job": "feature-lane-fiscal-finance",
+      "step": "Feature lane Fiscal & Finance — tests/Feature/Compliance",
+      "selector": "./vendor/bin/phpunit tests/Feature/Compliance/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Compliance of the Fiscal & Finance lane."
+    },
+    "feature-lane-fiscal-finance/Taxation": {
+      "job": "feature-lane-fiscal-finance",
+      "step": "Feature lane Fiscal & Finance — tests/Feature/Taxation",
+      "selector": "./vendor/bin/phpunit tests/Feature/Taxation/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Taxation of the Fiscal & Finance lane."
+    },
+    "feature-lane-fiscal-finance/Expense": {
+      "job": "feature-lane-fiscal-finance",
+      "step": "Feature lane Fiscal & Finance — tests/Feature/Expense",
+      "selector": "./vendor/bin/phpunit tests/Feature/Expense/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Expense of the Fiscal & Finance lane."
+    },
+    "feature-lane-fiscal-finance/Income": {
+      "job": "feature-lane-fiscal-finance",
+      "step": "Feature lane Fiscal & Finance — tests/Feature/Income",
+      "selector": "./vendor/bin/phpunit tests/Feature/Income/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Income of the Fiscal & Finance lane."
+    },
+    "feature-lane-inventory/Inventory": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/Inventory",
+      "selector": "./vendor/bin/phpunit tests/Feature/Inventory/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Inventory of the Inventory & Supply lane."
+    },
+    "feature-lane-inventory/BatchExpiry": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/BatchExpiry",
+      "selector": "./vendor/bin/phpunit tests/Feature/BatchExpiry/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group BatchExpiry of the Inventory & Supply lane."
+    },
+    "feature-lane-inventory/Procurement": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/Procurement",
+      "selector": "./vendor/bin/phpunit tests/Feature/Procurement/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Procurement of the Inventory & Supply lane."
+    },
+    "feature-lane-inventory/Replenishment": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/Replenishment",
+      "selector": "./vendor/bin/phpunit tests/Feature/Replenishment/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Replenishment of the Inventory & Supply lane."
+    },
+    "feature-lane-inventory/PurchaseHub": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/PurchaseHub",
+      "selector": "./vendor/bin/phpunit tests/Feature/PurchaseHub/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group PurchaseHub of the Inventory & Supply lane."
+    },
+    "feature-lane-inventory/Uom": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/Uom",
+      "selector": "./vendor/bin/phpunit tests/Feature/Uom/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Uom of the Inventory & Supply lane."
+    },
+    "feature-lane-inventory/Location": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/Location",
+      "selector": "./vendor/bin/phpunit tests/Feature/Location/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Location of the Inventory & Supply lane."
+    },
+    "feature-lane-inventory/Partner": {
+      "job": "feature-lane-inventory",
+      "step": "Feature lane Inventory & Supply — tests/Feature/Partner",
+      "selector": "./vendor/bin/phpunit tests/Feature/Partner/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Partner of the Inventory & Supply lane."
+    },
+    "feature-lane-catalog/Catalog": {
+      "job": "feature-lane-catalog",
+      "step": "Feature lane Catalog & Product — tests/Feature/Catalog",
+      "selector": "./vendor/bin/phpunit tests/Feature/Catalog/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Catalog of the Catalog & Product lane."
+    },
+    "feature-lane-catalog/Product": {
+      "job": "feature-lane-catalog",
+      "step": "Feature lane Catalog & Product — tests/Feature/Product",
+      "selector": "./vendor/bin/phpunit tests/Feature/Product/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Product of the Catalog & Product lane."
+    },
+    "feature-lane-catalog/Channel": {
+      "job": "feature-lane-catalog",
+      "step": "Feature lane Catalog & Product — tests/Feature/Channel",
+      "selector": "./vendor/bin/phpunit tests/Feature/Channel/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Channel of the Catalog & Product lane."
+    },
+    "feature-lane-catalog/Marketplace": {
+      "job": "feature-lane-catalog",
+      "step": "Feature lane Catalog & Product — tests/Feature/Marketplace",
+      "selector": "./vendor/bin/phpunit tests/Feature/Marketplace/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Marketplace of the Catalog & Product lane."
+    },
+    "feature-lane-catalog/Vehicle": {
+      "job": "feature-lane-catalog",
+      "step": "Feature lane Catalog & Product — tests/Feature/Vehicle",
+      "selector": "./vendor/bin/phpunit tests/Feature/Vehicle/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Vehicle of the Catalog & Product lane."
+    },
+    "feature-lane-catalog/Menu": {
+      "job": "feature-lane-catalog",
+      "step": "Feature lane Catalog & Product — tests/Feature/Menu",
+      "selector": "./vendor/bin/phpunit tests/Feature/Menu/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Menu of the Catalog & Product lane."
+    },
+    "feature-lane-catalog/ModelUpdates": {
+      "job": "feature-lane-catalog",
+      "step": "Feature lane Catalog & Product — tests/Feature/ModelUpdates",
+      "selector": "./vendor/bin/phpunit tests/Feature/ModelUpdates/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group ModelUpdates of the Catalog & Product lane."
+    },
+    "feature-lane-documents/Document": {
+      "job": "feature-lane-documents",
+      "step": "Feature lane Documents & Service — tests/Feature/Document",
+      "selector": "./vendor/bin/phpunit tests/Feature/Document/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Document of the Documents & Service lane."
+    },
+    "feature-lane-documents/DocumentIngestion": {
+      "job": "feature-lane-documents",
+      "step": "Feature lane Documents & Service — tests/Feature/DocumentIngestion",
+      "selector": "./vendor/bin/phpunit tests/Feature/DocumentIngestion/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group DocumentIngestion of the Documents & Service lane."
+    },
+    "feature-lane-documents/Workshop": {
+      "job": "feature-lane-documents",
+      "step": "Feature lane Documents & Service — tests/Feature/Workshop",
+      "selector": "./vendor/bin/phpunit tests/Feature/Workshop/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Workshop of the Documents & Service lane."
+    },
+    "feature-lane-documents/Service": {
+      "job": "feature-lane-documents",
+      "step": "Feature lane Documents & Service — tests/Feature/Service",
+      "selector": "./vendor/bin/phpunit tests/Feature/Service/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Service of the Documents & Service lane."
+    },
+    "feature-lane-documents/Services": {
+      "job": "feature-lane-documents",
+      "step": "Feature lane Documents & Service — tests/Feature/Services",
+      "selector": "./vendor/bin/phpunit tests/Feature/Services/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Services of the Documents & Service lane."
+    },
+    "feature-lane-documents/Scheduling": {
+      "job": "feature-lane-documents",
+      "step": "Feature lane Documents & Service — tests/Feature/Scheduling",
+      "selector": "./vendor/bin/phpunit tests/Feature/Scheduling/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Scheduling of the Documents & Service lane."
+    },
+    "feature-lane-documents/Contact": {
+      "job": "feature-lane-documents",
+      "step": "Feature lane Documents & Service — tests/Feature/Contact",
+      "selector": "./vendor/bin/phpunit tests/Feature/Contact/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Contact of the Documents & Service lane."
+    },
+    "feature-lane-tenancy/Identity": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Identity",
+      "selector": "./vendor/bin/phpunit tests/Feature/Identity/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Identity of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Tenant": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Tenant",
+      "selector": "./vendor/bin/phpunit tests/Feature/Tenant/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Tenant of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Company": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Company",
+      "selector": "./vendor/bin/phpunit tests/Feature/Company/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Company of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/CompanyConfig": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/CompanyConfig",
+      "selector": "./vendor/bin/phpunit tests/Feature/CompanyConfig/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group CompanyConfig of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Admin": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Admin",
+      "selector": "./vendor/bin/phpunit tests/Feature/Admin/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Admin of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/SupportAccess": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/SupportAccess",
+      "selector": "./vendor/bin/phpunit tests/Feature/SupportAccess/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group SupportAccess of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Permissions": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Permissions",
+      "selector": "./vendor/bin/phpunit tests/Feature/Permissions/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Permissions of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Authorization": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Authorization",
+      "selector": "./vendor/bin/phpunit tests/Feature/Authorization/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Authorization of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Subscription": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Subscription",
+      "selector": "./vendor/bin/phpunit tests/Feature/Subscription/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Subscription of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Billing": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Billing",
+      "selector": "./vendor/bin/phpunit tests/Feature/Billing/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Billing of the Tenancy & Identity lane."
+    },
+    "feature-lane-tenancy/Modules": {
+      "job": "feature-lane-tenancy",
+      "step": "Feature lane Tenancy & Identity — tests/Feature/Modules",
+      "selector": "./vendor/bin/phpunit tests/Feature/Modules/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Modules of the Tenancy & Identity lane."
+    },
+    "feature-lane-data-console/Console": {
+      "job": "feature-lane-data-console",
+      "step": "Feature lane Data & Console — tests/Feature/Console",
+      "selector": "./vendor/bin/phpunit tests/Feature/Console/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Console of the Data & Console lane."
+    },
+    "feature-lane-data-console/Seeders": {
+      "job": "feature-lane-data-console",
+      "step": "Feature lane Data & Console — tests/Feature/Seeders",
+      "selector": "./vendor/bin/phpunit tests/Feature/Seeders/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Seeders of the Data & Console lane."
+    },
+    "feature-lane-data-console/Import": {
+      "job": "feature-lane-data-console",
+      "step": "Feature lane Data & Console — tests/Feature/Import",
+      "selector": "./vendor/bin/phpunit tests/Feature/Import/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Import of the Data & Console lane."
+    },
+    "feature-lane-data-console/Migration": {
+      "job": "feature-lane-data-console",
+      "step": "Feature lane Data & Console — tests/Feature/Migration",
+      "selector": "./vendor/bin/phpunit tests/Feature/Migration/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Migration of the Data & Console lane."
+    },
+    "feature-lane-data-console/Migrations": {
+      "job": "feature-lane-data-console",
+      "step": "Feature lane Data & Console — tests/Feature/Migrations",
+      "selector": "./vendor/bin/phpunit tests/Feature/Migrations/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Migrations of the Data & Console lane."
+    },
+    "feature-lane-data-console/Schema": {
+      "job": "feature-lane-data-console",
+      "step": "Feature lane Data & Console — tests/Feature/Schema",
+      "selector": "./vendor/bin/phpunit tests/Feature/Schema/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Schema of the Data & Console lane."
+    },
+    "feature-lane-data-console/CountryDefaults": {
+      "job": "feature-lane-data-console",
+      "step": "Feature lane Data & Console — tests/Feature/CountryDefaults",
+      "selector": "./vendor/bin/phpunit tests/Feature/CountryDefaults/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group CountryDefaults of the Data & Console lane."
+    },
+    "feature-lane-platform-misc/PlatformIntegration": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/PlatformIntegration",
+      "selector": "./vendor/bin/phpunit tests/Feature/PlatformIntegration/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group PlatformIntegration of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Api": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Api",
+      "selector": "./vendor/bin/phpunit tests/Feature/Api/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Api of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Http": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Http",
+      "selector": "./vendor/bin/phpunit tests/Feature/Http/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Http of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Architecture": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Architecture",
+      "selector": "./vendor/bin/phpunit tests/Feature/Architecture/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Architecture of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Bootstrap": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Bootstrap",
+      "selector": "./vendor/bin/phpunit tests/Feature/Bootstrap/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Bootstrap of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Broadcasting": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Broadcasting",
+      "selector": "./vendor/bin/phpunit tests/Feature/Broadcasting/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Broadcasting of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Communication": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Communication",
+      "selector": "./vendor/bin/phpunit tests/Feature/Communication/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Communication of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Notification": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Notification",
+      "selector": "./vendor/bin/phpunit tests/Feature/Notification/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Notification of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Dashboard": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Dashboard",
+      "selector": "./vendor/bin/phpunit tests/Feature/Dashboard/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Dashboard of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/EventSourcing": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/EventSourcing",
+      "selector": "./vendor/bin/phpunit tests/Feature/EventSourcing/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group EventSourcing of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Events": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Events",
+      "selector": "./vendor/bin/phpunit tests/Feature/Events/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Events of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Jobs": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Jobs",
+      "selector": "./vendor/bin/phpunit tests/Feature/Jobs/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Jobs of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Performance": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Performance",
+      "selector": "./vendor/bin/phpunit tests/Feature/Performance/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Performance of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Precision": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Precision",
+      "selector": "./vendor/bin/phpunit tests/Feature/Precision/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Precision of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/Shared": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/Shared",
+      "selector": "./vendor/bin/phpunit tests/Feature/Shared/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group Shared of the Platform & Misc lane."
+    },
+    "feature-lane-platform-misc/T2": {
+      "job": "feature-lane-platform-misc",
+      "step": "Feature lane Platform & Misc — tests/Feature/T2",
+      "selector": "./vendor/bin/phpunit tests/Feature/T2/",
+      "runs_on_pr_dev": false,
+      "execution_gate": "vars.SELF_HOSTED_RUNNER_READY == 'true'",
+      "events_note": "PR->main, push->main, workflow_dispatch — AND ONLY once the repository variable SELF_HOSTED_RUNNER_READY is set to \"true\". Never PR->dev: these are minute-expensive suites and PR->dev stays the cheap gate (O-29 design §4).",
+      "note": "Whole directory, not a filter list. Runs on the self-hosted `autoerp-heavy` runner against a real PostgreSQL 16 + Redis service pair, so PG-only behaviour executes instead of markTestSkipped-ing. Group T2 of the Platform & Misc lane."
     }
   },
   "groups": {
     "(root files)": {
       "deferred": true,
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "reason": "STRUCTURALLY UN-LANEABLE, and the only surviving coverage debt: a lane disposition requires a whole-DIRECTORY selector ending in tests/Feature/<Group>, and loose files at the root of tests/Feature have no such directory. The single class here is ExampleTest.php (the Laravel scaffold). Fix by moving any real root-level Feature test into a laned directory; the ceiling of 1 means a second root file fails CI."
     },
     "Accounting": {
       "lane": "treasury-spine-pgsql/feature-accounting",
@@ -44,362 +675,362 @@
       "note": "Informational for lane groups: the ceiling is enforced only for deferred/excluded groups; a laned directory picks up new classes automatically. 86 on disk at the O-27 tip: 81 at the 2026-08-21 accepted tip, plus ChokepointUnbalancedGuardTest (P3 M1) and SeededChartManifestRequiredPurposeCompletenessTest (P3 M2) = 83, plus ChartPurposeBackfillSeederParityTest, LiveTenantChartValidationParityTest and BackfillChartRequiredPurposesO27MigrationTest (O-27 F-4)."
     },
     "Admin": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Admin",
       "classes": 9,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Api": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Api",
       "classes": 2,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Architecture": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Architecture",
       "classes": 2,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Authorization": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Authorization",
       "classes": 2,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "BatchExpiry": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/BatchExpiry",
       "classes": 16,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Billing": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Billing",
       "classes": 2,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Bootstrap": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Bootstrap",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Broadcasting": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Broadcasting",
       "classes": 2,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Cart": {
-      "deferred": true,
+      "lane": "feature-lane-pos/Cart",
       "classes": 6,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Catalog": {
-      "deferred": true,
+      "lane": "feature-lane-catalog/Catalog",
       "classes": 33,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Channel": {
-      "deferred": true,
+      "lane": "feature-lane-catalog/Channel",
       "classes": 9,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Communication": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Communication",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Company": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Company",
       "classes": 30,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "CompanyConfig": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/CompanyConfig",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Compliance": {
-      "deferred": true,
+      "lane": "feature-lane-fiscal-finance/Compliance",
       "classes": 22,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Console": {
-      "deferred": true,
+      "lane": "feature-lane-data-console/Console",
       "classes": 15,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Contact": {
-      "deferred": true,
+      "lane": "feature-lane-documents/Contact",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "CountryDefaults": {
-      "deferred": true,
+      "lane": "feature-lane-data-console/CountryDefaults",
       "classes": 28,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Coupon": {
-      "deferred": true,
+      "lane": "feature-lane-pos/Coupon",
       "classes": 2,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Dashboard": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Dashboard",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Document": {
-      "deferred": true,
+      "lane": "feature-lane-documents/Document",
       "classes": 74,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "DocumentIngestion": {
-      "deferred": true,
+      "lane": "feature-lane-documents/DocumentIngestion",
       "classes": 6,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "EventSourcing": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/EventSourcing",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Events": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Events",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Expense": {
-      "deferred": true,
+      "lane": "feature-lane-fiscal-finance/Expense",
       "classes": 22,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Fiscal": {
-      "deferred": true,
+      "lane": "feature-lane-fiscal-finance/Fiscal",
       "classes": 79,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Http": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Http",
       "classes": 2,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Identity": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Identity",
       "classes": 31,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Import": {
-      "deferred": true,
+      "lane": "feature-lane-data-console/Import",
       "classes": 16,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Income": {
-      "deferred": true,
+      "lane": "feature-lane-fiscal-finance/Income",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Inventory": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/Inventory",
       "classes": 106,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Jobs": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Jobs",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Location": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/Location",
       "classes": 6,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Loyalty": {
-      "deferred": true,
+      "lane": "feature-lane-pos/Loyalty",
       "classes": 17,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Marketplace": {
-      "deferred": true,
+      "lane": "feature-lane-catalog/Marketplace",
       "classes": 8,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Menu": {
-      "deferred": true,
+      "lane": "feature-lane-catalog/Menu",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Migration": {
-      "deferred": true,
+      "lane": "feature-lane-data-console/Migration",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Migrations": {
-      "deferred": true,
+      "lane": "feature-lane-data-console/Migrations",
       "classes": 5,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "ModelUpdates": {
-      "deferred": true,
+      "lane": "feature-lane-catalog/ModelUpdates",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Modules": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Modules",
       "classes": 53,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Notification": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Notification",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "POS": {
-      "deferred": true,
+      "lane": "feature-lane-pos/POS",
       "classes": 143,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Partner": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/Partner",
       "classes": 20,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Performance": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Performance",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Permissions": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Permissions",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "PlatformIntegration": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/PlatformIntegration",
       "classes": 11,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Precision": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Precision",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Pricing": {
-      "deferred": true,
+      "lane": "feature-lane-pos/Pricing",
       "classes": 8,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Procurement": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/Procurement",
       "classes": 25,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Product": {
-      "deferred": true,
+      "lane": "feature-lane-catalog/Product",
       "classes": 55,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Progression": {
-      "deferred": true,
+      "lane": "feature-lane-pos/Progression",
       "classes": 6,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Promotion": {
-      "deferred": true,
+      "lane": "feature-lane-pos/Promotion",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "PurchaseHub": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/PurchaseHub",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Replenishment": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/Replenishment",
       "classes": 7,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Scheduling": {
-      "deferred": true,
+      "lane": "feature-lane-documents/Scheduling",
       "classes": 23,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Schema": {
-      "deferred": true,
+      "lane": "feature-lane-data-console/Schema",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Security": {
       "lane": "security-regression",
       "classes": 17
     },
     "Seeders": {
-      "deferred": true,
+      "lane": "feature-lane-data-console/Seeders",
       "classes": 26,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Service": {
-      "deferred": true,
+      "lane": "feature-lane-documents/Service",
       "classes": 7,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Services": {
-      "deferred": true,
+      "lane": "feature-lane-documents/Services",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Shared": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/Shared",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "SmartPrompts": {
-      "deferred": true,
+      "lane": "feature-lane-pos/SmartPrompts",
       "classes": 3,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Subscription": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Subscription",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "SupportAccess": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/SupportAccess",
       "classes": 13,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "T2": {
-      "deferred": true,
+      "lane": "feature-lane-platform-misc/T2",
       "classes": 1,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Taxation": {
-      "deferred": true,
+      "lane": "feature-lane-fiscal-finance/Taxation",
       "classes": 31,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Tenant": {
-      "deferred": true,
+      "lane": "feature-lane-tenancy/Tenant",
       "classes": 29,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Treasury": {
       "lane": "treasury-spine-pgsql/feature-treasury",
       "classes": 119
     },
     "Uom": {
-      "deferred": true,
+      "lane": "feature-lane-inventory/Uom",
       "classes": 5,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Vehicle": {
-      "deferred": true,
+      "lane": "feature-lane-catalog/Vehicle",
       "classes": 16,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Voucher": {
-      "deferred": true,
+      "lane": "feature-lane-pos/Voucher",
       "classes": 10,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Workshop": {
-      "deferred": true,
+      "lane": "feature-lane-documents/Workshop",
       "classes": 46,
-      "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     }
   }
 }

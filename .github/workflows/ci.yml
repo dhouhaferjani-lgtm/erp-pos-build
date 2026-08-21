@@ -1129,6 +1129,1019 @@ jobs:
       - name: PG-only invariants — Treasury Unit suite
         run: ./vendor/bin/phpunit tests/Unit/Treasury
 
+  # ===========================================================================
+  # O-29 / F-2 FEATURE LANES — the ~1 130 tests/Feature classes that ran nowhere
+  # ===========================================================================
+  #
+  # The enforcement-P2 census found 1 329 Feature classes in 74 top-level groups
+  # and only 326 reachable by ANY job on ANY event. The manifest
+  # (apps/api/tests/feature-lane-manifest.json) made that hole loud and
+  # un-growable; the owner ruling of 2026-08-21 (LEDGER O-29) funds the other
+  # half — actually EXECUTING them.
+  #
+  # WHY SELF-HOSTED. The GitHub Actions monthly quota is EXHAUSTED (LEDGER S-17).
+  # At the measured 6.24 s/class the laneless remainder is ~118 min of PHPUnit on
+  # SQLite and ~3 h on PostgreSQL, per triggering event — a recurring hosted-minute
+  # cost the repo cannot pay at any price today. Minutes on a self-hosted runner
+  # are FREE (GitHub bills none), so these eight jobs target a repo-scoped runner
+  # on the owner's own VPS. Light static gates stay on hosted runners.
+  #
+  # WHY EIGHT JOBS. One per module family, balanced on class count so no lane
+  # dominates the wall clock (20-33 min each on PG). One STEP per group, never a
+  # matrix and never one step listing several directories: the manifest checker
+  # resolves each lane by prefix-matching its selector against a live `run:` line,
+  # so a matrix expression or a multi-directory step would resolve to nothing and
+  # the lane would be certified by a step that cannot be proven to run it.
+  #
+  # WHY THE FLAG. `runs-on: [self-hosted, …]` with no runner registered for those
+  # labels does NOT skip — GitHub QUEUES the job until a matching runner appears
+  # and only gives up after 24 h, so every PR would hang on eight permanently
+  # pending checks. `vars.SELF_HOSTED_RUNNER_READY` is therefore the real switch:
+  # while it is unset these jobs evaluate their `if:` to false and are cleanly
+  # SKIPPED. `all-checks-pass` names them in ALLOW_SKIPPED_JOBS for exactly that
+  # reason, and the manifest checker asserts the two sets are identical — see the
+  # aggregate job at the bottom of this file.
+  #
+  # Owner ops to switch them on (design doc §7): provision the VPS, register a
+  # repo-scoped ephemeral runner with labels `self-hosted,linux,x64,autoerp-heavy`,
+  # then set the repository variable SELF_HOSTED_RUNNER_READY=true.
+  # Until then, lanes run locally: scripts/run-feature-lane-local.sh <lane>.
+  #
+  # Design + partition table + runtime estimates + triage posture:
+  #   docs/handoff/DESIGN-f2-feature-lane-execution-2026-08-21.md
+
+  feature-lane-pos:
+    name: Feature Lane — Sales & POS (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_pos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_pos_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_pos_test
+      DB_CENTRAL_DATABASE: autoerp_pos_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_pos_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_pos_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Sales & POS — tests/Feature/POS
+        run: ./vendor/bin/phpunit tests/Feature/POS/
+      - name: Feature lane Sales & POS — tests/Feature/Cart
+        run: ./vendor/bin/phpunit tests/Feature/Cart/
+      - name: Feature lane Sales & POS — tests/Feature/Voucher
+        run: ./vendor/bin/phpunit tests/Feature/Voucher/
+      - name: Feature lane Sales & POS — tests/Feature/Loyalty
+        run: ./vendor/bin/phpunit tests/Feature/Loyalty/
+      - name: Feature lane Sales & POS — tests/Feature/Coupon
+        run: ./vendor/bin/phpunit tests/Feature/Coupon/
+      - name: Feature lane Sales & POS — tests/Feature/Promotion
+        run: ./vendor/bin/phpunit tests/Feature/Promotion/
+      - name: Feature lane Sales & POS — tests/Feature/Progression
+        run: ./vendor/bin/phpunit tests/Feature/Progression/
+      - name: Feature lane Sales & POS — tests/Feature/Pricing
+        run: ./vendor/bin/phpunit tests/Feature/Pricing/
+      - name: Feature lane Sales & POS — tests/Feature/SmartPrompts
+        run: ./vendor/bin/phpunit tests/Feature/SmartPrompts/
+
+  feature-lane-fiscal-finance:
+    name: Feature Lane — Fiscal & Finance (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_fiscal_finance_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_fiscal_finance_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_fiscal_finance_test
+      DB_CENTRAL_DATABASE: autoerp_fiscal_finance_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_fiscal_finance_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_fiscal_finance_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Fiscal & Finance — tests/Feature/Fiscal
+        run: ./vendor/bin/phpunit tests/Feature/Fiscal/
+      - name: Feature lane Fiscal & Finance — tests/Feature/Compliance
+        run: ./vendor/bin/phpunit tests/Feature/Compliance/
+      - name: Feature lane Fiscal & Finance — tests/Feature/Taxation
+        run: ./vendor/bin/phpunit tests/Feature/Taxation/
+      - name: Feature lane Fiscal & Finance — tests/Feature/Expense
+        run: ./vendor/bin/phpunit tests/Feature/Expense/
+      - name: Feature lane Fiscal & Finance — tests/Feature/Income
+        run: ./vendor/bin/phpunit tests/Feature/Income/
+
+  feature-lane-inventory:
+    name: Feature Lane — Inventory & Supply (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_inventory_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_inventory_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_inventory_test
+      DB_CENTRAL_DATABASE: autoerp_inventory_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_inventory_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_inventory_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Inventory & Supply — tests/Feature/Inventory
+        run: ./vendor/bin/phpunit tests/Feature/Inventory/
+      - name: Feature lane Inventory & Supply — tests/Feature/BatchExpiry
+        run: ./vendor/bin/phpunit tests/Feature/BatchExpiry/
+      - name: Feature lane Inventory & Supply — tests/Feature/Procurement
+        run: ./vendor/bin/phpunit tests/Feature/Procurement/
+      - name: Feature lane Inventory & Supply — tests/Feature/Replenishment
+        run: ./vendor/bin/phpunit tests/Feature/Replenishment/
+      - name: Feature lane Inventory & Supply — tests/Feature/PurchaseHub
+        run: ./vendor/bin/phpunit tests/Feature/PurchaseHub/
+      - name: Feature lane Inventory & Supply — tests/Feature/Uom
+        run: ./vendor/bin/phpunit tests/Feature/Uom/
+      - name: Feature lane Inventory & Supply — tests/Feature/Location
+        run: ./vendor/bin/phpunit tests/Feature/Location/
+      - name: Feature lane Inventory & Supply — tests/Feature/Partner
+        run: ./vendor/bin/phpunit tests/Feature/Partner/
+
+  feature-lane-catalog:
+    name: Feature Lane — Catalog & Product (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_catalog_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_catalog_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_catalog_test
+      DB_CENTRAL_DATABASE: autoerp_catalog_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_catalog_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_catalog_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Catalog & Product — tests/Feature/Catalog
+        run: ./vendor/bin/phpunit tests/Feature/Catalog/
+      - name: Feature lane Catalog & Product — tests/Feature/Product
+        run: ./vendor/bin/phpunit tests/Feature/Product/
+      - name: Feature lane Catalog & Product — tests/Feature/Channel
+        run: ./vendor/bin/phpunit tests/Feature/Channel/
+      - name: Feature lane Catalog & Product — tests/Feature/Marketplace
+        run: ./vendor/bin/phpunit tests/Feature/Marketplace/
+      - name: Feature lane Catalog & Product — tests/Feature/Vehicle
+        run: ./vendor/bin/phpunit tests/Feature/Vehicle/
+      - name: Feature lane Catalog & Product — tests/Feature/Menu
+        run: ./vendor/bin/phpunit tests/Feature/Menu/
+      - name: Feature lane Catalog & Product — tests/Feature/ModelUpdates
+        run: ./vendor/bin/phpunit tests/Feature/ModelUpdates/
+
+  feature-lane-documents:
+    name: Feature Lane — Documents & Service (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_documents_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_documents_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_documents_test
+      DB_CENTRAL_DATABASE: autoerp_documents_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_documents_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_documents_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Documents & Service — tests/Feature/Document
+        run: ./vendor/bin/phpunit tests/Feature/Document/
+      - name: Feature lane Documents & Service — tests/Feature/DocumentIngestion
+        run: ./vendor/bin/phpunit tests/Feature/DocumentIngestion/
+      - name: Feature lane Documents & Service — tests/Feature/Workshop
+        run: ./vendor/bin/phpunit tests/Feature/Workshop/
+      - name: Feature lane Documents & Service — tests/Feature/Service
+        run: ./vendor/bin/phpunit tests/Feature/Service/
+      - name: Feature lane Documents & Service — tests/Feature/Services
+        run: ./vendor/bin/phpunit tests/Feature/Services/
+      - name: Feature lane Documents & Service — tests/Feature/Scheduling
+        run: ./vendor/bin/phpunit tests/Feature/Scheduling/
+      - name: Feature lane Documents & Service — tests/Feature/Contact
+        run: ./vendor/bin/phpunit tests/Feature/Contact/
+
+  feature-lane-tenancy:
+    name: Feature Lane — Tenancy & Identity (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_tenancy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_tenancy_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_tenancy_test
+      DB_CENTRAL_DATABASE: autoerp_tenancy_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_tenancy_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_tenancy_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Tenancy & Identity — tests/Feature/Identity
+        run: ./vendor/bin/phpunit tests/Feature/Identity/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Tenant
+        run: ./vendor/bin/phpunit tests/Feature/Tenant/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Company
+        run: ./vendor/bin/phpunit tests/Feature/Company/
+      - name: Feature lane Tenancy & Identity — tests/Feature/CompanyConfig
+        run: ./vendor/bin/phpunit tests/Feature/CompanyConfig/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Admin
+        run: ./vendor/bin/phpunit tests/Feature/Admin/
+      - name: Feature lane Tenancy & Identity — tests/Feature/SupportAccess
+        run: ./vendor/bin/phpunit tests/Feature/SupportAccess/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Permissions
+        run: ./vendor/bin/phpunit tests/Feature/Permissions/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Authorization
+        run: ./vendor/bin/phpunit tests/Feature/Authorization/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Subscription
+        run: ./vendor/bin/phpunit tests/Feature/Subscription/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Billing
+        run: ./vendor/bin/phpunit tests/Feature/Billing/
+      - name: Feature lane Tenancy & Identity — tests/Feature/Modules
+        run: ./vendor/bin/phpunit tests/Feature/Modules/
+
+  feature-lane-data-console:
+    name: Feature Lane — Data & Console (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_data_console_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_data_console_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_data_console_test
+      DB_CENTRAL_DATABASE: autoerp_data_console_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_data_console_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_data_console_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Data & Console — tests/Feature/Console
+        run: ./vendor/bin/phpunit tests/Feature/Console/
+      - name: Feature lane Data & Console — tests/Feature/Seeders
+        run: ./vendor/bin/phpunit tests/Feature/Seeders/
+      - name: Feature lane Data & Console — tests/Feature/Import
+        run: ./vendor/bin/phpunit tests/Feature/Import/
+      - name: Feature lane Data & Console — tests/Feature/Migration
+        run: ./vendor/bin/phpunit tests/Feature/Migration/
+      - name: Feature lane Data & Console — tests/Feature/Migrations
+        run: ./vendor/bin/phpunit tests/Feature/Migrations/
+      - name: Feature lane Data & Console — tests/Feature/Schema
+        run: ./vendor/bin/phpunit tests/Feature/Schema/
+      - name: Feature lane Data & Console — tests/Feature/CountryDefaults
+        run: ./vendor/bin/phpunit tests/Feature/CountryDefaults/
+
+  feature-lane-platform-misc:
+    name: Feature Lane — Platform & Misc (self-hosted)
+    # Parked until the owner flips SELF_HOSTED_RUNNER_READY. The event arm mirrors
+    # all-checks-pass exactly, so this lane never sits `skipped` while the aggregate
+    # runs with the flag on, and never costs a minute on the cheap PR->dev gate.
+    if: ${{ vars.SELF_HOSTED_RUNNER_READY == 'true' && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    runs-on: [self-hosted, linux, x64, autoerp-heavy]
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: autoerp
+          POSTGRES_PASSWORD: autoerp_secret
+          POSTGRES_DB: autoerp_platform_misc_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autoerp -d autoerp_platform_misc_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_ENV: testing
+      BROADCAST_CONNECTION: 'null'
+      # Real PostgreSQL, like treasury-spine-pgsql: phpunit.xml pins
+      # DB_CONNECTION=sqlite via <env> WITHOUT force="true", so this real
+      # environment variable wins and the PG-only tests execute instead of
+      # markTestSkipped-ing. Set at job level because every step here is a DB step.
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: autoerp_platform_misc_test
+      DB_CENTRAL_DATABASE: autoerp_platform_misc_test
+      DB_USERNAME: autoerp
+      DB_PASSWORD: autoerp_secret
+      # First-execution triage: skip exactly the targets enumerated in
+      # apps/api/tests/quarantine.json, each with a lane, a reason and an open
+      # date, total pinned by a shrink-only ceiling the manifest checker enforces.
+      AUTOERP_QUARANTINE: '1'
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: dom, curl, intl, libxml, mbstring, zip, pcntl, pdo, pdo_pgsql, redis
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist
+
+      - name: Copy environment file
+        run: cp .env.example .env.testing
+
+      - name: Configure test environment (PostgreSQL)
+        run: |
+          sed -i "s|^APP_KEY=.*|APP_KEY=${APP_KEY}|" .env.testing
+          sed -i 's/DB_HOST=.*/DB_HOST=127.0.0.1/' .env.testing
+          sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env.testing
+          sed -i 's/DB_DATABASE=.*/DB_DATABASE=autoerp_platform_misc_test/' .env.testing
+          sed -i 's/DB_CENTRAL_DATABASE=.*/DB_CENTRAL_DATABASE=autoerp_platform_misc_test/' .env.testing
+          sed -i 's/DB_USERNAME=.*/DB_USERNAME=autoerp/' .env.testing
+          sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=autoerp_secret/' .env.testing
+          sed -i 's/REDIS_HOST=.*/REDIS_HOST=127.0.0.1/' .env.testing
+          sed -i 's/REDIS_PORT=.*/REDIS_PORT=6379/' .env.testing
+          # .env.example ships BROADCAST_CONNECTION=redis, which breaks bootstrap
+          # because config/broadcasting.php has no "redis" connection defined.
+          sed -i 's/BROADCAST_CONNECTION=.*/BROADCAST_CONNECTION=null/' .env.testing
+
+      # SERIAL EXECUTION IS LOAD-BEARING — DO NOT PARALLELIZE THESE STEPS OR MATRIX
+      # THIS JOB. Two pgsql RefreshDatabase suites racing against the same schema
+      # corrupt each other mid-run and throw fake 2BP01 errors (verified 2026-07-09;
+      # see the pgsql CONCURRENCY RULE note on treasury-spine-pgsql above). One step
+      # per group also gives clean failure attribution and is what the lane manifest
+      # resolves against. Trailing slashes are load-bearing too: lane resolution is a
+      # prefix match, and `tests/Feature/Service` would also match the `…/Services`
+      # step (likewise Migration/Migrations), which the checker rejects as ambiguous.
+      - name: Feature lane Platform & Misc — tests/Feature/PlatformIntegration
+        run: ./vendor/bin/phpunit tests/Feature/PlatformIntegration/
+      - name: Feature lane Platform & Misc — tests/Feature/Api
+        run: ./vendor/bin/phpunit tests/Feature/Api/
+      - name: Feature lane Platform & Misc — tests/Feature/Http
+        run: ./vendor/bin/phpunit tests/Feature/Http/
+      - name: Feature lane Platform & Misc — tests/Feature/Architecture
+        run: ./vendor/bin/phpunit tests/Feature/Architecture/
+      - name: Feature lane Platform & Misc — tests/Feature/Bootstrap
+        run: ./vendor/bin/phpunit tests/Feature/Bootstrap/
+      - name: Feature lane Platform & Misc — tests/Feature/Broadcasting
+        run: ./vendor/bin/phpunit tests/Feature/Broadcasting/
+      - name: Feature lane Platform & Misc — tests/Feature/Communication
+        run: ./vendor/bin/phpunit tests/Feature/Communication/
+      - name: Feature lane Platform & Misc — tests/Feature/Notification
+        run: ./vendor/bin/phpunit tests/Feature/Notification/
+      - name: Feature lane Platform & Misc — tests/Feature/Dashboard
+        run: ./vendor/bin/phpunit tests/Feature/Dashboard/
+      - name: Feature lane Platform & Misc — tests/Feature/EventSourcing
+        run: ./vendor/bin/phpunit tests/Feature/EventSourcing/
+      - name: Feature lane Platform & Misc — tests/Feature/Events
+        run: ./vendor/bin/phpunit tests/Feature/Events/
+      - name: Feature lane Platform & Misc — tests/Feature/Jobs
+        run: ./vendor/bin/phpunit tests/Feature/Jobs/
+      - name: Feature lane Platform & Misc — tests/Feature/Performance
+        run: ./vendor/bin/phpunit tests/Feature/Performance/
+      - name: Feature lane Platform & Misc — tests/Feature/Precision
+        run: ./vendor/bin/phpunit tests/Feature/Precision/
+      - name: Feature lane Platform & Misc — tests/Feature/Shared
+        run: ./vendor/bin/phpunit tests/Feature/Shared/
+      - name: Feature lane Platform & Misc — tests/Feature/T2
+        run: ./vendor/bin/phpunit tests/Feature/T2/
+
   frontend-lint:
     name: Frontend Lint (ESLint)
     runs-on: ubuntu-latest
@@ -1444,7 +2457,27 @@ jobs:
     # `skipped`) whenever this job evaluates its `needs`. A `needs` entry whose
     # job comes back `skipped` would otherwise fail/skip this aggregate gate
     # spuriously — confirmed that can't happen here before wiring it in.
-    if: github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    #
+    # O-29 (2026-08-21): `always() &&` was added in front of the original event
+    # condition, and the aggregate now EVALUATES its dependencies' results in a
+    # step instead of leaning on GitHub's implicit "skip me if any need did not
+    # succeed". Two reasons, both load-bearing:
+    #
+    #   1. The eight self-hosted Feature lanes are guarded by
+    #      `vars.SELF_HOSTED_RUNNER_READY` and are legitimately SKIPPED until the
+    #      owner flips it. Under the implicit rule ONE skipped dependency skips
+    #      this aggregate — the required check would go permanently unfulfilled.
+    #   2. The implicit rule is also weaker than it looks the other way: when a
+    #      dependency FAILS, this job is SKIPPED rather than failed, and a skipped
+    #      required check is not a red one. Evaluating results explicitly makes a
+    #      failed dependency fail THIS job, out loud.
+    #
+    # Tolerance is enumerated, never wildcarded: ALLOW_SKIPPED_JOBS lists exactly
+    # the flag-gated lane jobs, any OTHER skipped dependency is a hard failure,
+    # and tools/feature-lane-manifest-check.php asserts that this list is
+    # identical to the set of lanes declaring an `execution_gate`. Adding a name
+    # here to quiet a red job therefore fails the manifest checker.
+    if: always() && (github.event_name == 'workflow_dispatch' || github.base_ref == 'main' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     # route-manifest-drift has no `if:` guard, so it always runs and can never
     # enter this aggregate gate as a skipped dependency.
     #
@@ -1455,7 +2488,40 @@ jobs:
     # cannot, so adding it is safe by the same argument already made above for
     # treasury-spine-pgsql. A guard visible in CI but absent from this list is
     # not merge-gating.
-    needs: [backend-lint, backend-analyse, backend-architecture, backend-dpa-guard, backend-test, backend-test-pgsql, security-regression, treasury-spine-pgsql, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
+    needs: [backend-lint, backend-analyse, backend-architecture, backend-dpa-guard, backend-test, backend-test-pgsql, security-regression, treasury-spine-pgsql, feature-lane-pos, feature-lane-fiscal-finance, feature-lane-inventory, feature-lane-catalog, feature-lane-documents, feature-lane-tenancy, feature-lane-data-console, feature-lane-platform-misc, frontend-lint, frontend-typecheck, frontend-test, pos-test, frontend-build, route-manifest-drift, types-drift]
     steps:
-      - name: All checks passed
-        run: echo "All CI checks have passed!"
+      - name: Verify every dependency succeeded
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          # EXACTLY the flag-gated Feature-lane jobs. Verified for set-equality
+          # against the manifest's `execution_gate` lanes by
+          # apps/api/tools/feature-lane-manifest-check.php (backend-architecture,
+          # ungated, in this same needs list).
+          ALLOW_SKIPPED_JOBS: feature-lane-catalog,feature-lane-data-console,feature-lane-documents,feature-lane-fiscal-finance,feature-lane-inventory,feature-lane-platform-misc,feature-lane-pos,feature-lane-tenancy
+        run: |
+          status=0
+          allowed=",${ALLOW_SKIPPED_JOBS},"
+          while IFS=$'\t' read -r job result; do
+            case "$result" in
+              success)
+                echo "ok        $job"
+                ;;
+              skipped)
+                if [ "${allowed#*,"$job",}" != "$allowed" ]; then
+                  echo "skipped   $job (allowed: parked behind SELF_HOSTED_RUNNER_READY)"
+                else
+                  echo "SKIPPED   $job — not an allowed skip; a dependency of this gate did not run"
+                  status=1
+                fi
+                ;;
+              *)
+                echo "FAILED    $job — result=$result"
+                status=1
+                ;;
+            esac
+          done < <(echo "$NEEDS_JSON" | jq -r 'to_entries[] | "\(.key)\t\(.value.result)"')
+          if [ "$status" -ne 0 ]; then
+            echo "::error::All Checks Pass: at least one dependency did not succeed."
+            exit 1
+          fi
+          echo "All CI checks have passed!"

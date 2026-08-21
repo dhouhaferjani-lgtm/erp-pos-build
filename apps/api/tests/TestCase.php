@@ -3,6 +3,7 @@
 namespace Tests;
 
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Tests\Support\QuarantinedTests;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -22,6 +23,19 @@ abstract class TestCase extends BaseTestCase
     protected function setUp(): void
     {
         set_time_limit(0);
+
+        // O-29 first-execution quarantine. A no-op unless AUTOERP_QUARANTINE=1
+        // (the eight Feature-lane jobs and scripts/run-feature-lane-local.sh set
+        // it; nothing else does) AND this exact class/method is enumerated in
+        // tests/quarantine.json. Deliberately BEFORE parent::setUp(): a target is
+        // quarantined precisely because it cannot get through its own fixtures,
+        // so booting the application first would fail before the skip.
+        // See Tests\Support\QuarantinedTests for why the skip lives here rather
+        // than in a phpunit flag on the lane's run line.
+        $reason = QuarantinedTests::reasonFor(static::class, $this->name());
+        if ($reason !== null) {
+            self::markTestSkipped($reason);
+        }
 
         parent::setUp();
     }

@@ -1,0 +1,7 @@
+self-hosted-runner:
+  # Custom labels for the O-29 Feature-lane runner (docs/handoff/DESIGN-f2-feature-lane-execution-2026-08-21.md §4.2).
+  # Declared here so actionlint stops reporting them as unknown; registering the
+  # real runner with these labels is owner ops, and the jobs stay `if:`-gated on
+  # vars.SELF_HOSTED_RUNNER_READY until it exists.
+  labels:
+    - autoerp-heavy
