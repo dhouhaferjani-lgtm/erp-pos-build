@@ -520,6 +520,20 @@ final class FeatureLaneManifestCheckerTest extends TestCase
     /** G-3: relabelling `deferred` -> `excluded` must not erase the debt. */
     public function test_relabelling_deferred_as_excluded_does_not_erase_the_debt(): void
     {
+        // Capture the live debt count BEFORE relabelling instead of pasting the
+        // number: the pasted literal (1114) went stale the first time a merged
+        // lane legitimately raised the ceilings, failing this test for a change
+        // it exists to permit. The invariant is that the COUNT SURVIVES the
+        // relabelling, whatever it currently is.
+        [$exitBefore, $outBefore] = $this->runChecker();
+        self::assertSame(0, $exitBefore, $outBefore);
+        self::assertSame(
+            1,
+            preg_match('/COVERAGE DEBT: \d+ group\(s\) \/ (\d+) class\(es\)/', $outBefore, $m),
+            $outBefore,
+        );
+        $debtCount = $m[1];
+
         $manifestPath = $this->sandbox.'/apps/api/tests/feature-lane-manifest.json';
         $manifest = json_decode((string) file_get_contents($manifestPath), true, 512, JSON_THROW_ON_ERROR);
         foreach ($manifest['groups'] as $group => $entry) {
@@ -534,7 +548,7 @@ final class FeatureLaneManifestCheckerTest extends TestCase
 
         self::assertSame(0, $exit, $out);
         self::assertStringContainsString('EXCLUDED:', $out);
-        self::assertStringContainsString('1114 class(es)', $out);
+        self::assertStringContainsString(sprintf('%s class(es)', $debtCount), $out);
     }
 
     /** G-5 / R-8: `always()` skips nothing — it must NOT hard-fail every PR. */

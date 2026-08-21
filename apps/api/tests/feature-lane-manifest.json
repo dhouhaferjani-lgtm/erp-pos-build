@@ -5,7 +5,7 @@
     "excluded": "Genuinely cannot run in CI (needs a device, an external service, a manual fixture). Requires `reason`.",
     "deferred": "CAN run, but no lane runs it yet; blocked on the F-2 CI-budget decision. Requires `reason`. Counted loudly on every CI run."
   },
-  "debt_ceiling": 1114,
+  "debt_ceiling": 1131,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -129,7 +129,7 @@
     },
     "CountryDefaults": {
       "deferred": true,
-      "classes": 27,
+      "classes": 28,
       "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
     },
     "Coupon": {
@@ -144,7 +144,7 @@
     },
     "Document": {
       "deferred": true,
-      "classes": 65,
+      "classes": 74,
       "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
     },
     "DocumentIngestion": {
@@ -169,7 +169,7 @@
     },
     "Fiscal": {
       "deferred": true,
-      "classes": 73,
+      "classes": 79,
       "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
     },
     "Http": {
@@ -194,7 +194,7 @@
     },
     "Inventory": {
       "deferred": true,
-      "classes": 105,
+      "classes": 106,
       "reason": "No CI lane runs this directory on any event. Individual classes may still be named in a ci.yml --filter allowlist, but that is class-level: a NEW class here would run nowhere. Turning the remainder on is an owner CI-budget decision (dispatch brief SS6 F-2) - see docs/handoff/DECISION-enforcement-p2-ci-guards-2026-08-19.md SSM2 for the measurement."
     },
     "Jobs": {

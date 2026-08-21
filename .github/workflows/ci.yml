@@ -201,6 +201,19 @@ jobs:
         # No database, no application boot (~1 s).
         run: ./vendor/bin/phpunit tests/Architecture/FeatureLaneManifestCheckerTest.php
 
+      - name: Event ratchets (orphaned events + projector emission — PR→dev lane)
+        # ES wave A0's M5-r1 F-1 fold-in, ticketed to THIS package's ci.yml
+        # reconciliation (parent ledger, es-A0 whole-lane F-1): the same two
+        # ratchets also run in `backend-test`, but that job's `if:` skips PR→dev,
+        # so on the day-to-day merge gate they gated NOTHING. This job has NO
+        # `if:` guard, so the ratchets now fire on every event that starts the
+        # workflow. Named files, not the whole tests/Architecture directory —
+        # that directory carries unrelated inherited baseline failures (4, named
+        # in the backend-dpa-guard job comment). Both are SQLite-safe: they read
+        # source text and the live container; phpunit.xml self-carries APP_KEY
+        # and the sqlite connection, so no extra env prep is needed here.
+        run: ./vendor/bin/phpunit tests/Architecture/OrphanedEventRatchetTest.php tests/Architecture/ProjectorEmissionRatchetTest.php
+
       - name: Run Deptrac architecture ratchet
         # Static-analysis-only gate (~3-4 s). Hard-fails on hexagonal domain
         # leakage above baseline or any brand-new violation category; every
@@ -424,10 +437,11 @@ jobs:
       # Placing them here is still a real improvement (workflow_dispatch-only →
       # also PR→main / push→main), but the drift they exist to catch can land on
       # `dev` and only be caught at the `main` boundary.
-      # Raised as M5 round 1, F-1. Wiring a ratchet lane that runs on PR→dev is
-      # DEFERRED to the enforcement-P2 ci.yml reconciliation, where the parent
-      # has ticketed it — doing it here would mean editing the job matrix from
-      # inside a fiscal-verifier wave (rule 4).
+      # Raised as M5 round 1, F-1. RESOLVED at the enforcement-P2 ci.yml
+      # reconciliation (2026-08-21): the same two ratchets now ALSO run as a
+      # step in `backend-architecture`, which has no `if:` guard, so they gate
+      # PR→dev and every other event. This copy stays for the main-boundary
+      # lanes' locality.
       #   OrphanedEventRatchetTest  — an event dispatched with zero registered
       #     listeners fires into nothing; the baseline enumerates the existing
       #     75 BY NAME and the check fails on the 76th.

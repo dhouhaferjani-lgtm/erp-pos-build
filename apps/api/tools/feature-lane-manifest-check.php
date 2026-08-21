@@ -651,7 +651,19 @@ foreach ($wf['runs'] as $run) {
     // Split on `&&`, `||`, `;` and newlines ONLY — never on a bare `|`. A single
     // pipe is also the alternation separator INSIDE an anchored filter value
     // (`/\\(A|B|C)::/`), so splitting on it shreds the very value being checked.
-    foreach (preg_split('/(?:&&|\|\||;|\n)/', $run) ?: [$run] as $segment) {
+    //
+    // FULL-LINE comments are dropped BEFORE the scan: a doc comment inside a
+    // `run:` block that merely mentions the token (the dn-consolidation lane's
+    // "Paths, not --filter, so every test in each file is gated.") is prose, not
+    // an allowlist, and failing closed on it blocks every PR. Only lines whose
+    // first non-space character is `#` are dropped — a trailing comment after
+    // code keeps its line, so a real filter sharing a line with a comment is
+    // still scanned.
+    $scannable = implode("\n", array_filter(
+        explode("\n", $run),
+        static fn (string $line): bool => preg_match('/^\s*#/', $line) !== 1,
+    ));
+    foreach (preg_split('/(?:&&|\|\||;|\n)/', $scannable) ?: [$scannable] as $segment) {
         // Skip env/wrapper prefixes before deciding which binary owns the flags:
         // `env CI=1 pnpm …`, `npx pnpm …`, `corepack pnpm …`, `sudo -E pnpm …` all
         // otherwise fell through and produced a false positive on an ungated job.
