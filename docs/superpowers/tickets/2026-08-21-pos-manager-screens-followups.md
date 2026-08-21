@@ -90,3 +90,8 @@ crash / shift-rollover races in `refundZAccounting.ts:16-24`.
 `local_refund_records.terminal_id` is **unindexed** (only `idx_local_refund_records_shift`
 exists), so the period-scoped read is a table scan. Fine at device volumes;
 worth an index if the table ever grows.
+
+## 5. (added at merge, re-gate P3-5) `TodaySalesPanel.tsx:~97` rule-20 display hazard
+`new Date(ts).toLocaleTimeString(...)` on a space-separated SQLite `created_at` — the exact
+misread `sqliteUtcToDate` (now canonical in `lib/db/sqliteTime.ts`) fixes, one import away.
+Fold into the same pass as this ticket's item 4 (that file's filter divergence).
