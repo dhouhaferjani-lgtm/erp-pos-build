@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services\Conversion\Converters;
 
-use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Company\Services\LocationContext;
@@ -587,22 +586,27 @@ final class SalesOrderToInvoiceConverter implements DocumentConverterInterface
                     $actorUserId,
                     (string) $invoice->currency,
                 );
-            } catch (UnbalancedJournalEntryException $e) {
-                // enforcement-P3 M1 deliverable D. A BALANCE failure is never a
-                // "GL clearing could not be created" case and must not be
-                // downgraded to a warning: swallowing it leaves the customer
-                // advance and the receivable permanently diverged while the
-                // conversion reports success.
-                //
-                // Whether the graceful catch below even sees this depends on
-                // transaction nesting — `postEntryAndDispatchPostedEventAfterCommit`
-                // posts synchronously (inside this `try`) when
-                // `DB::transactionLevel() === 0` and defers past it otherwise
-                // (GeneralLedgerService.php:106-108). Re-throwing here makes the
-                // fail-loud guarantee explicit instead of an accident of nesting.
-                // See docs/handoff/reviews/enforcement-p3/M1-census.md §5.
-                throw $e;
             } catch (\InvalidArgumentException|\RuntimeException $e) {
+                // enforcement-P3 M1 (round 1, finding 2) — DOCUMENTATION ONLY, no
+                // behaviour change. A BALANCE refusal from the chokepoint does NOT
+                // reach this catch today, and the reason is worth stating because it
+                // is incidental rather than designed: `clearCustomerAdvanceToReceivable`
+                // posts via `postEntryAndDispatchPostedEventAfterCommit`, which defers
+                // the post through `DB::afterCommit` whenever `DB::transactionLevel() > 0`
+                // (GeneralLedgerService.php:96-110). `transferPrepayments()` always runs
+                // inside `billingConcurrencyRetrier->run()`'s transaction
+                // (SalesOrderToInvoiceConverter.php:165 →
+                // DeliveryNoteBillingConcurrencyRetrier.php:40), so the refusal is
+                // raised after this frame has returned and propagates past this catch.
+                //
+                // A narrowing re-throw was added here and then WITHDRAWN: it was proven
+                // unreachable (deleting it left its test green). If the enclosing
+                // transaction is ever removed the post becomes synchronous, this catch
+                // WOULD swallow the refusal, and
+                // `DocumentConversionScenarioTest::it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud`
+                // goes red — narrow this catch at that point.
+                // See docs/handoff/reviews/enforcement-p3/M1-census.md §5.2 + §6 R-7.
+                //
                 // If GL clearing cannot be created, log warning but don't fail the conversion.
                 Log::warning(
                     'Could not create GL entry for prepayment transfer: '.$e->getMessage(),

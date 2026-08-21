@@ -229,25 +229,36 @@ class DocumentConversionScenarioTest extends TestCase
     }
 
     /**
-     * enforcement-P3 M1 — deliverable D (chokepoint failure-mode normalization).
+     * enforcement-P3 M1 round 1, finding 2 — RENAMED to state what it actually pins.
      *
-     * The prepayment transfer wraps a LIVE GL post in a graceful `catch`. That
-     * catch is correct for the "cannot create" cases (the already-cleared advance
-     * covered by the test above), but it must NOT swallow a BALANCE failure: an
-     * unbalanced entry silently downgraded to a `Log::warning` leaves the advance
-     * and receivable accounts permanently diverged while the conversion reports
-     * success.
+     * The prepayment transfer wraps a live GL post in a graceful
+     * `catch (\InvalidArgumentException|\RuntimeException)`. A BALANCE refusal does
+     * not reach that catch — but only because the post is DEFERRED past this frame
+     * by `DB::afterCommit` (`GeneralLedgerService.php:96-110`), since
+     * `transferPrepayments()` always runs inside the billing retrier's transaction.
+     * That protection is incidental, not designed.
+     *
+     * This test therefore pins the DEFERRAL, not a catch clause: if the enclosing
+     * transaction is ever removed the post becomes synchronous, the graceful catch
+     * swallows the refusal, no exception surfaces, and this test goes RED — which
+     * is exactly when the catch must be narrowed.
+     *
+     * An earlier version of this test was named `it_does_not_swallow_...` and was
+     * presented as covering a narrowing re-throw added to the converter. The review
+     * showed that re-throw was unreachable and the test non-discriminating for it
+     * (deleting the catch left this green), so the re-throw was WITHDRAWN and this
+     * test was re-scoped to the invariant it genuinely discriminates on.
      *
      * The imbalance is produced with real production machinery — an Eloquent
-     * `created` hook adds a third, unbalancing leg to the prepayment entry while
-     * it is still an unchained Draft (which `JournalLineObserver` permits), so the
+     * `created` hook adds a third, unbalancing leg to the prepayment entry while it
+     * is still an unchained Draft (which `JournalLineObserver` permits), so the
      * chokepoint re-reads unbalanced lines and refuses. No mocking: the GL service
      * is `final` and is exercised for real.
      *
-     * Census evidence: `docs/handoff/reviews/enforcement-p3/M1-census.md` §5.
+     * Census evidence: `docs/handoff/reviews/enforcement-p3/M1-census.md` §5.2, §6 R-7.
      */
     #[Test]
-    public function it_does_not_swallow_an_unbalanced_prepayment_gl_post(): void
+    public function it_pins_the_deferral_that_keeps_an_unbalanced_prepayment_post_loud(): void
     {
         $service = Product::factory()->create([
             'tenant_id' => $this->tenant->id,

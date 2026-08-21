@@ -432,6 +432,78 @@ final class ShiftCashVarianceAdjustmentTest extends TestCase
     }
 
     /**
+     * enforcement-P3 M1 round 1, finding 1 — the queued-context incident class
+     * brief §4 3(a) item 4 names.
+     *
+     * `createRepositoryAdjustmentJournalEntry` posts via `postEntryNow`
+     * (`GeneralLedgerService.php:1307`) with NO `afterCommit` deferral, so an
+     * unbalanced-entry refusal from the chokepoint is raised INSIDE this
+     * listener's `try` and lands in its `catch (Throwable)`. Before this change it
+     * was bucketed as the generic `exception` reason — indistinguishable from a
+     * crash without string-matching a class name, which is exactly the complaint
+     * that earned `insufficient_repository_balance` and `repository_frozen` their
+     * own reasons (gate re-review N4).
+     *
+     * A GL imbalance is a fiscal-integrity fault, not a policy outcome, so it gets
+     * its own machine-readable reason at `error` level. The listener is NOT
+     * `ShouldQueue` (`TreasuryServiceProvider.php:185`) and runs after the shift is
+     * already closed and the Z report sealed, so re-throwing is NOT available —
+     * it would surface as a 500 on a close that genuinely succeeded, breaking this
+     * file's documented never-block invariant. The residual (no retry/dead-letter
+     * without making the listener queued) is reported at census §6 R-8.
+     *
+     * The imbalance is produced with real production machinery: an Eloquent
+     * `created` hook adds a third leg to the adjustment entry while it is still an
+     * unchained Draft, which `JournalLineObserver` permits. Nothing is mocked.
+     */
+    public function test_an_unbalanced_adjustment_entry_is_refused_under_its_own_reason(): void
+    {
+        $injecting = false;
+        JournalLine::created(function (JournalLine $line) use (&$injecting): void {
+            if ($injecting) {
+                return;
+            }
+
+            $entry = JournalEntry::find($line->journal_entry_id);
+            if ($entry === null
+                || $entry->source_type !== 'repository_adjustment'
+                || $entry->status !== JournalEntryStatus::Draft) {
+                return;
+            }
+
+            $injecting = true;
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $line->account_id,
+                'debit' => '3.000',
+                'credit' => '0',
+                'description' => 'Injected unbalancing leg',
+                'line_order' => 99,
+            ]);
+            $injecting = false;
+        });
+
+        $shiftId = (string) Str::uuid();
+        $this->dispatchCount($shiftId, expected: '120.0000', actual: '115.0000');
+
+        // Audited under its OWN reason, not the generic crash bucket.
+        $this->assertRefusalAudited($shiftId, 'unbalanced_journal_entry');
+
+        $audit = DB::table('audit_events')
+            ->where('event_type', 'treasury.shift_variance_gl_skipped')
+            ->where('aggregate_id', $shiftId)
+            ->first();
+        $this->assertNotNull($audit);
+        $this->assertStringNotContainsString('"reason":"exception"', (string) $audit->payload);
+
+        // Fail-CLOSED: the refusal aborts the whole adjustment, nothing is booked.
+        $this->assertSame(
+            0,
+            JournalEntry::query()->where('source_type', 'repository_adjustment')->count()
+        );
+    }
+
+    /**
      * The frozen-till companion: also a policy refusal (`allowWhileFrozen` is
      * false because the amount is server-computed, never an offline device
      * replay), also its own reason.

@@ -8,6 +8,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\AccountType;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Events\JournalEntryPosted;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
@@ -17,7 +18,6 @@ use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
-use InvalidArgumentException;
 use Tests\TestCase;
 
 final class GeneralLedgerPostEntryScaleTest extends TestCase
@@ -72,7 +72,7 @@ final class GeneralLedgerPostEntryScaleTest extends TestCase
             'line_order' => 1,
         ]);
 
-        $this->expectException(InvalidArgumentException::class);
+        $this->expectException(UnbalancedJournalEntryException::class);
         $this->expectExceptionMessage('Cannot post unbalanced journal entry');
 
         app(GeneralLedgerService::class)->postEntry($entry, $user, 'JPY');

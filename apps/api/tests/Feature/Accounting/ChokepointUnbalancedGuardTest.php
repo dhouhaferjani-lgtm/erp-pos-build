@@ -89,16 +89,28 @@ final class ChokepointUnbalancedGuardTest extends TestCase
     }
 
     /**
-     * The normalization must stay backward compatible: every pre-existing
-     * `catch (\InvalidArgumentException)` around a GL post keeps working, because
-     * the house type is a REFINEMENT of what the chokepoint already threw.
+     * Round-1 findings 3 and 4: the `\RuntimeException` parent is load-bearing and
+     * this test exists to keep it that way.
+     *
+     * An unbalanced entry must surface as an unmapped 500 + alert and must never be
+     * reportable as a client validation error. Re-parenting this type under
+     * `\InvalidArgumentException` (i.e. under `\LogicException`) exposes it to the
+     * ~30 `catch (\InvalidArgumentException)` blocks in `app/` that render
+     * 400/422 `VALIDATION_ERROR` responses, and simultaneously drops it out of
+     * `catch (\RuntimeException)` blocks that deliberately map it to a detailed 500
+     * (`CreditNoteController::post()`). M1 made that mistake and reverted it.
      */
-    public function test_house_unbalanced_exception_remains_catchable_as_invalid_argument(): void
+    public function test_the_house_unbalanced_exception_is_never_a_logic_exception(): void
     {
         $this->assertTrue(
-            is_subclass_of(UnbalancedJournalEntryException::class, \InvalidArgumentException::class),
-            'UnbalancedJournalEntryException must extend \InvalidArgumentException so the chokepoint '
-            .'normalization does not break existing catch blocks.'
+            is_subclass_of(UnbalancedJournalEntryException::class, \RuntimeException::class),
+            'UnbalancedJournalEntryException must extend \RuntimeException so it maps to an '
+            .'unmapped 500 + alert, never a 4xx validation response.'
+        );
+        $this->assertFalse(
+            is_subclass_of(UnbalancedJournalEntryException::class, \LogicException::class),
+            'UnbalancedJournalEntryException must NOT be a \LogicException: that exposes a fiscal '
+            .'refusal to the catch (\InvalidArgumentException) blocks that render 400/422.'
         );
     }
 }

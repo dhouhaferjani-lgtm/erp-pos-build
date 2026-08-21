@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Treasury\Application\Listeners;
 
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryException;
 use App\Modules\Compliance\Services\AuditService;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
@@ -180,6 +181,32 @@ final readonly class PostShiftCashVarianceAdjustment
                 'exception' => $e::class,
                 'message' => $e->getMessage(),
             ]);
+        } catch (UnbalancedJournalEntryException $e) {
+            // enforcement-P3 M1 (round 1, finding 1) — the GL posting chokepoint
+            // refused this adjustment because Sigma(debits) != Sigma(credits).
+            //
+            // This one is NOT a policy outcome like the two above, and not an
+            // ordinary crash either: it is a fiscal-integrity fault. It reaches
+            // this frame SYNCHRONOUSLY — `createRepositoryAdjustmentJournalEntry`
+            // posts through `postEntryNow` (GeneralLedgerService.php:1307) with no
+            // `afterCommit` deferral — so before it had its own reason it was
+            // swallowed into the generic `exception` bucket below, where it was
+            // indistinguishable from a crash and nothing could alert on it.
+            //
+            // Re-throwing is deliberately NOT the disposition. This listener is a
+            // plain synchronous listener (TreasuryServiceProvider.php:185, not
+            // ShouldQueue) that runs after the shift is closed and the Z report
+            // sealed, so a throw would surface as a 500 on a close that actually
+            // succeeded and would still not retry anything. The available
+            // protection here is the one this file already established for the
+            // riskiest inputs (gate re-review N4): a distinct, queryable,
+            // alertable reason at `error` level. The residual — no retry or
+            // dead-letter until this listener becomes queued — is recorded at
+            // docs/handoff/reviews/enforcement-p3/M1-census.md §6 R-8.
+            $this->refuse($event, 'unbalanced_journal_entry', [
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ], level: 'error');
         } catch (Throwable $e) {
             // Log-never-block: the shift is already closed and the Z report
             // already sealed by the time this runs (the live path dispatches

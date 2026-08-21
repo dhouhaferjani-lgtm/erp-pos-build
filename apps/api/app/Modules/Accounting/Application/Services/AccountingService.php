@@ -303,6 +303,18 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlP
      * the document IS already sealed — which is why it stays an unmapped
      * `RuntimeException` (a 500 + alert), never a 422.
      *
+     * That "never a 422" is enforced by the PARENT CLASS of
+     * `UnbalancedJournalEntryException`, and the parent is load-bearing:
+     * re-parenting it under `\InvalidArgumentException` (a `\LogicException`)
+     * exposes this refusal to the ~30 `catch (\InvalidArgumentException)` blocks in
+     * `app/` that render 400/422, and drops it out of the `catch (\RuntimeException)`
+     * in `CreditNoteController::post()` that maps it to a detailed 500.
+     * enforcement-P3 M1 did exactly that and reverted it (round 1, findings 3/4);
+     * `ChokepointUnbalancedGuardTest::test_the_house_unbalanced_exception_is_never_a_logic_exception`
+     * now guards it. Note the SAME type is also raised by the GL posting chokepoint
+     * (`GeneralLedgerService::sealAndPersistEntry`) since M1 — this method is no
+     * longer its only source.
+     *
      * Uses `isSumBalanced()` — Σdr == Σcr and nothing else — rather than
      * `isBalanced()`, whose `count($lines) < 2` clause is a second, unadvertised
      * rejection rule that a zero-line or zero-total document would trip (gate

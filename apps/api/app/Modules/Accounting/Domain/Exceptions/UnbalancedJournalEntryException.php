@@ -21,16 +21,27 @@ namespace App\Modules\Accounting\Domain\Exceptions;
  *
  * W-6 D1a — docs/superpowers/tickets/2026-08-05-w6-finance-gl-defects.md
  *
- * **Parent class (enforcement-P3 M1, deliverable D).** This extends
- * `\InvalidArgumentException` because the GL posting chokepoint
- * (`GeneralLedgerService::sealAndPersistEntry`) historically raised its balance
- * refusal as a BARE `\InvalidArgumentException`. Making this type a REFINEMENT of
- * that class lets the chokepoint raise the house type without breaking any
- * pre-existing `catch (\InvalidArgumentException)` around a GL post, while giving
- * callers a type they can single out and re-throw instead of swallowing.
+ * **The `\RuntimeException` parent is LOAD-BEARING — do not re-parent it.**
+ * An unbalanced entry must surface as an unmapped 500 + alert and must NEVER be
+ * reportable as a client validation error; see the contract note at
+ * `AccountingService::assertLegsBalance()` and `UnpostableDocumentGlException`.
+ * enforcement-P3 M1 briefly re-parented this to `\InvalidArgumentException` (so the
+ * GL chokepoint, which historically raised a BARE `\InvalidArgumentException`, could
+ * adopt the house type without breaking existing catchers) and that was WRONG on
+ * two counts, both caught at review (round 1, findings 3 and 4):
+ *   1. `\InvalidArgumentException` is a `\LogicException`, so the ~30
+ *      `catch (\InvalidArgumentException)` blocks in `app/` that render 400/422
+ *      `VALIDATION_ERROR` responses became latent downgrade paths for a fiscal
+ *      refusal — exactly what the "never a 422" contract exists to prevent.
+ *   2. It silently changed a live API contract: `CreditNoteController::post()`'s
+ *      `catch (\RuntimeException)` stopped matching, turning a
+ *      `500 CONFIGURATION_ERROR` (with detail) into a generic `500 INTERNAL_ERROR`.
+ * The parent was restored. The chokepoint still raises this type — see
+ * `GeneralLedgerService::sealAndPersistEntry` — which is the actual goal of
+ * deliverable D and needs no hierarchy change at all.
  * See `docs/handoff/reviews/enforcement-p3/M1-census.md` §5.
  */
-final class UnbalancedJournalEntryException extends \InvalidArgumentException
+final class UnbalancedJournalEntryException extends \RuntimeException
 {
     /**
      * The GL posting chokepoint's refusal.
