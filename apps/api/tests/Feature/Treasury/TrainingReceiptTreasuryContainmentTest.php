@@ -27,6 +27,7 @@ use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use App\Modules\Treasury\Application\Projections\TreasuryReceiptBridge;
+use App\Modules\Treasury\Domain\Enums\InstrumentKind;
 use App\Modules\Treasury\Domain\Enums\RepositoryType;
 use App\Modules\Treasury\Domain\Payment;
 use App\Modules\Treasury\Domain\PaymentInstrument;
@@ -42,11 +43,28 @@ use Tests\TestCase;
  * LEDGER gate G-3 — **a TRAINING receipt must not move real money.**
  *
  * A training receipt is a rehearsal: the cashier is practising on a live
- * terminal, no goods leave the shop and no cash enters the drawer. The device
- * still authors a fully-signed `SALE_RECEIPT` fiscal event (the hash chain has
- * no "practice" mode) carrying `training_flag = true`, and every downstream
- * consumer is expected to recognise that flag and contain the event to the read
- * model.
+ * terminal, no goods leave the shop and no cash enters the drawer. A signed
+ * `SALE_RECEIPT` carrying `training_flag = true` (the hash chain has no
+ * "practice" mode) must be recognised by every downstream consumer and
+ * contained to the read model.
+ *
+ * ⚠️ **REACHABILITY — read before believing the narrative below.**
+ * The device CANNOT currently author a training `SALE_RECEIPT` at all:
+ * `FiscalEventEngine` defaults `chain_context` to `'operational'` and THROWS on
+ * a `training_flag` without a training chain context
+ * (`FiscalEventEngine.ts:815-818`), and no receipt service passes a training
+ * `chain_context`. So for SALE_RECEIPT specifically this guard is
+ * **defense-in-depth**, not a live-path fix: it covers legacy rows, replayed or
+ * quarantine-repaired events, directly-inserted rows, and — the real motivation
+ * — the moment training sale authoring is switched on, at which point the
+ * containment must already be in place rather than being discovered afterwards.
+ *
+ * The sibling G-3 surfaces are NOT all in that position: the ACCOUNT_PAYMENT
+ * bridge guard closes a shape the device stamps today
+ * (`accountPaymentService.ts:216,261`), and the voucher-redemption guard
+ * (see {@see TrainingVoucherRedemptionContainmentTest}) closes a tender the
+ * device applies with no training check at all. Do not generalise this file's
+ * "not currently authorable" caveat to those.
  *
  * `TreasuryReceiptBridge` did NOT. Before this fix its tender-leg loop ran with
  * zero training discrimination, so a rehearsal produced:
@@ -141,6 +159,18 @@ final class TrainingReceiptTreasuryContainmentTest extends TestCase
             'instrument_kind' => null,
         ]);
 
+        // A maturity tender — the only shape that can reach
+        // InstrumentLifecycleService and create a `payment_instruments` row.
+        PaymentMethod::factory()->create([
+            'tenant_id' => $this->tenantId,
+            'company_id' => $this->companyId,
+            'code' => 'CHQ',
+            'name' => 'Chèque',
+            'is_cash_tender' => false,
+            'has_maturity' => true,
+            'instrument_kind' => InstrumentKind::Cheque,
+        ]);
+
         $this->app->make(ChartOfAccountsService::class)->seedForCompany($company);
 
         PaymentRepository::factory()->create([
@@ -176,13 +206,25 @@ final class TrainingReceiptTreasuryContainmentTest extends TestCase
     }
 
     /**
-     * Refunds/voids ride the SAME `SALE_RECEIPT` event (there is no separate
-     * REFUND event type — `invoice_type_code` is the discriminator), so they
-     * reach the SAME `apply()` and must be contained by the SAME guard.
-     * A training refund is the more dangerous half: its tender legs pay cash
-     * OUT of the drawer and post a revenue REVERSAL.
+     * ⚠️ **This arm deliberately builds a shape INGESTION REJECTS.**
+     * `training_flag = true` with `invoice_type_code = 'REFUND'` violates the
+     * validator's training coupling (`FiscalPayloadConstraintValidator:907-914`),
+     * and a v4 refund additionally hardcodes `isTraining: false`
+     * (`RefundReceiptV4Payload.ts:441`) while `TrainingOriginalRefundRefusedError`
+     * blocks refunding a training original. So a signed training refund is
+     * unreachable through three independent contracts — the narrative of "a
+     * training refund pays cash OUT of the drawer" describes what the CODE
+     * would do, not a live path.
+     *
+     * It is kept because the guard must not depend on those three upstream
+     * contracts holding: a legacy row, a hand-repaired quarantine payload, or a
+     * directly-inserted event can still present this shape to the projector,
+     * and refunds share `apply()` with sales (there is no separate REFUND event
+     * type — `invoice_type_code` is the only discriminator, resolved at
+     * `TreasuryReceiptBridge:377-378`, DOWNSTREAM of the guard). This is
+     * defense-in-depth, not a reachability claim.
      */
-    public function test_training_refund_writes_no_payment_no_gl_and_no_repository_movement(): void
+    public function test_training_refund_shape_writes_no_payment_no_gl_and_no_repository_movement(): void
     {
         $event = $this->storeSaleReceiptFiscalEvent(
             eventVersion: 3,
@@ -211,6 +253,62 @@ final class TrainingReceiptTreasuryContainmentTest extends TestCase
 
         app(TreasuryReceiptBridge::class)->apply($event);
 
+        $this->assertNoTreasuryArtefacts($event, $receipt);
+    }
+
+    /**
+     * TEETH FOR THE INSTRUMENT ASSERTION. Every other arm tenders CASH
+     * (`has_maturity = false`), which can never create a `payment_instruments`
+     * row — so their "zero instruments" assertion is vacuous. A CHEQUE tender
+     * DOES reach `InstrumentLifecycleService::receive()` through
+     * `HandlesMaturityTenderLeg::handles()`
+     * (`has_maturity` + kind Cheque/Effet), creating a real instrument in
+     * portfolio custody. This arm makes the containment of that path real.
+     */
+    public function test_training_cheque_tender_creates_no_payment_instrument(): void
+    {
+        $event = $this->storeSaleReceiptFiscalEvent(
+            eventVersion: 3,
+            training: true,
+            methodCode: 'CHQ',
+            instrumentType: 'cheque',
+            instrumentSerial: 'CHQ-TRAINING-0001',
+        );
+        $receipt = $this->seedPosReceiptRowFor($event, isTraining: true);
+
+        app(TreasuryReceiptBridge::class)->apply($event);
+
+        $this->assertNoTreasuryArtefacts($event, $receipt);
+    }
+
+    /**
+     * TEETH FOR THE §4.6 REMOVAL. The other arms tender exactly the receipt
+     * total with a zero rounding adjustment, so they never reach the
+     * rounding/tolerance entries at all — meaning they would still pass if the
+     * removed `trainingFlag !== true` term were the only guard. This arm
+     * carries a NON-ZERO `cash_rounding_adjustment` on a v3 event, i.e. the
+     * exact input the deleted term used to suppress, and proves the single
+     * top-of-closure gate now covers it.
+     */
+    public function test_training_receipt_with_a_real_rounding_adjustment_posts_no_46_entries(): void
+    {
+        $event = $this->storeSaleReceiptFiscalEvent(
+            eventVersion: 3,
+            training: true,
+            cashRoundingAdjustment: '-0.023',
+        );
+        $receipt = $this->seedPosReceiptRowFor($event, isTraining: true);
+
+        app(TreasuryReceiptBridge::class)->apply($event);
+
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'pos_cash_rounding',
+            'source_id' => $receipt->id,
+        ]);
+        $this->assertDatabaseMissing('journal_entries', [
+            'source_type' => 'pos_tolerance_bridge',
+            'source_id' => $receipt->id,
+        ]);
         $this->assertNoTreasuryArtefacts($event, $receipt);
     }
 
@@ -264,6 +362,54 @@ final class TrainingReceiptTreasuryContainmentTest extends TestCase
         $this->assertSame(1, $this->cashRepositoryMovementCount());
         // String comparison — never a float on money.
         $this->assertSame(0, bccomp($this->cashRepositoryBalance(), '10.000', self::SCALE));
+    }
+
+    /**
+     * Proves the cheque fixture is genuinely instrument-creating, so the
+     * training cheque arm's "zero instruments" is a real containment result
+     * rather than a fixture that never could have made one.
+     */
+    public function test_control_non_training_cheque_tender_does_create_a_payment_instrument(): void
+    {
+        $event = $this->storeSaleReceiptFiscalEvent(
+            eventVersion: 3,
+            training: false,
+            methodCode: 'CHQ',
+            instrumentType: 'cheque',
+            instrumentSerial: 'CHQ-CONTROL-0001',
+        );
+        $this->seedPosReceiptRowFor($event, isTraining: false);
+
+        app(TreasuryReceiptBridge::class)->apply($event);
+
+        $this->assertSame(
+            1,
+            PaymentInstrument::query()->where('company_id', $this->companyId)->count(),
+            'The control fixture must actually create an instrument — otherwise the gate arm proves nothing.',
+        );
+        $this->assertSame(1, Payment::query()->where('fiscal_event_id', $event->id)->count());
+    }
+
+    /**
+     * Proves the non-zero-rounding fixture genuinely reaches the §4.6 entry, so
+     * the training rounding arm's absence assertions have teeth — this is the
+     * regression tooth for REMOVING the redundant `trainingFlag` term.
+     */
+    public function test_control_non_training_receipt_with_rounding_does_post_the_46_entry(): void
+    {
+        $event = $this->storeSaleReceiptFiscalEvent(
+            eventVersion: 3,
+            training: false,
+            cashRoundingAdjustment: '-0.023',
+        );
+        $receipt = $this->seedPosReceiptRowFor($event, isTraining: false);
+
+        app(TreasuryReceiptBridge::class)->apply($event);
+
+        $this->assertDatabaseHas('journal_entries', [
+            'source_type' => 'pos_cash_rounding',
+            'source_id' => $receipt->id,
+        ]);
     }
 
     public function test_control_non_training_refund_writes_payment_gl_and_repository_movement(): void
@@ -420,9 +566,20 @@ final class TrainingReceiptTreasuryContainmentTest extends TestCase
     private function storeSaleReceiptFiscalEvent(
         int $eventVersion = 3,
         bool $training = false,
-        string $invoiceTypeCode = 'SALE',
+        ?string $invoiceTypeCode = null,
         int $sequenceNumber = 1,
+        string $methodCode = 'CASH',
+        ?string $instrumentType = null,
+        ?string $instrumentSerial = null,
+        ?string $cashRoundingAdjustment = null,
     ): FiscalEvent {
+        // Contract-legal default: the validator couples `training_flag` to
+        // `invoice_type_code === 'TRAINING'` and rejects any other pairing
+        // (`FiscalPayloadConstraintValidator:907-914`; the device enforces the
+        // same coupling at `FiscalEventEngine.ts:1610-1614`). Arms that
+        // deliberately exercise a forbidden shape pass $invoiceTypeCode
+        // explicitly and say so in their own docblock.
+        $invoiceTypeCode ??= $training ? 'TRAINING' : 'SALE';
         $eventTime = now()->utc();
         $businessDate = $eventTime->copy()->startOfDay();
         $previousHash = str_repeat('0', 64);
@@ -467,9 +624,9 @@ final class TrainingReceiptTreasuryContainmentTest extends TestCase
                 'amount' => '10.000',
                 'foreign_currency_amount' => null,
                 'foreign_currency_code' => null,
-                'instrument_serial' => null,
-                'instrument_type' => null,
-                'method_code' => 'CASH',
+                'instrument_serial' => $instrumentSerial,
+                'instrument_type' => $instrumentType,
+                'method_code' => $methodCode,
             ]],
             'receipt_uuid' => '00000000-0000-4000-8000-000000000001',
             'seller' => [
@@ -498,8 +655,8 @@ final class TrainingReceiptTreasuryContainmentTest extends TestCase
         ];
 
         if ($eventVersion >= 3) {
-            $payload['cash_rounding_adjustment'] = '0.000';
-            $payload['cash_rounding_denomination'] = '0.000';
+            $payload['cash_rounding_adjustment'] = $cashRoundingAdjustment ?? '0.000';
+            $payload['cash_rounding_denomination'] = $cashRoundingAdjustment === null ? '0.000' : '0.050';
         }
 
         $canonicalArray = [

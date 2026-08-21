@@ -1560,6 +1560,24 @@ final class PosCoreReceiptProjection implements FiscalEventProjector
             return;
         }
 
+        // LEDGER gate G-3 — a TRAINING receipt must not burn a REAL voucher.
+        // `resolveReceiptType()` maps TRAINING to `ReceiptType::Sale`, so the
+        // gate above passes and this method is genuinely reached for a
+        // training receipt. Redemption is not a read-model write: it
+        // extinguishes the customer's outstanding voucher liability AND posts
+        // Dr VoucherLiability / Cr PosTenderClearing. TreasuryReceiptBridge
+        // now returns early for training (same gate, same flag), so without
+        // this guard the clearing credit would never get its offsetting debit
+        // — a permanently unmatched PosTenderClearing balance on top of a real
+        // voucher the customer can no longer spend.
+        //
+        // Keyed on the SEALED payload flag, matching the bridge and
+        // `earnLoyaltyPoints()` below, so the three training gates cannot
+        // drift apart.
+        if ($view->payload->trainingFlag === true) {
+            return;
+        }
+
         $currency = $view->payload->currencyCode;
 
         foreach ($view->payments as $payment) {

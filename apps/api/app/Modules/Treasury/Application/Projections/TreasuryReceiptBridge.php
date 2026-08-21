@@ -74,6 +74,20 @@ use RuntimeException;
  * still completes cleanly so the queue row reaches `applied`. Pinned by
  * `tests/Feature/Treasury/TrainingReceiptTreasuryContainmentTest.php`.
  *
+ * For SALE_RECEIPT this is DEFENSE-IN-DEPTH rather than a live-path fix: the
+ * device cannot currently author a training sale at all (`FiscalEventEngine.ts`
+ * defaults `chain_context` to `'operational'` and throws on a `training_flag`
+ * without a training chain context, `:815-818`; no receipt service passes one).
+ * It covers legacy rows, replays, quarantine repairs, and the moment training
+ * authoring is switched on. The sibling guard in `TreasuryAccountPaymentBridge`
+ * is NOT in that position — the device stamps `training_flag` on
+ * ACCOUNT_PAYMENT payloads today.
+ *
+ * **Pre-enable census.** Because authoring is currently blocked, the expected
+ * count of already-written training-created money rows is ZERO — but that must
+ * be CONFIRMED per tenant at deploy, never assumed. See the query shapes in
+ * the G-3 evidence line / `docs/superpowers/tickets/2026-08-21-*`.
+ *
  * **Change netting (spec §4.6, `event_version >= 3`).** From the cash-rounding
  * cutover on, `payments.amount` is the RETAINED amount, not the tendered one:
  * a pre-pass in `apply()` subtracts the over-tender from the last cash leg

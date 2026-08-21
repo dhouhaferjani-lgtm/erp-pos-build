@@ -81,6 +81,29 @@ final class TreasuryAccountPaymentBridge implements FiscalEventProjector
     {
         $view = $this->canonicalReader->forAccountPayment($event);
 
+        // ============================================================
+        // LEDGER gate G-3 — TRAINING events never move real money.
+        // ============================================================
+        // The device stamps `training_flag` on ACCOUNT_PAYMENT payloads
+        // (`apps/pos/src/lib/offline/accountPaymentService.ts:216,261`), so a
+        // trainee rehearsing "customer settles their account" authors a
+        // fully-signed event that this bridge would otherwise turn into real
+        // money: a `payments` row (status=Completed, origin=Pos), a real FIFO
+        // allocation against the customer's OPEN INVOICES with its posted GL
+        // consequence, and a real `repository_movements` drawer movement.
+        //
+        // Unlike a rehearsed sale, this one also mutates PARTNER state — it
+        // would mark genuine receivables as settled — so containment matters
+        // more here, not less.
+        //
+        // Keyed on the SEALED payload flag, same shape as the sibling gate in
+        // TreasuryReceiptBridge. Returning cleanly (not throwing) keeps
+        // ApplyFiscalEventProjectionJob's `applied` path intact so a rehearsal
+        // never parks a permanently-retrying projection row.
+        if ($view->payload->trainingFlag === true) {
+            return;
+        }
+
         $terminalLocationId = $this->resolveTerminalLocationId($event);
 
         DB::transaction(function () use ($event, $view, $terminalLocationId): void {
