@@ -49,7 +49,7 @@
     "months_two": "كل شهرين",
     "months_few": "كل {{count}} أشهر",
     "months_many": "كل {{count}} شهرًا",
-    "months_other": "كل {{count}} شهرًا"
+    "months_other": "كل {{count}} شهر"
   },
   "applicability": {
     "universal": "عامة",

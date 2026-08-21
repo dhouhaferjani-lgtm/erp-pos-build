@@ -26,7 +26,7 @@
       "daysUntilDue_two": "يستحق خلال يومين",
       "daysUntilDue_few": "يستحق خلال {{count}} أيام",
       "daysUntilDue_many": "يستحق خلال {{count}} يومًا",
-      "daysUntilDue_other": "يستحق خلال {{count}} أيام",
+      "daysUntilDue_other": "يستحق خلال {{count}} يوم",
       "buckets": {
         "overdue": "متأخر",
         "current": "حالي",

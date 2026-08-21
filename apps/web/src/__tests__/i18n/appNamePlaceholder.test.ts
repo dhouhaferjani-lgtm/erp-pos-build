@@ -61,6 +61,7 @@ describe('OQ-1 — privacy copy carries no brand literal', () => {
   it.each([
     ['en', enCommon],
     ['fr', frCommon],
+    ['ar', arCommon],
   ])('%s/common.json privacy copy interpolates {{appName}} where the brand used to be', (
     _locale,
     bundle,

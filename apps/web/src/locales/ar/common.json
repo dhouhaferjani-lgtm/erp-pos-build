@@ -319,7 +319,7 @@
     "complianceExport": "تصدير الامتثال",
     "expiryWriteOff": "إعدام الدفعات منتهية الصلاحية",
     "posReceipts": "إيصالات نقطة البيع",
-    "remittances": "قسائم الإيداع"
+    "remittances": "حافظات التحصيل"
   },
   "locations": {
     "title": "إدارة المواقع",
@@ -1388,7 +1388,7 @@
   "selectLanguage": "اختر اللغة",
   "sku": "رمز SKU",
   "partners": {
-    "addNew": "إضافة جديد",
+    "addNew": "إضافة جديدة",
     "both": "كلاهما",
     "customer": "عميل",
     "supplier": "مورّد",
