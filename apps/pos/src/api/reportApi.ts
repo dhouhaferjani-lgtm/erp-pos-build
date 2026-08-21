@@ -564,15 +564,24 @@ async function generateLocalXReport(
     netSales = bcadd(netSales, receipt.subtotal);
     taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
+    // C-2 fix (z-sale-branch-decomposition, ruling: Option B) — the third,
+    // structurally separate copy of this loop. Same derivation as the refund
+    // branch above and as the other two sites: `line_total` is GROSS/TTC, so
+    // net is gross − vat at the currency scale. No `bcabs`: a sale row is
+    // positive-signed. `lineGross` is bound to a local (rather than inlining
+    // the addition in the accumulator, as this site used to) so a reviewer
+    // reading all three fixes side by side sees ONE pattern, not three.
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
       const lineVat = line.tax_amount ?? '0';
-      const lineNet = line.line_total ?? '0';
+      const lineGross = line.line_total ?? '0';
+      const lineNet = bcsub(lineGross, lineVat, decimals);
+
       const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
-      existing.net = bcadd(existing.net, lineNet);
-      existing.vat = bcadd(existing.vat, lineVat);
-      existing.gross = bcadd(existing.gross, bcadd(lineNet, lineVat));
+      existing.net = bcadd(existing.net, lineNet, decimals);
+      existing.vat = bcadd(existing.vat, lineVat, decimals);
+      existing.gross = bcadd(existing.gross, lineGross, decimals);
       vatByRate.set(rate, existing);
     }
 

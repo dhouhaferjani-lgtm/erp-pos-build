@@ -33,8 +33,18 @@ describe('buildEndOfDayPreview', () => {
             payments_json: JSON.stringify([
               { payment_method_id: 'pm-cash', amount: '10.00', method_code: 'CASH' },
             ]),
+            // C-2 fixture correction (R-4): `line_total` was authored as NET
+            // ('8.40'), which the REAL writer never produces —
+            // `cartStore.recalcLineTotal()` writes the GROSS/TTC figure and
+            // EXTRACTS `tax_amount` out of it, and `receiptService.ts` copies
+            // both verbatim. On this 10.00-total / 19 % row the writer's values
+            // are line_total 10.00 and tax_amount 1.60 (10.00 − 10.00/1.19 =
+            // 10.00 − 8.40). The NET-valued fixture MASKED the sale-branch
+            // gross-as-net defect: the old code summed 8.40 as the net and got
+            // the right answer only because the input was wrong in exactly the
+            // compensating way. The expected values below are UNCHANGED.
             lines: JSON.stringify([
-              { tax_rate: '19', tax_amount: '1.60', line_total: '8.40' },
+              { tax_rate: '19', tax_amount: '1.60', line_total: '10.00' },
             ]),
             created_at: '2026-04-23T10:00:00Z',
           },
@@ -46,8 +56,11 @@ describe('buildEndOfDayPreview', () => {
             payments_json: JSON.stringify([
               { payment_method_id: 'pm-card', amount: '20.00', method_code: 'CARD' },
             ]),
+            // C-2 fixture correction (R-4), same justification: on this
+            // 20.00-total / 19 % row the writer's values are line_total 20.00
+            // and tax_amount 3.19 (20.00 − 20.00/1.19 = 20.00 − 16.81).
             lines: JSON.stringify([
-              { tax_rate: '19', tax_amount: '3.19', line_total: '16.81' },
+              { tax_rate: '19', tax_amount: '3.19', line_total: '20.00' },
             ]),
             created_at: '2026-04-23T10:05:00Z',
           },

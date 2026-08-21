@@ -900,18 +900,36 @@ function aggregateReportData(
     netSales = bcadd(netSales, receipt.subtotal);
     taxAmount = bcadd(taxAmount, receipt.tax_amount);
 
-    // VAT breakdown from receipt lines
+    // VAT breakdown from receipt lines.
+    //
+    // C-2 fix (z-sale-branch-decomposition, ruling: Option B — in-place
+    // semantic correction at the current event_version): `lines[].line_total`
+    // is the GROSS/TTC line amount on a SALE row exactly as on a refund row.
+    // The POS cart's `unit_price` is tax-INCLUSIVE and
+    // `cartStore.recalcLineTotal()` derives `line_total = unit_price × qty −
+    // discount`, then EXTRACTS `tax_amount` out of that gross figure
+    // (`computeTaxAmount`); `receiptService.ts` copies both values verbatim
+    // onto the row. Calling `line_total` the net and ADDING the VAT on top
+    // therefore booked net 12.00 / gross 14.00 for a 12.00-gross, 2.00-VAT
+    // line instead of net 10.00 / gross 12.00 — the same double-count the
+    // refund branch above carried until the Lane C wave-2 fix, in the SIGNED
+    // Z_REPORT and SESSION_CLOSE bytes. Net is derived the only way it can
+    // be: gross − vat, at the currency scale.
+    //
+    // No `bcabs` here (unlike the refund branch): a sale row is
+    // positive-signed, and `bcabs` would silently swallow a legitimately
+    // negative row rather than surfacing it.
     const lines = JSON.parse(receipt.lines) as ReceiptLineJson[];
     for (const line of lines) {
       const rate = line.tax_rate ?? '0';
       const lineVat = line.tax_amount ?? '0';
-      const lineNet = line.line_total ?? '0';
-      const lineGross = bcadd(lineNet, lineVat);
+      const lineGross = line.line_total ?? '0';
+      const lineNet = bcsub(lineGross, lineVat, decimals);
 
       const existing = vatByRate.get(rate) ?? { net: '0', vat: '0', gross: '0' };
-      existing.net = bcadd(existing.net, lineNet);
-      existing.vat = bcadd(existing.vat, lineVat);
-      existing.gross = bcadd(existing.gross, lineGross);
+      existing.net = bcadd(existing.net, lineNet, decimals);
+      existing.vat = bcadd(existing.vat, lineVat, decimals);
+      existing.gross = bcadd(existing.gross, lineGross, decimals);
       vatByRate.set(rate, existing);
     }
 

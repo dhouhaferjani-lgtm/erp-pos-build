@@ -20,8 +20,11 @@ worktree: .worktrees/z-sale-decomposition
 commit_series: "z-decomp M<m>.<s>:"
 ledger_row: C-2   # parent closes at merge with the lane's evidence line
 
-status: blocked_review
-blockers:
+status: in_progress
+# M1's gate RULED (Option B) and the parent recorded it at 9e43a4f5a — the M1 blocker is
+# DISCHARGED and kept below as `resolved_blockers` for the audit trail, not as an open item.
+blockers: []
+resolved_blockers:
   - id: z-signed-bytes-versioning
     milestone: M1
     kind: owner/reviewer gate — the wave STOPS here BY DESIGN (brief §M1, §R-1)
@@ -57,6 +60,11 @@ blockers:
     resume_condition: >-
       owner_gates.z-signed-bytes-versioning.chosen_option recorded in this file. M2 implements
       EXACTLY the ruled option. Resuming without the recorded ruling is a harness violation.
+    resolved: >-
+      SATISFIED at 9e43a4f5a — chosen_option: B (in-place semantic correction at the current
+      event_version), ruled by the parent-dispatched fiscal-pos-reviewer specialist gate, record
+      at docs/handoff/reviews/z-sale-branch-decomposition/M1-ruling.md. Q2 accepted open on the
+      record; Q1/Q3 are NOT preconditions. M2 resumed under conditions 1-5 of that ruling.
 
 owner_gates:
   z-signed-bytes-versioning:
@@ -107,7 +115,7 @@ milestones:
     title: signed-bytes decision memo (memo-quality bridge review, then STOP blocked_review)
     review_lenses: [fiscal-pos]
     owner_gate: z-signed-bytes-versioning
-    status: blocked_review
+    status: passed          # memo ACCEPT (round 5) + the gate RULED; blocker discharged at 9e43a4f5a
     commit: 0edbf402b       # z-decomp M1.1 (memo); amended by the round-1 fix round, see fix_commit
     fix_commits: [63b756784, b13536a76, faa0a3ec1, 464eea67a]  # M1.2 r1, M1.3 r2, M1.4 r3, M1.5 r4 fixes. The round-5 P3 closure is THIS commit (self-reference impossible at write time).
     verdict: docs/handoff/reviews/z-sale-branch-decomposition/M1-round5.md   # ACCEPT. Exists at this commit — this field never forward-references.
@@ -269,10 +277,61 @@ milestones:
   - id: M2
     title: three sale-branch fixes + scale args, real-writer red-first per consumer
     review_lenses: [fiscal-pos, general]
-    status: pending
-    commit: null
+    status: review
+    commit: null            # self-reference impossible at write time; filled by M3's commit
     verdict: null
     fix_rounds: 0
+    ruled_option_implemented: >-
+      B — in-place semantic correction at the current event_version. ZERO registry / payload /
+      parser / validator / projection / archive changes (ruling condition 1); verified by the
+      whole-branch file list at M4.
+    red_first_evidence: >-
+      NEW real-writer suite apps/pos/src/lib/offline/__tests__/saleReportingEndToEnd.test.ts,
+      run BEFORE the three fixes: 4 failed | 1 passed. The one PASS is the writer-premise test
+      (the real createOfflineReceipt persists line_total = GROSS 12.00 with tax_amount 2.00
+      extracted) — the premise had to be green or the reds would be measuring the wrong thing.
+      The four REDS, one per consumer plus the ruling's lockstep assertion, all showed the same
+      defect on a 12.00-gross / 2.00-VAT line -- net_amount '12.00' (gross-as-net) and
+      gross_amount '14.00' (gross+vat) against the hand-computed 10.00 / 12.00.
+    revert_replay: >-
+      PER SITE, not merely per commit (stash-free, scratchpad backups). Reverting ONLY
+      zReportService's sale branch -> 2 failed (consumer-1 Z + the SESSION_CLOSE byte-identity
+      assertion, which reads the same aggregateReportData output — exactly the lockstep the
+      ruling's condition 2 asserts). Reverting ONLY endOfDayPreview -> 1 failed (consumer-2).
+      Reverting ONLY reportApi -> 1 failed (consumer-3). Each restored; full suite green after.
+    session_close_lockstep: >-
+      Ruling condition 2 SATISFIED by a real assertion, not an assumption: the test captures the
+      ACTUAL AuthorZSessionCloseInput passed to appendZSessionCloseAndZReport, feeds it to the
+      REAL buildZReportPayload and buildSessionClosePayload, and asserts
+      JSON.stringify(vat_breakdown) is byte-identical between them AND equals the corrected
+      decomposition (a byte-identity check alone would pass on two wrong payloads).
+    fixture_corrections: >-
+      TWO, both in endOfDayPreview.test.ts, both named with old -> new and writer justification.
+      :37 line_total '8.40' -> '10.00' and :50 line_total '16.81' -> '20.00'. Justification:
+      cartStore.recalcLineTotal() writes GROSS and EXTRACTS tax; on a 10.00 total at 19 pct the
+      writer's values are line_total 10.00 / tax_amount 1.60 (10.00 - 10.00/1.19). DECISIVE
+      EVIDENCE that the fixture (not the assertion) was wrong: the expected values at :83-85
+      (net 25.21 / vat 4.79 / gross 30.00) are UNCHANGED — the old code only reached them
+      because the NET-valued input was wrong in exactly the compensating way.
+      Scope check: these are the ONLY two sale fixtures any decomposition assertion relies on
+      (endOfDayPreview.test.ts:80-84 is the only such assertion in the file; :127 asserts empty;
+      zReportService.test.ts:1045 is a REFUND row at tax_rate 0; reportApi tests assert []).
+      The remaining NET-valued line_total fixtures in endOfDayPreview.test.ts
+      (:144,:193,:247,:323,:390,:450,:488,:523,:555,:622) feed expected_cash / payment
+      assertions only and are REGISTERED-NOT-CORRECTED (rule 4 — correcting them would be a
+      large diff with no assertion benefit).
+      DISCLOSED RESIDUAL: the corrected rows still carry a NET `subtotal` column ('8.40'/'16.81')
+      where the real writer would store GROSS — that is F-2's defect, deliberately NOT corrected
+      here (ruling condition 4 keeps F-2 out of this lane).
+    gates: >-
+      pnpm typecheck clean. pnpm lint:ratchet — @autoerp/pos HELD at 84 (zero warning growth,
+      the gate this brief names). @autoerp/web shows 6449 -> 6452 (+3) and is INHERITED, proven
+      structurally rather than asserted: `git diff --stat base..HEAD -- apps/web` is EMPTY and
+      `git status --porcelain -- apps/web` is EMPTY, so apps/web is byte-identical to base and
+      cannot have been affected by this lane.
+    regression: >-
+      Tier 1 (6 suites + the new one) 83 passed. Tier 2 (8 downstream suites) 80 passed.
+      Tests BY PATH only; no full suite run.
   - id: M3
     title: real-writer E2E matrix (mixed-rate, sale+refund net-to-zero) + fixture-correction register
     review_lenses: [fiscal-pos, general]
@@ -288,4 +347,4 @@ milestones:
     verdict: null
     fix_rounds: 0
 
-updated: 464eea67a   # short HEAD at write time (the blocked_review commit is this commit's child) (harness "No clock" rule: use git rev-parse --short HEAD)
+updated: 9e43a4f5a   # short HEAD at write time

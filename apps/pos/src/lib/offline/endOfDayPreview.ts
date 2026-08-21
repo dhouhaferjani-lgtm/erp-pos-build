@@ -298,13 +298,18 @@ export async function buildEndOfDayPreview(
         continue;
       }
 
+      // C-2 fix (z-sale-branch-decomposition, ruling: Option B). The comment
+      // above already stated that `line_total` is GROSS "(as on a sale row)"
+      // and that the sale branch was left alone as out-of-wave scope — this
+      // is that wave. Same derivation as the refund branch, same currency
+      // scale, and no `bcabs`: a sale row is positive-signed.
       const lineVat = line.tax_amount ?? '0';
-      const lineNet = line.line_total ?? '0';
-      const lineGross = bcadd(lineNet, lineVat);
+      const lineGross = line.line_total ?? '0';
+      const lineNet = bcsub(lineGross, lineVat, scale);
 
-      existing.net = bcadd(existing.net, lineNet);
-      existing.vat = bcadd(existing.vat, lineVat);
-      existing.gross = bcadd(existing.gross, lineGross);
+      existing.net = bcadd(existing.net, lineNet, scale);
+      existing.vat = bcadd(existing.vat, lineVat, scale);
+      existing.gross = bcadd(existing.gross, lineGross, scale);
       vatByRate.set(rate, existing);
     }
 
