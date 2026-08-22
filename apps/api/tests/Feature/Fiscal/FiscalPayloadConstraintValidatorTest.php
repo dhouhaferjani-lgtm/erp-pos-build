@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Fiscal;
 
 use App\Modules\Fiscal\Application\Services\CanonicalPayloadReader;
+use App\Modules\Fiscal\Application\Services\FiscalEventPayloadRegistry;
 use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
+use App\Modules\Fiscal\Application\Services\StrictCanonicalParser;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\AccountPaymentView;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\BuyerDTO;
 use App\Modules\Fiscal\Domain\DTOs\Canonical\LineItemDTO;
@@ -21,6 +23,7 @@ use RuntimeException;
 use Tests\Helpers\Fiscal\GoldenFixtureBuilder;
 use Tests\Helpers\Fiscal\LargeReceiptFixtureGenerator;
 use Tests\TestCase;
+use ValueError;
 
 /**
  * Tests for `FiscalPayloadConstraintValidator::validateSaleReceiptPayload`
@@ -2275,7 +2278,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         foreach (self::zFamilyTypes() as $type) {
             $payload = self::zFamilyPayload($type, [
                 'vat_breakdown' => [
-                    ['rate' => '20.00', 'net_amount' => '120.00', 'vat_amount' => '20.00', 'gross_amount' => '140.00'],
+                    ['tax_rate' => 20, 'net_amount' => '120.00', 'vat_amount' => '20.00', 'gross_amount' => '140.00'],
                 ],
             ]);
 
@@ -2315,7 +2318,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     {
         $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
             'vat_breakdown' => [
-                ['rate' => '20.00', 'net_amount' => '100.00', 'vat_amount' => '20.00', 'gross_amount' => '119.00'],
+                ['tax_rate' => 20, 'net_amount' => '100.00', 'vat_amount' => '20.00', 'gross_amount' => '119.00'],
             ],
         ]);
 
@@ -2342,7 +2345,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
             'refunds_totals' => ['amount' => '12.00', 'count' => 1],
             'vat_breakdown' => [
-                ['rate' => '20.00', 'net_amount' => '90.00', 'vat_amount' => '18.00', 'gross_amount' => '108.00'],
+                ['tax_rate' => 20, 'net_amount' => '90.00', 'vat_amount' => '18.00', 'gross_amount' => '108.00'],
             ],
         ]);
 
@@ -2355,7 +2358,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
             'refunds_totals' => ['amount' => '12.00', 'count' => 1],
             'vat_breakdown' => [
-                ['rate' => '20.00', 'net_amount' => '90.00', 'vat_amount' => '18.00', 'gross_amount' => '110.00'],
+                ['tax_rate' => 20, 'net_amount' => '90.00', 'vat_amount' => '18.00', 'gross_amount' => '110.00'],
             ],
         ]);
 
@@ -2366,13 +2369,14 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
 
     public function test_z_report_family_accepts_a_signed_negative_bucket(): void
     {
-        // A refund-only shift leaves every bucket negative. The money assertions
-        // must accept a leading minus (the breakdown is SIGNED, unlike a
-        // SALE_RECEIPT's), and the group identity still has to hold.
+        // A refund-only shift leaves every bucket negative. The Z-family money
+        // guard must therefore accept a leading minus — the breakdown is SIGNED,
+        // unlike a SALE_RECEIPT's, whose `moneyRegex()` is unsigned — and the
+        // group identity still has to hold on the negative values.
         $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
             'refunds_totals' => ['amount' => '12.00', 'count' => 1],
             'vat_breakdown' => [
-                ['rate' => '20.00', 'net_amount' => '-10.00', 'vat_amount' => '-2.00', 'gross_amount' => '-12.00'],
+                ['tax_rate' => 20, 'net_amount' => '-10.00', 'vat_amount' => '-2.00', 'gross_amount' => '-12.00'],
             ],
         ]);
 
@@ -2411,13 +2415,208 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
         // before the C-2/C-6 device build.
         $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
             'vat_breakdown' => [
-                ['rate' => '20.00', 'net_amount' => '120.00', 'vat_amount' => '20.00', 'gross_amount' => '140.00'],
+                ['tax_rate' => 20, 'net_amount' => '120.00', 'vat_amount' => '20.00', 'gross_amount' => '140.00'],
             ],
             'receipt_totals' => ['count' => 1, 'gross_sales' => '120.00', 'net_sales' => '120.00', 'tax_amount' => '20.00'],
         ]);
 
         $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
         $this->addToAssertionCount(1);
+    }
+
+    // ── Fix round (gate CHANGES-REQUIRED) ────────────────────────────────────
+
+    public function test_z_report_family_accepts_a_one_ulp_group_rounding_residue(): void
+    {
+        // Gate finding P2-1. `net_amount`, `vat_amount` and `gross_amount` are
+        // three INDEPENDENTLY half-up-rounded accumulators, so a line below the
+        // currency scale makes round(g−v) + round(v) land one ulp away from
+        // round(g). 10.01 + 2.01 = 12.02 against a gross of 12.01 is a
+        // legitimately-signed shape, and an exact rule 1 rejected it — which,
+        // through VerifyEventChainCommand, would have meant rejecting sealed
+        // history. One ulp of slack, and no more.
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'vat_breakdown' => [
+                ['tax_rate' => 20, 'net_amount' => '10.01', 'vat_amount' => '2.01', 'gross_amount' => '12.01'],
+            ],
+            'receipt_totals' => ['count' => 1, 'gross_sales' => '12.01', 'net_sales' => '10.01', 'tax_amount' => '2.01'],
+        ]);
+
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+        $this->addToAssertionCount(1);
+    }
+
+    public function test_z_report_family_still_rejects_a_two_ulp_group_deviation(): void
+    {
+        // The slack is exactly one ulp: two ulp is not rounding, it is an error.
+        // Headline kept consistent with the sums so this isolates rule 1.
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+            'vat_breakdown' => [
+                ['tax_rate' => 20, 'net_amount' => '10.01', 'vat_amount' => '2.01', 'gross_amount' => '12.00'],
+            ],
+            'receipt_totals' => ['count' => 1, 'gross_sales' => '12.00', 'net_sales' => '10.01', 'tax_amount' => '2.01'],
+        ]);
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payload_aggregate_consistency:group_gross_ne_net_plus_vat/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+    }
+
+    public function test_z_report_family_rejects_money_bcmath_cannot_parse_without_fataling(): void
+    {
+        // Gate finding P2-3. `is_numeric('1e2')` is TRUE, so the numeric-string
+        // check passed the value straight into bcmath, which raises a
+        // ValueError — NOT a RuntimeException. SALE_RECEIPT is protected by
+        // `assertMoneyString` running before any arithmetic; the Z family had no
+        // equivalent, so a corrupted stored Z FATALED `fiscal:verify-chain`
+        // instead of being recorded as a parse failure.
+        foreach (['1e2', '+12.00', '12.', '.5', 'NaN', '0x1A', '12.000000'] as $poison) {
+            $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+                'vat_breakdown' => [
+                    ['tax_rate' => 20, 'net_amount' => $poison, 'vat_amount' => '20.00', 'gross_amount' => '120.00'],
+                ],
+            ]);
+
+            try {
+                $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+                self::fail('expected money "'.$poison.'" to be rejected');
+            } catch (RuntimeException $e) {
+                self::assertStringContainsString('payload_money_scale_mismatch', $e->getMessage());
+            }
+        }
+    }
+
+    public function test_z_report_family_rejects_a_malformed_headline_money_string(): void
+    {
+        $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT);
+        $payload['receipt_totals']['net_sales'] = '1e2';
+
+        $this->expectException(RuntimeException::class);
+        $this->expectExceptionMessageMatches('/payload_money_scale_mismatch:field=receipt_totals\.net_sales/');
+        $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+    }
+
+    public function test_strict_parser_records_a_parse_failure_instead_of_fataling_on_unparseable_z_money(): void
+    {
+        // Gate finding P2-3, second layer — the OUTCOME that matters: a stored Z
+        // whose money bcmath cannot parse must be RECORDED as a parse failure,
+        // never crash the caller. `VerifyEventChainCommand:544` re-parses every
+        // row's canonical_bytes, so before this a single corrupted Z fataled
+        // `fiscal:verify-chain` for the whole terminal.
+        //
+        // Driven end to end through the REAL parser with a REAL X_REPORT
+        // envelope (the smallest Z-family key set). The validator class is
+        // `final`, so no test double can inject the ValueError directly; the
+        // parser's ValueError→RuntimeException clause is instead proven
+        // load-bearing by revert-replay — remove the validator's money guard and
+        // this test still passes, with `payload_value_error` in the reason,
+        // ONLY because of that clause (evidence in the commit message).
+        $parser = new StrictCanonicalParser(
+            new FiscalEventPayloadRegistry,
+            new FiscalPayloadConstraintValidator,
+        );
+
+        $result = $parser->parse(
+            self::xReportCanonicalBytes(['net_amount' => '1e2']),
+            FiscalEventType::X_REPORT,
+        );
+
+        self::assertFalse($result->ok, 'a poisoned Z-family money value must not parse');
+        self::assertNotNull($result->failureReason);
+        self::assertStringContainsString('payload_money_scale_mismatch', $result->failureReason);
+    }
+
+    public function test_strict_parser_accepts_a_well_formed_x_report_envelope(): void
+    {
+        // Guard the guard: if the envelope fixture above ever stopped reaching
+        // `validatePerEventConstraints` at all, the failure assertion would pass
+        // vacuously on an envelope-shape error instead of the money guard.
+        $parser = new StrictCanonicalParser(
+            new FiscalEventPayloadRegistry,
+            new FiscalPayloadConstraintValidator,
+        );
+
+        $result = $parser->parse(self::xReportCanonicalBytes(), FiscalEventType::X_REPORT);
+
+        self::assertTrue($result->ok, 'fixture drift: '.($result->failureReason ?? ''));
+    }
+
+    public function test_z_report_family_rejects_a_non_integer_refund_count_instead_of_skipping(): void
+    {
+        // Gate finding P3-1: the refund gate failed OPEN. A JSON `"0"` is not an
+        // int, so `! is_int(...)` returned early and BOTH sum identities were
+        // silently skipped — the exact shape that would let a gross-as-net Z
+        // through the tripwire that exists to catch it.
+        foreach (['0', 0.0, null, true] as $badCount) {
+            $payload = self::zFamilyPayload(FiscalEventType::Z_REPORT, [
+                'refunds_totals' => ['amount' => '0.00', 'count' => $badCount],
+            ]);
+
+            try {
+                $this->validator->validatePerEventConstraints(FiscalEventType::Z_REPORT, $payload);
+                self::fail('expected refunds_totals.count '.var_export($badCount, true).' to be rejected');
+            } catch (RuntimeException $e) {
+                self::assertStringContainsString('payload_field_invalid:refunds_totals.count', $e->getMessage());
+            }
+        }
+    }
+
+    /**
+     * A complete, well-formed X_REPORT envelope — the smallest Z-family key set
+     * (19 keys) — as canonical bytes.
+     *
+     * @param  array<string, mixed>  $vatRowOverrides
+     */
+    private static function xReportCanonicalBytes(array $vatRowOverrides = []): string
+    {
+        $payload = [
+            'business_date' => '2026-08-21',
+            'cash_drawer_totals' => [],
+            'generated_at_device' => '2026-08-21T18:00:00.000Z',
+            'operational_event_range' => [],
+            'operator_id' => '33333333-3333-4333-8333-333333333333',
+            'operator_name' => 'Alice',
+            'payment_method_totals' => [],
+            'period_end' => '2026-08-21T18:00:00.000Z',
+            'period_start' => '2026-08-21T08:00:00.000Z',
+            'receipt_count' => 1,
+            'refunds_totals' => ['amount' => '0.00', 'count' => 0],
+            'sales_totals' => ['gross_sales' => '120.00', 'net_sales' => '100.00', 'tax_amount' => '20.00'],
+            'session_id' => '11111111-1111-4111-8111-111111111111',
+            'shift_id' => '22222222-2222-4222-8222-222222222222',
+            'terminal_id' => '44444444-4444-4444-8444-444444444444',
+            'training_flag' => false,
+            'vat_breakdown' => [
+                array_replace(
+                    ['tax_rate' => 20, 'net_amount' => '100.00', 'vat_amount' => '20.00', 'gross_amount' => '120.00'],
+                    $vatRowOverrides,
+                ),
+            ],
+            'voids_totals' => ['count' => 0],
+            'x_report_uuid' => '55555555-5555-4555-8555-555555555555',
+        ];
+
+        $envelope = [
+            'business_date' => '2026-08-21',
+            'chain_context' => 'z_session',
+            'company_id' => '66666666-6666-4666-8666-666666666666',
+            // ISO 8601 UTC to SECONDS in the envelope (milliseconds are the
+            // PAYLOAD's `generated_at_device` contract, not the envelope's).
+            'event_time_device' => '2026-08-21T18:00:00Z',
+            'event_type' => 'X_REPORT',
+            'event_version' => 1,
+            'operator_id' => '33333333-3333-4333-8333-333333333333',
+            'payload' => $payload,
+            'previous_hash' => str_repeat('0', 64),
+            'reference_document_id' => null,
+            'reference_event_id' => null,
+            'sequence_number' => 1,
+            'signature_version' => 'hash-chain-integrity-v1',
+            'tenant_id' => '77777777-7777-4777-8777-777777777777',
+            'terminal_id' => '44444444-4444-4444-8444-444444444444',
+        ];
+
+        return (string) json_encode($envelope, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     }
 
     /** @return list<FiscalEventType> */
@@ -2454,7 +2653,7 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
             'training_flag' => false,
             'refunds_totals' => ['amount' => '0.00', 'count' => 0],
             'vat_breakdown' => [
-                ['rate' => '20.00', 'net_amount' => '100.00', 'vat_amount' => '20.00', 'gross_amount' => '120.00'],
+                ['tax_rate' => 20, 'net_amount' => '100.00', 'vat_amount' => '20.00', 'gross_amount' => '120.00'],
             ],
         ];
         $payload[self::zFamilyTotalsKey($type)] = [

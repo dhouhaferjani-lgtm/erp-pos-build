@@ -792,10 +792,37 @@ final class FiscalPayloadConstraintValidator
      * retroactively to the entire sealed corpus — which is exactly why the
      * "fully legacy" case below is accepted rather than rejected.
      *
+     * ── DEPLOYMENT PRECONDITION (mandatory coupling, do not ship alone) ──────
+     * This rule PRESUPPOSES the C-6 device build. A terminal running
+     * C-2-without-C-6 authors a CORRECTED per-rate breakdown against an
+     * UNCORRECTED gross-as-net headline — precisely the disagreement rule 2 is
+     * built to catch — so shipping this validator server-side while any terminal
+     * in the fleet still runs that intermediate build would quarantine its
+     * every Z. This must never reach production ahead of the device build that
+     * carries the headline fix. (LEDGER carries the coupling amendment; this is
+     * the code-side half of it.)
+     *
      * ── WHAT IS ASSERTED ─────────────────────────────────────────────────────
-     *   1. per group: `gross_amount == net_amount + vat_amount` — EXACT, always.
+     *   1. per group: `gross_amount == net_amount + vat_amount`, within ONE ulp
+     *      at the derived scale.
      *   2. on a REFUND-FREE shift only: `Σ net_amount == net_sales` and
      *      `Σ vat_amount == tax_amount` — EXACT.
+     *
+     * Rule 1 carries one ulp of slack and rule 2 carries none, and the asymmetry
+     * is deliberate. The three group figures are INDEPENDENTLY half-up-rounded
+     * accumulators, so a line below the currency scale makes
+     * `round(g−v) + round(v)` land one ulp away from `round(g)` — e.g. net 10.01
+     * + vat 2.01 against a gross of 12.01 is a legitimately-signed shape that an
+     * exact rule rejected. Given the execution context above, that would have
+     * meant rejecting sealed history. One ulp is rounding; two is an error, and
+     * is still rejected. The defect class this method exists to catch deviates
+     * by the FULL VAT, orders of magnitude beyond the slack.
+     *
+     * Residual, stated rather than glossed: with N sub-scale groups the same
+     * mechanism can in principle accumulate up to N ulp. The slack is fixed at
+     * one because that is the reviewed shape; if a legitimate multi-group
+     * sub-scale payload is ever observed to trip rule 1, widen it deliberately
+     * here rather than by loosening rule 2.
      *
      * (2) is gated on `refunds_totals.count == 0` because the device's
      * `vat_breakdown` is SIGNED (a refund is SUBTRACTED from it) while the
@@ -822,9 +849,23 @@ final class FiscalPayloadConstraintValidator
      * DISAGREE — the post-C-2/pre-C-6 partial state, its reverse, and any future
      * single-site regression of one of the three device aggregation loops.
      *
+     * ── SHAPE BEFORE ARITHMETIC ──────────────────────────────────────────────
+     * Every Z-family money value passes {@see assertZFamilyMoney} BEFORE any
+     * bcmath call. `is_numeric()` alone is not enough: it accepts `'1e2'`,
+     * `'+12.00'` and `'.5'`, all of which bcmath rejects with a **ValueError**,
+     * not a RuntimeException — so a corrupted stored Z used to FATAL
+     * `fiscal:verify-chain` rather than record a parse failure. SALE_RECEIPT was
+     * never exposed because `assertMoneyString` runs before its arithmetic; the
+     * Z family had no equivalent. `StrictCanonicalParser` also now converts a
+     * ValueError escaping ANY per-event validator into the parse-failure
+     * channel, as defense for future validators.
+     *
      * Presence is not this method's job: `validatePayloadKeySet` owns the exact
-     * key set. If the headline container or its money is absent or non-numeric,
-     * the sum identities are skipped rather than duplicated as a presence error.
+     * key set, so an ABSENT headline container skips the sum identities. A
+     * PRESENT but malformed one is rejected, and so is a non-integer
+     * `refunds_totals.count`: that gate used to fail OPEN, silently skipping
+     * BOTH sum identities on a JSON `"0"` — the one shape that would let the
+     * defect through the tripwire built to catch it.
      *
      * @param  array<string, mixed>  $payload
      *
@@ -848,10 +889,37 @@ final class FiscalPayloadConstraintValidator
             }
         }
 
-        $netSales = $totals['net_sales'] ?? null;
-        $taxAmount = $totals['tax_amount'] ?? null;
-        $headlineComparable = is_string($netSales) && is_numeric($netSales)
-            && is_string($taxAmount) && is_numeric($taxAmount);
+        // ── Pass 1: SHAPE. Every money value is validated before any bcmath
+        // call, so a malformed one can never reach the extension as a
+        // ValueError (see the docblock). The validated strings are collected
+        // here rather than re-read below, so pass 2 cannot accidentally consume
+        // an unchecked value.
+        /** @var list<array{net: numeric-string, vat: numeric-string, gross: numeric-string}> $groups */
+        $groups = [];
+        foreach ($rows as $index => $row) {
+            $path = 'vat_breakdown.'.$index;
+            $group = $this->requireAssocObject($row, $path);
+
+            $groups[] = [
+                'net' => $this->assertZFamilyMoney($group['net_amount'] ?? null, $path.'.net_amount'),
+                'vat' => $this->assertZFamilyMoney($group['vat_amount'] ?? null, $path.'.vat_amount'),
+                'gross' => $this->assertZFamilyMoney($group['gross_amount'] ?? null, $path.'.gross_amount'),
+            ];
+        }
+
+        $headlineKey = $totals === null
+            ? null
+            : (array_key_exists('receipt_totals', $payload) && is_array($payload['receipt_totals'])
+                ? 'receipt_totals'
+                : 'sales_totals');
+        /** @var numeric-string|null $netSales */
+        $netSales = null;
+        /** @var numeric-string|null $taxAmount */
+        $taxAmount = null;
+        if ($totals !== null && isset($totals['net_sales'], $totals['tax_amount'])) {
+            $netSales = $this->assertZFamilyMoney($totals['net_sales'], $headlineKey.'.net_sales');
+            $taxAmount = $this->assertZFamilyMoney($totals['tax_amount'], $headlineKey.'.tax_amount');
+        }
 
         // The Z family carries `currency_scale` on Z_REPORT only — X_REPORT and
         // SESSION_CLOSE omit it — so the comparison scale is derived from the
@@ -859,53 +927,60 @@ final class FiscalPayloadConstraintValidator
         // one currency scale, so the maximum observed fractional length IS that
         // scale and every comparison below is exact, never truncating.
         $scale = 0;
-        $observed = [];
-        foreach ($rows as $row) {
-            if (is_array($row)) {
-                foreach (['net_amount', 'vat_amount', 'gross_amount'] as $field) {
-                    $observed[] = $row[$field] ?? null;
-                }
-            }
-        }
-        if ($headlineComparable) {
-            $observed[] = $netSales;
-            $observed[] = $taxAmount;
-        }
-        foreach ($observed as $value) {
-            if (is_string($value)) {
+        foreach ($groups as $group) {
+            foreach ($group as $value) {
                 $scale = max($scale, $this->fractionalDigitsOf($value));
             }
         }
+        if ($netSales !== null && $taxAmount !== null) {
+            $scale = max($scale, $this->fractionalDigitsOf($netSales), $this->fractionalDigitsOf($taxAmount));
+        }
 
+        // One unit in the last place at the derived scale — the entire tolerance
+        // rule 1 is allowed, and none of it applies to rule 2. Derived with
+        // bcmath (10^-scale) rather than string concatenation so it is a
+        // numeric-string by construction: '1' at scale 0, '0.01' at 2, '0.001'
+        // at 3.
+        $ulp = bcpow('10', (string) (-$scale), $scale);
+
+        // ── Pass 2: ARITHMETIC.
         $sumNet = bcadd('0', '0', $scale);
         $sumVat = bcadd('0', '0', $scale);
 
-        foreach ($rows as $index => $row) {
-            $path = 'vat_breakdown.'.$index;
-            $group = $this->requireAssocObject($row, $path);
-
-            $net = $this->asNumericString($group['net_amount'] ?? null, $path.'.net_amount');
-            $vat = $this->asNumericString($group['vat_amount'] ?? null, $path.'.vat_amount');
-            $gross = $this->asNumericString($group['gross_amount'] ?? null, $path.'.gross_amount');
-
-            $groupGross = bcadd($net, $vat, $scale);
-            if (bccomp($groupGross, $gross, $scale) !== 0) {
+        foreach ($groups as $index => $group) {
+            $groupGross = bcadd($group['net'], $group['vat'], $scale);
+            $deviation = bcsub($groupGross, $group['gross'], $scale);
+            if (bccomp($deviation, '0', $scale) < 0) {
+                $deviation = bcsub('0', $deviation, $scale);
+            }
+            if (bccomp($deviation, $ulp, $scale) > 0) {
                 throw new RuntimeException(
-                    'payload_aggregate_consistency:group_gross_ne_net_plus_vat:expected='.$groupGross.':got='.$gross
+                    'payload_aggregate_consistency:group_gross_ne_net_plus_vat:index='.$index
+                    .':expected='.$groupGross.':got='.$group['gross'].':tolerance='.$ulp
                 );
             }
 
-            $sumNet = bcadd($sumNet, $net, $scale);
-            $sumVat = bcadd($sumVat, $vat, $scale);
+            $sumNet = bcadd($sumNet, $group['net'], $scale);
+            $sumVat = bcadd($sumVat, $group['vat'], $scale);
         }
 
-        if (! $headlineComparable) {
+        if ($netSales === null || $taxAmount === null) {
             return;
         }
 
+        // Fail CLOSED on the refund gate: a non-integer count is corruption, not
+        // a licence to skip both sum identities.
         $refundsTotals = $payload['refunds_totals'] ?? null;
-        $refundsCount = is_array($refundsTotals) ? ($refundsTotals['count'] ?? null) : null;
-        if (! is_int($refundsCount) || $refundsCount !== 0) {
+        if (! is_array($refundsTotals) || array_is_list($refundsTotals)) {
+            throw new RuntimeException('payload_object_required:refunds_totals');
+        }
+        $refundsCount = $refundsTotals['count'] ?? null;
+        if (! is_int($refundsCount) || $refundsCount < 0) {
+            throw new RuntimeException(
+                'payload_field_invalid:refunds_totals.count:expected=non-negative int:got='.get_debug_type($refundsCount)
+            );
+        }
+        if ($refundsCount !== 0) {
             return;
         }
 
@@ -919,6 +994,42 @@ final class FiscalPayloadConstraintValidator
                 'payload_aggregate_consistency:vat_breakdown_vat_sum_ne_tax_amount:expected='.$taxAmount.':got='.$sumVat
             );
         }
+    }
+
+    /**
+     * Strict shape gate for Z-family money, run BEFORE any bcmath call.
+     *
+     * SIGNED, unlike {@see moneyRegex()} — a Z `vat_breakdown` is net of
+     * refunds, so a refund-only shift legitimately reports every bucket
+     * negative. The scale is NOT fixed here (only Z_REPORT carries
+     * `currency_scale`, and the comparison scale is derived from the values);
+     * what is fixed is the FORM: optional minus, digits, optional decimal point
+     * with 1–3 fractional digits — every currency scale this system supports
+     * (0, 2, 3). That rejects exactly what `is_numeric()` waves through and
+     * bcmath then fatals on: exponent notation, a leading `+`, a trailing or
+     * leading bare point, hex, whitespace, `NaN`/`INF`.
+     *
+     * @return numeric-string
+     */
+    private function assertZFamilyMoney(mixed $value, string $path): string
+    {
+        if (! is_string($value)) {
+            throw new RuntimeException(sprintf(
+                'payload_money_type_mismatch:field=%s:expected=string:got=%s',
+                $path,
+                get_debug_type($value),
+            ));
+        }
+        if (preg_match('/^-?(0|[1-9]\d*)(\.\d{1,3})?$/D', $value) !== 1) {
+            throw new RuntimeException(sprintf(
+                'payload_money_scale_mismatch:field=%s:value=%s',
+                $path,
+                $value,
+            ));
+        }
+
+        /** @var numeric-string $value */
+        return $value;
     }
 
     /**

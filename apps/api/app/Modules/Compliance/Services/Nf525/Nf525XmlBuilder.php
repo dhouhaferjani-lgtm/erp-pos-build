@@ -294,6 +294,30 @@ final class Nf525XmlBuilder
 
             $reportData = $zReport->reportData;
             $donnees = $this->doc->createElement('Donnees');
+            // READ BEFORE RECONCILING THESE THREE (LEDGER C-6). They do NOT
+            // satisfy `VentesNettes + MontantTaxe == VentesBrutes` on a shift
+            // that took a ticket-level discount or cash rounding, and that is
+            // correct, not a defect:
+            //
+            //   VentesBrutes  = Σ receipt `total`     — POST ticket discount,
+            //                                            POST cash rounding
+            //   VentesNettes  = Σ receipt net         — PRE both
+            //   MontantTaxe   = Σ receipt VAT         — PRE both
+            //
+            // The wedge is exactly (Σ ticket discounts + Σ cash-rounding
+            // adjustments). The same wedge exists on every individual
+            // SALE_RECEIPT, where it IS reconcilable because the receipt carries
+            // `transaction_discount_amount` and `cash_rounding_adjustment`
+            // (`FiscalPayloadConstraintValidator::validateSaleReceiptAggregateConsistency`
+            // identity 1 adds them back). The Z payload carries neither field, so
+            // the identity cannot be restated at this level and the server-side
+            // Z-family validator deliberately does not assert it.
+            //
+            // `VentesNettes` is Σ of each sealed receipt's own canonical
+            // `subtotal`, so an auditor reconciling this line against the receipt
+            // corpus gets an EXACT match; reconciling it against `VentesBrutes`
+            // minus `MontantTaxe` does not, whenever discounts or rounding
+            // occurred.
             $this->addElement($donnees, 'NombreVentes', (string) ($reportData['sales_count'] ?? 0));
             $this->addElement($donnees, 'VentesBrutes', (string) ($reportData['gross_sales'] ?? '0.00'));
             $this->addElement($donnees, 'VentesNettes', (string) ($reportData['net_sales'] ?? '0.00'));

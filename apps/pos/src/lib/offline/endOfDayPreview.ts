@@ -234,9 +234,12 @@ export async function buildEndOfDayPreview(
       salesCount += 1;
       // F-6 (C-2 M4 → C-6 item 2): explicit CURRENCY scale on every headline
       // accumulator — `bcadd`/`bcsub` otherwise default to `decimal.ts`'s scale
-      // of 3 (`decimal.ts:22-28`) and carry sub-cent residue on a scale-2
-      // currency. Reachable today: the cash-rounding writer persists sub-scale
-      // values (`receiptService.cashRounding.test.ts:202`). Rule 19.
+      // of 3 (`decimal.ts:22-28`) and would carry sub-cent residue on a scale-2
+      // currency. DEFENSE IN DEPTH (rule 19), not a live bug: no writer path is
+      // known to persist a line finer than the currency scale
+      // (`cartStore.recalcLineTotal()` rounds to `getDecimals()`), so today these
+      // arguments are value-neutral. See `zReportService.ts` for the full note,
+      // including the reachability citation the gate corrected (P2-2).
       grossSales = bcadd(grossSales, receipt.total, scale);
       // C-6 fix (z-headline-net-sales) — the second of three structurally
       // separate copies of this headline accumulation. Same derivation as

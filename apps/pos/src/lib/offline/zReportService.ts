@@ -899,11 +899,20 @@ function aggregateReportData(
     // F-6 (C-2 M4 → C-6 item 2): every headline accumulator carries its CURRENCY
     // scale explicitly. `bcadd`/`bcsub` default to `decimal.ts`'s scale of 3
     // (`decimal.ts:22-28`), so on a scale-2 currency an unscaled accumulator
-    // carries sub-cent residue that only re-rounds at emission — reachable today
-    // because the cash-rounding writer persists sub-scale line values
-    // (`receiptService.cashRounding.test.ts:202` writes `'9.997'` on EUR). These
-    // three figures are SIGNED into Z_REPORT / X_REPORT / SESSION_CLOSE, so the
-    // residue would land in immutable bytes. Rule 19: round once, at the scale.
+    // would carry sub-cent residue that only re-rounds at emission — and these
+    // three figures are SIGNED into Z_REPORT / X_REPORT / SESSION_CLOSE, where
+    // residue lands in immutable bytes.
+    //
+    // DEFENSE IN DEPTH, not a live bug (gate finding P2-2). An earlier draft of
+    // this comment cited `receiptService.cashRounding.test.ts:202` as proof of
+    // reachability and that citation was FALSE: the `'9.997'` there is a TND
+    // receipt — three decimals AT the currency scale, not sub-scale. No writer
+    // path is known to persist a line finer than the currency scale:
+    // `cartStore.recalcLineTotal()` rounds `line_total` to `getDecimals()` and
+    // `computeTaxAmount()` returns at the same scale. So today every input is
+    // already at scale and these arguments are value-neutral. They stay explicit
+    // because rule 19 requires it, and because the day an input does arrive
+    // finer, this is signed fiscal output.
     grossSales = bcadd(grossSales, receipt.total, decimals);
     // C-6 fix (z-headline-net-sales) — the HEADLINE sibling of the C-2 per-rate
     // fix below. `offline_receipts.subtotal` is a MISNOMER: the writer stores

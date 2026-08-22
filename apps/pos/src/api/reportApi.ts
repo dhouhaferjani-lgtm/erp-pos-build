@@ -562,10 +562,12 @@ async function generateLocalXReport(
     salesCount += 1;
     // F-6 (C-2 M4 → C-6 item 2): explicit CURRENCY scale on every headline
     // accumulator — `bcadd`/`bcsub` otherwise default to `decimal.ts`'s scale of
-    // 3 (`decimal.ts:22-28`) and carry sub-cent residue on a scale-2 currency,
-    // reachable via the cash-rounding writer's sub-scale line values
-    // (`receiptService.cashRounding.test.ts:202`). These three figures are SIGNED
-    // into the X_REPORT event. Rule 19.
+    // 3 (`decimal.ts:22-28`) and would carry sub-cent residue on a scale-2
+    // currency, in figures SIGNED as the X_REPORT event. DEFENSE IN DEPTH
+    // (rule 19), not a live bug: no writer path is known to persist a line finer
+    // than the currency scale (`cartStore.recalcLineTotal()` rounds to
+    // `getDecimals()`). See `zReportService.ts` for the full note, including the
+    // reachability citation the gate corrected (P2-2).
     grossSales = bcadd(grossSales, receipt.total, decimals);
     // C-6 fix (z-headline-net-sales) — the third structurally separate copy of
     // this headline accumulation, feeding the SIGNED X_REPORT. Same derivation

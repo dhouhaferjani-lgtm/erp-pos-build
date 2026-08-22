@@ -11,6 +11,7 @@ use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Modules\Fiscal\Domain\Exceptions\FiscalEventTypeNotImplemented;
 use RuntimeException;
 use Throwable;
+use ValueError;
 
 /**
  * Server-side strict parser for verified `canonical_bytes` (spec v7 §7.6).
@@ -229,7 +230,34 @@ final class StrictCanonicalParser
         }
 
         try {
-            $this->constraintValidator->validatePerEventConstraints($type, $payload, $chainContext, $eventVersion);
+            try {
+                $this->constraintValidator->validatePerEventConstraints($type, $payload, $chainContext, $eventVersion);
+            } catch (ValueError $e) { // @phpstan-ignore catch.neverThrown
+                // The dead-catch report is expected and is the POINT of the
+                // clause: static analysis cannot see bcmath's ValueError through
+                // the validator call, and this guard exists for the validators
+                // not yet written. Proven live by revert-replay — disabling the
+                // Z-family money guard makes this clause the only thing turning
+                // `bcadd(): Argument #1 ($num1) is not well-formed` into a
+                // ParseResult::failure instead of a fatal (LEDGER C-6 item 2).
+                // A per-event validator is expected to signal a bad payload with
+                // a RuntimeException. bcmath does not: `bcadd`/`bccomp` raise a
+                // **ValueError** on a malformed numeric string, and `is_numeric()`
+                // waves through several shapes they reject ('1e2', '+12.00',
+                // '.5'). Before this, such a value escaped as an uncaught
+                // ValueError — and because this parser also re-parses STORED
+                // bytes (`VerifyEventChainCommand:544`,
+                // `QuarantineBestEffortParseController:91`), one corrupted row
+                // FATALED `fiscal:verify-chain` for the whole terminal instead of
+                // being recorded as a parse failure.
+                //
+                // Each validator should still gate shape before arithmetic (the
+                // Z family now does, via `assertZFamilyMoney`); this boundary is
+                // the defense that makes the FAILURE MODE safe for every future
+                // validator that forgets. Rethrown as a RuntimeException so there
+                // stays exactly one parse-failure channel below.
+                throw new RuntimeException('payload_value_error:'.$e->getMessage(), 0, $e);
+            }
         } catch (RuntimeException $e) {
             return ParseResult::failure('sub_array_shape:'.$e->getMessage());
         }

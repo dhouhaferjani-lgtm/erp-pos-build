@@ -561,9 +561,18 @@ describe('C-6 sale headline totals — REAL writer through Z / EOD / X', () => {
    * the scale arguments are invisible on a well-formed scale-2 row because
    * every consumer re-formats through `bcformat(total, scale)` at emission, so
    * the drift only shows when a stored value carries MORE precision than the
-   * currency scale — which the real writer DOES produce on the cash-rounding
-   * path (`receiptService.cashRounding.test.ts:202` persists a `'9.997'`).
-   * A precision fixture, not a decomposition one.
+   * currency scale. A precision fixture, not a decomposition one.
+   *
+   * This row is SYNTHETIC and could not come from the writer — corrected per
+   * gate finding P2-2. An earlier draft claimed the cash-rounding path produces
+   * sub-scale lines, citing `receiptService.cashRounding.test.ts:202`; that
+   * citation was FALSE (the `'9.997'` there is a TND receipt, three decimals AT
+   * the currency scale). `cartStore.recalcLineTotal()` rounds `line_total` to
+   * `getDecimals()` and `computeTaxAmount()` returns at the same scale, so no
+   * known writer path emits a finer line. These guards are therefore
+   * DEFENSE IN DEPTH for rule 19 on signed output, not a reproduction of a live
+   * bug — which is exactly why the fixture has to be hand-inserted to make the
+   * accumulation scale observable at all.
    *
    * Two rows at subtotal 10.006 / tax 0.001 / total 10.005 on EUR (scale 2):
    *   accumulated at scale 2 → 10.01 + 10.01 = 20.02 gross,
