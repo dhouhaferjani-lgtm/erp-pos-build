@@ -192,6 +192,69 @@ final class InventoryCostLockCoverageTest extends TestCase
         );
     }
 
+    /**
+     * DPA V8 / gate round 3 — give the `post(` row an ORDERING tooth.
+     *
+     * Its provider row only binds the PRESENCE half: `post()` has no `foreach` in
+     * its own body (the seam loop lives in `postLocked()`), so the generic
+     * acquire-before-the-last-foreach assertion is vacuous for it. Deleting the
+     * hoist and putting the row locks back on top would still pass.
+     *
+     * The prescribed `assertStringNotContainsString('DocumentLine::query()')`
+     * form does NOT work here and is deliberately not used: `post()` legitimately
+     * contains an UNLOCKED `DocumentLine::query()` read before the acquire — that
+     * read is what derives the product ids to lock, and it is the whole reason the
+     * advisory can come first at all. Asserting its absence would forbid the fix.
+     *
+     * What actually binds, asserted instead:
+     *   - the acquire precedes the delegation, i.e. the body really is wrapped;
+     *   - `post()` takes no `goods_receipt_lines` lock of its own — every
+     *     contended line lock sits behind the acquire, in `postLocked()`;
+     *   - `postLocked()` does NOT re-acquire: it relies on the caller's advisory,
+     *     so moving the row locks back out would strand them unprotected;
+     *   - and `postLocked()` really is where the row locks live, so the point
+     *     above is about something real.
+     */
+    #[Test]
+    public function test_the_credit_note_post_hoists_the_advisory_above_its_row_locks(): void
+    {
+        $path = 'app/Modules/Procurement/Application/SupplierCreditNotePostingService.php';
+        $post = $this->extractMethodBody(base_path($path), 'public function post(');
+        $locked = $this->extractMethodBody(base_path($path), 'private function postLocked(');
+
+        $acquirePos = strpos($post, 'costLock->acquire(');
+        $delegatePos = strpos($post, 'postLocked(');
+        $this->assertIsInt($acquirePos, 'post() must acquire the product advisory locks.');
+        $this->assertIsInt($delegatePos, 'post() must delegate its body to postLocked().');
+        $this->assertLessThan(
+            $delegatePos,
+            $acquirePos,
+            'post() must acquire the sorted product advisory BEFORE delegating the body that takes '
+            .'the document_lines / goods_receipt_lines row locks.'
+        );
+
+        $this->assertStringNotContainsString(
+            'GoodsReceiptLine',
+            $post,
+            'post() must take no goods_receipt_lines lock of its own — every contended line lock '
+            .'belongs behind the advisory acquire, in postLocked().'
+        );
+
+        $this->assertStringNotContainsString(
+            'costLock->acquire(',
+            $locked,
+            'postLocked() must rely on the advisory its caller already holds. If it acquires its '
+            .'own, the hoist in post() has been undone and the row locks below are unprotected.'
+        );
+
+        $this->assertStringContainsString(
+            'lockForUpdate(',
+            $locked,
+            'postLocked() is where the row locks live; if that stops being true this guard is '
+            .'asserting the ordering of something that no longer exists.'
+        );
+    }
+
     #[Test]
     #[DataProvider('multiProductSeamCallerProvider')]
     public function test_multi_product_seam_callers_acquire_locks_up_front(string $path, string $sig): void

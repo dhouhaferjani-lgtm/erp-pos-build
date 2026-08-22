@@ -235,9 +235,17 @@ final class SupplierCreditNotePostingService
     /**
      * The body of `post()`, running INSIDE the sorted product-advisory acquire.
      *
-     * Split out rather than nested so the `return` on the idempotent no-op path
-     * still means "stop", and cannot be mistaken for "fall through to the rest of
-     * the transaction" the way an inline closure's `return` silently would.
+     * Extracted for readability and to keep the diff surface small: `acquire()`
+     * is the last statement in `post()`, so any statement added after it later
+     * would run OUTSIDE the advisory, and a named method makes that boundary
+     * obvious where a 120-line inline closure would not.
+     *
+     * NOT for control-flow reasons. An earlier revision of this docblock claimed
+     * a `return` inside an inline closure would "silently fall through" to the
+     * rest of the transaction; that is false PHP semantics — a `return` exits the
+     * closure exactly as it exits this method, and `acquire()` returning is the
+     * end of `post()` either way. Corrected rather than deleted so the wrong
+     * reasoning is not re-derived by the next reader (gate round 3, P3).
      *
      * @param  list<string>  $poLineIds
      */

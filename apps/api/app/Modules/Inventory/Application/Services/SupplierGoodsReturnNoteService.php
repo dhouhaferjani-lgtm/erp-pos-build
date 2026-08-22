@@ -805,13 +805,17 @@ final class SupplierGoodsReturnNoteService
      */
     private function assertNoBatchTrackedProducts(SupplierGoodsReturnNote $note, array $productIds): void
     {
-        // Arm 1 — DATA.
+        // Arm 1 — DATA. Only lots with stock ON HAND count: an exhausted or
+        // flat/default batch row leaves nothing for lot selection to choose
+        // between, so refusing on it would make the product permanently
+        // un-returnable for a row that represents no stock (gate round 3, P3).
         /** @var string|null $withBatchStock */
         $withBatchStock = DB::table('product_batches')
             ->join('inventory_batch_stock', 'inventory_batch_stock.batch_id', '=', 'product_batches.id')
             ->where('product_batches.tenant_id', $note->tenant_id)
             ->where('product_batches.company_id', $note->company_id)
             ->whereIn('product_batches.product_id', $productIds)
+            ->where('inventory_batch_stock.quantity', '>', 0)
             ->orderBy('product_batches.product_id')
             ->value('product_batches.product_id');
 

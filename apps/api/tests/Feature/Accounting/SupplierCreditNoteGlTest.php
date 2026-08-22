@@ -10,6 +10,7 @@ use App\Modules\Accounting\Domain\Account;
 use App\Modules\Accounting\Domain\Enums\JournalEntryStatus;
 use App\Modules\Accounting\Domain\Enums\SystemAccountPurpose;
 use App\Modules\Accounting\Domain\JournalEntry;
+use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
 use App\Modules\Accounting\Domain\JournalLine;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
@@ -818,6 +819,19 @@ final class SupplierCreditNoteGlTest extends TestCase
      *   applied = 99.999980 − 95.238080 = 4.761900
      *   sub-ledger net drop = 99.999984 − 99.999980 = 0.000004  (0.000 at GL scale)
      * so GL's Inventory net credit must be 0.000, not 4.762.
+     *
+     * TOLERANCE — why exact equality is asserted here and is NOT a general claim
+     * (gate round 3). GL books the STAMPED `applied`; the sub-ledger realises it
+     * as a per-unit WAC that is stored at scale 6. The realised value change is
+     * therefore `round6(newWAC) × totalOwned`, which can differ from `applied` by
+     * up to `totalOwned × 1e-6` — about 0.02 at 20 000 units, i.e. it reaches GL
+     * scale 3 only in the tens of thousands of units.
+     *
+     * This fixture holds 20 units, so the bound is 0.00002 and vanishes at scale
+     * 3; exact equality is the correct assertion HERE. It would not be at large
+     * quantities, and that residual is recorded as R-6 in
+     * docs/superpowers/tickets/2026-08-22-dpa-v8-residuals.md rather than being
+     * hidden behind a tolerance this fixture does not need.
      */
     public function test_the_bonus_return_gl_inventory_movement_reconciles_to_the_sub_ledger(): void
     {
@@ -857,6 +871,60 @@ final class SupplierCreditNoteGlTest extends TestCase
         );
 
         $this->assertBalanced($entry);
+    }
+
+    /**
+     * P3 (gate round 3) — the `applied <= bonusInventoryValue` invariant.
+     *
+     * The compensating pair may never restore more value than the units carried
+     * out; if it did, GL would be inventing inventory. The guard throws rather
+     * than posting a plausible-looking wrong entry.
+     *
+     * Called DIRECTLY, and that is the point: from the production path the guard
+     * is dead by construction — `boundedUndilution()` caps `applied` at the
+     * headroom, so `bonusUndilutionApplied()` can never exceed
+     * `bonusInventoryValue()` no matter what fixture is built. A test driving
+     * `post()` therefore cannot reach it, and an unreachable guard with no test
+     * is indistinguishable from a guard that does not work. The direct call is
+     * the only way to give it a tooth, so it is what is used here.
+     *
+     * If a future lane makes the pair reachable with an independent `applied`
+     * (e.g. F-9 deriving it from a cost basis rather than from the same headroom
+     * computation), this test is what proves the guard was live all along.
+     */
+    public function test_the_undilution_may_not_restore_more_value_than_left(): void
+    {
+        $creditNote = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->supplier->id,
+            'type' => DocumentType::SupplierCreditNote,
+            'fiscal_category' => FiscalCategory::NonFiscal,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'SCN-INV-'.Str::upper(Str::random(6)),
+            'document_date' => now(),
+            'currency' => 'TND',
+            'subtotal' => '0.000',
+            'line_tax_amount' => '0.000',
+            'tax_amount' => '0.000',
+            'total' => '0.000',
+            'supplier_credit_note_reason' => SupplierCreditNoteReason::GoodsReturn,
+        ]);
+
+        $this->expectException(\DomainException::class);
+        $this->expectExceptionMessage('exceeds the returned bonus stock value');
+
+        DB::transaction(function () use ($creditNote): void {
+            app(GeneralLedgerService::class)->createSupplierCreditNoteEntryWithBonusReturn(
+                $creditNote,
+                '0',
+                '0',
+                '0',
+                bonusInventoryValue: '4.000000',
+                bonusUndilutionApplied: '5.000000',
+            );
+        });
     }
 
     /**

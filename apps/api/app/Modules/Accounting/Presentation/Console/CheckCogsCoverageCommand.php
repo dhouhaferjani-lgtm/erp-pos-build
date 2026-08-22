@@ -267,11 +267,17 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
             // movement-keyed rows in `InventoryGlSourceTypes::ALL`. Posting a
             // movement-GL leg as well would relieve Inventory twice.
             //
-            // But `supplier_goods_return_notes.supplier_credit_note_id` is
-            // NULLABLE on purpose: a stand-alone, manually raised return note is
-            // legal and NOTHING posts GL for it. Excluding those would blind the
-            // detector to precisely the case it exists to catch, so the carve-out
-            // is conditional on the backing credit note existing.
+            // But the carve-out must be conditional on the GL ACTUALLY EXISTING,
+            // not on the link being populated. Two distinct shapes would otherwise
+            // slip through:
+            //   - `supplier_credit_note_id` is NULLABLE on purpose: a stand-alone,
+            //     manually raised return note is legal and nothing ever posts for it;
+            //   - the column carries NO foreign key, and a confirmed note can be
+            //     linked to a credit note that was never posted (a Draft note
+            //     against a Draft CN — reachable in the deferred guided-AP-modal
+            //     flow). The id is present; the journal entry is not.
+            // Testing for the backing entry covers both, and degrades correctly:
+            // if the CN posts later, the exclusion starts applying by itself.
             //
             // The exclusion is needed at all only because V8 stamps these exits
             // correctly. The raw write it replaced set no `reason`, so the rows
@@ -286,7 +292,15 @@ final class CheckCogsCoverageCommand extends TenantScopedCommand
                 $query->selectRaw('1')
                     ->from('supplier_goods_return_notes')
                     ->whereColumn('supplier_goods_return_notes.id', 'stock_movements.reference_id')
-                    ->whereNotNull('supplier_goods_return_notes.supplier_credit_note_id');
+                    ->whereExists(static function ($inner): void {
+                        $inner->selectRaw('1')
+                            ->from('journal_entries')
+                            ->whereColumn(
+                                'journal_entries.source_id',
+                                'supplier_goods_return_notes.supplier_credit_note_id',
+                            )
+                            ->where('journal_entries.source_type', 'supplier_credit_note');
+                    });
             })
             // T21 landed as an M5 writer, but its posting is held behind
             // `inventory.count_correction_gl_posting_enabled` until the

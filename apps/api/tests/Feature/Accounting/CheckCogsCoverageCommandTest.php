@@ -363,18 +363,26 @@ class CheckCogsCoverageCommandTest extends TestCase
      * But `supplier_goods_return_notes.supplier_credit_note_id` is NULLABLE by
      * design — a stand-alone, manually raised return note is legal, and NOTHING
      * posts GL for it. A blanket exclusion by reference type would hide exactly
-     * the case the detector exists to catch, so the exclusion is conditional on
-     * the backing credit note existing (both gates, round 2). Three arms:
-     *   1. CN-backed note        -> silent (the CN posted the GL)
-     *   2. stand-alone note      -> FIRES  (nothing posted anything)
-     *   3. any other lane        -> FIRES  (scoped by reference type, not reason)
+     * the case the detector exists to catch.
+     *
+     * ROUND 3 (gate P2): "the column is populated" is NOT "the GL exists". The
+     * column carries no foreign key, and a Draft note can be linked to a Draft
+     * credit note that is never posted — reachable in the deferred guided-AP-modal
+     * flow. The exclusion therefore requires the backing supplier-credit-note
+     * JOURNAL ENTRY to exist, not merely the id to be non-null. Four arms:
+     *   1. CN-backed AND posted   -> silent (the CN's entry really is there)
+     *   2. CN-linked, NOT posted  -> FIRES  (nothing posted anything yet)
+     *   3. stand-alone note       -> FIRES  (nothing will ever post for it)
+     *   4. any other lane         -> FIRES  (scoped by reference type, not reason)
      */
     #[Test]
-    public function test_de_excludes_only_credit_note_backed_goods_return_notes(): void
+    public function test_de_excludes_only_goods_return_notes_whose_credit_note_actually_posted(): void
     {
         $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
 
-        $backedNoteId = $this->goodsReturnNote(supplierCreditNoteId: (string) Str::uuid());
+        // Arm 1 — a REAL posted credit note: its journal entry exists.
+        $postedCreditNoteId = $this->postedSupplierCreditNote();
+        $backedNoteId = $this->goodsReturnNote(supplierCreditNoteId: $postedCreditNoteId);
         $backed = $this->movement(
             MovementReason::SupplierReturn,
             '4.000000',
@@ -390,7 +398,27 @@ class CheckCogsCoverageCommandTest extends TestCase
             \Mockery::on(static fn (array $context): bool => ($context['movement_id'] ?? null) === $backed->id),
         ]);
 
-        // Arm 2 — a STAND-ALONE note posts no GL at all, so the detector must see it.
+        // Arm 2 — LINKED BUT UNPOSTED. This is the shape the previous predicate
+        // wrongly excluded: a credit-note id sits in the column, but no
+        // `supplier_credit_note` entry was ever written, so the units left with no
+        // GL anywhere. The id here is deliberately one nothing posted against.
+        $unpostedNoteId = $this->goodsReturnNote(supplierCreditNoteId: (string) Str::uuid());
+        $unposted = $this->movement(
+            MovementReason::SupplierReturn,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: StockMovementReferenceType::SupplierGoodsReturnNote->value,
+            referenceId: $unpostedNoteId,
+        );
+        Log::spy();
+
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '[D-e]')
+                && ($context['movement_id'] ?? null) === $unposted->id,
+        );
+
+        // Arm 3 — a STAND-ALONE note posts no GL at all, so the detector must see it.
         $standaloneNoteId = $this->goodsReturnNote(supplierCreditNoteId: null);
         $standalone = $this->movement(
             MovementReason::SupplierReturn,
@@ -407,7 +435,7 @@ class CheckCogsCoverageCommandTest extends TestCase
                 && ($context['movement_id'] ?? null) === $standalone->id,
         );
 
-        // Arm 3 — the exclusion is scoped to this document lane only.
+        // Arm 4 — the exclusion is scoped to this document lane only.
         $other = $this->movement(MovementReason::SupplierReturn, '4.000000', now()->subMinutes(30));
         Log::spy();
 
@@ -416,6 +444,33 @@ class CheckCogsCoverageCommandTest extends TestCase
             static fn (string $message, array $context): bool => str_contains($message, '[D-e]')
                 && ($context['movement_id'] ?? null) === $other->id,
         );
+    }
+
+    /**
+     * A supplier credit note that has actually POSTED — i.e. the thing the D-e
+     * exclusion now requires: a `supplier_credit_note` journal entry keyed on the
+     * credit note's id. Returns that id.
+     *
+     * The entry is what the predicate reads, so the entry is what this builds; a
+     * `documents` row would satisfy nothing the detector looks at (the column has
+     * no FK, which is the whole reason arm 2 exists).
+     */
+    private function postedSupplierCreditNote(): string
+    {
+        $creditNoteId = (string) Str::uuid();
+
+        JournalEntry::create([
+            'tenant_id' => $this->dpTenant->id,
+            'company_id' => $this->dpCompany->id,
+            'entry_number' => 'JE-SCN-'.Str::upper(Str::random(6)),
+            'entry_date' => now(),
+            'status' => JournalEntryStatus::Posted,
+            'source_type' => 'supplier_credit_note',
+            'source_id' => $creditNoteId,
+            'journal_code' => JournalCode::Misc,
+        ]);
+
+        return $creditNoteId;
     }
 
     /**

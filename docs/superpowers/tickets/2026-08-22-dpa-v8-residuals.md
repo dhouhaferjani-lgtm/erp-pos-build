@@ -82,6 +82,39 @@ basis would make the bound depend on stock the un-dilution cannot reach and woul
 be the first way this code could inflate a WAC. Recorded so the asymmetry is a
 known choice rather than a latent surprise.
 
+## R-6 — GL books the stamped `applied`; the sub-ledger realises a truncated WAC
+
+The compensating pair (P1-1) is booked at `wac_undilution_applied` exactly as
+stamped. The sub-ledger realises that value by raising the per-unit WAC, which is
+stored at **scale 6**. So what the sub-ledger actually gains is
+`round6(newWAC) × totalOwned`, and that can differ from the booked `applied` by up
+to:
+
+```
+totalOwned × 1e-6
+```
+
+≈ **0.02 at 20 000 units** — i.e. it only reaches GL scale (3 dp) in the tens of
+thousands of units. Below that it rounds away entirely.
+
+Same family as R-3 (both are "the un-dilution's arithmetic and its realisation
+disagree in the last place"), but a different mechanism: R-3 is a **divisor**
+mismatch, this is a **rounding** one. Unlike R-3 it is **not** one-directional —
+truncation can leave GL either side of the sub-ledger.
+
+Not fixed here because the honest fix is to book what was realised rather than
+what was intended, i.e. have `recordCostAdjustment` return its realised delta and
+book that. That is a change to the costing seam's contract and belongs with
+whoever owns the seam, not to a returns lane.
+
+The reconciliation test
+(`SupplierCreditNoteGlTest::test_the_bonus_return_gl_inventory_movement_reconciles_to_the_sub_ledger`)
+asserts EXACT equality and is correct to: its fixture holds 20 units, so the bound
+is 0.00002 and vanishes at scale 3. Its docblock states the tolerance explicitly
+so the exactness is not read as a general guarantee. A large-quantity arm would
+demonstrate the bound empirically and is the natural first step if this is picked
+up.
+
 ## R-4 — Nullable actor on the note seam
 
 `createDraft(actorId: ?string)` / `confirm(note, ?string $actorId)` accept null,
@@ -114,5 +147,15 @@ about who picks the lot. Out of scope for V8 by design.
   GL question to it. Round 2 landed that GL half, and the pointers were corrected
   to name F-9 (for the cost basis) or this ticket (for R-1). If you find another
   "c1-bis will handle it" comment, it is stale — repoint it, do not act on it.
-- **The D-e detector exclusion** is not a residual: it is conditional on the note
-  having a backing credit note, so a stand-alone note still fires the detector.
+- **The D-e detector exclusion.** Round 2 asserted this was "not a residual"
+  because the carve-out was conditional on a backing credit note. That
+  foreclosure was wrong and is withdrawn: testing `supplier_credit_note_id IS
+  NOT NULL` proved only that the COLUMN was populated, and the column has no
+  foreign key, so a confirmed note linked to a never-posted credit note was
+  silently excluded while its units had no GL anywhere.
+
+  CLOSED in round 3, not deferred: the exclusion now requires the backing
+  `supplier_credit_note` journal entry to exist. Stand-alone notes and
+  linked-but-unposted notes both fire the detector, and the exclusion starts
+  applying by itself if the credit note posts later. Four arms pinned in
+  `CheckCogsCoverageCommandTest::test_de_excludes_only_goods_return_notes_whose_credit_note_actually_posted`.

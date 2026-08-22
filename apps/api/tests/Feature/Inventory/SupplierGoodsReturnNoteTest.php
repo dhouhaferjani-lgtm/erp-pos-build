@@ -751,6 +751,30 @@ final class SupplierGoodsReturnNoteTest extends TestCase
     }
 
     /**
+     * P3 (gate round 3) — the DATA arm keys on stock ON HAND, not on the mere
+     * existence of a lot row.
+     *
+     * A batch row at quantity 0 — exhausted, or the flat default row some import
+     * paths create — offers lot selection nothing to choose between. Refusing on
+     * it would make the product permanently un-returnable on the strength of a
+     * row representing no stock, which is a false refusal rather than a safe one.
+     * The flag arm is unaffected and still catches configured-but-empty products.
+     */
+    public function test_a_zero_quantity_batch_row_does_not_block_the_return(): void
+    {
+        $product = $this->stockedProduct('5.000000', '10.0000', 'V8 Exhausted Lot');
+        $this->giveProductBatchStock($product, '0.0000');
+
+        $note = $this->service()->confirm(
+            $this->draft([$this->lineData($product, SupplierGoodsReturnLineKind::Ordinary, '2.0000')]),
+            null,
+        );
+
+        $this->assertSame(SupplierGoodsReturnNoteStatus::Confirmed, $note->status);
+        $this->assertSame('8.0000', $this->freshStock($product));
+    }
+
+    /**
      * P3-b — the un-dilution has a SHELF-PRICE side effect. Disclosed, not fixed.
      *
      * `WeightedAverageCostService::recordCostAdjustment()` ends by calling
