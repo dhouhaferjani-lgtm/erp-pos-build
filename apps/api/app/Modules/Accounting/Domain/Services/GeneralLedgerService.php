@@ -2369,6 +2369,22 @@ final class GeneralLedgerService
      *   Dr PurchaseExpenses      = returned bonus stock value
      *   Cr Inventory             = returned bonus stock value
      *
+     * ...and, since DPA V8, that is only HALF of what the sub-ledger does. The
+     * exit is followed by a WAC UN-DILUTION that puts `wac_undilution_applied`
+     * back onto the surviving units, so the sub-ledger's net drop is
+     * `q × WAC − applied`, not `q × WAC`. A compensating pair restores the
+     * identity (stock-GL gate P1-1):
+     *
+     *   Dr Inventory             = wac_undilution_applied
+     *   Cr PurchaseExpenses      = wac_undilution_applied
+     *
+     * Net effect: Inventory falls by exactly what the sub-ledger says left, and
+     * PurchaseExpenses carries only the value genuinely FORGONE. Booking the
+     * gross pair and the compensating pair separately (rather than one netted
+     * leg) keeps the physical movement and the costing correction independently
+     * auditable — and keeps the entry non-empty when they cancel out, which they
+     * very nearly do whenever the returned unit's value is fully restorable.
+     *
      * For mixed credit notes, the normal supplier-credit-note legs are included in
      * the same source entry, preserving the source_type/source_id uniqueness model.
      *
@@ -2376,6 +2392,7 @@ final class GeneralLedgerService
      * @param  string  $recoverableVat  Σ document_lines.recoverable_tax_amount — numeric string
      * @param  string  $nonRecoverableVat  Σ document_lines.non_recoverable_tax_amount — numeric string
      * @param  string  $bonusInventoryValue  returned free stock valued at current WAC — numeric string, scale 6
+     * @param  string  $bonusUndilutionApplied  Σ wac_undilution_applied on the note's bonus lines — numeric string, scale 6
      */
     public function createSupplierCreditNoteEntryWithBonusReturn(
         Document $creditNote,
@@ -2383,6 +2400,7 @@ final class GeneralLedgerService
         string $recoverableVat,
         string $nonRecoverableVat,
         string $bonusInventoryValue,
+        string $bonusUndilutionApplied = '0',
     ): JournalEntry {
         if (DB::transactionLevel() === 0) {
             throw new \LogicException(
@@ -2397,6 +2415,7 @@ final class GeneralLedgerService
                 'recoverableVat' => $recoverableVat,
                 'nonRecoverableVat' => $nonRecoverableVat,
                 'bonusInventoryValue' => $bonusInventoryValue,
+                'bonusUndilutionApplied' => $bonusUndilutionApplied,
             ] as $name => $value
         ) {
             if (! is_numeric($value)) {
@@ -2421,6 +2440,19 @@ final class GeneralLedgerService
         $totalR = CurrencyScale::bcround($total, $scale);
         /** @var numeric-string $bonusInventoryValueR */
         $bonusInventoryValueR = CurrencyScale::bcround($bonusInventoryValue, $scale);
+        /** @var numeric-string $bonusUndilutionAppliedR */
+        $bonusUndilutionAppliedR = CurrencyScale::bcround($bonusUndilutionApplied, $scale);
+
+        // The un-dilution can only ever put back value that left; more than that
+        // would mean the compensating pair is inventing inventory, which must
+        // fail loudly rather than post a plausible-looking wrong entry.
+        if (bccomp($bonusUndilutionAppliedR, $bonusInventoryValueR, $scale) > 0) {
+            throw new \DomainException(sprintf(
+                'Supplier credit note [%s]: wac_undilution_applied %s exceeds the returned bonus '
+                .'stock value %s. The un-dilution cannot restore more value than the units carried out.',
+                $creditNote->id, $bonusUndilutionAppliedR, $bonusInventoryValueR,
+            ));
+        }
 
         $expectedTotal = bcadd(bcadd($htR, $recoverableVatR, $scale), $nonRecoverableVatR, $scale);
         if (bccomp($expectedTotal, $totalR, $scale) !== 0) {
@@ -2519,6 +2551,32 @@ final class GeneralLedgerService
                 'debit' => '0',
                 'credit' => $bonusInventoryValueR,
                 'description' => 'Returned bonus stock inventory issue',
+                'line_order' => $lineOrder++,
+            ]);
+        }
+
+        // P1-1 compensating pair: the un-dilution's value increase, which the
+        // sub-ledger has already applied to the surviving units. Without these
+        // two legs GL relieves Inventory by the gross exit while the sub-ledger
+        // relieves it by the net, and the gap never closes.
+        if (bccomp($bonusUndilutionAppliedR, '0', $scale) > 0) {
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $inventoryAccount->id,
+                'partner_id' => null,
+                'debit' => $bonusUndilutionAppliedR,
+                'credit' => '0',
+                'description' => 'Bonus return WAC un-dilution (value restored to remaining stock)',
+                'line_order' => $lineOrder++,
+            ]);
+
+            JournalLine::create([
+                'journal_entry_id' => $entry->id,
+                'account_id' => $purchaseExpensesAccount->id,
+                'partner_id' => null,
+                'debit' => '0',
+                'credit' => $bonusUndilutionAppliedR,
+                'description' => 'Bonus return WAC un-dilution (expense not incurred)',
                 'line_order' => $lineOrder++,
             ]);
         }

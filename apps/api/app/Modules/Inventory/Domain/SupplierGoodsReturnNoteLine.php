@@ -23,8 +23,17 @@ use Illuminate\Support\Carbon;
  * pair: how much of the value the exiting units carried was actually capitalized
  * back onto the survivors, and how much could not be (because it had already left
  * through COGS with units issued since the bonus receipt, or because no survivor
- * remains). They always sum to `quantity x unit_cost`, and `forgone` is the exact
- * figure the deferred GL half (c1-bis) needs for its P&L leg.
+ * remains). They always sum to `quantity x unit_cost`.
+ *
+ * `applied` is CONSUMED BY GL: `SupplierCreditNotePostingService` sums it across
+ * the note's bonus lines and passes it to
+ * `createSupplierCreditNoteEntryWithBonusReturn`, which books the compensating
+ * `Dr Inventory / Cr PurchaseExpenses` pair that keeps GL reconciled with the
+ * sub-ledger (stock-GL gate P1-1). It is no longer a deferred figure.
+ *
+ * `forgone` is NOT safe to read as a P&L figure on a multi-price history — it is
+ * measured against the receipt-line ceiling, not the paid blend, and under-reports
+ * there. See the PRECONDITION block in SupplierGoodsReturnNoteService.
  *
  * @property string $id
  * @property string $tenant_id

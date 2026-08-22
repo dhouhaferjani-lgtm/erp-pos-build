@@ -122,6 +122,14 @@ final class InventoryCostLockCoverageTest extends TestCase
             // recordCostAdjustment() (per-product locking seam). It therefore
             // belongs to exactly this class of caller.
             ['app/Modules/Inventory/Application/Services/SupplierGoodsReturnNoteService.php', 'public function confirm('],
+            // DPA V8 / stock-GL gate P2-4 — the credit-note post() hoists the
+            // sorted advisory ABOVE its document_lines / goods_receipt_lines row
+            // locks, so the whole transaction takes products-then-rows like
+            // GoodsReceiptService. Pinned here because the hoist is invisible
+            // locally: drop it and everything still passes functionally, and the
+            // AB-BA deadlock only shows up under concurrency, on PG, against a
+            // goods-receipt post touching an overlapping product.
+            ['app/Modules/Procurement/Application/SupplierCreditNotePostingService.php', 'public function post('],
         ];
     }
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Inventory;
 
+use App\Modules\Accounting\Domain\JournalEntry;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\LocationType;
 use App\Modules\Company\Domain\Location;
@@ -17,11 +18,13 @@ use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnLineKind;
 use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnNoteStatus;
 use App\Modules\Inventory\Domain\Exceptions\BatchTrackedReturnUnsupportedException;
 use App\Modules\Inventory\Domain\Exceptions\InsufficientStockException;
+use App\Modules\Inventory\Domain\InventoryGlSourceTypes;
 use App\Modules\Inventory\Domain\Services\StockAdjustmentService;
 use App\Modules\Inventory\Domain\StockLevel;
 use App\Modules\Inventory\Domain\StockMovement;
 use App\Modules\Inventory\Domain\SupplierGoodsReturnNote;
 use App\Modules\Inventory\Domain\SupplierGoodsReturnNoteLine;
+use App\Modules\Product\Domain\Enums\PricingMode;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
@@ -29,6 +32,7 @@ use App\Modules\Tenant\Domain\Tenant;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use App\Shared\Exceptions\UnboundCompanyContextException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -711,6 +715,131 @@ final class SupplierGoodsReturnNoteTest extends TestCase
     }
 
     /**
+     * P3-a — the refusal must key on the DATA, not only on the flag.
+     *
+     * `products.requires_batch_tracking` is a mutable setting; batch stock is a
+     * fact. A product that HAS lots on hand but has had the flag turned off (or
+     * never had it on, having acquired batches through an import or an earlier
+     * configuration) would sail past a flag-only guard and have its units issued
+     * by the flat non-batch path — silently ignoring FEFO and leaving the lot
+     * rows untouched while `stock_levels` drops. That is the exact corruption the
+     * C-2 guard exists to prevent, so the guard now looks for batch stock rows
+     * and keeps the flag check as a belt for the has-flag-no-rows case.
+     */
+    public function test_a_product_with_batch_stock_is_refused_even_with_the_flag_off(): void
+    {
+        $product = $this->stockedProduct('5.000000', '10.0000', 'V8 Latent Batches');
+        $this->assertFalse((bool) $product->requires_batch_tracking, 'Fixture must isolate the DATA arm.');
+
+        $this->giveProductBatchStock($product, '4.0000');
+
+        $note = $this->draft([$this->lineData($product, SupplierGoodsReturnLineKind::Ordinary, '2.0000')]);
+
+        try {
+            $this->service()->confirm($note, null);
+            $this->fail('A product carrying batch stock must be refused even with the flag off.');
+        } catch (BatchTrackedReturnUnsupportedException $e) {
+            $this->assertStringContainsString((string) $product->id, $e->getMessage());
+        }
+
+        /** @var SupplierGoodsReturnNote $fresh */
+        $fresh = $note->fresh();
+        $this->assertSame(SupplierGoodsReturnNoteStatus::Draft, $fresh->status);
+        $this->assertNull($fresh->note_number);
+        $this->assertSame('10.0000', $this->freshStock($product));
+        $this->assertSame(0, StockMovement::query()->where('reference_id', $note->id)->count());
+    }
+
+    /**
+     * P3-b — the un-dilution has a SHELF-PRICE side effect. Disclosed, not fixed.
+     *
+     * `WeightedAverageCostService::recordCostAdjustment()` ends by calling
+     * `MarginService::updateSalePrice($product)` (`:794`). The un-dilution raises
+     * `cost_price`, so for an AUTO-priced product it also raises `sale_price` —
+     * a supplier goods return silently reprices the shelf.
+     *
+     * That is inherited behaviour of the costing seam, not something V8 chose,
+     * and it is arguably correct (the surviving units really did become more
+     * expensive). But it is invisible from this lane's own code, so it is pinned
+     * here: if the coupling is ever cut, this test says who was relying on it.
+     *
+     * Both arms in one test, because the contrast IS the evidence:
+     * `updateSalePrice` returns early for `PricingMode::Manual` (`:215-217`), so
+     * a Manual product must come out of the same flow with its price untouched.
+     */
+    public function test_the_undilution_reprices_auto_products_and_leaves_manual_ones_alone(): void
+    {
+        $auto = $this->dilutedProduct('20.0000', '1.0000', 'V8 Auto Priced');
+        $manual = $this->dilutedProduct('20.0000', '1.0000', 'V8 Manual Priced');
+
+        $auto->forceFill(['pricing_mode' => PricingMode::Auto, 'sale_price' => '9.999'])->save();
+        $manual->forceFill(['pricing_mode' => PricingMode::Manual, 'sale_price' => '9.999'])->save();
+
+        // Both start from the SAME diluted WAC, so any divergence below is the
+        // pricing mode and nothing else.
+        $this->assertSame('4.761904', $this->freshCost($auto));
+        $this->assertSame('4.761904', $this->freshCost($manual));
+
+        $this->service()->confirm(
+            $this->draft([
+                $this->lineData($auto, SupplierGoodsReturnLineKind::Bonus, '1.0000'),
+                $this->lineData($manual, SupplierGoodsReturnLineKind::Bonus, '1.0000'),
+            ]),
+            null,
+        );
+
+        // The costing correction lands identically on both.
+        $this->assertSame('4.999999', $this->freshCost($auto));
+        $this->assertSame('4.999999', $this->freshCost($manual));
+
+        /** @var Product $freshAuto */
+        $freshAuto = $auto->fresh();
+        /** @var Product $freshManual */
+        $freshManual = $manual->fresh();
+
+        $this->assertNotSame(
+            '9.999',
+            (string) $freshAuto->sale_price,
+            'DISCLOSURE: the un-dilution reprices AUTO products through '
+            .'MarginService::updateSalePrice(). If this ever stops being true, the coupling was cut '
+            .'deliberately and this expectation should be updated, not deleted.',
+        );
+
+        $this->assertSame(
+            '9.999',
+            (string) $freshManual->sale_price,
+            'A Manual-priced product owns its price and must never be repriced by a goods return.',
+        );
+    }
+
+    /**
+     * One lot with stock, for the DATA arm of the batch guard.
+     */
+    private function giveProductBatchStock(Product $product, string $quantity): void
+    {
+        $batchId = DB::table('product_batches')->insertGetId([
+            'uuid' => (string) Str::uuid(),
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'product_id' => $product->id,
+            'batch_number' => 'LOT-'.Str::upper(Str::random(6)),
+            'expiry_date' => now()->addYear()->toDateString(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('inventory_batch_stock')->insert([
+            'tenant_id' => $this->tenant->id,
+            'batch_id' => $batchId,
+            'location_id' => $this->location->id,
+            'quantity' => $quantity,
+            'reserved_quantity' => '0.0000',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
      * The guard collects product ids from ALL lines with no kind filter, so it is
      * kind-agnostic by construction — but the BONUS half is the one the gate
      * called out as the pre-existing desync, and the ordinary half as the NEW
@@ -775,6 +904,63 @@ final class SupplierGoodsReturnNoteTest extends TestCase
                 ->where('reference_id', $note->id)
                 ->where('movement_type', MovementType::Issue)
                 ->count(),
+        );
+    }
+
+    /**
+     * P2-3 (stock-GL gate) — pin the CONSEQUENCE of the `Neither` classification.
+     *
+     * The lane's movement-GL verdict is that these movements correctly fall
+     * OUTSIDE the movement-GL surface: `MovementReason::SupplierReturn` has
+     * counter family `Neither`, so `InventoryGlPostingService` posts nothing for
+     * them, and the Inventory legs are keyed on the AP credit note instead. That
+     * verdict is currently only prose in a docblock and a review report.
+     *
+     * Asserted here from BOTH sides, because either alone is satisfiable by a
+     * bug: the movement rows must EXIST (so this is not passing merely because
+     * nothing happened) and there must be ZERO movement-keyed journal entries in
+     * `InventoryGlSourceTypes::ALL` against them (so nobody has quietly wired a
+     * mapping that would double-relieve Inventory alongside the credit note).
+     *
+     * If a future lane decides these SHOULD post movement GL, this test is the
+     * one that must be argued with — deliberately.
+     */
+    public function test_the_note_writes_movements_but_no_movement_keyed_inventory_gl(): void
+    {
+        $paid = $this->stockedProduct('5.000000', '10.0000', 'V8 GL Paid');
+        $bonus = $this->dilutedProduct('20.0000', '1.0000', 'V8 GL Bonus');
+
+        $note = $this->service()->confirm(
+            $this->draft([
+                $this->lineData($paid, SupplierGoodsReturnLineKind::Ordinary, '2.0000'),
+                $this->lineData($bonus, SupplierGoodsReturnLineKind::Bonus, '1.0000'),
+            ]),
+            null,
+        );
+
+        // Side 1 — the movements are really there (2 issues + 1 un-dilution).
+        $movementIds = StockMovement::query()
+            ->where('reference_id', $note->id)
+            ->pluck('id')
+            ->all();
+        $this->assertCount(
+            3,
+            $movementIds,
+            'Expected both issues plus the bonus un-dilution adjustment; a smaller '
+            .'set would make the GL absence below vacuous.',
+        );
+
+        // Side 2 — nothing posted movement-keyed inventory GL against any of them.
+        $this->assertSame(
+            0,
+            JournalEntry::query()
+                ->whereIn('source_type', InventoryGlSourceTypes::ALL)
+                ->whereIn('source_id', $movementIds)
+                ->count(),
+            'Supplier goods-return movements must NOT carry movement-keyed inventory GL: '
+            .'MovementReason::SupplierReturn is counter family Neither, and the Inventory legs '
+            .'are posted by the AP credit note keyed on the DOCUMENT. A row here means Inventory '
+            .'is being relieved twice for the same goods.',
         );
     }
 

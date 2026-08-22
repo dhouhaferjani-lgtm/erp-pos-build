@@ -14,6 +14,7 @@ use App\Modules\Inventory\Application\DTOs\SupplierGoodsReturnLineData;
 use App\Modules\Inventory\Application\Services\SupplierGoodsReturnNoteService;
 use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnLineKind;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
+use App\Modules\Inventory\Domain\Services\ProductCostLock;
 use App\Modules\Procurement\Domain\Enums\SupplierCreditNoteReason;
 use App\Modules\Product\Domain\Product;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -91,10 +92,20 @@ use Illuminate\Support\Facades\DB;
  * GoodsReturn credit note made up entirely of such lines mints no note at all,
  * which is why the pure-GL tests in SupplierCreditNoteGlTest see none.
  *
- * STILL OWED, in c1-bis (GL half), NOT here: a bonus return now preserves
- * inventory VALUE (see SupplierGoodsReturnNoteService's costing model), but the
- * GL legs below still expense it (Dr PurchaseExpenses / Cr Inventory at the WAC).
- * Those legs are deliberately left byte-identical in this lane.
+ * GL/SUB-LEDGER RECONCILIATION (stock-GL gate P1-1, round 2) — no longer owed.
+ * An earlier revision of this lane left the GL legs byte-identical and deferred
+ * the value question to c1-bis. That was wrong to ship: the bonus return
+ * preserves inventory VALUE via the WAC un-dilution, so expensing the full
+ * `q x WAC` made GL disagree with the sub-ledger by `wac_undilution_applied`,
+ * permanently and invisibly. `createSupplierCreditNoteEntryWithBonusReturn` now
+ * receives BOTH halves — the gross exit and the un-dilution — and books a
+ * compensating `Dr Inventory / Cr PurchaseExpenses` pair. c1-bis is ANSWERED for
+ * this seam; what remains open is the F-9 cost-basis lane (see the residuals
+ * ticket docs/superpowers/tickets/2026-08-22-dpa-v8-residuals.md).
+ *
+ * LOCK ORDER: the sorted product advisory (`ProductCostLock::acquire`) is taken
+ * FIRST, before the document_lines / goods_receipt_lines row locks, matching
+ * GoodsReceiptService. See the comment at step 1 in `post()`.
  */
 final class SupplierCreditNotePostingService
 {
@@ -102,6 +113,7 @@ final class SupplierCreditNotePostingService
         private readonly GeneralLedgerService $generalLedgerService,
         private readonly CurrencyScaleResolverInterface $scaleResolver,
         private readonly SupplierGoodsReturnNoteService $goodsReturnNoteService,
+        private readonly ProductCostLock $costLock,
     ) {}
 
     /**
@@ -170,124 +182,187 @@ final class SupplierCreditNotePostingService
                 ));
             }
 
-            // 1a. Resolve + lock the linked supplier invoice (the cumulative anchor).
-            $supplierInvoice = $this->resolveAndLockLinkedInvoice($creditNote);
-
-            // 1b. Lock the linked PO lines (serializes concurrent posts sharing a PO line).
+            // 1. Lock ORDER (stock-GL gate P2-4). The product advisory locks come
+            //    FIRST, in one sorted acquire, BEFORE any document_lines /
+            //    goods_receipt_lines row lock — matching GoodsReceiptService's
+            //    advisory-before-the-seam order.
+            //
+            //    Before this hoist the order was inverted: this method took the PO
+            //    line + receipt line row locks, and only later did
+            //    SupplierGoodsReturnNoteService::confirm() reach
+            //    recordCostAdjustment() and take the per-product advisory. A
+            //    goods-receipt post for an overlapping product takes them the
+            //    other way round (advisory first, then its row locks), so two
+            //    concurrent transactions could hold what the other needed — a
+            //    textbook AB-BA deadlock, and one that only appears under
+            //    concurrency, on PG, on products that both lanes touch.
+            //
+            //    The product ids come from an UNLOCKED read: they are only needed
+            //    to choose which advisory keys to take, the advisory itself is what
+            //    serialises, and every quantity/cost decision below is made from
+            //    the LOCKED re-read inside the closure. Reading them unlocked is
+            //    therefore safe and is what lets the advisory come first at all.
+            /** @var list<string> $poLineIds */
             $poLineIds = $creditNote->lines
                 ->pluck('source_line_id')
                 ->reject(static fn ($id): bool => $id === null)
+                ->map(static fn (mixed $id): string => (string) $id)
                 ->unique()
                 ->values()
                 ->all();
 
-            /** @var Collection<int, DocumentLine> $lockedPoLines */
-            $lockedPoLines = DocumentLine::query()
+            /** @var list<string> $productIds */
+            $productIds = DocumentLine::query()
                 ->whereIn('id', $poLineIds)
-                ->lockForUpdate()
-                ->get()
-                ->keyBy('id');
+                ->pluck('product_id')
+                ->filter()
+                ->unique()
+                ->map(static fn (mixed $id): string => (string) $id)
+                ->values()
+                ->all();
 
-            /** @var Collection<int, GoodsReceiptLine> $lockedReceiptLines */
-            $lockedReceiptLines = GoodsReceiptLine::query()
-                ->postedReceipts()
-                ->where('company_id', $creditNote->company_id)
-                ->whereIn('po_line_id', $poLineIds)
-                ->lockForUpdate()
-                ->orderBy('id')
-                ->get();
-            $receiptLinesByPoLine = $lockedReceiptLines->groupBy('po_line_id');
-
-            // 2. Idempotency no-op: a reversing entry already exists for this credit note.
-            $alreadyPosted = JournalEntry::query()
-                ->where('source_type', 'supplier_credit_note')
-                ->where('source_id', $creditNote->id)
-                ->exists();
-            if ($alreadyPosted) {
-                return;
-            }
-
-            // 3. Linkage guard (FIX 1): every line resolves to a PO line of this invoice.
-            $this->assertAllLinesLinkedToInvoicePoLines($creditNote, $supplierInvoice, $lockedPoLines);
-
-            $scale = $this->scaleResolver->getScale($creditNote->currency);
-
-            // 4. Cumulative over-credit guard (FIX 2): bound against the invoice's actual HT.
-            $this->assertCumulativeHtWithinInvoice($creditNote, $supplierInvoice, $scale);
-
-            /** @var numeric-string $bonusReturnInventoryValue */
-            $bonusReturnInventoryValue = '0.000000';
-
-            // 5. GoodsReturn per-line quantity guard + decrement (PriceAdjustment: no-op).
-            if ($reason->decrementsQuantityInvoiced()) {
-                /** @var list<SupplierGoodsReturnLineData> $returnLines */
-                $returnLines = [
-                    ...$this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine),
-                    ...$this->guardAndDecrementBonusGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine),
-                ];
-
-                // 5b. The units leave through their OWN document, in this same
-                //     transaction (DPA V8). A GoodsReturn made up only of service
-                //     lines produces no physical lines and therefore no note.
-                if ($returnLines !== []) {
-                    $note = $this->goodsReturnNoteService->confirm(
-                        $this->goodsReturnNoteService->createDraft(
-                            tenantId: $creditNote->tenant_id,
-                            companyId: $creditNote->company_id,
-                            partnerId: $creditNote->partner_id,
-                            supplierCreditNoteId: $creditNote->id,
-                            reference: $creditNote->document_number,
-                            lines: $returnLines,
-                            actorId: $actorId,
-                        ),
-                        $actorId,
-                    );
-
-                    // The GL figure comes off the note's own stamped costs, which
-                    // reproduce the pre-V8 `qty x product.cost_price` at scale 6.
-                    $bonusReturnInventoryValue = $this->goodsReturnNoteService->bonusInventoryValue($note);
-                }
-            }
-
-            // Tax components from the credit-note lines.
-            /** @var numeric-string $recoverableVat */
-            $recoverableVat = '0';
-            /** @var numeric-string $nonRecoverableVat */
-            $nonRecoverableVat = '0';
-            foreach ($creditNote->lines as $line) {
-                /** @var numeric-string $rec */
-                $rec = $line->recoverable_tax_amount ?? '0';
-                /** @var numeric-string $nonRec */
-                $nonRec = $line->non_recoverable_tax_amount ?? '0';
-                $recoverableVat = bcadd($recoverableVat, $rec, $scale + 1);
-                $nonRecoverableVat = bcadd($nonRecoverableVat, $nonRec, $scale + 1);
-            }
-
-            /** @var numeric-string $ht */
-            $ht = $creditNote->subtotal ?? '0';
-
-            // 6. Post the GL reversing entry (in-transaction system path).
-            if (bccomp($bonusReturnInventoryValue, '0', 6) > 0) {
-                $this->generalLedgerService->createSupplierCreditNoteEntryWithBonusReturn(
-                    $creditNote,
-                    $ht,
-                    $recoverableVat,
-                    $nonRecoverableVat,
-                    $bonusReturnInventoryValue,
-                );
-            } else {
-                $this->generalLedgerService->createSupplierCreditNoteEntry(
-                    $creditNote,
-                    $ht,
-                    $recoverableVat,
-                    $nonRecoverableVat,
-                );
-            }
-
-            // 7. Draft → Posted.
-            $creditNote->status = DocumentStatus::Posted;
-            $creditNote->save();
+            $this->costLock->acquire(
+                $creditNote->tenant_id,
+                $creditNote->company_id,
+                $productIds,
+                function () use ($creditNote, $reason, $poLineIds, $actorId): void {
+                    $this->postLocked($creditNote, $reason, $poLineIds, $actorId);
+                },
+            );
         });
+    }
+
+    /**
+     * The body of `post()`, running INSIDE the sorted product-advisory acquire.
+     *
+     * Split out rather than nested so the `return` on the idempotent no-op path
+     * still means "stop", and cannot be mistaken for "fall through to the rest of
+     * the transaction" the way an inline closure's `return` silently would.
+     *
+     * @param  list<string>  $poLineIds
+     */
+    private function postLocked(
+        Document $creditNote,
+        SupplierCreditNoteReason $reason,
+        array $poLineIds,
+        ?string $actorId,
+    ): void {
+        // 1a. Resolve + lock the linked supplier invoice (the cumulative anchor).
+        $supplierInvoice = $this->resolveAndLockLinkedInvoice($creditNote);
+
+        // 1b. Lock the linked PO lines (serializes concurrent posts sharing a PO line).
+        /** @var Collection<int, DocumentLine> $lockedPoLines */
+        $lockedPoLines = DocumentLine::query()
+            ->whereIn('id', $poLineIds)
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        /** @var Collection<int, GoodsReceiptLine> $lockedReceiptLines */
+        $lockedReceiptLines = GoodsReceiptLine::query()
+            ->postedReceipts()
+            ->where('company_id', $creditNote->company_id)
+            ->whereIn('po_line_id', $poLineIds)
+            ->lockForUpdate()
+            ->orderBy('id')
+            ->get();
+        $receiptLinesByPoLine = $lockedReceiptLines->groupBy('po_line_id');
+
+        // 2. Idempotency no-op: a reversing entry already exists for this credit note.
+        $alreadyPosted = JournalEntry::query()
+            ->where('source_type', 'supplier_credit_note')
+            ->where('source_id', $creditNote->id)
+            ->exists();
+        if ($alreadyPosted) {
+            return;
+        }
+
+        // 3. Linkage guard (FIX 1): every line resolves to a PO line of this invoice.
+        $this->assertAllLinesLinkedToInvoicePoLines($creditNote, $supplierInvoice, $lockedPoLines);
+
+        $scale = $this->scaleResolver->getScale($creditNote->currency);
+
+        // 4. Cumulative over-credit guard (FIX 2): bound against the invoice's actual HT.
+        $this->assertCumulativeHtWithinInvoice($creditNote, $supplierInvoice, $scale);
+
+        /** @var numeric-string $bonusReturnInventoryValue */
+        $bonusReturnInventoryValue = '0.000000';
+        /** @var numeric-string $bonusReturnUndilutionApplied */
+        $bonusReturnUndilutionApplied = '0.000000';
+
+        // 5. GoodsReturn per-line quantity guard + decrement (PriceAdjustment: no-op).
+        if ($reason->decrementsQuantityInvoiced()) {
+            /** @var list<SupplierGoodsReturnLineData> $returnLines */
+            $returnLines = [
+                ...$this->guardAndDecrementGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine),
+                ...$this->guardAndDecrementBonusGoodsReturn($creditNote, $lockedPoLines, $receiptLinesByPoLine),
+            ];
+
+            // 5b. The units leave through their OWN document, in this same
+            //     transaction (DPA V8). A GoodsReturn made up only of service
+            //     lines produces no physical lines and therefore no note.
+            if ($returnLines !== []) {
+                $note = $this->goodsReturnNoteService->confirm(
+                    $this->goodsReturnNoteService->createDraft(
+                        tenantId: $creditNote->tenant_id,
+                        companyId: $creditNote->company_id,
+                        partnerId: $creditNote->partner_id,
+                        supplierCreditNoteId: $creditNote->id,
+                        reference: $creditNote->document_number,
+                        lines: $returnLines,
+                        actorId: $actorId,
+                    ),
+                    $actorId,
+                );
+
+                // The GL figures come off the note's own stamped costs, which
+                // reproduce the pre-V8 `qty x product.cost_price` at scale 6.
+                // BOTH halves of the sub-ledger movement are needed: the gross
+                // exit AND the un-dilution that put value back (gate P1-1).
+                $bonusReturnInventoryValue = $this->goodsReturnNoteService->bonusInventoryValue($note);
+                $bonusReturnUndilutionApplied = $this->goodsReturnNoteService->bonusUndilutionApplied($note);
+            }
+        }
+
+        // Tax components from the credit-note lines.
+        /** @var numeric-string $recoverableVat */
+        $recoverableVat = '0';
+        /** @var numeric-string $nonRecoverableVat */
+        $nonRecoverableVat = '0';
+        foreach ($creditNote->lines as $line) {
+            /** @var numeric-string $rec */
+            $rec = $line->recoverable_tax_amount ?? '0';
+            /** @var numeric-string $nonRec */
+            $nonRec = $line->non_recoverable_tax_amount ?? '0';
+            $recoverableVat = bcadd($recoverableVat, $rec, $scale + 1);
+            $nonRecoverableVat = bcadd($nonRecoverableVat, $nonRec, $scale + 1);
+        }
+
+        /** @var numeric-string $ht */
+        $ht = $creditNote->subtotal ?? '0';
+
+        // 6. Post the GL reversing entry (in-transaction system path).
+        if (bccomp($bonusReturnInventoryValue, '0', 6) > 0) {
+            $this->generalLedgerService->createSupplierCreditNoteEntryWithBonusReturn(
+                $creditNote,
+                $ht,
+                $recoverableVat,
+                $nonRecoverableVat,
+                $bonusReturnInventoryValue,
+                $bonusReturnUndilutionApplied,
+            );
+        } else {
+            $this->generalLedgerService->createSupplierCreditNoteEntry(
+                $creditNote,
+                $ht,
+                $recoverableVat,
+                $nonRecoverableVat,
+            );
+        }
+
+        // 7. Draft → Posted.
+        $creditNote->status = DocumentStatus::Posted;
+        $creditNote->save();
     }
 
     /**

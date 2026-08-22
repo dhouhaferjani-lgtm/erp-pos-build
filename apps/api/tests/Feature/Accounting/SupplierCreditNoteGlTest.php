@@ -46,6 +46,7 @@ use App\Modules\Taxation\Domain\Enums\PartnerTaxStatus;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Domain\CurrencyScale;
 use App\Shared\Domain\Enums\StockMovementReferenceType;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -404,6 +405,44 @@ final class SupplierCreditNoteGlTest extends TestCase
         return $entry->lines->firstWhere('account_id', $account->id);
     }
 
+    /**
+     * NET credit (credit − debit) across EVERY leg on one account in the entry.
+     *
+     * `legOn` returns only the FIRST leg, which was sufficient while each account
+     * appeared at most once. The bonus-return entry now carries a compensating
+     * pair on both Inventory and PurchaseExpenses (P1-1), so the meaningful
+     * figure — and the only one comparable to a sub-ledger delta — is the net.
+     */
+    private function netCreditOn(JournalEntry $entry, Account $account): string
+    {
+        $net = '0.000';
+        foreach ($entry->lines as $l) {
+            if ($l->account_id !== $account->id) {
+                continue;
+            }
+            $net = bcadd($net, bcsub($l->credit, $l->debit, 3), 3);
+        }
+
+        return $net;
+    }
+
+    /**
+     * The stock sub-ledger's carrying value for one product: Σ on-hand × WAC.
+     *
+     * Deliberately recomputed from the live rows rather than tracked in the
+     * service, because the whole point of the P1-1 assertion is to compare GL
+     * against what the sub-ledger INDEPENDENTLY says.
+     */
+    private function inventoryCarryingValue(Product $product): string
+    {
+        $onHand = (string) (StockLevel::query()
+            ->where('product_id', $product->id)
+            ->sum('quantity') ?? '0');
+        $cost = (string) (Product::findOrFail($product->id)->cost_price ?? '0');
+
+        return bcmul($onHand, $cost, 6);
+    }
+
     private function assertBalanced(JournalEntry $entry): void
     {
         $debit = '0.000';
@@ -570,15 +609,19 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->assertSame('0.0000', GoodsReceiptLine::findOrFail($draftLine->id)->quantity_invoiced);
     }
 
-    public function test_bonus_goods_return_exits_stock_through_a_confirmed_goods_return_note_and_raises_wac(): void
+    /**
+     * The canonical single-bonus-unit return fixture: 21 on hand at a WAC of
+     * 4.761904 (i.e. 100.000000 of paid value spread over 21 units because one
+     * was free), one free unit handed back.
+     *
+     * Extracted so the behaviour test and the P1-1 GL<->sub-ledger reconciliation
+     * assert against the SAME numbers; the figures in both docblocks are only
+     * meaningful if the fixture is literally shared.
+     *
+     * @return array{Product, Location, Document}
+     */
+    private function bonusReturnFixture(DocumentLine $poLine, Document $invoice): array
     {
-        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
-
-        // V8: the WAC un-dilution runs through WeightedAverageCostService, whose
-        // scale() resolves the currency from the bound company. The real flow runs
-        // behind CompanyContextMiddleware.
-        app(CompanyContext::class)->setCompanyId($this->company->id);
-
         $product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -646,6 +689,20 @@ final class SupplierCreditNoteGlTest extends TestCase
             'is_bonus_line' => true,
         ]);
 
+        return [$product, $location, $creditNote];
+    }
+
+    public function test_bonus_goods_return_exits_stock_through_a_confirmed_goods_return_note_and_raises_wac(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+
+        // V8: the WAC un-dilution runs through WeightedAverageCostService, whose
+        // scale() resolves the currency from the bound company. The real flow runs
+        // behind CompanyContextMiddleware.
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        [$product, $location, $creditNote] = $this->bonusReturnFixture($poLine, $invoice);
+
         $this->service()->post($creditNote->fresh(['lines']) ?? $creditNote);
 
         $freshPoLine = $this->freshLine($poLine);
@@ -711,6 +768,10 @@ final class SupplierCreditNoteGlTest extends TestCase
 
         $entry = $this->creditEntry($creditNote);
         $this->assertNull($this->legOn($entry, $this->payableAccount));
+
+        // GROSS legs — unchanged by P1-1: the units really did leave at the
+        // diluted WAC, and that movement stays on the face of the entry.
+        //   1 x 4.761904 = 4.761904 -> 4.762 at scale 3
         $drExpense = $this->legOn($entry, $this->purchaseExpensesAccount);
         $this->assertNotNull($drExpense);
         $this->assertSame('4.762', $drExpense->debit);
@@ -719,6 +780,82 @@ final class SupplierCreditNoteGlTest extends TestCase
         $this->assertNotNull($crInventory);
         $this->assertSame('0.000', $crInventory->debit);
         $this->assertSame('4.762', $crInventory->credit);
+
+        // COMPENSATING legs — added by P1-1. `applied` = 4.761900 (the value the
+        // un-dilution put back onto the 20 surviving units, see the reconciliation
+        // test's arithmetic) -> 4.762 at scale 3. So on THIS fixture the bonus
+        // unit's value is very nearly fully restored and the net expense is ~0.
+        $this->assertSame('0.000', $this->netCreditOn($entry, $this->inventoryAccount));
+        $this->assertSame('0.000', $this->netCreditOn($entry, $this->purchaseExpensesAccount));
+        $this->assertCount(4, $entry->lines->whereIn('account_id', [
+            $this->inventoryAccount->id,
+            $this->purchaseExpensesAccount->id,
+        ]), 'Gross pair + compensating pair, so the un-dilution is auditable rather than netted away.');
+
+        $this->assertBalanced($entry);
+    }
+
+    /**
+     * P1-1 (stock-GL gate) — the un-dilution's value increase must have a GL leg.
+     *
+     * The bonus exit moves the sub-ledger TWICE, in opposite directions:
+     *   −q × WAC   the units leaving        (issue)
+     *   +applied   the WAC un-dilution      (recordCostAdjustment raises the WAC
+     *              of the SURVIVING units, putting value back on the balance sheet)
+     * so the sub-ledger's net drop is `q × WAC − applied`. GL, before this fix,
+     * credited Inventory the full `q × WAC` and debited PurchaseExpenses the same,
+     * recognising an expense for value that never left. On this fixture the two
+     * sides disagreed by the whole `applied`: sub-ledger −0.000004, GL −4.762.
+     *
+     * That divergence is permanent (no later entry closes it) and unmonitored
+     * (D-e cannot see it — the entry EXISTS, it is just wrong), which is why it
+     * is P1 rather than a rounding ticket.
+     *
+     * Arithmetic on this fixture, all from the rows the test asserts:
+     *   before  21 × 4.761904 = 99.999984
+     *   exit     1 × 4.761904 →  20 × 4.761904 = 95.238080
+     *   un-dil  cost_price → 4.999999          →  20 × 4.999999 = 99.999980
+     *   applied = 99.999980 − 95.238080 = 4.761900
+     *   sub-ledger net drop = 99.999984 − 99.999980 = 0.000004  (0.000 at GL scale)
+     * so GL's Inventory net credit must be 0.000, not 4.762.
+     */
+    public function test_the_bonus_return_gl_inventory_movement_reconciles_to_the_sub_ledger(): void
+    {
+        ['poLine' => $poLine, 'invoice' => $invoice] = $this->postedInvoiceWithPoLine('20.0000', '5.000');
+        app(CompanyContext::class)->setCompanyId($this->company->id);
+
+        [$product, , $creditNote] = $this->bonusReturnFixture($poLine, $invoice);
+
+        $valueBefore = $this->inventoryCarryingValue($product);
+        $this->assertSame('99.999984', $valueBefore);
+
+        $this->service()->post($creditNote->fresh(['lines']) ?? $creditNote);
+
+        $valueAfter = $this->inventoryCarryingValue($product);
+        $this->assertSame('99.999980', $valueAfter);
+
+        $subLedgerDrop = bcsub($valueBefore, $valueAfter, 6);
+        $this->assertSame('0.000004', $subLedgerDrop);
+
+        $entry = $this->creditEntry($creditNote);
+
+        // THE reconciliation: what GL says left inventory must equal what the
+        // sub-ledger says left inventory, at GL scale.
+        $this->assertSame(
+            CurrencyScale::bcround($subLedgerDrop, 3),
+            $this->netCreditOn($entry, $this->inventoryAccount),
+            'GL Inventory net credit must equal the stock sub-ledger value drop. A gap here is a '
+            .'permanent, unmonitored GL<->sub-ledger divergence of exactly wac_undilution_applied.',
+        );
+
+        // And the mirror: PurchaseExpenses may only carry the value genuinely
+        // forgone, never the part restored to the surviving units.
+        $this->assertSame(
+            CurrencyScale::bcround(bcmul($subLedgerDrop, '-1', 6), 3),
+            $this->netCreditOn($entry, $this->purchaseExpensesAccount),
+            'PurchaseExpenses net debit must equal the real expense (q x WAC - applied), not q x WAC.',
+        );
+
         $this->assertBalanced($entry);
     }
 

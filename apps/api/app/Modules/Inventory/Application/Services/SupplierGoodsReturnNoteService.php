@@ -65,7 +65,7 @@ use Illuminate\Support\Facades\DB;
  *
  * A perpetual WAC ledger cannot retroactively re-cost the units that already
  * left — that residue is a prior-period COGS understatement and belongs to the
- * GL half (c1-bis) and the periodic-vs-perpetual research lane. What this lane
+ * periodic-vs-perpetual research lane (F-9). What this lane
  * CAN do is refuse to let the at-rest cost exceed what the goods actually cost:
  *
  *      C          = the per-unit price paid on the receipt that brought the units
@@ -102,17 +102,23 @@ use Illuminate\Support\Facades\DB;
  *     5.714285 against a paid blend of 6.000000.
  *
  * `forgone` is measured against C, NOT against the paid blend. On a single-price
- * history that makes it exactly the figure c1-bis needs for the P&L leg this lane
- * must not post — including the survivors == 0 case, where the whole amount is
- * forgone and no adjustment movement exists at all. On a multi-price history it
- * under-reports (the first probe records forgone 0.000000 while the cost at rest
- * is 10x wrong), so c1-bis must NOT read a zero here as proof the correction was
- * economically complete.
+ * history that is exactly the value the return failed to recover — including the
+ * survivors == 0 case, where the whole amount is forgone and no adjustment
+ * movement exists at all. On a multi-price history it UNDER-REPORTS (the first
+ * probe records forgone 0.000000 while the cost at rest is 10x wrong).
+ *
+ * So no consumer may read a zero `forgone` as proof the correction was
+ * economically complete. That warning was originally addressed to c1-bis; c1-bis
+ * is now ANSWERED (the GL half landed — see the P1-1 note in
+ * `SupplierCreditNotePostingService`) and the warning transfers to the F-9
+ * cost-basis lane, which is what would have to change `C` to make `forgone`
+ * trustworthy on every history shape.
  *
  * Deriving C from the paid-cost basis instead of one receipt line is the real
- * fix and is recorded at the program level; it needs a cost-basis the perpetual
- * ledger does not currently keep, which is the periodic-vs-perpetual research
- * lane's subject.
+ * fix. It needs a cost basis the perpetual ledger does not currently keep, which
+ * is the F-9 periodic-vs-perpetual research lane's subject, and it is tracked in
+ * docs/superpowers/tickets/2026-08-22-dpa-v8-residuals.md. The two probes above
+ * are pinned as deliberately failing-visible tests so that lane trips over them.
  *
  * Worked (single price): 20 paid @ 5.000000 + 1 free blends to 100/21 = 4.761904.
  *   - return the free unit with 20 survivors: desired 4.761904, headroom
@@ -138,7 +144,8 @@ use Illuminate\Support\Facades\DB;
  *     the same economics in a different receipt order can land on a different
  *     cost at rest.
  * Re-ordering the slices is an accounting decision, not a refactor — do not change
- * it without the c1-bis/research ruling.
+ * it without a ruling from the F-9 cost-basis lane (c1-bis, the original owner of
+ * this question, is answered and closed).
  *
  * The issue movement records `unit_cost = WAC` (NOT 0) deliberately: it keeps the
  * movement ledger's value delta agreeing with the implied `Q x WAC` delta, and
@@ -153,6 +160,21 @@ use Illuminate\Support\Facades\DB;
  * adjustments, write-downs, or any other WAC-affecting event that does not change
  * on-hand quantity". Nothing here writes `stock_levels` or `products.cost_price`
  * directly.
+ *
+ * SIDE EFFECT INHERITED FROM THAT SECOND PRIMITIVE — SHELF PRICE (gate P3-b)
+ *
+ * `recordCostAdjustment()` ends by calling `MarginService::updateSalePrice()`
+ * (`WeightedAverageCostService.php:794`). The un-dilution raises `cost_price`, so
+ * on an AUTO-priced product it also raises `sale_price`: confirming a supplier
+ * goods-return note REPRICES THE SHELF. `PricingMode::Manual` products are exempt
+ * — `updateSalePrice` returns early for them (`MarginService.php:215-217`).
+ *
+ * This is inherited behaviour of the costing seam, not a V8 decision, and it is
+ * defensible (the surviving units genuinely did become more expensive). It is
+ * called out here because it is invisible from this file, it reaches a
+ * customer-facing number, and a bonus return is not an obviously "pricing" act.
+ * Pinned in both directions by
+ * `test_the_undilution_reprices_auto_products_and_leaves_manual_ones_alone`.
  *
  * LOCK ORDER
  *
@@ -174,11 +196,15 @@ use Illuminate\Support\Facades\DB;
  *
  * NOT IN SCOPE (recorded, not silently dropped)
  *
- *  - GL. The credit note's journal entry is unchanged in this lane. Both kinds of
- *    line now carry a units-vs-GL residual for c1-bis: bonus lines by `forgone`
- *    (and by the whole `q x WAC` the GL still expenses), ordinary lines by
- *    `q x (invoice price - WAC)` — the GL plug is priced at the INVOICE, the
- *    units relieve at WAC.
+ *  - GL, BONUS LINES — no longer out of scope, and no longer c1-bis's problem.
+ *    Round 2 of the stock-GL gate (P1-1) ruled the un-dilution's value increase
+ *    must be booked, so `createSupplierCreditNoteEntryWithBonusReturn` now takes
+ *    `bonusUndilutionApplied` and posts a compensating
+ *    `Dr Inventory / Cr PurchaseExpenses` pair. GL and the sub-ledger reconcile.
+ *  - GL, ORDINARY LINES — still open, and the ONLY units-vs-GL residual left:
+ *    `q x (invoice price - WAC)`, because the GL plug is priced at the INVOICE
+ *    while the units relieve at WAC. Tracked in
+ *    docs/superpowers/tickets/2026-08-22-dpa-v8-residuals.md, NOT in c1-bis.
  *  - Batch/lot selection. Batch-tracked products are REFUSED on this path
  *    ({@see BatchTrackedReturnUnsupportedException}) rather than silently
  *    desynchronising `inventory_batch_stock` from `stock_levels`.
@@ -493,6 +519,44 @@ final class SupplierGoodsReturnNoteService
         return $value;
     }
 
+    /**
+     * Σ `wac_undilution_applied` over the note's BONUS lines — the value the
+     * un-dilution put BACK onto the surviving units.
+     *
+     * The GL counterpart of `bonusInventoryValue()`, and it exists for exactly
+     * one reason (stock-GL gate P1-1): the bonus exit moves the sub-ledger twice,
+     * `−q × WAC` for the units leaving and `+applied` for the un-dilution, so a
+     * GL entry that books only the first half diverges from the sub-ledger by
+     * this figure, permanently and with no detector able to see it — the entry
+     * exists, it is merely wrong. `createSupplierCreditNoteEntryWithBonusReturn`
+     * books the compensating `Dr Inventory / Cr PurchaseExpenses` at this amount.
+     *
+     * Read off the stamped column rather than recomputed, so the GL figure and
+     * the audit pair on the line can never tell different stories.
+     *
+     * @return numeric-string scale 6
+     */
+    public function bonusUndilutionApplied(SupplierGoodsReturnNote $note): string
+    {
+        $note->loadMissing('lines');
+
+        /** @var numeric-string $applied */
+        $applied = '0.000000';
+
+        /** @var SupplierGoodsReturnNoteLine $line */
+        foreach ($note->lines as $line) {
+            if ($line->kind !== SupplierGoodsReturnLineKind::Bonus) {
+                continue;
+            }
+
+            /** @var numeric-string $lineApplied */
+            $lineApplied = (string) ($line->wac_undilution_applied ?? '0');
+            $applied = bcadd($applied, $lineApplied, self::COST_SCALE);
+        }
+
+        return $applied;
+    }
+
     public function findForCreditNote(string $supplierCreditNoteId): ?SupplierGoodsReturnNote
     {
         /** @var SupplierGoodsReturnNote|null $note */
@@ -618,9 +682,24 @@ final class SupplierGoodsReturnNoteService
      * above that price — which equals the paid blend only when the product was
      * bought at ONE price.
      *
-     * Called AFTER the issue, so `companyOwnedQuantity` here is the survivor count —
-     * the same denominator `recordCostAdjustment` will divide by, which is what
-     * makes `applied == headroom` land the WAC exactly on the ceiling.
+     * Called AFTER the issue, so the survivor count is post-exit.
+     *
+     * DENOMINATOR MISMATCH, stated precisely because an earlier revision of this
+     * docblock claimed the opposite (gate P3-c). `ownedQuantityAfterExit()` sums
+     * ON-HAND only; `recordCostAdjustment` divides by
+     * `WeightedAverageCostService::companyOwnedQuantity()`, which is on-hand PLUS
+     * in-transit (`:114-122`). They are the same number only when nothing is in
+     * transit for this product. So:
+     *
+     *   in-transit == 0  ->  `applied == headroom` lands the WAC exactly on the ceiling.
+     *   in-transit  > 0  ->  the same `applied` is spread over a LARGER divisor, so
+     *                        the WAC lands strictly BELOW the ceiling.
+     *
+     * The mismatch is therefore one-directional and safe — it can only ever
+     * under-restore, never push the cost at rest above the price actually paid —
+     * which is why it is documented rather than "fixed" by widening this basis.
+     * Widening it would make the bound depend on stock the un-dilution cannot
+     * reach, and would be the first way this code could ever inflate a WAC.
      *
      * @param  numeric-string  $unitCost  The WAC the units left at.
      * @return array{numeric-string, numeric-string} [applied, forgone]
@@ -670,6 +749,15 @@ final class SupplierGoodsReturnNoteService
      * so leaving it out only ever makes the bound TIGHTER (a smaller survivor
      * count means less headroom), which is the safe direction for a cap.
      *
+     * READ UNDER `lockForUpdate` (gate P2-5 / P3-1). This survivor count is the
+     * DIVISOR of the un-dilution: a concurrent writer that moves any of these
+     * rows between this read and the cost write would have the WAC computed
+     * against a stale denominator, silently mis-restoring value. Lock-order safe
+     * because it runs INSIDE the per-product advisory and AFTER this line's own
+     * `issue()`, so every row lock this takes is one the transaction either
+     * already holds or is entitled to take next in the established order — it
+     * introduces no new lock-acquisition edge.
+     *
      * @return numeric-string
      */
     private function ownedQuantityAfterExit(SupplierGoodsReturnNoteLine $line): string
@@ -681,6 +769,8 @@ final class SupplierGoodsReturnNoteService
             ->where('tenant_id', $line->tenant_id)
             ->where('company_id', $line->company_id)
             ->where('product_id', $line->product_id)
+            ->orderBy('id')
+            ->lockForUpdate()
             ->get();
 
         foreach ($levels as $level) {
@@ -691,7 +781,23 @@ final class SupplierGoodsReturnNoteService
     }
 
     /**
-     * Refuse a note whose products are batch-tracked (gate round 1, C-2).
+     * Refuse a note whose products are batch-tracked (gate round 1, C-2;
+     * data-arm added in gate round 2, P3-a).
+     *
+     * TWO arms, and the DATA arm is the load-bearing one:
+     *
+     *  1. BATCH STOCK EXISTS. `products.requires_batch_tracking` is a mutable
+     *     setting; lots on hand are a fact. A product that carries batch rows but
+     *     has the flag off — turned off later, or never on because the lots
+     *     arrived through an import or an earlier configuration — would pass a
+     *     flag-only guard and then be issued by the FLAT path: `stock_levels`
+     *     drops, FEFO is skipped, and `inventory_batch_stock` still shows the lots
+     *     as on hand. Silent divergence between the two stock views, which is
+     *     precisely what C-2 refuses to risk until lot selection exists.
+     *
+     *  2. THE FLAG. Kept as a belt, and it is not redundant: it catches the
+     *     configured-but-empty product, where a return would otherwise be allowed
+     *     today and start failing the moment the first lot is received.
      *
      * @param  list<string>  $productIds
      *
@@ -699,6 +805,21 @@ final class SupplierGoodsReturnNoteService
      */
     private function assertNoBatchTrackedProducts(SupplierGoodsReturnNote $note, array $productIds): void
     {
+        // Arm 1 — DATA.
+        /** @var string|null $withBatchStock */
+        $withBatchStock = DB::table('product_batches')
+            ->join('inventory_batch_stock', 'inventory_batch_stock.batch_id', '=', 'product_batches.id')
+            ->where('product_batches.tenant_id', $note->tenant_id)
+            ->where('product_batches.company_id', $note->company_id)
+            ->whereIn('product_batches.product_id', $productIds)
+            ->orderBy('product_batches.product_id')
+            ->value('product_batches.product_id');
+
+        if ($withBatchStock !== null) {
+            throw new BatchTrackedReturnUnsupportedException($note->id, $withBatchStock);
+        }
+
+        // Arm 2 — FLAG (belt).
         /** @var Product|null $batchTracked */
         $batchTracked = Product::query()
             ->where('tenant_id', $note->tenant_id)

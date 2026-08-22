@@ -19,6 +19,7 @@ use App\Modules\Document\Domain\Services\DocumentPostingService;
 use App\Modules\Inventory\Domain\Enums\GoodsReceiptStatus;
 use App\Modules\Inventory\Domain\Enums\MovementReason;
 use App\Modules\Inventory\Domain\Enums\MovementType;
+use App\Modules\Inventory\Domain\Enums\SupplierGoodsReturnNoteStatus;
 use App\Modules\Inventory\Domain\GoodsReceipt;
 use App\Modules\Inventory\Domain\GoodsReceiptLine;
 use App\Modules\Inventory\Domain\PhysicalLinePredicate;
@@ -352,36 +353,61 @@ class CheckCogsCoverageCommandTest extends TestCase
      * goods-return note becomes a permanent D-e false alarm and fails the nightly
      * command.
      *
-     * The GL for this lane is not missing, it is keyed elsewhere: the AP credit
-     * note posts the Inventory credit for BOTH return kinds under
+     * The GL for a CREDIT-NOTE-BACKED note is not missing, it is keyed elsewhere:
+     * the AP credit note posts the Inventory legs for both return kinds under
      * `source_type = 'supplier_credit_note'`, keyed on the DOCUMENT id
-     * (`GeneralLedgerService.php:2482-2524`), which `$missingEntry` cannot see —
-     * it looks only for movement-keyed rows in `InventoryGlSourceTypes::ALL`.
+     * (`GeneralLedgerService::createSupplierCreditNoteEntryWithBonusReturn`),
+     * which `$missingEntry` cannot see — it looks only for movement-keyed rows in
+     * `InventoryGlSourceTypes::ALL`.
      *
-     * The control arm matters as much as the silence: the exclusion is by
-     * REFERENCE TYPE, not by reason, so an ordinary `SupplierReturn` movement
-     * from any other lane must still fire.
+     * But `supplier_goods_return_notes.supplier_credit_note_id` is NULLABLE by
+     * design — a stand-alone, manually raised return note is legal, and NOTHING
+     * posts GL for it. A blanket exclusion by reference type would hide exactly
+     * the case the detector exists to catch, so the exclusion is conditional on
+     * the backing credit note existing (both gates, round 2). Three arms:
+     *   1. CN-backed note        -> silent (the CN posted the GL)
+     *   2. stand-alone note      -> FIRES  (nothing posted anything)
+     *   3. any other lane        -> FIRES  (scoped by reference type, not reason)
      */
     #[Test]
-    public function test_de_excludes_the_supplier_goods_return_note_lane_the_credit_note_posts_for(): void
+    public function test_de_excludes_only_credit_note_backed_goods_return_notes(): void
     {
         $this->dpCompany->update(['inventory_gl_cutover_at' => now()->subHour()]);
 
-        $note = $this->movement(
+        $backedNoteId = $this->goodsReturnNote(supplierCreditNoteId: (string) Str::uuid());
+        $backed = $this->movement(
             MovementReason::SupplierReturn,
             '4.000000',
             now()->subMinutes(30),
             referenceType: StockMovementReferenceType::SupplierGoodsReturnNote->value,
+            referenceId: $backedNoteId,
         );
         Log::spy();
 
         $this->artisan('accounting:check-cogs-coverage')->assertExitCode(0);
         Log::shouldNotHaveReceived('warning', [
             \Mockery::on(static fn (string $message): bool => str_contains($message, '[D-e]')),
-            \Mockery::on(static fn (array $context): bool => ($context['movement_id'] ?? null) === $note->id),
+            \Mockery::on(static fn (array $context): bool => ($context['movement_id'] ?? null) === $backed->id),
         ]);
 
-        // Control: the exclusion is scoped to this document lane only.
+        // Arm 2 — a STAND-ALONE note posts no GL at all, so the detector must see it.
+        $standaloneNoteId = $this->goodsReturnNote(supplierCreditNoteId: null);
+        $standalone = $this->movement(
+            MovementReason::SupplierReturn,
+            '4.000000',
+            now()->subMinutes(30),
+            referenceType: StockMovementReferenceType::SupplierGoodsReturnNote->value,
+            referenceId: $standaloneNoteId,
+        );
+        Log::spy();
+
+        $this->artisan('accounting:check-cogs-coverage')->assertExitCode(1);
+        Log::shouldHaveReceived('warning')->withArgs(
+            static fn (string $message, array $context): bool => str_contains($message, '[D-e]')
+                && ($context['movement_id'] ?? null) === $standalone->id,
+        );
+
+        // Arm 3 — the exclusion is scoped to this document lane only.
         $other = $this->movement(MovementReason::SupplierReturn, '4.000000', now()->subMinutes(30));
         Log::spy();
 
@@ -390,6 +416,29 @@ class CheckCogsCoverageCommandTest extends TestCase
             static fn (string $message, array $context): bool => str_contains($message, '[D-e]')
                 && ($context['movement_id'] ?? null) === $other->id,
         );
+    }
+
+    /**
+     * A confirmed supplier goods-return note row, with or without the AP credit
+     * note that caused it. Written straight to the table: the detector reads only
+     * `id` + `supplier_credit_note_id`, and going through the service would drag
+     * in stock levels and a whole costing fixture for no added coverage.
+     */
+    private function goodsReturnNote(?string $supplierCreditNoteId): string
+    {
+        $id = (string) Str::uuid();
+
+        DB::table('supplier_goods_return_notes')->insert([
+            'id' => $id,
+            'tenant_id' => $this->dpTenant->id,
+            'company_id' => $this->dpCompany->id,
+            'supplier_credit_note_id' => $supplierCreditNoteId,
+            'status' => SupplierGoodsReturnNoteStatus::Confirmed->value,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return $id;
     }
 
     /**
