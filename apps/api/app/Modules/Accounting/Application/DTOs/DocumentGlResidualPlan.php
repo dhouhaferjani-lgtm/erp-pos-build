@@ -77,8 +77,13 @@ final readonly class DocumentGlResidualPlan
         public ?Account $stampPayableAccount = null,
     ) {}
 
-    public function isPostable(): bool
-    {
-        return $this->refusal === null;
-    }
+    // O-26 (2026-08-22): `isPostable()` was DELETED here. It had zero callers,
+    // and it was a trap: it reads `refusal === null`, which since O-26 is FALSE
+    // for a lineless document. Wiring it into the two GL writers or into
+    // `AccountingService::reverseDocumentGl()` — the obvious future use for a
+    // method with that name — would refuse to write the mirror legs for a
+    // document posted BEFORE the refusal, silently destroying the legacy
+    // cancellability the owner ruling explicitly preserves. The pre-flight
+    // (`assertDocumentGlIsPostable()`) must remain the SOLE reader of
+    // `$refusal`; anything else must branch on `$balanceAssertable`.
 }

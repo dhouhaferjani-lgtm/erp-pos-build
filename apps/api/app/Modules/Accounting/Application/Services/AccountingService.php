@@ -216,8 +216,40 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
                 $plan->refusal,
                 $document->document_number ?? $document->id,
                 $plan->residual,
+                $this->remedyFor($plan->refusal, $document),
             );
         }
+    }
+
+    /**
+     * The recovery action that actually EXISTS for this document, appended to
+     * the refusal message.
+     *
+     * O-26 round 2. The lineless refusal is reached by invoices and credit notes
+     * alike, but the two are not equally recoverable:
+     *   - an INVOICE is editable while unposted (`PATCH /documents/{id}` is gated
+     *     on `Document::isEditable()`), so "add a line and post again" is true;
+     *   - a CREDIT NOTE has NO update route at all — `Document/Presentation/routes.php`
+     *     exposes index / show / store / confirm / post / cancel and nothing
+     *     else. Its only exit is `POST /credit-notes/{id}/cancel`, which voids an
+     *     UNPOSTED credit note outright (`RefundService::cancelCreditNote()`
+     *     delegates to the fiscal cancel only when the document is already
+     *     Posted). Telling that operator to "add a line" would send them looking
+     *     for a route that does not exist.
+     * The two authoring paths that could mint a lineless credit note are refused
+     * at CREATION in the same round (`CreditNoteService::createCreditNote()`,
+     * `RefundService::createFullCreditNote()`), so this message is the backstop
+     * for legacy drafts, not the primary remedy.
+     */
+    private function remedyFor(GlResidualRefusal $refusal, Document $document): ?string
+    {
+        if ($refusal !== GlResidualRefusal::LinelessDocument) {
+            return null;
+        }
+
+        return $document->type === DocumentType::CreditNote
+            ? 'A credit note cannot be edited after it is created: cancel this one and create a replacement carrying the lines it should credit.'
+            : 'Add at least one line to the invoice, then post it again.';
     }
 
     /**
@@ -1060,11 +1092,15 @@ final class AccountingService implements AccountingServiceInterface, DocumentGlC
         // the refusal — `ArApOpeningService::postBatch()`, which writes historical
         // AR/AP opening documents straight to `Posted` (`is_historical = true`,
         // `FiscalCategory::NonFiscal`) without going through
-        // `DocumentPostingService::post()` at all. Those never reach this line:
-        // their GL is written by `AccountingOpeningService` under
-        // `source_type = 'opening_balance'`, which `documentLedgerFootprint()`
-        // does not match, so the `$originals->isEmpty()` early return above fires
-        // first. They are BY DESIGN and out of O-26's scope.
+        // `DocumentPostingService::post()` at all. Those never reach this line.
+        // `ArApOpeningService` itself writes NO journal entry — it only creates the
+        // documents; the opening ledger is written separately by
+        // `AccountingOpeningService::postBatch()` under `source_type =
+        // 'opening_balance'` (`:269`, `:414`). Either way, no entry carrying
+        // `source_type = 'Document'` (or `'DocumentCorrection'`) exists for such a
+        // document, so `documentLedgerFootprint()` matches nothing and the
+        // `$originals->isEmpty()` early return above fires first. They are BY
+        // DESIGN and out of O-26's scope.
         //
         // GL gate finding M-1: the mirror being "equal and opposite" does NOT
         // distinguish this case from the DOC06 refusal below — mirroring an

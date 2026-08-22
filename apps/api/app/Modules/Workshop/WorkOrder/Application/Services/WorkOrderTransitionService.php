@@ -79,7 +79,27 @@ final readonly class WorkOrderTransitionService
             // compliance hazard (audit finding 🔴-6a). Reject before any
             // side effect runs. The surrounding DB transaction ensures
             // nothing has been persisted up to this point.
-            if ($to === WorkOrderStatus::Invoiced && $wo->lines()->count() === 0) {
+            //
+            // O-26 round 2 (fiscal gate P2-3) — count MAPPABLE lines, not all
+            // lines. `DocumentGenerationAdapter::mapLines()` SKIPS every
+            // `is_bundle_informational` line (the bundle HEADER carries the
+            // authoritative total; the expanded children are display-only), so a
+            // WO whose only surviving lines are informational children mapped to
+            // ZERO document lines while this guard, counting raw rows, saw a
+            // non-zero count and let the transition through — and the adapter
+            // then created, confirmed and POSTED an invoice with no lines at all.
+            // The state is producible in the product: removing the bundle header
+            // leaves its informational children behind with nothing to protect
+            // against it.
+            //
+            // Since O-26 the GL pre-flight would refuse that invoice anyway, but
+            // that refusal is the WRONG message in the wrong place: it names a
+            // document the operator never authored and asks them to add a line to
+            // a work order that visibly HAS lines. Counting what the mapper will
+            // actually emit puts the refusal where the operator is, in the work
+            // order's own vocabulary.
+            $mappableLineCount = $wo->lines()->where('is_bundle_informational', false)->count();
+            if ($to === WorkOrderStatus::Invoiced && $mappableLineCount === 0) {
                 throw WorkOrderNoLinesException::forWorkOrder($wo->id);
             }
 

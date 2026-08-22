@@ -136,6 +136,69 @@ final class InvoiceZeroLineWorkOrderFailsTest extends TestCase
         }
     }
 
+    /**
+     * O-26 round 2 (fiscal gate P2-3) — the guard must count MAPPABLE lines.
+     *
+     * `DocumentGenerationAdapter::mapLines()` SKIPS every
+     * `is_bundle_informational` line: the bundle header carries the
+     * authoritative total, the expanded children are display-only. So a WO whose
+     * only surviving lines are informational children mapped to ZERO document
+     * lines while `lines()->count()` still read non-zero — the guard passed, and
+     * the adapter created → confirmed → posted an invoice with no lines at all.
+     * The state is producible in the product: removing the bundle HEADER leaves
+     * its informational children behind, nothing protects against it.
+     *
+     * After O-26 the GL pre-flight would refuse that invoice, but the resulting
+     * 422 would talk about a document the operator never authored and tell them
+     * to "add a line" to a work order that visibly HAS lines. The truthful
+     * refusal is this one — WORK_ORDER_NO_LINES, raised where the operator is.
+     */
+    public function test_service_rejects_invoicing_a_work_order_whose_only_lines_are_informational(): void
+    {
+        $wo = WorkOrder::factory()->completed()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+        ]);
+
+        WorkOrderLine::factory()->part()->create([
+            'tenant_id' => $wo->tenant_id,
+            'work_order_id' => $wo->id,
+            'is_bundle_informational' => true,
+        ]);
+
+        $this->assertSame(1, $wo->lines()->count(), 'the WO visibly HAS a line…');
+
+        $service = $this->app->make(WorkOrderTransitionService::class);
+
+        $this->expectException(WorkOrderNoLinesException::class);
+
+        try {
+            $service->transition(new TransitionStatusCommand(
+                work_order_id: $wo->id,
+                to_status: WorkOrderStatus::Invoiced,
+                reason_code: null,
+                triggered_by_user_id: null,
+                occurred_at: new \DateTimeImmutable,
+                tenant_id: $wo->tenant_id,
+                company_id: $wo->company_id,
+                context: null,
+            ));
+        } finally {
+            $this->assertSame(
+                0,
+                Document::query()
+                    ->where('tenant_id', $this->tenant->id)
+                    ->where('company_id', $this->company->id)
+                    ->count(),
+                'No Document must be persisted — not even the lineless one this used to create.',
+            );
+
+            $wo->refresh();
+            $this->assertSame(WorkOrderStatus::Completed, $wo->status);
+            $this->assertNull($wo->invoice_document_id);
+        }
+    }
+
     public function test_controller_returns_422_with_work_order_no_lines_code(): void
     {
         $this->actingAsUserWithPermissions(['work-orders.view', 'work-orders.transition']);

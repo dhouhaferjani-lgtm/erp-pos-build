@@ -68,15 +68,28 @@ final class UnpostableDocumentGlException extends DomainException
 
     /**
      * @param  numeric-string  $residual
+     * @param  string|null  $remedy  An extra sentence naming the recovery action
+     *                               that actually EXISTS for this document. O-26:
+     *                               the lineless refusal is reached by invoices
+     *                               and credit notes alike, but only invoices have
+     *                               an update route (`PATCH /documents/{id}`, open
+     *                               while `isEditable()`), so telling the operator
+     *                               of a credit note to "add a line" would send
+     *                               them looking for a route that does not exist.
+     *                               The caller knows the type; this class does not
+     *                               (and must not — Accounting Domain may not
+     *                               depend on Document's `DocumentType`).
      */
     public static function forDocument(
         GlResidualRefusal $refusal,
         string $documentNumber,
         string $residual,
+        ?string $remedy = null,
     ): self {
         return new self($refusal, sprintf(
-            '%s [%s] Document %s, residual %s.',
+            '%s%s [%s] Document %s, residual %s.',
             $refusal->message(),
+            $remedy !== null ? ' '.$remedy : '',
             $refusal->value,
             $documentNumber,
             $residual,

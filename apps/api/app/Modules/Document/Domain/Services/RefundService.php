@@ -894,6 +894,21 @@ class RefundService
             throw new \RuntimeException('Invoice has already been fully credited');
         }
 
+        // O-26 (owner ruling 2026-08-21) — a full credit copies the source
+        // invoice's lines one for one (see the copy loop below), so a LINELESS
+        // invoice produces a LINELESS credit note: a document that can never be
+        // posted (the GL pre-flight refuses it) and that has no update route to
+        // repair, leaving cancellation as its only exit. Since O-26 no new
+        // invoice can be posted lineless, so the only source that can reach this
+        // is legacy data — and a legacy defect must not be allowed to mint a
+        // fresh unpostable document. Refused before the transaction opens.
+        if ($invoice->lines()->count() === 0) {
+            throw new \InvalidArgumentException(
+                'This invoice has no lines, so a full credit note cannot be created from it. '
+                .'Credit it with an amount-based credit note instead.'
+            );
+        }
+
         return DB::transaction(function () use ($invoice, $reason, $numberingService): Document {
             $creditNote = Document::create([
                 'tenant_id' => $invoice->tenant_id,

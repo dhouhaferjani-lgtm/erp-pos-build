@@ -793,6 +793,20 @@ class CreditNoteService
         CreditNoteReason $reason,
         ?string $notes = null
     ): Document {
+        // O-26 (owner ruling 2026-08-21) — a credit note for ZERO is refused
+        // before anything is created. The request validator's money regex accepts
+        // `"0"` (`CreditNoteController::store()`), and this entry point had no
+        // positivity check even though its converter sibling has had one all
+        // along (`InvoiceToCreditNoteConverter::convertAmountBased()`). A zero
+        // credit note credits nothing, and it was one of the ways to mint a
+        // LINELESS credit note — which the posting refusal then blocks, on a
+        // document type that has no update route to fix it with. Refusing here
+        // closes the path at the door instead. Same exception type and 422
+        // `VALIDATION_ERROR` mapping as every other pre-condition in this method.
+        if (! is_numeric($amount) || bccomp($amount, '0', 4) <= 0) {
+            throw new \InvalidArgumentException('Credit note amount must be a positive number');
+        }
+
         $company = $this->companyContext->requireCompany();
         $tenantId = $company->tenant_id;
         $companyId = $company->id;

@@ -134,20 +134,45 @@ a delete-when condition, and pinned by
 
 **The ticket's "not reachable through the documented API" premise was FALSE.** A
 reachability audit run for this lane found SIX live production paths that produce a
-zero-line invoice or credit note (auto-save draft persistence, `partial=true` order→
-invoice conversion with an empty `line_ids`, an `amount: "0"` credit note, a
-full-credit of an already-lineless invoice, an all-informational-lines work order, and
-a POS account-charge draft with no line items). The refusal is therefore load-bearing
-production behaviour, not a fixture cleanup. Per the ruling's letter the refusal is at
-POSTING only; earlier (at-confirm / at-author) hardening for each of those paths is
-recorded as a follow-up, not done here.
+zero-line invoice or credit note. The refusal is therefore load-bearing production
+behaviour, not a fixture cleanup. All six are enumerated with file:line, and their
+individual dispositions recorded, in the follow-up ticket of record:
 
-**Test census.** 6 files / 39 methods authored lineless invoices and posted them; all
-were corrected by adding ONE line reconciling with the header the fixture already
-declared, never by weakening an assertion. Four of the ten files the original ticket
-named were stale false positives. The two `InvoiceGLIntegrationTest` cases that pinned
-"the carve-out never refuses" were RE-PINNED to the new refusal while keeping their
+> **`docs/superpowers/tickets/2026-08-22-lineless-authoring-paths-hardening.md`**
+
+Three of the six were additionally closed AT CREATION in this lane's round 2 (the
+`amount: "0"` credit note, the full-credit of an already-lineless invoice, and the
+all-informational-lines work order). The other three — chief among them the
+unvalidated, unauthorised `POST /documents/auto-save` route, which burns invoice
+numbers — are open items in that ticket, not deferred indefinitely.
+
+**Test census — the canonical numbers.** All three records of this lane (this ticket,
+the commit message, the lane report) use the same denominators:
+
+| | files | methods |
+|---|---|---|
+| went red under the refusal (total) | **7** | **41** |
+| ├ FIXTURE CORRECTIONS (one reconciling line added; no assertion weakened) | 6 | **39** |
+| └ RE-PINS (the assertion itself changed — it pinned the old behaviour) | 1 | **2** |
+
+Per-file red counts, each measured by replaying the base fixtures against the new
+production code: `DocumentPostingServiceTest` 7, `DocumentCancelConsolidationTest` 6,
+`FiscalHardeningE2ETest` 12, `VerifyFiscalChainGenesisDocumentTest` 12 (13 red total
+minus 1 pre-existing inherited red), `DeliveryNoteHashChainTest` 1,
+`Types/InvoiceDocumentTest` 1 — 39. Plus the 2 `InvoiceGLIntegrationTest` cases that
+pinned "the carve-out never refuses", re-pinned to the new refusal while keeping their
 assertions on the unchanged legacy write shape.
 
+Four of the ten files the original ticket named were stale false positives.
+
+**Round 2 additions** (both gates, 2026-08-22): the refusal MESSAGE is now type-aware
+— an invoice is editable while unposted so "add a line and post again" is true advice,
+but a credit note has no update route at all, so it is instead told to cancel and
+replace. `DocumentGlResidualPlan::isPostable()` was DELETED (zero callers; a future
+caller wiring it into the GL writers would have silently destroyed legacy
+cancellability, since `refusal !== null` is now true for a lineless document).
+
 **Still open, unchanged by this lane:** step 4 above (disposition of lineless posted
-documents already in tenant data) and both items under §"Related, also open".
+documents already in tenant data) and both items under §"Related, also open". The
+authoring-path hardening moved to
+`docs/superpowers/tickets/2026-08-22-lineless-authoring-paths-hardening.md`.

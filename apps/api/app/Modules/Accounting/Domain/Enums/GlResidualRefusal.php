@@ -99,7 +99,10 @@ enum GlResidualRefusal: string
             self::ResidualExceedsRoundingTolerance => 'The document total exceeds the sum of its lines plus their tax by more than tax rounding can explain. If the difference is a document-level charge (for example a stamp duty), assign the account that should carry it in Settings -> Chart of Accounts; otherwise correct the document totals.',
             self::LegsDoNotBalance => 'The general-ledger entry for this document does not balance.',
             self::NoCreditNoteStampAccount => 'This credit note carries its own stamp duty, which must be booked as a separate fiscal charge rather than reducing the customer balance. Assign both a stamp-duty charge account and a stamp-duty payable account in Settings -> Chart of Accounts.',
-            self::LinelessDocument => 'This document has no lines, so it has nothing to post to the general ledger and cannot be posted. Add at least one line before posting it.',
+            // Deliberately states the FACT only. The remedy differs by document
+            // type and is supplied by the thrower — see
+            // `UnpostableDocumentGlException::forDocument()`'s `$remedy`.
+            self::LinelessDocument => 'This document has no lines, so it has nothing to post to the general ledger and cannot be posted.',
         };
     }
 }
