@@ -1176,6 +1176,8 @@ export type ReleaseReason = 'delivered' | 'cancelled' | 'expired' | 'manual_rele
 export type ReplayPreviewMode = 'timestamp_replay' | 'legacy_delta';
 export type ReservationSource = 'sales_order' | 'ecommerce_cart' | 'marketplace_order' | 'manual_hold' | 'customer_return_pending' | 'quality_check' | 'transfer_pending' | 'work_order';
 export type StockAdjustmentStatus = 'draft' | 'posted' | 'cancelled';
+export type SupplierGoodsReturnLineKind = 'ordinary' | 'bonus';
+export type SupplierGoodsReturnNoteStatus = 'draft' | 'confirmed';
 export type TerminalSyncHealthState = 'healthy' | 'pending' | 'stale' | 'unknown';
 export type TransferCostDistribution = 'pro_rata_value' | 'pro_rata_quantity' | 'equal_per_line';
 export type TransferStatus = 'draft' | 'in_transit' | 'completed' | 'cancelled';
@@ -3085,7 +3087,7 @@ meta: Array<any>;
 declare namespace App.Shared.Domain.Enums {
 export type ReturnPeriodRefusalCode = 'RETURN_PERIOD_CLOSED' | 'RETURN_PERIOD_FILED' | 'RETURN_PERIOD_LOCKED';
 export type SkinType = 'normal' | 'oily' | 'dry' | 'combination' | 'sensitive';
-export type StockMovementReferenceType = 'Document' | 'inventory_counting' | 'pos_receipt_return_scrap' | 'stock_adjustment';
+export type StockMovementReferenceType = 'Document' | 'inventory_counting' | 'pos_receipt_return_scrap' | 'stock_adjustment' | 'supplier_goods_return_note';
 export type VarianceDirection = 'over' | 'under' | 'balanced';
 export type VarianceSeverity = 'info' | 'warning' | 'critical';
 }
