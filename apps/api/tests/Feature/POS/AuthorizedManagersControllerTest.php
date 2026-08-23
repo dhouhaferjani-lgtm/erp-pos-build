@@ -187,6 +187,28 @@ final class AuthorizedManagersControllerTest extends TestCase
     }
 
     /**
+     * Offboarding belt: a deactivated user account is excluded from the online
+     * manager list even when the membership row is still Active — the account
+     * status is an independent gate, not a second reading of the same flag.
+     */
+    public function test_deactivated_user_excluded_even_with_active_membership(): void
+    {
+        $this->manager->update(['status' => UserStatus::Inactive]);
+
+        $response = $this->actingAs($this->cashier, 'sanctum')
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->getJson('/api/v1/pos/authorized-managers');
+
+        $response->assertOk();
+
+        /** @var list<array{id: string, name: string}> $data */
+        $data = $response->json('data');
+        $ids = array_column($data, 'id');
+
+        $this->assertNotContains($this->manager->id, $ids, 'Deactivated account must be excluded');
+    }
+
+    /**
      * Test 4: Unauthenticated request is rejected with 401.
      */
     public function test_unauthenticated_request_returns_401(): void

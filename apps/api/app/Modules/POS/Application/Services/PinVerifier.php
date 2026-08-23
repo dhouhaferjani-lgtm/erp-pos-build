@@ -45,6 +45,16 @@ final class PinVerifier
             return OperatorApprovalDecision::ScopeMismatch;
         }
 
+        // Offboarding belt (defense in depth): the ACCOUNT must be active, not
+        // merely the membership. The membership check below is the primary gate,
+        // but until the offboarding cascade shipped nothing ever wrote a
+        // non-Active membership status — so a deactivated manager sailed
+        // through. Two independent flags must now both hold, and neither a
+        // stale nor a hand-edited membership row can approve on its own.
+        if (! $user->isActive()) {
+            return OperatorApprovalDecision::ScopeMismatch;
+        }
+
         // F-3: require an ACTIVE company membership, not mere existence. A
         // suspended/revoked member who still holds a pos_pin + the approval
         // permission must not be able to approve offline — mirroring the online

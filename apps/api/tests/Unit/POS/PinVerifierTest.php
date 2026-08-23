@@ -7,6 +7,7 @@ namespace Tests\Unit\POS;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
+use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\PinVerifier;
 use App\Modules\POS\Domain\Enums\ApprovalScope;
@@ -144,6 +145,46 @@ final class PinVerifierTest extends TestCase
             'company_id' => $companyId,
             'role' => 'manager',
             'status' => MembershipStatus::Suspended,
+        ]);
+
+        app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);
+        Permission::findOrCreate('pos.close_shift_with_variance', 'sanctum');
+        $user->givePermissionTo('pos.close_shift_with_variance');
+
+        Hash::shouldReceive('check')->never();
+
+        $decision = app(PinVerifier::class)->verifyForApproval(
+            userId: $user->id,
+            pin: '1234',
+            tenantId: $tenant->id,
+            companyId: $companyId,
+            approvalScope: ApprovalScope::CloseShiftVariance,
+        );
+
+        $this->assertSame(OperatorApprovalDecision::ScopeMismatch, $decision);
+    }
+
+    /**
+     * Offboarding belt (defense in depth): even with an ACTIVE membership row —
+     * a stale cascade, a legacy row, a direct DB edit — a user whose ACCOUNT is
+     * deactivated must not be able to approve. `users.status` is an independent
+     * gate; before this, membership status was the ONLY thing read here and
+     * nothing in the app ever wrote a non-Active membership status.
+     */
+    public function test_scoped_verification_rejects_a_deactivated_user_account(): void
+    {
+        $tenant = Tenant::factory()->create();
+        $companyId = Company::factory()->create(['tenant_id' => $tenant->id])->id;
+        $user = User::factory()->create([
+            'tenant_id' => $tenant->id,
+            'pos_pin' => '1234',
+            'status' => UserStatus::Inactive,
+        ]);
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $companyId,
+            'role' => 'manager',
+            'status' => MembershipStatus::Active,
         ]);
 
         app(PermissionRegistrar::class)->setPermissionsTeamId($tenant->id);

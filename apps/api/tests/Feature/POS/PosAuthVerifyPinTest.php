@@ -115,6 +115,40 @@ final class PosAuthVerifyPinTest extends TestCase
         $this->assertEquals(100.0, $admin['max_discount_percent']);
     }
 
+    /**
+     * Offboarding belt: the online PIN switch must not resolve a DEACTIVATED
+     * account. Without this filter a fired employee's PIN still returned their
+     * identity, roles and permissions to the terminal.
+     */
+    public function test_verify_pin_rejects_a_deactivated_users_pin(): void
+    {
+        $firedUser = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Fired Cashier',
+            'email' => 'fired@verify-pin-test.local',
+            'password' => 'password123',
+            'status' => UserStatus::Inactive,
+            'pos_pin' => Hash::make('4242'),
+            'can_discount' => false,
+            'max_discount_percent' => 10.0,
+        ]);
+        $firedUser->assignRole('cashier');
+
+        UserCompanyMembership::create([
+            'user_id' => $firedUser->id,
+            'company_id' => $this->company->id,
+            'role' => 'cashier',
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->postJson('/api/v1/pos/auth/verify-pin', [
+                'pin' => '4242',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('INVALID_PIN', $response->json('error.code'));
+    }
+
     public function test_verify_pin_does_not_grant_discount_to_non_admin(): void
     {
         $cashier = User::create([

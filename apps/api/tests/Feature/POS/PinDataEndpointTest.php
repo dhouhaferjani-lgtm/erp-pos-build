@@ -216,6 +216,43 @@ class PinDataEndpointTest extends TestCase
         $this->assertNotContains('Suspended Manager', $names);
     }
 
+    /**
+     * Offboarding belt: a deactivated account is never mirrored into the
+     * device's operator_pins, even if its membership row is still Active. The
+     * device prune (`pruneOperatorsExcept`) then drops it from the local cache
+     * on the next non-empty pull.
+     */
+    public function test_pin_data_excludes_deactivated_users_with_active_memberships(): void
+    {
+        $firedManager = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Fired Manager',
+            'email' => 'fired-manager@pos-test.local',
+            'password' => 'password123',
+            'status' => UserStatus::Inactive,
+            'pos_pin' => Hash::make('4242'),
+            'can_discount' => true,
+            'max_discount_percent' => 80.0,
+        ]);
+        $firedManager->assignRole('manager');
+
+        UserCompanyMembership::create([
+            'user_id' => $firedManager->id,
+            'company_id' => $this->company->id,
+            'role' => 'manager',
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $response = $this->actingAs($this->managerUser)
+            ->getJson('/api/v1/pos/auth/pin-data');
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $names = array_column($response->json('data'), 'name');
+        $this->assertNotContains('Fired Manager', $names);
+    }
+
     public function test_pin_data_excludes_same_tenant_pin_users_without_company_membership(): void
     {
         $outsideCompanyUser = User::create([

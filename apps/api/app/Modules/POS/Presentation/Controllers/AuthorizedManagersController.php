@@ -7,6 +7,7 @@ namespace App\Modules\POS\Presentation\Controllers;
 use App\Http\Controllers\Controller;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -37,6 +38,10 @@ final class AuthorizedManagersController extends Controller
 
         /** @var Collection<int, User> $users */
         $users = User::query()
+            // Offboarding belt: the ACCOUNT must be active too, not just the
+            // membership. A deactivated user whose membership row is stale (or
+            // hand-edited) must never be offered as an override approver.
+            ->where('status', UserStatus::Active->value)
             ->whereHas('companyMemberships', static function (Builder $q) use ($companyId): void {
                 $q->whereRaw('company_id = ?', [$companyId])
                     ->whereRaw('status = ?', [MembershipStatus::Active->value]);

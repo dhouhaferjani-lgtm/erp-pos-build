@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\UserCompanyMembership;
 use App\Modules\Company\Services\CompanyContext;
+use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Domain\Enums\ApprovalScope;
 use App\Modules\POS\Domain\Enums\TerminalType;
@@ -41,7 +42,12 @@ final class PosAuthController extends Controller
         $currentUser = $request->user();
         $pin = $request->validated('pin');
 
+        // Offboarding belt: a DEACTIVATED account's PIN must not resolve. This
+        // endpoint is the online operator switch — without the status filter a
+        // fired employee's PIN still returned their identity, roles and
+        // permissions to the terminal.
         $users = User::where('tenant_id', $currentUser->tenant_id)
+            ->where('status', UserStatus::Active->value)
             ->whereNotNull('pos_pin')
             ->get();
 
@@ -158,7 +164,15 @@ final class PosAuthController extends Controller
             ->where('status', MembershipStatus::Active->value)
             ->pluck('user_id');
 
+        // Offboarding belt: only ACTIVE accounts are mirrored. The membership
+        // filter above is the primary gate, but a deactivated user whose
+        // membership row is stale (pre-cascade data, a hand-edited row) would
+        // otherwise still land in the device's operator_pins and keep approving
+        // overrides offline. Excluding them here also makes the device prune
+        // (`pruneOperatorsExcept`) drop them from the local cache on the next
+        // non-empty pull.
         $operators = User::where('tenant_id', $currentUser->tenant_id)
+            ->where('status', UserStatus::Active->value)
             ->whereIn('id', $companyUserIds)
             ->whereNotNull('pos_pin')
             ->get();
