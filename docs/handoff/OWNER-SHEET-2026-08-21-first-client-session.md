@@ -14,6 +14,8 @@
 | A-3 | C-2 (device Z sale-branch gross-as-net) brief GATED (Codex round 1, 6 findings applied) and DISPATCHED; the M1 signed-bytes versioning question will be ruled by the parent-dispatched fiscal-pos specialist gate autonomously (P3-M1 R-4 precedent), recorded here when made | Brief + progress YAML on local dev; LEDGER row C-2 | lane in flight |
 | A-4 | Wave-1 fix lanes dispatched on verified premises: fiscal-bytea (OutboxIngestor PARAM_STR→stream), G-3 training-receipt containment, G-4 VAT POS-refund netting, Arabic backfill (145 keys + 9 plurals) | Premise-verification agent report (all four LIVE with file:line) | lanes in flight |
 
+> **2026-08-23 (session continuation): the owner sent an answer sheet covering B-1..B-7, the B-8/B-9/B-13/B-14 acks, ops status (runner B-11, Dokploy), and the promotion go/no-go — but every answer slot arrived EMPTY (each "→" had no ruling after it).** Nothing was recorded as ruled; all rows below remain OPEN and origin/dev remains unpushed per the standing "do NOT push until I say so" instruction. The unconditional work queue (R-8, R-10, auto-save P1, C-4, C-7) was dispatched regardless. Owner: please re-send the answers.
+
 ## B. Asks — need your ruling (from the first-client onboarding audit)
 
 Full audit evidence lives in the session transcript; gaps are ranked G1–G13. The asks:
