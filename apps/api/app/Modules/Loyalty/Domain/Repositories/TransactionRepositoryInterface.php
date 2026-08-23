@@ -45,6 +45,15 @@ interface TransactionRepositoryInterface
     public function findBySourceDocument(string $sourceType, string $sourceId): ?Transaction;
 
     /**
+     * Find the redeem transaction carrying an idempotency key.
+     *
+     * Per-enrollment, mirroring the shape of the earn-side index
+     * `loyalty_txn_earn_source_unique (enrollment_id, source_type, source_id)`
+     * and of `loyalty_txn_redeem_key_unique (enrollment_id, redemption_key)`.
+     */
+    public function findRedeemByIdempotencyKey(string $enrollmentId, string $redemptionKey): ?Transaction;
+
+    /**
      * Save transaction
      */
     public function save(Transaction $transaction): Transaction;

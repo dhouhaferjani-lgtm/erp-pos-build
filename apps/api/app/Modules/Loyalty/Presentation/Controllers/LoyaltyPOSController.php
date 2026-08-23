@@ -174,6 +174,11 @@ class LoyaltyPOSController extends Controller
         $validated = $request->validate([
             'enrollment_id' => ['required', 'string', 'uuid'],
             'reward_id' => ['required', 'string', 'uuid'],
+            // Optional client-supplied idempotency key. A double-tapped "Redeem"
+            // button or a POS retry after a timeout replays the same key and gets
+            // the ORIGINAL transaction back instead of a second debit-less reward.
+            // Nullable so existing clients are unaffected.
+            'idempotency_key' => ['nullable', 'string', 'max:64'],
         ]);
 
         // manual:loyalty-pos-controller-redeem-unscoped-enrollment-reward +
@@ -205,6 +210,7 @@ class LoyaltyPOSController extends Controller
                 $validated['enrollment_id'],
                 $validated['reward_id'],
                 'POS reward redemption',
+                $validated['idempotency_key'] ?? null,
             );
 
             return response()->json([
