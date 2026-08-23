@@ -20,9 +20,11 @@ use App\Modules\Promotion\Domain\Enums\DiscountType;
 use App\Modules\Promotion\Domain\Enums\PromotionStatus;
 use App\Modules\Promotion\Domain\Enums\PromotionType;
 use App\Modules\Tenant\Domain\Tenant;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -184,7 +186,14 @@ final class CouponUsageCapEnforcementTest extends TestCase
         $this->assertStringContainsString('"company_id"', $lockQuery);
     }
 
-    public function test_record_usage_refuses_a_second_checkout_once_the_global_cap_is_reached(): void
+    /**
+     * Gate r1 F-3: this is a SEQUENTIAL pair, not a race, and the second call is
+     * refused by the *status* gate (`recordUsage` auto-exhausted the coupon on
+     * the first call), not by the counter re-check. Named accordingly. The
+     * counter branch is covered by
+     * test_record_usage_refuses_and_seals_a_counter_at_cap_with_a_stale_active_status.
+     */
+    public function test_record_usage_refuses_a_sequential_second_checkout_via_the_status_gate(): void
     {
         // Interleave simulation: two concurrent carts both validated against a
         // max_uses = 1 coupon while it still read Active / use_count = 0. Both
@@ -217,6 +226,116 @@ final class CouponUsageCapEnforcementTest extends TestCase
         $this->assertSame(1, $coupon->use_count, 'A max_uses = 1 coupon must never exceed one use.');
         $this->assertSame(CouponStatus::Exhausted, $coupon->status);
         $this->assertSame(1, CouponUsage::where('coupon_id', $coupon->id)->count());
+    }
+
+    /**
+     * Gate r1 F-1: the counter branch — `use_count` has reached `max_uses` while
+     * `status` still reads Active (legacy row, a data fix, or a writer that lost
+     * a race and never got to auto-exhaust). The refusal must fire AND the seal
+     * it writes must SURVIVE the refusal: a seal that lives inside the
+     * transaction the throw unwinds is always rolled back, so the next reader
+     * re-derives the same conclusion from the counter forever.
+     */
+    public function test_record_usage_refuses_and_seals_a_counter_at_cap_with_a_stale_active_status(): void
+    {
+        $coupon = $this->makeCoupon([
+            'max_uses' => 1,
+            'use_count' => 1,
+            'status' => CouponStatus::Active,
+        ]);
+        $service = $this->service();
+
+        $thrown = null;
+        try {
+            $service->recordUsage($coupon->id, Str::uuid()->toString(), null, '5.00');
+        } catch (CouponInvalidException $e) {
+            $thrown = $e;
+        }
+
+        $this->assertNotNull($thrown, 'A counter already at the cap must be refused.');
+        $this->assertStringContainsString('fully redeemed', $thrown->getMessage());
+
+        $coupon->refresh();
+        $this->assertSame(
+            CouponStatus::Exhausted,
+            $coupon->status,
+            'The Exhausted seal must persist after the refusal — a seal written inside '
+            .'the transaction the throw unwinds is silently rolled back.',
+        );
+        $this->assertSame(1, $coupon->use_count, 'The refusal must not move the counter.');
+        $this->assertSame(
+            0,
+            CouponUsage::where('coupon_id', $coupon->id)->count(),
+            'The refusal must not write a usage row.',
+        );
+    }
+
+    /**
+     * Gate r1 F-2: the savepoint / 23505 branch.
+     *
+     * A racing writer commits the usage row for this exact receipt in the window
+     * between our `exists()` probe and our insert. The insert then raises 23505.
+     * That must NOT poison an ENCLOSING checkout transaction: the insert lives in
+     * a nested transaction (SAVEPOINT), the exception escapes that closure so
+     * PostgreSQL rolls back to the savepoint, and the enclosing transaction goes
+     * on to commit its own work.
+     *
+     * The race is injected with a QueryExecuted listener that fires on the
+     * `exists()` probe itself, so the interleave is exact rather than hopeful.
+     */
+    public function test_a_racing_duplicate_rolls_back_to_the_savepoint_and_leaves_the_enclosing_transaction_alive(): void
+    {
+        $this->requirePostgres();
+
+        $coupon = $this->makeCoupon(['max_uses' => 5]);
+        $receiptId = Str::uuid()->toString();
+        $service = $this->service();
+
+        $injected = false;
+        Event::listen(function (QueryExecuted $event) use (&$injected, $coupon, $receiptId): void {
+            if ($injected) {
+                return;
+            }
+            $sql = strtolower($event->sql);
+            if (! str_contains($sql, 'from "coupon_usages"') || ! str_contains($sql, 'exists')) {
+                return;
+            }
+
+            $injected = true;
+
+            // The racer: same (coupon_id, receipt_id), and it did its own
+            // increment before committing — exactly what a concurrent sync
+            // worker would have left behind.
+            DB::table('coupon_usages')->insert($this->usageRow('coupon_id', $coupon->id, $receiptId));
+            DB::table('coupons')->where('id', $coupon->id)->update(['use_count' => 1]);
+        });
+
+        DB::transaction(function () use ($service, $coupon, $receiptId): void {
+            $service->recordUsage($coupon->id, $receiptId, null, '5.00');
+
+            // If the 23505 had poisoned the enclosing transaction, PostgreSQL
+            // would refuse this statement with 25P02 and the test would error.
+            DB::table('coupons')->where('id', $coupon->id)->update(['name' => 'Enclosing txn committed']);
+        });
+
+        $this->assertTrue($injected, 'The racing duplicate must actually have been injected.');
+
+        $coupon->refresh();
+        $this->assertSame(
+            'Enclosing txn committed',
+            $coupon->name,
+            'The enclosing transaction must commit its own work after the swallowed 23505.',
+        );
+        $this->assertSame(
+            1,
+            CouponUsage::where('coupon_id', $coupon->id)->count(),
+            'Exactly one usage row may exist for the receipt — the racer won, we stood down.',
+        );
+        $this->assertSame(
+            1,
+            $coupon->use_count,
+            'use_count must not be double-incremented on top of the racer’s increment.',
+        );
     }
 
     public function test_record_usage_refuses_a_revoked_coupon_under_the_lock(): void

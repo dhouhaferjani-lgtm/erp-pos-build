@@ -56,8 +56,10 @@ use Illuminate\Support\Facades\Schema;
  * are deliberately NOT performed here — this migration refuses to guess which
  * of two money-bearing rows is the real one.
  *
- * Both indexes are created inside the same statement batch that scans, so the
- * scan result and the DDL cannot drift apart within one tenant database.
+ * BOTH tables are scanned BEFORE either index is created (gate r1 F-8), so a
+ * tenant that is dirty on both learns both remediations from a single abort
+ * instead of discovering the second one on the retry. PostgreSQL runs each
+ * migration in a schema transaction, so an abort leaves no index behind.
  */
 return new class extends Migration
 {
@@ -81,12 +83,34 @@ return new class extends Migration
             return;
         }
 
+        // Phase 1 — scan EVERY target before creating ANY index, so a tenant
+        // dirty on both tables gets both remediations from one abort.
+        $problems = [];
         foreach (self::TARGETS as $table => $target) {
             if (! Schema::hasTable($table)) {
                 continue;
             }
 
-            $this->assertNoDuplicates($table, $target['parent'], $target['index']);
+            $problem = $this->describeDuplicates($table, $target['parent'], $target['index']);
+            if ($problem !== null) {
+                $problems[] = $problem;
+            }
+        }
+
+        if ($problems !== []) {
+            throw new RuntimeException(
+                'Cannot create the coupon/promotion usage-per-receipt unique indexes. '
+                .implode(' ', $problems)
+                .' Run the per-tenant census in this migration docblock and remediate every '
+                .'listed table before retrying.'
+            );
+        }
+
+        // Phase 2 — DDL.
+        foreach (self::TARGETS as $table => $target) {
+            if (! Schema::hasTable($table)) {
+                continue;
+            }
 
             DB::statement(sprintf(
                 'CREATE UNIQUE INDEX IF NOT EXISTS %s ON %s (%s, receipt_id)',
@@ -108,7 +132,7 @@ return new class extends Migration
         }
     }
 
-    private function assertNoDuplicates(string $table, string $parentColumn, string $index): void
+    private function describeDuplicates(string $table, string $parentColumn, string $index): ?string
     {
         $duplicates = DB::select(
             "SELECT {$parentColumn} AS parent_id, receipt_id, COUNT(*) AS duplicate_count
@@ -118,15 +142,14 @@ return new class extends Migration
         );
 
         if ($duplicates === []) {
-            return;
+            return null;
         }
 
         $first = $duplicates[0];
 
-        throw new RuntimeException(sprintf(
-            'Cannot create %s: %s holds %d duplicated (%s, receipt_id) pair(s); '
-            .'first offender %s = %s, receipt_id = %s (%s rows). '
-            .'Run the per-tenant census in this migration docblock and remediate before retrying.',
+        return sprintf(
+            '[%s] %s holds %d duplicated (%s, receipt_id) pair(s); '
+            .'first offender %s = %s, receipt_id = %s (%s rows).',
             $index,
             $table,
             count($duplicates),
@@ -135,6 +158,6 @@ return new class extends Migration
             (string) $first->parent_id,
             (string) $first->receipt_id,
             (string) $first->duplicate_count,
-        ));
+        );
     }
 };
