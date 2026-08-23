@@ -93,8 +93,21 @@ class AccountingOpeningService
             throw new RuntimeException('This service only handles ACCOUNTING batch types.');
         }
 
+        // A LOCKED (or VALIDATED) batch is sealed: re-validating it would flip POSTED
+        // rows back to VALID and replace the mapped_data the SHA-256 batch seal is
+        // computed over, leaving a stored hash that no longer verifies.
+        if (! $batch->isEditable()) {
+            throw new RuntimeException(
+                "Cannot validate batch in {$batch->status->label()} status. Only draft batches can be validated."
+            );
+        }
+
         $scale = $this->scaleForBatch($batch);
-        $rows = $batch->rows()->where('status', '!=', OpeningImportRowStatus::Skipped)->get();
+        // POSTED rows are excluded alongside SKIPPED: a posted row's mapped_data is
+        // already sealed and its entity already exists.
+        $rows = $batch->rows()
+            ->whereNotIn('status', [OpeningImportRowStatus::Skipped, OpeningImportRowStatus::Posted])
+            ->get();
         $validationResults = [];
         $errors = [];
 
@@ -236,26 +249,36 @@ class AccountingOpeningService
             throw new RuntimeException('This service only handles ACCOUNTING batch types.');
         }
 
+        // Cheap fast-fail on the obviously-wrong status. The AUTHORITATIVE guard is
+        // the locked re-read inside the transaction below — this one reads an
+        // in-memory model that a concurrent request may already have superseded.
         if (! $batch->canPost()) {
             throw new RuntimeException(
                 "Cannot post batch in {$batch->status->label()} status. Batch must be in draft status."
             );
         }
 
-        // Get valid rows only
-        $validRows = $batch->rows()
-            ->where('status', OpeningImportRowStatus::Valid)
-            ->orderBy('row_number')
-            ->get();
-
-        if ($validRows->isEmpty()) {
-            throw new RuntimeException('No valid rows to post. Please validate the batch first.');
-        }
-
         $company = Company::findOrFail($batch->company_id);
         $scale = $this->moneyScale($company->currency);
+        $batchId = $batch->id;
+        $postedRowCount = 0;
 
-        $entry = DB::transaction(function () use ($batch, $validRows, $company, $userId, $scale): JournalEntry {
+        $entry = DB::transaction(function () use ($batchId, $company, $userId, $scale, &$postedRowCount): JournalEntry {
+            // FIRST statement: re-read the batch FOR UPDATE and evaluate the guard on
+            // the fresh row, then read the rows under that lock.
+            $batch = $this->batchService->lockBatchForPosting($batchId);
+
+            $validRows = $batch->rows()
+                ->where('status', OpeningImportRowStatus::Valid)
+                ->orderBy('row_number')
+                ->get();
+
+            if ($validRows->isEmpty()) {
+                throw new RuntimeException('No valid rows to post. Please validate the batch first.');
+            }
+
+            $postedRowCount = $validRows->count();
+
             $entryNumber = $this->generateEntryNumber($company->id);
 
             // Create historical journal entry
@@ -335,8 +358,8 @@ class AccountingOpeningService
             // Mark rows as posted
             $this->batchService->markRowsPosted($rowEntityMap);
 
-            // Lock batch for immutability (Validated → Locked)
-            $batch->refresh();
+            // Lock batch for immutability (Validated → Locked).
+            // markBatchValidated already refreshed the model onto the claimed row.
             $this->batchService->lockBatch($batch, $userId);
 
             return $entry->load('lines');
@@ -358,7 +381,7 @@ class AccountingOpeningService
             batchId: $batch->id,
             tenantId: $company->tenant_id,
             companyId: $company->id,
-            entryCount: $validRows->count(),
+            entryCount: $postedRowCount,
             totalAmount: $totalAmount,
             postedAt: now()->toIso8601String(),
         ));
@@ -423,11 +446,31 @@ class AccountingOpeningService
     }
 
     /**
-     * Generate entry number for opening balance journal entry.
+     * Generate a concurrency-safe OB-{year}-{seq} entry number.
+     *
+     * Must be called INSIDE an open DB::transaction. On PostgreSQL, acquires a
+     * transaction-scoped advisory lock keyed on (companyId, year) to close the
+     * TOCTOU race between the read-max and the insert: without it two concurrent
+     * posts both read the same max and both mint OB-{year}-000001, and the loser
+     * fails on the journal_entries (tenant_id, entry_number) unique index — which
+     * stays as the second line of defence. On SQLite (test runner) the advisory
+     * lock is skipped: concurrency is not meaningful there.
+     *
+     * Same pattern as the corrected sibling generateOpeningEntryNumber() in the
+     * Inventory module's OpeningBalancePostingService (named, not imported: module
+     * boundaries are enforced by deptrac and a docblock is not a dependency).
      */
     private function generateEntryNumber(string $companyId): string
     {
         $year = date('Y');
+
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement(
+                'SELECT pg_advisory_xact_lock(hashtext(?))',
+                ["gl-ob-seq:{$companyId}:{$year}"],
+            );
+        }
+
         $lastEntry = JournalEntry::query()
             ->where('company_id', $companyId)
             ->where('entry_number', 'like', "OB-{$year}-%")

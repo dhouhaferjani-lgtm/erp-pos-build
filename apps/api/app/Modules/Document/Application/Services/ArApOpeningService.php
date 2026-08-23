@@ -57,9 +57,20 @@ class ArApOpeningService
     {
         $this->assertValidBatchType($batch);
 
+        // A sealed batch must not be re-validated: it would flip POSTED rows back to
+        // VALID and replace the mapped_data the batch SHA-256 seal is computed over.
+        if (! $batch->isEditable()) {
+            throw new RuntimeException(
+                "Cannot validate batch in {$batch->status->label()} status. Only draft batches can be validated."
+            );
+        }
+
         $isAr = $batch->type === OpeningBatchType::ArOpenItems;
         $companyCurrency = $batch->company->currency;
-        $rows = $batch->rows()->where('status', '!=', OpeningImportRowStatus::Skipped)->get();
+        // POSTED rows are excluded alongside SKIPPED — their documents already exist.
+        $rows = $batch->rows()
+            ->whereNotIn('status', [OpeningImportRowStatus::Skipped, OpeningImportRowStatus::Posted])
+            ->get();
         $validationResults = [];
         $errors = [];
 
@@ -253,26 +264,33 @@ class ArApOpeningService
     {
         $this->assertValidBatchType($batch);
 
+        // Cheap fast-fail. The AUTHORITATIVE guard is the locked re-read inside the
+        // transaction below — this one reads an in-memory model a concurrent request
+        // may already have superseded.
         if (! $batch->canPost()) {
             throw new RuntimeException(
                 "Cannot post batch in {$batch->status->label()} status. Batch must be in draft status."
             );
         }
 
-        // Get valid rows only
-        $validRows = $batch->rows()
-            ->where('status', OpeningImportRowStatus::Valid)
-            ->orderBy('row_number')
-            ->get();
-
-        if ($validRows->isEmpty()) {
-            throw new RuntimeException('No valid rows to post. Please validate the batch first.');
-        }
-
         $company = Company::findOrFail($batch->company_id);
         $isAr = $batch->type === OpeningBatchType::ArOpenItems;
+        $batchId = $batch->id;
 
-        return DB::transaction(function () use ($batch, $validRows, $company, $isAr, $userId): array {
+        return DB::transaction(function () use ($batchId, $company, $isAr, $userId): array {
+            // FIRST statement: re-read the batch FOR UPDATE, guard on the fresh row,
+            // then read the rows under that lock.
+            $batch = $this->batchService->lockBatchForPosting($batchId);
+
+            $validRows = $batch->rows()
+                ->where('status', OpeningImportRowStatus::Valid)
+                ->orderBy('row_number')
+                ->get();
+
+            if ($validRows->isEmpty()) {
+                throw new RuntimeException('No valid rows to post. Please validate the batch first.');
+            }
+
             $documentsCreated = [];
             $rowEntityMap = [];
             $totalAmount = '0.00';
@@ -407,9 +425,21 @@ class ArApOpeningService
     }
 
     /**
-     * Generate document number for historical invoice/credit note.
+     * Generate a concurrency-safe document number for a historical invoice/credit note.
      *
      * Format: HIST-INV-2025-00001 or HIST-CN-2025-00001
+     *
+     * Must be called INSIDE an open DB::transaction. On PostgreSQL, acquires a
+     * transaction-scoped advisory lock keyed on (companyId, prefix, year) to close
+     * the TOCTOU race between the read-max and the insert — the sequence is per
+     * PREFIX, so the key must be too. Without it two concurrent posts both read the
+     * same max and both mint HIST-INV-{year}-00001, and the loser fails on the
+     * documents (tenant_id, type, document_number) unique index — which stays as the
+     * second line of defence. On SQLite (test runner) the advisory lock is skipped.
+     *
+     * Same pattern as the corrected sibling generateOpeningEntryNumber() in the
+     * Inventory module's OpeningBalancePostingService (named, not imported: module
+     * boundaries are enforced by deptrac and a docblock is not a dependency).
      */
     private function generateHistoricalDocumentNumber(string $companyId, DocumentType $type): string
     {
@@ -419,6 +449,13 @@ class ArApOpeningService
             DocumentType::CreditNote => 'HIST-CN',
             default => 'HIST-DOC',
         };
+
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement(
+                'SELECT pg_advisory_xact_lock(hashtext(?))',
+                ["hist-doc-seq:{$companyId}:{$prefix}:{$year}"],
+            );
+        }
 
         $lastDocument = Document::query()
             ->where('company_id', $companyId)

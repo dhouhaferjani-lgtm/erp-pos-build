@@ -64,7 +64,18 @@ class InventoryOpeningService
             throw new RuntimeException('This service only handles INVENTORY batch types.');
         }
 
-        $rows = $batch->rows()->where('status', '!=', OpeningImportRowStatus::Skipped)->get();
+        // A sealed batch must not be re-validated: it would flip POSTED rows back to
+        // VALID and replace the mapped_data the batch SHA-256 seal is computed over.
+        if (! $batch->isEditable()) {
+            throw new RuntimeException(
+                "Cannot validate batch in {$batch->status->label()} status. Only draft batches can be validated."
+            );
+        }
+
+        // POSTED rows are excluded alongside SKIPPED — their movements already exist.
+        $rows = $batch->rows()
+            ->whereNotIn('status', [OpeningImportRowStatus::Skipped, OpeningImportRowStatus::Posted])
+            ->get();
         $validationResults = [];
         $errors = [];
 
@@ -195,65 +206,73 @@ class InventoryOpeningService
             throw new RuntimeException('This service only handles INVENTORY batch types.');
         }
 
+        // Cheap fast-fail. The AUTHORITATIVE guard is the locked re-read inside the
+        // transaction below — this one reads an in-memory model a concurrent request
+        // may already have superseded.
         if (! $batch->canPost()) {
             throw new RuntimeException(
                 "Cannot post batch in {$batch->status->label()} status. Batch must be in draft status."
             );
         }
 
-        // Get valid rows only, ordered for deterministic movement-ID zipping.
-        $validRows = $batch->rows()
-            ->where('status', OpeningImportRowStatus::Valid)
-            ->orderBy('row_number')
-            ->get();
-
-        if ($validRows->isEmpty()) {
-            throw new RuntimeException('No valid rows to post. Please validate the batch first.');
-        }
-
         $company = Company::findOrFail($batch->company_id);
         $monetaryScale = $this->scaleResolver->getScale($company->currency);
+        $batchId = $batch->id;
 
-        // Build one OpeningBalanceLine per valid row, tracking contributing rows
-        // in the same order so the returned movement IDs can be zipped back.
-        /** @var list<OpeningBalanceLine> $lines */
-        $lines = [];
-        /** @var list<OpeningBalanceImportRow> $lineRows */
-        $lineRows = [];
+        return DB::transaction(function () use ($batchId, $company, $monetaryScale, $userId): JournalEntry {
+            // FIRST statement: re-read the batch FOR UPDATE, guard on the fresh row,
+            // then read the rows and build the posting lines under that lock.
+            $batch = $this->batchService->lockBatchForPosting($batchId);
 
-        foreach ($validRows as $row) {
-            $mappedData = $row->mapped_data;
+            // Get valid rows only, ordered for deterministic movement-ID zipping.
+            $validRows = $batch->rows()
+                ->where('status', OpeningImportRowStatus::Valid)
+                ->orderBy('row_number')
+                ->get();
 
-            if (! is_array($mappedData) || ! isset($mappedData['product_id'], $mappedData['location_id'])) {
-                continue;
+            if ($validRows->isEmpty()) {
+                throw new RuntimeException('No valid rows to post. Please validate the batch first.');
             }
 
-            $lines[] = OpeningBalanceLine::make(
-                productId: (string) $mappedData['product_id'],
-                variantId: null,
-                locationId: (string) $mappedData['location_id'],
-                quantity: (string) ($mappedData['quantity'] ?? '0.0000'),
-                unitCost: (string) ($mappedData['unit_cost'] ?? '0.000'),
-                currencyScale: $monetaryScale,
+            // Build one OpeningBalanceLine per valid row, tracking contributing rows
+            // in the same order so the returned movement IDs can be zipped back.
+            /** @var list<OpeningBalanceLine> $lines */
+            $lines = [];
+            /** @var list<OpeningBalanceImportRow> $lineRows */
+            $lineRows = [];
+
+            foreach ($validRows as $row) {
+                $mappedData = $row->mapped_data;
+
+                if (! is_array($mappedData) || ! isset($mappedData['product_id'], $mappedData['location_id'])) {
+                    continue;
+                }
+
+                $lines[] = OpeningBalanceLine::make(
+                    productId: (string) $mappedData['product_id'],
+                    variantId: null,
+                    locationId: (string) $mappedData['location_id'],
+                    quantity: (string) ($mappedData['quantity'] ?? '0.0000'),
+                    unitCost: (string) ($mappedData['unit_cost'] ?? '0.000'),
+                    currencyScale: $monetaryScale,
+                );
+
+                $lineRows[] = $row;
+            }
+
+            $posting = new OpeningBalancePosting(
+                tenantId: $company->tenant_id,
+                companyId: $company->id,
+                userId: $userId,
+                entryDate: $batch->cutover_date,
+                isHistorical: true,
+                sourceType: 'opening_balance',
+                sourceId: $batch->id,
+                reference: "Opening Balance Batch: {$batch->name}",
+                notes: 'Initial inventory from opening balance import',
+                lines: $lines,
             );
 
-            $lineRows[] = $row;
-        }
-
-        $posting = new OpeningBalancePosting(
-            tenantId: $company->tenant_id,
-            companyId: $company->id,
-            userId: $userId,
-            entryDate: $batch->cutover_date,
-            isHistorical: true,
-            sourceType: 'opening_balance',
-            sourceId: $batch->id,
-            reference: "Opening Balance Batch: {$batch->name}",
-            notes: 'Initial inventory from opening balance import',
-            lines: $lines,
-        );
-
-        return DB::transaction(function () use ($posting, $batch, $lineRows, $userId): JournalEntry {
             $result = $this->postingService->post($posting);
 
             // Zip the contributing rows (same order as $lines) with the returned movement IDs.
