@@ -6,8 +6,6 @@ namespace Tests\Unit\Shared;
 
 use App\Modules\Fiscal\Application\Services\FiscalPayloadConstraintValidator;
 use App\Modules\Partner\Domain\Services\TaxIdValidationService;
-use App\Modules\Partner\Presentation\Requests\CreatePartnerRequest;
-use App\Modules\Partner\Presentation\Requests\UpdatePartnerRequest;
 use App\Shared\Domain\Validation\CountryTaxNumberRules;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -172,13 +170,15 @@ class TunisianMatriculeConvergenceTest extends TestCase
 
         $this->assertSame($expectedStored, $normalized, 'Stored-value convention drift.');
 
+        // The predicate BOTH partner requests delegate their TN arm to.
+        // The request wiring itself (prepareForValidation, the country
+        // fallback, the grandfather clause, the validation closure) is new and
+        // risky, so it is covered end-to-end over real HTTP in
+        // Tests\Feature\Partner\PartnerTunisianMatriculeTest — NOT reflected
+        // past here (gate R1 F-7).
         $this->assertTrue(
-            $this->createRequestAcceptsTn($normalized),
-            "CreatePartnerRequest rejected {$normalized}"
-        );
-        $this->assertTrue(
-            $this->updateRequestAcceptsTn($normalized),
-            "UpdatePartnerRequest rejected {$normalized}"
+            CountryTaxNumberRules::matches('TN', $normalized),
+            "Shared rule rejected {$normalized}"
         );
 
         $this->assertFiscalAccepts($normalized, 'buyer.tax_number', buyer: true);
@@ -212,8 +212,6 @@ class TunisianMatriculeConvergenceTest extends TestCase
         $normalized = CountryTaxNumberRules::normalizeForStorage('TN', $raw);
 
         $this->assertFalse(CountryTaxNumberRules::matches('TN', $normalized));
-        $this->assertFalse($this->createRequestAcceptsTn($normalized));
-        $this->assertFalse($this->updateRequestAcceptsTn($normalized));
         $this->assertFalse((new TaxIdValidationService)->validate('TN', $raw)->isValid);
     }
 
@@ -225,7 +223,6 @@ class TunisianMatriculeConvergenceTest extends TestCase
     public function test_unnormalized_lowercase_is_rejected_by_the_matcher(): void
     {
         $this->assertFalse(CountryTaxNumberRules::matches('TN', '1234567am000'));
-        $this->assertFalse($this->createRequestAcceptsTn('1234567am000'));
     }
 
     /**
@@ -264,24 +261,6 @@ class TunisianMatriculeConvergenceTest extends TestCase
             $m[1],
             'Device TN pattern has drifted from the server canonical rule.'
         );
-    }
-
-    private function createRequestAcceptsTn(string $value): bool
-    {
-        $request = (new ReflectionClass(CreatePartnerRequest::class))->newInstanceWithoutConstructor();
-        $method = new ReflectionMethod(CreatePartnerRequest::class, 'validateVatNumber');
-        $method->setAccessible(true);
-
-        return (bool) $method->invoke($request, 'TN', $value);
-    }
-
-    private function updateRequestAcceptsTn(string $value): bool
-    {
-        $request = (new ReflectionClass(UpdatePartnerRequest::class))->newInstanceWithoutConstructor();
-        $method = new ReflectionMethod(UpdatePartnerRequest::class, 'validateVatNumber');
-        $method->setAccessible(true);
-
-        return (bool) $method->invoke($request, 'TN', $value);
     }
 
     private function assertFiscalAccepts(string $value, string $path, bool $buyer): void

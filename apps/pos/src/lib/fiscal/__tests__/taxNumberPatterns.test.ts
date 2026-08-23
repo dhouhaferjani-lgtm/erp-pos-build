@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
@@ -12,12 +13,20 @@ import { describe, expect, it } from 'vitest';
  * in `apps/api/tests/Unit/Shared/TunisianMatriculeConvergenceTest.php`.
  */
 
-const ENGINE_PATH = fileURLToPath(new URL('../FiscalEventEngine.ts', import.meta.url));
-const SERVER_RULES_PATH = fileURLToPath(
-  new URL(
-    '../../../../../api/app/Shared/Domain/Validation/CountryTaxNumberRules.php',
-    import.meta.url,
-  ),
+/*
+ * Path idiom matters here: this suite runs under `environment: 'jsdom'`, where
+ * the global `URL` is jsdom's whatwg-url class, NOT Node's. Passing one of
+ * those to `fileURLToPath` throws `TypeError: The URL must be of scheme file`
+ * at module evaluation, which fails COLLECTION — zero assertions run and the
+ * guard silently protects nothing. Always hand `fileURLToPath` the
+ * `import.meta.url` STRING and join with `resolve`, per the repo idiom at
+ * `src/lib/stock/__tests__/homePageIngressPin.test.ts:20`.
+ */
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ENGINE_PATH = resolve(HERE, '../FiscalEventEngine.ts');
+const SERVER_RULES_PATH = resolve(
+  HERE,
+  '../../../../../api/app/Shared/Domain/Validation/CountryTaxNumberRules.php',
 );
 
 /**
@@ -27,9 +36,14 @@ const SERVER_RULES_PATH = fileURLToPath(
 const TN_SEALED_LEGACY_PATTERN = /^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/;
 
 function tnLiteralFrom(source: string, pattern: RegExp): string {
-  const match = source.match(pattern);
-  expect(match, 'TN pattern literal not found').not.toBeNull();
-  return (match as RegExpMatchArray)[1];
+  const captured = source.match(pattern)?.[1];
+  if (captured === undefined) {
+    // Throwing (rather than asserting) is what narrows the type here, and it
+    // also makes a silently-unfound literal a hard failure instead of an
+    // `undefined` that quietly compares equal to nothing.
+    throw new Error(`TN pattern literal not found for ${String(pattern)}`);
+  }
+  return captured;
 }
 
 describe('device TN matricule pattern', () => {
@@ -62,6 +76,19 @@ describe('device TN matricule pattern', () => {
         }
       }
     }
+  });
+
+  /**
+   * The server pattern carries PHP's `D` modifier, which makes `$` mean
+   * end-of-subject rather than "end, or before a final newline". JS `$`
+   * without the `m` flag already behaves that way — asserted here rather
+   * than left as a claim in a comment, since the two literals are only
+   * equivalent if this holds.
+   */
+  it('anchors like PHP /D — a trailing newline is rejected', () => {
+    expect(deviceTn.test('1234567AM000\n')).toBe(false);
+    expect(deviceTn.test('1234567AMN000\n')).toBe(false);
+    expect(deviceLiteral.endsWith('/')).toBe(true); // no JS flags appended
   });
 
   it('still rejects non-canonical shapes', () => {

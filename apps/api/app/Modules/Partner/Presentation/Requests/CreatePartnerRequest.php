@@ -21,6 +21,8 @@ class CreatePartnerRequest extends FormRequest
 {
     use ValidatesPartnerBankAccounts;
 
+    private ?string $resolvedTaxCountryCode = null;
+
     public function __construct(
         private readonly BankAccountValidatorInterface $bankAccountValidator,
         private readonly CompanyContext $companyContext,
@@ -98,7 +100,7 @@ class CreatePartnerRequest extends FormRequest
                     }
 
                     if (! $this->validateVatNumber($countryCode, (string) $value)) {
-                        $fail('The VAT number format is invalid for the selected country.');
+                        $fail($this->vatFormatFailureMessage($countryCode));
                     }
                 },
             ],
@@ -156,15 +158,37 @@ class CreatePartnerRequest extends FormRequest
      */
     private function resolvedTaxCountryCode(): string
     {
-        $submitted = $this->input('country_code');
-        if (is_string($submitted) && $submitted !== '') {
-            return strtoupper($submitted);
+        if ($this->resolvedTaxCountryCode !== null) {
+            return $this->resolvedTaxCountryCode;
         }
 
-        $company = $this->companyContext->getCompany();
-        $companyCountry = $company?->country_code;
+        $submitted = $this->input('country_code');
+        if (is_string($submitted) && $submitted !== '') {
+            return $this->resolvedTaxCountryCode = strtoupper($submitted);
+        }
 
-        return is_string($companyCountry) ? strtoupper($companyCountry) : '';
+        $companyCountry = $this->companyContext->getCompany()?->country_code;
+
+        return $this->resolvedTaxCountryCode = is_string($companyCountry)
+            ? strtoupper($companyCountry)
+            : '';
+    }
+
+    /**
+     * Name the country the rule came from. When it was inferred rather than
+     * selected, say so — "the selected country" is misleading on a request
+     * that selected nothing (gate R1 F-2).
+     */
+    private function vatFormatFailureMessage(string $countryCode): string
+    {
+        $submitted = $this->input('country_code');
+
+        if (is_string($submitted) && $submitted !== '') {
+            return 'The VAT number format is invalid for '.$countryCode.'.';
+        }
+
+        return 'The VAT number format is invalid for '.$countryCode
+            .' (inferred from your company; set the partner country to use another format).';
     }
 
     private function validateVatNumber(string $countryCode, string $vatNumber): bool

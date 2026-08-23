@@ -92,6 +92,20 @@ final class TaxIdValidationService
      * carry its own third, incompatible TN pattern (`/^\d{7}[A-Z][A-Z0-9]{3}$/`)
      * which told operators a matricule was fine that the seal boundary then
      * refused — research spec 2026-08-23 §3.3.
+     *
+     * ADVISORY ONLY — this is NOT a contract, and nothing is rejected on the
+     * strength of it. The single consumer is `PartnerController::validateTaxId`
+     * (`PartnerController.php:440-482`), which returns the result in a response
+     * body and never blocks a write.
+     *
+     * Read the TN arm accordingly: the controller feeds this method
+     * `business_registration_number`, but the pattern it now delegates to is
+     * the *matricule fiscale* (the `vat_number` semantic). In Tunisia the
+     * matricule and the RNE / registre de commerce are different identifiers,
+     * so a legitimately-stored registration number can be reported "invalid"
+     * here. That is a UI hint on a screen the operator can ignore, not a
+     * storage or sealing rule (gate R1 F-4). Converging the two identifier
+     * semantics is a separate lane.
      */
     private function validateTunisianMatricule(string $matricule): bool
     {
