@@ -216,6 +216,9 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->assertGreaterThan(0, $this->myReceiptChildren('pos_receipt_lines')->count());
         $this->assertGreaterThan(0, $this->myReceiptChildren('pos_receipt_payments')->count());
 
+        // The count above is filtered on canonical_bytes, so it does not bound
+        // the unfiltered tenant-scoped set — guard the single-row read.
+        $this->assertSame(1, $this->myReceipts()->count());
         $receipt = $this->myReceipts()->orderBy('id')->first();
         $this->assertNotNull($receipt);
         // Mirror columns populated from the authoritative fiscal_events row.
@@ -367,7 +370,9 @@ final class PosCoreReceiptProjectionTest extends TestCase
         $this->app->make(PosCoreReceiptProjection::class)->apply($event);
 
         $this->assertSame(0, $this->myReceipts()->count());
-        $this->assertSame(0, $this->myReceiptChildren('pos_receipt_payments')->count());
+        // No separate child-table assertion here: with zero parent receipts a
+        // receipt-scoped subquery is vacuously empty. The snapshot delta below
+        // is the load-bearing "nothing landed" claim.
         $this->assertNoProjectionRowsWritten($before, 'fail-closed terminal lookup must write nothing');
     }
 
@@ -1493,6 +1498,15 @@ final class PosCoreReceiptProjectionTest extends TestCase
      * `assertSame(0, DB::table(...)->count())`, and strictly stronger than a
      * receipt-scoped subquery (which is vacuously empty when no parent
      * receipt row survives).
+     *
+     * **Single-process only.** The snapshot is sound because the leaked rows
+     * are committed by an EARLIER test in the SAME PHP process and nothing
+     * else writes these tables while this test runs. If this suite is ever
+     * moved onto parallel workers (paratest / `--parallel`) sharing one
+     * database, a concurrent worker could change the whole-table count
+     * mid-test and these assertions would go flaky — at that point the
+     * snapshot form must be replaced by a per-worker database or a
+     * tenant-scoped equivalent.
      *
      * @return array<string, int>
      */
