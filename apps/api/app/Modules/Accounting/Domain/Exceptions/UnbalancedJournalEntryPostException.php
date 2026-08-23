@@ -33,16 +33,25 @@ use App\Modules\Accounting\Domain\Services\GeneralLedgerService;
  * under `\InvalidArgumentException` broke `CreditNoteController`'s envelope and
  * invalidated the "never a 422" contract; parenting it under `\RuntimeException`
  * newly exposed the chokepoint's refusal to `catch (\RuntimeException)` blocks that
- * render **422** (`DeliveryNoteController:587`, `DocumentConversionController:432`,
- * `POS/ReceiptController:378`) — the exact downgrade that contract forbids. The
+ * render **422** (`DeliveryNoteController:587`, `DocumentConversionController:471`,
+ * `POS/ReceiptController:453`) — the exact downgrade that contract forbids. The
  * split removes the trade-off instead of picking a side.
  *
- * NOTE this class is an `\InvalidArgumentException`, so the two PRE-EXISTING
- * `catch (\InvalidArgumentException)` sites that already downgraded the
- * chokepoint's bare refusal to 4xx still do so. That is unchanged from before M1
- * and is reported, not introduced — see
- * `docs/handoff/reviews/enforcement-p3/M1-census.md` §6 R-10. Fixing it requires
- * per-site narrowing at those catch sites, which is outside 3(a).
+ * NOTE this class is an `\InvalidArgumentException`, so it is matched by any
+ * `catch (\InvalidArgumentException)` on a path the chokepoint can reach. M1
+ * reported the resulting downgrades as R-10
+ * (`docs/handoff/reviews/enforcement-p3/M1-census.md` §6) and could not fix them —
+ * only per-site narrowing can, which was outside 3(a).
+ *
+ * SUPERSEDED IN PART (R-10 lane, 2026-08-23): the two NARROW sites the census
+ * named are now CLOSED at source — `DocumentConversionController:419` and
+ * `POS/ReceiptController:379` each declare
+ * `catch (UnbalancedJournalEntryPostException) { throw $e; }` ABOVE their broad
+ * arm, so the refusal escapes to the global renderer's 500 instead of a 4xx.
+ * R-10's remaining tail is still open and still downgrades: the broad
+ * `catch (\Exception)` / `catch (\Throwable)` sites at `RefundController:154,254`,
+ * `MultiPaymentController:214,338`, `PaymentRefundController:89,128,177` and
+ * `TenantScopedCommand:333`.
  */
 final class UnbalancedJournalEntryPostException extends \InvalidArgumentException
 {

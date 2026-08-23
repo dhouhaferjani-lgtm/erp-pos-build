@@ -49,7 +49,7 @@ use Tests\TestCase;
  *   1. `receivePurchaseOrderGoods` has NO ROUTE. A repo-wide grep for the method
  *      name finds only its definition and a source-anchored assertion in
  *      `DocumentConversionTenantIsolationTest`; the routed receive endpoint is
- *      `PurchaseOrderController::receive` (`Document/Presentation/routes.php:263`),
+ *      `PurchaseOrderController::receive` (`Document/Presentation/routes.php:262`),
  *      a different method with its own arms. This test therefore binds a
  *      test-only route to the method, the technique
  *      `Tests\Feature\Bootstrap\RefundFlowExceptionRenderingTest` already uses,
@@ -178,6 +178,27 @@ final class GoodsReceiptConversionUnbalancedGlNarrowingTest extends TestCase
         $response->assertJsonPath('error.code', 'VALIDATION_ERROR');
         self::assertStringContainsString(
             'No converter registered',
+            (string) $response->json('error.message'),
+        );
+    }
+
+    /**
+     * REGRESSION (gate r1 finding P3-5): the `\DomainException` arm sandwiched
+     * between the two pinned arms had no test of its own, leaving a hole in the
+     * net if a future edit ever reorders them. `PurchaseOrderToGoodsReceiptConverter`
+     * raises a plain `\DomainException` for an unconfirmed order; it must still
+     * render 422 `GOODS_RECEIPT_FAILED`. Real registry, real converter.
+     */
+    public function test_domain_exception_arm_still_returns_422_goods_receipt_failed(): void
+    {
+        $purchaseOrder = $this->document(DocumentType::PurchaseOrder, DocumentStatus::Draft);
+
+        $response = $this->postJson(self::ROUTE."/{$purchaseOrder->id}/receive-goods");
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'GOODS_RECEIPT_FAILED');
+        self::assertStringContainsString(
+            'must be confirmed before receiving goods',
             (string) $response->json('error.message'),
         );
     }
