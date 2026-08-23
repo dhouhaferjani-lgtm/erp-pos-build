@@ -112,6 +112,45 @@ class OpeningBalanceBatchService
     }
 
     /**
+     * Re-read a batch FOR UPDATE and assert it is still postable.
+     *
+     * MUST be the FIRST statement inside a posting transaction. Every postBatch()
+     * used to evaluate `$batch->canPost()` on an in-memory model read BEFORE the
+     * transaction opened, and the in-transaction re-check (markBatchValidated) read
+     * that SAME stale model — so two overlapping posts both passed the guard, both
+     * wrote their side effects, and the unconditional lock-write silently re-pointed
+     * the batch hash chain at the second one. Row-level locking here makes the
+     * second transaction block until the first commits and then see the committed
+     * status, which is no longer DRAFT.
+     *
+     * `lockForUpdate()` compiles to nothing on sqlite (the test runner), where
+     * concurrency is not meaningful; the claim-style conditional writes in
+     * {@see self::markBatchValidated()} / {@see self::lockBatch()} /
+     * {@see self::markRowsPosted()} are the driver-independent backstop.
+     *
+     * @throws RuntimeException If the batch is gone or no longer in draft status
+     */
+    public function lockBatchForPosting(string $batchId): OpeningBalanceBatch
+    {
+        $batch = OpeningBalanceBatch::query()
+            ->whereKey($batchId)
+            ->lockForUpdate()
+            ->first();
+
+        if ($batch === null) {
+            throw new RuntimeException("Opening balance batch not found: {$batchId}");
+        }
+
+        if (! $batch->canPost()) {
+            throw new RuntimeException(
+                "Cannot post batch in {$batch->status->label()} status. Batch must be in draft status."
+            );
+        }
+
+        return $batch;
+    }
+
+    /**
      * Get batch with all relationships loaded.
      */
     public function getBatchWithRows(string $batchId): OpeningBalanceBatch
@@ -348,10 +387,35 @@ class OpeningBalanceBatchService
             throw new RuntimeException('Cannot validate batch: no valid rows to process.');
         }
 
-        $batch->update([
+        // CLAIM, not a blind write. A conditional single-statement UPDATE keyed on
+        // the CURRENT committed status is the driver-independent DB backstop for the
+        // whole double-post class: whoever loses the race updates 0 rows and is
+        // refused, whatever the in-memory model believed. This is the AR/AP arm's
+        // only DB-level guarantee (it writes N documents, none of which carries a
+        // column that could bear a per-batch unique index).
+        $now = now();
+
+        $claimed = OpeningBalanceBatch::query()
+            ->whereKey($batch->id)
+            ->where('status', OpeningBatchStatus::Draft)
+            ->update([
+                'status' => OpeningBatchStatus::Validated,
+                'validated_at' => $now,
+                'validated_by' => $userId,
+            ]);
+
+        if ($claimed !== 1) {
+            throw new RuntimeException(
+                'Batch is no longer in draft status: a concurrent request already transitioned it. '
+                .'Refusing to re-validate.'
+            );
+        }
+
+        $this->syncClaimedAttributes($batch, [
             'status' => OpeningBatchStatus::Validated,
-            'validated_at' => now(),
+            'validated_at' => $now,
             'validated_by' => $userId,
+            'updated_at' => $now,
         ]);
     }
 
@@ -379,13 +443,54 @@ class OpeningBalanceBatchService
             ->orderBy('locked_at', 'desc')
             ->first();
 
-        $batch->update([
+        // Claim VALIDATED -> LOCKED conditionally. The previous unconditional write
+        // would happily re-seal an already-LOCKED batch, re-pointing hash /
+        // previous_hash at a second posting and breaking the chain.
+        $now = now();
+
+        $claimed = OpeningBalanceBatch::query()
+            ->whereKey($batch->id)
+            ->where('status', OpeningBatchStatus::Validated)
+            ->update([
+                'status' => OpeningBatchStatus::Locked,
+                'locked_at' => $now,
+                'locked_by' => $userId,
+                'hash' => $hash,
+                'previous_hash' => $previousBatch?->hash,
+            ]);
+
+        if ($claimed !== 1) {
+            throw new RuntimeException(
+                'Batch is no longer in validated status: a concurrent request already locked it. '
+                .'Refusing to re-seal the hash chain.'
+            );
+        }
+
+        $this->syncClaimedAttributes($batch, [
             'status' => OpeningBatchStatus::Locked,
-            'locked_at' => now(),
+            'locked_at' => $now,
             'locked_by' => $userId,
             'hash' => $hash,
             'previous_hash' => $previousBatch?->hash,
+            'updated_at' => $now,
         ]);
+    }
+
+    /**
+     * Reflect a claim-style conditional UPDATE onto the caller's in-memory model.
+     *
+     * Deliberately NOT `$batch->refresh()`: a full re-read would also re-hydrate
+     * unrelated JSONB columns, and PostgreSQL's `jsonb` does not preserve key order
+     * (it stores keys sorted by length then bytewise), so refreshing silently
+     * reorders e.g. `import_file_reference` relative to what the caller wrote.
+     * Only the columns this claim actually wrote are synced.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function syncClaimedAttributes(OpeningBalanceBatch $batch, array $attributes): void
+    {
+        $batch->forceFill($attributes);
+        $batch->syncOriginalAttributes(array_keys($attributes));
     }
 
     /**
@@ -477,7 +582,16 @@ class OpeningBalanceBatchService
     /**
      * Mark import rows with validation results.
      *
+     * Enforces {@see OpeningImportRowStatus::isEditable()} at the WRITE path, not
+     * only at the caller's row selection: this method used to overwrite `status` and
+     * `mapped_data` on ANY row it was handed, POSTED ones included — and
+     * `mapped_data` is folded into the SHA-256 batch seal
+     * ({@see self::calculateBatchHash()}), so rewriting it silently invalidated the
+     * stored hash of a LOCKED batch.
+     *
      * @param  array<string, array{valid: bool, errors: array<string, array<string>>, mapped_data: array<string, mixed>}>  $validationResults
+     *
+     * @throws RuntimeException If any targeted row is no longer editable
      */
     public function applyValidationResults(OpeningBalanceBatch $batch, array $validationResults): void
     {
@@ -487,6 +601,12 @@ class OpeningBalanceBatchService
 
                 if ($row === null || $row->batch_id !== $batch->id) {
                     continue;
+                }
+
+                if (! $row->status->isEditable()) {
+                    throw new RuntimeException(
+                        "Cannot apply validation results to row {$rowId} in {$row->status->label()} status."
+                    );
                 }
 
                 $row->update([
@@ -503,18 +623,51 @@ class OpeningBalanceBatchService
     /**
      * Mark rows as posted with their entity IDs.
      *
+     * Each row is CLAIMED with a conditional UPDATE constrained to the editable
+     * statuses, asserting exactly one affected row. That makes the row itself a
+     * DB-level, driver-independent single-posting backstop: a second posting of the
+     * same batch cannot re-point an already-POSTED row at a second journal line /
+     * document / stock movement, whatever the caller's in-memory state believed.
+     *
      * @param  array<string, string>  $rowEntityMap  Map of row ID => entity ID
+     *
+     * @throws RuntimeException If any row is no longer in an editable status
      */
     public function markRowsPosted(array $rowEntityMap): void
     {
         DB::transaction(function () use ($rowEntityMap): void {
+            $editableStatuses = self::editableRowStatuses();
+
             foreach ($rowEntityMap as $rowId => $entityId) {
-                OpeningBalanceImportRow::where('id', $rowId)
+                $claimed = OpeningBalanceImportRow::query()
+                    ->where('id', $rowId)
+                    ->whereIn('status', $editableStatuses)
                     ->update([
                         'status' => OpeningImportRowStatus::Posted,
                         'mapped_entity_id' => $entityId,
                     ]);
+
+                if ($claimed !== 1) {
+                    throw new RuntimeException(
+                        "Cannot mark row {$rowId} as posted: it is no longer in an editable status "
+                        .'(already posted or skipped).'
+                    );
+                }
             }
         });
+    }
+
+    /**
+     * The row statuses the enum itself declares mutable, derived from the enum so
+     * the two can never drift apart.
+     *
+     * @return list<OpeningImportRowStatus>
+     */
+    private static function editableRowStatuses(): array
+    {
+        return array_values(array_filter(
+            OpeningImportRowStatus::cases(),
+            static fn (OpeningImportRowStatus $status): bool => $status->isEditable(),
+        ));
     }
 }
