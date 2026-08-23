@@ -133,7 +133,19 @@ final class PosCoreReceiptProjectionTest extends TestCase
     {
         parent::setUp();
 
-        $tenant = Tenant::factory()->create();
+        // LEDGER C-7, second face of the same committed-state bleed. The
+        // default `TenantFactory` slug is `Str::slug($faker->unique()->company())`
+        // — `unique()` de-dupes the COMPANY NAME, but `Str::slug()` collapses
+        // distinct names onto the same slug ("Collier PLC" / "Collier, PLC" →
+        // `collier-plc`). Against the tenants COMMITTED by
+        // `PosCoreReceiptProjectionRefundDispositionStockTest` (see the class
+        // docblock) that lands a random `tenants_slug_unique` violation in
+        // setUp — observed once in three directory runs, killing an otherwise
+        // green test. An explicitly unique slug removes the coupling; same
+        // pattern as VerifyEventChainFleetCommandDbPerTenantTest.
+        $tenant = Tenant::factory()->create([
+            'slug' => 'poscore-projection-'.Str::lower(Str::random(16)),
+        ]);
         $this->tenantId = $tenant->id;
 
         $company = Company::factory()->create(['tenant_id' => $this->tenantId]);
@@ -891,7 +903,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // that ONLY exists in another tenant must not resolve in this
         // tenant — the resolver returns null because the unique
         // `(tenant_id, code)` constraint partitions by tenant.
-        $otherTenant = Tenant::factory()->create();
+        // Explicit slug — see the setUp() note on tenants_slug_unique.
+        $otherTenant = Tenant::factory()->create([
+            'slug' => 'poscore-foreign-'.Str::lower(Str::random(16)),
+        ]);
         $otherCompany = Company::factory()->create(['tenant_id' => $otherTenant->id]);
         PaymentMethod::factory()->create([
             'tenant_id' => $otherTenant->id,
@@ -1117,7 +1132,10 @@ final class PosCoreReceiptProjectionTest extends TestCase
         // projector must NOT bind X (it lives in another tenant) — the
         // sealed snapshot stays in the canonical payload, and the column
         // is written as null.
-        $foreignTenant = Tenant::factory()->create();
+        // Explicit slug — see the setUp() note on tenants_slug_unique.
+        $foreignTenant = Tenant::factory()->create([
+            'slug' => 'poscore-foreign-'.Str::lower(Str::random(16)),
+        ]);
         $foreignCompany = Company::factory()->create(['tenant_id' => $foreignTenant->id]);
         $foreignProduct = Product::factory()->create([
             'tenant_id' => $foreignTenant->id,
