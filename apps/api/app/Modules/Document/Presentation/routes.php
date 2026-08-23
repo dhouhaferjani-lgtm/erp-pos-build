@@ -32,8 +32,24 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function (): void {
-    // Draft auto-save (no permissions required - fraud detection)
+    // Draft auto-save.
+    //
+    // P1 (ticket 2026-08-22 §1). This route used to carry NO `can:` gate at all,
+    // on the rationale "no permissions required - fraud detection". That was
+    // wrong on its own terms: the endpoint WRITES — it creates a document and
+    // allocates a number out of the same `document_sequences` row that later
+    // feeds the fiscal hash chain — so an ungated route let a read-only `viewer`
+    // burn invoice numbers and author documents.
+    //
+    // `documents.update` is the module's cross-type document-write permission
+    // (the same one `documents.revert` and the additional-cost writes use). It
+    // is deliberately the type-BLIND gate: this endpoint is polymorphic on
+    // `type`, and every seeded role the editor lets in (admin, manager,
+    // operator, cashier, accountant) holds it, while the read-only roles
+    // (`viewer`, `technician`) do not. Per-type granularity is tracked as a
+    // residual in docs/sessions/2026-08-23-p1-autosave-hardening-notes.md.
     Route::post('/documents/auto-save', [DraftController::class, 'autoSave'])
+        ->middleware('can:documents.update')
         ->name('documents.auto-save');
 
     // All documents (unified view)

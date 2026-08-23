@@ -17,6 +17,7 @@ use App\Modules\Document\Domain\Events\DraftLineModifiedV2;
 use App\Modules\Document\Domain\Events\DraftLineModifiedV3;
 use App\Modules\Document\Domain\Events\DraftLineRemoved;
 use App\Modules\Document\Domain\Events\DraftLineRemovedV2;
+use App\Modules\Document\Domain\Exceptions\DraftNotEditableException;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -79,12 +80,37 @@ final class DraftPersistenceService
                 // Create new draft
                 $document = $this->createNewDraft($tenantId, $companyId, $userId, $data);
             } else {
+                // P1 (ticket 2026-08-22 §1): refuse anything that is no longer a
+                // draft BEFORE touching its lines. `updateDraftLines()` replaces
+                // the whole line set with whatever arrived, so an unguarded
+                // `draft_id` pointing at a Confirmed / Posted / Cancelled
+                // document was a silent line-stripper. The predicate is the
+                // module's own pair (`isDraft()` + `isFiscallyImmutable()`), the
+                // same one the other draft-scoped services guard on.
+                $this->assertDraftEditable($document);
+
                 // Update existing draft (lines only, header is immutable for now)
                 $this->updateDraftLines($document, $companyId, $userId, $data);
             }
 
             return $document;
         });
+    }
+
+    /**
+     * Refuse an auto-save aimed at a document that has left the draft stage.
+     *
+     * @throws DraftNotEditableException
+     */
+    private function assertDraftEditable(Document $document): void
+    {
+        if ($document->isFiscallyImmutable()) {
+            throw DraftNotEditableException::fiscallySealed();
+        }
+
+        if (! $document->isDraft()) {
+            throw DraftNotEditableException::statusIsNotDraft($document->status);
+        }
     }
 
     /**
