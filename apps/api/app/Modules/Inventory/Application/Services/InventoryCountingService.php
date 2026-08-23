@@ -11,6 +11,7 @@ use App\Modules\Inventory\Domain\Enums\CountingScopeType;
 use App\Modules\Inventory\Domain\Enums\CountingStatus;
 use App\Modules\Inventory\Domain\Enums\ItemResolutionMethod;
 use App\Modules\Inventory\Domain\Events\InventoryCountingCompleted;
+use App\Modules\Inventory\Domain\Exceptions\CountingTransitionException;
 use App\Modules\Inventory\Domain\Exceptions\OpeningCostRequiredException;
 use App\Modules\Inventory\Domain\Exceptions\OverlappingCountingException;
 use App\Modules\Inventory\Domain\Exceptions\TerminalSyncAcknowledgementRequiredException;
@@ -731,12 +732,41 @@ class InventoryCountingService
         };
 
         if ($counting->status !== $expectedStatus) {
-            throw new \InvalidArgumentException('Counting is not in correct phase');
+            // Typed (not `\InvalidArgumentException`): "the session moved on"
+            // is a business-rule refusal the counter must be able to read, and
+            // the bare type had no render handler, so a counter whose phase had
+            // advanced got a 500 with no guidance. See H-2.
+            throw new CountingTransitionException($counting->id, $counting->status, $expectedStatus);
         }
 
         $userId = (string) $user->id;
 
         DB::transaction(function () use ($item, $countNumber, $quantity, $notes, $userId, $counting, $countedAtDevice, $deviceNow): void {
+            // H-2: lock the counting header FIRST, so the count-then-act in
+            // checkPhaseCompletion() below serializes against every other
+            // submitter. Two counters finishing the last items of a phase
+            // concurrently used to each hold a stale in-memory counting: either
+            // both saw an incomplete phase (nobody advanced it — the count
+            // wedged fully-counted but in_progress) or the loser re-drove the
+            // transition on a stale status, silently regressing the counting and
+            // re-running the phase's side effects.
+            //
+            // DELIBERATELY no hard status re-assert here. The phase gate is the
+            // pre-transaction check above, on the instance the request loaded;
+            // re-refusing under the lock would resurrect the very rollback this
+            // fix removes — the counter's physically-counted quantity, its audit
+            // row and the assignment increment would all be discarded for an
+            // interleave the lock has already made safe. A counting that really
+            // did move on is caught by the pre-transaction guard (the controller
+            // loads the counting fresh per request); what survives to here is
+            // the in-flight snapshot case, whose count must be kept. The
+            // tolerant transition in checkPhaseCompletion() is the backstop.
+            /** @var InventoryCounting $lockedCounting */
+            $lockedCounting = InventoryCounting::query()
+                ->whereKey($counting->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
             // Submit the count
             $item->submitCount($countNumber, $quantity, $notes, $countedAtDevice, $deviceNow);
 
@@ -744,7 +774,7 @@ class InventoryCountingService
             // session preserves a precise descendant placement and re-homes only
             // an unplaced or out-of-subtree product. Multiple zones in scope are
             // ambiguous, so assignment is skipped.
-            $this->assignCountedItemToZone($item, $counting, $countNumber);
+            $this->assignCountedItemToZone($item, $lockedCounting, $countNumber);
 
             // Record event
             InventoryCountingEvent::recordCountSubmitted(
@@ -756,13 +786,14 @@ class InventoryCountingService
             );
 
             // Update assignment progress
-            $assignment = $counting->assignments()
+            $assignment = $lockedCounting->assignments()
                 ->where('count_number', $countNumber)
                 ->first();
             $assignment?->incrementProgress();
 
-            // Check if this phase is complete
-            $this->checkPhaseCompletion($counting, $countNumber);
+            // Check if this phase is complete — on the LOCKED instance, whose
+            // status is the committed truth rather than the caller's snapshot.
+            $this->checkPhaseCompletion($lockedCounting, $countNumber);
         });
     }
 
@@ -825,6 +856,18 @@ class InventoryCountingService
 
     /**
      * Check if a counting phase is complete and transition status.
+     *
+     * H-2: the caller must hand in a counting instance re-read UNDER the row
+     * lock (see submitCount). Two things follow from that contract:
+     *
+     *  - the item counts below are consistent with every committed sibling
+     *    submission, so the phase advances exactly once instead of twice or
+     *    never; and
+     *  - `$counting->status` is the committed truth, so the "already advanced"
+     *    check is meaningful. When another submitter closed this phase first
+     *    this is a NO-OP, never a throw: throwing here would roll back the
+     *    caller's own count, its audit row and its assignment progress inside
+     *    the shared transaction, which is the wedge this lane removes.
      */
     private function checkPhaseCompletion(InventoryCounting $counting, int $countNumber): void
     {
@@ -836,6 +879,19 @@ class InventoryCountingService
             return; // Phase not complete
         }
 
+        $completedStatus = match ($countNumber) {
+            1 => CountingStatus::Count1Completed,
+            2 => CountingStatus::Count2Completed,
+            3 => CountingStatus::Count3Completed,
+            default => throw new \InvalidArgumentException('Invalid count number'),
+        };
+
+        if (! $counting->canTransitionTo($completedStatus)) {
+            // Another submitter already closed this phase (or the session was
+            // cancelled). Leave the counting exactly where it is.
+            return;
+        }
+
         // Phase is complete
         $assignment = $counting->assignments()
             ->where('count_number', $countNumber)
@@ -843,12 +899,7 @@ class InventoryCountingService
         $assignment?->complete();
 
         // Transition to completed status first
-        $counting->transitionTo(match ($countNumber) {
-            1 => CountingStatus::Count1Completed,
-            2 => CountingStatus::Count2Completed,
-            3 => CountingStatus::Count3Completed,
-            default => throw new \InvalidArgumentException('Invalid count number'),
-        });
+        $counting->transitionTo($completedStatus);
 
         // Determine next status
         $nextStatus = match ($countNumber) {
@@ -1055,6 +1106,39 @@ class InventoryCountingService
             $validAcknowledgement,
             $terminalSyncHealthSignature,
         ): void {
+            // H-1: serialize concurrent finalizes on the counting row. Every
+            // sibling stock-moving document in this module locks its header
+            // before posting (GoodsReceiptService::post, StockAdjustment-
+            // DocumentService::post, SupplierGoodsReturnNoteService, Stock-
+            // TransferService); counting was the outlier. Without this, two
+            // requests that both read `pending_review` (double click, client
+            // retry, two supervisors) both passed canTransitionTo() on their
+            // own stale in-memory instance, both committed, and both fired
+            // InventoryCountingCompleted — applying the count variance twice
+            // onto on-hand. Finalized has no outgoing edge, so there is no
+            // in-product way back.
+            //
+            // The lock is taken BEFORE the replay-boundary loop below so a
+            // losing finalize does not stamp final_qty_as_of either.
+            /** @var InventoryCounting $lockedCounting */
+            $lockedCounting = InventoryCounting::query()
+                ->whereKey($counting->id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedCounting->status !== CountingStatus::PendingReview) {
+                throw new CountingTransitionException(
+                    $counting->id,
+                    $lockedCounting->status,
+                    CountingStatus::Finalized,
+                );
+            }
+
+            // Re-assert on the caller's instance too: it is the one that gets
+            // transitioned and saved below, and it may have been loaded before
+            // the row reached its current status.
+            $counting->status = $lockedCounting->status;
+
             // Freeze each auto-resolved item's replay boundary before the
             // finalize event fires (the queued listener reads final_qty_as_of to
             // choose the replay path vs the legacy delta path). Manual overrides
