@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Presentation\Requests;
 
+use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Enums\ConsolidationFrequency;
 use App\Modules\Partner\Domain\Enums\CustomerCategory;
@@ -11,6 +12,7 @@ use App\Modules\Partner\Domain\Enums\PartnerType;
 use App\Modules\Partner\Domain\Enums\PaymentTerms;
 use App\Modules\Partner\Presentation\Requests\Concerns\ValidatesPartnerBankAccounts;
 use App\Shared\Banking\Contracts\BankAccountValidatorInterface;
+use App\Shared\Domain\Validation\CountryTaxNumberRules;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
@@ -21,8 +23,28 @@ class CreatePartnerRequest extends FormRequest
 
     public function __construct(
         private readonly BankAccountValidatorInterface $bankAccountValidator,
+        private readonly CompanyContext $companyContext,
     ) {
         parent::__construct();
+    }
+
+    /**
+     * Canonicalize the tax number to the STORED form before any rule runs, so
+     * the value that is validated is byte-identical to the value that is
+     * persisted and later sealed into a fiscal payload.
+     */
+    protected function prepareForValidation(): void
+    {
+        $country = $this->resolvedTaxCountryCode();
+        $vatNumber = $this->input('vat_number');
+
+        if ($country === '' || ! is_string($vatNumber) || $vatNumber === '') {
+            return;
+        }
+
+        $this->merge([
+            'vat_number' => CountryTaxNumberRules::normalizeForStorage($country, $vatNumber),
+        ]);
     }
 
     public function authorize(): bool
@@ -66,12 +88,16 @@ class CreatePartnerRequest extends FormRequest
                         return;
                     }
 
-                    $countryCode = $this->input('country_code');
-                    if ($countryCode === null) {
+                    // A partner that omits `country_code` is NOT unvalidated:
+                    // it falls back to the company's own country. Without this
+                    // fallback the check self-disabled for every client that
+                    // never sends the field (research spec 2026-08-23 §3.3).
+                    $countryCode = $this->resolvedTaxCountryCode();
+                    if ($countryCode === '') {
                         return;
                     }
 
-                    if (! $this->validateVatNumber((string) $countryCode, (string) $value)) {
+                    if (! $this->validateVatNumber($countryCode, (string) $value)) {
                         $fail('The VAT number format is invalid for the selected country.');
                     }
                 },
@@ -121,11 +147,33 @@ class CreatePartnerRequest extends FormRequest
         ];
     }
 
+    /**
+     * The country whose tax-number rule applies: the submitted `country_code`
+     * when present, otherwise the acting company's own country.
+     *
+     * Genuinely-foreign partners are unaffected — they carry an explicit
+     * `country_code`, which always wins.
+     */
+    private function resolvedTaxCountryCode(): string
+    {
+        $submitted = $this->input('country_code');
+        if (is_string($submitted) && $submitted !== '') {
+            return strtoupper($submitted);
+        }
+
+        $company = $this->companyContext->getCompany();
+        $companyCountry = $company?->country_code;
+
+        return is_string($companyCountry) ? strtoupper($companyCountry) : '';
+    }
+
     private function validateVatNumber(string $countryCode, string $vatNumber): bool
     {
         return match ($countryCode) {
             'FR' => (bool) preg_match('/^FR[0-9A-Z]{2}[0-9]{9}$/', $vatNumber),
-            'TN' => (bool) preg_match('/^[0-9]{7}[A-Z]{3}[0-9]{3}$/', $vatNumber),
+            // Delegated to the single source of truth so an accepted matricule
+            // can never be rejected later by the sealed-payload gate.
+            'TN' => CountryTaxNumberRules::matches('TN', $vatNumber),
             'IT' => (bool) preg_match('/^IT[0-9]{11}$/', $vatNumber),
             'GB' => (bool) preg_match('/^GB([0-9]{9}|[0-9]{12}|(HA|GD)[0-9]{3})$/', $vatNumber),
             default => true, // Allow any format for unknown countries

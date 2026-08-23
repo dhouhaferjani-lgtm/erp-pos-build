@@ -21,6 +21,7 @@ use App\Modules\Fiscal\Domain\DTOs\ZCashDrawerMovementPayload;
 use App\Modules\Fiscal\Domain\DTOs\ZReportPayload;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
 use App\Shared\Domain\CashRoundingCaps;
+use App\Shared\Domain\Validation\CountryTaxNumberRules;
 use LogicException;
 use RuntimeException;
 
@@ -143,19 +144,20 @@ final class FiscalPayloadConstraintValidator
     /**
      * Phase 1.5.2 seller/customer tax-number regex table.
      *
+     * NOT a local copy: this IS `CountryTaxNumberRules::PATTERNS`, the single
+     * source of truth shared with every entry-time validator (partner
+     * `vat_number`, location `tax_id`, the advisory `TaxIdValidationService`).
+     * A local copy is what let the partner-entry TN pattern drift into
+     * rejecting-at-seal-time values it had itself accepted (research spec
+     * 2026-08-23 §3.3).
+     *
      * TN accepts slash-separated input after compact normalization
      * (`1234567/A/M/000` -> `1234567AM000`) but the canonical producer
      * emits the compact form.
      *
      * @var array<string, string>
      */
-    private const TAX_NUMBER_PATTERNS = [
-        'FR' => '/^([0-9]{9}|[0-9]{14})$/D',
-        'TN' => '/^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/D',
-        'SA' => '/^3[0-9]{12}03$/D',
-        'DE' => '/^DE[0-9]{9}$/D',
-        'IT' => '/^[0-9]{11}$/D',
-    ];
+    private const TAX_NUMBER_PATTERNS = CountryTaxNumberRules::PATTERNS;
 
     /** FR buyer TVA intracommunautaire extension. */
     private const FR_BUYER_TVA_INTRACOM = '/^FR[0-9]{11}$/D';
@@ -3095,11 +3097,10 @@ final class FiscalPayloadConstraintValidator
 
     private function normalizeTaxNumberForCountry(string $value, string $countryCode): string
     {
-        if ($countryCode === 'TN') {
-            return str_replace('/', '', $value);
-        }
-
-        return $value;
+        // Shared with every entry-time validator so entry and seal can never
+        // canonicalize differently. Behaviour is unchanged: TN long-form
+        // slashes are stripped, every other country is untouched.
+        return CountryTaxNumberRules::normalizeForMatching($countryCode, $value);
     }
 
     /**

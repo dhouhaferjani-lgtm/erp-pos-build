@@ -70,19 +70,41 @@ class TaxIdValidationServiceTest extends TestCase
 
     public function test_validates_valid_tunisian_matricule(): void
     {
-        $result = $this->service->validate('TN', '1234567A000');
+        $result = $this->service->validate('TN', '1234567AM000');
 
         $this->assertTrue($result->isValid);
         $this->assertSame('Matricule Fiscale', $result->format);
         $this->assertEmpty($result->errors);
     }
 
-    public function test_validates_tunisian_matricule_with_alphanumeric_suffix(): void
+    public function test_validates_canonical_thirteen_character_tunisian_matricule(): void
     {
-        $result = $this->service->validate('TN', '9876543BABC');
+        $result = $this->service->validate('TN', '1234567AMN000');
 
         $this->assertTrue($result->isValid);
         $this->assertSame('Matricule Fiscale', $result->format);
+        $this->assertEmpty($result->errors);
+    }
+
+    public function test_validates_tunisian_matricule_in_long_slashed_form(): void
+    {
+        $result = $this->service->validate('TN', '1234567/A/M/000');
+
+        $this->assertTrue($result->isValid);
+        $this->assertSame('Matricule Fiscale', $result->format);
+    }
+
+    /**
+     * This advisory endpoint used to accept `1234567A000` (1 letter + 3 digits)
+     * and `9876543BABC` (4 letters) via its own third TN pattern — shapes the
+     * sealed-payload gate refuses. It now delegates to `CountryTaxNumberRules`,
+     * so it can no longer tell an operator a matricule is fine that cannot be
+     * sealed (research spec 2026-08-23 §3.3).
+     */
+    public function test_rejects_matricule_shapes_the_seal_boundary_refuses(): void
+    {
+        $this->assertFalse($this->service->validate('TN', '1234567A000')->isValid);
+        $this->assertFalse($this->service->validate('TN', '9876543BABC')->isValid);
     }
 
     public function test_rejects_invalid_tunisian_matricule(): void

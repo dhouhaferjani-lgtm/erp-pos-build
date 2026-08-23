@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Domain\Services;
 
+use App\Shared\Domain\Validation\CountryTaxNumberRules;
+
 final class TaxIdValidationService
 {
     public function validate(string $countryCode, string $registrationNumber): TaxIdValidationResult
@@ -78,16 +80,22 @@ final class TaxIdValidationService
         if (! $this->validateTunisianMatricule($cleaned)) {
             return TaxIdValidationResult::invalid(
                 'Matricule Fiscale',
-                ['Tunisian matricule fiscale must match pattern: 7 digits + 1 letter + 3 characters (e.g., 1234567A000).'],
+                ['Tunisian matricule fiscale must match pattern: 7-8 digits + 2 or 3 letters + 3-digit establishment (e.g., 1234567AM000 or 1234567AMN000).'],
             );
         }
 
         return TaxIdValidationResult::valid('Matricule Fiscale');
     }
 
+    /**
+     * Delegated to the single source of truth. This advisory endpoint used to
+     * carry its own third, incompatible TN pattern (`/^\d{7}[A-Z][A-Z0-9]{3}$/`)
+     * which told operators a matricule was fine that the seal boundary then
+     * refused — research spec 2026-08-23 §3.3.
+     */
     private function validateTunisianMatricule(string $matricule): bool
     {
-        return (bool) preg_match('/^\d{7}[A-Z][A-Z0-9]{3}$/', strtoupper($matricule));
+        return CountryTaxNumberRules::matches('TN', strtoupper($matricule));
     }
 
     private function validateItalian(string $registrationNumber): TaxIdValidationResult
