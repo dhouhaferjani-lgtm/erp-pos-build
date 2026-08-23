@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Identity\Presentation\Controllers;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Company\Domain\Enums\MembershipRevocationReason;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Company\Domain\Location;
@@ -474,6 +475,13 @@ class UserController extends Controller
             $user->status = UserStatus::Inactive;
             $user->save();
 
+            // Offboarding cascade — same transaction as the status flip. See
+            // revokeMembershipsFor(): `users.status` alone gates nothing on the
+            // company-scoped surfaces (POS PIN roster, override approval,
+            // company context), so a soft-deleted user without this keeps every
+            // company privilege they had.
+            $revoked = $this->revokeMembershipsFor($user, $currentUser);
+
             // Remove the central identity index row (topology §9.1) so a
             // deactivated user no longer surfaces in email-first org discovery.
             $this->identityIndexService->remove($user->email, $currentUser->tenant_id);
@@ -484,7 +492,7 @@ class UserController extends Controller
                 aggregateId: $user->id,
                 userId: $currentUser->id,
                 companyId: $this->companyContext->requireCompanyId(),
-                payload: ['email' => $user->email]
+                payload: ['email' => $user->email, 'memberships_revoked' => $revoked]
             );
 
             return response()->json([
@@ -540,6 +548,9 @@ class UserController extends Controller
             $user->status = UserStatus::Active;
             $user->save();
 
+            // Reverse edge of the offboarding cascade — see restoreCascadedMembershipsFor().
+            $restored = $this->restoreCascadedMembershipsFor($user);
+
             // P2 (Codex 2026-05-25): reactivation re-records the central identity
             // index row (mirror of deactivate's remove()) so the index lifecycle
             // matches the account lifecycle — reconcile's desired set is users
@@ -552,7 +563,7 @@ class UserController extends Controller
                 aggregateId: $user->id,
                 userId: $currentUser->id,
                 companyId: $this->companyContext->requireCompanyId(),
-                payload: ['email' => $user->email]
+                payload: ['email' => $user->email, 'memberships_restored' => $restored]
             );
 
             return response()->json([
@@ -622,6 +633,12 @@ class UserController extends Controller
             $user->status = UserStatus::Inactive;
             $user->save();
 
+            // Offboarding cascade — the whole point of this endpoint. Without
+            // it a fired employee keeps every ACTIVE membership, and with it
+            // their POS override PIN (PinVerifier / pin-data roster) and their
+            // company context (CompanyContext) forever.
+            $revoked = $this->revokeMembershipsFor($user, $currentUser);
+
             // P2 (Codex 2026-05-25): mirror destroy() — remove the central
             // identity index row so a deactivated user no longer surfaces in
             // email-first org discovery / forgot-password before reconcile runs.
@@ -633,7 +650,7 @@ class UserController extends Controller
                 aggregateId: $user->id,
                 userId: $currentUser->id,
                 companyId: $this->companyContext->requireCompanyId(),
-                payload: ['email' => $user->email]
+                payload: ['email' => $user->email, 'memberships_revoked' => $revoked]
             );
 
             return response()->json([
@@ -930,6 +947,75 @@ class UserController extends Controller
         if ($updated !== 1) {
             throw new \RuntimeException('Expected exactly one active target company membership for location grant.');
         }
+    }
+
+    /**
+     * Offboarding cascade: revoke every ACTIVE company membership held by a
+     * user being deactivated / soft-deleted. MUST be called inside the same
+     * transaction as the `users.status` flip.
+     *
+     * Why this exists: `users.status = inactive` gates the login path, but every
+     * company-scoped authorization site reads the MEMBERSHIP row, not the
+     * account — `CompanyContext::userHasAccessToCompany`,
+     * `PinVerifier::verifyForApproval`, `PosAuthController::pinData` and
+     * `AuthorizedManagersController` all filter on
+     * `user_company_memberships.status = active` alone. Since nothing in the
+     * application ever wrote a non-Active membership status, a fired employee's
+     * membership stayed Active forever and their POS override PIN kept
+     * approving discounts, returns and variance closes.
+     *
+     * Only ACTIVE rows are swept, deliberately:
+     *  - security-complete — after this, the user has NO active membership
+     *    anywhere, which is the only state any authorization site honours;
+     *  - lossless on the reverse edge — Pending/Suspended rows keep their own
+     *    status instead of being flattened into Revoked and then resurrected as
+     *    Active by `activate()`.
+     *
+     * @return int number of memberships revoked
+     */
+    private function revokeMembershipsFor(User $user, User $actor): int
+    {
+        return UserCompanyMembership::query()
+            ->where('user_id', $user->id)
+            ->where('status', MembershipStatus::Active->value)
+            ->update([
+                'status' => MembershipStatus::Revoked->value,
+                'revoked_at' => now(),
+                'revoked_by' => $actor->id,
+                'revoked_reason' => MembershipRevocationReason::UserDeactivated->value,
+            ]);
+    }
+
+    /**
+     * Reverse edge of the offboarding cascade.
+     *
+     * RULE: reactivating an account restores ONLY the memberships that the
+     * deactivation cascade itself revoked — the rows stamped
+     * `revoked_reason = user_deactivated`. Their stamps are cleared so the row
+     * returns to exactly its pre-deactivation state.
+     *
+     * Rationale: the cascade is a side effect of an account-level action, so
+     * reversing that action reverses its own side effect and nothing else. A
+     * membership revoked by any other decision is an independent act and stays
+     * revoked; legacy rows revoked before the provenance columns existed carry
+     * NULL and fall in the same fail-closed bucket. The alternative (restore
+     * every Revoked row) would silently re-grant access an admin removed on
+     * purpose, which is the same class of bug this lane is closing.
+     *
+     * @return int number of memberships restored
+     */
+    private function restoreCascadedMembershipsFor(User $user): int
+    {
+        return UserCompanyMembership::query()
+            ->where('user_id', $user->id)
+            ->where('status', MembershipStatus::Revoked->value)
+            ->where('revoked_reason', MembershipRevocationReason::UserDeactivated->value)
+            ->update([
+                'status' => MembershipStatus::Active->value,
+                'revoked_at' => null,
+                'revoked_by' => null,
+                'revoked_reason' => null,
+            ]);
     }
 
     private function forbidden(string $code, string $message, Request $request): JsonResponse

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Company\Domain;
 
+use App\Modules\Company\Domain\Enums\MembershipRevocationReason;
 use App\Modules\Company\Domain\Enums\MembershipRole;
 use App\Modules\Company\Domain\Enums\MembershipStatus;
 use App\Modules\Identity\Domain\User;
@@ -28,6 +29,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property Carbon|null $invited_at When the invitation was sent
  * @property Carbon|null $accepted_at When the invitation was accepted
  * @property MembershipStatus $status Membership status
+ * @property Carbon|null $revoked_at When the membership was revoked
+ * @property string|null $revoked_by UUID of the user who revoked it
+ * @property MembershipRevocationReason|null $revoked_reason Why it was revoked (NULL = legacy/unattributed)
  * @property Carbon $created_at
  * @property Carbon $updated_at
  * @property-read User $user
@@ -58,6 +62,9 @@ class UserCompanyMembership extends Model
         'invited_at',
         'accepted_at',
         'status',
+        'revoked_at',
+        'revoked_by',
+        'revoked_reason',
     ];
 
     /**
@@ -70,10 +77,12 @@ class UserCompanyMembership extends Model
         return [
             'role' => MembershipRole::class,
             'status' => MembershipStatus::class,
+            'revoked_reason' => MembershipRevocationReason::class,
             'allowed_location_ids' => 'array',
             'is_primary' => 'boolean',
             'invited_at' => 'datetime',
             'accepted_at' => 'datetime',
+            'revoked_at' => 'datetime',
         ];
     }
 

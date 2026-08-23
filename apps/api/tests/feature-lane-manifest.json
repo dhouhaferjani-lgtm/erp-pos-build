@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1134,
+  "gated_ceiling": 1135,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -811,8 +811,8 @@
     },
     "Identity": {
       "lane": "feature-lane-tenancy/Identity",
-      "classes": 31,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 32,
+      "note": "DELIBERATE RAISE 31 -> 32 (2026-08-23, membership-offboarding lane): adds Identity/UserManagement/UserOffboardingCascadeTest, which proves deactivating/soft-deleting a user revokes every ACTIVE user_company_memberships row (and that reactivation restores only the rows the cascade took). It is a security regression for a launch-relevant hole - a fired employee kept an Active membership and with it their POS override PIN - so the class is worth the ceiling edit; it is run by path locally until the tenancy lane's gate is flipped. Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Import": {
       "lane": "feature-lane-data-console/Import",
