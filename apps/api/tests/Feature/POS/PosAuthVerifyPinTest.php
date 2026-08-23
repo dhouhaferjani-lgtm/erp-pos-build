@@ -149,6 +149,87 @@ final class PosAuthVerifyPinTest extends TestCase
         $this->assertSame('INVALID_PIN', $response->json('error.code'));
     }
 
+    /**
+     * Gate r1 F-1 (CRITICAL): the online operator switch never consulted
+     * user_company_memberships at all — only tenant_id. A manager whose ONLY
+     * membership is in company B got HTTP 200 on a company-A terminal, with
+     * their full role list and every `pos.approve_*` permission: cross-company
+     * operator impersonation inside a tenant. `pin-data` and `PinVerifier`
+     * both scope to active members of the CompanyContext company; this
+     * endpoint now does too.
+     */
+    public function test_verify_pin_rejects_a_manager_from_another_company(): void
+    {
+        $otherCompany = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Other Shop',
+            'legal_name' => 'Other Shop LLC',
+            'tax_id' => 'TAX456',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $companyBManager = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Company B Only',
+            'email' => 'companyb@verify-pin-test.local',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+            'pos_pin' => Hash::make('7777'),
+            'can_discount' => true,
+            'max_discount_percent' => 100.0,
+        ]);
+        $companyBManager->assignRole('manager');
+
+        UserCompanyMembership::create([
+            'user_id' => $companyBManager->id,
+            'company_id' => $otherCompany->id,
+            'role' => 'manager',
+        ]);
+
+        $response = $this->actingAs($this->adminUser)
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/pos/auth/verify-pin', [
+                'pin' => '7777',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('INVALID_PIN', $response->json('error.code'));
+    }
+
+    /**
+     * Gate r1 F-1, second probe: a tenant user with ZERO memberships anywhere
+     * also resolved with the full manager permission set. Broader than
+     * cross-company — this hands the operator identity to someone who belongs
+     * to no company at all.
+     */
+    public function test_verify_pin_rejects_a_user_with_no_membership_anywhere(): void
+    {
+        $orphan = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'No Membership',
+            'email' => 'orphan@verify-pin-test.local',
+            'password' => 'password123',
+            'status' => UserStatus::Active,
+            'pos_pin' => Hash::make('8888'),
+            'can_discount' => true,
+            'max_discount_percent' => 100.0,
+        ]);
+        $orphan->assignRole('manager');
+
+        $response = $this->actingAs($this->adminUser)
+            ->withHeader('X-Company-Id', $this->company->id)
+            ->postJson('/api/v1/pos/auth/verify-pin', [
+                'pin' => '8888',
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame('INVALID_PIN', $response->json('error.code'));
+    }
+
     public function test_verify_pin_does_not_grant_discount_to_non_admin(): void
     {
         $cashier = User::create([

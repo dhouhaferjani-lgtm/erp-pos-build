@@ -42,12 +42,29 @@ final class PosAuthController extends Controller
         $currentUser = $request->user();
         $pin = $request->validated('pin');
 
-        // Offboarding belt: a DEACTIVATED account's PIN must not resolve. This
-        // endpoint is the online operator switch — without the status filter a
-        // fired employee's PIN still returned their identity, roles and
-        // permissions to the terminal.
+        // This endpoint is the online operator switch, and it used to resolve
+        // ANY tenant user holding the PIN — tenant_id was the only scope.
+        // Two independent holes, both proven live by the r1 gate (F-1):
+        //   - a manager whose only membership is in company B returned HTTP 200
+        //     on a company-A terminal, with their roles and the complete
+        //     `pos.approve_*` permission set — cross-company operator
+        //     impersonation inside a tenant;
+        //   - a tenant user with NO membership anywhere did the same.
+        // Scope to ACTIVE members of the CompanyContext company exactly as
+        // `pinData` and `PinVerifier::verifyForApproval` do, so the three PIN
+        // surfaces admit precisely the same population. The `status` filter is
+        // the offboarding belt: a fired employee's PIN must not return their
+        // identity, roles and permissions to the terminal.
+        $company = $this->companyContext->requireCompany();
+
+        $companyUserIds = UserCompanyMembership::query()
+            ->where('company_id', $company->id)
+            ->where('status', MembershipStatus::Active->value)
+            ->pluck('user_id');
+
         $users = User::where('tenant_id', $currentUser->tenant_id)
             ->where('status', UserStatus::Active->value)
+            ->whereIn('id', $companyUserIds)
             ->whereNotNull('pos_pin')
             ->get();
 
