@@ -166,7 +166,15 @@ class TenantProvisioningService
                 'type' => 'shop',
                 'is_default' => true,
                 'is_active' => true,
-                'pos_enabled' => false,
+                // Owner ruling B-3 (2026-08-23) + its parent-delegated
+                // provisioning sub-ruling: an auto-provisioned
+                // `type=shop` Main Location is POS-enabled. `pos_enabled` became
+                // load-bearing in the same lane (TerminalController refuses
+                // claim/request/create/web at a disabled location), so the
+                // inherited `false` would lock every new tenant out of its first
+                // terminal. A user who wants otherwise switches it off in
+                // Settings — LocationController's user-CRUD default stays `false`.
+                'pos_enabled' => true,
                 'address_street' => $company->address_street,
                 'address_city' => $company->address_city,
                 'address_postal_code' => $company->address_postal_code,

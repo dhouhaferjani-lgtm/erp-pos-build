@@ -159,6 +159,8 @@
     "selectDescription": "Choose a terminal to start your POS session",
     "code": "Code",
     "location": "Location",
+    "locationPosDisabled": "POS is not enabled at this location. Enable POS for it in Settings → Locations, then create the terminal.",
+    "noPosEnabledLocations": "No location has POS enabled yet. Enable POS for a location in Settings → Locations before creating a terminal.",
     "noTerminals": "No active terminals found",
     "noTerminalsDescription": "Ask your administrator to set up POS terminals.",
     "loadingTerminals": "Loading terminals...",

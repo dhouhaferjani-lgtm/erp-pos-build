@@ -1217,6 +1217,16 @@ class DemoTenantSeeder extends Seeder
                 'address_country' => $company->country_code,
                 'is_default' => true,
                 'is_active' => true,
+                // Owner ruling B-3 (2026-08-23) + its parent-delegated
+                // provisioning sub-ruling — stated EXPLICITLY, not
+                // left to the column default. Seeders run AFTER
+                // `tenants:migrate`, so anything they create is born at the
+                // `default(false)` and the B-3 backfill has already passed it
+                // by; with the flag now enforced at terminal acquisition, an
+                // omitted key means a demo tenant that cannot open a till.
+                // Omission is the dangerous case precisely because it is
+                // invisible at the call site.
+                'pos_enabled' => true,
             ],
         );
 

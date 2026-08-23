@@ -20,6 +20,7 @@ use App\Modules\Workshop\Bundle\Domain\ServiceBundleComponent;
 use App\Modules\Workshop\Technician\Domain\TechnicianProfile;
 use App\Modules\Workshop\WorkOrder\Domain\Enums\WorkOrderStatus;
 use App\Modules\Workshop\WorkOrder\Domain\WorkOrder;
+use Database\Seeders\DatabaseSeeder;
 use Database\Seeders\DemoTenantSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +59,59 @@ final class DemoTenantSeederTest extends TestCase
 
         $tenant = $this->getDemoTenant();
         $this->assertSame(Vertical::Mechanic, $tenant->vertical);
+    }
+
+    /**
+     * Owner ruling B-3 (2026-08-23) + its parent-delegated provisioning
+     * sub-ruling, gate r2 / M-3.
+     *
+     * Seeders run AFTER `tenants:migrate`, so anything they create is born at
+     * the `locations.pos_enabled` column default (false) and the B-3 backfill
+     * migration has already passed it by — it can never repair them. With the
+     * flag now enforced at terminal acquisition, a MAIN shop seeded false is a
+     * demo tenant that cannot open a till at all.
+     *
+     * `DemoTenantSeeder` was the worse of the two writers: it omitted the key
+     * ENTIRELY (`firstOrCreate` attributes), so the defect was invisible at the
+     * call site. Pinned so it cannot silently revert, exactly as P3-7 pinned
+     * the three production writers.
+     */
+    public function test_demo_tenant_main_location_is_pos_enabled(): void
+    {
+        $this->seedDemo();
+
+        $tenant = $this->getDemoTenant();
+        $company = $this->getDemoCompany($tenant);
+
+        $location = DB::table('locations')
+            ->where('company_id', $company->id)
+            ->where('code', 'MAIN')
+            ->first();
+
+        $this->assertNotNull($location, 'DemoTenantSeeder must create a MAIN location.');
+        $this->assertTrue((bool) $location->pos_enabled);
+    }
+
+    /**
+     * The sibling writer, pinned in the same place on purpose.
+     *
+     * `DatabaseSeeder` creates the same `type=shop`, `is_default=true`,
+     * `code=MAIN` location and had the same `pos_enabled => false` defect. It
+     * lives here rather than in a new test class because both writers are demo
+     * bootstrap paths in this same `Seeders` group, and that group is laned
+     * behind a PARKED execution gate — a new CLASS would force a deliberate
+     * manifest ceiling raise for coverage that runs on no event either way,
+     * whereas a method rides the existing class for free.
+     */
+    public function test_database_seeder_main_location_is_pos_enabled(): void
+    {
+        $this->artisan('db:seed', ['--class' => DatabaseSeeder::class, '--force' => true])
+            ->assertExitCode(0);
+
+        $location = DB::table('locations')->where('code', 'MAIN')->first();
+
+        $this->assertNotNull($location, 'DatabaseSeeder must create a MAIN location.');
+        $this->assertTrue((bool) $location->pos_enabled);
     }
 
     public function test_admin_demo_local_user_is_active_and_verified_and_has_admin_role(): void

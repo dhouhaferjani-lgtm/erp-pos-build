@@ -22,6 +22,7 @@ use App\Modules\POS\Presentation\Requests\RequestTerminalRequest;
 use App\Modules\POS\Presentation\Requests\UpdateTerminalRequest;
 use App\Modules\POS\Presentation\Resources\TerminalResource;
 use App\Shared\Presentation\Validation\ScopedExists;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -107,6 +108,11 @@ final class TerminalController extends Controller
         }
 
         $company = $this->companyContext->requireCompany();
+
+        // B-3: same refusal on the admin creation path as on the device paths.
+        if (! $this->locationHasPosEnabled((string) $data['location_id'], $company->id)) {
+            return $this->posDisabledResponse();
+        }
 
         $terminal = Terminal::create([
             'tenant_id' => $company->tenant_id,
@@ -313,6 +319,13 @@ final class TerminalController extends Controller
             ->physical()
             ->active()
             ->whereNull('hardware_identifier')
+            // B-3 (owner ruling 2026-08-23): never OFFER what claim() would
+            // refuse. Without this the picker lists terminals the device is
+            // then told it cannot have, which reads as a bug to the operator.
+            ->whereHas('location', function (Builder $query): void {
+                /** @var Builder<Location> $query */
+                $query->where('pos_enabled', true);
+            })
             ->with(['location', 'company'])
             // Phase 6.1: eager-load MAX(shift_number) to avoid a per-row N+1 in
             // TerminalResource (available terminals have no shifts, so this is
@@ -359,6 +372,13 @@ final class TerminalController extends Controller
             ], 422);
         }
 
+        // B-3: the location's POS switch is authoritative for acquisition.
+        // Deliberately AFTER the is_active check — an inactive terminal is the
+        // nearer, more actionable cause, so it keeps reporting first.
+        if (! $this->locationHasPosEnabled($terminal->location_id, $terminal->company_id)) {
+            return $this->posDisabledResponse();
+        }
+
         if ($terminal->hardware_identifier !== null) {
             return response()->json([
                 'error' => [
@@ -388,6 +408,13 @@ final class TerminalController extends Controller
 
         $data = $request->validated();
         $company = $this->companyContext->requireCompany();
+
+        // B-3: refuse BEFORE the write — a terminal must never exist at a
+        // location whose POS is switched off, otherwise the switch only stops
+        // claiming and the device provisions itself a fresh terminal instead.
+        if (! $this->locationHasPosEnabled((string) $data['location_id'], $company->id)) {
+            return $this->posDisabledResponse();
+        }
 
         $terminal = Terminal::create([
             'tenant_id' => $company->tenant_id,
@@ -431,7 +458,15 @@ final class TerminalController extends Controller
             'location_id' => ['required', 'uuid', ScopedExists::company('locations', $company->id)],
         ]);
 
-        $locationId = $request->input('location_id');
+        $locationId = (string) $request->input('location_id');
+
+        // B-3: refuse BEFORE the get-or-create lookup, so switching POS off at
+        // a location also stops it handing back the web terminal it already
+        // provisioned. Refusing only the CREATE half would leave every
+        // previously-provisioned location selling regardless of the switch.
+        if (! $this->locationHasPosEnabled($locationId, $company->id)) {
+            return $this->posDisabledResponse();
+        }
 
         // Look up existing active web terminal for (company, location)
         $terminal = Terminal::forCompany($company->id)
@@ -595,6 +630,42 @@ final class TerminalController extends Controller
                 'grand_totals' => $latestZReport->grand_totals,
             ],
         ]);
+    }
+
+    /**
+     * B-3 (owner ruling 2026-08-23) — is POS switched on at this location?
+     *
+     * FAILS CLOSED. A `location_id` that does not resolve inside the caller's
+     * company returns false rather than throwing, so every acquisition path
+     * answers with the same 422 instead of leaking a 404/500 difference
+     * between "disabled" and "not yours". The company scope is re-applied here
+     * and not taken on trust from the caller: `claim()` reaches this with a
+     * `location_id` copied off the terminal row, the other three with one that
+     * came from the request body.
+     */
+    private function locationHasPosEnabled(string $locationId, string $companyId): bool
+    {
+        return Location::query()
+            ->where('company_id', $companyId)
+            ->whereKey($locationId)
+            ->where('pos_enabled', true)
+            ->exists();
+    }
+
+    /**
+     * The single refusal envelope for every B-3 acquisition path, shaped like
+     * the sibling refusals in this controller (`TERMINAL_INACTIVE`,
+     * `TERMINAL_HAS_OPEN_SHIFT`) so the device's existing error handling reads
+     * it without a new branch.
+     */
+    private function posDisabledResponse(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'LOCATION_POS_DISABLED',
+                'message' => 'POS is not enabled at this location. Enable POS for the location in Settings before using a terminal there.',
+            ],
+        ], 422);
     }
 
     /**
