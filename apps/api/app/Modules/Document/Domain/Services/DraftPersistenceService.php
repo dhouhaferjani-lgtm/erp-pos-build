@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Modules\Document\Domain\Services;
 
+use App\Modules\Company\Domain\Company;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
 use App\Modules\Document\Domain\Enums\DocumentStatus;
@@ -18,6 +19,7 @@ use App\Modules\Document\Domain\Events\DraftLineModifiedV3;
 use App\Modules\Document\Domain\Events\DraftLineRemoved;
 use App\Modules\Document\Domain\Events\DraftLineRemovedV2;
 use App\Modules\Document\Domain\Exceptions\DraftNotEditableException;
+use App\Modules\Partner\Domain\Partner;
 use App\Modules\Product\Domain\Product;
 use App\Modules\Service\Domain\Service;
 use App\Shared\Contracts\CurrencyScaleResolverInterface;
@@ -69,10 +71,21 @@ final class DraftPersistenceService
             // api.document.011: scope by tenant + company so a cross-tenant
             // draftId surfaces as null and a fresh draft is created instead
             // of mutating a foreign tenant's row.
+            // Gate P2-4: `lockForUpdate()`, not a bare `find()`. `config/database.php`
+            // pins no isolation level, so PostgreSQL's default READ COMMITTED
+            // applies and an unlocked SELECT takes no row lock — auto-save could
+            // read `Draft`, a concurrent session commit `confirm`, and the guard
+            // below would then wave through a line-strip on a now-Confirmed
+            // document. The confirm side already locks
+            // (`InvoiceController.php:591-595`) and so does the draft-service
+            // precedent this guard follows (`DraftPurchaseOrderService.php:78`);
+            // auto-save was the only participant that did not, so the pair did
+            // not serialise.
             $document = $draftId !== null
                 ? Document::query()
                     ->where('tenant_id', $tenantId)
                     ->where('company_id', $companyId)
+                    ->lockForUpdate()
                     ->find($draftId)
                 : null;
 
@@ -133,6 +146,21 @@ final class DraftPersistenceService
             type: $documentType,
         );
 
+        // Gate F1: the row must carry the COMPANY currency. It used to be
+        // omitted entirely, so every auto-saved draft silently took the
+        // `documents` table default `'EUR'`
+        // (2025_11_30_080000_create_documents_table.php:24) — and `currency` is
+        // the 4th field of the fiscal hash payload
+        // (DocumentPostingService.php:484 → FiscalHashService), which posting
+        // does NOT re-derive. A TND/GBP tenant that posted such a draft sealed
+        // 'EUR' into the SHA-256 chain input. It also left the row internally
+        // inconsistent: line scale was resolved from the real company currency
+        // while the row claimed EUR.
+        //
+        // Same lookup + assignment as the sibling draft creator in this module,
+        // DraftPurchaseOrderService.php:89 → :59.
+        $company = Company::query()->whereKey($companyId)->firstOrFail();
+
         // Create document
         $document = Document::create([
             'tenant_id' => $tenantId,
@@ -143,16 +171,42 @@ final class DraftPersistenceService
             'partner_id' => $data['partner_id'] ?? null,
             'document_date' => $data['document_date'] ?? now()->format('Y-m-d'),
             'due_date' => $data['due_date'] ?? null,
+            'currency' => $company->currency,
             'total' => '0.00',
             'tax_amount' => '0.00',
             'subtotal' => '0.00',
             'notes' => $data['notes'] ?? null,
         ]);
 
-        // Eager load partner before event
+        // Eager load partner before event.
+        //
+        // Gate P1-1: null-safe. `partner_id` is legitimately null on the
+        // editor's first keystrokes — DocumentForm.tsx:262 defaults it to null
+        // and :286 emits `watchedPartnerId || null`, while the debounce fires as
+        // soon as one line exists (useDraftAutoSave.ts:227). A bare
+        // `$partner->name` raised an ErrorException on the null relation, which
+        // the controller's blanket `catch (\Throwable) → 200` turned into
+        // `{"error":"silent_failure"}` with the transaction rolled back: every
+        // auto-save before a partner was picked reported success and persisted
+        // nothing. `DraftDocumentCreated::$partnerName` is already `?string`
+        // (event constructor :26-27), so this is rule-8 clean.
+        // `instanceof` narrowing rather than `$document->partner?->name`:
+        // `documents.partner_id` really is nullable
+        // (2026_06_27_110000_make_documents_partner_id_nullable.php) and the
+        // relation really does resolve to null, but `Document`'s docblock still
+        // annotates `@property string $partner_id` / `@property-read Partner
+        // $partner` as non-null — so PHPStan rejects both the null-safe read
+        // (`nullsafe.neverNull`) and a `partner_id !== null` guard
+        // (`notIdentical.alwaysTrue`). `getRelationValue()` is honestly typed
+        // `mixed`, so narrowing it is a real runtime check, not a cast to
+        // silence the analyser. Correcting the annotations is the proper fix and
+        // is filed as R-10 in
+        // docs/superpowers/tickets/2026-08-23-autosave-residuals.md: it surfaces
+        // 11 further latent null-dereferences elsewhere in this module, which is
+        // a lane of its own.
         $document->load('partner');
-        $partner = $document->partner;
-        $partnerName = $partner->name;
+        $partner = $document->getRelationValue('partner');
+        $partnerName = $partner instanceof Partner ? $partner->name : null;
         event(new DraftDocumentCreated(
             documentId: $document->id,
             tenantId: $tenantId,

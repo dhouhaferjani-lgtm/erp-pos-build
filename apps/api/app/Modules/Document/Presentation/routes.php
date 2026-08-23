@@ -41,13 +41,29 @@ Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::
     // feeds the fiscal hash chain — so an ungated route let a read-only `viewer`
     // burn invoice numbers and author documents.
     //
-    // `documents.update` is the module's cross-type document-write permission
-    // (the same one `documents.revert` and the additional-cost writes use). It
-    // is deliberately the type-BLIND gate: this endpoint is polymorphic on
-    // `type`, and every seeded role the editor lets in (admin, manager,
-    // operator, cashier, accountant) holds it, while the read-only roles
-    // (`viewer`, `technician`) do not. Per-type granularity is tracked as a
-    // residual in docs/sessions/2026-08-23-p1-autosave-hardening-notes.md.
+    // TWO layers, because one is not enough for a route that is polymorphic on
+    // `type`:
+    //
+    //  1. `can:documents.update` here — the coarse document-write gate. Its only
+    //     other write user in this file is `documents.revert` (:62); the
+    //     additional-cost WRITES use `can:purchase-orders.update` (:350, :354,
+    //     :358), not this permission, and its seeder annotation still reads
+    //     "Document attachments (Media module)"
+    //     (RolesAndPermissionsSeeder.php:121) — the precedent is narrower than
+    //     an earlier revision of this comment claimed. It excludes the read-only
+    //     roles (`viewer`, `technician`) and admits admin/manager/operator/
+    //     cashier/accountant.
+    //
+    //  2. The per-TYPE `*.create` ability, enforced in
+    //     `AutoSaveDraftRequest::authorize()` against the map in that class.
+    //     Layer 1 alone was a universal authoring bypass around the whole
+    //     per-type `*.create` catalogue — a `cashier` (no `purchase-orders.*`
+    //     at all) could author `PO-2026-0001` here and burn a PO number. The
+    //     same class also narrows `type` to the seven the editor auto-saves, so
+    //     `correcting_entry` — admin-tier by owner ruling, see :365-388 below —
+    //     can no longer be authored through this route.
+    //
+    // Residuals: docs/superpowers/tickets/2026-08-23-autosave-residuals.md
     Route::post('/documents/auto-save', [DraftController::class, 'autoSave'])
         ->middleware('can:documents.update')
         ->name('documents.auto-save');

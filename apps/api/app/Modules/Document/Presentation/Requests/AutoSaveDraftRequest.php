@@ -30,8 +30,10 @@ use Illuminate\Validation\Rule;
  *
  * STRICT where correctness is not negotiable:
  *
- * - `type` must be a real `DocumentType` (it was `DocumentType::from()` on raw
- *   input, i.e. a swallowed `\ValueError` and a silent 200).
+ * - `type` must be one of the SEVEN types the editor actually auto-saves (see
+ *   `AUTO_SAVABLE_CREATE_ABILITY` below), not any `DocumentType` case.
+ * - the caller must hold the per-type `*.create` ability the sibling store route
+ *   demands (see `authorize()`).
  * - every money / quantity / percent field carries the decimal ceiling required
  *   by CLAUDE.md rule 19, matching `CreateDocumentRequest` column for column.
  *
@@ -53,6 +55,49 @@ use Illuminate\Validation\Rule;
  */
 class AutoSaveDraftRequest extends FormRequest
 {
+    /**
+     * The document types this endpoint accepts, each mapped to the ability its
+     * SIBLING create route in the same `routes.php` demands.
+     *
+     * BOTH halves are derived from code, not chosen:
+     *
+     * - The KEY SET is the frontend's own declared payload contract for this
+     *   endpoint — the `DraftData['type']` union at
+     *   `apps/web/src/hooks/useDraftAutoSave.ts:83`. `DocumentForm` is the only
+     *   consumer of the hook (`DocumentForm.tsx:319`) and is mounted for six of
+     *   them (`routes/index.tsx` quotes/orders/invoices/credit-notes ×
+     *   new+edit, purchases orders, inventory delivery-notes); `return_note` is
+     *   declared in the union and in `documentTypeToApiEndpoint`
+     *   (`DocumentForm.tsx:105`) but has no mounted route today. It is kept in
+     *   the set because it is part of the declared contract and is gated by
+     *   `deliveries.create` either way.
+     *
+     * - The VALUES are the `can:` of each type's `Route::post` store sibling:
+     *   quotes `:80`, orders `:113`, invoices `:150`, credit-notes `:234`,
+     *   purchase-orders `:264`, delivery-notes `:307`, return-notes `:329`.
+     *
+     * The six `DocumentType` cases NOT listed are refused by the validator, not
+     * by authorization — they have no auto-save flow to preserve. The one that
+     * matters most is `correcting_entry`: every correcting-entry route,
+     * including the reads, is gated on the admin-tier `documents.correct`
+     * (`routes.php:365-388`) precisely because it "both exposes and writes raw
+     * general-ledger accounts and amounts, which is strictly more powerful than
+     * anything those permissions buy". A bare `Rule::enum(DocumentType::class)`
+     * let any `documents.update` holder author a `CE-`numbered document through
+     * this endpoint and burn a CE sequence number.
+     *
+     * @var array<string, string>
+     */
+    private const AUTO_SAVABLE_CREATE_ABILITY = [
+        'quote' => 'quotes.create',
+        'sales_order' => 'orders.create',
+        'invoice' => 'invoices.create',
+        'credit_note' => 'credit-notes.create',
+        'purchase_order' => 'purchase-orders.create',
+        'delivery_note' => 'deliveries.create',
+        'return_note' => 'deliveries.create',
+    ];
+
     public function __construct(
         private readonly CompanyContext $companyContext,
     ) {
@@ -60,11 +105,42 @@ class AutoSaveDraftRequest extends FormRequest
     }
 
     /**
-     * Route middleware (`can:documents.update`) carries the authorization.
+     * Per-TYPE authorization, on top of the route's coarse `can:documents.update`.
+     *
+     * `documents.update` alone made this endpoint a universal document-authoring
+     * bypass around the entire per-type `*.create` catalogue: a principal
+     * holding no `purchase-orders.*` permission at all could author
+     * `PO-2026-0001` here and burn a number out of the PO sequence, when the
+     * sibling `POST /purchase-orders` would have refused them.
+     *
+     * The `*.create` ability is required on BOTH branches — new draft and
+     * existing draft. Verified against `RolesAndPermissionsSeeder`: no seeded
+     * role holds `<family>.update`/`.edit` without `<family>.create` for any of
+     * the six families, so requiring `.create` regresses no seeded role, and the
+     * editor's own edit routes already demand `<family>.update`
+     * (`routes/index.tsx:669, :711, :755, :960`) which those roles hold too.
+     *
+     * A missing / unknown / non-auto-savable `type` returns TRUE here on
+     * purpose: the answer to a bad shape is the validator's 422, not a 403 that
+     * would tell the caller nothing about what was wrong.
      */
     public function authorize(): bool
     {
-        return true;
+        $rawType = $this->input('type');
+
+        if (! is_string($rawType)) {
+            return true;
+        }
+
+        $ability = self::AUTO_SAVABLE_CREATE_ABILITY[$rawType] ?? null;
+
+        if ($ability === null) {
+            return true;
+        }
+
+        $user = $this->user();
+
+        return $user !== null && $user->can($ability);
     }
 
     /**
@@ -78,7 +154,7 @@ class AutoSaveDraftRequest extends FormRequest
 
         return [
             'draft_id' => ['nullable', 'uuid'],
-            'type' => ['required', Rule::enum(DocumentType::class)],
+            'type' => ['required', Rule::enum(DocumentType::class)->only(self::autoSavableTypes())],
             'partner_id' => [
                 'nullable',
                 'uuid',
@@ -114,6 +190,19 @@ class AutoSaveDraftRequest extends FormRequest
             'lines.*.unit_price' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
         ];
+    }
+
+    /**
+     * The accepted `DocumentType` cases, as enum instances for `Rule::enum()->only()`.
+     *
+     * @return list<DocumentType>
+     */
+    private static function autoSavableTypes(): array
+    {
+        return array_map(
+            static fn (string $value): DocumentType => DocumentType::from($value),
+            array_keys(self::AUTO_SAVABLE_CREATE_ABILITY),
+        );
     }
 
     /**
