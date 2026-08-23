@@ -87,10 +87,46 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
         // must not depend on POS internals — matching how the document arm above
         // hardcodes 'credit_note' rather than importing DocumentType.
         //
-        // `document_count` is deliberately left as COUNT(DISTINCT r.id): whether a
-        // refund receipt counts as a declared document is a filing-semantics
-        // question for the owner, not a sign question. Unresolved (G-4 open item,
-        // owner sheet 2026-08-21 B-6).
+        // `document_count` is COUNT(DISTINCT r.id) with NO receipt_type predicate,
+        // and that is the RULING OF RECORD, not an accident.
+        //
+        // B-6(i) RULED (owner sheet OWNER-SHEET-2026-08-21-first-client-session.md,
+        // "B-6(i) RULED include-per-standards ... anything that must be declared is
+        // included — apply to both arms together"; research:
+        // docs/handoff/RESEARCH-opening-float-and-vat-doc-count-2026-08-23.md Part 2).
+        // Cited by anchor TEXT, not line number: that sheet grows during a session,
+        // so a bare line reference rots (this comment previously pointed at "line 41",
+        // which had already drifted onto boilerplate).
+        // Refund receipts and credit notes COUNT as declared documents, on BOTH arms.
+        // Grounds:
+        //   - TN statute: CDET art. 126 requires "le nombre des factures ou des
+        //     tickets de vente, documents..." on the monthly declaration, and DGELF
+        //     prise de position n° 99188 (29/03/1999) holds that a facture d'avoir
+        //     bears the timbre AS A FACTURE — i.e. an avoir is a counted, dutiable
+        //     document in Tunisia.
+        //   - Comparative: SAF-T PT states NumberOfEntries "deve conter o número
+        //     total de documentos, INCLUINDO" documents that TotalDebit/TotalCredit
+        //     deliberately EXCLUDE. Count population and money population are
+        //     different populations on purpose — never derive one from a filter over
+        //     the other. Italy's certified registratori telematici carry the same
+        //     shape (mandatory NumeroDocCommerciali counts every commercial document
+        //     "comprese le operazioni di correzione e rettifica", with Totale Reso as
+        //     a separate MONEY line).
+        // Hence: count every fiscal document; net the money by sign. The SUM(...)
+        // above carries the type predicate; the COUNT deliberately does not.
+        //
+        // ARM SYMMETRY IS A REQUIREMENT, NOT A COINCIDENCE. The document arm's
+        // COUNT(DISTINCT d.id) (:53) likewise has no type predicate and counts credit
+        // notes. Any future change to one arm's count semantics must change the
+        // other in the same commit — the union at :132 SUMs them into one figure.
+        //
+        // Scope note: `document_count` is a control/audit figure, NOT a DGI form
+        // field. TunisiaVatStrategy::mapToDeclarationFields emits only
+        // base_*/vat_*/total_* and never reads it. The count that IS legally filed is
+        // `stamp_duty_count` in TunisiaVatStrategy::getSpecialLineItems — a different
+        // number, and it must not be confused with this one.
+        //
+        // Pinned by VatDataRepositoryTest's documentCount assertions on both arms.
         $posQuery = DB::table('pos_receipt_vat_details as prvd')
             ->join('pos_receipts as r', 'prvd.receipt_id', '=', 'r.id')
             ->leftJoin('tax_configurations as tc2', function ($join) use ($companyId): void {

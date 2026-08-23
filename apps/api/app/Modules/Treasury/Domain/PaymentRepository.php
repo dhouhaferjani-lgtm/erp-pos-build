@@ -68,7 +68,17 @@ class PaymentRepository extends Model
      * the movement port thereafter. `balance` is port-managed and NOT fillable
      * (Task 22), so a plain create() cannot set it; this model-level default
      * gives every fresh instance an in-memory '0' (and persists 0 on the INSERT,
-     * which the direct-balance-write trigger permits — it guards UPDATEs only).
+     * which the direct-balance-write trigger permits — its INSERT branch rejects
+     * only a NON-ZERO birth balance, so a zero one passes).
+     *
+     * Corrected 2026-08-23: this previously read "it guards UPDATEs only", which
+     * has been stale since the cutover-hardening INSERT branch landed.
+     * `2026_07_08_160000_forbid_direct_payment_repository_balance_writes.php` is a
+     * `BEFORE INSERT OR UPDATE` trigger with BOTH branches — UPDATE rejects any
+     * change to `balance`, INSERT rejects a non-zero birth balance — unless
+     * `app.treasury_movement_port = 'on'`. That INSERT branch is what makes
+     * "balance != 0 implies movements exist" true in production, which
+     * RepositoryAdjustmentService::isNeverSeeded() relies on.
      *
      * @var array<string, mixed>
      */
