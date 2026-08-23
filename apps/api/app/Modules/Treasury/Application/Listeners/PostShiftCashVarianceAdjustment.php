@@ -6,6 +6,7 @@ namespace App\Modules\Treasury\Application\Listeners;
 
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Compliance\Services\AuditService;
+use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\Treasury\Application\DTOs\RepositoryAdjustmentIntent;
@@ -145,6 +146,22 @@ use Throwable;
  *     stack, which is the exact 500-on-a-successful-close this file has always
  *     refused. Production runs redis + Horizon (`config/queue.php:16`,
  *     `.env QUEUE_CONNECTION=redis`), so there the retries are real.
+ *   - the flag is read at BOTH ends (see {@see ShouldQueue()} and the belt at
+ *     the top of {@see handle()}), and a disagreement between them is AUDITED
+ *     rather than silent — gate round 1 P2-2.
+ *
+ * ── What this class does NOT cover: the enqueue leg ─────────────────────────
+ * Everything above starts once the job is RUNNING. The push itself happens in
+ * the producer's frame, where `Dispatcher::dispatch()` has no `try/catch`, so a
+ * Redis outage or a serialization fault at push time propagates straight out of
+ * `event()` — onto a Z report that is already committed and hash-chained. Do not
+ * read the "never a spurious 500" promise as covering that; it never could.
+ * Gate round 1 P2-1 closes it one frame up, at the only place that can: both
+ * producers raise the event through
+ * {@see CashCountDispatcher}, which
+ * degrades any consumer fault to a durable `pos.cash_count_consumers_failed`
+ * audit row. Queue reachability at Z-close is also a pre-enable item on the G-5
+ * checklist (`docs/superpowers/tickets/2026-08-08-g3-shift-variance-gl-deploy-notes.md`).
  *
  * Tenancy across the queue boundary is carried the way every other queued
  * listener in this codebase carries it — by `QueueTenancyBootstrapper`
@@ -171,6 +188,8 @@ use Throwable;
  * 'repository_adjustment' AND status = 'posted'`. That last one matters
  * specifically here: `journal_entries` has no GLOBAL (source_type, source_id)
  * uniqueness, so the guard has to be — and is — explicit per source type.
+ *
+ * @tenancy-via-queue-payload Queued listener — tenancy crosses the queue boundary via Stancl QueueTenancyBootstrapper (config/tenancy.php:42), which stamps tenant_id into the payload with a global payload generator and re-initializes on JobProcessing/JobRetryRequested; every query here is additionally scoped by the tenant_id/company_id carried ON the event, so the handler is correct even with no tenancy bound.
  */
 final class PostShiftCashVarianceAdjustment implements ShouldQueue
 {
@@ -272,6 +291,32 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
         // Gate finding I1 — ships disabled; nothing runs, not even a query,
         // until the owner rules on count semantics.
         if (config('treasury.shift_variance_gl_enabled') !== true) {
+            // Gate round 1 P2-2 — "never enqueued" and "enqueued, then found
+            // disabled" are NOT the same outcome and must not look the same.
+            //
+            // `shouldQueue()` runs in the web process and this belt runs in the
+            // worker process, and both read a PER-PROCESS env var
+            // (`config/treasury.php:28`). A job existing here is proof that
+            // `shouldQueue()` saw the flag ENABLED at dispatch, so reaching this
+            // line means the two processes disagree — an API/Horizon env skew,
+            // or a flip that landed mid-flight. Returning silently would drop
+            // the variance with no booking, no skipped row and no dead letter:
+            // byte-for-byte the "missing GL leg goes unnoticed for months"
+            // failure this whole lane exists because of, re-created by splitting
+            // one check across two processes.
+            //
+            // With no job (the flag was simply off at dispatch) there is nothing
+            // to report: that path is pinned by
+            // test_the_disabled_lane_enqueues_nothing_at_all and must stay
+            // completely silent.
+            if ($this->job !== null) {
+                $this->refuse($event, 'feature_disabled_after_enqueue', [
+                    'detail' => 'A job was enqueued while treasury.shift_variance_gl_enabled was true, '
+                        .'but the worker sees it false — the API and worker environments disagree, '
+                        .'or the flag was flipped mid-flight. The variance is NOT booked.',
+                ], level: 'error');
+            }
+
             return;
         }
 
@@ -425,7 +470,23 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
                     'reason' => $reason,
                     'exception' => $e::class,
                     'message' => $e->getMessage(),
+                    // Gate round 1 P3-1 — `tries` is the BUDGET, never the
+                    // count, and reporting it as though it were the count made
+                    // the sync path (exactly one attempt) claim three.
+                    //
+                    // `attempts` is EXACT whenever this instance still holds its
+                    // job — the cannot-retry path, where it is 1. It is NULL on
+                    // the framework's failed() path, because
+                    // CallQueuedListener::failed() resolves a FRESH listener
+                    // from the container with no job attached: the worker knows
+                    // the count there, this frame does not, and inventing one is
+                    // what P3-1 caught. `dead_letter_source` is the
+                    // discriminator: `queue_failed_handler` means the queue
+                    // exhausted the budget, `listener` means this connection
+                    // could not retry at all and `attempts` is exact.
+                    'attempts' => $this->job?->attempts(),
                     'tries' => $this->tries,
+                    'dead_letter_source' => $this->job !== null ? 'listener' : 'queue_failed_handler',
                     'tenant_id' => $event->tenantId,
                     'company_id' => $event->companyId,
                     'shift_id' => $event->shiftId,

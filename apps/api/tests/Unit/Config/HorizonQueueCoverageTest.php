@@ -19,9 +19,18 @@ use Tests\TestCase;
  * sales) showed zero sales. Local dev masked it via QUEUE_CONNECTION=sync.
  *
  * This test scans app/ for `onQueue('...')` / `->onQueue("...")` literals
- * and asserts each named queue appears in every Horizon supervisor
- * defaults entry. If you add a new named queue, add it to
- * config/horizon.php `defaults.*.queue` (or give it its own supervisor).
+ * AND for `public $queue = '...'` property declarations, then asserts each
+ * named queue appears in every Horizon supervisor defaults entry. If you add
+ * a new named queue, add it to config/horizon.php `defaults.*.queue` (or give
+ * it its own supervisor).
+ *
+ * The property form was added by the R-8 gate (finding P3-2). A queued
+ * LISTENER never calls `onQueue()` — `Dispatcher::queueHandler()` reads
+ * `$listener->queue ?? null` off the class instead — so
+ * `PostShiftCashVarianceAdjustment`'s `public string $queue = 'default'` was
+ * invisible to the guard. It happens to name a consumed queue, but the next
+ * `public string $queue = '<new-queue>'` would have reproduced the 2026-06-12
+ * `fiscal-projections` incident this test exists to prevent.
  */
 class HorizonQueueCoverageTest extends TestCase
 {
@@ -47,9 +56,24 @@ class HorizonQueueCoverageTest extends TestCase
                     $dispatchedQueues[$queue] = true;
                 }
             }
+
+            // R-8 gate P3-2 — the DECLARATION form. Queued listeners (and jobs
+            // that prefer a property over a fluent call) name their queue as
+            // `public string $queue = '…'`, which Dispatcher::queueHandler()
+            // and Queue::pushOn() honour exactly like onQueue(). Optional
+            // `string`/`?string` type and optional `readonly` are all accepted.
+            if (preg_match_all(
+                "/public\\s+(?:readonly\\s+)?(?:\\??string\\s+)?\\\$queue\\s*=\\s*['\"]([^'\"]+)['\"]/",
+                $contents,
+                $propertyMatches,
+            ) > 0) {
+                foreach ($propertyMatches[1] as $queue) {
+                    $dispatchedQueues[$queue] = true;
+                }
+            }
         }
 
-        $this->assertNotEmpty($dispatchedQueues, 'Expected at least one onQueue() callsite in app/');
+        $this->assertNotEmpty($dispatchedQueues, 'Expected at least one onQueue() callsite or $queue declaration in app/');
 
         $supervisors = config('horizon.defaults');
         $this->assertIsArray($supervisors);
@@ -76,9 +100,30 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertSame(
             [],
             array_keys($uncovered),
-            'These queues receive jobs via onQueue() but NO Horizon supervisor consumes them '
-            .'(jobs would sit in Redis forever): '.implode(', ', array_keys($uncovered))
+            'These queues receive jobs via onQueue() or a $queue declaration but NO Horizon supervisor '
+            .'consumes them (jobs would sit in Redis forever): '.implode(', ', array_keys($uncovered))
             .'. Add them to config/horizon.php defaults.*.queue.'
+        );
+    }
+
+    /**
+     * R-8 gate P3-2 — the scanner must actually SEE the declaration form.
+     *
+     * Without this, a regression that silently drops the `$queue` property
+     * branch would leave the test green (the `onQueue()` literals alone still
+     * satisfy every assertion above) while the guard quietly stopped covering
+     * every queued listener in the codebase.
+     */
+    public function test_the_scanner_sees_queue_declared_as_a_property(): void
+    {
+        $listener = base_path('app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php');
+        $this->assertFileExists($listener);
+
+        $contents = (string) file_get_contents($listener);
+        $this->assertMatchesRegularExpression(
+            "/public\\s+(?:readonly\\s+)?(?:\\??string\\s+)?\\\$queue\\s*=\\s*['\"]([^'\"]+)['\"]/",
+            $contents,
+            'The $queue property scanner no longer matches a real queued listener declaration.',
         );
     }
 

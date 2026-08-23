@@ -8,6 +8,7 @@ use App\Modules\Company\Application\Services\TaxIdentityResolver;
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\User;
+use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
@@ -64,6 +65,7 @@ class ReportGenerationServiceTest extends TestCase
             $this->app->make(ZReportCountRepository::class),
             $this->app->make(PaymentToleranceQueryService::class),
             $this->app->make(TaxIdentityResolver::class),
+            $this->app->make(CashCountDispatcher::class),
         );
 
         $this->tenant = Tenant::factory()->create();

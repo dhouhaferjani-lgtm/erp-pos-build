@@ -46,7 +46,7 @@ Migration in this batch: `2026_08_08_140000_unique_repository_adjustments_pos_sh
 shipped NULL-only with the V3 table in the same undeployed batch, so no backfill is possible and no
 tenant can hold a conflicting pair.
 
-## 3. HARD PRE-ENABLE GATES — do not flip the flag until all four are closed
+## 3. HARD PRE-ENABLE GATES — do not flip the flag until all five are closed
 
 ### G-1 — Book the whole-drawer basis in Treasury before enabling
 Cashiers count the **whole drawer**. The remaining gate is Treasury representation: the opening float
@@ -89,6 +89,40 @@ repository by UUID, which may be a bank account. The listener refuses that case
 correctness risk, but an unseeded tenant will simply get **no GL leg at all**, silently except for
 the audit row. Seed the mappings before enabling, or the flag will look like it did nothing.
 
+### G-5 — Queue reachability and durability at Z-close (added by R-8, gate round 1 P3-6)
+
+R-8 made `PostShiftCashVarianceAdjustment` a **queued** listener (`ShouldQueue`, `$tries = 3`,
+`$backoff = [5,15]`, `$queue = 'default'`). That buys retries and a dead letter, and it moves two
+things out of the request and into the infrastructure. Both must be checked **before** the flag is
+flipped, because neither is visible until the lane is live.
+
+- [ ] **`QUEUE_CONNECTION` is explicitly `redis` in every environment that serves POS.**
+      `config/queue.php:16` defaults to **`database`** when the var is unset, and Horizon consumes
+      **redis only** (`config/horizon.php:202`). An environment that forgets the var would enqueue
+      into the `jobs` table and never consume it — silent, permanent loss of every variance, with a
+      perfectly healthy-looking Horizon. Same class of failure as the 2026-06-12
+      `fiscal-projections` incident.
+- [ ] **Horizon is actually consuming `default`** on the target environment (`horizon:status`, and
+      confirm `APP_ENV` matches a `horizon.environments` key — a non-matching env starts **zero**
+      supervisors).
+- [ ] **`TREASURY_SHIFT_VARIANCE_GL_ENABLED` is set identically in the API and the Horizon
+      containers.** The flag is read in both processes — `shouldQueue()` decides whether to push,
+      the belt in `handle()` decides whether to book. A skew is now AUDITED rather than silent
+      (`treasury.shift_variance_gl_skipped`, reason `feature_disabled_after_enqueue`), but an
+      audited drop is still a drop. Flip both together, and flip the WORKER first when enabling.
+- [ ] **Accept, or mitigate, the retry durability window.** Between attempts the ONLY record of the
+      variance is the queued job in Redis. Before R-8 the refusal row was written inline and
+      durably; now a transient fault writes nothing until the retries are exhausted (deliberate — a
+      refusal row per transient blip is noise). If the job is lost in that window (eviction,
+      `horizon:clear`, a Redis restart without persistence) the variance disappears with no row
+      anywhere. `failed_jobs` covers **exhaustion**, not **job loss**. Mitigation: Redis persistence
+      (AOF/RDB) on the queue instance, and no `horizon:clear` during a close-of-day window.
+- [ ] **Queue reachability at Z-close is guarded, not assumed.** A push failure no longer 500s a
+      sealed Z report — both producers raise the event through
+      `POS\Application\Services\CashCountDispatcher`, which degrades any consumer fault (the push OR
+      a synchronous listener) to a durable `pos.cash_count_consumers_failed` audit row. Alert on
+      that event type: it means a close happened and **no** consumer ran.
+
 ## 4. After enabling — what to watch
 
 Both outcomes are durable in `audit_events`, so verification is a query, not a log grep:
@@ -96,7 +130,18 @@ Both outcomes are durable in `audit_events`, so verification is a query, not a l
 ```sql
 SELECT event_type, payload->>'reason' AS reason, count(*)
 FROM audit_events
-WHERE event_type IN ('treasury.shift_variance_gl_booked','treasury.shift_variance_gl_skipped')
+WHERE event_type IN (
+  'treasury.shift_variance_gl_booked',
+  'treasury.shift_variance_gl_skipped',
+  -- R-8: the queue gave up on this variance after $tries attempts. Every field
+  -- needed to re-book it by hand is in the payload, including the derived
+  -- `adjustment_document_id`. Read `attempts` (exact, or NULL when the queue's
+  -- own failed() handler wrote the row) — NOT `tries`, which is the budget.
+  'treasury.shift_variance_gl_dead_lettered',
+  -- R-8 gate P2-1: the close succeeded but NO consumer ran — neither the GL leg
+  -- nor the fraud alert. Written by POS\Application\Services\CashCountDispatcher.
+  'pos.cash_count_consumers_failed'
+)
 GROUP BY 1, 2 ORDER BY 3 DESC;
 ```
 
@@ -113,6 +158,7 @@ Refusal reasons and what each means:
 | `unattributable_tolerance_writeoff` | belt-and-braces guard, see the report §A.2 correction — **can refuse a whole shift**; if this appears at any volume, investigate before assuming a double-count risk |
 | `currency_mismatch` | repository currency ≠ counted currency |
 | `exception` | a genuine fault — investigate |
+| `feature_disabled_after_enqueue` | R-8 gate P2-2: a job was enqueued while the flag was true but the WORKER sees it false — the API and Horizon environments disagree, or the flag flipped mid-flight. The variance is NOT booked. Reconcile the env and re-drive from the payload |
 
 A `treasury.shift_variance_gl_booked` row carries `truncated_residual`: the scale-4 → money-scale
 remainder that was NOT booked. Non-zero values are expected and explain any last-digit

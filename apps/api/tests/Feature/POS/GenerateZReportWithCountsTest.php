@@ -12,6 +12,7 @@ use App\Modules\Compliance\Domain\CompanyFraudSettings;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Exceptions\CashCountValidationException;
 use App\Modules\POS\Application\Exceptions\UnauthorizedManagerException;
+use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Application\Services\CashCountValidationService;
 use App\Modules\POS\Application\Services\FraudSettingsResolver;
 use App\Modules\POS\Application\Services\ReportGenerationService;
@@ -106,6 +107,7 @@ final class GenerateZReportWithCountsTest extends TestCase
             $this->app->make(ZReportCountRepository::class),
             $this->app->make(PaymentToleranceQueryService::class),
             $this->app->make(TaxIdentityResolver::class),
+            $this->app->make(CashCountDispatcher::class),
         );
         $this->location = Location::factory()->create(['company_id' => $this->company->id]);
         $this->cashier = User::factory()->create(['tenant_id' => $this->tenant->id]);

@@ -197,10 +197,79 @@ final class ShiftCashVarianceQueueRetryTest extends TestCase
     }
 
     /**
+     * Gate round 1 P2-2 — the flag is now read in TWO processes: `shouldQueue()`
+     * in the web process, the belt at the top of `handle()` in the worker. Both
+     * read a per-process env var, so an API/Horizon env skew — or a flip that
+     * lands between enqueue and execution — puts a job on the queue that the
+     * worker then declines.
+     *
+     * That must not be silent. A job existing at all is proof the flag was ON at
+     * dispatch, so the worker disagreeing is a misconfiguration worth an
+     * operator's attention, not a no-op.
+     */
+    public function test_a_worker_that_disagrees_with_the_dispatch_flag_audits_instead_of_dropping_the_variance(): void
+    {
+        $shiftId = (string) Str::uuid();
+        $event = $this->cashCountEvent($shiftId);
+
+        // Enqueued while enabled…
+        Queue::fake();
+        event($event);
+        $job = $this->pushedListenerJob();
+
+        // …then the worker's config says otherwise.
+        config()->set('treasury.shift_variance_gl_enabled', false);
+
+        app(CompanyContext::class)->clear();
+        $job->job = new FakeJob;
+        $job->handle(app());
+
+        $this->assertSame(1, $this->refusalCount($shiftId));
+        $refusal = DB::table('audit_events')
+            ->where('event_type', 'treasury.shift_variance_gl_skipped')
+            ->where('aggregate_id', $shiftId)
+            ->firstOrFail();
+        $this->assertStringContainsString('feature_disabled_after_enqueue', (string) $refusal->payload);
+
+        // Nothing booked — the refusal is a record, not a fallback.
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame('400.000', $this->till->fresh()?->balance);
+    }
+
+    /**
+     * The companion to the test above: with NO job, the flag being off is the
+     * ordinary disabled-lane path and must stay completely silent. A row here
+     * would fire once per shift close on every tenant while the lane is off.
+     */
+    public function test_the_disabled_lane_writes_no_row_when_nothing_was_ever_enqueued(): void
+    {
+        config()->set('treasury.shift_variance_gl_enabled', false);
+
+        $shiftId = (string) Str::uuid();
+
+        app(CompanyContext::class)->clear();
+
+        /** @var PostShiftCashVarianceAdjustment $listener */
+        $listener = app(PostShiftCashVarianceAdjustment::class);
+        $listener->handle($this->cashCountEvent($shiftId));
+
+        $this->assertSame(0, $this->refusalCount($shiftId));
+        $this->assertSame(0, $this->deadLetterCount($shiftId));
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+    }
+
+    /**
      * The worker reality: no CompanyContext, no request, no authenticated user.
      * Driven through the REAL queued job object rather than by calling handle()
-     * on a hand-built listener, so the container resolution, the job binding and
-     * the event's serialization shape are all part of what is asserted.
+     * on a hand-built listener, so the container resolution and the job binding
+     * are part of what is asserted.
+     *
+     * Gate round 1 P3-5 — this docblock used to claim it covered "the event's
+     * serialization shape". It did not: `Queue::fake()` records the job object in
+     * memory without serializing it. The claim is made true rather than deleted:
+     * the job is now round-tripped through `serialize()`/`unserialize()` before
+     * it runs, which is what a real connection does to it. (The `sync` test
+     * below independently exercises the framework's own serialize path.)
      */
     public function test_the_queued_listener_books_the_variance_with_no_company_context_bound(): void
     {
@@ -209,7 +278,13 @@ final class ShiftCashVarianceQueueRetryTest extends TestCase
         $shiftId = (string) Str::uuid();
         event($this->cashCountEvent($shiftId));
 
-        $job = $this->pushedListenerJob();
+        $pushed = $this->pushedListenerJob();
+
+        // The worker never sees the in-memory object — it sees whatever survived
+        // the payload. Anything unserializable on the event would die here.
+        $revived = unserialize(serialize($pushed));
+        $this->assertInstanceOf(CallQueuedListener::class, $revived);
+        $job = $revived;
 
         app(CompanyContext::class)->clear();
         $job->job = new FakeJob;
@@ -346,7 +421,15 @@ final class ShiftCashVarianceQueueRetryTest extends TestCase
 
         $this->assertSame('unbalanced_journal_entry', $payload['reason']);
         $this->assertSame(UnbalancedJournalEntryPostException::class, $payload['exception']);
+
+        // Gate round 1 P3-1 — `tries` is the BUDGET; it must never be read as
+        // the attempt count. On this path the framework rebuilds the listener
+        // with no job, so the count is genuinely unknowable here and must be
+        // reported as unknown rather than invented.
         $this->assertSame(3, $payload['tries']);
+        $this->assertNull($payload['attempts']);
+        $this->assertSame('queue_failed_handler', $payload['dead_letter_source']);
+
         $this->assertSame($shiftId, $payload['shift_id']);
         $this->assertSame($event->zReportId, $payload['z_report_id']);
         $this->assertSame($event->terminalId, $payload['terminal_id']);
@@ -431,6 +514,12 @@ final class ShiftCashVarianceQueueRetryTest extends TestCase
         $payload = json_decode((string) $deadLetter->payload, true);
         $this->assertSame('unbalanced_journal_entry', $payload['reason']);
         $this->assertSame('-5.0000', $payload['aggregate_variance']);
+
+        // Gate round 1 P3-1 — exactly ONE attempt ran on a connection that
+        // cannot retry, and the record must say so instead of implying three.
+        $this->assertSame(1, $payload['attempts']);
+        $this->assertSame(3, $payload['tries']);
+        $this->assertSame('listener', $payload['dead_letter_source']);
 
         // Fail-CLOSED: nothing half-written.
         $this->assertSame(0, RepositoryAdjustment::query()->count());
