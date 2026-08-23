@@ -956,7 +956,8 @@
     },
     "Security": {
       "lane": "security-regression",
-      "classes": 17
+      "classes": 18,
+      "note": "17 -> 18 (2026-08-23, membership-offboarding lane): UserOffboardingCascadeTest, the regression for the offboarding privilege hole (a deactivated user kept every ACTIVE user_company_memberships row, and with it their POS override PIN). Deliberately placed HERE and not under Identity/UserManagement: `security-regression` is a whole-directory selector on a job with no `if:` guard, so the class runs on every PR->dev from the moment it lands, whereas `feature-lane-tenancy/Identity` is still PARKED behind `vars.SELF_HOSTED_RUNNER_READY` and would have given a launch-relevant security regression ZERO CI coverage (and cost a gated_ceiling raise). This count is informational, as for any live lane."
     },
     "Seeders": {
       "lane": "feature-lane-data-console/Seeders",

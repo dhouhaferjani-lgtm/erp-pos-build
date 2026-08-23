@@ -191,6 +191,35 @@ final class ManagerPinControllerTest extends TestCase
     }
 
     /**
+     * Offboarding belt: a DEACTIVATED manager must not be able to approve, even
+     * if their company membership row is somehow still Active (stale cascade,
+     * legacy row, direct DB edit). `users.status` is checked independently of
+     * membership status so the two guards cannot both be defeated at once.
+     */
+    public function test_deactivated_manager_cannot_approve_even_with_an_active_membership(): void
+    {
+        $this->manager->update(['status' => UserStatus::Inactive]);
+
+        $this->assertSame(
+            1,
+            UserCompanyMembership::query()
+                ->where('user_id', $this->manager->id)
+                ->where('company_id', $this->company->id)
+                ->count(),
+            'precondition: the membership row is deliberately left in place'
+        );
+
+        $response = $this->actingAs($this->cashier, 'sanctum')
+            ->postJson('/api/v1/pos/verify-manager-pin', $this->approvalPayload([
+                'user_id' => $this->manager->id,
+                'pin' => self::PIN,
+            ]));
+
+        $response->assertOk();
+        $response->assertJsonPath('data.valid', false);
+    }
+
+    /**
      * Test 4: 4th attempt within 30 s → 429 TOO_MANY_ATTEMPTS.
      */
     public function test_rate_limit_blocks_fourth_attempt(): void
