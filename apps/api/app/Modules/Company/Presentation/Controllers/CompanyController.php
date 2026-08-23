@@ -124,7 +124,12 @@ class CompanyController extends Controller
                 'type' => LocationType::Shop,
                 'is_default' => true,
                 'is_active' => true,
-                'pos_enabled' => false,
+                // Owner ruling B-3 (2026-08-23) + its parent-delegated
+                // provisioning sub-ruling — see the same flip in
+                // TenantProvisioningService::provisionForRegistration(). A
+                // company created inside an existing tenant gets the same
+                // POS-ready Main Location as a company created at registration.
+                'pos_enabled' => true,
                 'address_country' => $validated['country_code'],
                 'address_street' => $validated['address_street'] ?? null,
                 'address_city' => $validated['address_city'] ?? null,

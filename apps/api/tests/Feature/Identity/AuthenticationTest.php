@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Identity;
 
+use App\Modules\Company\Domain\Location;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Tenant\Application\Services\IdentityIndexService;
@@ -288,6 +289,20 @@ class AuthenticationTest extends TestCase
             'role' => 'owner',
             'is_primary' => true,
         ]);
+
+        // Owner ruling B-3 (2026-08-23) + its parent-delegated
+        // provisioning sub-ruling (gate r1 / P3-7): this is the
+        // shared-DB-compat registration path, one of the three writers the
+        // ruling flipped, and it was unpinned — only TenantProvisioningService
+        // (the db-per-tenant path) had a test. The two paths MUST agree: with
+        // `pos_enabled` now enforced at terminal acquisition, a silent flip
+        // back here would decide, by which path a tenant happened to register,
+        // whether it can open a till at all.
+        $mainLocation = Location::query()
+            ->where('code', 'MAIN')
+            ->first();
+        $this->assertNotNull($mainLocation, 'Registration must auto-create the Main Location.');
+        $this->assertTrue((bool) $mainLocation->pos_enabled);
     }
 
     public function test_register_requires_all_mandatory_fields(): void

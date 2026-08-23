@@ -127,23 +127,34 @@ class TenantProvisioningServiceTest extends TestCase
         $this->assertFalse((bool) $settingsRow->cash_rounding_enabled);
         $this->assertFalse((bool) $settingsRow->pos_tolerance_enabled);
 
-        // First-tenant launch, Lane D1 task 4 — REPORT (do not flip) finding:
-        // the auto-created "Main Location" is provisioned with pos_enabled =
-        // false. Confirmed via `git log -S pos_enabled` on this file: the value
-        // has been `false` since the line was introduced in the original T6
-        // deliverable-8 commit (7912e264d, 2026-05-28) and has never been touched since —
-        // and AuthController.php's shared-DB-compat registration path sets the
-        // exact same `pos_enabled => false` for its own auto-created Main
-        // Location. Both registration paths agree, so this reads as an
-        // intentional default (an auto-provisioned "head office" placeholder
-        // location is not, by default, a POS shop floor) rather than a bug —
-        // this test pins the CURRENT behavior as a regression guard without
-        // asserting it is the *correct* business decision, which is an owner
-        // call (see E-8 in the gate sheet: the real tenant's terminal-creation
-        // location must be decided/recorded before its first live transaction).
+        // Owner ruling B-3, 2026-08-23
+        // (docs/handoff/OWNER-SHEET-2026-08-21-first-client-session.md, row
+        // B-3 — "wire `Location.pos_enabled` properly"), plus the
+        // parent-delegated provisioning sub-ruling recorded in the session
+        // ledger for the same date, which is what settles the DEFAULT: the
+        // auto-created "Main Location" is provisioned POS-ENABLED.
+        //
+        // The delegation is cited by description rather than by a short label
+        // (gate r1 / P3-8): the owner sheet already uses row "A-2" for an
+        // unrelated ruling, so a reader following an "A2" citation lands on
+        // the wrong row.
+        //
+        // This assertion previously pinned the OPPOSITE and carried a
+        // "REPORT (do not flip) … see E-8" note, because at the time nothing
+        // read `pos_enabled` and the false default was merely inherited from
+        // the original T6 deliverable-8 commit (7912e264d, 2026-05-28). B-3
+        // makes the flag load-bearing — `TerminalController` now refuses
+        // claim/request/create/web at a POS-disabled location — so leaving the
+        // default at false would mean every freshly registered tenant is
+        // locked out of provisioning its first terminal until an admin finds
+        // the checkbox. The ruled behavior is: an auto-provisioned `type=shop`
+        // Main Location is a POS location; a user who wants otherwise switches
+        // it off in Settings, and LocationController's user-CRUD `?? false`
+        // default is deliberately left alone so an explicit user choice still
+        // wins.
         $mainLocation = DB::table('locations')->where('code', 'MAIN')->first();
         $this->assertNotNull($mainLocation);
-        $this->assertFalse((bool) $mainLocation->pos_enabled);
+        $this->assertTrue((bool) $mainLocation->pos_enabled);
 
         tenancy()->end();
     }

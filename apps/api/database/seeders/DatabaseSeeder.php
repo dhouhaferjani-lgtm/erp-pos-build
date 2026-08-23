@@ -266,7 +266,13 @@ class DatabaseSeeder extends Seeder
             'type' => 'shop', // Primary location for service businesses
             'is_default' => true,
             'is_active' => true,
-            'pos_enabled' => false,
+            // Owner ruling B-3 (2026-08-23) + its parent-delegated
+            // provisioning sub-ruling — the fifth `pos_enabled`
+            // writer, alongside the three auto-provisioning paths flipped in
+            // the same lane. Seeders run AFTER `tenants:migrate`, so the B-3
+            // backfill cannot repair what they create: a `false` here would
+            // mint a POS-dead MAIN shop that no migration will ever revisit.
+            'pos_enabled' => true,
             'address_street' => $company->address_street,
             'address_city' => $company->address_city,
             'address_postal_code' => $company->address_postal_code,

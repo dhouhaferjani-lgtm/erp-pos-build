@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1135,
+  "gated_ceiling": 1141,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -776,8 +776,8 @@
     },
     "Document": {
       "lane": "feature-lane-documents/Document",
-      "classes": 75,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. 74 -> 75 raised by lane r2f4-correcting-documents (LEDGER O-26 / S-15) for CorrectingEntryEndpointTest, the only guard on the admin-only `documents.correct` permission. Because this lane is parked, that class is ALSO named in the pgsql --filter allowlist, which does run on every event - the parked lane is where it belongs, the allowlist is where it actually executes today."
+      "classes": 77,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. 74 -> 75 raised by lane r2f4-correcting-documents (LEDGER O-26 / S-15) for CorrectingEntryEndpointTest, the only guard on the admin-only `documents.correct` permission. Because this lane is parked, that class is ALSO named in the pgsql --filter allowlist, which does run on every event - the parked lane is where it belongs, the allowlist is where it actually executes today. DELIBERATE RAISE 75 -> 77 (2026-08-23, merge-discipline catch-up: both classes landed on dev WITHOUT the accompanying ceiling raise, which is why dev's own checker was red). (1) GoodsReceiptConversionUnbalancedGlNarrowingTest — lane fix/r10-catch-narrowing (R-10 per-site catch narrowing, the two live InvalidArgumentException arms), authored 1b459e876, merged d0e8b3cd9; gate record docs/superpowers/reviews/2026-08-23-r10-catch-narrowing-gate-r1.md (treasury gate r1 CHANGES -> comment-only fix round, parent-verified). (2) AutoSaveRouteHardeningTest — lane fix/p1-autosave-route-hardening (P1 auto-save hardening: authz + persisted-type binding + draft-only guard + validated payload + currency fix), authored d3dc9122b, merged 81e0948b9; gate records docs/superpowers/reviews/2026-08-23-p1-autosave-gate-authz-r1.md + -fiscal-r1.md + -r2.md + -r3.md (dual gates r1/r2 CHANGES -> r3 ACCEPT + docs micro). Unlike CorrectingEntryEndpointTest above, NEITHER of these two is named in any live --filter allowlist (verified by grep over .github/workflows/ and this manifest), so both genuinely execute nowhere until this parked lane's gate is flipped."
     },
     "DocumentIngestion": {
       "lane": "feature-lane-documents/DocumentIngestion",
@@ -811,8 +811,8 @@
     },
     "Identity": {
       "lane": "feature-lane-tenancy/Identity",
-      "classes": 32,
-      "note": "DELIBERATE RAISE 31 -> 32 (2026-08-23, membership-offboarding lane): adds Identity/UserManagement/UserOffboardingCascadeTest, which proves deactivating/soft-deleting a user revokes every ACTIVE user_company_memberships row (and that reactivation restores only the rows the cascade took). It is a security regression for a launch-relevant hole - a fired employee kept an Active membership and with it their POS override PIN - so the class is worth the ceiling edit; it is run by path locally until the tenancy lane's gate is flipped. Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 31,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
     },
     "Import": {
       "lane": "feature-lane-data-console/Import",
@@ -861,8 +861,8 @@
     },
     "Migrations": {
       "lane": "feature-lane-data-console/Migrations",
-      "classes": 5,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 6,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 5->6 (2026-08-23, triage lane F4): DocumentsSourceDocumentIdIndexTest, the forward/rollback/idempotency proof for the `documents.source_document_id` index. It is PG-only and CONCURRENTLY-bearing, so it cannot use RefreshDatabase and skips on SQLite — this parked lane's real-PostgreSQL runner is the only place it will ever execute. It was run green by hand against PG 16 on the lane worktree; see the F4 commit body."
     },
     "ModelUpdates": {
       "lane": "feature-lane-catalog/ModelUpdates",
@@ -881,8 +881,8 @@
     },
     "POS": {
       "lane": "feature-lane-pos/POS",
-      "classes": 143,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 147,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational the moment the gate is flipped. DELIBERATE RAISE 143 -> 147 (2026-08-23, merge reconciliation of two concurrent raises): (1)+(2) TerminalLocationPosEnabledTest + Migrations/BackfillLocationPosEnabledB3MigrationTest — lane fix/b3-pos-enabled-claim-enforcement (owner ruling B-3: server-side locations.pos_enabled enforcement at terminal acquisition + evidence-based backfill), merged 457457911; gate records docs/superpowers/reviews/2026-08-23-b3-pos-enabled-gate-r1.md + -r2.md; both classes run BY PATH on sqlite and PostgreSQL in-lane. (3) ReceiptReturnUnbalancedGlNarrowingTest — lane fix/r10-catch-narrowing (R-10), authored 1b459e876, merged d0e8b3cd9; gate record docs/superpowers/reviews/2026-08-23-r10-catch-narrowing-gate-r1.md. (4) CashCountDispatchGuardTest — lane fix/r8-shift-variance-queue (R-8; the class is the gate-added guard on the enqueue leg), authored 7db5fe467, merged 62fefcf16; gate records ...r8-sv-queue-gate-r1/r2/r3.md. (3)+(4) were a merge-discipline catch-up: both landed on dev without the accompanying raise, which is why dev's checker was red. None of the four is named in any live --filter allowlist (grep-verified), so all four genuinely execute nowhere until the parked lane's gate is flipped."
     },
     "Partner": {
       "lane": "feature-lane-inventory/Partner",

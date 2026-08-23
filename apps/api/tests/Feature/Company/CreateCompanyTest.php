@@ -135,6 +135,14 @@ class CreateCompanyTest extends TestCase
         $this->assertEquals('Main Location', $location->name);
         $this->assertTrue($location->is_default);
         $this->assertTrue($location->is_active);
+        // Owner ruling B-3 (2026-08-23) + its parent-delegated
+        // provisioning sub-ruling (gate r1 / P3-7): the auto-created
+        // type=shop Main Location is POS-enabled. Pinned HERE because
+        // CompanyController is one of the three writers the ruling flipped and
+        // only TenantProvisioningService was pinned — the other two could have
+        // flipped back silently. With `pos_enabled` now enforced at terminal
+        // acquisition, a regression here means a new company cannot open a till.
+        $this->assertTrue($location->pos_enabled);
     }
 
     public function test_company_creation_creates_user_membership(): void

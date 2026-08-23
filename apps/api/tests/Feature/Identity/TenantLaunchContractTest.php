@@ -103,6 +103,12 @@ final class TenantLaunchContractTest extends TestCase
 
         $this->location = Location::factory()->create([
             'company_id' => $this->company->id,
+            // Owner ruling B-3, 2026-08-23: terminal acquisition now refuses a
+            // location with POS switched off. The factory leaves `pos_enabled`
+            // at the column's `default(false)`, so a fixture that intends to
+            // host a till must say so — stated here rather than hidden in the
+            // factory, so the enforcement stays visible at the fixture.
+            'pos_enabled' => true,
         ]);
 
         // Explicit $company argument — the seeder's `?Company $company = null`

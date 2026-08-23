@@ -118,7 +118,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             // Sales Documents (Quotes, Orders, Invoices)
             'documents.view',  // Unified document view
-            'documents.update',  // Document attachments (Media module)
+            'documents.update',  // Media attachments + the coarse gate on /documents/auto-save (which also demands the per-type *.create)
             // R2-F4 (owner ruling c4) — create and post a CORRECTING ENTRY
             // against a posted document. Deliberately its own admin-tier
             // permission and NOT granted to any non-admin role below: a
