@@ -560,9 +560,16 @@ export async function buildEndOfDayPreview(
       // NOT folded into `refundVatAmount`: a legacy record carries `total` and
       // `cash_impact` only, with no per-rate VAT split to attribute. The VAT
       // disclosure therefore stays a v4-only figure, and on a mixed shift it
-      // under-reports refund VAT — which `isReconciled` then reports honestly
-      // rather than hiding, because the signed table and the accumulator will
-      // disagree. Stated here so the asymmetry is a recorded decision.
+      // under-reports refund VAT — and `isReconciled` will NOT catch it: both
+      // the per-rate table and this accumulator are built from the same
+      // `offline_receipts` loop, so both are blind to a legacy record in the
+      // same way, the wedge equals the accumulator, and the flag comes out
+      // true. The refunds tile above is the only surface that shows the legacy
+      // refund at all. Recorded as a residual of the §9.3 coexistence window.
+      //
+      // (Gate r2-1 corrected this note: it previously claimed `isReconciled`
+      // reported the gap, which is exactly the "advertised safety net that
+      // cannot fire" class the r1 round existed to close.)
     }
   }
   const cashSalesNet = bcsub(

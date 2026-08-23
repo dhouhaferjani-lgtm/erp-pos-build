@@ -51,9 +51,9 @@ export interface VatDisclosure {
    * VAT reversed by refunds in the period, as a POSITIVE magnitude.
    *
    * Zero in the anomaly case (net table LARGER than the sale-only headline) —
-   * a negative wedge is not a refund. That state is reported through
-   * {@link isReconciled}, which is computed from the RAW wedge precisely so it
-   * stays independent of this clamp.
+   * a negative wedge is not a refund. That state is still reported, through
+   * {@link isReconciled}: the clamp makes `salesVat − refundVat != netVat`, so
+   * the flag goes false and the consumer renders the warning.
    */
   refundVat: string;
   /**
@@ -66,12 +66,23 @@ export interface VatDisclosure {
   /**
    * Whether `salesVat − refundVat == netVat` holds exactly at this scale.
    *
-   * INDEPENDENT of {@link hasRefundVat} — gate r1 F-1/B-1. This used to be
-   * computed from the CLAMPED `refundVat`, which made it algebraically true
-   * that `isReconciled === false ⟹ hasRefundVat === false`; the consumer's
-   * early return on `!hasRefundVat` then made the whole unreconciled branch
-   * unreachable on every device surface, so the anomaly it exists to disclose
-   * was silently absorbed and four shipped i18n values were dead.
+   * It reads the RAW WEDGE'S SIGN in the fallback path, and a SECOND
+   * INDEPENDENT SOURCE when one is supplied:
+   *
+   * - **Wedge path** (every signed X/Z surface — they have no second source and
+   *   cannot grow one). `refundVat` is the clamped wedge, so this reduces to
+   *   "the wedge is not negative", and `!isReconciled ⟹ !hasRefundVat` still
+   *   holds here. That implication is fine; what mattered was that the CONSUMER
+   *   stopped early-returning on `!hasRefundVat` alone — see
+   *   {@link ../../components/pos/VatDisclosureSummary}.
+   * - **Accumulator path** ({@link VatDisclosureInput.refund_vat_amount}, EOD
+   *   only). Here the two flags are genuinely independent and this is a real
+   *   cross-check of two separately-derived figures.
+   *
+   * Gate r1 F-1/B-1 context: the unreconciled branch used to be unreachable on
+   * every device surface, so the anomaly it exists to disclose was silently
+   * absorbed and four shipped i18n values were dead. Gate r2-2 corrected this
+   * docblock, which overstated the fix as a changed derivation.
    */
   isReconciled: boolean;
 }
@@ -117,8 +128,15 @@ export function deriveVatDisclosure(input: VatDisclosureInput, scale: number): V
   }
   netVat = bcformat(netVat, scale);
 
-  // The RAW, SIGNED wedge. Everything below reads this rather than the clamped
-  // magnitude, so the clamp cannot swallow the anomaly signal (F-1).
+  // The RAW, SIGNED wedge. Its SIGN — not just its magnitude — decides the
+  // fallback `refundVat` below, so a negative wedge clamps to zero and then
+  // FAILS the `isReconciled` equality rather than being absorbed into a
+  // plausible-looking refund figure (gate r1 F-1).
+  //
+  // Note (gate r2-2): `isReconciled` itself is computed from the clamped
+  // `refundVat`, not from this value directly. In the fallback path that is
+  // equivalent to testing `wedge >= 0`; the accumulator path is where the
+  // comparison becomes a genuine two-source cross-check.
   const wedge = bcsub(salesVat, netVat, scale);
 
   const hasAuthoritativeAccumulator = typeof input.refund_vat_amount === 'string';
