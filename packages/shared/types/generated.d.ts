@@ -1725,6 +1725,20 @@ refund_reason_source: string;
 refund_destination: string | null;
 refund_policy_alerts: Array<any>;
 };
+export type RefundVatDisclosureData = {
+rows: Array<App.Modules.POS.Application.DTOs.RefundVatDisclosureRowData>;
+sales_vat: string;
+refund_vat: string;
+net_vat: string;
+has_refund_vat: boolean;
+is_reconciled: boolean;
+};
+export type RefundVatDisclosureRowData = {
+tax_rate: string;
+net_amount: string;
+vat_amount: string;
+gross_amount: string;
+};
 export type SalesSummaryData = {
 receipt_count: number;
 gross_sales: string;

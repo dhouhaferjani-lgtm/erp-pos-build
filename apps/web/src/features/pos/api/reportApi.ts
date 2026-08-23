@@ -40,25 +40,8 @@ export interface ZReportReportData {
  * it deliberately, since deriving it per row would be an N+1 for a figure no
  * list row renders.
  */
-export interface RefundVatDisclosureRow {
-  tax_rate: string
-  net_amount: string
-  vat_amount: string
-  gross_amount: string
-}
-
-export interface RefundVatDisclosure {
-  rows: RefundVatDisclosureRow[]
-  /** SALE-ONLY headline (`report_data.tax_amount`). Never a declaration input. */
-  sales_vat: string
-  /** Positive magnitude of VAT reversed by refunds in the Z's window. */
-  refund_vat: string
-  /** `SUM(vat_breakdown[].vat_amount)` — the declaration-facing figure. */
-  net_vat: string
-  has_refund_vat: boolean
-  /** Whether `sales_vat − refund_vat === net_vat` holds exactly. */
-  is_reconciled: boolean
-}
+export type RefundVatDisclosureRow = App.Modules.POS.Application.DTOs.RefundVatDisclosureRowData
+export type RefundVatDisclosure = App.Modules.POS.Application.DTOs.RefundVatDisclosureData
 
 export interface ZReportItem {
   id: string
