@@ -99,8 +99,20 @@ class PartnerTunisianMatriculeTest extends TestCase
      * `buyer.tax_number` and `seller.tax_number`.
      *
      * If this passes, no matricule that the partner boundary accepts can be
-     * refused at seal time — which is precisely the defect that made the
-     * ACCOUNT_CHARGE B2B lane unsealable (research spec §3.3).
+     * refused at seal time BY THE TN PATTERN — which is precisely the defect
+     * that made the ACCOUNT_CHARGE B2B lane unsealable (research spec §3.3).
+     *
+     * SCOPE — the claim is about the pattern dimension only. This test pins
+     * `'TN'` on both ends, whereas production DERIVES the country differently
+     * on each side: at entry it is `country_code` -> the stored partner ->
+     * the company (`UpdatePartnerRequest::resolvedTaxCountryCode()`), while at
+     * seal time a buyer's is `countryCodeFromAddress($buyer['address'])` with
+     * a seller fallback (`FiscalPayloadConstraintValidator.php:2131-2133`) and
+     * a seller's is the jurisdiction (`:2092`) — none of which is the
+     * partner's `country_code`. That entry-vs-seal country-SELECTION
+     * divergence is pre-existing and out of this lane's scope; it is a
+     * residual, not something this test closes. See
+     * `docs/superpowers/tickets/2026-08-23-company-tax-id-no-entry-validation.md`.
      *
      * The unit-level version of this property lives in
      * TunisianMatriculeConvergenceTest, but that one exercises the shared

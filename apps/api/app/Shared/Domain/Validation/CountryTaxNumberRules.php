@@ -18,11 +18,12 @@ namespace App\Shared\Domain\Validation;
  *
  * KNOWN GAP (pre-existing, deliberately NOT closed in this lane): the COMPANY
  * `tax_id` — the value that becomes `seller.tax_number` at seal time — has no
- * format rule at any entry point (`CreateCompanyRequest.php:28` and
- * `UpdateCompanyRequest.php:45` are both `['nullable','string','max:50']`).
- * So this class is the single source of truth for the rules that exist, not
- * proof that every sealed identifier has been validated on the way in. The
- * seller-side hole is tracked as a residual ticket, not fixed here.
+ * format rule at any entry point, and neither has company `vat_number`
+ * (`CreateCompanyRequest.php:28,30` and `UpdateCompanyRequest.php:45,47` are
+ * all `['nullable','string','max:50']`). So this class is the single source of
+ * truth for the rules that exist, not proof that every sealed identifier has
+ * been validated on the way in. Tracked, with the lane's other residuals, in
+ * `docs/superpowers/tickets/2026-08-23-company-tax-id-no-entry-validation.md`.
  *
  * Divergence here is a P0: a value accepted at entry but rejected at seal time
  * makes the document unsealable (research spec 2026-08-23 §3.3).
@@ -103,7 +104,7 @@ final class CountryTaxNumberRules
      * `1234567/A/M/000` and `1234567 am 000` both normalize to `1234567AM000`.
      *
      * Counter-example, stated so the convention is not over-trusted:
-     * `CoffeeShopSeeder.php:283,331` seeds a TN tenant/company `tax_id` of
+     * `CoffeeShopSeeder.php:283,332` seeds a TN tenant/company `tax_id` of
      * `1234567A` — 8 characters, short-form legacy demo data that the
      * converged rule REJECTS (`matches('TN','1234567A') === false`). It is
      * demo-only and predates this rule; it is NOT evidence for the convention.

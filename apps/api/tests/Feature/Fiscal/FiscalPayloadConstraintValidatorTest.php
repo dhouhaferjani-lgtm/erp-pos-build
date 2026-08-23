@@ -702,7 +702,17 @@ final class FiscalPayloadConstraintValidatorTest extends TestCase
     {
         $fixtures = [
             'FR' => 'FR12345678901',
-            'TN' => '1234567ABC000',
+            // Was `1234567ABC000` (7 digits + 3 letters + 3 digits). That shape
+            // is now the CANONICAL 13-character matricule fiscale and is
+            // accepted on purpose — the TN pattern was widened from
+            // `[A-Z]{2}` to `[A-Z]{2,3}` by the TN convergence lane (research
+            // spec 2026-08-23 §3.3). It stopped being a negative fixture the
+            // moment the 3-letter arm became legal, so it is replaced by a
+            // letter-count violation that is invalid under BOTH the old and
+            // the new pattern, which is what this test is actually asserting:
+            // a value wrong for its country fails with the country-specific
+            // message.
+            'TN' => '1234567ABCD000',
             'SA' => '212345678901203',
             'DE' => '123456789',
             'IT' => 'IT123456789',
