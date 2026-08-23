@@ -412,6 +412,141 @@ final class AutoSaveRouteHardeningTest extends TestCase
         );
     }
 
+    /**
+     * The real editor payload, field for field.
+     *
+     * `DocumentForm.tsx:285-300` builds `draftData` and `buildLinePayload()`
+     * (`DocumentForm.tsx:179-199`) builds each line; `useDraftAutoSave.ts:158`
+     * merges `draft_id` and POSTs the result. This pins that exact shape so the
+     * request contract cannot drift away from the only caller.
+     *
+     * Note `line_total` / `price_entry_mode` / `discount_percent` /
+     * `discount_amount`: the editor sends them, the persistence service reads
+     * none of them, and the request deliberately declares no rules for them —
+     * they must be ACCEPTED and dropped, never rejected.
+     */
+    public function test_the_editors_exact_auto_save_payload_is_accepted(): void
+    {
+        $response = $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => null,
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'notes' => null,
+                'document_date' => now()->format('Y-m-d'),
+                'due_date' => null,
+                'lines' => [
+                    [
+                        // Client-minted id — DocumentLineEditor.tsx:328.
+                        'id' => 'line-1756000000000-a1b2c3d4e',
+                        'product_id' => $this->product->id,
+                        'quantity' => '2.0000',
+                        'unit_price' => '10.500',
+                        'line_total' => '21.000',
+                        'price_entry_mode' => 'unit',
+                        'discount_percent' => null,
+                        'discount_amount' => null,
+                        'tax_rate' => '19.00',
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonPath('line_count', 1);
+    }
+
+    /**
+     * Guard rail for the rule above: a client-minted line id is NOT a uuid, and
+     * tightening `lines.*.id` to `uuid` would 422 every auto-save of a line the
+     * operator just added.
+     */
+    public function test_a_client_minted_non_uuid_line_id_is_accepted(): void
+    {
+        $author = $this->authorizedUser();
+        $draft = $this->documentWithOneLine(DocumentStatus::Draft);
+
+        $this->actingAsUser($author)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $draft->id,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [
+                    [
+                        'id' => 'line-1756000000001-zz9yy8xx7',
+                        'product_id' => $this->product->id,
+                        'quantity' => '1',
+                        'unit_price' => '10',
+                    ],
+                ],
+            ])
+            ->assertStatus(200);
+    }
+
+    /**
+     * CHARACTERISATION — pre-existing defect, NOT fixed by this lane.
+     *
+     * This is the real mechanism by which `/documents/auto-save` authors a
+     * LINELESS draft in production, and the blast-radius review of this ticket
+     * is what surfaced it. It is recorded here so the behaviour is visible and
+     * so the fix, when it comes, has a test that must flip.
+     *
+     * The editor mints CLIENT ids (`line-<epoch>-<rand>`) for unsaved lines and
+     * never learns the server uuids back — the auto-save response carries only
+     * `draft_id` / `saved_at` / `line_count`. So on the SECOND auto-save of a
+     * new document, `DraftPersistenceService::updateDraftLines()`:
+     *   - diffs the server uuids against the client ids → every existing line
+     *     counts as removed, and is deleted;
+     *   - then, for each incoming line, sees `isset($lineData['id'])`, fails to
+     *     match it against any line, and adds NOTHING (the `else` arm that would
+     *     call `addLine()` is only reached when `id` is absent).
+     * Net: the draft is emptied and stays empty for the rest of the session.
+     *
+     * NOT repaired here: the repair is a contract decision between the editor
+     * and this endpoint (echo the server line ids back, or treat an unmatched id
+     * as a new line), and the second option churns a DraftLineRemoved +
+     * DraftLineAdded pair per line per keystroke through the fraud-detection
+     * event stream. That is a design call, not a clean guard.
+     *
+     * See docs/sessions/2026-08-23-p1-autosave-hardening-notes.md §Residual 1.
+     */
+    public function test_characterisation_client_minted_line_ids_empty_the_draft(): void
+    {
+        $author = $this->authorizedUser();
+        $draft = $this->documentWithOneLine(DocumentStatus::Draft);
+
+        $response = $this->actingAsUser($author)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $draft->id,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [
+                    [
+                        'id' => 'line-1756000000002-qq1ww2ee3',
+                        'product_id' => $this->product->id,
+                        'quantity' => '1',
+                        'unit_price' => '10',
+                    ],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+
+        // …and the response does not even report it. `line_count` reads
+        // `$document->lines->count()` off the relation collection that was
+        // loaded BEFORE the deletes, so the endpoint answers "1 line saved"
+        // while the database holds none. A second, smaller residual of the
+        // same review.
+        $response->assertJsonPath('line_count', 1);
+
+        $this->assertSame(
+            0,
+            DocumentLine::query()->where('document_id', $draft->id)->count(),
+            'Characterisation: the client-id line set neither matched nor was added, '
+            .'and the pre-existing server line was deleted. When this is fixed, this '
+            .'assertion must be inverted, not deleted.'
+        );
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────

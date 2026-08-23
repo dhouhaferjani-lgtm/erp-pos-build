@@ -40,6 +40,16 @@ use Illuminate\Validation\Rule;
  * through tenant+company-scoped lookups and persists NULL when the lookup misses
  * (api.document.012/013/043/044/045). Turning a miss into a 422 here would
  * relocate that decision and break the isolation tests that pin the null-write.
+ *
+ * NOT DECLARED AT ALL — `line_total`, `discount_percent`, `discount_amount`,
+ * `free_quantity`, `price_entry_mode`. The editor sends them (they are part of
+ * `buildLinePayload`, shared with the manual-submit payload) but
+ * `DraftPersistenceService` reads none of them: it recomputes `line_total`
+ * itself and ignores the rest. `validated()` therefore drops them, which is the
+ * right outcome. Declaring rules for a field this endpoint discards buys no
+ * safety and adds a way for a mid-typing value to start failing a keystroke
+ * auto-save. Their ceilings ARE enforced where they are persisted, by
+ * `CreateDocumentRequest` / `UpdateDocumentRequest`.
  */
 class AutoSaveDraftRequest extends FormRequest
 {
@@ -80,24 +90,29 @@ class AutoSaveDraftRequest extends FormRequest
 
             'lines' => ['sometimes', 'array'],
             'lines.*' => ['array'],
-            'lines.*.id' => ['nullable', 'uuid'],
+
+            // NOT `uuid`. The editor mints CLIENT-side ids for lines that have
+            // never been saved — `line-<epoch>-<rand>`
+            // (DocumentLineEditor.tsx:328) — and `DocumentForm.tsx:295` puts
+            // that id straight into the auto-save payload. A `uuid` rule here
+            // would 422 every keystroke auto-save of a line the operator just
+            // added. See the blast-radius note for the (separate, pre-existing)
+            // bug this id scheme causes downstream.
+            'lines.*.id' => ['nullable', 'string', 'max:64'],
+
             'lines.*.product_id' => ['nullable', 'uuid'],
             'lines.*.service_id' => ['nullable', 'uuid'],
             'lines.*.variant_id' => ['nullable', 'uuid'],
             'lines.*.description' => ['nullable', 'string', 'max:500'],
             'lines.*.notes' => ['nullable', 'string', 'max:1000'],
 
-            // Rule 19 decimal ceilings. The sign is left open (`-?`) because the
-            // draft grid is shared by credit notes and returns; the ceiling, not
-            // the sign, is what this rule exists to enforce.
+            // Rule 19 decimal ceilings on the two money/quantity columns this
+            // endpoint actually PERSISTS. The sign is left open (`-?`) because
+            // the draft grid is shared by credit notes and returns; the
+            // ceiling, not the sign, is what this rule exists to enforce.
             'lines.*.quantity' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
-            'lines.*.free_quantity' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,4})?$/'],
             'lines.*.unit_price' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
-            'lines.*.line_total' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
-            'lines.*.discount_amount' => ['nullable', 'numeric', 'regex:/^-?\d+(\.\d{1,3})?$/'],
-            'lines.*.discount_percent' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100', 'regex:/^\d+(\.\d{1,2})?$/'],
-            'lines.*.price_entry_mode' => ['nullable', 'string', 'max:20'],
         ];
     }
 
@@ -108,11 +123,7 @@ class AutoSaveDraftRequest extends FormRequest
     {
         return [
             'lines.*.quantity.regex' => 'Line quantity must have at most 4 decimal places',
-            'lines.*.free_quantity.regex' => 'Line free quantity must have at most 4 decimal places',
             'lines.*.unit_price.regex' => 'Line unit price must have at most 3 decimal places',
-            'lines.*.line_total.regex' => 'Line total must have at most 3 decimal places',
-            'lines.*.discount_amount.regex' => 'Line discount amount must have at most 3 decimal places',
-            'lines.*.discount_percent.regex' => 'Line discount percentage must have at most 2 decimal places',
             'lines.*.tax_rate.regex' => 'Line tax rate must have at most 2 decimal places',
         ];
     }
