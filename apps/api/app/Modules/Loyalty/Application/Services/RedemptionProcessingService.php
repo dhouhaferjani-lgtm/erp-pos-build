@@ -36,6 +36,19 @@ final readonly class RedemptionProcessingService
      */
     private const POINTS_SCALE = 3;
 
+    /** The redeem idempotency index — how PostgreSQL names it in a 23505. */
+    private const REDEEM_KEY_INDEX = 'loyalty_txn_redeem_key_unique';
+
+    /**
+     * How SQLite names the SAME violation: the column pair, never the index.
+     *
+     * @var list<string>
+     */
+    private const REDEEM_KEY_SQLITE_COLUMNS = [
+        'loyalty_transactions.enrollment_id',
+        'loyalty_transactions.redemption_key',
+    ];
+
     public function __construct(
         private EnrollmentRepositoryInterface $enrollmentRepository,
         private RewardRepositoryInterface $rewardRepository,
@@ -45,6 +58,21 @@ final readonly class RedemptionProcessingService
 
     /**
      * Redeem a reward for a member.
+     *
+     * ⚠ NO CALLER TODAY. `LoyaltyPOSController::redeem` refuses with 501
+     * LOYALTY_REDEMPTION_NOT_WIRED (treasury gate r1, F-2) because the client
+     * contract does not exist. Everything below is a hardened, tested capability
+     * waiting for a wiring lane — not a live path.
+     *
+     * Honest history (treasury gate r1, F-1): the double-spend this closes was
+     * never LIVE. `loyalty_transactions.created_at` is NOT NULL with no default
+     * while `Transaction::$timestamps` is false, so this method 500'd at insert
+     * on every call it has ever had; the unit suite hid that by mocking the
+     * transaction repository. The concurrency defect was real in the code and
+     * would have become reachable the moment that insert was fixed — which is
+     * what this lane does. So the risk class is "arming a dormant write path
+     * correctly", not "stopping an ongoing loss", and no historical points drift
+     * needs remediating.
      *
      * Concurrency contract (Session B lane Q-3):
      *  - the enrollment is loaded INSIDE the transaction under `FOR UPDATE`;
@@ -61,6 +89,14 @@ final readonly class RedemptionProcessingService
      * @param  string|null  $redemptionKey  Client/source-derived idempotency key.
      *                                      Replaying the same key returns the original
      *                                      transaction instead of redeeming again.
+     *                                      CAPABILITY-SHIPPED, NO CALLER (gate r1, F-3):
+     *                                      nothing sends one today, so in practice every
+     *                                      redemption is currently keyless and two keyless
+     *                                      redemptions both succeed by design (the index is
+     *                                      partial on `redemption_key IS NOT NULL`). The
+     *                                      wiring lane that lifts the controller gate must
+     *                                      also make the client send a per-attempt key,
+     *                                      otherwise this protection stays inert.
      *
      * @throws InvalidArgumentException if enrollment or reward not found
      * @throws EnrollmentNotActiveException if the enrollment is suspended or opted out
@@ -209,20 +245,46 @@ final readonly class RedemptionProcessingService
     /**
      * Did this QueryException come from the redeem idempotency index?
      *
-     * Same shape as EarningProcessingService::translateEarnDuplicate: match on
-     * SQLSTATE 23505 (PG unique violation) AND our own index name, so an
-     * unrelated unique violation is never swallowed as an idempotent replay.
-     * SQLite reports 23000 for the same class of violation and names the index
-     * in the message, which keeps the phpunit engine honest too.
+     * DRIVER-AWARE, because the two engines report a partial-unique violation
+     * completely differently (verified against both, 2026-08-23):
      *
-     * @internal Exposed for unit testing only; reached via redeemReward().
+     *   PG     SQLSTATE 23505 — 'duplicate key value violates unique
+     *          constraint "loyalty_txn_redeem_key_unique"'   → names the INDEX.
+     *   SQLite SQLSTATE 23000 — 'UNIQUE constraint failed:
+     *          loyalty_transactions.enrollment_id,
+     *          loyalty_transactions.redemption_key'          → names the COLUMN
+     *          PAIR and NEVER the index.
+     *
+     * An earlier revision matched the index name on both and its SQLite arm was
+     * therefore dead code (treasury gate r1, F-4). Each arm now matches what its
+     * engine actually emits, so the phpunit :memory: run exercises the same
+     * branch production does. Both arms stay narrow enough that an unrelated
+     * unique violation is never swallowed as an idempotent replay: the earn
+     * index reports `…enrollment_id, …source_type, …source_id` on SQLite, which
+     * fails the redemption_key check.
+     *
+     * @internal Exposed for direct unit testing; reached via redeemReward().
      */
     public function isRedemptionKeyDuplicate(QueryException $e): bool
     {
         $sqlState = $e->errorInfo[0] ?? null;
+        $message = $e->getMessage();
 
-        return ($sqlState === '23505' || $sqlState === '23000')
-            && str_contains($e->getMessage(), 'loyalty_txn_redeem_key_unique');
+        if ($sqlState === '23505') {
+            return str_contains($message, self::REDEEM_KEY_INDEX);
+        }
+
+        if ($sqlState === '23000' && str_contains($message, 'UNIQUE constraint failed')) {
+            foreach (self::REDEEM_KEY_SQLITE_COLUMNS as $column) {
+                if (! str_contains($message, $column)) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
     /**

@@ -15,7 +15,9 @@ use App\Modules\Loyalty\Domain\Enums\ProgramStatus;
 use App\Modules\Loyalty\Domain\Enums\RewardType;
 use App\Modules\Loyalty\Domain\Enums\TransactionType;
 use App\Modules\Loyalty\Domain\Repositories\EnrollmentRepositoryInterface;
+use App\Modules\Loyalty\Domain\Repositories\TransactionRepositoryInterface;
 use App\Modules\Loyalty\Infrastructure\Repositories\EloquentEnrollmentRepository;
+use App\Modules\Loyalty\Infrastructure\Repositories\EloquentTransactionRepository;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
@@ -32,9 +34,19 @@ use Tests\TestCase;
  * unlocked absolute-value balance write: the enrollment was read OUTSIDE the
  * transaction and the new balance written as `bcsub($staleBalance, $cost)`,
  * with no lock, no EnrollmentStatus guard and no redemption idempotency key.
- * Two racing redemptions therefore each computed `100 - 10 = 90` from the same
+ * Two racing redemptions would each have computed `100 - 10 = 90` from the same
  * stale snapshot — two rewards handed out, one debit taken, and both ledger
  * rows internally consistent so nothing surfaced the drift.
+ *
+ * WOULD have: the defect was never LIVE (treasury gate r1, F-1). This method
+ * 500'd at insert on every call it ever received — `loyalty_transactions
+ * .created_at` is NOT NULL with no default and `Transaction::$timestamps` is
+ * false — so no production redemption has ever committed and there is no
+ * historical drift to remediate. These tests pin the behaviour of a path this
+ * lane ARMS rather than one it repairs, and the endpoint in front of it stays
+ * refused (LoyaltyPOSControllerTest::
+ * test_redeem_endpoint_refuses_until_the_client_contract_is_wired) until the
+ * client contract exists.
  *
  * @group loyalty
  */
@@ -288,6 +300,51 @@ final class RedemptionDoubleSpendTest extends TestCase
     }
 
     /**
+     * The 23505/23000 RECOVERY branch, exercised for real on both engines
+     * (treasury gate r1, F-4: it was previously untested on any engine).
+     *
+     * Simulates the one sequence that reaches it: the pre-check looks, finds
+     * nothing, and a concurrent redemption commits the same key before this
+     * call's INSERT lands. The winner row is pre-committed and the transaction
+     * repository is decorated so ONLY the pre-check misses it — the index, the
+     * driver's error, the classifier and the recovery lookup are all real.
+     */
+    public function test_a_lost_idempotency_race_returns_the_winners_transaction(): void
+    {
+        [$enrollment, $reward] = $this->scaffold('25.000', EnrollmentStatus::Active, '10.000');
+
+        $key = 'pos-redeem-'.Str::uuid()->toString();
+
+        // The concurrent winner, already committed.
+        $winner = new Transaction([
+            'enrollment_id' => $enrollment->id,
+            'transaction_type' => TransactionType::Redeem,
+            'amount' => '-10.000',
+            'balance_before' => '25.000',
+            'balance_after' => '15.000',
+            'reward_id' => $reward->id,
+            'redemption_key' => $key,
+            'description' => 'winner of the race',
+            'metadata' => [],
+            'created_at' => now(),
+        ]);
+        $winner->save();
+
+        $this->app->instance(
+            TransactionRepositoryInterface::class,
+            new RaceLosingTransactionRepository(new EloquentTransactionRepository),
+        );
+
+        $result = $this->service()->redeemReward($enrollment->id, $reward->id, null, $key);
+
+        // The loser gets the winner's row back — idempotent, not a 500.
+        self::assertSame($winner->id, $result->id);
+        self::assertSame(1, $this->redeemRowCount($enrollment->id), 'the loser must not add a row');
+        // The loser's conditional debit rolled back with its transaction.
+        self::assertSame(0, bccomp($this->balanceOf($enrollment->id), '25', 3));
+    }
+
+    /**
      * The index is partial on `redemption_key IS NOT NULL`: legacy / keyless
      * redemptions must keep working and must not collide with each other.
      */
@@ -300,6 +357,76 @@ final class RedemptionDoubleSpendTest extends TestCase
 
         self::assertSame(2, $this->redeemRowCount($enrollment->id));
         self::assertSame(0, bccomp($this->balanceOf($enrollment->id), '5', 3));
+    }
+}
+
+/**
+ * Test double that makes ONLY the idempotency pre-check miss a row that is
+ * already committed — the pre-condition for reaching the 23505/23000 recovery
+ * branch. Every other call, including the post-violation recovery lookup,
+ * delegates to the real repository.
+ *
+ * @internal test-only
+ */
+final class RaceLosingTransactionRepository implements TransactionRepositoryInterface
+{
+    private int $keyLookups = 0;
+
+    public function __construct(private readonly TransactionRepositoryInterface $inner) {}
+
+    public function findRedeemByIdempotencyKey(string $enrollmentId, string $redemptionKey): ?Transaction
+    {
+        // Call 1 is the service's pre-check: the winner has "not committed yet".
+        // Call 2 is the recovery lookup after the index fires: it sees the truth.
+        if ($this->keyLookups++ === 0) {
+            return null;
+        }
+
+        return $this->inner->findRedeemByIdempotencyKey($enrollmentId, $redemptionKey);
+    }
+
+    public function findById(string $id): ?Transaction
+    {
+        return $this->inner->findById($id);
+    }
+
+    /**
+     * @return Collection<int, Transaction>
+     */
+    public function findByEnrollment(string $enrollmentId): Collection
+    {
+        return $this->inner->findByEnrollment($enrollmentId);
+    }
+
+    /**
+     * @return Collection<int, Transaction>
+     */
+    public function findByEnrollmentAndType(string $enrollmentId, TransactionType $type): Collection
+    {
+        return $this->inner->findByEnrollmentAndType($enrollmentId, $type);
+    }
+
+    /**
+     * @return Collection<int, Transaction>
+     */
+    public function findByOrder(string $orderId): Collection
+    {
+        return $this->inner->findByOrder($orderId);
+    }
+
+    public function findBySourceDocument(string $sourceType, string $sourceId): ?Transaction
+    {
+        return $this->inner->findBySourceDocument($sourceType, $sourceId);
+    }
+
+    public function save(Transaction $transaction): Transaction
+    {
+        return $this->inner->save($transaction);
+    }
+
+    public function delete(string $id): bool
+    {
+        return $this->inner->delete($id);
     }
 }
 

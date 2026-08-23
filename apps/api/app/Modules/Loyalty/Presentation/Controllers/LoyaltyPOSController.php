@@ -10,7 +10,6 @@ use App\Modules\Loyalty\Application\DTOs\LoyaltyMemberData;
 use App\Modules\Loyalty\Application\DTOs\RewardData;
 use App\Modules\Loyalty\Application\Services\EarningProcessingService;
 use App\Modules\Loyalty\Application\Services\PosLoyaltyBalanceService;
-use App\Modules\Loyalty\Application\Services\RedemptionProcessingService;
 use App\Modules\Loyalty\Domain\Entities\Enrollment;
 use App\Modules\Loyalty\Domain\Entities\LoyaltyMember;
 use App\Modules\Loyalty\Domain\Entities\Reward;
@@ -32,7 +31,6 @@ class LoyaltyPOSController extends Controller
     public function __construct(
         private readonly CompanyContext $companyContext,
         private readonly EarningProcessingService $earningService,
-        private readonly RedemptionProcessingService $redemptionService,
         private readonly PosLoyaltyBalanceService $posBalanceService,
     ) {}
 
@@ -167,17 +165,54 @@ class LoyaltyPOSController extends Controller
     }
 
     /**
-     * Redeem a reward. Deducts points and returns the discount.
+     * Redeem a reward.
+     *
+     * ⛔ EXPLICITLY REFUSED — 501 LOYALTY_REDEMPTION_NOT_WIRED.
+     *
+     * Session B lane Q-3, treasury gate r1 finding F-2
+     * (docs/superpowers/reviews/2026-08-23-sb-q3-loyalty-gate-r1.md).
+     *
+     * This endpoint has never worked: `loyalty_transactions.created_at` is NOT
+     * NULL with no default while `Transaction::$timestamps` is false, so every
+     * call 500'd at insert. Lane Q-3 hardened `RedemptionProcessingService`
+     * (locked read, conditional debit, status guard, idempotency key) and fixed
+     * that insert — which would have RESURRECTED the endpoint. That is worse
+     * than leaving it dead, because the client contract underneath it does not
+     * exist:
+     *
+     *   1. The response DTO (`TransactionData`) carries no `reward_value` and
+     *      no `points_spent`. The sole client hand-writes
+     *      `Promise<{ id, points_spent, reward_value }>` at
+     *      apps/web/src/features/pos/api/loyaltyApi.ts:97-105 — a fabricated
+     *      type (rule 7 violation) whose value fields are `undefined` at runtime.
+     *   2. The only MOUNTED consumer,
+     *      apps/web/src/features/pos/organisms/AdvancedPaymentsModal/AdvancedPaymentsModal.tsx:725-728,
+     *      discards the discount outright (`void rewardValue`). The other call
+     *      site (TransactionCart.tsx:199-203) is gated on an
+     *      `onLoyaltyRewardRedeemed` prop that no caller ever supplies.
+     *   3. No listener subscribes to `RewardRedeemedV2` — grep finds the
+     *      dispatch site and nothing else — so nothing applies a discount,
+     *      posts GL, or reserves reward quantity downstream.
+     *
+     * A cashier tap would therefore debit real points, write a ledger row, show
+     * "redeemed" and deliver nothing. Silent points loss.
+     *
+     * TO LIFT THIS GATE a wiring lane must ship, together: a redemption
+     * response DTO that carries the applied value, generated types (`php artisan
+     * typescript:transform`, rule 7), a consumer that actually applies the
+     * discount to the cart, and — if the reward is to affect stock or GL — a
+     * `RewardRedeemedV2` listener. Restore this method by re-injecting
+     * `RedemptionProcessingService` and calling `redeemReward(...)` with the
+     * validated `idempotency_key`; the service is already hardened and covered
+     * (tests/Feature/Loyalty/RedemptionDoubleSpendTest.php).
      */
     public function redeem(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'enrollment_id' => ['required', 'string', 'uuid'],
             'reward_id' => ['required', 'string', 'uuid'],
-            // Optional client-supplied idempotency key. A double-tapped "Redeem"
-            // button or a POS retry after a timeout replays the same key and gets
-            // the ORIGINAL transaction back instead of a second debit-less reward.
-            // Nullable so existing clients are unaffected.
+            // Accepted and validated so the wire shape a wiring lane must honour
+            // stays visible and stable. INERT while the gate below stands.
             'idempotency_key' => ['nullable', 'string', 'max:64'],
         ]);
 
@@ -189,6 +224,12 @@ class LoyaltyPOSController extends Controller
         // the service writes redemption transactions against foreign program
         // / member rows (CRITICAL Finding B from
         // 2026-05-04-loyalty-cross-cluster-blind-spots.md).
+        //
+        // These stay AHEAD of the not-wired refusal below: the tenant-scoping
+        // contract (and the test that pins it,
+        // PosStabilizationTenantIsolationTest::test_loyalty_pos_redeem_refuses_cross_tenant_enrollment_or_reward)
+        // must not silently become "everything 501s" — a cross-tenant probe
+        // still gets 404 and learns nothing about foreign rows.
         $company = $this->companyContext->requireCompany();
         $enrollmentExists = Enrollment::query()
             ->where('id', $validated['enrollment_id'])
@@ -205,22 +246,19 @@ class LoyaltyPOSController extends Controller
             return response()->json(['error' => ['message' => 'Reward not found']], 404);
         }
 
-        try {
-            $transaction = $this->redemptionService->redeemReward(
-                $validated['enrollment_id'],
-                $validated['reward_id'],
-                'POS reward redemption',
-                $validated['idempotency_key'] ?? null,
-            );
-
-            return response()->json([
-                'data' => $transaction,
-            ]);
-        } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'error' => ['message' => $e->getMessage()],
-            ], 422);
-        }
+        // ⛔ The gate. Nothing below this line may debit points until the client
+        // contract described in the method docblock exists. Deliberately NOT a
+        // feature flag: there is no configuration under which the current
+        // client can consume a redemption, so an operator must not be able to
+        // switch this on without the wiring lane.
+        return response()->json([
+            'error' => [
+                'code' => 'LOYALTY_REDEMPTION_NOT_WIRED',
+                'message' => 'Reward redemption is not available: the POS redemption contract '
+                    .'(response value + discount application) is not wired yet. Redeeming here '
+                    .'would debit points without delivering a reward.',
+            ],
+        ], 501);
     }
 
     /**

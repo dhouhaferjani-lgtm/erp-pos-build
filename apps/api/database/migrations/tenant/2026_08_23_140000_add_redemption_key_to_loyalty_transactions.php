@@ -15,9 +15,17 @@ return new class extends Migration
      * The earn side was hardened in July with `loyalty_txn_earn_source_unique`
      * (2026_07_06_100000_add_source_columns_to_loyalty_transactions.php:89-93)
      * because two queued earn paths could race the same receipt into a double
-     * credit. The redeem side never got the equivalent backstop: a cashier
-     * double-tapping "Redeem reward", or a POS retry after a timeout, wrote two
-     * `redeem` rows against one debit. This adds the mirror-image key + index.
+     * credit. The redeem side never got the equivalent backstop. This adds the
+     * mirror-image key + index.
+     *
+     * Scope, stated honestly (treasury gate r1, F-1/F-3): no redeem row has
+     * ever been written in production — the service 500'd at insert on every
+     * call (created_at NOT NULL, no default) — so this index is not cleaning up
+     * after a live double-spend and has nothing to reconcile. It is also
+     * CAPABILITY-ONLY today: nothing sends a `redemption_key`, so every existing
+     * and near-future row has NULL here and falls outside the partial predicate.
+     * The index starts protecting real traffic only once a wiring lane lifts the
+     * 501 gate on `LoyaltyPOSController::redeem` AND makes the client send a key.
      *
      * MIGRATION-BEARING — pre-flight analysis
      * ---------------------------------------
@@ -49,6 +57,12 @@ return new class extends Migration
      */
     private const INDEX = 'loyalty_txn_redeem_key_unique';
 
+    /**
+     * Set when up() actually created the column, so down() can be the exact
+     * inverse of what up() did (treasury gate r1, F-6).
+     */
+    private bool $createdColumn = false;
+
     public function up(): void
     {
         if (Schema::hasColumn('loyalty_transactions', 'redemption_key')) {
@@ -77,6 +91,7 @@ return new class extends Migration
                 // and are excluded from the partial unique index.
                 $table->string('redemption_key', 64)->nullable();
             });
+            $this->createdColumn = true;
         }
 
         DB::statement(
@@ -86,14 +101,33 @@ return new class extends Migration
         );
     }
 
+    /**
+     * Inverse of up(), and ONLY of up() (treasury gate r1, F-6).
+     *
+     * The index is always dropped: this migration is the only thing that
+     * creates it. The COLUMN is dropped only when this same process created it
+     * — i.e. the first-run path above. Two reasons it is not dropped
+     * unconditionally:
+     *
+     *  - up()'s census path deliberately does NOT create the column (it found
+     *    one already there). Dropping it on the way back down would destroy a
+     *    column this migration never owned, along with whatever keys it holds.
+     *  - A real `migrate:rollback` runs down() on a FRESH instance, so
+     *    `$createdColumn` is false there and the column survives. That is the
+     *    intended outcome: an additive nullable column with no backfill is inert
+     *    for every reader that does not know about it, whereas dropping it is
+     *    irreversible. The flag therefore only fires for a same-process
+     *    up()/down() round trip (migration tests, `migrate:refresh` in one run).
+     */
     public function down(): void
     {
         DB::statement('DROP INDEX IF EXISTS '.self::INDEX);
 
-        if (Schema::hasColumn('loyalty_transactions', 'redemption_key')) {
+        if ($this->createdColumn && Schema::hasColumn('loyalty_transactions', 'redemption_key')) {
             Schema::table('loyalty_transactions', function (Blueprint $table): void {
                 $table->dropColumn('redemption_key');
             });
+            $this->createdColumn = false;
         }
     }
 };

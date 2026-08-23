@@ -98,8 +98,16 @@ final class RedemptionProcessingServiceTest extends TestCase
         $this->enrollmentRepository->expects($this->never())->method('findById');
         $this->enrollmentRepository->expects($this->never())->method('save');
 
+        // F-8: pin the debit arguments — the enrollment being debited, the exact
+        // points string, and the points scale. A debit called with the wrong id,
+        // a rounded amount or a currency-resolved scale must fail here.
         $this->enrollmentRepository->expects($this->once())
             ->method('debitForRedemption')
+            ->with(
+                $this->identicalTo($enrollmentId),
+                $this->callback(fn (string $points): bool => bccomp($points, '100', 3) === 0),
+                $this->identicalTo(3),
+            )
             ->willReturn(true);
 
         $this->rewardRepository->expects($this->once())
@@ -246,6 +254,11 @@ final class RedemptionProcessingServiceTest extends TestCase
 
         $this->enrollmentRepository->expects($this->once())
             ->method('debitForRedemption')
+            ->with(
+                $this->identicalTo($enrollmentId),
+                $this->callback(fn (string $points): bool => bccomp($points, '100', 3) === 0),
+                $this->identicalTo(3),
+            )
             ->willReturn(false);
 
         // Nothing may be written to the ledger on a refusal.
