@@ -253,6 +253,50 @@ class PinDataEndpointTest extends TestCase
         $this->assertNotContains('Fired Manager', $names);
     }
 
+    /**
+     * Gate r1 F-8 — the belt is `status = Active`, NOT `status != Inactive`,
+     * and that is deliberate. `pending_verification` is written at exactly one
+     * place (UserController::store) for an INVITED user who has not yet
+     * accepted the invitation or set a password; a PIN-only cashier (no email)
+     * is flipped to Active in the same transaction, so the till-operating
+     * population is Active by construction. Login refuses every non-Active
+     * account (AuthController -> User::isActive()), so such a user can never
+     * hold a session — but the PIN surfaces do NOT require the approver to
+     * have one. Under a `!= Inactive` belt, an identity nobody has yet proven
+     * control of could authorize discounts, returns and variance closes.
+     * Fail-closed is the correct reading; this test pins it.
+     */
+    public function test_pin_data_excludes_pending_verification_users(): void
+    {
+        $invitedManager = User::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Invited Manager',
+            'email' => 'invited-manager@pos-test.local',
+            'password' => 'password123',
+            'status' => UserStatus::PendingVerification,
+            'pos_pin' => Hash::make('3131'),
+            'can_discount' => true,
+            'max_discount_percent' => 80.0,
+        ]);
+        $invitedManager->assignRole('manager');
+
+        UserCompanyMembership::create([
+            'user_id' => $invitedManager->id,
+            'company_id' => $this->company->id,
+            'role' => 'manager',
+            'status' => MembershipStatus::Active,
+        ]);
+
+        $response = $this->actingAs($this->managerUser)
+            ->getJson('/api/v1/pos/auth/pin-data');
+
+        $response->assertOk()
+            ->assertJsonCount(2, 'data');
+
+        $names = array_column($response->json('data'), 'name');
+        $this->assertNotContains('Invited Manager', $names);
+    }
+
     public function test_pin_data_excludes_same_tenant_pin_users_without_company_membership(): void
     {
         $outsideCompanyUser = User::create([

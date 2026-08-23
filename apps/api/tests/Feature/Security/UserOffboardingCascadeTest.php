@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Feature\Identity\UserManagement;
+namespace Tests\Feature\Security;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Enums\CompanyStatus;
@@ -226,6 +226,22 @@ final class UserOffboardingCascadeTest extends TestCase
             ->postJson("/api/v1/users/{$this->targetUser->id}/deactivate")
             ->assertOk();
 
+        // INTERMEDIATE state — without this the test is vacuous: if the cascade
+        // never ran, the rows are already Active with NULL stamps and the
+        // end-state assertions below pass against broken code (gate r1 F-4).
+        $revokedMidCycle = UserCompanyMembership::query()
+            ->where('user_id', $this->targetUser->id)
+            ->get();
+
+        $this->assertCount(2, $revokedMidCycle);
+        foreach ($revokedMidCycle as $membership) {
+            $this->assertSame(MembershipStatus::Revoked, $membership->status);
+            $this->assertSame(
+                MembershipRevocationReason::UserDeactivated,
+                $membership->revoked_reason
+            );
+        }
+
         $this->actingAs($this->adminUser, 'sanctum')
             ->withHeader('X-Company-Id', $this->companyA->id)
             ->postJson("/api/v1/users/{$this->targetUser->id}/activate")
@@ -267,19 +283,22 @@ final class UserOffboardingCascadeTest extends TestCase
             ->postJson("/api/v1/users/{$this->targetUser->id}/deactivate")
             ->assertOk();
 
+        // INTERMEDIATE state — the two rows must be Revoked for DIFFERENT
+        // reasons at this point. Without this the end-state assertions pass
+        // against a missing cascade (companyA simply never left Active).
+        $this->assertSame(
+            MembershipRevocationReason::UserDeactivated,
+            $this->membershipFor($this->companyA)->revoked_reason
+        );
+        $this->assertNull($this->membershipFor($this->companyB)->revoked_reason);
+
         $this->actingAs($this->adminUser, 'sanctum')
             ->withHeader('X-Company-Id', $this->companyA->id)
             ->postJson("/api/v1/users/{$this->targetUser->id}/activate")
             ->assertOk();
 
-        $restored = UserCompanyMembership::query()
-            ->where('user_id', $this->targetUser->id)
-            ->where('company_id', $this->companyA->id)
-            ->firstOrFail();
-        $stillRevoked = UserCompanyMembership::query()
-            ->where('user_id', $this->targetUser->id)
-            ->where('company_id', $this->companyB->id)
-            ->firstOrFail();
+        $restored = $this->membershipFor($this->companyA);
+        $stillRevoked = $this->membershipFor($this->companyB);
 
         $this->assertSame(MembershipStatus::Active, $restored->status);
         $this->assertSame(MembershipStatus::Revoked, $stillRevoked->status);
@@ -304,12 +323,36 @@ final class UserOffboardingCascadeTest extends TestCase
             ->postJson("/api/v1/users/{$this->targetUser->id}/deactivate")
             ->assertOk();
 
-        $pending = UserCompanyMembership::query()
-            ->where('user_id', $this->targetUser->id)
-            ->where('company_id', $this->companyB->id)
-            ->firstOrFail();
+        // The sibling ACTIVE row must have cycled — this is what makes the
+        // Pending assertion meaningful rather than vacuous (gate r1 F-4): the
+        // cascade demonstrably ran on this user, and skipped only the
+        // non-Active row.
+        $cycled = $this->membershipFor($this->companyA);
+        $this->assertSame(MembershipStatus::Revoked, $cycled->status);
+        $this->assertSame(MembershipRevocationReason::UserDeactivated, $cycled->revoked_reason);
 
+        $pending = $this->membershipFor($this->companyB);
         $this->assertSame(MembershipStatus::Pending, $pending->status);
         $this->assertNull($pending->revoked_at);
+        $this->assertNull($pending->revoked_reason);
+
+        $this->actingAs($this->adminUser, 'sanctum')
+            ->withHeader('X-Company-Id', $this->companyA->id)
+            ->postJson("/api/v1/users/{$this->targetUser->id}/activate")
+            ->assertOk();
+
+        // …and through the reverse edge: the Active row comes back, the Pending
+        // row is NOT flattened into Active. That losslessness is the whole
+        // reason the sweep is Active-only.
+        $this->assertSame(MembershipStatus::Active, $this->membershipFor($this->companyA)->status);
+        $this->assertSame(MembershipStatus::Pending, $this->membershipFor($this->companyB)->status);
+    }
+
+    private function membershipFor(Company $company): UserCompanyMembership
+    {
+        return UserCompanyMembership::query()
+            ->where('user_id', $this->targetUser->id)
+            ->where('company_id', $company->id)
+            ->firstOrFail();
     }
 }

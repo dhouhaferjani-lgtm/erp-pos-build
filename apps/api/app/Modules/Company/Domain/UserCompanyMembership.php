@@ -62,9 +62,14 @@ class UserCompanyMembership extends Model
         'invited_at',
         'accepted_at',
         'status',
-        'revoked_at',
-        'revoked_by',
-        'revoked_reason',
+        // DELIBERATELY NOT FILLABLE: revoked_at / revoked_by / revoked_reason.
+        // `revoked_reason = user_deactivated` is what makes a revocation
+        // auto-reversible by UserController::activate(). It must only ever be
+        // written by the offboarding cascade, which uses query-builder
+        // update() (unaffected by $fillable). Adding these here would let the
+        // first membership-management endpoint that mass-assigns validated
+        // input stamp a DELIBERATE revocation as cascade-owned and have
+        // reactivation silently undo it — defeating the fail-closed rule.
     ];
 
     /**
