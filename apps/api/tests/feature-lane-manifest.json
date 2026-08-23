@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1142,
+  "gated_ceiling": 1145,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -816,8 +816,8 @@
     },
     "Import": {
       "lane": "feature-lane-data-console/Import",
-      "classes": 16,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 17,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 16 -> 17 (2026-08-23, Session B): ImportReExecutionGuardTest — lane fix/sb-q1-import-reexecution-guard (Q-1, import execute re-arm closed: typed 422 precondition, Pending-before-dispatch, worker conditional claim, is_imported row filter), authored 649514944; imports gate r1 ACCEPT, record docs/superpowers/reviews/2026-08-23-sb-q1-import-gate-r1.md. Runs BY PATH on sqlite and PG in-lane; not in any live --filter allowlist, executes nowhere until the parked lane's gate flips."
     },
     "Income": {
       "lane": "feature-lane-fiscal-finance/Income",
@@ -881,8 +881,8 @@
     },
     "POS": {
       "lane": "feature-lane-pos/POS",
-      "classes": 147,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational the moment the gate is flipped. DELIBERATE RAISE 143 -> 147 (2026-08-23, merge reconciliation of two concurrent raises): (1)+(2) TerminalLocationPosEnabledTest + Migrations/BackfillLocationPosEnabledB3MigrationTest — lane fix/b3-pos-enabled-claim-enforcement (owner ruling B-3: server-side locations.pos_enabled enforcement at terminal acquisition + evidence-based backfill), merged 457457911; gate records docs/superpowers/reviews/2026-08-23-b3-pos-enabled-gate-r1.md + -r2.md; both classes run BY PATH on sqlite and PostgreSQL in-lane. (3) ReceiptReturnUnbalancedGlNarrowingTest — lane fix/r10-catch-narrowing (R-10), authored 1b459e876, merged d0e8b3cd9; gate record docs/superpowers/reviews/2026-08-23-r10-catch-narrowing-gate-r1.md. (4) CashCountDispatchGuardTest — lane fix/r8-shift-variance-queue (R-8; the class is the gate-added guard on the enqueue leg), authored 7db5fe467, merged 62fefcf16; gate records ...r8-sv-queue-gate-r1/r2/r3.md. (3)+(4) were a merge-discipline catch-up: both landed on dev without the accompanying raise, which is why dev's checker was red. None of the four is named in any live --filter allowlist (grep-verified), so all four genuinely execute nowhere until the parked lane's gate is flipped."
+      "classes": 149,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational the moment the gate is flipped. DELIBERATE RAISE 147 -> 149 (2026-08-23, Session B merge-discipline catch-up, ground-truth attributed): ZReportRefundVatDisclosureTest + ZReportVatDeclarationReconciliationTest — lane fix/b6ii-xz-refund-vat-display (Session A, B-6ii X/Z refund-VAT), authored b2ee12f8d, merged ce59503a9 without the accompanying raise; gate records docs/superpowers/reviews/2026-08-23-b6ii-xz-gate-r2.md. Neither is in any live --filter allowlist (both execute nowhere until the parked lane's gate flips). Prior raise history: DELIBERATE RAISE 143 -> 147 (2026-08-23, merge reconciliation of two concurrent raises): (1)+(2) TerminalLocationPosEnabledTest + Migrations/BackfillLocationPosEnabledB3MigrationTest — lane fix/b3-pos-enabled-claim-enforcement (owner ruling B-3: server-side locations.pos_enabled enforcement at terminal acquisition + evidence-based backfill), merged 457457911; gate records docs/superpowers/reviews/2026-08-23-b3-pos-enabled-gate-r1.md + -r2.md; both classes run BY PATH on sqlite and PostgreSQL in-lane. (3) ReceiptReturnUnbalancedGlNarrowingTest — lane fix/r10-catch-narrowing (R-10), authored 1b459e876, merged d0e8b3cd9; gate record docs/superpowers/reviews/2026-08-23-r10-catch-narrowing-gate-r1.md. (4) CashCountDispatchGuardTest — lane fix/r8-shift-variance-queue (R-8; the class is the gate-added guard on the enqueue leg), authored 7db5fe467, merged 62fefcf16; gate records ...r8-sv-queue-gate-r1/r2/r3.md. (3)+(4) were a merge-discipline catch-up: both landed on dev without the accompanying raise, which is why dev's checker was red. None of the four is named in any live --filter allowlist (grep-verified), so all four genuinely execute nowhere until the parked lane's gate is flipped."
     },
     "Partner": {
       "lane": "feature-lane-inventory/Partner",
