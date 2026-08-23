@@ -15,6 +15,7 @@ use App\Modules\Document\Domain\Enums\DocumentStatus;
 use App\Modules\Document\Domain\Enums\DocumentType;
 use App\Modules\Document\Domain\Enums\FiscalCategory;
 use App\Modules\Document\Domain\Enums\FiscalStatus;
+use App\Modules\Document\Domain\Services\DraftPersistenceService;
 use App\Modules\Identity\Domain\Enums\UserStatus;
 use App\Modules\Identity\Domain\User;
 use App\Modules\Partner\Domain\Partner;
@@ -56,6 +57,8 @@ final class AutoSaveRouteHardeningTest extends TestCase
 
     private Partner $customer;
 
+    private Partner $supplier;
+
     private Product $product;
 
     protected function setUp(): void
@@ -91,6 +94,13 @@ final class AutoSaveRouteHardeningTest extends TestCase
             'type' => 'customer',
         ]);
 
+        $this->supplier = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'name' => 'Autosave Supplier',
+            'type' => 'supplier',
+        ]);
+
         $this->product = Product::factory()->create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -123,9 +133,26 @@ final class AutoSaveRouteHardeningTest extends TestCase
         );
     }
 
+    /**
+     * Gate F4 / AUTHZ: pin the sequence VALUE, not the absence of a row.
+     *
+     * The first version asserted `count() === 0`, which held only because
+     * nothing else in the test created an invoice — it never read
+     * `last_number`, so it would have gone green for the wrong reason the
+     * moment sequence rows are pre-seeded at company creation. The row is now
+     * seeded at a known value and the assertion is that the value is untouched.
+     */
     public function test_auto_save_without_permission_does_not_burn_a_document_number(): void
     {
         $viewer = $this->userWithAbilities(['documents.view']);
+
+        $sequence = DocumentSequence::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::Invoice->value,
+            'year' => (int) date('Y'),
+            'last_number' => 7,
+        ]);
 
         $this->actingAsUser($viewer)
             ->postJson('/api/v1/documents/auto-save', [
@@ -138,13 +165,154 @@ final class AutoSaveRouteHardeningTest extends TestCase
             ->assertStatus(403);
 
         $this->assertSame(
-            0,
-            DocumentSequence::query()
-                ->where('company_id', $this->company->id)
-                ->where('type', DocumentType::Invoice->value)
-                ->count(),
-            'An unauthorized auto-save must not allocate a number out of the invoice sequence.'
+            7,
+            (int) $sequence->refresh()->last_number,
+            'An unauthorized auto-save must not advance last_number on the invoice sequence.'
         );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 1b. Authorization — the per-TYPE create ability (gate P1-2 / P2-3)
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Gate P2-3. `documents.update` alone was a universal document-authoring
+     * bypass around the entire per-type `*.create` catalogue: the gate probe
+     * authored `PO-2026-0001` with a principal holding no `purchase-orders.*`
+     * permission at all, burning a number out of the PO sequence.
+     */
+    public function test_auto_save_refuses_a_type_the_caller_cannot_create(): void
+    {
+        // The seeded `cashier` shape: document-write, invoices.create, but no
+        // purchase-orders.* at all (RolesAndPermissionsSeeder.php:646-678).
+        $cashier = $this->userWithAbilities([
+            'documents.view', 'documents.update', 'quotes.create', 'invoices.create',
+        ]);
+
+        $sequence = DocumentSequence::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'type' => DocumentType::PurchaseOrder->value,
+            'year' => (int) date('Y'),
+            'last_number' => 3,
+        ]);
+
+        $this->actingAsUser($cashier)
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::PurchaseOrder->value,
+                'partner_id' => $this->supplier->id,
+                'lines' => [
+                    ['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 100],
+                ],
+            ])
+            ->assertStatus(403);
+
+        $this->assertSame(0, Document::query()->count());
+        $this->assertSame(
+            3,
+            (int) $sequence->refresh()->last_number,
+            'A caller without purchase-orders.create must not burn a PO number.'
+        );
+    }
+
+    public function test_auto_save_allows_a_type_the_caller_can_create(): void
+    {
+        $buyer = $this->userWithAbilities([
+            'documents.view', 'documents.update', 'purchase-orders.create',
+        ]);
+
+        $this->actingAsUser($buyer)
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::PurchaseOrder->value,
+                'partner_id' => $this->supplier->id,
+                'lines' => [
+                    ['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 100],
+                ],
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame(1, Document::query()->count());
+    }
+
+    /**
+     * Gate P2-3, update branch: the per-type ability is required for an
+     * EXISTING draft too, not just for creation.
+     */
+    public function test_auto_save_refuses_an_existing_draft_of_a_type_the_caller_cannot_create(): void
+    {
+        $cashier = $this->userWithAbilities(['documents.view', 'documents.update', 'quotes.create']);
+        $draft = $this->documentWithOneLine(DocumentStatus::Draft);
+
+        $this->actingAsUser($cashier)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $draft->id,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ])
+            ->assertStatus(403);
+
+        $this->assertSame(
+            1,
+            DocumentLine::query()->where('document_id', $draft->id)->count(),
+            'A caller without invoices.create must not strip an invoice draft.'
+        );
+    }
+
+    /**
+     * Gate P1-2. `correcting_entry` is the single most privileged document
+     * type: every correcting-entry route, INCLUDING the reads, is gated on the
+     * admin-tier `documents.correct` (routes.php:365-388) because it "both
+     * exposes and writes raw general-ledger accounts and amounts". A bare
+     * `Rule::enum(DocumentType::class)` let a `documents.update` holder author
+     * `CE-2026-0001` through auto-save and burn a CE number.
+     *
+     * It is refused by the CONTRACT (422), not by authorization (403):
+     * correcting entries have a dedicated authoring route and no auto-save
+     * flow to preserve, so the type is simply not in the accepted set.
+     */
+    public function test_auto_save_refuses_a_correcting_entry_type(): void
+    {
+        $response = $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::CorrectingEntry->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ]);
+
+        $this->assertApiValidationErrors($response, ['type']);
+        $this->assertSame(0, Document::query()->count());
+        $this->assertSame(
+            0,
+            DocumentSequence::query()->where('type', DocumentType::CorrectingEntry->value)->count(),
+            'No CE sequence number may be burned through auto-save.'
+        );
+    }
+
+    /**
+     * The other five document types the editor never auto-saves are refused by
+     * the same contract narrowing.
+     */
+    public function test_auto_save_refuses_document_types_the_editor_never_auto_saves(): void
+    {
+        foreach ([
+            DocumentType::Expense,
+            DocumentType::Income,
+            DocumentType::SupplierInvoice,
+            DocumentType::SupplierCreditNote,
+            DocumentType::PurchaseQuoteRequest,
+        ] as $type) {
+            $response = $this->actingAsUser($this->authorizedUser())
+                ->postJson('/api/v1/documents/auto-save', [
+                    'type' => $type->value,
+                    'partner_id' => $this->customer->id,
+                    'lines' => [],
+                ]);
+
+            $this->assertApiValidationErrors($response, ['type']);
+        }
+
+        $this->assertSame(0, Document::query()->count());
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -413,12 +581,20 @@ final class AutoSaveRouteHardeningTest extends TestCase
     }
 
     /**
-     * The real editor payload, field for field.
+     * The real editor payload, field for field — with the ONE value the first
+     * round substituted away.
      *
      * `DocumentForm.tsx:285-300` builds `draftData` and `buildLinePayload()`
      * (`DocumentForm.tsx:179-199`) builds each line; `useDraftAutoSave.ts:158`
      * merges `draft_id` and POSTs the result. This pins that exact shape so the
      * request contract cannot drift away from the only caller.
+     *
+     * Gate P1-1: `partner_id` is **null** here, because that is what the editor
+     * sends until the operator picks a partner — `DocumentForm.tsx:262`
+     * defaults it to null and `:286` emits `watchedPartnerId || null`, while the
+     * debounce only requires one line (`useDraftAutoSave.ts:227`). The first
+     * round sent `$this->customer->id` instead, which is exactly the value that
+     * was NOT broken, so the test was an unearned green.
      *
      * Note `line_total` / `price_entry_mode` / `discount_percent` /
      * `discount_amount`: the editor sends them, the persistence service reads
@@ -431,7 +607,7 @@ final class AutoSaveRouteHardeningTest extends TestCase
             ->postJson('/api/v1/documents/auto-save', [
                 'draft_id' => null,
                 'type' => DocumentType::Quote->value,
-                'partner_id' => $this->customer->id,
+                'partner_id' => null,
                 'notes' => null,
                 'document_date' => now()->format('Y-m-d'),
                 'due_date' => null,
@@ -453,14 +629,146 @@ final class AutoSaveRouteHardeningTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonPath('line_count', 1);
+        $response->assertJsonMissingPath('error');
+
+        $this->assertSame(
+            1,
+            Document::query()->count(),
+            'The editor first-keystroke payload must actually author a draft.'
+        );
     }
 
     /**
-     * Guard rail for the rule above: a client-minted line id is NOT a uuid, and
+     * Gate P1-1, isolated. Before the fix this returned
+     * `200 {"error":"silent_failure"}` and created NOTHING:
+     * `DraftPersistenceService.php:155` did `$partner->name` on a null relation,
+     * the resulting ErrorException hit the blanket `catch (\Throwable) → 200`,
+     * and the transaction rolled back. Every auto-save before the operator
+     * picked a partner authored nothing while reporting success.
+     *
+     * `DraftDocumentCreated::$partnerName` is already `?string` (event
+     * constructor `:26-27`), so the null-safe read is rule-8 clean.
+     */
+    public function test_a_null_partner_auto_save_authors_a_draft_instead_of_silently_failing(): void
+    {
+        $response = $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => null,
+                'lines' => [
+                    ['product_id' => $this->product->id, 'quantity' => '1', 'unit_price' => '10'],
+                ],
+            ]);
+
+        $response->assertStatus(200);
+        $response->assertJsonMissingPath('error');
+
+        $document = Document::query()->firstOrFail();
+        $this->assertNull($document->partner_id);
+        $this->assertSame(DocumentStatus::Draft, $document->status);
+        $this->assertSame(
+            1,
+            DocumentLine::query()->where('document_id', $document->id)->count(),
+            'The lines typed before a partner was chosen must be persisted, not discarded.'
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 5. Fiscal correctness of the authored row (gate F1)
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Gate F1. `createNewDraft()` never set `currency`, so the row silently took
+     * the migration default `'EUR'`
+     * (`2025_11_30_080000_create_documents_table.php:24`). `currency` is the 4th
+     * field of the fiscal hash payload (`DocumentPostingService.php:484` →
+     * `FiscalHashService::serializeForHashing()`) and posting does NOT re-derive
+     * it — so a TND tenant that confirmed and posted an auto-saved draft sealed
+     * `'EUR'` into the SHA-256 chain input.
+     *
+     * Every other creator in the module sets it explicitly
+     * (`DraftPurchaseOrderService.php:59`, `QuoteController.php:257`,
+     * `CorrectingEntryService.php:82`, `CreditNoteService.php:877`,
+     * `ArApOpeningService.php:304`, `POSAccountChargeDraftService.php:60`);
+     * `createNewDraft()` was the anomaly.
+     */
+    public function test_auto_save_persists_the_companys_currency_not_the_column_default(): void
+    {
+        [$user, $company, $partner, $product] = $this->tunisianCompanyFixture();
+
+        $this->actingAsUser($user, $company)
+            ->postJson('/api/v1/documents/auto-save', [
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $partner->id,
+                'lines' => [
+                    ['product_id' => $product->id, 'quantity' => '1', 'unit_price' => '10'],
+                ],
+            ])
+            ->assertStatus(200);
+
+        $document = Document::query()->where('company_id', $company->id)->firstOrFail();
+
+        $this->assertSame(
+            'TND',
+            $document->currency,
+            'An auto-saved draft must carry the company currency, not the EUR column default.'
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // 6. Concurrency (gate P2-4)
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Gate P2-4. The editability guard read the row with a plain `find()` inside
+     * `DB::transaction()`. `config/database.php` sets no isolation level, so
+     * PostgreSQL's default READ COMMITTED applies and an unlocked SELECT takes
+     * no row lock: auto-save could read `Draft`, a concurrent session commit
+     * `confirm`, and auto-save then strip the lines off a now-Confirmed
+     * document — the lane's own harm, narrowed to a race window.
+     *
+     * The confirm side already locks (`InvoiceController.php:591-595`,
+     * "Re-fetch with pessimistic lock inside transaction to prevent race
+     * conditions") and the cited draft-service precedent locks
+     * (`DraftPurchaseOrderService.php:78`), so auto-save was the only
+     * participant that did not — the pair did not serialise.
+     *
+     * Asserted structurally rather than by racing two connections: the suite
+     * runs on SQLite `:memory:` (`phpunit.xml:44-45`) whose grammar compiles
+     * `lockForUpdate()` to nothing, so a query-log assertion would pass
+     * vacuously on the gate DB. Structural source assertions are the in-repo
+     * pattern for exactly this
+     * (`RefundResidualTenantIsolationTest::test_*_query_includes_*_predicates`).
+     */
+    public function test_the_draft_fetch_takes_a_row_lock_inside_the_transaction(): void
+    {
+        $source = (string) file_get_contents(
+            (string) (new \ReflectionClass(DraftPersistenceService::class))
+                ->getFileName()
+        );
+
+        $start = strpos($source, 'public function saveDraft');
+        $this->assertNotFalse($start, 'saveDraft() must exist.');
+        $body = substr($source, $start, 1600);
+
+        $this->assertMatchesRegularExpression(
+            '/Document::query\(\)(?:\s|.)*?->lockForUpdate\(\)/',
+            $body,
+            'saveDraft() must fetch the target draft with lockForUpdate() so the guard serialises '
+            .'against a concurrent confirm (which already locks: InvoiceController.php:591-595).'
+        );
+    }
+
+    /**
+     * Guard rail for the client-minted id rule: the id is not a uuid, and
      * tightening `lines.*.id` to `uuid` would 422 every auto-save of a line the
      * operator just added.
+     *
+     * ACCEPTED BY THE VALIDATOR ONLY — this payload is *processed* wrongly: see
+     * `test_characterisation_client_minted_line_ids_empty_the_draft` below,
+     * which proves the very same request destroys the draft's line set.
      */
-    public function test_a_client_minted_non_uuid_line_id_is_accepted(): void
+    public function test_a_client_minted_non_uuid_line_id_is_accepted_by_the_validator(): void
     {
         $author = $this->authorizedUser();
         $draft = $this->documentWithOneLine(DocumentStatus::Draft);
@@ -507,7 +815,12 @@ final class AutoSaveRouteHardeningTest extends TestCase
      * DraftLineAdded pair per line per keystroke through the fraud-detection
      * event stream. That is a design call, not a clean guard.
      *
-     * See docs/sessions/2026-08-23-p1-autosave-hardening-notes.md §Residual 1.
+     * The fraud stream is ALREADY polluted by this today, not only under a
+     * future fix: `removeLine():504-530` fires `DraftLineRemoved` and
+     * `DraftLineRemovedV2` BEFORE `$line->delete()` at `:532`, so the deletion
+     * burst emits real removal events for lines the operator never removed.
+     *
+     * See docs/superpowers/tickets/2026-08-23-autosave-residuals.md §R-1.
      */
     public function test_characterisation_client_minted_line_ids_empty_the_draft(): void
     {
@@ -547,6 +860,163 @@ final class AutoSaveRouteHardeningTest extends TestCase
         );
     }
 
+    /**
+     * CHARACTERISATION (gate F8) — the whole ticket thesis in one flow, driven
+     * ONLY through the endpoint, with no hand-seeded server line.
+     *
+     * POST #1 authors the draft and burns a number; POST #2 replays the same
+     * client-minted ids the editor still holds, and the document ends LINELESS
+     * with the number spent. This is the faithful two-save pin the first round's
+     * "editor's exact payload" test could not give, because a null `draft_id`
+     * takes the create branch where `id` is ignored.
+     *
+     * Fails-to-red when Residual 1 is fixed — invert, do not delete.
+     */
+    public function test_characterisation_two_editor_saves_end_lineless_with_a_burnt_number(): void
+    {
+        $author = $this->authorizedUser();
+
+        $line = [
+            'id' => 'line-1756000000010-aaa111bbb',
+            'product_id' => $this->product->id,
+            'quantity' => '2.0000',
+            'unit_price' => '10.500',
+            'tax_rate' => '19.00',
+        ];
+
+        $first = $this->actingAsUser($author)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => null,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [$line],
+            ]);
+        $first->assertStatus(200);
+
+        $draftId = $first->json('draft_id');
+        $this->assertIsString($draftId);
+        $this->assertSame(1, DocumentLine::query()->where('document_id', $draftId)->count());
+
+        // The editor never learns the server uuid, so the next debounce replays
+        // the same client id (useDraftAutoSave.ts:158-164 sends draft_id + the
+        // unchanged `lines` from DocumentForm.tsx:294-298).
+        $this->actingAsUser($author)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $draftId,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [$line],
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame(
+            0,
+            DocumentLine::query()->where('document_id', $draftId)->count(),
+            'Characterisation: a document authored entirely through auto-save ends lineless.'
+        );
+
+        $this->assertSame(
+            1,
+            (int) DocumentSequence::query()
+                ->where('company_id', $this->company->id)
+                ->where('type', DocumentType::Invoice->value)
+                ->value('last_number'),
+            'Characterisation: and the invoice number it burned is spent on a lineless row.'
+        );
+    }
+
+    /**
+     * CHARACTERISATION (gate P3-8) — the cross-tenant `draft_id` path, which had
+     * no test at all: the strongest tenancy property of this endpoint was
+     * unpinned.
+     *
+     * ISOLATION HOLDS — the foreign document is never read or mutated, because
+     * the lookup is tenant+company scoped (`DraftPersistenceService.php:73-79`).
+     * But the miss falls through to `createNewDraft()`, so the caller gets a 200
+     * with a DIFFERENT `draft_id` and burns a number in their own tenant instead
+     * of a 404. Recorded, not changed: refusing an unresolvable non-null
+     * `draft_id` is a contract change beyond this fix round's findings list.
+     */
+    public function test_characterisation_a_foreign_tenant_draft_id_authors_a_new_document(): void
+    {
+        $foreignTenant = Tenant::create([
+            'name' => 'Foreign Tenant',
+            'slug' => 'autosave-foreign',
+            'status' => TenantStatus::Active,
+            'plan' => SubscriptionPlan::Professional,
+        ]);
+        $foreignCompany = Company::create([
+            'tenant_id' => $foreignTenant->id,
+            'name' => 'Foreign Co',
+            'legal_name' => 'Foreign Co LLC',
+            'tax_id' => 'TAX-FOREIGN',
+            'country_code' => 'FR',
+            'locale' => 'fr_FR',
+            'timezone' => 'Europe/Paris',
+            'currency' => 'EUR',
+            'status' => CompanyStatus::Active,
+        ]);
+        $foreignPartner = Partner::create([
+            'tenant_id' => $foreignTenant->id,
+            'company_id' => $foreignCompany->id,
+            'name' => 'Foreign Customer',
+            'type' => 'customer',
+        ]);
+        $foreignDraft = Document::create([
+            'tenant_id' => $foreignTenant->id,
+            'company_id' => $foreignCompany->id,
+            'partner_id' => $foreignPartner->id,
+            'type' => DocumentType::Invoice,
+            'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::Invoice),
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'INV-FOREIGN-1',
+            'document_date' => now()->format('Y-m-d'),
+            'currency' => 'EUR',
+            'subtotal' => '100.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+        ]);
+        $foreignDraft->lines()->create([
+            'product_id' => null,
+            'line_number' => 1,
+            'description' => 'Foreign line',
+            'quantity' => '1.0000',
+            'unit_price' => '100.000',
+            'tax_rate' => 0,
+            'line_total' => '100.000',
+        ]);
+
+        $response = $this->actingAsUser($this->authorizedUser())
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $foreignDraft->id,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ]);
+
+        $response->assertStatus(200);
+
+        // The property that matters, and that had no test: no foreign mutation.
+        $this->assertSame(
+            1,
+            DocumentLine::query()->where('document_id', $foreignDraft->id)->count(),
+            'A foreign tenant draft must never be touched.'
+        );
+        $this->assertNotSame(
+            $foreignDraft->id,
+            $response->json('draft_id'),
+            'The foreign id must not be adopted.'
+        );
+
+        // Characterised, not endorsed: the miss authors a new local draft.
+        $this->assertSame(
+            1,
+            Document::query()->where('company_id', $this->company->id)->count(),
+            'Characterisation: an unresolvable draft_id authors a NEW document instead of 404ing.'
+        );
+    }
+
     // ──────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────
@@ -577,24 +1047,96 @@ final class AutoSaveRouteHardeningTest extends TestCase
         return $user;
     }
 
+    /**
+     * A principal shaped like the seeded `manager`: the coarse document-write
+     * permission PLUS the per-type create abilities for every family the
+     * editor auto-saves (gate P2-3).
+     */
     private function authorizedUser(): User
     {
-        return $this->userWithAbilities(['documents.view', 'documents.update']);
+        return $this->userWithAbilities([
+            'documents.view',
+            'documents.update',
+            'quotes.create',
+            'orders.create',
+            'invoices.create',
+            'credit-notes.create',
+            'purchase-orders.create',
+            'deliveries.create',
+        ]);
     }
 
-    private function actingAsUser(User $user): self
+    private function actingAsUser(User $user, ?Company $company = null): self
     {
         app(PermissionRegistrar::class)->setPermissionsTeamId($this->tenant->id);
 
         /** @var self */
         return $this->actingAs($user, 'sanctum')
-            ->withHeader('X-Company-Id', $this->company->id);
+            ->withHeader('X-Company-Id', ($company ?? $this->company)->id);
     }
 
+    /**
+     * A second company in the same tenant whose currency is NOT the `documents`
+     * table's `'EUR'` default, with its own partner + product so the
+     * company-scoped validation rules resolve. Gate F1.
+     *
+     * @return array{0: User, 1: Company, 2: Partner, 3: Product}
+     */
+    private function tunisianCompanyFixture(): array
+    {
+        $company = Company::create([
+            'tenant_id' => $this->tenant->id,
+            'name' => 'Autosave TN',
+            'legal_name' => 'Autosave TN SARL',
+            'tax_id' => 'TAX-AUTOSAVE-TN',
+            'country_code' => 'TN',
+            'locale' => 'fr_TN',
+            'timezone' => 'Africa/Tunis',
+            'currency' => 'TND',
+            'status' => CompanyStatus::Active,
+        ]);
+
+        $user = $this->userWithAbilities(['documents.view', 'documents.update', 'quotes.create']);
+        UserCompanyMembership::create([
+            'user_id' => $user->id,
+            'company_id' => $company->id,
+            'role' => MembershipRole::Manager,
+        ]);
+
+        $partner = Partner::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'name' => 'TN Customer',
+            'type' => 'customer',
+        ]);
+
+        $product = Product::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $company->id,
+            'name' => 'TN Product',
+        ]);
+
+        return [$user, $company, $partner, $product];
+    }
+
+    /**
+     * A fiscal invoice with one line.
+     *
+     * A non-DRAFT `fiscal_status` MUST carry `fiscal_hash` + `chain_sequence`:
+     * PostgreSQL enforces `chk_fiscal_mandatory_core`
+     * (`2026_03_10_300000_fix_fiscal_constraints_for_drafts.php:22-35`), which
+     * exempts only `NON_FISCAL` and `DRAFT` rows. SQLite does not enforce CHECK
+     * constraints of this shape, so a fixture missing them passes the default
+     * `:memory:` gate and only fails on PG — which is exactly what the PG leg of
+     * this lane's verification caught. Same shape as the sealed fixtures in
+     * `RefundResidualTenantIsolationTest::setUp()`.
+     */
     private function documentWithOneLine(
         DocumentStatus $status,
         FiscalStatus $fiscalStatus = FiscalStatus::Draft,
     ): Document {
+        $sealed = $fiscalStatus !== FiscalStatus::Draft;
+
         $document = Document::create([
             'tenant_id' => $this->tenant->id,
             'company_id' => $this->company->id,
@@ -602,6 +1144,8 @@ final class AutoSaveRouteHardeningTest extends TestCase
             'type' => DocumentType::Invoice,
             'fiscal_category' => FiscalCategory::fromDocumentType(DocumentType::Invoice),
             'fiscal_status' => $fiscalStatus,
+            'fiscal_hash' => $sealed ? hash('sha256', uniqid('seal-', true)) : null,
+            'chain_sequence' => $sealed ? 1 : null,
             'status' => $status,
             'document_number' => 'INV-AS-'.bin2hex(random_bytes(3)),
             'document_date' => now()->format('Y-m-d'),
