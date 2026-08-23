@@ -78,6 +78,13 @@ final class TerminalCreationFiscalSchemaVersionTest extends TestCase
         $this->company = Company::factory()->create(['tenant_id' => $this->tenant->id]);
         $this->location = Location::factory()->create([
             'company_id' => $this->company->id,
+            // Owner ruling B-3, 2026-08-23: terminal acquisition now refuses a
+            // location with POS switched off. The factory leaves `pos_enabled`
+            // at the column's `default(false)`, so a fixture that intends to
+            // host a till must say so. The refusal itself is covered by
+            // TerminalLocationPosEnabledTest; this class is about the fiscal
+            // schema version the creation paths stamp.
+            'pos_enabled' => true,
         ]);
 
         $this->user = User::factory()->create(['tenant_id' => $this->tenant->id]);

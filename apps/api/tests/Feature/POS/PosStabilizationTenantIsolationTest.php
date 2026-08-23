@@ -246,6 +246,12 @@ final class PosStabilizationTenantIsolationTest extends TestCase
             'type' => 'shop',
             'address_country' => 'TN',
             'is_active' => true,
+            // Owner ruling B-3, 2026-08-23: terminal acquisition refuses a
+            // location with POS switched off, and the column defaults to false.
+            // These fixtures are the tenants' OWN, legitimately-selling shops —
+            // the same-tenant control cases must still succeed so the
+            // cross-tenant refusals they are contrasted with stay meaningful.
+            'pos_enabled' => true,
         ]);
 
         $terminal = Terminal::create([

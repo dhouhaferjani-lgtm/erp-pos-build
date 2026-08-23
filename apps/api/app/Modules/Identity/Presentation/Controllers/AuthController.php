@@ -433,7 +433,12 @@ class AuthController extends Controller
                     'type' => 'shop',
                     'is_default' => true,
                     'is_active' => true,
-                    'pos_enabled' => false,
+                    // Owner ruling B-3 / A2, 2026-08-23 — see the same flip in
+                    // TenantProvisioningService::provisionForRegistration().
+                    // This shared-DB-compat registration path must agree with it,
+                    // or which of the two paths a tenant registered through would
+                    // silently decide whether it can open a till.
+                    'pos_enabled' => true,
                     'address_street' => $company->address_street,
                     'address_city' => $company->address_city,
                     'address_postal_code' => $company->address_postal_code,
