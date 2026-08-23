@@ -45,8 +45,11 @@ vi.mock('react-router-dom', () => ({
 
 const noopMutation = { mutateAsync: vi.fn(), isPending: false }
 
+/** Mutable per-case terminal list, read by the `useTerminals` mock below. */
+const terminalState = vi.hoisted(() => ({ current: [] as Record<string, unknown>[] }))
+
 vi.mock('@/features/pos/hooks/useTerminals', () => ({
-  useTerminals: () => ({ data: [], isLoading: false }),
+  useTerminals: () => ({ data: terminalState.current, isLoading: false }),
   useCreateTerminal: () => ({ mutateAsync: mockCreateMutateAsync, isPending: false }),
   useUpdateTerminal: () => noopMutation,
   useArchiveTerminal: () => noopMutation,
@@ -57,11 +60,35 @@ vi.mock('@/features/pos/hooks/useTerminals', () => ({
 }))
 
 // Keep the REAL TerminalForm — the location dropdown it renders is what these
-// cases assert on. Only the list is stubbed out.
+// cases assert on. The list is stubbed down to just the edit affordance, which
+// is how the edit-mode case gets `editingTerminal` set on the page.
 vi.mock('@/features/pos/components', async () => {
   const actual =
     await vi.importActual<typeof import('@/features/pos/components')>('@/features/pos/components')
-  return { ...actual, TerminalList: () => null }
+  return {
+    ...actual,
+    TerminalList: ({
+      terminals,
+      onEdit,
+    }: {
+      terminals: { id: string }[]
+      onEdit: (terminal: unknown) => void
+    }) => (
+      <div>
+        {terminals.map((terminal) => (
+          <button
+            key={terminal.id}
+            type="button"
+            onClick={() => {
+              onEdit(terminal)
+            }}
+          >
+            {`edit-${terminal.id}`}
+          </button>
+        ))}
+      </div>
+    ),
+  }
 })
 
 import { useAuthStore } from '@/stores/authStore'
@@ -108,6 +135,7 @@ async function openCreateForm() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  terminalState.current = []
   useAuthStore.setState({
     user: {
       id: 'user-1',
@@ -158,6 +186,69 @@ describe('TerminalsPage — B-3 pos_enabled', () => {
     await openCreateForm()
 
     expect(await screen.findByText('pos:terminal.noPosEnabledLocations')).toBeInTheDocument()
+  })
+
+  /**
+   * Gate r2 / M-2 — the subtlest branch of the filter.
+   *
+   * Editing is NOT an acquisition and is not gated by B-3, so the terminal's
+   * OWN location must stay in the dropdown even when POS is switched off there
+   * — otherwise the control is blanked, the admin cannot see where the terminal
+   * actually is, and the next save silently relocates it. The exemption is
+   * narrow on purpose: it admits that one location by id, not every disabled
+   * one, so an edit still cannot MOVE a terminal onto a POS-disabled location.
+   */
+  it('keeps only the edited terminal own POS-disabled location in the dropdown', async () => {
+    mockGetLocations.mockResolvedValue([
+      location({ id: 'loc-shop', name: 'Front Shop', code: 'SHOP', posEnabled: true }),
+      location({ id: 'loc-wh', name: 'Back Warehouse', code: 'WH', posEnabled: false }),
+      location({ id: 'loc-other', name: 'Other Warehouse', code: 'WH2', posEnabled: false }),
+    ])
+    // The terminal under edit lives at the POS-disabled `loc-wh`.
+    terminalState.current = [
+      {
+        id: 'term-1',
+        type: 'physical',
+        code: 'POS01',
+        name: 'Warehouse Till',
+        description: null,
+        location_id: 'loc-wh',
+        location: { id: 'loc-wh', name: 'Back Warehouse', code: 'WH' },
+        is_active: true,
+        is_training_mode: false,
+        has_history: false,
+        activated_at: '2026-01-01T00:00:00Z',
+        deactivated_at: null,
+        deactivation_reason: null,
+        current_sequence: 0,
+        current_year: 2026,
+        fiscal_schema_version: 3,
+        max_discount_percent: '100.00',
+        allow_line_discounts: true,
+        allow_transaction_discounts: true,
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      },
+    ]
+
+    const user = userEvent.setup()
+    renderPage()
+    await waitFor(() => {
+      expect(mockGetLocations).toHaveBeenCalled()
+    })
+    await user.click(await screen.findByRole('button', { name: 'edit-term-1' }))
+
+    // Its own disabled location survives, so the value is visible and keepable.
+    expect(
+      await screen.findByRole('option', { name: 'Back Warehouse (WH)' })
+    ).toBeInTheDocument()
+    // A POS-enabled location is still offered — an edit may move it there.
+    expect(screen.getByRole('option', { name: 'Front Shop (SHOP)' })).toBeInTheDocument()
+    // Any OTHER disabled location stays excluded: the exemption is by id, not
+    // a blanket "show everything while editing".
+    expect(screen.queryByRole('option', { name: 'Other Warehouse (WH2)' })).not.toBeInTheDocument()
+    // Create-mode-only empty state must not appear while editing.
+    expect(screen.queryByText('pos:terminal.noPosEnabledLocations')).not.toBeInTheDocument()
   })
 
   it('surfaces the LOCATION_POS_DISABLED cause instead of a generic create error', async () => {

@@ -389,6 +389,12 @@ const resources = {
       ...enPos,
       ...arPos,
       transactions: { ...enPos.transactions, ...arPos.transactions },
+      // B-3 (gate r2 / B-1): `arPos` is SPREAD, not aliased, so a partial
+      // Arabic block shadows the whole English one at the object level — the
+      // same trap `transactions` above already guards. `ar/pos.json` carries
+      // only the two B-3 strings under `terminal`, so without this merge the
+      // other 31 English `terminal.*` fallbacks would vanish for Arabic.
+      terminal: { ...enPos.terminal, ...arPos.terminal },
     },
     catalog: enCatalog,
     menu: arMenu,

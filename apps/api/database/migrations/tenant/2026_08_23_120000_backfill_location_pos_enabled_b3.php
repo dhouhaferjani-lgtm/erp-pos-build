@@ -57,7 +57,8 @@ use Illuminate\Support\Facades\Schema;
  *      (`is_default = true` OR it is the company's only location). This is the
  *      auto-provisioned "Main Location" — the three writers create it with
  *      `type = 'shop'`, `is_default = true`, `code = 'MAIN'`, and the same
- *      ruling (A2) flips those writers to `pos_enabled = true` going forward.
+ *      ruling's parent-delegated provisioning sub-ruling flips those writers to
+ *      `pos_enabled = true` going forward.
  *      Branch (b) simply gives the tenants already provisioned the default
  *      they would get if they registered today. It is matched on `type` and
  *      `is_default`, NOT on `code = 'MAIN'`: a tenant that renamed or recoded
@@ -134,6 +135,19 @@ return new class extends Migration
      * the day it ran, even if the enum is later renamed or re-cased. The column
      * is `string(20)` (`2026_02_19_000002_add_type_to_pos_terminals.php:16`),
      * `virtual_admin` was added by `2026_05_22_101000`.
+     *
+     * A FOURTH ENUM CASE, added later, is therefore NOT evidence until someone
+     * adds it here — and that is the deliberate, fail-safe direction, not an
+     * oversight. Under-enabling leaves a location POS-disabled that perhaps
+     * should not be, which an operator repairs with one tick in Settings.
+     * Over-enabling is PERMANENT: this migration is scoped
+     * `where pos_enabled = false` and never writes false, so a wrong `true`
+     * survives every re-run and can only be undone by hand, per location, per
+     * tenant. When in doubt, leave a new type out.
+     *
+     * Legacy rows cannot slip through the filter either: the column was added
+     * as `->default('physical')` NOT NULL, so every pre-2026-02-19 terminal was
+     * backfilled to `physical` and no row carries NULL or ''.
      *
      * @var list<string>
      */
