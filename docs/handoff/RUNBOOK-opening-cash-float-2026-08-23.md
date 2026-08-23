@@ -1,9 +1,20 @@
 # RUNBOOK — Opening cash float at go-live
 
 **Date:** 2026-08-23
-**Owner ruling:** B-2 (owner sheet `OWNER-SHEET-2026-08-21-first-client-session.md`, resolution line 40)
-**Authority:** `docs/handoff/RESEARCH-opening-float-and-vat-doc-count-2026-08-23.md` §1.6 (Recommendation 1, pre-launch mandatory)
+**Owner ask:** B-2 — **NOT YET RULED.** `OWNER-SHEET-2026-08-21-first-client-session.md:20` states verbatim
+*"B-2 NOT YET RULED — research ordered"*; the ask itself is the `B-2 | **Opening cash float (G8).**` row
+(currently `:62`). The owner's recorded lean is *"opening cash in a POS machine should be an opening balance
+for sure"*, which this runbook is consistent with — but a lean is not a ruling.
+**Delivered under:** `docs/handoff/RESEARCH-opening-float-and-vat-doc-count-2026-08-23.md` §1.6,
+Recommendation 1 (pre-launch **mandatory**), executed under the owner's standing
+correctness-before-the-first-client principle and **flagged for veto** — see the session line
+*"B-2 RESOLVED (research delivered; executing the pre-launch S items under the correctness principle,
+flagged for veto)"* (currently `:40`). If the owner rules differently on B-2, this document changes with it.
 **Audience:** whoever onboards a tenant — operator and accountant alike.
+
+> Owner-sheet line numbers above are quoted with their anchor text because that sheet grows during a
+> session — the gate's own citations (`:46`/`:50`) had already drifted by the time this was written.
+> Search the quoted phrase, not the number.
 
 > **Why this document exists.** No document anywhere told an operator how to establish cash
 > opening balances. `STAGING-RUNBOOK-first-tenant-2026-07-31.md` is a staging/deploy ops runbook;
@@ -49,11 +60,30 @@ If you have already used it: the entry cannot be edited — have the correction 
 journal entry reversing `7580` against `119` for the same amount and date, and do not also include
 the float in the opening batch.
 
-> Since 2026-08-23 the API **refuses** this misuse mechanically: an adjustment on a payment
-> repository that has never moved (zero movements, zero prior adjustments) is rejected with
-> `REPOSITORY_NOT_SEEDED` and a message pointing back at this runbook. Step 2 is therefore enforced,
-> not merely documented — but the remediation paragraph above still applies to any tenant seeded
-> before that guard shipped.
+> **Since 2026-08-23 the API refuses this misuse mechanically.** An adjustment is rejected with
+> `REPOSITORY_NOT_SEEDED` (HTTP 422) when **all three** of the following hold — i.e. when Treasury has
+> no record of the repository ever having held money:
+>
+> 1. it has **no movements** (`repository_movements` — the only way money enters or leaves), **and**
+> 2. it has **no prior adjustments**, **and**
+> 3. its **balance is zero**.
+>
+> Any one of the three being false lets the adjustment through unchanged, so a genuine count variance
+> on a till that has traded is never affected.
+>
+> **Shift-close cash variances are exempt.** The POS shift-variance posting carries its originating
+> shift id and is never refused by this guard, even on a till that was never seeded — a counted
+> variance must always be bookable. Only the interactive "Adjust balance" dialog is guarded.
+>
+> **If a till legitimately received cash outside the opening batch** (someone floated it from the safe,
+> a transfer arrived), do NOT reach for "Adjust balance" — record it as a **Treasury transfer**
+> (Treasury → Transfer, `POST /payment-repositories/transfers`, permission `treasury.transfer`). A
+> transfer writes a movement leg on **both** repositories, so it both records the cash correctly and
+> permanently unlocks ordinary adjustments on that till. This is the operator's legal path out of a
+> `REPOSITORY_NOT_SEEDED` refusal.
+>
+> Step 2 is therefore enforced, not merely documented — but the remediation paragraph above still
+> applies to any tenant seeded before that guard shipped.
 
 ### 3. Enter the same float on the POS when you open the first shift.
 

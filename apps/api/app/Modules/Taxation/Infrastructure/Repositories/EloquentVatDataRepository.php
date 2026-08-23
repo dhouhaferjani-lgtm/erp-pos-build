@@ -90,10 +90,15 @@ class EloquentVatDataRepository implements VatDataRepositoryInterface
         // `document_count` is COUNT(DISTINCT r.id) with NO receipt_type predicate,
         // and that is the RULING OF RECORD, not an accident.
         //
-        // B-6(i) RULED 2026-08-23 (owner sheet 2026-08-21, resolution line 41;
-        // research: docs/handoff/RESEARCH-opening-float-and-vat-doc-count-2026-08-23.md
-        // Part 2): refund receipts and credit notes COUNT as declared documents,
-        // on BOTH arms. Grounds:
+        // B-6(i) RULED (owner sheet OWNER-SHEET-2026-08-21-first-client-session.md,
+        // "B-6(i) RULED include-per-standards ... anything that must be declared is
+        // included — apply to both arms together"; research:
+        // docs/handoff/RESEARCH-opening-float-and-vat-doc-count-2026-08-23.md Part 2).
+        // Cited by anchor TEXT, not line number: that sheet grows during a session,
+        // so a bare line reference rots (this comment previously pointed at "line 41",
+        // which had already drifted onto boilerplate).
+        // Refund receipts and credit notes COUNT as declared documents, on BOTH arms.
+        // Grounds:
         //   - TN statute: CDET art. 126 requires "le nombre des factures ou des
         //     tickets de vente, documents..." on the monthly declaration, and DGELF
         //     prise de position n° 99188 (29/03/1999) holds that a facture d'avoir
