@@ -171,7 +171,7 @@ export function ZReportModal({
             <SummaryCard
               label={
                 vatDisclosure?.hasRefundVat
-                  ? `${t('reports.taxAmount')} (${t('reports.vatNetOfRefunds')})`
+                  ? t('reports.taxAmountNetOfRefunds')
                   : t('reports.taxAmount')
               }
               value={format(
@@ -200,8 +200,9 @@ export function ZReportModal({
             {report.report_data.vat_breakdown.length > 0 && (
               <div>
                 <h4 className="mb-2 text-sm font-semibold text-ink-muted">
-                  {t('reports.vatBreakdown')}
-                  {vatDisclosure?.hasRefundVat ? ` — ${t('reports.vatNetOfRefunds')}` : ''}
+                  {vatDisclosure?.hasRefundVat
+                    ? t('reports.vatBreakdownNetOfRefunds')
+                    : t('reports.vatBreakdown')}
                 </h4>
                 <table className="w-full text-sm">
                   <thead>

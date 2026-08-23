@@ -59,7 +59,7 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
             <SummaryCard
               label={
                 vatDisclosure?.hasRefundVat
-                  ? `${t('reports.taxAmount')} (${t('reports.vatNetOfRefunds')})`
+                  ? t('reports.taxAmountNetOfRefunds')
                   : t('reports.taxAmount')
               }
               value={format(vatDisclosure?.hasRefundVat ? vatDisclosure.netVat : report.tax_amount)}
@@ -87,8 +87,9 @@ export function XReportModal({ isOpen, onClose, report, isLoading, error }: XRep
           {report.vat_breakdown.length > 0 && (
             <div>
               <h4 className="mb-2 text-sm font-semibold text-ink-muted">
-                {t('reports.vatBreakdown')}
-                {vatDisclosure?.hasRefundVat ? ` — ${t('reports.vatNetOfRefunds')}` : ''}
+                {vatDisclosure?.hasRefundVat
+                  ? t('reports.vatBreakdownNetOfRefunds')
+                  : t('reports.vatBreakdown')}
               </h4>
               <table className="w-full text-sm">
                 <thead>

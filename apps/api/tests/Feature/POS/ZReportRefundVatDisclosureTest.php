@@ -270,6 +270,42 @@ class ZReportRefundVatDisclosureTest extends TestCase
     }
 
     /**
+     * GATE r1 F-2 — THE SYNC-LAG CASE, the most likely real-world unreconciled
+     * state and the one the blade could not report.
+     *
+     * A v3 device Z whose refund receipts have not yet synced/projected:
+     * projections return no return rows (`has_refund_vat = false`) while the
+     * SIGNED table is already net (`net_vat < sales_vat`), so `is_reconciled`
+     * is false. The warning used to be nested INSIDE the `has_refund_vat`
+     * branch, so the PDF printed the sale-only headline directly beneath a
+     * table this lane had just labelled "net of refunds" — two disagreeing
+     * figures, one of them newly mislabelled, and no warning.
+     */
+    public function test_sync_lag_z_prints_the_unreconciled_warning(): void
+    {
+        // A sale is projected; the refund that the signed table already nets is NOT.
+        $sale = $this->createSale('300.000', '57.000');
+        $this->createVatDetail($sale, '19.00', '300.000', '57.000');
+
+        // Signed table is NET (47.500) while the headline is sale-only (57.000).
+        $zReport = $this->createZReport([
+            ['tax_rate' => '19.00', 'net_amount' => '250.000', 'vat_amount' => '47.500', 'gross_amount' => '297.500'],
+        ], salesVat: '57.000');
+
+        $disclosure = $this->service->refundVatDisclosureFor($zReport);
+        $this->assertFalse($disclosure->has_refund_vat, 'No return rows are projected yet');
+        $this->assertFalse($disclosure->is_reconciled, '57.000 - 0 != 47.500');
+
+        $html = view('pos.z-report', $this->service->viewDataFor($zReport))->render();
+
+        $this->assertStringContainsString(
+            __('pos.z_report_vat_unreconciled'),
+            $html,
+            'The warning must render independently of has_refund_vat',
+        );
+    }
+
+    /**
      * The web Z-report detail page reads the disclosure off the DETAIL endpoint.
      * The list endpoint deliberately does not carry it (one aggregate query per
      * row would be an N+1 for a figure no list row renders).

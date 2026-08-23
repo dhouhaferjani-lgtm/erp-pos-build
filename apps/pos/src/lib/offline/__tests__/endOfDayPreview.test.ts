@@ -1003,3 +1003,101 @@ describe('buildEndOfDayPreview — refunds block (B-6(ii))', () => {
     expect(preview.refund_vat_amount).toBe('0.00');
   });
 });
+
+/**
+ * GATE r1 F-3 — the new refunds tile counted v4 `offline_receipts` rows ONLY,
+ * while `expected_cash` on the same screen is reduced by LEGACY refunds too.
+ *
+ * Legacy refunds never write an `offline_receipts` row at all — their sole
+ * device write is `local_refund_records` (this file's own wave-2
+ * TREASURY-CRITICAL note) — and that path is still live for every terminal that
+ * has not completed its v4 capability rollout. So a pre-v4 terminal that took a
+ * cash refund rendered "no refunds" beside a drawer figure the refund moved.
+ *
+ * The signed Z has always counted BOTH (`zReportService.ts` seeds
+ * `refundsCount = refundRecords.length` before its receipts loop), so a v4-only
+ * tile also made the preview contradict the Z it previews.
+ */
+describe('buildEndOfDayPreview — legacy refunds in the refunds tile (gate r1 F-3)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function mockLegacyRefundShift(): void {
+    vi.mocked(queryAll).mockImplementation(async (_db, sql, params) => {
+      const s = String(sql);
+      if (s.includes('local_refund_records')) {
+        const shiftId = (params as unknown[] | undefined)?.[0];
+        return (shiftId === 'shift-1'
+          ? [{
+              id: 'legacy-1',
+              receipt_number: 'T001-9901',
+              original_receipt_number: 'T001-0001',
+              shift_id: 'shift-1',
+              terminal_id: 'term-1',
+              destination: 'cash',
+              // Signed negative exactly as the server returned it.
+              total: '-15.00',
+              cash_impact: '15.00',
+              currency: 'EUR',
+              settled_at: '2026-06-10T11:00:00Z',
+            }]
+          : []) as unknown as never[];
+      }
+      if (s.includes('offline_cash_drawer_ops') || s.includes('local_account_payment_records')) {
+        return [] as never[];
+      }
+      if (s.includes('offline_receipts')) {
+        return [{
+          id: 'sale-1', total: '119.00', subtotal: '119.00', tax_amount: '19.00',
+          change_due: '0.00', payment_method_id: 'pm-cash',
+          payments_json: JSON.stringify([{ method_code: 'CASH', amount: '119.00' }]),
+          lines: JSON.stringify([{ tax_rate: '19', tax_amount: '19.00', line_total: '119.00' }]),
+          created_at: '2026-06-10 10:00:00', receipt_kind: 'sale',
+          cash_rounding_adjustment: null, tolerance_shortfall: null,
+        }] as unknown as never[];
+      }
+      if (s.includes('payment_methods')) {
+        return [{ id: 'pm-cash', code: 'CASH', name: 'Cash', is_physical: 1 }] as unknown as never[];
+      }
+      return [] as never[];
+    });
+  }
+
+  it('counts a LEGACY refund in the tile, matching the signed Z', async () => {
+    mockLegacyRefundShift();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR', 'shift-1',
+    );
+
+    expect(preview.refunds_count).toBe(1);
+    expect(preview.refunds_amount).toBe('15.00');
+  });
+
+  it('keeps the tile consistent with the expected_cash the same refund moved', async () => {
+    mockLegacyRefundShift();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR', 'shift-1',
+    );
+
+    // 0 opening + 119.00 cash in − 15.00 legacy cash refund out.
+    expect(preview.expected_cash).toBe('104.00');
+    // The tile must not say "no refunds" beside that.
+    expect(preview.refunds_count).toBeGreaterThan(0);
+  });
+
+  it('leaves refund_vat_amount at the v4-only figure — legacy records carry no VAT split', async () => {
+    mockLegacyRefundShift();
+
+    const preview = await buildEndOfDayPreview(
+      mockDb, 'term-1', '2026-06-10T08:00:00Z', '0', 'EUR', 'shift-1',
+    );
+
+    // A legacy record has `total`/`cash_impact` and no per-rate VAT, so it
+    // cannot contribute to the VAT disclosure. Stating that explicitly so the
+    // asymmetry is a recorded decision rather than an oversight.
+    expect(preview.refund_vat_amount).toBe('0.00');
+  });
+});

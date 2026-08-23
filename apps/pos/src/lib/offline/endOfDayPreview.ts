@@ -534,6 +534,35 @@ export async function buildEndOfDayPreview(
     const refundRecords = await getRefundRecordsForShift(db, shiftId);
     for (const r of refundRecords) {
       cashRefundImpact = bcadd(cashRefundImpact, r.cash_impact, scale);
+
+      // GATE r1 F-3 — and they count in the REFUNDS TILE too.
+      //
+      // A legacy refund never writes an `offline_receipts` row at all (its sole
+      // device write is this `local_refund_records` table — see the wave-2
+      // TREASURY-CRITICAL note above), and that path is still live for every
+      // terminal that has not completed its v4 capability rollout. Counting
+      // only the v4 loop above meant a pre-v4 terminal rendered "no refunds"
+      // beside an `expected_cash` this very loop had just reduced — a fresh
+      // instance of the two-disagreeing-figures defect this lane exists to close.
+      //
+      // It also restores parity with the SIGNED Z, which has always counted
+      // both: `zReportService.ts` seeds `refundsCount = refundRecords.length`
+      // and sums `bcabs(record.total)` BEFORE its receipts loop. The two
+      // sources are disjoint by construction (a refund is either era, never
+      // both), so this cannot double-count.
+      //
+      // `record.total` is signed negative for a return, so `bcabs` recovers the
+      // positive-magnitude semantics `refunds_amount` carries everywhere —
+      // the same treatment the signed Z gives it.
+      refundsCount += 1;
+      refundsAmount = bcadd(refundsAmount, bcabs(r.total, scale), scale);
+
+      // NOT folded into `refundVatAmount`: a legacy record carries `total` and
+      // `cash_impact` only, with no per-rate VAT split to attribute. The VAT
+      // disclosure therefore stays a v4-only figure, and on a mixed shift it
+      // under-reports refund VAT — which `isReconciled` then reports honestly
+      // rather than hiding, because the signed table and the accumulator will
+      // disagree. Stated here so the asymmetry is a recorded decision.
     }
   }
   const cashSalesNet = bcsub(

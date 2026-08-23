@@ -43,7 +43,8 @@ vi.mock('react-i18next', () => ({
         'reports.endOfDay.vatOnSales': 'VAT on sales',
         'reports.endOfDay.vatOnRefunds': 'VAT on refunds',
         'reports.endOfDay.netVat': 'Net VAT',
-        'reports.endOfDay.vatNetOfRefunds': 'net of refunds',
+        'reports.endOfDay.taxAmountNetOfRefunds': 'VAT (net of refunds)',
+        'reports.endOfDay.vatBreakdownNetOfRefunds': 'VAT Breakdown (net of refunds)',
         'reports.endOfDay.vatUnreconciled': 'VAT could not be reconciled',
         'reports.vatRate': 'Rate',
         'reports.vatNet': 'Net',
@@ -947,5 +948,74 @@ describe('EndOfDayPreviewModal — refund VAT disclosure (B-6(ii))', () => {
     expect(screen.queryByText('VAT on refunds')).not.toBeInTheDocument();
     expect(screen.queryByText('Refunds: 0')).not.toBeInTheDocument();
     expect(screen.queryByText('VAT (net of refunds)')).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * GATE r1 F-4/M-1 — the EOD modal must render the ERA-SAFE accumulator
+ * (`refund_vat_amount`, `bcabs`-then-add) and not the wedge it can also
+ * compute. The previous fixture set both sources to the same value, so the
+ * assertion passed either way — a non-discriminating green.
+ */
+describe('EndOfDayPreviewModal — refund VAT source discrimination (gate r1 F-4)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    modalI18nState.locale = 'en';
+  });
+
+  it('renders the accumulator, not the wedge, when the two disagree', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValue({
+      ...samplePreview,
+      tax_amount: '7.18',
+      refunds_count: 1,
+      refunds_amount: '12.00',
+      // Wedge would be 7.18 − 5.18 = 2.00. The era-safe accumulator says 1.50.
+      refund_vat_amount: '1.50',
+      vat_breakdown: [
+        { tax_rate: 19, net_amount: '27.82', vat_amount: '5.18', gross_amount: '33.00' },
+      ],
+    });
+
+    renderModal();
+
+    expect(await screen.findByText('-1.50')).toBeInTheDocument();
+    expect(screen.queryByText('-2.00')).not.toBeInTheDocument();
+  });
+
+  it('surfaces the disagreement as unreconciled rather than hiding it', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValue({
+      ...samplePreview,
+      tax_amount: '7.18',
+      refunds_count: 1,
+      refunds_amount: '12.00',
+      refund_vat_amount: '1.50',
+      vat_breakdown: [
+        { tax_rate: 19, net_amount: '27.82', vat_amount: '5.18', gross_amount: '33.00' },
+      ],
+    });
+
+    renderModal();
+
+    // 7.18 − 1.50 = 5.68 ≠ 5.18: two independent sources disagree, and this is
+    // the state the device could never previously reach.
+    expect(await screen.findByText('VAT could not be reconciled')).toBeInTheDocument();
+  });
+
+  it('stays reconciled and silent when the accumulator agrees with the table', async () => {
+    mockBuildEndOfDayPreview.mockResolvedValue({
+      ...samplePreview,
+      tax_amount: '7.18',
+      refunds_count: 1,
+      refunds_amount: '12.00',
+      refund_vat_amount: '2.00',
+      vat_breakdown: [
+        { tax_rate: 19, net_amount: '27.82', vat_amount: '5.18', gross_amount: '33.00' },
+      ],
+    });
+
+    renderModal();
+
+    expect(await screen.findByText('-2.00')).toBeInTheDocument();
+    expect(screen.queryByText('VAT could not be reconciled')).not.toBeInTheDocument();
   });
 });

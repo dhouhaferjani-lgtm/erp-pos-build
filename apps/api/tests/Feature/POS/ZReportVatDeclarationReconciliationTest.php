@@ -14,7 +14,9 @@ use App\Modules\POS\Domain\Enums\ReceiptType;
 use App\Modules\POS\Domain\Enums\ReturnReason;
 use App\Modules\POS\Domain\Receipt;
 use App\Modules\POS\Domain\ReceiptVatDetail;
+use App\Modules\POS\Domain\Shift;
 use App\Modules\POS\Domain\Terminal;
+use App\Modules\POS\Domain\ZReport;
 use App\Modules\Taxation\Domain\DTOs\VatAggregation;
 use App\Modules\Taxation\Domain\Repositories\VatDataRepositoryInterface;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
@@ -74,10 +76,17 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
     {
         parent::setUp();
 
+        // `currency_decimal_places` is NOT decoration: CurrencyScaleResolver
+        // prefers the COUNTRY record over the company currency, and the column
+        // defaults to 2 — so omitting it silently runs this TND fixture at
+        // scale 2 and every service-emitted figure comes back short a digit.
+        // The migration that added the column backfills TN to 3
+        // (2026_03_11_100000_add_currency_decimal_places_to_countries.php:21).
         DB::table('countries')->insert([
             'code' => 'TN',
             'name' => 'Tunisia',
             'currency_code' => 'TND',
+            'currency_decimal_places' => 3,
             'is_active' => true,
         ]);
 
@@ -204,10 +213,15 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
     }
 
     /**
-     * The derived disclosure is the BRIDGE between the two: the magnitude it
-     * shows is exactly the amount by which the declaration was reduced.
+     * The sale-only headline minus the declaration IS the refund VAT.
+     *
+     * GATE r1 F-6 — renamed and split. This assertion is a property of
+     * `calculateShiftTotals` + the declaration arm only; it never called
+     * `refundVatDisclosureFor()` despite its old name, and the reviewer's revert
+     * probe confirmed it was the one test of the four that PASSED at base. The
+     * disclosure arm it claimed to cover is now its own test below.
      */
-    public function test_derived_refund_disclosure_equals_the_declarations_deduction(): void
+    public function test_the_sale_only_headline_minus_the_declaration_is_the_refund_vat(): void
     {
         $terminal = $this->createTerminal('POS01');
 
@@ -223,6 +237,70 @@ class ZReportVatDeclarationReconciliationTest extends TestCase
             bcsub((string) $totals['tax_amount'], $declared['19.00'], 3),
             'The refund-VAT disclosure is exactly the wedge between the sale-only headline and the declaration',
         );
+    }
+
+    /**
+     * GATE r1 F-6 — the arm the renamed test above never exercised: the DERIVED
+     * disclosure itself must equal the declaration's deduction, so the figure a
+     * Z prints and the figure that gets declared are the same number.
+     */
+    public function test_the_derived_disclosure_equals_the_declarations_deduction(): void
+    {
+        $terminal = $this->createTerminal('POS01');
+
+        $sale = $this->createSale($terminal, '2026-02-14 09:00:00', [['19.00', '1000.000', '190.000']]);
+        $this->createReturn($terminal, $sale, '2026-02-14 14:00:00', [['19.00', '200.000', '38.000']]);
+
+        $zReport = $this->createZReportFor($terminal, salesVat: '190.000', vatBreakdown: [
+            ['tax_rate' => '19.00', 'net_amount' => '800.000', 'vat_amount' => '152.000', 'gross_amount' => '952.000'],
+        ]);
+
+        $disclosure = $this->reports->refundVatDisclosureFor($zReport);
+        $declared = $this->declaredOutputByRate();
+
+        $this->assertSame('38.000', $disclosure->refund_vat);
+        $this->assertSame(
+            $disclosure->refund_vat,
+            bcsub($disclosure->sales_vat, $declared['19.00'], 3),
+            'The disclosed refund VAT must equal the amount the declaration deducted',
+        );
+        $this->assertSame($declared['19.00'], $disclosure->net_vat);
+        $this->assertTrue($disclosure->is_reconciled);
+    }
+
+    /**
+     * @param  list<array<string, string>>  $vatBreakdown
+     */
+    private function createZReportFor(Terminal $terminal, string $salesVat, array $vatBreakdown): ZReport
+    {
+        $shift = Shift::create([
+            'terminal_id' => $terminal->id,
+            'cashier_id' => $this->cashier->id,
+            'shift_number' => 1,
+            'opened_at' => self::PERIOD_FROM.' 00:00:00',
+            'opening_cash' => '0.000',
+            'status' => 'CLOSED',
+            // PostgreSQL `pos_shifts_closed_logic` requires both on a CLOSED shift.
+            'closed_at' => self::PERIOD_TO.' 23:59:59',
+            'closed_by' => $this->cashier->id,
+        ]);
+
+        return ZReport::create([
+            'terminal_id' => $terminal->id,
+            'shift_id' => $shift->id,
+            'z_number' => 1,
+            'fiscal_hash' => hash('sha256', 'z-reconciliation-'.$terminal->id),
+            'previous_z_hash' => null,
+            'report_data' => [
+                'schema_version' => 3,
+                'period_start' => self::PERIOD_FROM.' 00:00:00',
+                'period_end' => self::PERIOD_TO.' 23:59:59',
+                'tax_amount' => $salesVat,
+                'vat_breakdown' => $vatBreakdown,
+            ],
+            'generated_by' => $this->cashier->id,
+            'generated_at' => self::PERIOD_TO.' 23:59:59',
+        ]);
     }
 
     /**

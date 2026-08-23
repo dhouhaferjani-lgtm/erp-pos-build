@@ -48,9 +48,12 @@ export interface VatDisclosure {
   /** The SALE-ONLY headline (`tax_amount`). Never a VAT-declaration input. */
   salesVat: string;
   /**
-   * VAT reversed by refunds in the period, as a POSITIVE magnitude. Clamped at
-   * zero: a negative wedge is not a refund, it is a corpus inconsistency, and
-   * it is reported through {@link isReconciled} instead.
+   * VAT reversed by refunds in the period, as a POSITIVE magnitude.
+   *
+   * Zero in the anomaly case (net table LARGER than the sale-only headline) —
+   * a negative wedge is not a refund. That state is reported through
+   * {@link isReconciled}, which is computed from the RAW wedge precisely so it
+   * stays independent of this clamp.
    */
   refundVat: string;
   /**
@@ -58,17 +61,46 @@ export interface VatDisclosure {
    * figure, and the one that reconciles with the VAT declaration (§3.1).
    */
   netVat: string;
-  /** Whether the three-line disclosure is worth rendering at all. */
+  /** Whether there is a refund magnitude worth putting on screen. */
   hasRefundVat: boolean;
-  /** Whether `salesVat − refundVat == netVat` holds exactly at this scale. */
+  /**
+   * Whether `salesVat − refundVat == netVat` holds exactly at this scale.
+   *
+   * INDEPENDENT of {@link hasRefundVat} — gate r1 F-1/B-1. This used to be
+   * computed from the CLAMPED `refundVat`, which made it algebraically true
+   * that `isReconciled === false ⟹ hasRefundVat === false`; the consumer's
+   * early return on `!hasRefundVat` then made the whole unreconciled branch
+   * unreachable on every device surface, so the anomaly it exists to disclose
+   * was silently absorbed and four shipped i18n values were dead.
+   */
   isReconciled: boolean;
 }
 
-/** The only two fields the derivation reads. Structurally satisfied by
- *  `ZReportData`, `XReportResponse` and `EndOfDayPreview` alike. */
+/**
+ * What the derivation reads. Structurally satisfied by `ZReportData`,
+ * `XReportResponse` and `EndOfDayPreview` alike.
+ */
 export interface VatDisclosureInput {
   tax_amount: string;
-  vat_breakdown: ReadonlyArray<{ vat_amount?: string }>;
+  vat_breakdown: ReadonlyArray<{ vat_amount: string }>;
+  /**
+   * OPTIONAL authoritative refund-VAT magnitude, when the caller has one that
+   * was accumulated independently of the per-rate table.
+   *
+   * Only the EOD preview has this: it is unsigned/unhashed, so it can afford a
+   * real `bcabs`-then-add accumulator (`endOfDayPreview.ts`), which is era-safe
+   * where the wedge is not. The signed Z/X surfaces have no such field and
+   * cannot grow one (`report_data` IS the legacy Z hash input), so they fall
+   * back to the wedge.
+   *
+   * Supplying it turns `isReconciled` into a genuine cross-check between two
+   * INDEPENDENT sources rather than a tautology — which is the only way the
+   * device can legitimately reach `hasRefundVat && !isReconciled`.
+   *
+   * `'0'` is authoritative, not absent: a shift the accumulator says had no
+   * refund VAT, beside a table that disagrees, is a real inconsistency.
+   */
+  refund_vat_amount?: string;
 }
 
 /**
@@ -85,17 +117,26 @@ export function deriveVatDisclosure(input: VatDisclosureInput, scale: number): V
   }
   netVat = bcformat(netVat, scale);
 
+  // The RAW, SIGNED wedge. Everything below reads this rather than the clamped
+  // magnitude, so the clamp cannot swallow the anomaly signal (F-1).
   const wedge = bcsub(salesVat, netVat, scale);
-  const wedgeIsPositive = bccomp(wedge, '0') > 0;
-  const refundVat = wedgeIsPositive ? bcformat(wedge, scale) : bcformat('0', scale);
+
+  const hasAuthoritativeAccumulator = typeof input.refund_vat_amount === 'string';
+  const refundVat = hasAuthoritativeAccumulator
+    ? bcformat(numericOrZero(input.refund_vat_amount), scale)
+    : bccomp(wedge, '0') > 0
+      ? bcformat(wedge, scale)
+      : bcformat('0', scale);
 
   return {
     salesVat,
     refundVat,
     netVat,
     hasRefundVat: bccomp(refundVat, '0') !== 0,
-    // A negative wedge (net table LARGER than the sale-only headline) is
-    // impossible on a sound corpus, so it is surfaced rather than absorbed.
+    // With an authoritative accumulator this is a real comparison of two
+    // independent figures. Without one it reduces to "the wedge is not
+    // negative" — a net table LARGER than the sale-only headline is impossible
+    // on a sound corpus, so it is surfaced rather than absorbed.
     isReconciled: bccomp(bcsub(salesVat, refundVat, scale), netVat) === 0,
   };
 }

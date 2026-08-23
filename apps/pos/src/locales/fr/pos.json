@@ -515,12 +515,12 @@
       "toleranceAutoAcceptsUnknown": "Inconnu / {{limit}}",
       "netCashRounding": "Arrondi espèces net",
       "refundsCount": "Remboursements",
-      "refundsAmount": "Montant remboursé",
       "vatOnSales": "TVA sur ventes",
       "vatOnRefunds": "TVA sur remboursements",
       "netVat": "TVA nette",
-      "vatNetOfRefunds": "nette des remboursements",
-      "vatUnreconciled": "Les montants de TVA n’ont pas pu être rapprochés pour cette session"
+      "vatUnreconciled": "Les montants de TVA n’ont pas pu être rapprochés pour cette session",
+      "taxAmountNetOfRefunds": "Montant TVA (nette des remboursements)",
+      "vatBreakdownNetOfRefunds": "Détail TVA (nette des remboursements)"
     },
     "zList": {
       "title": "Rapports Z",
@@ -549,8 +549,9 @@
     "vatOnSales": "TVA sur ventes",
     "vatOnRefunds": "TVA sur remboursements",
     "netVat": "TVA nette",
-    "vatNetOfRefunds": "nette des remboursements",
-    "vatUnreconciled": "Les montants de TVA n’ont pas pu être rapprochés pour cette session"
+    "vatUnreconciled": "Les montants de TVA n’ont pas pu être rapprochés pour cette session",
+    "taxAmountNetOfRefunds": "Montant TVA (nette des remboursements)",
+    "vatBreakdownNetOfRefunds": "Détail TVA (nette des remboursements)"
   },
   "productDetail": {
     "title": "Détails du produit",

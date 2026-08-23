@@ -106,6 +106,90 @@ describe('deriveVatDisclosure', () => {
     expect(result.isReconciled).toBe(false);
   });
 
+  /**
+   * GATE r1 F-1/B-1 — `isReconciled` must come from the RAW wedge, so that
+   * `hasRefundVat` and `isReconciled` are INDEPENDENT. Before the fix
+   * `isReconciled` was computed from the CLAMPED `refundVat`, which made
+   * `isReconciled === false` imply `hasRefundVat === false` and rendered the
+   * whole unreconciled branch unreachable in the component.
+   */
+  it('keeps hasRefundVat and isReconciled independent (F-1)', () => {
+    const anomaly = deriveVatDisclosure(
+      { tax_amount: '10.000', vat_breakdown: [{ vat_amount: '13.000' }] },
+      3,
+    );
+    // The anomaly state: no refund magnitude to show, but NOT reconciled.
+    expect(anomaly.hasRefundVat).toBe(false);
+    expect(anomaly.isReconciled).toBe(false);
+
+    const clean = deriveVatDisclosure(
+      { tax_amount: '10.000', vat_breakdown: [{ vat_amount: '10.000' }] },
+      3,
+    );
+    // Equal figures: also no refund, but this one IS reconciled. The two flags
+    // must be able to disagree — that is what makes the warning reachable.
+    expect(clean.hasRefundVat).toBe(false);
+    expect(clean.isReconciled).toBe(true);
+  });
+
+  /**
+   * GATE r1 F-4/M-1 — when an AUTHORITATIVE refund-VAT magnitude is supplied
+   * (the EOD preview's era-safe `bcabs`-then-add accumulator), it is used
+   * INSTEAD of the wedge, and `isReconciled` then genuinely compares two
+   * independent sources. This is the only way the device can reach
+   * `hasRefundVat === true && isReconciled === false`.
+   */
+  it('prefers an authoritative refund_vat_amount over the wedge (F-4)', () => {
+    const result = deriveVatDisclosure(
+      {
+        tax_amount: '57.000',
+        vat_breakdown: [{ vat_amount: '47.500' }],
+        // Deliberately DISAGREES with the wedge (9.500) so the assertion
+        // discriminates between the two paths — the gate called the previous
+        // fixture out for yielding the same number either way.
+        refund_vat_amount: '9.000',
+      },
+      3,
+    );
+
+    expect(result.refundVat).toBe('9.000');
+    expect(result.hasRefundVat).toBe(true);
+    // 57.000 − 9.000 = 48.000 ≠ 47.500 ⇒ the two sources disagree.
+    expect(result.isReconciled).toBe(false);
+  });
+
+  it('reconciles when the authoritative accumulator agrees with the table', () => {
+    const result = deriveVatDisclosure(
+      {
+        tax_amount: '57.000',
+        vat_breakdown: [{ vat_amount: '47.500' }],
+        refund_vat_amount: '9.500',
+      },
+      3,
+    );
+
+    expect(result.refundVat).toBe('9.500');
+    expect(result.hasRefundVat).toBe(true);
+    expect(result.isReconciled).toBe(true);
+  });
+
+  it('treats a zero authoritative accumulator as authoritative, not as absent', () => {
+    // A shift the accumulator says had NO refund VAT, beside a table that is
+    // nonetheless smaller than the headline: a real disagreement, not a refund.
+    const result = deriveVatDisclosure(
+      {
+        tax_amount: '57.000',
+        vat_breakdown: [{ vat_amount: '47.500' }],
+        refund_vat_amount: '0.000',
+      },
+      3,
+    );
+
+    expect(result.refundVat).toBe('0.000');
+    expect(result.hasRefundVat).toBe(false);
+    expect(result.isReconciled).toBe(false);
+  });
+
   it('flags a consistent shift as reconciled', () => {
     const result = deriveVatDisclosure(
       { tax_amount: '57.000', vat_breakdown: [{ vat_amount: '47.500' }] },
@@ -115,16 +199,29 @@ describe('deriveVatDisclosure', () => {
     expect(result.isReconciled).toBe(true);
   });
 
-  it('tolerates a missing or malformed vat_amount without throwing on a fiscal screen', () => {
+  /**
+   * GATE r1 M-2 — a MISSING `vat_amount` key is now a compile error
+   * (`vat_breakdown: ReadonlyArray<{ vat_amount: string }>`), because every real
+   * caller already supplies it and the optional widening only disarmed the type
+   * system: a caller whose breakdown used different keys (the web's own
+   * `{rate,net,vat,gross}` shape) would have typechecked and silently produced
+   * `netVat = 0` / `refundVat = salesVat` — "VAT on refunds −57.00" on a
+   * refund-free shift.
+   *
+   * `numericOrZero` remains, but now guards malformed VALUES only, which is what
+   * it can actually be right about.
+   */
+  it('tolerates a malformed vat_amount value without throwing on a fiscal screen', () => {
     const result = deriveVatDisclosure(
       {
         tax_amount: '19.000',
-        vat_breakdown: [{ vat_amount: '19.000' }, {} as { vat_amount?: string }],
+        vat_breakdown: [{ vat_amount: '19.000' }, { vat_amount: '' }, { vat_amount: 'n/a' }],
       },
       3,
     );
 
     expect(result.netVat).toBe('19.000');
     expect(result.refundVat).toBe('0.000');
+    expect(result.isReconciled).toBe(true);
   });
 });

@@ -227,6 +227,7 @@ function SummaryCard({
   const { t } = useTranslation(['pos'])
   const { decimals } = useCurrency()
   const disclosure = report.refund_vat_disclosure ?? null
+  const unreconciled = disclosure !== null && !disclosure.is_reconciled
 
   const averageTicket =
     report.sales_count > 0
@@ -257,8 +258,26 @@ function SummaryCard({
             />
             <SummaryRow label={t('pos:zReports.detail.netVat')} value={disclosure.net_vat} mono />
           </>
+        ) : unreconciled ? (
+          /* GATE r1 B-2/F-5 — unreconciled with no refund magnitude to state
+             (the sync-lag case): show BOTH real figures so the reader can see
+             the disagreement the banner names, and no "-0.00" refund row. */
+          <>
+            <SummaryRow label={t('pos:zReports.detail.vatOnSales')} value={disclosure.sales_vat} mono />
+            <SummaryRow label={t('pos:zReports.detail.netVat')} value={disclosure.net_vat} mono />
+          </>
         ) : (
           <SummaryRow label={t('pos:zReports.detail.taxAmount')} value={reportData?.tax_amount ?? '--'} mono />
+        )}
+        {/* GATE r1 B-2/F-5 — the page used to read only `has_refund_vat`, so a
+            server-reported disagreement (refund rows aggregated from projections
+            INDEPENDENTLY of the signed net table — see RefundVatDisclosureData's
+            own docblock) was presented as three authoritative rows that visibly
+            do not add up. Independent of which shape rendered above. */}
+        {unreconciled && (
+          <p className={`pt-3 text-sm ${textColors.warning}`}>
+            {t('pos:zReports.detail.vatUnreconciled')}
+          </p>
         )}
         <SummaryRow label={t('pos:zReports.detail.refundsCount')} value={String(reportData?.refunds_count ?? 0)} />
         <SummaryRow label={t('pos:zReports.detail.refundsAmount')} value={reportData?.refunds_amount ?? '0.00'} mono />
@@ -312,9 +331,13 @@ function VatBreakdownCard({
       {/* Label states the netting: this table is net of refunds on every
           surface (device-authored since C-2, server-authored since B-6(ii)/A3),
           and it is the figure the VAT declaration reads. */}
+      {/* gate r1 m-3: one interpolated key rather than two translated fragments
+          glued with a hard-coded em dash — the glue is not reliably ordered in
+          a bidi (AR) run. */}
       <h3 className={`text-lg font-semibold ${textColors.primary} mb-4`}>
-        {t('pos:zReports.detail.vatBreakdown')}
-        {disclosure?.has_refund_vat ? ` — ${t('pos:zReports.detail.vatNetOfRefunds')}` : ''}
+        {disclosure?.has_refund_vat
+          ? t('pos:zReports.detail.vatBreakdownNetOfRefunds')
+          : t('pos:zReports.detail.vatBreakdown')}
       </h3>
       <DataTable className="w-full text-sm">
         <thead>
@@ -337,14 +360,19 @@ function VatBreakdownCard({
           {/* B-6(ii)/A2 — per-rate refund VAT, derived server-side from the same
               source and with the same normalisation the VAT declaration uses, so
               the deduction shown here is the deduction that gets declared. */}
+          {/* gate r1 m-2: LOGICAL `text-end`, not physical `text-right` — these
+              are net-new cells in the same change that ships the AR strings for
+              this table, and the sibling list page already uses logical props.
+              The three pre-existing rows above are left alone (rule 18: only
+              lines being touched). */}
           {disclosure?.rows.map((row) => (
             <tr key={`refund-${row.tax_rate}`} className={`border-b ${borderColors.light}`}>
               <td className="py-2">
-                {row.tax_rate}% — {t('pos:zReports.detail.vatOnRefunds')}
+                {t('pos:zReports.detail.refundRateLabel', { rate: row.tax_rate })}
               </td>
-              <td className="py-2 text-right font-mono tabular-nums">-{row.net_amount}</td>
-              <td className="py-2 text-right font-mono tabular-nums">-{row.vat_amount}</td>
-              <td className="py-2 text-right font-mono tabular-nums">-{row.gross_amount}</td>
+              <td className="py-2 text-end font-mono tabular-nums">-{row.net_amount}</td>
+              <td className="py-2 text-end font-mono tabular-nums">-{row.vat_amount}</td>
+              <td className="py-2 text-end font-mono tabular-nums">-{row.gross_amount}</td>
             </tr>
           ))}
         </tbody>

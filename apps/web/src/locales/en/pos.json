@@ -364,7 +364,6 @@
     "totalSales": "Total Sales",
     "grossSales": "Gross Sales",
     "netSales": "Net Sales",
-    "taxCollected": "Tax Collected",
     "receiptCount": "Receipts",
     "variance": "Variance",
     "verifyChain": "Verify Chain",
@@ -407,7 +406,10 @@
       "vatOnSales": "VAT on sales",
       "vatOnRefunds": "VAT on refunds",
       "netVat": "Net VAT",
-      "vatNetOfRefunds": "net of refunds"
+      "vatNetOfRefunds": "net of refunds",
+      "vatUnreconciled": "VAT figures could not be reconciled for this report",
+      "refundRateLabel": "{{rate}}% — VAT on refunds",
+      "vatBreakdownNetOfRefunds": "VAT Breakdown (net of refunds)"
     },
     "taxCollectedSalesOnly": "Tax (sales only)"
   },

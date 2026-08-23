@@ -150,3 +150,53 @@ describe('ZReportDetailPage — refund VAT disclosure', () => {
     expect(queryByText('pos:zReports.detail.vatOnSales')).not.toBeInTheDocument()
   })
 })
+
+/**
+ * GATE r1 B-2/F-5 — the page destructured the disclosure but read only
+ * `has_refund_vat`, so when the server reported `is_reconciled: false` it
+ * presented three rows that visibly do not add up as authoritative, with no
+ * explanation. Server-side that state genuinely occurs: `refund_vat` is
+ * aggregated from projected rows independently of the signed `net_vat`, so a
+ * refund that has not projected yet produces exactly it.
+ */
+describe('ZReportDetailPage — unreconciled disclosure (gate r1 B-2)', () => {
+  const unreconciled = {
+    ...report,
+    report_data: {
+      ...report.report_data,
+      tax_amount: '234.560',
+      refunds_count: 1,
+      refunds_amount: '120.000',
+      vat_breakdown: [{ rate: 20, net: '780.000', vat: '156.000', gross: '936.000' }],
+    },
+    refund_vat_disclosure: {
+      rows: [
+        { tax_rate: '20.00', net_amount: '20.000', vat_amount: '50.000', gross_amount: '70.000' },
+      ],
+      sales_vat: '234.560',
+      // 234.560 − 50.000 = 184.560 ≠ 156.000 — the projections and the signed
+      // table disagree.
+      refund_vat: '50.000',
+      net_vat: '156.000',
+      has_refund_vat: true,
+      is_reconciled: false,
+    },
+  }
+
+  it('renders the unreconciled warning when the server reports a disagreement', () => {
+    queryState.data = unreconciled
+    const { getByText } = render(<ZReportDetailPage />)
+
+    expect(getByText('pos:zReports.detail.vatUnreconciled')).toBeInTheDocument()
+  })
+
+  it('does not warn when the server reports the figures reconcile', () => {
+    queryState.data = {
+      ...unreconciled,
+      refund_vat_disclosure: { ...unreconciled.refund_vat_disclosure, is_reconciled: true },
+    }
+    const { queryByText } = render(<ZReportDetailPage />)
+
+    expect(queryByText('pos:zReports.detail.vatUnreconciled')).not.toBeInTheDocument()
+  })
+})

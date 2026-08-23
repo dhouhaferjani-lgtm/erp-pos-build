@@ -364,7 +364,6 @@
     "totalSales": "Ventes totales",
     "grossSales": "Ventes brutes",
     "netSales": "Ventes nettes",
-    "taxCollected": "Taxes collectées",
     "receiptCount": "Tickets",
     "variance": "Écart",
     "verifyChain": "Vérifier la chaîne",
@@ -407,7 +406,10 @@
       "vatOnSales": "TVA sur ventes",
       "vatOnRefunds": "TVA sur remboursements",
       "netVat": "TVA nette",
-      "vatNetOfRefunds": "nette des remboursements"
+      "vatNetOfRefunds": "nette des remboursements",
+      "vatUnreconciled": "Les montants de TVA n’ont pas pu être rapprochés pour ce rapport",
+      "refundRateLabel": "{{rate}} % — TVA sur remboursements",
+      "vatBreakdownNetOfRefunds": "Détail TVA (nette des remboursements)"
     },
     "taxCollectedSalesOnly": "Taxe (ventes seules)"
   },
