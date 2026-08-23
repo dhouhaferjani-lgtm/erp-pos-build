@@ -101,7 +101,14 @@ flipped, because neither is visible until the lane is live.
       **redis only** (`config/horizon.php:202`). An environment that forgets the var would enqueue
       into the `jobs` table and never consume it — silent, permanent loss of every variance, with a
       perfectly healthy-looking Horizon. Same class of failure as the 2026-06-12
-      `fiscal-projections` incident.
+      `fiscal-projections` incident. **The error-reporting reach depends on this too:**
+      `PostShiftCashVarianceAdjustment` deliberately does not call `report()` — exception-shaped
+      faults reach Sentry because `retryOrDeadLetter()` re-throws them and `Worker::runJob()`
+      reports whatever escapes a job. On `sync` (or any path with no queue job) the fault
+      dead-letters WITHOUT re-throwing, so nothing reports it — durable in `audit_events`, but
+      invisible to Sentry. That is byte-identical to the pre-R-8 disposition and is not a
+      regression; it simply means "run this listener on redis" is an alerting requirement, not only
+      a throughput one.
 - [ ] **Horizon is actually consuming `default`** on the target environment (`horizon:status`, and
       confirm `APP_ENV` matches a `horizon.environments` key — a non-matching env starts **zero**
       supervisors).

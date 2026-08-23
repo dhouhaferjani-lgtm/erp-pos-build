@@ -838,12 +838,36 @@ final class PostShiftCashVarianceAdjustment implements ShouldQueue
     /**
      * A refusal that leaves a DURABLE trace (gate finding I4).
      *
-     * Six distinct paths can legitimately produce no GL leg. The lane exists
-     * because a missing GL leg went unnoticed for months, so each one is written
-     * to `audit_events` under a single queryable event type with a
-     * machine-readable `reason`, in addition to the log line. Never throws — an
-     * audit-write failure must not turn a skipped GL leg into a failed shift
-     * close.
+     * EVERY path that legitimately produces no GL leg comes through here — the
+     * count was stated as "six" from the original lane and was already stale at
+     * base (gate round 3, M-2: eleven non-dead-letter reason codes, plus
+     * {@see deadLetter()}, which is a caller too). The lane exists because a
+     * missing GL leg went unnoticed for months, so each one is written to
+     * `audit_events` under a single queryable event type with a machine-readable
+     * `reason`, in addition to the log line. Never throws — an audit-write
+     * failure must not turn a skipped GL leg into a failed shift close.
+     *
+     * ── Why there is no report() here (gate round 3, M-1 — settled) ──────────
+     * Do not add one. Exception-shaped faults ALREADY reach Sentry without it:
+     * {@see retryOrDeadLetter()} re-throws them, and `Worker::runJob()`
+     * (`vendor/laravel/framework/src/Illuminate/Queue/Worker.php`) reports every
+     * exception that escapes a job on the configured redis connection. Calling
+     * `report()` in here would therefore DOUBLE-report genuine crashes while
+     * spamming the reporter with eleven legitimate, deliberate refusals — a
+     * frozen till, an unresolved repository, an aggregate/breakdown
+     * disagreement. That is the opposite of alerting reach.
+     *
+     * Contrast `App\Modules\POS\Application\Services\CashCountDispatcher` (named,
+     * not imported — F-6; and `{@see}` with an FQCN is not an option either,
+     * because Pint's `fully_qualified_strict_types` would re-add that very
+     * import), which DOES call `report()`: there the exception is swallowed and
+     * never escapes to a worker, so nothing else would report it (round 2, F-1).
+     *
+     * The one gap is recorded rather than closed: on `sync`, or with a null
+     * `$this->job`, an exception-shaped fault dead-letters WITHOUT re-throwing,
+     * so no worker reports it. That is byte-identical to the pre-R-8 behaviour
+     * and is not the configured connection (`QUEUE_CONNECTION=redis`); it is a
+     * line on the G-5 pre-enable checklist (gate round 3, M-5).
      *
      * @param  array<string, mixed>  $payload
      */
