@@ -11,7 +11,12 @@ not exist for anyone who clones the branch).
 draft-only status guard with `lockForUpdate()`, `AutoSaveDraftRequest`,
 company currency on the authored row, null-safe partner).
 
-Line references pinned to the lane tip unless noted.
+**Citation convention (gate R2-2).** Anything inside a file the auto-save lane
+edits — `DraftPersistenceService`, `DraftController`, `AutoSaveDraftRequest`,
+`Document/Presentation/routes.php` — is cited by SYMBOL, never by line: round 2
+found every line number the previous revision wrote had drifted by 15 the moment
+those same files grew. Line numbers survive only for files this lane does not
+touch, and every one of them was re-checked against the tree.
 
 ---
 
@@ -23,22 +28,23 @@ describes.
 
 `DocumentLineEditor.tsx:328` mints `line-<epoch>-<rand>` ids for unsaved lines;
 `DocumentForm.tsx:295` forwards them; the response carries only `draft_id` /
-`saved_at` / `line_count` (`DraftController.php:97-101`), so the editor **never
+`saved_at` / `line_count` (`DraftController::autoSave()`'s success body), so the editor **never
 learns the server uuids back**. From the SECOND auto-save on,
 `DraftPersistenceService::updateDraftLines()`:
 
-1. `:190` plucks the server uuids; `:194-197` collects the incoming client ids;
-2. `:200` `array_diff(serverUuids, clientIds)` → **every existing line counts as
-   removed** and is deleted at `:203-208`;
-3. `:211-216` then takes the `isset($lineData['id'])` arm, `firstWhere` misses,
-   and **nothing is added** — the `addLine()` call sits in the `else` arm,
-   reached only when `id` is ABSENT.
+1. it plucks the server uuids off `$document->lines`, then collects the incoming
+   client ids (only the entries that HAVE an `id`);
+2. `array_diff(serverUuids, clientIds)` → **every existing line counts as
+   removed**, and each is passed to `removeLine()`;
+3. it then takes the `isset($lineData['id'])` arm for each incoming line,
+   `firstWhere` misses, and **nothing is added** — the `addLine()` call sits in
+   the `else` arm, reached only when `id` is ABSENT.
 
 Net: the draft empties on the 2nd save and stays empty, with its number spent.
 
 **Correction the fiscal gate added (F-gate §4), and the reason this is P1 rather
 than P2:** the pollution is **not** hypothetical or contingent on a future fix.
-`removeLine():504-530` fires `DraftLineRemoved` **and** `DraftLineRemovedV2`
+`DraftPersistenceService::removeLine()` fires `DraftLineRemoved` **and** `DraftLineRemovedV2`
 *before* `$line->delete()` at `:532`. So the deletion burst on the 2nd auto-save
 emits real removal events **for lines the operator never removed**, into the
 fraud-detection stream, **today, in production**. It is a one-shot burst per
@@ -130,7 +136,7 @@ document now produces a permanent `autosaveFailed`
 
 ## R-4 [P3] — `line_count` in the auto-save response is stale
 
-`DraftController.php:100` returns `$document->lines->count()` off the relation
+`DraftController::autoSave()` returns `$document->lines->count()` off the relation
 collection loaded **before** the deletes in `updateDraftLines()`. The endpoint
 answers `line_count: 1` while the database holds `0`. Pinned as an explicit
 assertion inside the R-1 characterisation test. Trivial in isolation
@@ -141,7 +147,7 @@ change and belongs with R-1.
 
 ## R-5 [P3] — absent `lines` is treated as "delete every line"
 
-`updateDraftLines():187` does `$data['lines'] ?? []`. A payload that omits
+`DraftPersistenceService::updateDraftLines()` does `$data['lines'] ?? []`. A payload that omits
 `lines` entirely wipes the line set, exactly like `lines: []`. The current
 frontend always sends `lines`, so nothing is broken today, but "absent" and
 "empty" should not mean the same thing on a PATCH-shaped endpoint. Not changed in
@@ -151,7 +157,7 @@ the P1 lane because distinguishing them is a contract change, not a guard.
 
 ## R-6 [P3] — the blanket `catch (\Throwable) → 200` still hides real failures, and mints a phantom `draft_id`
 
-`DraftController.php:112-124` answers `200 {"error":"silent_failure"}` for any
+`DraftController::autoSave()`'s blanket arm answers `200 {"error":"silent_failure"}` for any
 exception other than `DraftNotEditableException`, **and mints a fresh random
 `draft_id`** (`Str::uuid()`) when none was sent. The hook stores that id
 (`useDraftAutoSave.ts:167`) and returns it on the next save, where it matches no
@@ -168,7 +174,7 @@ not a patch.
 ## R-7 [P3] — an unresolvable non-null `draft_id` authors a new document instead of 404ing
 
 Tenant isolation **holds** — the lookup is tenant+company scoped
-(`DraftPersistenceService.php:73-79`) and the foreign document is never read or
+(the fetch in `saveDraft()`) and the foreign document is never read or
 mutated. But the miss falls through to `createNewDraft()` (`:88-90`), so a
 cross-tenant `draft_id` returns **200 with a different `draft_id`** and burns a
 number in the caller's own tenant. Given the parent ticket's threat model is
@@ -184,7 +190,7 @@ property had no test at all.
 
 ## R-8 [P3] — rule-19 float casts on the change-detection path
 
-`DraftPersistenceService.php:385` and `:390` compare money/quantity with `(float)`
+`DraftPersistenceService::modifyLine()` compares money/quantity with `(float)`
 casts:
 
 ```php
@@ -219,23 +225,77 @@ Discovered while fixing gate P1-1: PHPStan rejects BOTH honest formulations of a
 null-aware partner read — `$document->partner?->name` as `nullsafe.neverNull` and
 `$document->partner_id !== null` as `notIdentical.alwaysTrue`. The auto-save fix
 therefore narrows `getRelationValue('partner')` (honestly typed `mixed`) with
-`instanceof` instead; see `DraftPersistenceService.php:190-205` for the reasoning
+`instanceof` instead; see `DraftPersistenceService::createNewDraft()` for the reasoning
 in place.
 
 **Correcting the two annotations is the right fix**, but doing it in the P1 lane
-turned `./vendor/bin/phpstan analyse app/Modules/Document/` from 0 errors to
-**11**, i.e. it trips the CI gate. The 11 are pre-existing latent
-null-dereferences the stale annotation was masking, including:
+takes `./vendor/bin/phpstan analyse app/Modules/Document/` from `[OK] No errors`
+to **11 errors**, i.e. it trips the CI gate.
 
-- `Domain/Services/SalesOrderService.php:241, :255` — passes `string|null` into
-  the `SalesOrderConfirmed` / `SalesOrderConfirmedV2` `$partnerId` parameters,
-  which are declared `string`. Rule 8 means the event signatures cannot change,
-  so this needs a real decision (guard at the call site, or a V3).
-- `Presentation/Controllers/CreditNoteController.php:430, :431` — `$partner->id`
-  / `$partner->name` on a `Partner|null`.
+**Count RE-VERIFIED in a scratch edit** (gate R2-5 could not reproduce it
+read-only, and rightly refused to take it on trust). Method: apply the two
+annotation corrections to `Document.php`, run PHPStan with `--error-format=json`,
+read `totals.file_errors`, revert. Result — **11**, across 7 files:
+
+| n | file | lines |
+|---|---|---|
+| 2 | `Domain/Services/Conversion/Converters/SalesOrderToInvoiceConverter.php` | `:581`, `:785` |
+| 1 | `Domain/Services/DeliveryNoteService.php` | `:225` |
+| 2 | `Domain/Services/DocumentPostingService.php` | `:524`, `:556` |
+| 1 | `Domain/Services/PurchaseOrderService.php` | `:114` |
+| 1 | `Domain/Services/ReturnNoteService.php` | `:779` |
+| 2 | `Domain/Services/SalesOrderService.php` | `:241`, `:255` |
+| 2 | `Presentation/Controllers/CreditNoteController.php` | `:430`, `:431` |
+
+Nine of the eleven are the same shape: a `string|null` `partner_id` passed into
+an event constructor that declares `string`. Rule 8 freezes those signatures, so
+each needs a real decision (guard at the call site, or a V-next event) rather
+than a signature widening — e.g. `SalesOrderService.php:241, :255` feeding
+`SalesOrderConfirmed` / `SalesOrderConfirmedV2`. The other two,
+`CreditNoteController.php:430-431`, are plain unguarded `$partner->id` /
+`$partner->name` on a `Partner|null` — sitting next to a `?->` on the sibling
+relation two lines above, which is what makes them look accidental.
+
+**A twelfth error surfaced during that scratch run and was this lane's own** —
+`DraftNotEditableException::typeMismatch()` used `$supplied?->value ?? '…'`,
+which PHPStan flags as an unnecessary nullsafe on the left of `??`. Fixed in the
+lane (explicit `=== null` ternary); it is not part of the 11 and the module is
+`[OK] No errors` at the tip.
 
 Whoever takes it: correct `Document.php:44` and `:89` first, then work the 11
 sites; it is a self-contained lane.
+
+---
+
+## R-11 [P2] — auto-save's update branch requires `<family>.create` where the sibling PATCH requires `<family>.update`
+
+Gate R2-3. A deliberate choice made in the P1 lane, recorded here because it
+needs a ruling rather than silence.
+
+The sibling manual edits gate on `<family>.update` (`quotes.update`,
+`orders.update`, `invoices.update`, `purchase-orders.update`) or
+`deliveries.edit` for return notes. Auto-save's update branch demands
+`<family>.**create**` — the same ability as its create branch.
+
+The lane's no-regression argument only covers one direction: no seeded role holds
+`<family>.update`/`.edit` **without** `<family>.create`, so nobody loses access.
+The converse is real and unaddressed: a `.create`-only principal may line-replace
+an **existing** draft that the matching `PATCH` would refuse them. Concretely,
+from the seeder — `cashier` (`quotes.create`, `invoices.create`, neither
+`.update`) and `operator` (`invoices.create`, no `invoices.update`).
+
+Why it is not a live hole: it is not FE-reachable (the editor's edit routes are
+`<family>.update`-gated), it is not a regression (before the lane the endpoint had
+no per-type gate at all), and the type-spoof escape is closed by
+`DraftPersistenceService::assertTypeMatches()`.
+
+Why `.create` was chosen: auto-save's characteristic act is AUTHORING — it is what
+allocates the document number — and one ability keeps the two branches identical,
+which is what makes the "authorized for the claimed type ⇒ authorized for the
+actual type" argument hold. The alternative (`.create` to create, `.update` to
+update) is defensible too and is the ruling to make.
+
+Recorded in place at `AutoSaveDraftRequest::authorize()`'s docblock.
 
 ---
 
@@ -246,7 +306,7 @@ corrected above so they do not propagate:
 
 1. **"The inherited `T2EventsV2DualDispatchTest` red is a precision-contract owner
    decision."** WRONG. The fiscal gate (F2) identified the cause as the missing
-   `currency` on `createNewDraft()` — `DraftPersistenceService.php:592` already
+   `currency` on `createNewDraft()` — `DraftPersistenceService::addLinesBatch()` already
    passed an entity currency and threw only because that entity currency was
    null. Setting `'currency' => $company->currency` in the fix round turned the
    case **green**; `T2EventsV2DualDispatchTest` is now 8 passed / 8. There is no
