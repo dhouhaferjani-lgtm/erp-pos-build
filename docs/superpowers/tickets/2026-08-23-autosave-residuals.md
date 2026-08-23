@@ -44,8 +44,8 @@ Net: the draft empties on the 2nd save and stays empty, with its number spent.
 
 **Correction the fiscal gate added (F-gate §4), and the reason this is P1 rather
 than P2:** the pollution is **not** hypothetical or contingent on a future fix.
-`DraftPersistenceService::removeLine()` fires `DraftLineRemoved` **and** `DraftLineRemovedV2`
-*before* `$line->delete()` at `:532`. So the deletion burst on the 2nd auto-save
+`DraftPersistenceService::removeLine()` fires `DraftLineRemoved` **and**
+`DraftLineRemovedV2` *before* its own `$line->delete()`. So the deletion burst on the 2nd auto-save
 emits real removal events **for lines the operator never removed**, into the
 fraud-detection stream, **today, in production**. It is a one-shot burst per
 document (from the 3rd save on there are no server lines left to diff), not
@@ -175,7 +175,8 @@ not a patch.
 
 Tenant isolation **holds** — the lookup is tenant+company scoped
 (the fetch in `saveDraft()`) and the foreign document is never read or
-mutated. But the miss falls through to `createNewDraft()` (`:88-90`), so a
+mutated. But the miss falls through to the `$document === null` arm of
+`saveDraft()`, which calls `createNewDraft()`, so a
 cross-tenant `draft_id` returns **200 with a different `draft_id`** and burns a
 number in the caller's own tenant. Given the parent ticket's threat model is
 "burn numbers out of the fiscal sequence", an unresolvable non-null `draft_id`

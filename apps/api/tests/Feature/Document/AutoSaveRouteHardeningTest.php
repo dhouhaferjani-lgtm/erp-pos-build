@@ -1232,18 +1232,6 @@ final class AutoSaveRouteHardeningTest extends TestCase
     }
 
     /**
-     * A fiscal invoice with one line.
-     *
-     * A non-DRAFT `fiscal_status` MUST carry `fiscal_hash` + `chain_sequence`:
-     * PostgreSQL enforces `chk_fiscal_mandatory_core`
-     * (`2026_03_10_300000_fix_fiscal_constraints_for_drafts.php:22-35`), which
-     * exempts only `NON_FISCAL` and `DRAFT` rows. SQLite does not enforce CHECK
-     * constraints of this shape, so a fixture missing them passes the default
-     * `:memory:` gate and only fails on PG — which is exactly what the PG leg of
-     * this lane's verification caught. Same shape as the sealed fixtures in
-     * `RefundResidualTenantIsolationTest::setUp()`.
-     */
-    /**
      * A DRAFT document of an arbitrary type with one line — for the spoof tests,
      * where the target's persisted type is the whole point.
      *
@@ -1282,6 +1270,18 @@ final class AutoSaveRouteHardeningTest extends TestCase
         return $document->refresh();
     }
 
+    /**
+     * A fiscal invoice with one line.
+     *
+     * A non-DRAFT `fiscal_status` MUST carry `fiscal_hash` + `chain_sequence`:
+     * PostgreSQL enforces `chk_fiscal_mandatory_core`
+     * (`2026_03_10_300000_fix_fiscal_constraints_for_drafts.php:22-35`), which
+     * exempts only `NON_FISCAL` and `DRAFT` rows. SQLite does not enforce CHECK
+     * constraints of this shape, so a fixture missing them passes the default
+     * `:memory:` gate and only fails on PG — which is exactly what the PG leg of
+     * this lane's verification caught. Same shape as the sealed fixtures in
+     * `RefundResidualTenantIsolationTest::setUp()`.
+     */
     private function documentWithOneLine(
         DocumentStatus $status,
         FiscalStatus $fiscalStatus = FiscalStatus::Draft,
