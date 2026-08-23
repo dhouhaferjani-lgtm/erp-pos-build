@@ -184,7 +184,7 @@ final class AutoSaveRouteHardeningTest extends TestCase
     public function test_auto_save_refuses_a_type_the_caller_cannot_create(): void
     {
         // The seeded `cashier` shape: document-write, invoices.create, but no
-        // purchase-orders.* at all (RolesAndPermissionsSeeder.php:646-678).
+        // purchase-orders.* at all (RolesAndPermissionsSeeder.php:646-679).
         $cashier = $this->userWithAbilities([
             'documents.view', 'documents.update', 'quotes.create', 'invoices.create',
         ]);
@@ -260,9 +260,111 @@ final class AutoSaveRouteHardeningTest extends TestCase
     }
 
     /**
+     * Gate R2-1 [CRITICAL] — the SPOOF. The test above passes only because it
+     * sends the honest `type`.
+     *
+     * `authorize()` decides against the client-supplied `type`, and on the update
+     * branch the service then IGNORES it: `$data['type']` is read in exactly one
+     * place, `createNewDraft()`. So the same cashier principal, against the same
+     * invoice draft, with one string changed, was answered 200 and stripped every
+     * line:
+     *
+     *     [HONEST type=invoice] 403, lines=1
+     *     [SPOOF  type=quote  ] 200, lines=0
+     *
+     * Same failure shape as round 1's P1-1: a test that substitutes away the one
+     * value that breaks it.
+     */
+    public function test_auto_save_refuses_a_spoofed_type_that_disagrees_with_the_persisted_draft(): void
+    {
+        $cashier = $this->userWithAbilities(['documents.view', 'documents.update', 'quotes.create']);
+        $draft = $this->documentWithOneLine(DocumentStatus::Draft);
+
+        $response = $this->actingAsUser($cashier)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $draft->id,
+                // The caller HOLDS quotes.create — so the per-type gate lets this
+                // through — but the target is an INVOICE draft.
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertApiErrorCode($response, 'DOCUMENT_TYPE_MISMATCH');
+
+        $this->assertSame(
+            1,
+            DocumentLine::query()->where('document_id', $draft->id)->count(),
+            'A spoofed type must not strip the lines off a draft of a different type.'
+        );
+        $this->assertSame(
+            DocumentType::Invoice,
+            $draft->refresh()->type,
+            'The persisted type must never be rewritten by the request.'
+        );
+    }
+
+    /**
+     * Gate R2-1, second half — the spoof re-opened P1-2 on the update branch.
+     *
+     * Correcting entries are created `DocumentStatus::Draft` /
+     * `FiscalStatus::Draft` (`CorrectingEntryService::create()`), so
+     * `assertDraftEditable()` waves them through. Refusing `correcting_entry` at
+     * the validator only stops AUTHORING one — a `quotes.create` holder could
+     * still send `type: quote` at an existing CE draft and strip the lines off a
+     * document whose every route, including the reads, is admin-tier by owner
+     * ruling.
+     */
+    public function test_auto_save_refuses_a_spoofed_type_aimed_at_a_correcting_entry_draft(): void
+    {
+        $cashier = $this->userWithAbilities(['documents.view', 'documents.update', 'quotes.create']);
+        $correction = $this->draftOfType(DocumentType::CorrectingEntry, FiscalCategory::NonFiscal);
+
+        $response = $this->actingAsUser($cashier)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $correction->id,
+                'type' => DocumentType::Quote->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertApiErrorCode($response, 'DOCUMENT_TYPE_MISMATCH');
+
+        $this->assertSame(
+            1,
+            DocumentLine::query()->where('document_id', $correction->id)->count(),
+            'A correcting-entry draft must not be strippable through auto-save.'
+        );
+    }
+
+    /**
+     * The honest counterpart: a caller who holds the right ability AND sends the
+     * matching type still works. Without this, the guard above could be
+     * satisfied by refusing every update.
+     */
+    public function test_auto_save_accepts_a_matching_type_on_an_existing_draft(): void
+    {
+        $author = $this->authorizedUser();
+        $draft = $this->documentWithOneLine(DocumentStatus::Draft);
+
+        $this->actingAsUser($author)
+            ->postJson('/api/v1/documents/auto-save', [
+                'draft_id' => $draft->id,
+                'type' => DocumentType::Invoice->value,
+                'partner_id' => $this->customer->id,
+                'lines' => [],
+            ])
+            ->assertStatus(200);
+
+        $this->assertSame(0, DocumentLine::query()->where('document_id', $draft->id)->count());
+    }
+
+    /**
      * Gate P1-2. `correcting_entry` is the single most privileged document
      * type: every correcting-entry route, INCLUDING the reads, is gated on the
-     * admin-tier `documents.correct` (routes.php:365-388) because it "both
+     * admin-tier `documents.correct` (the `correcting-entries.*` route block) because it "both
      * exposes and writes raw general-ledger accounts and amounts". A bare
      * `Rule::enum(DocumentType::class)` let a `documents.update` holder author
      * `CE-2026-0001` through auto-save and burn a CE number.
@@ -590,7 +692,7 @@ final class AutoSaveRouteHardeningTest extends TestCase
      * request contract cannot drift away from the only caller.
      *
      * Gate P1-1: `partner_id` is **null** here, because that is what the editor
-     * sends until the operator picks a partner — `DocumentForm.tsx:262`
+     * sends until the operator picks a partner — `DocumentForm.tsx:263`
      * defaults it to null and `:286` emits `watchedPartnerId || null`, while the
      * debounce only requires one line (`useDraftAutoSave.ts:227`). The first
      * round sent `$this->customer->id` instead, which is exactly the value that
@@ -641,8 +743,8 @@ final class AutoSaveRouteHardeningTest extends TestCase
     /**
      * Gate P1-1, isolated. Before the fix this returned
      * `200 {"error":"silent_failure"}` and created NOTHING:
-     * `DraftPersistenceService.php:155` did `$partner->name` on a null relation,
-     * the resulting ErrorException hit the blanket `catch (\Throwable) → 200`,
+     * `DraftPersistenceService::createNewDraft()` did `$partner->name` on a null
+     * relation, the ErrorException hit the blanket `catch (\Throwable) → 200`,
      * and the transaction rolled back. Every auto-save before the operator
      * picked a partner authored nothing while reporting success.
      *
@@ -727,10 +829,10 @@ final class AutoSaveRouteHardeningTest extends TestCase
      * `confirm`, and auto-save then strip the lines off a now-Confirmed
      * document — the lane's own harm, narrowed to a race window.
      *
-     * The confirm side already locks (`InvoiceController.php:591-595`,
+     * The confirm side already locks (`InvoiceController::confirm()`,
      * "Re-fetch with pessimistic lock inside transaction to prevent race
      * conditions") and the cited draft-service precedent locks
-     * (`DraftPurchaseOrderService.php:78`), so auto-save was the only
+     * (`DraftPurchaseOrderService::appendLines()`), so auto-save was the only
      * participant that did not — the pair did not serialise.
      *
      * Asserted structurally rather than by racing two connections: the suite
@@ -747,15 +849,25 @@ final class AutoSaveRouteHardeningTest extends TestCase
                 ->getFileName()
         );
 
+        // Gate R2-4: bound the window structurally — from `saveDraft`'s
+        // signature to the start of the next method declaration — instead of a
+        // magic character count. A fixed-size window goes red as soon as a
+        // comment above the query grows past it, which is a failure that says
+        // nothing about the lock.
         $start = strpos($source, 'public function saveDraft');
         $this->assertNotFalse($start, 'saveDraft() must exist.');
-        $body = substr($source, $start, 1600);
+
+        $rest = substr($source, $start + 1);
+        $nextMethod = preg_match('/\n    (?:public|private|protected) function /', $rest, $m, PREG_OFFSET_CAPTURE) === 1
+            ? (int) $m[0][1]
+            : strlen($rest);
+        $body = substr($rest, 0, $nextMethod);
 
         $this->assertMatchesRegularExpression(
             '/Document::query\(\)(?:\s|.)*?->lockForUpdate\(\)/',
             $body,
             'saveDraft() must fetch the target draft with lockForUpdate() so the guard serialises '
-            .'against a concurrent confirm (which already locks: InvoiceController.php:591-595).'
+            .'against a concurrent confirm (which already locks — see InvoiceController::confirm()).'
         );
     }
 
@@ -816,8 +928,8 @@ final class AutoSaveRouteHardeningTest extends TestCase
      * event stream. That is a design call, not a clean guard.
      *
      * The fraud stream is ALREADY polluted by this today, not only under a
-     * future fix: `removeLine():504-530` fires `DraftLineRemoved` and
-     * `DraftLineRemovedV2` BEFORE `$line->delete()` at `:532`, so the deletion
+     * future fix: `DraftPersistenceService::removeLine()` fires `DraftLineRemoved` and
+     * `DraftLineRemovedV2` BEFORE its own `$line->delete()`, so the deletion
      * burst emits real removal events for lines the operator never removed.
      *
      * See docs/superpowers/tickets/2026-08-23-autosave-residuals.md §R-1.
@@ -931,7 +1043,7 @@ final class AutoSaveRouteHardeningTest extends TestCase
      * unpinned.
      *
      * ISOLATION HOLDS — the foreign document is never read or mutated, because
-     * the lookup is tenant+company scoped (`DraftPersistenceService.php:73-79`).
+     * the lookup in `saveDraft()` is tenant+company scoped (and row-locked).
      * But the miss falls through to `createNewDraft()`, so the caller gets a 200
      * with a DIFFERENT `draft_id` and burns a number in their own tenant instead
      * of a 404. Recorded, not changed: refusing an unresolvable non-null
@@ -1131,6 +1243,45 @@ final class AutoSaveRouteHardeningTest extends TestCase
      * this lane's verification caught. Same shape as the sealed fixtures in
      * `RefundResidualTenantIsolationTest::setUp()`.
      */
+    /**
+     * A DRAFT document of an arbitrary type with one line — for the spoof tests,
+     * where the target's persisted type is the whole point.
+     *
+     * Correcting entries are `FiscalCategory::NonFiscal` by owner ruling
+     * (`CorrectingEntryService::create()`), which is also what keeps them out of
+     * the `chk_fiscal_mandatory_core` CHECK on PostgreSQL.
+     */
+    private function draftOfType(DocumentType $type, FiscalCategory $category): Document
+    {
+        $document = Document::create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'partner_id' => $this->customer->id,
+            'type' => $type,
+            'fiscal_category' => $category,
+            'fiscal_status' => FiscalStatus::Draft,
+            'status' => DocumentStatus::Draft,
+            'document_number' => 'DOC-AS-'.bin2hex(random_bytes(3)),
+            'document_date' => now()->format('Y-m-d'),
+            'currency' => 'EUR',
+            'subtotal' => '100.000',
+            'tax_amount' => '0.000',
+            'total' => '100.000',
+        ]);
+
+        $document->lines()->create([
+            'product_id' => $this->product->id,
+            'line_number' => 1,
+            'description' => 'Autosave Product',
+            'quantity' => '1.0000',
+            'unit_price' => '100.000',
+            'tax_rate' => 0,
+            'line_total' => '100.000',
+        ]);
+
+        return $document->refresh();
+    }
+
     private function documentWithOneLine(
         DocumentStatus $status,
         FiscalStatus $fiscalStatus = FiscalStatus::Draft,
