@@ -254,6 +254,39 @@ class CouponValidationServiceTest extends TestCase
         $this->service->validateAndCalculate($coupon, $this->makeCart(), null);
     }
 
+    /**
+     * Lane Q-4: the global cap must produce the *exhausted* refusal, not the
+     * date-range "expired" one it fell through to via Coupon::isValid(). The
+     * message is what the POS surfaces to the cashier, and "expired" on a
+     * coupon that is still inside its validity window is a support ticket.
+     */
+    public function test_usage_limit_reached_throws_the_exhausted_refusal(): void
+    {
+        $coupon = $this->makeCoupon([
+            'max_uses' => 5,
+            'use_count' => 5,
+            'starts_at' => Carbon::now()->subDay()->toDateTimeString(),
+            'expires_at' => Carbon::now()->addDay()->toDateTimeString(),
+        ]);
+
+        $this->expectException(CouponInvalidException::class);
+        $this->expectExceptionMessage('fully redeemed');
+
+        $this->service->validateAndCalculate($coupon, $this->makeCart(), null);
+    }
+
+    public function test_usage_limit_not_yet_reached_still_applies(): void
+    {
+        $coupon = $this->makeCoupon([
+            'max_uses' => 5,
+            'use_count' => 4,
+        ]);
+
+        $result = $this->service->validateAndCalculate($coupon, $this->makeCart(), null);
+
+        $this->assertEquals('10.00', $result->discountAmount);
+    }
+
     // -- Minimum order amount tests --
 
     public function test_minimum_order_amount_not_met_throws(): void
