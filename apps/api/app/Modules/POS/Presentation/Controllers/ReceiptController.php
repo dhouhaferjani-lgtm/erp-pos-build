@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\POS\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Company\Services\LocationContext;
 use App\Modules\Fiscal\Domain\Enums\FiscalEventType;
@@ -374,6 +375,39 @@ final class ReceiptController extends Controller
             // (ReceiptReturnRefactorV3Test) was written to catch. PHP
             // dispatches to the first matching catch clause, so this
             // narrower clause must be declared before the broad one.
+            throw $e;
+        } catch (UnbalancedJournalEntryPostException $e) {
+            // enforcement-P3 M1 §6 R-10 — PER-SITE CATCH NARROWING.
+            //
+            // The GL posting chokepoint (`GeneralLedgerService::sealAndPersistEntry`)
+            // refused to seal an entry whose Sigma(debits) != Sigma(credits). That
+            // refusal is an `\InvalidArgumentException` by parentage — deliberately,
+            // so that naming it left the chokepoint's blast radius byte-identical to
+            // its pre-M1 bare throw — which means the broad
+            // `catch (\InvalidArgumentException)` clause below used to intercept it
+            // and render **400 `INVALID_RETURN_DATA`**: a fiscal-integrity fault
+            // reported to the cashier as "your return payload is wrong". It is not.
+            // Nothing about the request can fix it and no client should retry it.
+            //
+            // It is REACHABLE here: `ReceiptReturnService::processReturn()` posts
+            // synchronously and OUTSIDE its own `try` on the settlement paths —
+            // `executePaymentRefund` (`:906`) -> `PaymentRefundService::postRefundGlAndMovement`
+            // -> `createPaymentRefundJournalEntry(..., PostingMode::SynchronousInTransaction)`,
+            // and `executeVoucherIssuance` (`:882`) -> `VoucherIssuanceService`
+            // -> `GeneralLedgerService::createVoucherLedgerEntry`. (The inventory
+            // batch at `ReceiptReturnService:514-525` is a different story — it is
+            // swallowed there, reported as R-11 for the projection-discipline lane.)
+            //
+            // Re-throwing hands it to the global renderer in `bootstrap/app.php`,
+            // which has no mapping for it and so emits the catch-all
+            // `500 {code: INTERNAL_ERROR, request_id}` envelope. That is the
+            // disposition the sibling type's docblocks pin as "an unmapped
+            // exception (a 500 + alert), never a 4xx". PHP dispatches to the FIRST
+            // matching clause, so this narrower arm must stay ABOVE both broad ones.
+            //
+            // Genuine argument-validation refusals from this flow are untouched and
+            // keep their 400 contract — e.g. `ReceiptReturnService:138/1124/1131/
+            // 1140/1153/1163/1167/1177` and `PaymentRefundService:2021/2075`.
             throw $e;
         } catch (\RuntimeException $e) {
             return response()->json([

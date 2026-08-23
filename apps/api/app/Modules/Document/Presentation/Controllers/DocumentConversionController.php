@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Modules\Document\Presentation\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Company\Services\CompanyContext;
 use App\Modules\Document\Domain\Document;
 use App\Modules\Document\Domain\DocumentLine;
@@ -415,6 +416,44 @@ class DocumentConversionController extends Controller
                 'data' => $updatedPurchaseOrder->load(['lines', 'partner', 'vehicleContext']),
                 'message' => 'Goods received for purchase order successfully',
             ]);
+        } catch (UnbalancedJournalEntryPostException $e) {
+            // enforcement-P3 M1 §6 R-10 — PER-SITE CATCH NARROWING.
+            //
+            // The GL posting chokepoint (`GeneralLedgerService::sealAndPersistEntry`)
+            // refused to seal an entry whose Sigma(debits) != Sigma(credits). Because
+            // that refusal is an `\InvalidArgumentException` by parentage — kept there
+            // deliberately so naming it left the chokepoint's blast radius identical to
+            // its pre-M1 bare throw — the broad clause below used to intercept it and
+            // render **422 `VALIDATION_ERROR`**: a fiscal-integrity fault reported to
+            // the caller as a fixable request error. Re-throwing hands it to the global
+            // renderer in `bootstrap/app.php`, whose catch-all emits
+            // `500 {code: INTERNAL_ERROR, request_id}` — the "unmapped 500 + alert,
+            // never a 4xx" disposition the two unbalanced types' docblocks pin.
+            //
+            // HONEST REACHABILITY NOTE (verified 2026-08-23, not asserted from the
+            // census): on the code as it stands the chokepoint's refusal does NOT
+            // arrive here, on two independent counts.
+            //   1. `receivePurchaseOrderGoods` has no route — grep for the method name
+            //      over the whole repo finds only this definition and a source-anchored
+            //      tenant-isolation assertion. There is no HTTP entry point.
+            //   2. Even invoked directly, the only GL post under
+            //      `GoodsReceiptService::receiveGoods()/receiveAll()` is the GR-IR twin
+            //      dispatched as a `GoodsReceived` event, and its sole listener
+            //      (`PostGrIrOnGoodsReceipt::handle`, `EventServiceProvider:147`)
+            //      swallows every `\Throwable`. The unswallowed `failClosedGrir` direct
+            //      call at `GoodsReceiptService:409` is only armed by `post(..., true)`,
+            //      which on this codebase is passed by `StandaloneReceiptService:134`
+            //      alone — never by the converter path.
+            // So this arm is a GUARD, not a live-bug fix: it makes the site correct by
+            // construction rather than by two accidents that a future edit could undo
+            // (routing this method, or arming fail-closed GR-IR on the converter path).
+            //
+            // Genuine argument-validation refusals are untouched and keep their 422:
+            // `DocumentConverterRegistry:93` (no converter registered for this pair) and
+            // `PurchaseOrderToGoodsReceiptConverter:123` (source is not a purchase
+            // order). The `\DomainException` and `\RuntimeException` arms below are
+            // likewise unchanged — this type is neither.
+            throw $e;
         } catch (\InvalidArgumentException $e) {
             return response()->json([
                 'error' => [
