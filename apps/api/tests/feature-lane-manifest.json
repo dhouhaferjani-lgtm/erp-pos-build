@@ -6,7 +6,7 @@
     "deferred": "CAN run, but no lane runs it yet. Requires `reason`. Counted loudly on every CI run. After O-29 exactly one group is left here — `(root files)`, which no whole-directory selector can address."
   },
   "debt_ceiling": 1,
-  "gated_ceiling": 1134,
+  "gated_ceiling": 1135,
   "lanes": {
     "security-regression": {
       "job": "security-regression",
@@ -861,8 +861,8 @@
     },
     "Migrations": {
       "lane": "feature-lane-data-console/Migrations",
-      "classes": 5,
-      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped."
+      "classes": 6,
+      "note": "Laned by the O-29 / F-2 execution ruling of 2026-08-21, into a lane that is PARKED behind `vars.SELF_HOSTED_RUNNER_READY` until the owner registers the self-hosted runner. While parked the `classes` ceiling stays ENFORCED (a new class here still runs nowhere); it becomes informational, as for any live lane, the moment the gate is flipped. DELIBERATE RAISE 5->6 (2026-08-23, triage lane F4): DocumentsSourceDocumentIdIndexTest, the forward/rollback/idempotency proof for the `documents.source_document_id` index. It is PG-only and CONCURRENTLY-bearing, so it cannot use RefreshDatabase and skips on SQLite — this parked lane's real-PostgreSQL runner is the only place it will ever execute. It was run green by hand against PG 16 on the lane worktree; see the F4 commit body."
     },
     "ModelUpdates": {
       "lane": "feature-lane-catalog/ModelUpdates",
