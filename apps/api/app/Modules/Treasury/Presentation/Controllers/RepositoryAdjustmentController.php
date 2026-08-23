@@ -12,6 +12,7 @@ use App\Modules\Treasury\Domain\Enums\MovementDirection;
 use App\Modules\Treasury\Domain\Enums\MovementReasonCode;
 use App\Modules\Treasury\Domain\Exceptions\AdjustmentAmountBelowCurrencyPrecisionException;
 use App\Modules\Treasury\Domain\Exceptions\AdjustmentToleranceAccountMissingException;
+use App\Modules\Treasury\Domain\Exceptions\RepositoryNotSeededException;
 use App\Modules\Treasury\Presentation\Requests\AdjustRepositoryRequest;
 use App\Shared\Contracts\Treasury\RepositoryAdjustmentServiceInterface;
 use Illuminate\Http\JsonResponse;
@@ -75,6 +76,19 @@ final class RepositoryAdjustmentController extends Controller
                 'error' => __('messages.treasury.adjustment_tolerance_account_missing', [
                     'purpose' => $e->purpose->label(),
                 ]),
+            ], 422);
+        } catch (RepositoryNotSeededException $e) {
+            // B-2 go-live seeding guard. The `code` is ADDITIVE alongside the
+            // existing string `error` shape this endpoint has always returned:
+            // the FE keeps rendering `error` unchanged, and gains a stable
+            // discriminator it can use to deep-link the operator to the
+            // opening-balance wizard instead of showing a dead-end 422.
+            return response()->json([
+                'error' => __('messages.treasury.repository_not_seeded', [
+                    'repository' => $e->repositoryName,
+                    'code' => $e->repositoryCode,
+                ]),
+                'code' => RepositoryNotSeededException::ERROR_CODE,
             ], 422);
         } catch (AdjustmentAmountBelowCurrencyPrecisionException $e) {
             // Gate C2: sub-smallest-unit amounts are refused before any insert.
