@@ -21,6 +21,7 @@ use App\Modules\Taxation\Domain\Services\TaxCalculationService;
 use App\Modules\Tenant\Domain\Enums\SubscriptionPlan;
 use App\Modules\Tenant\Domain\Enums\TenantStatus;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Shared\Contracts\CurrencyScaleResolverInterface;
 use App\Shared\Contracts\ProductVariantLookup;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -85,6 +86,12 @@ class DraftLineEventV2Test extends TestCase
             new DocumentNumberingService,
             new DocumentTotalsCalculator(app(TaxCalculationService::class)),
             app(ProductVariantLookup::class),
+            // Inherited red repaired in the P1 auto-save lane: the precision
+            // contract added a 4th constructor argument to
+            // DraftPersistenceService and this hand-wired test was never
+            // updated, so all 6 cases died with an ArgumentCountError before
+            // reaching an assertion.
+            app(CurrencyScaleResolverInterface::class),
         );
     }
 

@@ -32,8 +32,48 @@ use Illuminate\Support\Facades\Route;
 */
 
 Route::prefix('api/v1')->middleware(['api', 'auth:sanctum', SetPermissionsTeam::class, EnforceTokenTenantClaim::class])->group(function (): void {
-    // Draft auto-save (no permissions required - fraud detection)
+    // Draft auto-save.
+    //
+    // P1 (ticket 2026-08-22 §1). This route used to carry NO `can:` gate at all,
+    // on the rationale "no permissions required - fraud detection". That was
+    // wrong on its own terms: the endpoint WRITES — it creates a document and
+    // allocates a number out of the same `document_sequences` row that later
+    // feeds the fiscal hash chain — so an ungated route let a read-only `viewer`
+    // burn invoice numbers and author documents.
+    //
+    // TWO layers, because one is not enough for a route that is polymorphic on
+    // `type`:
+    //
+    //  1. `can:documents.update` here — the coarse document-write gate. Its only
+    //     other write user in this file is the `documents.revert` route; the
+    //     additional-cost WRITES (`documents.additional-costs.store` /
+    //     `.update` / `.destroy`) use `can:purchase-orders.update`, NOT this
+    //     permission, and before this lane the permission's only seeder
+    //     annotation was "Document attachments (Media module)". So the
+    //     precedent is narrower than an earlier revision of this comment
+    //     claimed. It excludes the read-only roles (`viewer`, `technician`) and
+    //     admits admin/manager/operator/cashier/accountant.
+    //
+    //  2. The per-TYPE `*.create` ability, enforced in
+    //     `AutoSaveDraftRequest::authorize()` against the map in that class,
+    //     PAIRED with `DraftPersistenceService::assertTypeMatches()` — which is
+    //     what makes it real on the update branch, where `authorize()` can only
+    //     see the type the CLIENT claims (gate R2-1).
+    //     Layer 1 alone was a universal authoring bypass around the whole
+    //     per-type `*.create` catalogue — a `cashier` (no `purchase-orders.*`
+    //     at all) could author `PO-2026-0001` here and burn a PO number. The
+    //     same class also narrows `type` to the seven the editor auto-saves, so
+    //     `correcting_entry` — admin-tier by owner ruling, see the
+    //     `correcting-entries.*` block below — can neither be authored nor,
+    //     via a spoofed `type`, have an existing CE draft stripped.
+    //
+    // Citations here name ROUTES and SYMBOLS, never line numbers into this file:
+    // round 2 (R2-2) caught every line number in the previous revision drifted
+    // by 15 the moment this very comment grew.
+    //
+    // Residuals: docs/superpowers/tickets/2026-08-23-autosave-residuals.md
     Route::post('/documents/auto-save', [DraftController::class, 'autoSave'])
+        ->middleware('can:documents.update')
         ->name('documents.auto-save');
 
     // All documents (unified view)
