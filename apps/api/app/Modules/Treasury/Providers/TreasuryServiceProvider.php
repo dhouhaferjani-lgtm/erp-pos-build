@@ -169,17 +169,34 @@ class TreasuryServiceProvider extends ServiceProvider
         // usage (policed by tests/Architecture/TreasuryBalanceWritePortTest.php),
         // so the consumer of this POS domain event lives here. Registered the
         // same way Compliance registers its own CashCountRecorded consumer
-        // (OpenFraudAlertForShiftVariance) — synchronous, and internally
-        // log-never-block: the live path raises the event from a DB::afterCommit
+        // (OpenFraudAlertForShiftVariance), but the listener itself implements
+        // ShouldQueue (R-8), so this array-form Event::listen resolves through
+        // Dispatcher::createClassCallable -> handlerShouldBeQueued and PUSHES a
+        // CallQueuedListener rather than calling handle() inline. That is the
+        // whole point: the live path raises the event from a DB::afterCommit
         // callback and the offline path dispatches plainly after its transaction
         // returns, so in BOTH cases the shift close has already succeeded by the
-        // time this runs and a throw here would surface as a spurious 500.
+        // time this runs — a fault after the job starts must retry on a worker
+        // instead of surfacing as a spurious 500 on the close.
+        //
+        // The ENQUEUE leg is a different frame and is NOT covered by the
+        // listener: Dispatcher::dispatch() has no try/catch, so a Redis outage
+        // at push time would propagate out of event(). Gate round 1 P2-1 closes
+        // that at the producers — both raise the event through
+        // POS\Application\Services\CashCountDispatcher, which degrades any
+        // consumer fault to a durable `pos.cash_count_consumers_failed` audit
+        // row rather than a 500 on a sealed Z report.
         //
         // The listener itself is gated on `treasury.shift_variance_gl_enabled`
         // (default FALSE — gate finding I1, pending the owner ruling on POS
-        // count semantics). The gate is checked inside handle() rather than
-        // around this registration so the flag stays runtime-evaluable in tests
-        // and so a future per-company dimension has somewhere to live.
+        // count semantics). The flag is now read TWICE, deliberately:
+        // `shouldQueue()` decides whether to push at all (so a disabled lane
+        // enqueues nothing, not a no-op job per close), and the identical check
+        // at the top of handle() is the worker-side belt — it stays there so the
+        // flag remains runtime-evaluable in tests, so a future per-company
+        // dimension has somewhere to live, and so an API/worker env skew is
+        // AUDITED (`feature_disabled_after_enqueue`) instead of silently
+        // dropping the variance (gate round 1 P2-2).
         Event::listen(
             CashCountRecorded::class,
             [PostShiftCashVarianceAdjustment::class, 'handle'],

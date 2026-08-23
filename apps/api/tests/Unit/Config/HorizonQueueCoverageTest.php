@@ -19,9 +19,18 @@ use Tests\TestCase;
  * sales) showed zero sales. Local dev masked it via QUEUE_CONNECTION=sync.
  *
  * This test scans app/ for `onQueue('...')` / `->onQueue("...")` literals
- * and asserts each named queue appears in every Horizon supervisor
- * defaults entry. If you add a new named queue, add it to
- * config/horizon.php `defaults.*.queue` (or give it its own supervisor).
+ * AND for `public $queue = '...'` property declarations, then asserts each
+ * named queue appears in every Horizon supervisor defaults entry. If you add
+ * a new named queue, add it to config/horizon.php `defaults.*.queue` (or give
+ * it its own supervisor).
+ *
+ * The property form was added by the R-8 gate (finding P3-2). A queued
+ * LISTENER never calls `onQueue()` — `Dispatcher::queueHandler()` reads
+ * `$listener->queue ?? null` off the class instead — so
+ * `PostShiftCashVarianceAdjustment`'s `public string $queue = 'default'` was
+ * invisible to the guard. It happens to name a consumed queue, but the next
+ * `public string $queue = '<new-queue>'` would have reproduced the 2026-06-12
+ * `fiscal-projections` incident this test exists to prevent.
  */
 class HorizonQueueCoverageTest extends TestCase
 {
@@ -42,14 +51,12 @@ class HorizonQueueCoverageTest extends TestCase
             if ($contents === false) {
                 continue;
             }
-            if (preg_match_all("/onQueue\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)/", $contents, $matches) > 0) {
-                foreach ($matches[1] as $queue) {
-                    $dispatchedQueues[$queue] = true;
-                }
+            foreach ($this->scanQueueNames($contents) as $queue) {
+                $dispatchedQueues[$queue] = true;
             }
         }
 
-        $this->assertNotEmpty($dispatchedQueues, 'Expected at least one onQueue() callsite in app/');
+        $this->assertNotEmpty($dispatchedQueues, 'Expected at least one onQueue() callsite or $queue declaration in app/');
 
         $supervisors = config('horizon.defaults');
         $this->assertIsArray($supervisors);
@@ -76,9 +83,84 @@ class HorizonQueueCoverageTest extends TestCase
         $this->assertSame(
             [],
             array_keys($uncovered),
-            'These queues receive jobs via onQueue() but NO Horizon supervisor consumes them '
-            .'(jobs would sit in Redis forever): '.implode(', ', array_keys($uncovered))
+            'These queues receive jobs via onQueue() or a $queue declaration but NO Horizon supervisor '
+            .'consumes them (jobs would sit in Redis forever): '.implode(', ', array_keys($uncovered))
             .'. Add them to config/horizon.php defaults.*.queue.'
+        );
+    }
+
+    /**
+     * Extract every queue name a file routes work to.
+     *
+     * TWO forms, and the second is why this method exists (R-8 gate P3-2):
+     *   - `onQueue('…')` — the fluent form, all this guard used to see;
+     *   - `public $queue = '…'` — the DECLARATION form. A queued LISTENER never
+     *     calls `onQueue()`; `Dispatcher::queueHandler()` reads
+     *     `$listener->queue ?? null` off the class instead. Optional
+     *     `string`/`?string` type and optional `readonly` are accepted.
+     *
+     * Gate round 2, F-2: this is a SHARED method precisely so the integrity test
+     * below exercises the real scanner. Its previous incarnation re-implemented
+     * the regex privately, which meant deleting the property branch above left
+     * it green — it could not detect the one regression its docblock promised.
+     *
+     * @return list<string>
+     */
+    private function scanQueueNames(string $contents): array
+    {
+        $queues = [];
+
+        if (preg_match_all("/onQueue\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)/", $contents, $matches) > 0) {
+            foreach ($matches[1] as $queue) {
+                $queues[] = $queue;
+            }
+        }
+
+        if (preg_match_all(
+            "/public\\s+(?:readonly\\s+)?(?:\\??string\\s+)?\\\$queue\\s*=\\s*['\"]([^'\"]+)['\"]/",
+            $contents,
+            $propertyMatches,
+        ) > 0) {
+            foreach ($propertyMatches[1] as $queue) {
+                $queues[] = $queue;
+            }
+        }
+
+        return $queues;
+    }
+
+    /**
+     * R-8 gate P3-2 — the scanner must actually SEE the declaration form.
+     *
+     * Without this, a regression that silently drops the `$queue` property
+     * branch would leave the main test green (the `onQueue()` literals alone
+     * still satisfy every assertion there) while the guard quietly stopped
+     * covering every queued listener in the codebase.
+     *
+     * Gate round 2, F-2: this now calls the REAL scanner
+     * ({@see scanQueueNames()}) rather than a private copy of its regex, so
+     * deleting the property branch turns it red. Verified by scratch-deleting
+     * that branch.
+     */
+    public function test_the_scanner_sees_queue_declared_as_a_property(): void
+    {
+        $listener = base_path('app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php');
+        $this->assertFileExists($listener);
+
+        // A queued listener that declares its queue as a property and never
+        // calls onQueue() — the exact shape the fluent-only scanner missed.
+        $contents = (string) file_get_contents($listener);
+        $this->assertStringNotContainsString(
+            'onQueue(',
+            $contents,
+            'This fixture is only meaningful while the listener names its queue by DECLARATION, not by onQueue().',
+        );
+
+        $this->assertContains(
+            'default',
+            $this->scanQueueNames($contents),
+            'The real scanner no longer sees a $queue property declaration — every queued listener '
+            .'in the codebase just became invisible to the Horizon coverage guard.',
         );
     }
 

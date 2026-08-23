@@ -59,6 +59,13 @@ final class ReportGenerationService
         private readonly ZReportCountRepository $zReportCountRepository,
         private readonly PaymentToleranceQueryService $paymentToleranceQueryService,
         private readonly TaxIdentityResolver $taxIdentityResolver,
+        // Gate round 1 P2-1 — the CashCountRecorded dispatch runs from a
+        // DB::afterCommit callback on a COMMITTED, hash-chained Z report, and
+        // DatabaseTransactionsManager::commit() executes those callbacks bare.
+        // Raising the event through this guard is what keeps a consumer fault
+        // (now including a queue push, since PostShiftCashVarianceAdjustment is
+        // ShouldQueue) from surfacing as a 500 on a close that succeeded.
+        private readonly CashCountDispatcher $cashCountDispatcher,
     ) {}
 
     private function scale(): int
@@ -412,7 +419,11 @@ final class ReportGenerationService
                     $validation,
                     $perTenderWithCounts,
                 ): void {
-                    event(new CashCountRecorded(
+                    // Gate round 1 P2-1 — guarded, never bare `event()`: this
+                    // runs after the Z report is committed and sealed, so a
+                    // consumer fault must degrade to a durable audit row, not
+                    // to a 500 on a close that succeeded.
+                    $this->cashCountDispatcher->dispatch(new CashCountRecorded(
                         zReportId: $freshReport->id,
                         shiftId: $shift->id,
                         terminalId: $terminal->id,

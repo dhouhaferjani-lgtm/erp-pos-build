@@ -186,6 +186,68 @@ final class ShiftCashVarianceTriggerPathsTest extends TestCase
     }
 
     /**
+     * R-8 gate round 1, finding P2-1 — end-to-end on BOTH producers: an
+     * unreachable queue at push time must not fail a close that succeeded.
+     *
+     * This is the hazard the ShouldQueue conversion introduced. The listener's
+     * own never-block guarantee starts once the job RUNS; the push happens one
+     * frame up, in the producer, where `Dispatcher::dispatch()` has no try/catch
+     * and (on the live path) `DatabaseTransactionsManager::commit()` executes the
+     * `afterCommit` callback bare. Before the `CashCountDispatcher` guard, a
+     * Redis outage at close-of-day would have surfaced as a 500 on a Z report
+     * that is already committed and hash-chained — and an offline-first device
+     * cannot re-raise it, because a re-sync short-circuits at `200 duplicate`.
+     */
+    public function test_an_unreachable_queue_does_not_fail_the_offline_sync_close(): void
+    {
+        Sanctum::actingAs($this->cashier);
+
+        config()->set('queue.default', 'r8-unreachable-connection');
+
+        $this->postJson('/api/v1/pos/reports/z/sync', $this->syncPayload('-5.0000'))
+            ->assertStatus(201);
+
+        // The sync succeeded, nothing was booked, and the loss is on the record.
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(
+            1,
+            DB::table('audit_events')
+                ->where('event_type', 'pos.cash_count_consumers_failed')
+                ->where('aggregate_id', $this->shift->id)
+                ->count(),
+        );
+    }
+
+    public function test_an_unreachable_queue_does_not_fail_the_live_z_report_close(): void
+    {
+        config()->set('queue.default', 'r8-unreachable-connection');
+
+        app(ReportGenerationService::class)->generateZReport(
+            $this->terminal,
+            $this->cashier,
+            [new CashCountInputDTO(
+                paymentMethodId: $this->cashMethod->id,
+                currencyCode: 'TND',
+                actualAmount: '95.0000',
+            )],
+            'Till short at close.',
+            null,
+            false,
+        );
+
+        // The Z report exists and the shift is closed — the close succeeded.
+        $this->assertSame(1, DB::table('pos_z_reports')->where('shift_id', $this->shift->id)->count());
+        $this->assertSame(0, RepositoryAdjustment::query()->count());
+        $this->assertSame(
+            1,
+            DB::table('audit_events')
+                ->where('event_type', 'pos.cash_count_consumers_failed')
+                ->where('aggregate_id', $this->shift->id)
+                ->count(),
+        );
+    }
+
+    /**
      * Replay through the OFFLINE path.
      *
      * `pos_z_reports.shift_id` is UNIQUE, so a device can never land a second Z

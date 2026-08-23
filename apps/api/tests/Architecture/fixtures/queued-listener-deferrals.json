@@ -1,0 +1,22 @@
+[
+  {
+    "class": "App\\Modules\\Inventory\\Application\\Listeners\\ApplyStockAdjustmentsOnCountingCompleted",
+    "deferred_to_cluster": "inventory",
+    "tracked_in": "Pre-existing queued listener, predates this guard (added by the R-8 gate, finding P3-3). Classifying another module's listener is that module's call, not R-8's — the guard is introduced non-retroactively so it polices NEW queued listeners from here on."
+  },
+  {
+    "class": "App\\Modules\\Inventory\\Application\\Listeners\\ExitOnboardingOnFullCountFinalized",
+    "deferred_to_cluster": "inventory",
+    "tracked_in": "Pre-existing queued listener, predates this guard (added by the R-8 gate, finding P3-3). Same reasoning as ApplyStockAdjustmentsOnCountingCompleted."
+  },
+  {
+    "class": "App\\Modules\\Loyalty\\Application\\Listeners\\EarnPointsOnReceiptCompleted",
+    "deferred_to_cluster": "loyalty",
+    "tracked_in": "Pre-existing queued listener, predates this guard (added by the R-8 gate, finding P3-3). Same reasoning as ApplyStockAdjustmentsOnCountingCompleted."
+  },
+  {
+    "class": "App\\Modules\\Workshop\\WorkOrder\\Infrastructure\\Listeners\\LogPartsNeededForProcurement",
+    "deferred_to_cluster": "workshop",
+    "tracked_in": "Pre-existing queued listener, predates this guard (added by the R-8 gate, finding P3-3). Lives under a NESTED module path (app/Modules/Workshop/WorkOrder/Infrastructure/Listeners), which is why the guard's recursive scan finds it and a flat glob would not."
+  }
+]
