@@ -182,7 +182,8 @@ final class DemoPharmacySeeder extends ParapharmacySeeder
      * exposed via {@see $shops} for use by Tasks 4/6/9.
      *
      * Per-establishment matricule pattern: `1234567AM00{n}` satisfies the
-     * CountryTaxNumberRules TN regex `/^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/`.
+     * CountryTaxNumberRules TN regex `/^[0-9]{7,8}[A-Z]{2,3}[0-9]{3}$/D`
+     * (the 2-letter arm; the 3-letter arm is the canonical 13-char MF).
      *
      * @return array{0: Company, 1: Location}
      */

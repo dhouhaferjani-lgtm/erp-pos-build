@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Modules\Partner\Domain\Services;
 
+use App\Shared\Domain\Validation\CountryTaxNumberRules;
+
 final class TaxIdValidationService
 {
     public function validate(string $countryCode, string $registrationNumber): TaxIdValidationResult
@@ -78,16 +80,36 @@ final class TaxIdValidationService
         if (! $this->validateTunisianMatricule($cleaned)) {
             return TaxIdValidationResult::invalid(
                 'Matricule Fiscale',
-                ['Tunisian matricule fiscale must match pattern: 7 digits + 1 letter + 3 characters (e.g., 1234567A000).'],
+                ['Tunisian matricule fiscale must match pattern: 7-8 digits + 2 or 3 letters + 3-digit establishment (e.g., 1234567AM000 or 1234567AMN000).'],
             );
         }
 
         return TaxIdValidationResult::valid('Matricule Fiscale');
     }
 
+    /**
+     * Delegated to the single source of truth. This advisory endpoint used to
+     * carry its own third, incompatible TN pattern (`/^\d{7}[A-Z][A-Z0-9]{3}$/`)
+     * which told operators a matricule was fine that the seal boundary then
+     * refused — research spec 2026-08-23 §3.3.
+     *
+     * ADVISORY ONLY — this is NOT a contract, and nothing is rejected on the
+     * strength of it. The single consumer is `PartnerController::validateTaxId`
+     * (`PartnerController.php:440-482`), which returns the result in a response
+     * body and never blocks a write.
+     *
+     * Read the TN arm accordingly: the controller feeds this method
+     * `business_registration_number`, but the pattern it now delegates to is
+     * the *matricule fiscale* (the `vat_number` semantic). In Tunisia the
+     * matricule and the RNE / registre de commerce are different identifiers,
+     * so a legitimately-stored registration number can be reported "invalid"
+     * here. That is a UI hint on a screen the operator can ignore, not a
+     * storage or sealing rule (gate R1 F-4). Converging the two identifier
+     * semantics is a separate lane.
+     */
     private function validateTunisianMatricule(string $matricule): bool
     {
-        return (bool) preg_match('/^\d{7}[A-Z][A-Z0-9]{3}$/', strtoupper($matricule));
+        return CountryTaxNumberRules::matches('TN', strtoupper($matricule));
     }
 
     private function validateItalian(string $registrationNumber): TaxIdValidationResult

@@ -1406,7 +1406,18 @@ const TAX_NUMBER_UNIVERSAL = /^[A-Za-z0-9 \-/.]{4,40}$/;
 
 const TAX_NUMBER_PATTERNS: Readonly<Record<string, RegExp>> = {
   FR: /^([0-9]{9}|[0-9]{14})$/,
-  TN: /^[0-9]{7,8}[A-Z]{2}[0-9]{3}$/,
+  /**
+   * Tunisian matricule fiscale, compact form: 7-8 digits + 2 OR 3 letters +
+   * 3-digit establishment. The 3-letter arm is the canonical 13-character MF;
+   * the 2-letter arm is the 12-character form already present in sealed bytes.
+   *
+   * MIRROR: byte-identical to the server's
+   * `CountryTaxNumberRules::PATTERNS['TN']` (modulo the PHP-only `D` modifier,
+   * which JS `$` implies without the `m` flag). Guarded on the server by
+   * `tests/Unit/Shared/TunisianMatriculeConvergenceTest.php` and here by
+   * `__tests__/taxNumberPatterns.test.ts`. Do not edit one side alone.
+   */
+  TN: /^[0-9]{7,8}[A-Z]{2,3}[0-9]{3}$/,
   SA: /^3[0-9]{12}03$/,
   DE: /^DE[0-9]{9}$/,
   IT: /^[0-9]{11}$/,
