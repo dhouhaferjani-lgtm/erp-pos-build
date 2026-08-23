@@ -11,7 +11,9 @@ use App\Modules\POS\Domain\Enums\ShiftStatus;
 use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Events\TerminalActivated;
 use App\Modules\POS\Domain\Events\TerminalActivatedAudit;
+use App\Modules\POS\Domain\Events\TerminalClaimed;
 use App\Modules\POS\Domain\Events\TerminalDeactivated;
+use App\Modules\POS\Domain\Events\TerminalReleased;
 use App\Modules\POS\Domain\Events\TerminalSoftwareUpdated;
 use App\Modules\POS\Domain\Events\TerminalTrainingModeChanged;
 use App\Modules\POS\Domain\Terminal;
@@ -23,8 +25,10 @@ use App\Modules\POS\Presentation\Requests\UpdateTerminalRequest;
 use App\Modules\POS\Presentation\Resources\TerminalResource;
 use App\Shared\Presentation\Validation\ScopedExists;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 
 /**
@@ -388,9 +392,130 @@ final class TerminalController extends Controller
             ], 409);
         }
 
-        $terminal->update([
-            'hardware_identifier' => $data['hardware_identifier'],
+        $companyId = $this->companyContext->requireCompanyId();
+        $hardwareIdentifier = (string) $data['hardware_identifier'];
+
+        // Q-7: courtesy pre-check so the ordinary "this box already runs another
+        // till" mistake answers with a named 409 instead of surfacing as a
+        // caught constraint violation. It is NOT the guarantee — it can be raced
+        // exactly like the null-check above. The guarantee is
+        // `pos_terminals_unique_hardware_identifier`, caught below.
+        if ($this->hardwareBoundElsewhere($companyId, $hardwareIdentifier, $terminal->id)) {
+            return $this->deviceAlreadyBoundResponse();
+        }
+
+        // Q-7: THE CLAIM IS SETTLED HERE, by a conditional UPDATE — not by the
+        // in-memory check above. Between `firstOrFail()` and this line the
+        // request runs the `pos_enabled` lookup, and a competing device can bind
+        // the terminal inside that window; the previous plain `WHERE id = ?`
+        // update overwrote the winner and answered 200 to BOTH devices, which
+        // put two physical tills on one NF525 chain. `WHERE hardware_identifier
+        // IS NULL` makes the database the arbiter: the loser matches zero rows.
+        //
+        // The `DB::transaction()` wrapper is NOT for atomicity — a single
+        // UPDATE is already atomic. It is for CONTAINMENT on PostgreSQL: a
+        // caught `QueryException` leaves the enclosing transaction aborted
+        // (SQLSTATE 25P02) and every later statement in the request then fails,
+        // so the 409 below would never be reached whenever this endpoint runs
+        // inside a transaction. `DB::transaction()` opens a SAVEPOINT when one
+        // is already active and rolls back to that alone, which is what makes
+        // the catch an honest guarantee rather than a hope. Same trap the B-3
+        // backfill migration documents.
+        try {
+            $claimed = DB::transaction(fn (): int => Terminal::forCompany($companyId)
+                ->whereKey($terminal->id)
+                ->whereNull('hardware_identifier')
+                ->update(['hardware_identifier' => $hardwareIdentifier]));
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
+                return $this->deviceAlreadyBoundResponse();
+            }
+
+            throw $e;
+        }
+
+        if ($claimed === 0) {
+            return response()->json([
+                'error' => [
+                    'code' => 'TERMINAL_ALREADY_CLAIMED',
+                    'message' => 'Terminal is already claimed by another device',
+                ],
+            ], 409);
+        }
+
+        $terminal->refresh();
+
+        // Binding a device to a terminal binds it to that terminal's fiscal
+        // chain. `activate()`/`deactivate()` have always written an audit event
+        // for exactly this reason; claiming wrote nothing at all.
+        event(new TerminalClaimed(
+            terminalId: $terminal->id,
+            terminalCode: $terminal->code,
+            companyId: $terminal->company_id,
+            hardwareIdentifier: $hardwareIdentifier,
+            claimedBy: (string) auth()->id(),
+        ));
+
+        return response()->json([
+            'data' => TerminalResource::make($terminal->load(['location', 'company'])),
         ]);
+    }
+
+    /**
+     * Release a terminal from the device currently bound to it.
+     *
+     * POST /api/v1/pos/terminals/{id}/release
+     *
+     * Before Q-7 there was NO way back: `deactivate()` leaves
+     * `hardware_identifier` set, and nothing else ever cleared it, so a till
+     * whose hardware died could not be re-homed onto its replacement — the
+     * terminal row, and therefore its fiscal chain, was stranded.
+     *
+     * DELIBERATELY NOT BLOCKED BY AN OPEN SHIFT, unlike `archive()` and
+     * `toggleTrainingMode()`. The reason to release is usually that the device
+     * is gone (lost, stolen, bricked), and a gone device's shift can no longer
+     * be closed from the device — an open-shift guard would make precisely the
+     * terminals that need re-homing the ones that can never be re-homed, which
+     * is the state this endpoint exists to remove. Closing out the orphaned
+     * shift is the shift surface's job, not this one.
+     */
+    public function release(string $id, Request $request): JsonResponse
+    {
+        Gate::authorize('pos.manage_terminals');
+
+        $request->validate([
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
+            ->findOrFail($id);
+
+        $previousHardwareIdentifier = $terminal->hardware_identifier;
+
+        // Idempotent: releasing an unclaimed terminal is a no-op that answers
+        // 200 (a retried request must not fail) and writes NO audit event — an
+        // audit register that records releases which never happened is worse
+        // than one that records none.
+        if ($previousHardwareIdentifier === null) {
+            return response()->json([
+                'data' => TerminalResource::make($terminal->load(['location', 'company'])),
+            ]);
+        }
+
+        $reason = (string) $request->input('reason', '');
+
+        $terminal->update([
+            'hardware_identifier' => null,
+        ]);
+
+        event(new TerminalReleased(
+            terminalId: $terminal->id,
+            terminalCode: $terminal->code,
+            companyId: $terminal->company_id,
+            hardwareIdentifier: $previousHardwareIdentifier,
+            reason: $reason,
+            releasedBy: (string) auth()->id(),
+        ));
 
         return response()->json([
             'data' => TerminalResource::make($terminal->load(['location', 'company'])),
@@ -416,21 +541,42 @@ final class TerminalController extends Controller
             return $this->posDisabledResponse();
         }
 
-        $terminal = Terminal::create([
-            'tenant_id' => $company->tenant_id,
-            'company_id' => $company->id,
-            'location_id' => $data['location_id'],
-            'type' => TerminalType::Physical,
-            'code' => $this->generateTerminalCode(),
-            'name' => $data['suggested_name'],
-            'genesis_seed' => bin2hex(random_bytes(32)),
-            'current_sequence' => 1,
-            'current_year' => (int) now()->format('Y'),
-            // Provision-at-v3 (first-tenant launch, Lane D1): see store() above.
-            'fiscal_schema_version' => 3,
-            'is_active' => false,
-            'hardware_identifier' => $data['hardware_identifier'],
-        ]);
+        $hardwareIdentifier = (string) $data['hardware_identifier'];
+
+        // Q-7: this path was the UNCHECKED writer of `hardware_identifier` —
+        // `Terminal::create()` with no collision test of any kind, so one device
+        // could provision itself N terminals and `findByDevice()` would then
+        // hand it back an arbitrary one of them. The pre-check names the cause;
+        // the caught 23505 below is what makes it true under concurrency.
+        if ($this->hardwareBoundElsewhere($company->id, $hardwareIdentifier, null)) {
+            return $this->deviceAlreadyBoundResponse();
+        }
+
+        // SAVEPOINT-contained for the same reason as `claim()` above: on
+        // PostgreSQL a caught QueryException poisons the enclosing transaction.
+        try {
+            $terminal = DB::transaction(fn (): Terminal => Terminal::create([
+                'tenant_id' => $company->tenant_id,
+                'company_id' => $company->id,
+                'location_id' => $data['location_id'],
+                'type' => TerminalType::Physical,
+                'code' => $this->generateTerminalCode(),
+                'name' => $data['suggested_name'],
+                'genesis_seed' => bin2hex(random_bytes(32)),
+                'current_sequence' => 1,
+                'current_year' => (int) now()->format('Y'),
+                // Provision-at-v3 (first-tenant launch, Lane D1): see store() above.
+                'fiscal_schema_version' => 3,
+                'is_active' => false,
+                'hardware_identifier' => $hardwareIdentifier,
+            ]));
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
+                return $this->deviceAlreadyBoundResponse();
+            }
+
+            throw $e;
+        }
 
         return response()->json([
             'data' => TerminalResource::make($terminal->load(['location', 'company'])),
@@ -535,6 +681,17 @@ final class TerminalController extends Controller
         $terminal = Terminal::forCompany($this->companyContext->requireCompanyId())
             ->where('hardware_identifier', $hardwareIdentifier)
             ->with(['location', 'company'])
+            // Q-7: DETERMINISTIC. `pos_terminals_unique_hardware_identifier`
+            // makes duplicates impossible going forward, but it is skipped for
+            // any brownfield tenant that already had some (the migration reports
+            // and skips rather than aborting the tenant's whole run), and for
+            // those tenants an unordered `first()` could hand the device a
+            // DIFFERENT terminal — a different fiscal chain — between two calls.
+            // Oldest binding wins: it is the one that already has receipts.
+            // `id` breaks a `created_at` tie so the order is total, not merely
+            // usually-defined.
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->first();
 
         if (! $terminal) {
@@ -650,6 +807,95 @@ final class TerminalController extends Controller
             ->whereKey($locationId)
             ->where('pos_enabled', true)
             ->exists();
+    }
+
+    /**
+     * Q-7 — is this hardware identifier already bound to a LIVE terminal in
+     * this company?
+     *
+     * Company-scoped, mirroring `pos_terminals_unique_hardware_identifier`'s own
+     * scope: the same physical identifier in another company of the same tenant
+     * is legal and already pinned by
+     * `TerminalDeviceLookupTest::test_find_by_device_scoped_to_company`. The
+     * SoftDeletes global scope excludes archived rows, matching the index's
+     * `deleted_at IS NULL` predicate — so re-registering the hardware of a
+     * terminal that was archived is allowed, which is the whole point of
+     * archiving rather than purging.
+     *
+     * @param  string|null  $exceptTerminalId  The terminal being claimed, so a
+     *                                         re-claim by the device that
+     *                                         already holds it is not reported
+     *                                         as a collision with itself.
+     */
+    private function hardwareBoundElsewhere(string $companyId, string $hardwareIdentifier, ?string $exceptTerminalId): bool
+    {
+        $query = Terminal::forCompany($companyId)
+            ->where('hardware_identifier', $hardwareIdentifier);
+
+        if ($exceptTerminalId !== null) {
+            $query->whereKeyNot($exceptTerminalId);
+        }
+
+        return $query->exists();
+    }
+
+    /**
+     * Q-7 — was this a UNIQUE violation ON `hardware_identifier` specifically?
+     *
+     * PostgreSQL reports SQLSTATE `23505`; SQLite reports the generic `23000`
+     * and names the failure in the driver message, so the SQLite branch matches
+     * on that text rather than on `23000` — which also covers NOT NULL and
+     * foreign-key failures and must NOT be swallowed as a 409.
+     *
+     * BOTH halves are then narrowed to the column. `pos_terminals` carries
+     * OTHER unique constraints — `pos_terminals_unique_code` above all, whose
+     * collision is genuinely reachable because `generateTerminalCode()` derives
+     * the next code from a `count()` (a TOCTOU the 2026-08-23 sweep records
+     * separately, and which this lane does not fix). Reporting that as
+     * `DEVICE_ALREADY_BOUND` would tell the operator to release a terminal that
+     * has nothing to do with the failure. PostgreSQL names the violated index in
+     * the message (`pos_terminals_unique_hardware_identifier`) and SQLite names
+     * the columns (`pos_terminals.hardware_identifier`), so the same substring
+     * discriminates on both drivers. Anything else rethrows.
+     *
+     * The DRIVER's message is used, not `QueryException::getMessage()`: Laravel
+     * appends the failing SQL to the latter, and an INSERT's column list names
+     * `hardware_identifier` whatever the violated constraint was — matching on
+     * it would classify every unique violation on this table as a binding
+     * collision, which is the exact mis-attribution this method exists to avoid.
+     */
+    private function isUniqueViolation(QueryException $e): bool
+    {
+        $driverMessage = $e->getPrevious()?->getMessage() ?? $e->getMessage();
+
+        $isUnique = (string) $e->getCode() === '23505'
+            || str_contains($driverMessage, 'UNIQUE constraint failed');
+
+        return $isUnique && str_contains($driverMessage, 'hardware_identifier');
+    }
+
+    /**
+     * Deliberately a DISTINCT code from `TERMINAL_ALREADY_CLAIMED`, and used by
+     * both `claim()` and `requestTerminal()`.
+     *
+     * The two 409s answer different questions and need different remedies:
+     * `TERMINAL_ALREADY_CLAIMED` means "that till belongs to another device —
+     * pick a different one", while this one means "THIS device already runs a
+     * till — release that one first, or use the till you already have". The
+     * lane brief asked for a distinct code on the `requestTerminal()` leg; the
+     * condition is identical on the `claim()` leg, so it carries the same code
+     * rather than two names for one fact. The POS client rethrows the envelope
+     * and surfaces `error.message` (`terminalStore.ts:745-759`), so no device
+     * build depends on the code string.
+     */
+    private function deviceAlreadyBoundResponse(): JsonResponse
+    {
+        return response()->json([
+            'error' => [
+                'code' => 'DEVICE_ALREADY_BOUND',
+                'message' => 'This device is already bound to another terminal. Release that terminal before claiming a new one.',
+            ],
+        ], 409);
     }
 
     /**
