@@ -6,7 +6,6 @@ namespace App\Modules\Treasury\Application\Listeners;
 
 use App\Modules\Accounting\Domain\Exceptions\UnbalancedJournalEntryPostException;
 use App\Modules\Compliance\Services\AuditService;
-use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\Treasury\Application\DTOs\RepositoryAdjustmentIntent;
@@ -158,10 +157,14 @@ use Throwable;
  * read the "never a spurious 500" promise as covering that; it never could.
  * Gate round 1 P2-1 closes it one frame up, at the only place that can: both
  * producers raise the event through
- * {@see CashCountDispatcher}, which
- * degrades any consumer fault to a durable `pos.cash_count_consumers_failed`
- * audit row. Queue reachability at Z-close is also a pre-enable item on the G-5
- * checklist (`docs/superpowers/tickets/2026-08-08-g3-shift-variance-gl-deploy-notes.md`).
+ * `App\Modules\POS\Application\Services\CashCountDispatcher` (named, not
+ * imported — gate round 2 F-6: a `use` here would create a real Treasury→POS
+ * static edge for a documentation link), which `report()`s the fault and
+ * degrades it to a durable `pos.cash_count_consumers_failed` audit row. Note
+ * that guard is all-or-nothing: a PUSH failure aborts the fraud alert and the
+ * stored-event write too — see that class's docblock. Queue reachability at
+ * Z-close is a pre-enable item on the G-5 checklist
+ * (`docs/superpowers/tickets/2026-08-08-g3-shift-variance-gl-deploy-notes.md`).
  *
  * Tenancy across the queue boundary is carried the way every other queued
  * listener in this codebase carries it — by `QueueTenancyBootstrapper`

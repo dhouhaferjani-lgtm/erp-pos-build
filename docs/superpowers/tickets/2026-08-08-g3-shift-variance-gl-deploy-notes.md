@@ -119,9 +119,32 @@ flipped, because neither is visible until the lane is live.
       (AOF/RDB) on the queue instance, and no `horizon:clear` during a close-of-day window.
 - [ ] **Queue reachability at Z-close is guarded, not assumed.** A push failure no longer 500s a
       sealed Z report — both producers raise the event through
-      `POS\Application\Services\CashCountDispatcher`, which degrades any consumer fault (the push OR
-      a synchronous listener) to a durable `pos.cash_count_consumers_failed` audit row. Alert on
-      that event type: it means a close happened and **no** consumer ran.
+      `POS\Application\Services\CashCountDispatcher`, which `report()`s the fault (so it still
+      reaches Sentry, as it did when it was an unhandled 500) and degrades it to a durable
+      `pos.cash_count_consumers_failed` audit row. Alert on that event type.
+- [ ] **Understand what that row means — the guard is ALL-OR-NOTHING, and the two faults are NOT
+      symmetrical.** `Dispatcher::invokeListeners()` has no per-listener try/catch, so the first
+      consumer to throw aborts the rest, and consumers run in provider-registration order:
+      **(1) the queue push (Treasury) → (2) the fraud alert + its email (Compliance) → (3) the
+      Spatie stored-event write** (a wildcard listener, always last). So read the `exception` field
+      on the row before concluding anything:
+      - a **push failure** (Redis down) throws in (1) and therefore suppresses the fraud alert, the
+        fraud email AND the stored-event write. The audit row is the only survivor — **no** consumer
+        ran, and the variance is only in that row.
+      - a **fraud-listener failure** throws in (2). The GL job is **already enqueued** and will
+        still run; only the stored-event write is lost. Do NOT re-drive the GL leg by hand here or
+        you will chase a booking that is on its way.
+      The ordering is pinned by `CashCountDispatchGuardTest`, so a provider reshuffle is a test
+      failure rather than a silent inversion — but if you deliberately reorder, update this list and
+      the `CashCountDispatcher` docblock together.
+- [ ] **Decide on per-listener isolation before enabling.** The asymmetry above exists only because
+      the guard wraps the whole dispatch. Case (1) is unreachable while the flag is false
+      (`shouldQueue()` short-circuits before the push), which is why it was left alone at R-8 time.
+      Once the flag flips with synchronous consumers still attached to `CashCountRecorded`, either
+      accept that a Redis outage also costs the fraud alert and the stored event, or isolate each
+      consumer in its own `try/catch` inside `CashCountDispatcher` (iterate
+      `Event::getListeners(CashCountRecorded::class)`) and pin "unreachable queue ⇒ the fraud alert
+      still lands".
 
 ## 4. After enabling — what to watch
 
@@ -138,8 +161,11 @@ WHERE event_type IN (
   -- `adjustment_document_id`. Read `attempts` (exact, or NULL when the queue's
   -- own failed() handler wrote the row) — NOT `tries`, which is the budget.
   'treasury.shift_variance_gl_dead_lettered',
-  -- R-8 gate P2-1: the close succeeded but NO consumer ran — neither the GL leg
-  -- nor the fraud alert. Written by POS\Application\Services\CashCountDispatcher.
+  -- R-8 gate P2-1: the close succeeded but a consumer threw and aborted the
+  -- ones after it. Written by POS\Application\Services\CashCountDispatcher.
+  -- Read the payload's `exception` to know WHICH: a push failure means nothing
+  -- ran at all; a fraud-listener failure means the GL job is already enqueued.
+  -- See the G-5 all-or-nothing checkbox in §3.
   'pos.cash_count_consumers_failed'
 )
 GROUP BY 1, 2 ORDER BY 3 DESC;

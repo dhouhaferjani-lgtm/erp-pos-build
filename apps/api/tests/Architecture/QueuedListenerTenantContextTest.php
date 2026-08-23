@@ -45,6 +45,14 @@ use Tests\TestCase;
  * module's listener is that module's call, not R-8's, so the guard is introduced
  * non-retroactively and polices new queued listeners from here on. The fixture is
  * read fresh on every invocation, matching the Jobs guard's own convention.
+ *
+ * Unlike the Jobs guard, the deferral path is VALIDATED (gate round 2, F-5):
+ * every entry must carry a non-empty `class`, `deferred_to_cluster` and
+ * `tracked_in`, an incomplete entry exempts nothing, and
+ * {@see test_every_deferral_carries_a_cluster_and_a_justification()} names it.
+ * A bare `{"class": "…"}` would otherwise be a permanent, unjustified hole —
+ * which would make the bare-annotation rule above pointless, since the easier
+ * path around it would be unguarded.
  */
 final class QueuedListenerTenantContextTest extends TestCase
 {
@@ -229,6 +237,60 @@ final class QueuedListenerTenantContextTest extends TestCase
     }
 
     /**
+     * Gate round 2, F-5 — the ESCAPE HATCH is validated, not decorative.
+     *
+     * The pre-existing Jobs fixture reads only `class`, so appending
+     * `{"class": "…"}` exempts a listener forever with no justification at all —
+     * and the bare-annotation rule this guard enforces on the ANNOTATION path
+     * would mean nothing if the DEFERRAL path stayed a free pass. Every entry
+     * must therefore carry a non-empty `deferred_to_cluster` and `tracked_in`,
+     * and a malformed entry fails the guard LOUDLY rather than silently
+     * exempting its class.
+     */
+    public function test_every_deferral_carries_a_cluster_and_a_justification(): void
+    {
+        $path = base_path('tests/Architecture/fixtures/queued-listener-deferrals.json');
+        $this->assertFileExists($path);
+
+        /** @var mixed $data */
+        $data = json_decode((string) file_get_contents($path), true);
+        $this->assertIsArray($data, 'The deferrals fixture must be a JSON array.');
+
+        $invalid = [];
+        foreach ($data as $index => $entry) {
+            if (! is_array($entry)) {
+                $invalid[] = "entry #{$index}: not an object";
+
+                continue;
+            }
+
+            foreach (['class', 'deferred_to_cluster', 'tracked_in'] as $field) {
+                $value = $entry[$field] ?? null;
+                if (! is_string($value) || trim($value) === '') {
+                    $label = is_string($entry['class'] ?? null) ? $entry['class'] : "entry #{$index}";
+                    $invalid[] = "{$label}: missing or empty `{$field}`";
+                }
+            }
+        }
+
+        $this->assertSame(
+            [],
+            $invalid,
+            "The queued-listener deferrals fixture has unjustified entries:\n  - "
+            .implode("\n  - ", $invalid)
+            ."\n\nA deferral exempts a queued listener from the tenant-context guard PERMANENTLY."
+            .' Every entry must name the owning cluster (`deferred_to_cluster`) and say who is'
+            .' tracking it and why (`tracked_in`). A bare {"class": "…"} entry is not a deferral,'
+            .' it is a silent hole.',
+        );
+    }
+
+    /**
+     * Entries are dropped rather than skipped when malformed, so a typo'd or
+     * bare entry cannot exempt anything — it simply does not match, the class
+     * stays in the scan, and the classification assertion fails. The fixture
+     * validation above then names the malformed entry.
+     *
      * @return list<string>
      */
     private function loadDeferralsFresh(): array
@@ -251,9 +313,22 @@ final class QueuedListenerTenantContextTest extends TestCase
 
         $classes = [];
         foreach ($data as $entry) {
-            if (is_array($entry) && isset($entry['class']) && is_string($entry['class'])) {
-                $classes[] = $entry['class'];
+            if (! is_array($entry)) {
+                continue;
             }
+
+            $class = $entry['class'] ?? null;
+            $cluster = $entry['deferred_to_cluster'] ?? null;
+            $tracked = $entry['tracked_in'] ?? null;
+
+            // All three, non-empty, or the entry does not exempt anything.
+            if (! is_string($class) || trim($class) === ''
+                || ! is_string($cluster) || trim($cluster) === ''
+                || ! is_string($tracked) || trim($tracked) === '') {
+                continue;
+            }
+
+            $classes[] = $class;
         }
 
         return $classes;

@@ -43,17 +43,48 @@ use Throwable;
  *      invariant is a property of this seam, not of one listener.
  *
  * ── What a failure degrades to ──────────────────────────────────────────────
- * A durable `audit_events` row (`pos.cash_count_consumers_failed`) keyed on the
- * SAME `aggregate_id` (the shift id) that Treasury's own booked/skipped/
- * dead-lettered rows use, so one query by shift shows the whole story. It
- * carries every field a consumer would have needed, so the variance is
- * re-drivable by hand rather than lost. This is the same "never silent" contract
- * the Treasury listener follows — the lane exists because a missing GL leg went
- * unnoticed for months, and swallowing a push failure behind a `Log::` line
- * would re-create exactly that.
+ * `report($e)` (so the fault keeps the alerting reach it had as an unhandled
+ * 500 — see {@see recordUndeliverable()}) plus a durable `audit_events` row
+ * (`pos.cash_count_consumers_failed`) keyed on the SAME `aggregate_id` (the
+ * shift id) that Treasury's own booked/skipped/dead-lettered rows use, so one
+ * query by shift shows the whole story. It carries every field a consumer would
+ * have needed, so the variance is re-drivable by hand rather than lost. This is
+ * the same "never silent" contract the Treasury listener follows — the lane
+ * exists because a missing GL leg went unnoticed for months, and swallowing a
+ * push failure behind a `Log::` line would re-create exactly that.
  *
- * Consumers that already ran before the throw are NOT re-run: the row records
- * the failing exception so an operator can tell how far the dispatch got.
+ * ── ALL-OR-NOTHING, and the ordering is load-bearing (gate round 2, F-3) ─────
+ * Be precise about what this guard does and does not buy. It is a guard around
+ * the WHOLE dispatch, not per consumer. `Dispatcher::invokeListeners()` has no
+ * per-listener `try/catch`, so **the first consumer to throw aborts every
+ * consumer after it**, and this class then records one row for the lot.
+ *
+ * The order is fixed and matters:
+ *   1. the QUEUE PUSH for Treasury's `PostShiftCashVarianceAdjustment`
+ *      (`bootstrap/providers.php` registers `TreasuryServiceProvider` BEFORE
+ *      `ComplianceServiceProvider`),
+ *   2. the FRAUD ALERT, `OpenFraudAlertForShiftVariance` — the `fraud_alerts`
+ *      row and its email,
+ *   3. the STORED-EVENT write, Spatie's wildcard `*` subscriber, which the
+ *      dispatcher always runs after the concrete listeners.
+ *
+ * So the two faults are NOT symmetrical, and an operator reading the audit row
+ * must know which one they have (the row carries the exception class):
+ *   - **a push failure** (Redis down) throws in (1) and therefore suppresses the
+ *     fraud alert, the fraud email AND the stored-event write. The audit row is
+ *     the only survivor. Nothing else ran.
+ *   - **a fraud-listener failure** throws in (2); the GL job is ALREADY enqueued
+ *     and will run, and only the stored-event write is lost.
+ * Consumers that already ran before the throw are never re-run.
+ *
+ * Per-listener isolation would remove the asymmetry, and is deliberately NOT
+ * done here: `treasury.shift_variance_gl_enabled` is false, so `shouldQueue()`
+ * short-circuits before the push and case (1) cannot occur yet. The residual is
+ * a pre-enable item on the G-5 checklist
+ * (`docs/superpowers/tickets/2026-08-08-g3-shift-variance-gl-deploy-notes.md`).
+ * The ordering itself is pinned by `CashCountDispatchGuardTest` so a provider
+ * reshuffle is a visible test failure rather than a silent inversion of which
+ * consumers survive which fault.
  */
 final readonly class CashCountDispatcher
 {
@@ -78,17 +109,51 @@ final readonly class CashCountDispatcher
     /**
      * Never throws — this IS the never-block guarantee, so a failure to record
      * the failure must not resurface on the close.
+     *
+     * Gate round 2, findings F-1 and F-4. Three INDEPENDENT legs, each in its own
+     * guard, in this order:
+     *
+     *   1. `report($e)` — FIRST, deliberately. Before this class existed, a
+     *      throwing consumer became an unhandled exception, reached Laravel's
+     *      handler and therefore Sentry, and paged whoever is wired to it.
+     *      Swallowing it is only defensible if it still reaches an error
+     *      reporter: `LOG_STACK=single` puts no `sentry` channel in the log
+     *      stack and `config/sentry.php` `enable_logs` defaults to false, so a
+     *      `Log::error` line alone is NOT alerting reach. It runs before the
+     *      audit write so a failing audit write cannot suppress it.
+     *   2. the log line, for local/forensic reading.
+     *   3. the durable `audit_events` row.
+     *
+     * Each leg is guarded separately rather than the whole body once, so no leg
+     * can suppress a later one — a broken logger must not cost us the audit row,
+     * and a broken audit store must not cost us the Sentry event. F-4: the
+     * `Log::` calls used to sit OUTSIDE any try, and this method runs inside a
+     * `catch`, so an unwritable `storage/logs` (Monolog's StreamHandler throws
+     * `UnexpectedValueException`) would have propagated onto the sealed-close
+     * stack — the one failure mode this class exists to make impossible.
      */
     private function recordUndeliverable(CashCountRecorded $event, Throwable $e): void
     {
-        Log::error('Cash-count consumers could not be notified for a CLOSED shift; the Z report is sealed and will not be retried', [
-            'shift_id' => $event->shiftId,
-            'z_report_id' => $event->zReportId,
-            'company_id' => $event->companyId,
-            'aggregate_variance' => $event->aggregateVariance->amount,
-            'exception' => $e::class,
-            'message' => $e->getMessage(),
-        ]);
+        try {
+            report($e);
+        } catch (Throwable) {
+            // The error reporter itself is down. There is nothing to escalate
+            // to, and escalating would mean failing a sealed close. Fall
+            // through to the log line and the audit row.
+        }
+
+        try {
+            Log::error('Cash-count consumers could not be notified for a CLOSED shift; the Z report is sealed and will not be retried', [
+                'shift_id' => $event->shiftId,
+                'z_report_id' => $event->zReportId,
+                'company_id' => $event->companyId,
+                'aggregate_variance' => $event->aggregateVariance->amount,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+        } catch (Throwable) {
+            // An unwritable log destination must not cost us the audit row.
+        }
 
         try {
             $this->auditService->record(
@@ -129,13 +194,19 @@ final readonly class CashCountDispatcher
                 ],
             );
         } catch (Throwable $auditFailure) {
-            Log::critical('Cash-count consumers failed AND the failure could not be recorded durably', [
-                'shift_id' => $event->shiftId,
-                'z_report_id' => $event->zReportId,
-                'original_exception' => $e::class,
-                'original_message' => $e->getMessage(),
-                'audit_exception' => $auditFailure::class,
-            ]);
+            try {
+                Log::critical('Cash-count consumers failed AND the failure could not be recorded durably', [
+                    'shift_id' => $event->shiftId,
+                    'z_report_id' => $event->zReportId,
+                    'original_exception' => $e::class,
+                    'original_message' => $e->getMessage(),
+                    'audit_exception' => $auditFailure::class,
+                ]);
+            } catch (Throwable) {
+                // Everything downstream of the close has now failed. The close
+                // itself still stands, which is the only thing this class
+                // guarantees; `report($e)` above already left the trail.
+            }
         }
     }
 }

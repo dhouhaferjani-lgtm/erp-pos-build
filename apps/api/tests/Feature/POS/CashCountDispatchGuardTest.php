@@ -5,17 +5,20 @@ declare(strict_types=1);
 namespace Tests\Feature\POS;
 
 use App\Modules\Company\Domain\Company;
+use App\Modules\Compliance\Providers\ComplianceServiceProvider;
 use App\Modules\Identity\Domain\User;
 use App\Modules\POS\Application\Services\CashCountDispatcher;
 use App\Modules\POS\Domain\DTOs\CashCountBreakdownDTO;
 use App\Modules\POS\Domain\DTOs\VarianceAmount;
 use App\Modules\POS\Domain\Events\CashCountRecorded;
 use App\Modules\Tenant\Domain\Tenant;
+use App\Modules\Treasury\Providers\TreasuryServiceProvider;
 use App\Shared\Domain\Enums\VarianceDirection;
 use App\Shared\Domain\Enums\VarianceSeverity;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -132,6 +135,108 @@ final class CashCountDispatchGuardTest extends TestCase
         $payload = json_decode((string) $row->payload, true);
         $this->assertSame(RuntimeException::class, $payload['exception']);
         $this->assertSame('fraud alert store is down', $payload['message']);
+    }
+
+    /**
+     * Gate round 2, F-1 — swallowing must not cost the fault its alerting reach.
+     *
+     * Before this guard, a throwing consumer became an unhandled exception,
+     * reached Laravel's handler and therefore Sentry. `LOG_STACK=single` puts no
+     * `sentry` channel in the log stack and `config/sentry.php` `enable_logs`
+     * defaults to false, so a `Log::error` line is NOT alerting reach, and the
+     * audit row has no consumer in code. `report()` is what keeps the trade
+     * honest, and it must run BEFORE the audit write so a failing audit store
+     * cannot suppress it.
+     */
+    public function test_a_swallowed_consumer_fault_still_reaches_the_error_reporter(): void
+    {
+        Exceptions::fake();
+
+        Event::listen(CashCountRecorded::class, function (): void {
+            throw new RuntimeException('fraud alert store is down');
+        });
+
+        app(CashCountDispatcher::class)->dispatch($this->cashCountEvent((string) Str::uuid()));
+
+        Exceptions::assertReported(
+            fn (RuntimeException $e): bool => $e->getMessage() === 'fraud alert store is down',
+        );
+    }
+
+    /**
+     * Gate round 2, F-3(b) — the dispatch is ALL-OR-NOTHING and the ORDER is
+     * load-bearing, so pin the order behaviourally.
+     *
+     * `Dispatcher::invokeListeners()` has no per-listener try/catch: the first
+     * consumer to throw aborts the rest. `bootstrap/providers.php` registers
+     * TreasuryServiceProvider BEFORE ComplianceServiceProvider, so the queue push
+     * runs first and a push failure therefore suppresses the fraud alert (and the
+     * Spatie wildcard stored-event write, which always runs last).
+     *
+     * That asymmetry is what the deploy-notes ticket teaches an operator to read
+     * off the audit row, so a provider reshuffle must be a visible failure rather
+     * than a silent inversion of which consumers survive which fault.
+     */
+    public function test_a_push_failure_suppresses_the_later_consumers_and_says_so(): void
+    {
+        config()->set('queue.default', 'r8-unreachable-connection');
+
+        $shiftId = (string) Str::uuid();
+        app(CashCountDispatcher::class)->dispatch($this->cashCountEvent($shiftId));
+
+        // Treasury ran FIRST and threw, so Compliance never got the event.
+        $this->assertSame(
+            0,
+            DB::table('fraud_alerts')->count(),
+            'A push failure is expected to abort the fraud alert — if this passes a row, the '
+            .'provider order changed and the all-or-nothing semantics documented on '
+            .'CashCountDispatcher and in the G-5 ticket are now wrong.',
+        );
+
+        $this->assertSame(
+            1,
+            DB::table('audit_events')
+                ->where('event_type', 'pos.cash_count_consumers_failed')
+                ->where('aggregate_id', $shiftId)
+                ->count(),
+        );
+    }
+
+    /**
+     * The control for the test above: with a healthy queue, Treasury does not
+     * throw and the fraud alert DOES land. Without this, the assertion above
+     * would also pass if the fraud listener had simply stopped working.
+     */
+    public function test_a_healthy_dispatch_lets_every_consumer_run(): void
+    {
+        app(CashCountDispatcher::class)->dispatch($this->cashCountEvent((string) Str::uuid()));
+
+        $this->assertSame(1, DB::table('fraud_alerts')->count());
+    }
+
+    /**
+     * The registration order the test above depends on, asserted directly so a
+     * failure names the cause rather than the symptom.
+     */
+    public function test_treasury_is_registered_ahead_of_compliance(): void
+    {
+        /** @var list<class-string> $providers */
+        $providers = require base_path('bootstrap/providers.php');
+
+        $treasury = array_search(TreasuryServiceProvider::class, $providers, true);
+        $compliance = array_search(ComplianceServiceProvider::class, $providers, true);
+
+        $this->assertIsInt($treasury, 'TreasuryServiceProvider must be registered.');
+        $this->assertIsInt($compliance, 'ComplianceServiceProvider must be registered.');
+
+        $this->assertLessThan(
+            $compliance,
+            $treasury,
+            'CashCountRecorded consumers run in provider registration order and the dispatch is '
+            .'all-or-nothing, so reordering these two silently changes which consumers survive a '
+            .'push failure. Update CashCountDispatcher\'s docblock and the G-5 deploy-notes ticket '
+            .'together with any deliberate reorder.',
+        );
     }
 
     public function test_a_healthy_dispatch_writes_no_failure_row(): void

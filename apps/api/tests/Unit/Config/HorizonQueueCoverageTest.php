@@ -51,25 +51,8 @@ class HorizonQueueCoverageTest extends TestCase
             if ($contents === false) {
                 continue;
             }
-            if (preg_match_all("/onQueue\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)/", $contents, $matches) > 0) {
-                foreach ($matches[1] as $queue) {
-                    $dispatchedQueues[$queue] = true;
-                }
-            }
-
-            // R-8 gate P3-2 — the DECLARATION form. Queued listeners (and jobs
-            // that prefer a property over a fluent call) name their queue as
-            // `public string $queue = '…'`, which Dispatcher::queueHandler()
-            // and Queue::pushOn() honour exactly like onQueue(). Optional
-            // `string`/`?string` type and optional `readonly` are all accepted.
-            if (preg_match_all(
-                "/public\\s+(?:readonly\\s+)?(?:\\??string\\s+)?\\\$queue\\s*=\\s*['\"]([^'\"]+)['\"]/",
-                $contents,
-                $propertyMatches,
-            ) > 0) {
-                foreach ($propertyMatches[1] as $queue) {
-                    $dispatchedQueues[$queue] = true;
-                }
+            foreach ($this->scanQueueNames($contents) as $queue) {
+                $dispatchedQueues[$queue] = true;
             }
         }
 
@@ -107,23 +90,77 @@ class HorizonQueueCoverageTest extends TestCase
     }
 
     /**
+     * Extract every queue name a file routes work to.
+     *
+     * TWO forms, and the second is why this method exists (R-8 gate P3-2):
+     *   - `onQueue('…')` — the fluent form, all this guard used to see;
+     *   - `public $queue = '…'` — the DECLARATION form. A queued LISTENER never
+     *     calls `onQueue()`; `Dispatcher::queueHandler()` reads
+     *     `$listener->queue ?? null` off the class instead. Optional
+     *     `string`/`?string` type and optional `readonly` are accepted.
+     *
+     * Gate round 2, F-2: this is a SHARED method precisely so the integrity test
+     * below exercises the real scanner. Its previous incarnation re-implemented
+     * the regex privately, which meant deleting the property branch above left
+     * it green — it could not detect the one regression its docblock promised.
+     *
+     * @return list<string>
+     */
+    private function scanQueueNames(string $contents): array
+    {
+        $queues = [];
+
+        if (preg_match_all("/onQueue\\(\\s*['\"]([^'\"]+)['\"]\\s*\\)/", $contents, $matches) > 0) {
+            foreach ($matches[1] as $queue) {
+                $queues[] = $queue;
+            }
+        }
+
+        if (preg_match_all(
+            "/public\\s+(?:readonly\\s+)?(?:\\??string\\s+)?\\\$queue\\s*=\\s*['\"]([^'\"]+)['\"]/",
+            $contents,
+            $propertyMatches,
+        ) > 0) {
+            foreach ($propertyMatches[1] as $queue) {
+                $queues[] = $queue;
+            }
+        }
+
+        return $queues;
+    }
+
+    /**
      * R-8 gate P3-2 — the scanner must actually SEE the declaration form.
      *
      * Without this, a regression that silently drops the `$queue` property
-     * branch would leave the test green (the `onQueue()` literals alone still
-     * satisfy every assertion above) while the guard quietly stopped covering
-     * every queued listener in the codebase.
+     * branch would leave the main test green (the `onQueue()` literals alone
+     * still satisfy every assertion there) while the guard quietly stopped
+     * covering every queued listener in the codebase.
+     *
+     * Gate round 2, F-2: this now calls the REAL scanner
+     * ({@see scanQueueNames()}) rather than a private copy of its regex, so
+     * deleting the property branch turns it red. Verified by scratch-deleting
+     * that branch.
      */
     public function test_the_scanner_sees_queue_declared_as_a_property(): void
     {
         $listener = base_path('app/Modules/Treasury/Application/Listeners/PostShiftCashVarianceAdjustment.php');
         $this->assertFileExists($listener);
 
+        // A queued listener that declares its queue as a property and never
+        // calls onQueue() — the exact shape the fluent-only scanner missed.
         $contents = (string) file_get_contents($listener);
-        $this->assertMatchesRegularExpression(
-            "/public\\s+(?:readonly\\s+)?(?:\\??string\\s+)?\\\$queue\\s*=\\s*['\"]([^'\"]+)['\"]/",
+        $this->assertStringNotContainsString(
+            'onQueue(',
             $contents,
-            'The $queue property scanner no longer matches a real queued listener declaration.',
+            'This fixture is only meaningful while the listener names its queue by DECLARATION, not by onQueue().',
+        );
+
+        $this->assertContains(
+            'default',
+            $this->scanQueueNames($contents),
+            'The real scanner no longer sees a $queue property declaration — every queued listener '
+            .'in the codebase just became invisible to the Horizon coverage guard.',
         );
     }
 
