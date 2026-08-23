@@ -166,7 +166,8 @@ class TenantProvisioningService
                 'type' => 'shop',
                 'is_default' => true,
                 'is_active' => true,
-                // Owner ruling B-3 / A2, 2026-08-23: an auto-provisioned
+                // Owner ruling B-3 (2026-08-23) + its parent-delegated
+                // provisioning sub-ruling: an auto-provisioned
                 // `type=shop` Main Location is POS-enabled. `pos_enabled` became
                 // load-bearing in the same lane (TerminalController refuses
                 // claim/request/create/web at a disabled location), so the

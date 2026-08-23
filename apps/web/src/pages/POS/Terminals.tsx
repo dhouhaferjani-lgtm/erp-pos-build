@@ -19,6 +19,7 @@ import {
   type UpdateTerminalInput,
 } from '@/features/pos/hooks/useTerminals'
 import { getLocations } from '@/features/locations/api/locations'
+import { isApiError } from '@/lib/api'
 import { toast } from 'sonner'
 import { tenantScopedKey } from '@/lib/tenantScopedKey'
 import { useAuthStore } from '@/stores/authStore'
@@ -50,6 +51,23 @@ export function TerminalsPage() {
   })
 
   const locations = locationsData || []
+
+  /**
+   * Owner ruling B-3 (2026-08-23): the server refuses to create a terminal at a
+   * location whose POS is switched off (422 `LOCATION_POS_DISABLED`). Never
+   * OFFER what it will refuse — the same reasoning the backend applies to the
+   * device picker in `TerminalController::available()`.
+   *
+   * The current location of the terminal being EDITED is kept in the list even
+   * when POS is off there. Editing is not an acquisition and is not gated by
+   * B-3, so dropping it would blank a location dropdown that has a value,
+   * hiding where the terminal actually is and forcing an unintended move on the
+   * next save.
+   */
+  const selectableLocations = locations.filter(
+    (location) => location.posEnabled || location.id === editingTerminal?.location_id
+  )
+  const hasNoPosEnabledLocations = !editingTerminal && selectableLocations.length === 0
 
   // Mutations
   const createTerminal = useCreateTerminal()
@@ -90,7 +108,20 @@ export function TerminalsPage() {
         toast.success(t('pos:messages.terminalCreated'))
       }
       handleCloseForm()
-    } catch (_err) {
+    } catch (err) {
+      // B-3: the server's refusal is ACTIONABLE ("enable POS for the location
+      // in Settings"), and the generic "error creating terminal" toast that
+      // used to swallow it left the operator with no cause and no next step.
+      // Translated here rather than echoing the server's English `message`,
+      // per the convention in PartnerDetailPage's PARTNER_HAS_DOCUMENTS branch.
+      if (
+        isApiError(err) &&
+        err.response?.status === 422 &&
+        err.response.data.error.code === 'LOCATION_POS_DISABLED'
+      ) {
+        toast.error(t('pos:terminal.locationPosDisabled'))
+        return
+      }
       toast.error(
         editingTerminal
           ? t('common:common.errorUpdating', { resource: t('pos:terminal.terminal') })
@@ -249,10 +280,18 @@ export function TerminalsPage() {
                   </button>
                 </div>
 
+                {/* B-3: say WHY the location dropdown is empty, and where to
+                    fix it, instead of showing a form that cannot be submitted. */}
+                {hasNoPosEnabledLocations && (
+                  <p className={`mb-4 text-sm ${colorTokens.text.muted}`}>
+                    {t('pos:terminal.noPosEnabledLocations')}
+                  </p>
+                )}
+
                 {/* Form */}
                 <TerminalForm
                   terminal={editingTerminal}
-                  locations={locations}
+                  locations={selectableLocations}
                   isSubmitting={
                     createTerminal.isPending || updateTerminal.isPending
                   }

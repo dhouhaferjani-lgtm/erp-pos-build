@@ -124,7 +124,8 @@ class CompanyController extends Controller
                 'type' => LocationType::Shop,
                 'is_default' => true,
                 'is_active' => true,
-                // Owner ruling B-3 / A2, 2026-08-23 — see the same flip in
+                // Owner ruling B-3 (2026-08-23) + its parent-delegated
+                // provisioning sub-ruling — see the same flip in
                 // TenantProvisioningService::provisionForRegistration(). A
                 // company created inside an existing tenant gets the same
                 // POS-ready Main Location as a company created at registration.

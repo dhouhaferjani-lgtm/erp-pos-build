@@ -127,9 +127,17 @@ class TenantProvisioningServiceTest extends TestCase
         $this->assertFalse((bool) $settingsRow->cash_rounding_enabled);
         $this->assertFalse((bool) $settingsRow->pos_tolerance_enabled);
 
-        // Owner ruling B-3 / delegated ruling A2, 2026-08-23
+        // Owner ruling B-3, 2026-08-23
         // (docs/handoff/OWNER-SHEET-2026-08-21-first-client-session.md, row
-        // B-3): the auto-created "Main Location" is provisioned POS-ENABLED.
+        // B-3 — "wire `Location.pos_enabled` properly"), plus the
+        // parent-delegated provisioning sub-ruling recorded in the session
+        // ledger for the same date, which is what settles the DEFAULT: the
+        // auto-created "Main Location" is provisioned POS-ENABLED.
+        //
+        // The delegation is cited by description rather than by a short label
+        // (gate r1 / P3-8): the owner sheet already uses row "A-2" for an
+        // unrelated ruling, so a reader following an "A2" citation lands on
+        // the wrong row.
         //
         // This assertion previously pinned the OPPOSITE and carried a
         // "REPORT (do not flip) … see E-8" note, because at the time nothing

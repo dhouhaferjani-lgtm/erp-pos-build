@@ -179,6 +179,8 @@
     "selectDescription": "Choisissez un terminal pour démarrer votre session POS",
     "code": "Code",
     "location": "Emplacement",
+    "locationPosDisabled": "Le point de vente n'est pas activé pour cet emplacement. Activez-le dans Paramètres → Emplacements, puis créez le terminal.",
+    "noPosEnabledLocations": "Aucun emplacement n'a le point de vente activé. Activez-le pour un emplacement dans Paramètres → Emplacements avant de créer un terminal.",
     "noTerminals": "Aucun terminal actif trouvé",
     "noTerminalsDescription": "Demandez à votre administrateur de configurer les terminaux POS.",
     "loadingTerminals": "Chargement des terminaux...",

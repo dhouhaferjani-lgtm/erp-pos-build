@@ -433,7 +433,8 @@ class AuthController extends Controller
                     'type' => 'shop',
                     'is_default' => true,
                     'is_active' => true,
-                    // Owner ruling B-3 / A2, 2026-08-23 — see the same flip in
+                    // Owner ruling B-3 (2026-08-23) + its parent-delegated
+                    // provisioning sub-ruling — see the same flip in
                     // TenantProvisioningService::provisionForRegistration().
                     // This shared-DB-compat registration path must agree with it,
                     // or which of the two paths a tenant registered through would

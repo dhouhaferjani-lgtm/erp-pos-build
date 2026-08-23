@@ -6,6 +6,8 @@ namespace Tests\Feature\POS\Migrations;
 
 use App\Modules\Company\Domain\Company;
 use App\Modules\Company\Domain\Location;
+use App\Modules\POS\Application\Services\VirtualAdminTerminalResolver;
+use App\Modules\POS\Domain\Enums\TerminalType;
 use App\Modules\POS\Domain\Terminal;
 use App\Modules\Tenant\Domain\Tenant;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -89,6 +91,49 @@ final class BackfillLocationPosEnabledB3MigrationTest extends TestCase
 
         $this->assertTrue((bool) $this->fresh($withArchived)->pos_enabled, 'A soft-deleted terminal is still evidence.');
         $this->assertTrue((bool) $this->fresh($withInactive)->pos_enabled, 'A deactivated terminal is still evidence.');
+    }
+
+    /**
+     * Gate r1 / P1-1. `pos_terminals` also holds SERVER-authored rows:
+     * {@see VirtualAdminTerminalResolver::resolve()}
+     * mints a `virtual_admin` terminal at whatever location is OLDEST for the
+     * company — no `type` filter, no `pos_enabled` filter — on ordinary
+     * back-office actions (RecordCustomerDepositService, CustomerAccountStatusService).
+     * In the canonical warehouse-first seeder shape (DemoPharmacySeeder creates
+     * WH-01 before its shops) that row sits on a WAREHOUSE, so an unfiltered
+     * evidence branch would flip the warehouse on and contradict this
+     * migration's own contract. It is also the one part of the lane that is not
+     * re-runnable: the update is scoped `where pos_enabled = false` and never
+     * writes false, so an over-enable can only be undone by hand.
+     */
+    public function test_a_virtual_admin_terminal_is_not_evidence_that_a_location_sells(): void
+    {
+        $warehouse = $this->location(['type' => 'warehouse', 'is_default' => false, 'code' => 'WH']);
+        $this->terminalAt($warehouse, ['type' => TerminalType::VirtualAdmin, 'code' => 'VADMIN']);
+
+        // A second location, so the warehouse cannot qualify via branch (b).
+        $this->location(['type' => 'shop', 'is_default' => true, 'code' => 'HQ']);
+
+        $this->runMigration();
+
+        $this->assertFalse(
+            (bool) $this->fresh($warehouse)->pos_enabled,
+            'A server-minted virtual_admin terminal is a fiscal-event carrier, not a till — it is no evidence that anybody sells here.',
+        );
+    }
+
+    public function test_a_web_terminal_is_still_evidence(): void
+    {
+        // The contrast case: narrowing branch (a) to real tills must keep BOTH
+        // till types counting, not just `physical`.
+        $withWeb = $this->location(['type' => 'warehouse', 'is_default' => false, 'code' => 'WH']);
+        $this->terminalAt($withWeb, ['type' => TerminalType::Web]);
+
+        $this->location(['type' => 'shop', 'is_default' => true, 'code' => 'HQ']);
+
+        $this->runMigration();
+
+        $this->assertTrue((bool) $this->fresh($withWeb)->pos_enabled);
     }
 
     public function test_a_warehouse_without_terminals_is_left_alone(): void

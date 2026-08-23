@@ -28,13 +28,30 @@ use Illuminate\Support\Facades\Schema;
  *
  * THE PREDICATE — two branches, both evidence-based, both deliberately narrow:
  *
- *  (a) THE LOCATION HAS AT LEAST ONE POS TERMINAL, ANY STATE. Read from
+ *  (a) THE LOCATION HAS AT LEAST ONE REAL TILL, IN ANY STATE. Read from
  *      `pos_terminals.location_id` with NO filter on `deleted_at`,
- *      `is_active`, `type` or `hardware_identifier`. A terminal that was ever
+ *      `is_active` or `hardware_identifier`. A terminal that was ever
  *      provisioned there is proof somebody decided that location sells; an
  *      archived or deactivated terminal is proof of the same past decision,
  *      and re-activating it is exactly the flow the refusal would otherwise
  *      block. This branch is the honest one and carries most of the repair.
+ *
+ *      IT DOES FILTER ON `type`, and must (gate r1 / P1-1). `pos_terminals`
+ *      also holds SERVER-authored rows: `VirtualAdminTerminalResolver::resolve()`
+ *      mints a single `virtual_admin` terminal per company at whatever location
+ *      is OLDEST — no `type` filter, no `pos_enabled` filter — triggered by
+ *      ordinary back-office actions (`RecordCustomerDepositService`,
+ *      `CustomerAccountStatusService`). In the canonical warehouse-first shape
+ *      of this codebase (`DemoPharmacySeeder` creates `WH-01` before its four
+ *      shops) that row lands on a WAREHOUSE, and an unfiltered branch (a) would
+ *      flip it on — contradicting the "never enable warehouses" contract below
+ *      by the back door. Worse, it would be PERMANENT: the update is scoped
+ *      `where pos_enabled = false` and never writes false, so a corrected
+ *      re-run cannot undo an over-enable; the repair would be manual, per
+ *      location, per tenant, and invisible until someone audited. Hence
+ *      {@see self::TILL_TERMINAL_TYPES}. Pinned by
+ *      `test_a_virtual_admin_terminal_is_not_evidence_that_a_location_sells`
+ *      and its `web`-still-counts contrast case.
  *
  *  (b) THE COMPANY'S SHOP-LIKE PRIMARY LOCATION. `type = 'shop'` AND
  *      (`is_default = true` OR it is the company's only location). This is the
@@ -70,9 +87,14 @@ use Illuminate\Support\Facades\Schema;
  *    match a tenant registered today.
  *  - IDEMPOTENT: the update is scoped `where('pos_enabled', false)`, so a
  *    second run matches zero rows and writes nothing — it does not even touch
- *    `updated_at`. It is also NON-DESTRUCTIVE in the other direction: nothing
- *    here ever sets `pos_enabled` back to false, so a location an operator
- *    deliberately switched OFF between deploys is not re-enabled by a re-run.
+ *    `updated_at`. Nothing here ever sets `pos_enabled` back to false, so a
+ *    location an operator switches OFF between deploys is not re-enabled by a
+ *    re-run. Stated precisely, because the weaker claim is the true one: on the
+ *    FIRST run a matching location IS enabled even if somebody had unticked the
+ *    box before this deploy. That is deliberate — until this deploy the flag
+ *    was decorative, read by no backend decision, so a pre-deploy `false`
+ *    records no reliable intent and cannot be honoured. From this deploy
+ *    forward the tick means something and the migration never overrides it.
  *  - NEVER THROWS, and the failure is CONTAINED IN A SAVEPOINT. On PostgreSQL
  *    a caught QueryException inside the migrator's own transaction would leave
  *    that transaction aborted (SQLSTATE 25P02) and the migration repository's
@@ -96,6 +118,26 @@ return new class extends Migration
      * would let a checklist's grep pass against an empty log.
      */
     private const GATE_TOKEN = 'LOCATION POS-ENABLED B3 BACKFILL MIGRATION:';
+
+    /**
+     * The `pos_terminals.type` values that count as a TILL for branch (a).
+     *
+     * `App\Modules\POS\Domain\Enums\TerminalType` has three cases — `web`,
+     * `physical` and `virtual_admin`. Only the first two are tills. The third
+     * is server-authored: `VirtualAdminTerminalResolver::resolve()` mints one
+     * per company, at whatever location is OLDEST, on ordinary back-office
+     * actions — see the `(a)` note in the class docblock for why counting it
+     * would be wrong and unrepairable.
+     *
+     * Spelled as literal strings, not `TerminalType::Web->value`, on purpose: a
+     * migration is a historical record and must keep meaning what it meant on
+     * the day it ran, even if the enum is later renamed or re-cased. The column
+     * is `string(20)` (`2026_02_19_000002_add_type_to_pos_terminals.php:16`),
+     * `virtual_admin` was added by `2026_05_22_101000`.
+     *
+     * @var list<string>
+     */
+    private const TILL_TERMINAL_TYPES = ['physical', 'web'];
 
     public function up(): void
     {
@@ -137,12 +179,13 @@ return new class extends Migration
                                 });
                         });
 
-                        // (a) the location has a terminal, in any state.
+                        // (a) the location has a REAL TILL, in any state.
                         if ($hasTerminals) {
                             $query->orWhereIn('id', function (Builder $withTerminal): void {
                                 $withTerminal->from('pos_terminals')
                                     ->select('location_id')
-                                    ->whereNotNull('location_id');
+                                    ->whereNotNull('location_id')
+                                    ->whereIn('type', self::TILL_TERMINAL_TYPES);
                             });
                         }
                     })

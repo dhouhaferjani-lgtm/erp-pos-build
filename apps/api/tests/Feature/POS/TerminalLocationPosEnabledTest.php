@@ -158,6 +158,46 @@ final class TerminalLocationPosEnabledTest extends TestCase
         $response->assertJsonPath('error.code', 'TERMINAL_INACTIVE');
     }
 
+    /**
+     * Gate r1 / P3-6 — the helper's FAILS CLOSED promise, made a contract.
+     *
+     * `locationHasPosEnabled()` re-applies `where('company_id', …)` rather than
+     * trusting the location id it is handed. A terminal row whose `location_id`
+     * points at ANOTHER company's location — a legacy or hand-edited row — must
+     * therefore refuse, even though that foreign location is itself POS-enabled.
+     * Without this case the guarantee lives only in a comment, and a future
+     * "simplification" that drops the company predicate would pass every other
+     * test in this class while silently letting a terminal be claimed against a
+     * foreign company's switch.
+     */
+    public function test_claim_fails_closed_when_the_terminal_points_at_another_companys_location(): void
+    {
+        $otherCompany = Company::factory()->create(['tenant_id' => $this->tenant->id]);
+        $foreignEnabledLocation = Location::factory()->create([
+            'company_id' => $otherCompany->id,
+            'type' => 'shop',
+            'pos_enabled' => true,
+        ]);
+
+        $terminal = Terminal::factory()->create([
+            'tenant_id' => $this->tenant->id,
+            'company_id' => $this->company->id,
+            'location_id' => $foreignEnabledLocation->id,
+            'type' => TerminalType::Physical,
+            'is_active' => true,
+            'hardware_identifier' => null,
+        ]);
+
+        $response = $this->postJson('/api/v1/pos/terminals/claim', [
+            'terminal_id' => $terminal->id,
+            'hardware_identifier' => 'HW-FOREIGN-1',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonPath('error.code', 'LOCATION_POS_DISABLED');
+        $this->assertNull($terminal->fresh()?->hardware_identifier);
+    }
+
     public function test_request_terminal_refuses_a_pos_disabled_location(): void
     {
         $response = $this->postJson('/api/v1/pos/terminals/request', [
